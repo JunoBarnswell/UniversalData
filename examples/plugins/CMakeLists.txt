@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.24)
+project(ExternalUniversalDataPlugin C)
+find_package(UniversalData CONFIG REQUIRED COMPONENTS Contracts)
+add_library(external_abs MODULE ../../plugins/abs.c)
+target_include_directories(external_abs PRIVATE ../../plugins)
+target_link_libraries(external_abs PRIVATE UniversalData::Contracts)
+set_target_properties(external_abs PROPERTIES PREFIX "")

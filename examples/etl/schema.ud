@@ -1,0 +1,2 @@
+team utf8 required
+amount int64 nullable

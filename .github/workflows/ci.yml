@@ -1,0 +1,89 @@
+name: sdk-ci
+on:
+  push:
+    branches: [main, 'codex/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-and-bindings:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Fetch pinned optional dependencies
+        shell: pwsh
+        run: |
+          $platform = if ($IsWindows) { 'windows' } else { 'linux' }
+          python scripts/fetch_deps.py --platform $platform --output build/deps
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Configure and build complete native SDK
+        shell: pwsh
+        run: |
+          $duck = (Resolve-Path build/deps/duckdb).Path
+          $sqlite = (Resolve-Path build/deps/sqlite/sqlite-amalgamation-3490100).Path
+          cmake -S . -B build/full -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_WITH_DUCKDB=ON -DUD_WITH_ODBC=ON -DUD_SQLITE_AMALGAMATION="$sqlite" -DCMAKE_PREFIX_PATH="$duck" -DCMAKE_BUILD_TYPE=Debug
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build/full --config Debug --parallel 2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if ($IsWindows) { Copy-Item build/deps/duckdb/duckdb.dll build/full/plugins/Debug/ }
+      - name: Native behavior and recovery
+        shell: pwsh
+        run: |
+          $env:LD_LIBRARY_PATH = (Resolve-Path build/deps/duckdb).Path
+          ctest --test-dir build/full -C Debug --output-on-failure
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build and consume language SDKs
+        shell: pwsh
+        run: |
+          dotnet build examples/dotnet/Consumer.csproj --nologo --verbosity:minimal
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          mvn -q -f bindings/java/pom.xml package
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force build/java | Out-Null
+          javac -encoding UTF-8 -cp bindings/java/target/universal-data-0.1.0.jar -d build/java examples/java/Consumer.java
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --install build/full --config Debug --prefix build/install
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $native = if ($IsWindows) { 'build/install/bin' } else { 'build/install/lib' }
+          python scripts/smoke_bindings.py --native-dir $native --dotnet-dll examples/dotnet/bin/Debug/net8.0/Consumer.dll --java-classes build/java --java-jar bindings/java/target/universal-data-0.1.0.jar
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Static contracts
+        run: python scripts/static_check.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-${{ matrix.os }}
+          path: |
+            build/install
+            bindings/java/target/*.jar
+            bindings/dotnet/UniversalData/bin/Debug/net8.0/*.dll
+  minimal-components:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build/core -DUD_COMPONENTS='Foundation;Columnar' -DUD_BUILD_HOSTS=OFF -DUD_BUILD_JNI=OFF -DUD_BUILD_PLUGINS=OFF
+      - run: cmake --build build/core --parallel 2
+      - run: ctest --test-dir build/core --output-on-failure
+      - run: cmake --install build/core --prefix "$PWD/build/sdk"
+      - run: cmake -S examples/c -B build/consumer -DCMAKE_PREFIX_PATH="$PWD/build/sdk"
+      - run: cmake --build build/consumer && build/consumer/consumer
+  memory-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build/asan -DUD_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
+      - run: cmake --build build/asan --parallel 2
+      - run: ctest --test-dir build/asan --output-on-failure

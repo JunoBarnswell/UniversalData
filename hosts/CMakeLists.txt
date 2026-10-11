@@ -1,0 +1,5 @@
+add_executable(ud_cli cli.c)
+target_link_libraries(ud_cli PRIVATE ud_data)
+add_executable(ud_worker worker.c)
+target_link_libraries(ud_worker PRIVATE ud_etl ud_query ud_plugins)
+install(TARGETS ud_cli ud_worker RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

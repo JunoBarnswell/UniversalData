@@ -1,0 +1,7 @@
+set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/columnar.c ${CMAKE_CURRENT_SOURCE_DIR}/src/arrow.c ${CMAKE_CURRENT_SOURCE_DIR}/src/wire.c ${CMAKE_CURRENT_SOURCE_DIR}/src/csv.c)
+ud_component(ud_columnar Columnar ${src})
+target_link_libraries(ud_columnar PUBLIC ud_foundation)
+if(NOT WIN32)
+  target_link_libraries(ud_foundation PUBLIC m)
+endif()
+set(UD_ALL_SOURCES ${UD_ALL_SOURCES} ${src} PARENT_SCOPE)

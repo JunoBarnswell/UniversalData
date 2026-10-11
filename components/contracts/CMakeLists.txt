@@ -1,0 +1,13 @@
+# Public extension contract has no link-time dependency on the loader or engines.
+add_library(ud_contracts INTERFACE)
+target_compile_features(ud_contracts INTERFACE c_std_17)
+set_target_properties(ud_contracts PROPERTIES EXPORT_NAME Contracts)
+target_include_directories(ud_contracts INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+add_library(UniversalData::Contracts ALIAS ud_contracts)
+install(TARGETS ud_contracts EXPORT UniversalDataTargets)
+if("Plugins" IN_LIST UD_SELECTED)
+set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin.c)
+ud_component(ud_plugins Plugins ${src})
+target_link_libraries(ud_plugins PUBLIC ud_columnar ud_contracts PRIVATE ${CMAKE_DL_LIBS})
+set(UD_ALL_SOURCES ${UD_ALL_SOURCES} ${src} PARENT_SCOPE)
+endif()

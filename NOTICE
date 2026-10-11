@@ -1,0 +1,9 @@
+UniversalData自有代码采用 MIT（见 LICENSE）。
+
+include/ud/data.h 中的 ArrowSchema、ArrowArray、ArrowArrayStream 定义来自
+Apache Arrow C Data/Stream Interface，Copyright Apache Software Foundation，
+按 Apache License 2.0 使用。许可证全文随发行包提供：licenses/Apache-2.0.txt。
+https://arrow.apache.org/docs/format/CDataInterface.html
+
+可选 DuckDB（MIT）、SQLite（public domain）、ODBC 驱动管理器及数据库驱动
+由使用方安装，不复制到本仓库；打包原生依赖时必须一并提供各依赖许可证。

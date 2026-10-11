@@ -50,6 +50,17 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+build/
+out/
+artifacts/
+_deps/
+**/bin/
+**/obj/
+**/target/
+__pycache__/
+.vs/
+*.user
+*.log
 
 # debug information files
 *.dwo

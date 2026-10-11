@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>UniversalData</PackageId>
+    <Version>0.1.0</Version>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Description>Component-first native data SDK: recoverable CSV processing.</Description>
+    <RepositoryUrl>https://github.com/JunoBarnswell/UniversalData</RepositoryUrl>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(NativeArtifacts)' != ''">
+    <None Include="$(NativeArtifacts)/win-x64/ud_data.dll" Pack="true" PackagePath="runtimes/win-x64/native/" />
+    <None Include="$(NativeArtifacts)/linux-x64/libud_data.so" Pack="true" PackagePath="runtimes/linux-x64/native/" />
+  </ItemGroup>
+</Project>
