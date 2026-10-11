@@ -1,0 +1,6 @@
+set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/foundation.c ${CMAKE_CURRENT_SOURCE_DIR}/src/platform.c ${CMAKE_CURRENT_SOURCE_DIR}/src/digest.c)
+ud_component(ud_foundation Foundation ${src})
+if(NOT WIN32)
+  target_link_libraries(ud_foundation PUBLIC m)
+endif()
+set(UD_ALL_SOURCES ${UD_ALL_SOURCES} ${src} PARENT_SCOPE)

@@ -1,0 +1,10 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {"name":"windows","generator":"Visual Studio 18 2026","architecture":"x64","binaryDir":"${sourceDir}/build/windows","cacheVariables":{"UD_BUILD_JNI":"ON"}},
+    {"name":"linux","generator":"Ninja","binaryDir":"${sourceDir}/build/linux","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","UD_BUILD_JNI":"ON"}},
+    {"name":"core-only","generator":"Ninja","binaryDir":"${sourceDir}/build/core","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","UD_COMPONENTS":"Foundation;Columnar","UD_BUILD_HOSTS":"OFF","UD_BUILD_JNI":"OFF","UD_BUILD_PLUGINS":"OFF"}}
+  ],
+  "buildPresets":[{"name":"windows","configurePreset":"windows","configuration":"Debug"},{"name":"linux","configurePreset":"linux"},{"name":"core-only","configurePreset":"core-only"}],
+  "testPresets":[{"name":"windows","configurePreset":"windows","configuration":"Debug","output":{"outputOnFailure":true}},{"name":"linux","configurePreset":"linux","output":{"outputOnFailure":true}},{"name":"core-only","configurePreset":"core-only","output":{"outputOnFailure":true}}]
+}
