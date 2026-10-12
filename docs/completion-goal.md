@@ -30,9 +30,9 @@
 
 ## 当前边界
 
-main 已重新 fetch，当前分支领先 4 个提交且没有落后；已有基础批次和 ABI 3 迁移位于 PR #3。历史开发验证：Linux CTest 21/21、ASan/UBSan 21/21、core-only 5/5、三语言 10,003 行 Package 与类型/Wire 一致性通过；这些证明对应开发里程碑，不证明本目标全部完成。
+main 已重新 fetch，当前分支没有落后；已有基础批次和 ABI 3 迁移位于 PR #3。历史开发验证：Linux CTest 21/21、ASan/UBSan 21/21、core-only 5/5、三语言 10,003 行 Package 与类型/Wire 一致性通过；这些证明对应开发里程碑，不证明本目标全部完成。
 
-Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任何步骤，不能记 Passed。恢复、Catalog、完整 spill/目录及其他缺项在清单中保留。旧 0.2.0 验收清单不替代本目标。
+Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任何步骤，不能记 Passed。恢复与 Catalog 已交付受支持子范围；完整恢复、部署/环境管理、spill/组件目录及其他缺项仍在清单中保留。旧 0.2.0 验收清单不替代本目标。
 
 ## 逐项目标
 
@@ -85,8 +85,8 @@ Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任�
 | G44 | 4 | Row Count/Audit | Planned | NotRun |
 | G45 | 5 | 统一任务/批次 Checkpoint Journal | Planned（已交付受支持子范围） | NotRun（完整目标） |
 | G46 | 5 | CommitUnknown/事务和故障恢复 | Planned（已交付受支持子范围） | NotRun（完整目标） |
-| G47 | 5 | Catalog/Deployment/Environment/Version | Planned | NotRun |
-| G48 | 5 | 结构化 Events/Logs/Trace/Metrics/Lineage/Audit | Planned | NotRun |
+| G47 | 5 | Catalog/Deployment/Environment/Version | Planned（已交付受支持子范围） | NotRun（完整目标） |
+| G48 | 5 | 结构化 Events/Logs/Trace/Metrics/Lineage/Audit | Planned（已交付受支持子范围） | NotRun（完整目标） |
 | G49 | 6 | 薄 C/.NET/Java Package/Execution 绑定 | Implemented | Verified |
 | G50 | 6 | 独立 C/Native/NuGet/Maven 安装消费 | Implemented | NotRun |
 | G51 | 6 | Windows/Linux 原生与 ABI 门禁 | Planned | NotRun |

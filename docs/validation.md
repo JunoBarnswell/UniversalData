@@ -21,3 +21,5 @@ GitHub 观察：[运行 38197069720](https://github.com/JunoBarnswell/UniversalD
 剩余里程碑：统一持久 Journal/批次恢复、Catalog、完整 Pipeline Spill、更多任务与连接器、列级血缘/完整表达式函数目录和其他扩展。现已提供 Journal 3 的受支持恢复链路；SQL Source 持久 snapshot 仍明确 Unsupported；不称完整 SSIS 架构或全部验收完成。旧 .state/.commit 不再提供恢复入口。
 
 统一恢复新门禁：native 22/22、ASan/UBSan Package 4/4，通过真实进程终止和日志/源完整性检查。证据在 docs/acceptance/evidence/ssis-recovery；范围见 transactions-and-recovery.md。
+
+Catalog 基础新门禁：native 23/23、ASan/UBSan + leak detection 的 Package/Catalog 5/5。测试覆盖不可变版本、租户隔离、重启、授权撤回、结构校验、校验损坏/重命名和已有 staging 文件保护。证据见 docs/acceptance/evidence/ssis-catalog；部署/环境语义及完整历史仍未完成。

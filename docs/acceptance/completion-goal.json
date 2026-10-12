@@ -863,7 +863,13 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-catalog/evidence.json",
+          "type": "verified-supported-subset"
+        }
+      ],
+      "progress": "Embedded immutable Catalog repository and structured event persistence implemented and verified. Full deployment/environment semantics, execution-history integration and observability remain outstanding."
     },
     {
       "id": "G48",
@@ -881,7 +887,13 @@
         "G02"
       ],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-catalog/evidence.json",
+          "type": "verified-supported-subset"
+        }
+      ],
+      "progress": "Embedded immutable Catalog repository and structured event persistence implemented and verified. Full deployment/environment semantics, execution-history integration and observability remain outstanding."
     },
     {
       "id": "G49",
