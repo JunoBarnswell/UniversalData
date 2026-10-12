@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 namespace UniversalData;
 public enum ExecutionState { Created, Validating, Ready, Running, Draining, Succeeded, Failed, Cancelled, Skipped, RecoveryRequired }
-public enum ConnectionAccess { Open=1, Discover, Read, Write, Receipt }
+public enum ConnectionAccess { Open=1, Discover, Read, Write, Receipt, Delete=8, Execute=9, Network=10 }
 public delegate bool PackageAuthorizer(string tenant,string resource,ConnectionAccess access);
 public delegate string PackageCredentialResolver(string tenant,string resource,string reference);
 public sealed record ExecutionMetrics(ExecutionState State,StatusCode Result,ulong InputRows,ulong OutputRows,ulong RejectedRows,ulong Batches,ulong QueuedBatches,ulong QueueHighWater,ulong MemoryUsed,ulong CompletedTasks,ulong SpillBytes);

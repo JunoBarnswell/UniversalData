@@ -1,0 +1,2 @@
+Installed NuGet/.NET and Maven/Java: same HTTPS Task, explicit network authorization, credential resolver delivery, network denial and resolver exceptions/default deny passed
+HTTP Task: real methods/body/status, resolver/default and network denial, trusted TLS plus CA/hostname rejection, no redirects, GET-only bounded retry/exhaustion, POST no retry, bounded body/headers, local/package timeout, live cancellation/revocation, quota/schema/read-only rejection, actual request effect/crash/Unknown and completed resume passed

@@ -56,7 +56,7 @@ main 已重新 fetch，当前分支没有落后；已有基础批次和 ABI 3 �
 | G15 | 2 | File System Task | Implemented | Verified |
 | G16 | 2 | Execute Process Task | Implemented | Verified |
 | G17 | 2 | Execute Package Task | Implemented | Verified |
-| G18 | 2 | HTTP Task | Planned | NotRun |
+| G18 | 2 | HTTP Task | Implemented | Verified |
 | G19 | 2 | Check/Data Profiling Task | Planned | NotRun |
 | G20 | 2 | Native Custom Task | Implemented | NotRun |
 | G21 | 3 | 组件 metadata/设计时与运行时生命周期 | Planned | NotRun |
@@ -119,3 +119,5 @@ Execute Package Task 已从草稿容器别名改为真正子 Package：参数映
 File System Task 已实现并验证四种受限操作、逻辑连接/删除授权、纯配置预校验、路径/覆盖/原子发布/取消/未知恢复。最新 native 27/27、内存专项 9/9、三语言同文件复制与子 Package 通过；完整目标其他缺项继续保留。
 
 Execute Process Task 的 Linux 实际行为门禁通过：宿主执行授权、argv/cwd、退出/启动失败、任务/Package 期限、真实运行中取消及子进程组清理、效应后崩溃 Unknown 和完成后 resume。最新 native 28/28、内存专项 10/10；权限沙箱不在契约内，Windows 免测且不宣称验证。
+
+HTTP Task 已实现同一逻辑连接/宿主授权/resolver、TLS 校验、方法/状态策略、有界响应及 GET/HEAD 重试、任务与 Package 期限/取消、授权撤销和真实效应崩溃 Unknown。原生 29/29、内存专项 11/11、安装后的静态/共享 C 与 NuGet/.NET/Maven/Java HTTPS 消费端通过；G61 HTTP Source/Destination 继续待办。

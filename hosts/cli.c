@@ -4,8 +4,8 @@
 #include <string.h>
 static ud_status authorize(void *user, ud_string tenant, ud_string resource, int32_t action) {
     (void)tenant;
-    if (action == UD_ACCESS_EXECUTE)
-        return UD_AUTH; /* File-root policy never opts into programs. */
+    if (action == UD_ACCESS_EXECUTE || action == UD_ACCESS_NETWORK)
+        return UD_AUTH; /* File-root policy never opts into programs/network. */
     const char *root = user;
     size_t length = root ? strlen(root) : 0;
     return length && resource.length > length && !memcmp(resource.data, root, length) &&

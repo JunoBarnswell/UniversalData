@@ -72,9 +72,16 @@ static ud_status acquire(ud_execution *e, ud_string id, uint64_t caps, int endpo
     if (!s)
         s = ud_connection_lease_authorize(l, UD_ACCESS_OPEN);
     if (!s && ((endpoint_kind == 1 && !ud_named(l->driver, "file")) ||
-               (endpoint_kind == 2 && !ud_named(l->driver, "process"))))
+               (endpoint_kind == 2 && !ud_named(l->driver, "process")) ||
+               (endpoint_kind == 3 && !ud_named(l->driver, "http"))))
         s = UD_UNSUPPORTED;
-    if (!s && (ud_named(l->driver, "file") || ud_named(l->driver, "process"))) {
+    if (!s && ud_named(l->driver, "http")) {
+#ifdef UD_WITH_HTTP
+        l->capabilities = UD_CONNECT_HTTP;
+#else
+        s = UD_UNSUPPORTED;
+#endif
+    } else if (!s && (ud_named(l->driver, "file") || ud_named(l->driver, "process"))) {
         int process = ud_named(l->driver, "process");
         l->capabilities =
             process ? UD_CONNECT_EXECUTE_PROCESS : UD_CONNECT_READ | UD_CONNECT_APPEND;
@@ -129,6 +136,41 @@ ud_status ud_acquire_file_connection(ud_execution *e, ud_string id, ud_connectio
 }
 ud_status ud_acquire_process_connection(ud_execution *e, ud_string id, ud_connection_lease **out) {
     return acquire(e, id, UD_CONNECT_EXECUTE_PROCESS, 2, out);
+}
+ud_status ud_acquire_http_connection(ud_execution *e, ud_string id, ud_connection_lease **out) {
+    return acquire(e, id, UD_CONNECT_HTTP, 3, out);
+}
+ud_status ud_http_connection_resource(ud_connection_lease *l, ud_string *out) {
+    if (!l || !out)
+        return UD_INVALID;
+    if (!ud_named(l->driver, "http"))
+        return UD_UNSUPPORTED;
+    *out = l->resource;
+    return UD_OK;
+}
+ud_status ud_http_connection_credentials(ud_connection_lease *l, ud_string *out) {
+    if (!l || !out)
+        return UD_INVALID;
+    *out = (ud_string){0};
+    if (!ud_named(l->driver, "http"))
+        return UD_UNSUPPORTED;
+    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_NETWORK));
+    const ud_json *ref = ud_member(l->definition, "credentialReference");
+    if (!ref)
+        return UD_OK;
+    ud_string reference;
+    UD_TRY(ud_json_string(ref, &reference));
+    ud_execution *e = l->execution;
+    if (!e->options.resolve)
+        return UD_AUTH;
+    ud_status s = e->options.resolve(e->options.resolve_user, e->ctx, e->options.tenant,
+                                     l->resource, reference, out);
+    if (s || !out->data || !out->length || out->length > 32768) {
+        ud_free((void *)out->data);
+        *out = (ud_string){0};
+        return s ? s : UD_SCHEMA;
+    }
+    return UD_OK;
 }
 ud_status ud_process_connection_path(ud_connection_lease *l, ud_string *out) {
     if (!l || !out)

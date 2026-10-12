@@ -25,11 +25,14 @@ cmake --preset linux
 cmake --build --preset linux --parallel 4
 ctest --preset linux
 # 可选 SQLite/PostgreSQL/ODBC/DuckDB 必须显式提供依赖，默认不下载。
+# HTTP Task 可选：cmake --preset linux -DUD_WITH_HTTP=ON（需 libcurl >=7.85，TLS/异步 DNS）。
 dotnet build examples/dotnet/Consumer.csproj
 mvn -f bindings/java/pom.xml package
 ```
 
 最小消费者只需 Foundation/Columnar；Package 静态组件自动选择 Expression/Compute/Runtime/Plugins。Windows 需支持 C17 的 MSVC；实际 Windows 验证状态独立记录。
+
+原生 [HTTP Task](docs/architecture/http-task.md) 使用同一逻辑连接、宿主网络授权和凭据 resolver，强制 TLS 校验、禁用重定向并限制重试。HTTP Data Flow 源/目标仍为独立待办。
 
 CLI：`ud_cli execute package.json '{}' tenant execution-id /authorized/root`。默认拒绝文件/数据库访问；SDK 宿主通过授权和凭据解析回调授予权限。Worker 为独立进程，不是权限沙箱。Java JAR 和托管 NuGet 包配合单独安装的同 ABI 原生库使用。
 

@@ -35,3 +35,13 @@ Project/Environment/Deployment 新门禁：当前源代码 native 24/24、ASan/U
 File System 新门禁：native 27/27、ASan/UBSan + leak detection 的 Package/Catalog/Project/Child/History/FileSystem 9/9；C/.NET8/Java17 同文件复制、子 Package、10,003 行管道和类型/Wire 一致性通过（任务数 7）。路径/覆盖/临时文件保护、移动/删除/建目录、中途取消/撤权、FIFO/符号链接拒绝和真实效应后终止/CommitUnknown 已实际验证。证据：docs/acceptance/evidence/ssis-filesystem。
 
 Execute Process 新门禁：当前 native 28/28、ASan/UBSan + leak detection 的 Package/相关模块 10/10；真实进程授权拒绝、argv/cwd、退出策略/exec 失败、任务和 Package timeout、运行中取消/子进程组清理、效应后真实终止/Unknown、完成后 resume 实际通过。三语言文件/子 Package/数据回归通过，未把它冒充托管端正向进程授权测试。证据：docs/acceptance/evidence/ssis-process。
+
+## HTTP Task 与安装消费（2026-10-12）
+
+主线已 fetch，仍为 `ed3237a9852ac29831d85d93c03fc8b173cdbf6f`，当前工作分支已包含该提交。`UD_WITH_HTTP=ON` 使用系统 libcurl 8.14.1，最低契约 7.85 + TLS/异步 DNS；默认 OFF 的 Package 构建没有此依赖，并实测绑定时 Unsupported、无网络 I/O。
+
+原生 29/29 和 ASan/UBSan+leak 的 Package/Catalog/File/Process/HTTP 11/11 通过。真实本地 HTTP/HTTPS 验证方法/NUL/Unicode body、状态变量、授权及凭据拒绝、CA/hostname 错误、禁用重定向、GET/HEAD 重试上限与 POST 单次请求、有界响应/头、任务/Package 超时、运行中取消/撤销授权、资源/配置拒绝。真实 POST 产生服务器效应后 `_exit(91)`，resume 返回 CommitUnknown 且未再次请求；完成后 resume 同样不重复请求。
+
+安装后的 UniversalData::Package 静态消费者与 UniversalData::Data 共享消费者均执行同一完整 HTTP 行为套件。NuGet 包含 Linux ABI3 原生库，通过独立本地 feed/新缓存安装；Java 使用 Maven 1.0.0 JAR 和 ABI3 JNI。两者实际调用 HTTPS Task，检查明确 NETWORK 授权、resolver 凭据送达、网络拒绝及 resolver 抛异常的默认拒绝。Maven package 是构建检查（项目无单元测试），验证来自真实消费者，不将零测试算作通过。修复了 Linux-only NativeArtifacts 打包因不存在 Windows 路径失败的问题，未制造或测试 Windows 文件。
+
+已有三语言 FileSystem/真实子 Package/10003 行 Pipeline 和 Decimal/UTC/UTF8/nested/wire 一致性回归通过。全部证据和当前源哈希见 `docs/acceptance/evidence/ssis-http/evidence.json`。HTTP Task 响应仅有界消费并丢弃，不冒充 G61 Source/Destination；libcurl/TLS 内部分配不计入 SDK quota；无端到端 exactly-once。Windows 测试及远程 CI 状态按用户指令免作门禁。

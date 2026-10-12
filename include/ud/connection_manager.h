@@ -6,7 +6,7 @@ extern "C" {
 #endif
 typedef struct ud_connection_lease ud_connection_lease;
 /* Uses Package connection definitions, current lexical bindings, authorization
- * and host credential resolver. File endpoints and SQL drivers share this
+ * and host credential resolver. File/process/HTTP endpoints and SQL drivers share this
  * logical model. Each lease owns a compatible physical connection/cursor. */
 UD_API ud_status ud_execution_acquire_connection(ud_execution *, ud_string id,
                                                  uint64_t capabilities, ud_connection_lease **);

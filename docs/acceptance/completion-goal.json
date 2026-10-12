@@ -384,17 +384,24 @@
       "phase": 2,
       "name": "HTTP Task",
       "priority": "P0",
-      "code": "Planned",
-      "verification": "NotRun",
+      "code": "Implemented",
+      "verification": "Verified",
       "acceptance": "同一连接和宿主授权；TLS/超时/取消/HTTP 失败/重试边界",
       "implementation": [
-        "engines/control-flow",
+        "engines/control-flow/http.c",
+        "connectors/manager.c",
         "engines/data-flow/builtins.c",
-        "components/contracts"
+        "include/ud/connector.h"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-http/evidence.json",
+          "type": "executed-http-tls-authorization-retry-recovery-installed-consumers"
+        }
+      ],
+      "progress": "Native HTTP Task on common Execution/Connection Manager, exact-resource authorization and credential resolver. Linux actual HTTP/HTTPS, TLS CA/hostname checks, bounded GET/HEAD retries and POST single attempt, cancellation/deadline/revocation, quota, crash Unknown and completed resume verified. Installed static/shared C and NuGet/.NET/Maven/Java HTTPS consumers verified. G61 Data Flow integration remains separate."
     },
     {
       "id": "G19",

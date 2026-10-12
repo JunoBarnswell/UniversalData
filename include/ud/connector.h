@@ -16,7 +16,8 @@ enum {
     UD_CONNECT_SNAPSHOT = 64,
     UD_CONNECT_RECEIPTS = 128,
     UD_CONNECT_EXECUTE_SQL = 256,
-    UD_CONNECT_EXECUTE_PROCESS = 512
+    UD_CONNECT_EXECUTE_PROCESS = 512,
+    UD_CONNECT_HTTP = 1024
 };
 enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3 };
 enum {
@@ -26,13 +27,14 @@ enum {
     UD_ACCESS_WRITE = 4,
     UD_ACCESS_RECEIPT = 5,
     UD_ACCESS_DELETE = 8, /* 6/7 reserved by the quarantine contract. */
-    UD_ACCESS_EXECUTE = 9
+    UD_ACCESS_EXECUTE = 9,
+    UD_ACCESS_NETWORK = 10
 };
 /* Only UD_OK is an authorization grant. Missing callback is a denial. The host
  * controls the credential scope; this callback never implements an identity provider. */
 typedef ud_status (*ud_authorize_fn)(void *, ud_string tenant, ud_string resource, int32_t action);
 /* Resolver returns configuration in an allocation from ctx (ud_alloc), released
- * by the SDK after connector creation. Reference / secret values are never logged. */
+ * by the SDK after consuming it. Reference / secret values are never logged. */
 typedef ud_status (*ud_credential_resolver_fn)(void *, ud_context *ctx, ud_string tenant,
                                                ud_string resource, ud_string reference,
                                                ud_string *);
