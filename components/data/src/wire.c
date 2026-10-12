@@ -1,131 +1,148 @@
 #include "../internal.h"
-ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
-    UD_TRY(ud_put_u64(b, 1));
-    UD_TRY(ud_put_u64(b, table->columns));
-    UD_TRY(ud_put_u64(b, table->rows));
-    for (uint32_t i = 0; i < table->columns; i++) {
-        ud_field f;
-        ud_batch_field(table, i, &f);
-        UD_TRY(ud_put_string(b, f.name, f.name_length));
-        UD_TRY(ud_put_u64(b, (uint64_t)f.type));
-        UD_TRY(ud_put_u64(b, (uint64_t)f.nullable));
+static ud_status put_field(ud_bytes *b, const ud_field *f, uint32_t depth) {
+    if (depth > 32) return UD_SCHEMA;
+    UD_TRY(ud_put_string(b, f->name, f->name_length));
+    UD_TRY(ud_put_u64(b, (uint64_t)f->type));
+    UD_TRY(ud_put_u64(b, (uint64_t)f->nullable));
+    UD_TRY(ud_put_u64(b, (uint64_t)(int64_t)f->precision));
+    UD_TRY(ud_put_u64(b, (uint64_t)(int64_t)f->scale));
+    UD_TRY(ud_put_string(b, f->timezone, f->timezone_length));
+    UD_TRY(ud_put_u64(b, f->child_count));
+    for (uint32_t i = 0; i < f->child_count; i++) UD_TRY(put_field(b, f->children + i, depth + 1));
+    return UD_OK;
+}
+static void clear_field(ud_field *f) {
+    ud_free((void *)f->name); ud_free((void *)f->timezone);
+    for (uint32_t i = 0; i < f->child_count; i++) clear_field((ud_field *)f->children + i);
+    ud_free((void *)f->children); memset(f, 0, sizeof(*f));
+}
+static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
+    if (depth > 32) return UD_SCHEMA;
+    char *name = NULL, *timezone = NULL;
+    ud_status s = ud_get_string(b, &name); f->name = name;
+    if (s) return s;
+    f->name_length = (uint32_t)strlen(name);
+    uint64_t type, nullable, precision, scale, children;
+    UD_TRY(ud_get_u64(b, &type)); UD_TRY(ud_get_u64(b, &nullable));
+    UD_TRY(ud_get_u64(b, &precision)); UD_TRY(ud_get_u64(b, &scale));
+    int64_t signed_scale; memcpy(&signed_scale, &scale, 8);
+    if (type < UD_BOOL || type > UD_MAP || nullable > 1 || precision > 38 || signed_scale < -38 || signed_scale > 38) return UD_CORRUPT;
+    f->type = (ud_type)type; f->nullable = (int32_t)nullable;
+    f->precision = (int32_t)precision; f->scale = (int32_t)signed_scale;
+    s = ud_get_string(b, &timezone); f->timezone = timezone;
+    if (s) return s;
+    f->timezone_length = (uint32_t)strlen(timezone);
+    UD_TRY(ud_get_u64(b, &children));
+    if (children > 65536 || (f->type < UD_STRUCT && children) ||
+        (f->type == UD_STRUCT && !children) || (f->type >= UD_LIST && children != 1)) return UD_CORRUPT;
+    if (children) {
+        f->children = ud_alloc(b->ctx, (size_t)children * sizeof(ud_field));
+        if (!f->children) return UD_RESOURCE;
+        f->child_count = (uint32_t)children;
+        for (uint32_t j = 0; j < children; j++) UD_TRY(get_field(b, (ud_field *)f->children + j, depth + 1));
     }
-    for (uint32_t r = 0; r < table->rows; r++)
-        for (uint32_t i = 0; i < table->columns; i++) {
-            ud_value v;
-            ud_batch_get(table, r, i, &v);
-            UD_TRY(ud_put_u64(b, (uint64_t)v.is_null));
-            if (v.is_null)
-                continue;
-            if (v.type == UD_UTF8) {
-                UD_TRY(ud_put_string(b, v.text, v.text_length));
-            } else {
-                uint64_t bits;
-                if (v.type == UD_FLOAT64)
-                    memcpy(&bits, &v.real, 8);
-                else
-                    bits = (uint64_t)v.integer;
-                UD_TRY(ud_put_u64(b, bits));
-            }
+    return UD_OK;
+}
+static ud_status put_value(ud_bytes *b, const ud_value *v, uint32_t depth) {
+    if (depth > 32) return UD_SCHEMA;
+    UD_TRY(ud_put_u64(b, (uint64_t)v->is_null));
+    if (v->is_null) return UD_OK;
+    if (v->type == UD_UTF8 || v->type == UD_BINARY) return ud_put_string(b, v->text, v->text_length);
+    if (v->type == UD_DECIMAL128) {
+        UD_TRY(ud_put_u64(b, v->decimal.low)); return ud_put_u64(b, (uint64_t)v->decimal.high);
+    }
+    if (v->type >= UD_STRUCT) {
+        UD_TRY(ud_put_u64(b, v->child_count));
+        for (uint32_t j = 0; j < v->child_count; j++) UD_TRY(put_value(b, v->children + j, depth + 1));
+        return UD_OK;
+    }
+    uint64_t bits;
+    if (v->type == UD_FLOAT64) memcpy(&bits, &v->real, 8);
+    else bits = (uint64_t)v->integer;
+    return ud_put_u64(b, bits);
+}
+static ud_status get_value(ud_bytes *b, const ud_field *f, ud_value *v, uint32_t depth) {
+    if (depth > 32) return UD_SCHEMA;
+    v->type = f->type; v->precision = f->precision; v->scale = f->scale;
+    uint64_t null; UD_TRY(ud_get_u64(b, &null));
+    if (null > 1) return UD_CORRUPT;
+    v->is_null = (int32_t)null;
+    if (null) return UD_OK;
+    if (f->type == UD_UTF8 || f->type == UD_BINARY) {
+        uint64_t size; UD_TRY(ud_get_u64(b, &size));
+        if (size > UINT32_MAX || size > b->size - b->pos) return UD_CORRUPT;
+        v->text = ud_strdup_n(b->ctx, (const char *)b->data + b->pos, (size_t)size);
+        if (!v->text) return UD_RESOURCE;
+        v->text_length = (uint32_t)size; b->pos += (size_t)size;
+    } else if (f->type == UD_DECIMAL128) {
+        uint64_t hi; UD_TRY(ud_get_u64(b, &v->decimal.low)); UD_TRY(ud_get_u64(b, &hi));
+        memcpy(&v->decimal.high, &hi, 8);
+    } else if (f->type >= UD_STRUCT) {
+        uint64_t count; UD_TRY(ud_get_u64(b, &count));
+        if (count > INT32_MAX || count > SIZE_MAX / sizeof(ud_value) ||
+            (f->type == UD_STRUCT && count != f->child_count)) return UD_CORRUPT;
+        if (count) {
+            v->children = ud_alloc(b->ctx, (size_t)count * sizeof(ud_value));
+            if (!v->children) return UD_RESOURCE;
+            v->child_count = (uint32_t)count;
+            for (uint32_t j = 0; j < count; j++) UD_TRY(get_value(b,
+                f->children + (f->type == UD_STRUCT ? j : 0), (ud_value *)v->children + j, depth + 1));
         }
+    } else {
+        uint64_t bits; UD_TRY(ud_get_u64(b, &bits));
+        if (f->type == UD_FLOAT64) memcpy(&v->real, &bits, 8);
+        else memcpy(&v->integer, &bits, 8);
+    }
+    return UD_OK;
+}
+ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
+    if (!b || !table) return UD_INVALID;
+    UD_TRY(ud_put_u64(b, UD_WORKER_VERSION));
+    UD_TRY(ud_put_u64(b, table->columns)); UD_TRY(ud_put_u64(b, table->rows));
+    for (uint32_t j = 0; j < table->columns; j++) UD_TRY(put_field(b, &table->column[j].field, 0));
+    for (uint32_t r = 0; r < table->rows; r++) for (uint32_t j = 0; j < table->columns; j++) {
+        ud_value value; UD_TRY(ud_batch_get(table, r, j, &value)); UD_TRY(put_value(b, &value, 0));
+    }
     return UD_OK;
 }
 ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
+    if (!b || !out) return UD_INVALID;
     *out = NULL;
-    uint64_t ver, n, rows;
-    UD_TRY(ud_get_u64(b, &ver));
-    UD_TRY(ud_get_u64(b, &n));
-    UD_TRY(ud_get_u64(b, &rows));
-    if (ver != 1 || !n || n > 65536 || rows > INT32_MAX)
-        return UD_INCOMPATIBLE;
-    ud_field *f = ud_alloc(b->ctx, (size_t)n * sizeof(*f));
-    ud_value *values = ud_alloc(b->ctx, (size_t)n * sizeof(*values));
-    if (!f || !values) {
-        ud_free(f);
-        ud_free(values);
-        return UD_RESOURCE;
-    }
+    uint64_t version, columns, rows;
+    UD_TRY(ud_get_u64(b, &version));
+    if (version != UD_WORKER_VERSION) return UD_INCOMPATIBLE;
+    UD_TRY(ud_get_u64(b, &columns)); UD_TRY(ud_get_u64(b, &rows));
+    if (!columns || columns > 65536 || rows > INT32_MAX) return UD_CORRUPT;
+    ud_field *fields = ud_alloc(b->ctx, (size_t)columns * sizeof(*fields));
+    ud_value *values = ud_alloc(b->ctx, (size_t)columns * sizeof(*values));
+    if (!fields || !values) { ud_free(fields); ud_free(values); return UD_RESOURCE; }
     ud_status s = UD_OK;
-    for (uint32_t i = 0; i < n && !s; i++) {
-        uint64_t t, nullable;
-        char *name = NULL;
-        s = ud_get_string(b, &name);
-        f[i].name = name;
-        if (s)
-            break;
-        f[i].name_length = (uint32_t)strlen(name);
-        s = ud_get_u64(b, &t);
-        if (s)
-            break;
-        s = ud_get_u64(b, &nullable);
-        if (s)
-            break;
-        if (t < 1 || t > 4 || nullable > 1) {
-            s = UD_CORRUPT;
-            break;
-        }
-        f[i].type = (ud_type)t;
-        f[i].nullable = (int32_t)nullable;
-    }
-    if (!s)
-        s = ud_batch_create(b->ctx, f, (uint32_t)n, (uint32_t)rows, out);
+    for (uint32_t j = 0; !s && j < columns; j++) s = get_field(b, fields + j, 0);
+    if (!s) s = ud_batch_create(b->ctx, fields, (uint32_t)columns, (uint32_t)rows, out);
     for (uint32_t r = 0; !s && r < rows; r++) {
-        memset(values, 0, (size_t)n * sizeof(*values));
-        for (uint32_t i = 0; i < n && !s; i++) {
-            ud_value *v = values + i;
-            uint64_t null;
-            s = ud_get_u64(b, &null);
-            if (s || null > 1) {
-                if (!s)
-                    s = UD_CORRUPT;
-                break;
-            }
-            v->type = f[i].type;
-            v->is_null = (int32_t)null;
-            if (null)
-                continue;
-            if (v->type == UD_UTF8) {
-                char *text = NULL; /* binary UTF-8 can contain NUL, unlike metadata strings */
-                uint64_t len;
-                s = ud_get_u64(b, &len);
-                if (s)
-                    break;
-                if (len > UINT32_MAX || len > b->size - b->pos) {
-                    s = UD_CORRUPT;
-                    break;
-                }
-                text = ud_strdup_n(b->ctx, (char *)b->data + b->pos, (size_t)len);
-                if (!text) {
-                    s = UD_RESOURCE;
-                    break;
-                }
-                b->pos += (size_t)len;
-                v->text = text;
-                v->text_length = (uint32_t)len;
-            } else {
-                uint64_t bits;
-                s = ud_get_u64(b, &bits);
-                if (!s) {
-                    if (v->type == UD_FLOAT64)
-                        memcpy(&v->real, &bits, 8);
-                    else
-                        memcpy(&v->integer, &bits, 8);
-                }
-            }
-        }
-        if (!s)
-            s = ud_batch_append(*out, values, (uint32_t)n);
-        for (uint32_t i = 0; i < n; i++)
-            if (values[i].type == UD_UTF8)
-                ud_free((void *)values[i].text);
+        memset(values, 0, (size_t)columns * sizeof(*values));
+        for (uint32_t j = 0; !s && j < columns; j++) s = get_value(b, fields + j, values + j, 0);
+        if (!s) s = ud_batch_append(*out, values, (uint32_t)columns);
+        for (uint32_t j = 0; j < columns; j++) ud_clear_value(values + j);
     }
-    for (uint32_t i = 0; i < n; i++)
-        ud_free((void *)f[i].name);
-    ud_free(f);
-    ud_free(values);
-    if (s && *out) {
-        ud_batch_destroy(*out);
-        *out = NULL;
-    }
+    for (uint32_t j = 0; j < columns; j++) clear_field(fields + j);
+    ud_free(fields); ud_free(values);
+    if (s) { ud_batch_destroy(*out); *out = NULL; }
+    return s;
+}
+ud_status ud_batch_serialize(const ud_batch *batch, uint8_t **data, uint64_t *length) {
+    if (!batch || !data || !length) return UD_INVALID;
+    *data = NULL; *length = 0;
+    ud_bytes wire = {.ctx=batch->ctx};
+    ud_status s = ud_encode_batch(&wire, batch);
+    if (s) { ud_bytes_clear(&wire); return s; }
+    *data = wire.data; *length = wire.size;
+    return UD_OK;
+}
+ud_status ud_batch_deserialize(ud_context *ctx, const uint8_t *data, uint64_t length, ud_batch **out) {
+    if (!ctx || !data || !out || length > SIZE_MAX) return UD_INVALID;
+    ud_bytes wire = {.ctx=ctx, .data=(uint8_t *)data, .size=(size_t)length};
+    ud_status s = ud_decode_batch(&wire, out);
+    if (!s && wire.pos != wire.size) { ud_batch_destroy(*out); *out = NULL; return UD_CORRUPT; }
     return s;
 }

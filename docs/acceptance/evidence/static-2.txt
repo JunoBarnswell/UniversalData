@@ -1,0 +1,1 @@
+Binding syntax parser passed: 20 C#/Java files; no compilation / execution performed

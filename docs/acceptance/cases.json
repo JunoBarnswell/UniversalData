@@ -1,0 +1,617 @@
+{
+  "baselineVersion": 1,
+  "cases": [
+    {
+      "id": "A01",
+      "requirements": [
+        "D05",
+        "D14"
+      ],
+      "title": "Decimal 38 位精度、正负 scale、所有舍入及溢出",
+      "preconditions": "精度 38 的 Decimal 字段；正负值、half-even 边界、跨 64 位进位",
+      "fixtures": [
+        "tests/types.c"
+      ],
+      "steps": [
+        "解析、重缩放、相加、列存及 Arrow/Worker 往返"
+      ],
+      "expected": "精确系数一致；超精度报 Overflow；Exact 拒绝有损缩放",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "A02",
+      "requirements": [
+        "D05",
+        "D14"
+      ],
+      "title": "日期与 UTC 时间边界",
+      "preconditions": "1970 前日期、闰日、非法日期、显式 +08:00/-05:30、无时区时间",
+      "fixtures": [
+        "tests/types.c"
+      ],
+      "steps": [
+        "解析、序列化、Arrow 往返"
+      ],
+      "expected": "UTC 微秒一致；无时区时间报 Parse；无隐式本地时间转换",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "A03",
+      "requirements": [
+        "D05",
+        "D14"
+      ],
+      "title": "NULL、中文、Binary、嵌套字段和非法编码",
+      "preconditions": "NULL/空串/NUL Binary、Struct/List/Map、无效 UTF8",
+      "fixtures": [
+        "tests/nested.c",
+        "tests/format.c",
+        "tests/json.c"
+      ],
+      "steps": [
+        "追加、比较、转换、Arrow 切片与序列化"
+      ],
+      "expected": "嵌套值完整；NULL 与空值区分；非法 UTF8 明确报错",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "A04",
+      "requirements": [
+        "D13",
+        "D15"
+      ],
+      "title": "版本与 ABI 拒绝",
+      "preconditions": "SDK 0.1.0 配置、计划、Checkpoint、Worker 请求和插件",
+      "fixtures": [],
+      "steps": [
+        "用 0.2.0 加载每种旧文档"
+      ],
+      "expected": "返回 Incompatible，无状态推进",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "B01",
+      "requirements": [
+        "D01",
+        "D02",
+        "D03",
+        "D09"
+      ],
+      "title": "全量 10,000 条",
+      "preconditions": "隔离 PostgreSQL 源/目标及受限用户、独立 SQLite 目标",
+      "fixtures": [],
+      "steps": [
+        "发现 Schema/权限、流式抽取、Append，逐字段对比"
+      ],
+      "expected": "主键、字段、NULL、总数与源精确一致",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "B02",
+      "requirements": [
+        "D01",
+        "D02",
+        "D20"
+      ],
+      "title": "无写权限与取消",
+      "preconditions": "源读取用户、目标只读用户、运行中断连",
+      "fixtures": [],
+      "steps": [
+        "尝试写入、取消读游标、关闭连接"
+      ],
+      "expected": "受限操作拒绝；事务回滚；取消后资源释放",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "B03",
+      "requirements": [
+        "D09",
+        "D16",
+        "D24"
+      ],
+      "title": "Overwrite 原子发布",
+      "preconditions": "已有完整目标版本，完整新版本、半写故障",
+      "fixtures": [],
+      "steps": [
+        "读旧版本、构建新版本、发布前/后终止进程"
+      ],
+      "expected": "只能观察完整旧版或完整新版，无混合版本",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "C01",
+      "requirements": [
+        "D06",
+        "D07"
+      ],
+      "title": "映射、默认、转换与条件",
+      "preconditions": "中文、空白、NULL、溢出、表达式类型错误",
+      "fixtures": [
+        "tests/mapping.c"
+      ],
+      "steps": [
+        "执行同一个类型化转换计划"
+      ],
+      "expected": "字段/类型精确一致；类型错误提前拒绝",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "C02",
+      "requirements": [
+        "D08"
+      ],
+      "title": "外存 Join/聚合正确性",
+      "preconditions": "固定数据与小内存/磁盘配额，重复键与 NULL",
+      "fixtures": [
+        "tests/external_runner.c",
+        "tests/external.py"
+      ],
+      "steps": [
+        "强制溢写，与独立 SQL 参考结果比较"
+      ],
+      "expected": "结果一致；峰值在配额内；磁盘超限可诊断并清理",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "C03",
+      "requirements": [
+        "D11",
+        "D12"
+      ],
+      "title": "质量终止、拒绝与持久隔离",
+      "preconditions": "非空/唯一/范围/正则/主外键/对账违规及隔离写失败",
+      "fixtures": [
+        "tests/quality.c",
+        "tests/quarantine.c",
+        "tests/quarantine.py",
+        "tests/regex.c"
+      ],
+      "steps": [
+        "分别执行三种策略，终止重启隔离写入"
+      ],
+      "expected": "隔离成功才推进已处理计数；失败不推进游标",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "D01",
+      "requirements": [
+        "D04",
+        "D09",
+        "D16"
+      ],
+      "title": "10,200 条增量 Upsert",
+      "preconditions": "全量 10,000 后新增 200、更新 50，复合键相同水位",
+      "fixtures": [],
+      "steps": [
+        "固定本轮上界；分批增量写入；逐主键字段比对"
+      ],
+      "expected": "精确 10,200 行；更新一致；本轮上界之后留到下轮",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "D02",
+      "requirements": [
+        "D10"
+      ],
+      "title": "DAG 校验与背压",
+      "preconditions": "循环图、缺依赖、非法参数、三个分区、有界队列",
+      "fixtures": [
+        "tests/dag.c",
+        "tests/run_runner.c",
+        "tests/run.py",
+        "tests/run_callbacks.c"
+      ],
+      "steps": [
+        "校验非法图；并行执行；阻塞 Sink"
+      ],
+      "expected": "错误提前拒绝；有界内存；分区最终结果一致",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "D03",
+      "requirements": [
+        "D12",
+        "D13",
+        "D16"
+      ],
+      "title": "提交不确定状态恢复",
+      "preconditions": "读/提交/Checkpoint 三处真实子进程终止",
+      "fixtures": [],
+      "steps": [
+        "恢复；查询批次凭据；核对游标与数据"
+      ],
+      "expected": "已提交批次不重复；不能证明提交时返回 CommitUnknown",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "D04",
+      "requirements": [
+        "D12"
+      ],
+      "title": "有限重试",
+      "preconditions": "明确 Transient 与非幂等/质量/授权错误",
+      "fixtures": [],
+      "steps": [
+        "重复断连直到上限；监测退避时间"
+      ],
+      "expected": "只重试明示可重试且幂等操作；上限后停止",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "E01",
+      "requirements": [
+        "D17"
+      ],
+      "title": "快照期间并发变更",
+      "preconditions": "复制 slot 导出快照，另连接并发 I/U/D",
+      "fixtures": [],
+      "steps": [
+        "初始一致快照衔接 pgoutput，提交后确认 LSN"
+      ],
+      "expected": "无遗漏；重复可去重；未提交事务不可见",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "E02",
+      "requirements": [
+        "D17",
+        "D16"
+      ],
+      "title": "CDC 重放与事务顺序",
+      "preconditions": "事务内 Insert/Update/Delete，提交边界终止进程",
+      "fixtures": [],
+      "steps": [
+        "重连重放；比对业务数据及源 LSN"
+      ],
+      "expected": "事务与 LSN 顺序正确，目标提交前不确认源",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "E03",
+      "requirements": [
+        "D17",
+        "D21"
+      ],
+      "title": "Schema 与 slot 生命周期",
+      "preconditions": "增加列/删列/类型变化、slot 已存在/异常退出",
+      "fixtures": [],
+      "steps": [
+        "变更后重连、验证暂停和清理策略"
+      ],
+      "expected": "破坏性变化暂停；无猜测 DDL；slot 所有权清晰",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "F01",
+      "requirements": [
+        "D18"
+      ],
+      "title": "持久 UTC 调度",
+      "preconditions": "任务依赖、并发限额、补数、重跑、两个调度进程",
+      "fixtures": [],
+      "steps": [
+        "重启、跨时区消费、触发重复时间窗口"
+      ],
+      "expected": "触发时间 UTC 一致；依赖/限额正确；幂等调度",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "F02",
+      "requirements": [
+        "D19",
+        "D20"
+      ],
+      "title": "租户、授权、脱敏与审计",
+      "preconditions": "两个租户、缺授权结果、明文凭据诱饵",
+      "fixtures": [],
+      "steps": [
+        "跨租户读取/取消、拒绝授权、检索全部日志"
+      ],
+      "expected": "受保护操作默认拒绝；无明文凭据；审计对应实际操作",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "F03",
+      "requirements": [
+        "D21",
+        "D22"
+      ],
+      "title": "格式与血缘",
+      "preconditions": "JSON 嵌套、gzip/zstd、Parquet 多种类型",
+      "fixtures": [
+        "tests/format.c"
+      ],
+      "steps": [
+        "转换、往返、生成字段血缘与 Schema 版本"
+      ],
+      "expected": "值完整且字段血缘可追踪；非法格式明确失败",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "G01",
+      "requirements": [
+        "D23"
+      ],
+      "title": "三个 Worker 与两个协调宿主竞争",
+      "preconditions": "独立 PostgreSQL 协调库，三个进程、两个宿主",
+      "fixtures": [],
+      "steps": [
+        "竞争同一任务；过期；旧 Worker 恢复；重复投递"
+      ],
+      "expected": "单有效租约；旧 fencing 不发布；故障转移正确",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "G02",
+      "requirements": [
+        "D23",
+        "D16"
+      ],
+      "title": "分布式断连与取消",
+      "preconditions": "租约切换、心跳中断、跨实例 Sink",
+      "fixtures": [],
+      "steps": [
+        "切换边界真实终止进程；断连；取消"
+      ],
+      "expected": "任务状态和批次凭据可解释；重放语义与声明一致",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "G03",
+      "requirements": [
+        "D24"
+      ],
+      "title": "BI/ELT 数据集版本与刷新",
+      "preconditions": "旧版本、新版本、增量模型、SQL 下推",
+      "fixtures": [],
+      "steps": [
+        "刷新并查询结果，发布边界真实终止进程"
+      ],
+      "expected": "版本原子发布；结果查询稳定；下推与参考一致",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "H01",
+      "requirements": [
+        "D15"
+      ],
+      "title": "C/.NET8/Java17 同计划",
+      "preconditions": "相同 DAG 和数据，三个独立安装消费者",
+      "fixtures": [
+        "tests/data_runner.c",
+        "tests/data_parity.py",
+        "examples/dotnet-data/Program.cs",
+        "examples/java/DataConsumer.java",
+        "tests/run_parity.py",
+        "examples/dotnet-run/Program.cs",
+        "examples/java/RunConsumer.java"
+      ],
+      "steps": [
+        "执行、取消、指标、恢复、调度及 Worker"
+      ],
+      "expected": "结果及错误分类等价，原生依赖完整",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "H02",
+      "requirements": [
+        "D15",
+        "D14"
+      ],
+      "title": "插件独立安装及内存门禁",
+      "preconditions": "ABI1/能力缺失/持活实例的插件；ASan/UBSan",
+      "fixtures": [],
+      "steps": [
+        "加载、拒绝、卸载及所有句柄释放"
+      ],
+      "expected": "ABI/能力明确拒绝；活实例不卸载；无泄漏或未定义行为",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "H03",
+      "requirements": [
+        "D15"
+      ],
+      "title": "Windows/MSVC 与 Linux/GCC",
+      "preconditions": "固定版本源码、依赖、工具链",
+      "fixtures": [],
+      "steps": [
+        "统一构建及全部相关验收"
+      ],
+      "expected": "均产生实际日志；缺环境标 Blocked",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "H04",
+      "requirements": [
+        "D08",
+        "D10",
+        "D15"
+      ],
+      "title": "基准与资源门禁",
+      "preconditions": "固定数据种子、硬件、磁盘和内存配额",
+      "fixtures": [],
+      "steps": [
+        "运行五条链路并记录吞吐/资源及溢写"
+      ],
+      "expected": "配额/背压/溢写正确；吞吐实测，不填推测数字",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "S01",
+      "requirements": [
+        "D03",
+        "D06",
+        "D09"
+      ],
+      "title": "CSV → 转换 → SQLite",
+      "preconditions": "中文、NULL、10,000 行 CSV",
+      "fixtures": [],
+      "steps": [
+        "按计划执行、查询目标、重启"
+      ],
+      "expected": "逐键字段精确一致且可恢复",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "S02",
+      "requirements": [
+        "D04",
+        "D09",
+        "D11"
+      ],
+      "title": "PostgreSQL 增量 → 质量 → Upsert",
+      "preconditions": "10,000 + 200/50，坏行隔离",
+      "fixtures": [],
+      "steps": [
+        "运行全量和增量，验证隔离结果"
+      ],
+      "expected": "10,200 行及隔离记录精确一致",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "S03",
+      "requirements": [
+        "D17",
+        "D09"
+      ],
+      "title": "PostgreSQL CDC → PostgreSQL",
+      "preconditions": "一致快照和并发 I/U/D",
+      "fixtures": [],
+      "steps": [
+        "快照、流式事务、终止、重放"
+      ],
+      "expected": "目标等价源，提交后确认位置",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "S04",
+      "requirements": [
+        "D22",
+        "D08",
+        "D24"
+      ],
+      "title": "JSON/压缩 → 外存聚合 → Parquet 数据集",
+      "preconditions": "嵌套数据、固定小配额、旧版数据集",
+      "fixtures": [],
+      "steps": [
+        "解压、转换、溢写、格式转换、原子发布"
+      ],
+      "expected": "值与参考一致；只发布完整版本",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    },
+    {
+      "id": "S05",
+      "requirements": [
+        "D18",
+        "D20",
+        "D23",
+        "D24"
+      ],
+      "title": "调度 → 分布式 Worker → 刷新",
+      "preconditions": "两个租户、三个 Worker、两个协调宿主",
+      "fixtures": [],
+      "steps": [
+        "定时刷新、授权、故障转移、查询结果"
+      ],
+      "expected": "租户隔离、fencing、审计及发布全部正确",
+      "actual": null,
+      "evidence": [],
+      "status": "NotRun",
+      "blocker": null
+    }
+  ]
+}

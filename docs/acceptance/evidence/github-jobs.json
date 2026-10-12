@@ -1,0 +1,54 @@
+{
+  "command": [
+    "gh",
+    "api",
+    "repos/JunoBarnswell/UniversalData/actions/runs/38160104876/jobs",
+    "--jq",
+    "{total_count,jobs:[.jobs[]|{id,name,status,conclusion,started_at,completed_at,steps}]}"
+  ],
+  "startedAt": "2026-10-11T19:19:12.861782+00:00",
+  "finishedAt": "2026-10-11T19:19:14.078929+00:00",
+  "exitCode": 0,
+  "response": {
+    "jobs": [
+      {
+        "completed_at": "2026-10-11T17:32:53Z",
+        "conclusion": "failure",
+        "id": 114531030866,
+        "name": "minimal-components",
+        "started_at": "2026-10-11T17:32:51Z",
+        "status": "completed",
+        "steps": []
+      },
+      {
+        "completed_at": "2026-10-11T17:32:54Z",
+        "conclusion": "failure",
+        "id": 114531031013,
+        "name": "memory-check",
+        "started_at": "2026-10-11T17:32:51Z",
+        "status": "completed",
+        "steps": []
+      },
+      {
+        "completed_at": "2026-10-11T17:32:55Z",
+        "conclusion": "failure",
+        "id": 114531031014,
+        "name": "native-and-bindings (windows-latest)",
+        "started_at": "2026-10-11T17:32:51Z",
+        "status": "completed",
+        "steps": []
+      },
+      {
+        "completed_at": "2026-10-11T17:32:54Z",
+        "conclusion": "failure",
+        "id": 114531031021,
+        "name": "native-and-bindings (ubuntu-24.04)",
+        "started_at": "2026-10-11T17:32:51Z",
+        "status": "completed",
+        "steps": []
+      }
+    ],
+    "total_count": 4
+  },
+  "stderr": ""
+}

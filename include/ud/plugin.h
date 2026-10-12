@@ -1,10 +1,11 @@
 #ifndef UD_PLUGIN_H
 #define UD_PLUGIN_H
 #include "csv.h"
+#include "connector.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define UD_PLUGIN_ABI 1u
+#define UD_PLUGIN_ABI 2u
 enum {
     UD_PLUGIN_SOURCE = 1,
     UD_PLUGIN_SINK = 2,
@@ -47,6 +48,8 @@ typedef struct ud_host_api {
     ud_status (*csv_write)(ud_context *, const char *, const ud_batch *, const char *);
     int32_t (*cancelled)(const ud_context *);
     ud_status (*report)(ud_context *, ud_status, const char *);
+    ud_status (*parse_field)(ud_context *, const ud_field *, const char *, uint32_t, int32_t, ud_value *);
+    ud_status (*format_value)(const ud_value *, char *, uint32_t, uint32_t *);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;
@@ -58,6 +61,7 @@ typedef struct ud_plugin_api {
                          const char *argument, uint32_t argument_length, ud_batch **output);
     void (*destroy)(void *instance);
     void (*shutdown)(void);
+    const ud_connector_api *connector; /* Optional; ABI 2 table, no network dependency in core. */
 } ud_plugin_api;
 typedef ud_status (*ud_plugin_entry_fn)(uint32_t requested_abi, ud_plugin_api *);
 #if defined(_WIN32)

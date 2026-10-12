@@ -8,4 +8,5 @@ dotnet pack "$PSScriptRoot/../bindings/dotnet/UniversalData/UniversalData.csproj
 if ($LASTEXITCODE -ne 0) { throw "NuGet pack failed ($LASTEXITCODE)" }
 mvn -q -f "$PSScriptRoot/../bindings/java/pom.xml" package
 if ($LASTEXITCODE -ne 0) { throw "Maven package failed ($LASTEXITCODE)" }
-Copy-Item -LiteralPath "$PSScriptRoot/../bindings/java/target/universal-data-0.1.0.jar" -Destination $Output
+$sdkVersion = (Get-Content -LiteralPath "$PSScriptRoot/../VERSION" -Raw).Trim()
+Copy-Item -LiteralPath "$PSScriptRoot/../bindings/java/target/universal-data-$sdkVersion.jar" -Destination $Output

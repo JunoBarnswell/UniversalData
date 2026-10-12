@@ -14,7 +14,8 @@ public sealed class CsvJob : IDisposable
     public CsvJob(string inputDirectory, string stateDirectory, string schema, string commands,
         ulong memoryLimit = 268435456)
     {
-        var options = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = 1, Limit = memoryLimit };
+        Utf8.Bytes(inputDirectory); Utf8.Bytes(stateDirectory); Utf8.Bytes(schema); Utf8.Bytes(commands);
+        var options = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = 2, Limit = memoryLimit };
         int status = Native.ud_context_create(ref options, out IntPtr pointer);
         if (status != 0) throw new UniversalDataException(status, "Cannot create native context");
         context = new ContextHandle(pointer);
@@ -22,7 +23,7 @@ public sealed class CsvJob : IDisposable
         {
             var config = new Native.JobOptions
             {
-                Size = (uint)Marshal.SizeOf<Native.JobOptions>(), Abi = 1,
+                Size = (uint)Marshal.SizeOf<Native.JobOptions>(), Abi = 2,
                 Input = Path.GetFullPath(inputDirectory), State = Path.GetFullPath(stateDirectory),
                 Schema = schema, SchemaLength = checked((uint)Encoding.UTF8.GetByteCount(schema)),
                 Commands = commands, CommandsLength = checked((uint)Encoding.UTF8.GetByteCount(commands))
@@ -54,7 +55,7 @@ public sealed class CsvJob : IDisposable
     }
     public static string? LatestSnapshot(string stateDirectory)
     {
-        var options = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = 1 };
+        var options = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = 2 };
         int status = Native.ud_context_create(ref options, out var pointer);
         if (status != 0) throw new UniversalDataException(status, "Cannot create context");
         using var ctx = new ContextHandle(pointer);
@@ -88,7 +89,7 @@ internal sealed class JobHandle : SafeHandleZeroOrMinusOneIsInvalid
     protected override bool ReleaseHandle() { Native.ud_job_destroy(handle); context.DangerousRelease(); return true; }
 }
 
-internal static class Native
+internal static partial class Native
 {
     private const string Library = "ud_data";
     [StructLayout(LayoutKind.Sequential)] internal struct ContextOptions

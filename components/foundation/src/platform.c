@@ -198,6 +198,25 @@ ud_status ud_flush(ud_context *c, FILE *f) {
 #endif
     return UD_OK;
 }
+ud_status ud_sync_parent(ud_context *c, const char *path) {
+#ifdef _WIN32
+    /* Publication uses MoveFileExW(MOVEFILE_WRITE_THROUGH). */
+    (void)c;(void)path;return UD_OK;
+#else
+    const char *slash=strrchr(path,'/');
+    char *parent=slash?ud_strdup_n(c,path,slash==path?1:(size_t)(slash-path)):ud_strdup_n(c,".",1);
+    if(!parent) return UD_RESOURCE;
+    int flags=O_RDONLY;
+#ifdef O_DIRECTORY
+    flags|=O_DIRECTORY;
+#endif
+    int fd=open(parent,flags);ud_free(parent);
+    if(fd<0) return ud_fail(c,UD_IO,"cannot open publication directory");
+    struct stat info;int failed=fstat(fd,&info) || !S_ISDIR(info.st_mode) || fsync(fd);
+    if(close(fd)) failed=1;
+    return failed?ud_fail(c,UD_IO,"publication directory sync failed"):UD_OK;
+#endif
+}
 ud_status ud_publish(ud_context *c, const char *from, const char *to) {
 #ifdef _WIN32
     wchar_t *a = wide(from), *b = wide(to);
@@ -209,9 +228,10 @@ ud_status ud_publish(ud_context *c, const char *from, const char *to) {
 #else
     /* link() atomically creates a name without replacing an existing generation. */
     if (!link(from, to)) {
+        UD_TRY(ud_sync_parent(c,to));
         if (unlink(from))
             return ud_fail(c, UD_IO, "published but temporary unlink failed: %s", from);
-        return UD_OK;
+        return ud_sync_parent(c,from);
     }
 #endif
     return ud_fail(c, UD_IO, "atomic publish failed or destination exists: %s", to);
@@ -263,6 +283,11 @@ ud_status ud_remove_file(ud_context *c, const char *path) {
         return UD_OK;
 #endif
     return ud_fail(c, UD_IO, "cannot remove owned temporary file: %s", path);
+}
+ud_status ud_reserve_file(ud_context *ctx,const char *path) {
+    FILE *file=ud_fopen(path,"wbx");
+    if(!file) return ud_fail(ctx,errno==EEXIST?UD_BUSY:UD_IO,"cannot reserve an owned temporary file");
+    if(fclose(file)) { ud_remove_file(ctx,path);return UD_IO; }return UD_OK;
 }
 uint64_t ud_now_ms(void) {
 #ifdef _WIN32

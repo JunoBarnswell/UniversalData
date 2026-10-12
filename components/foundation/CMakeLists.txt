@@ -1,4 +1,4 @@
-set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/foundation.c ${CMAKE_CURRENT_SOURCE_DIR}/src/platform.c ${CMAKE_CURRENT_SOURCE_DIR}/src/digest.c)
+set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/foundation.c ${CMAKE_CURRENT_SOURCE_DIR}/src/platform.c ${CMAKE_CURRENT_SOURCE_DIR}/src/digest.c ${CMAKE_CURRENT_SOURCE_DIR}/src/json.c)
 ud_component(ud_foundation Foundation ${src})
 if(NOT WIN32)
   target_link_libraries(ud_foundation PUBLIC m)

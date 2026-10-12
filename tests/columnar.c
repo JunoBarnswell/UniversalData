@@ -58,7 +58,7 @@ int main(void) {
     /* Fail each allocation in Arrow export; all partial trees must release safely. */
     for (size_t fail = 1; fail <= 32; fail++) {
         allocator a = {0, 0};
-        ud_context_options o = {sizeof(o), 1, 1024 * 1024, &a, allocate, deallocate};
+        ud_context_options o = {sizeof(o), UD_ABI_VERSION, 1024 * 1024, &a, allocate, deallocate};
         OK(ud_context_create(&o, &c));
         OK(ud_batch_create(c, fields, 3, 2, &b));
         values[0].is_null = 0;

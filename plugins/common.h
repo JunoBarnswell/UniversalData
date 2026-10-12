@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
-static char *plugin_string(const ud_host_api *h, const char *s, uint32_t n) {
+static inline char *plugin_string(const ud_host_api *h, const char *s, uint32_t n) {
     if ((!s && n) || (n && memchr(s, 0, n)))
         return NULL;
     char *p = h->allocate(h->context, (size_t)n + 1);
@@ -12,7 +12,7 @@ static char *plugin_string(const ud_host_api *h, const char *s, uint32_t n) {
         memcpy(p, s, n);
     return p;
 }
-static ud_status plugin_fields(const ud_host_api *h, const ud_batch *b, ud_field **out) {
+static inline ud_status plugin_fields(const ud_host_api *h, const ud_batch *b, ud_field **out) {
     if (!b)
         return UD_INVALID;
     uint32_t n = h->columns(b);
@@ -23,5 +23,16 @@ static ud_status plugin_fields(const ud_host_api *h, const ud_batch *b, ud_field
         h->field(b, i, *out + i);
     return UD_OK;
 }
-static void plugin_shutdown(void) {}
+static inline void plugin_shutdown(void) {}
+static inline char *plugin_identifier(const ud_host_api *h, ud_string name) {
+    if (!name.data || !name.length || name.length > (SIZE_MAX - 3) / 2 || memchr(name.data, 0, name.length)) return NULL;
+    char *quoted = h->allocate(h->context, (size_t)name.length * 2 + 3);
+    if (!quoted) return NULL;
+    size_t n = 0; quoted[n++] = '"';
+    for (uint32_t j = 0; j < name.length; j++) {
+        if (name.data[j] == '"') quoted[n++] = '"';
+        quoted[n++] = name.data[j];
+    }
+    quoted[n++] = '"'; quoted[n] = 0; return quoted;
+}
 #endif

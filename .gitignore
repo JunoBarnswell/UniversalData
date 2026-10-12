@@ -53,6 +53,8 @@ dkms.conf
 build/
 out/
 artifacts/
+work/
+output/
 _deps/
 **/bin/
 **/obj/

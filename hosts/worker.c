@@ -30,7 +30,7 @@ static ud_status process(ud_context *ctx, ud_bytes *b, ud_batch **out) {
     uint64_t version, operation;
     UD_TRY(ud_get_u64(b, &version));
     UD_TRY(ud_get_u64(b, &operation));
-    if (version != 1)
+    if (version != UD_WORKER_VERSION)
         return UD_INCOMPATIBLE;
     ud_status s = UD_OK;
     ud_batch *input = NULL;

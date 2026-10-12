@@ -35,7 +35,7 @@ class Recovery(unittest.TestCase):
         self.assertTrue(commits)
         commit = commits[-1]
         version, generation, state_hash, csv_hash = struct.unpack("<QQ32s32s", commit.read_bytes())
-        self.assertEqual(1, version)
+        self.assertEqual(2, version)
         prefix = self.state / f"generation-{generation:020d}"
         self.assertEqual(state_hash, hashlib.sha256(prefix.with_suffix(".state").read_bytes()).digest())
         self.assertEqual(csv_hash, hashlib.sha256(prefix.with_suffix(".csv").read_bytes()).digest())

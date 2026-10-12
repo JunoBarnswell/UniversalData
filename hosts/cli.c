@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
     ud_job *job = NULL;
     ud_job_options o = {0};
     o.struct_size = sizeof(o);
-    o.abi_version = 1;
+    o.abi_version = UD_ABI_VERSION;
     o.input_directory = argv[2];
     o.state_directory = argv[3];
     o.schema = schema;

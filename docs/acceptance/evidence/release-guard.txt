@@ -1,0 +1,239 @@
+Release / merge denied: required implementation or execution evidence is incomplete.
+A: phase code is incomplete
+A: acceptance is incomplete
+B: phase code is incomplete
+B: acceptance is incomplete
+C: phase code is incomplete
+C: acceptance is incomplete
+D: phase code is incomplete
+D: acceptance is incomplete
+E: phase code is incomplete
+E: acceptance is incomplete
+F: phase code is incomplete
+F: acceptance is incomplete
+G: phase code is incomplete
+G: acceptance is incomplete
+H: phase code is incomplete
+H: acceptance is incomplete
+D01: requirement has not passed
+D01: missing uat traceability
+D01: missing evidence traceability
+D01: missing execution evidence
+D02: requirement has not passed
+D02: missing uat traceability
+D02: missing evidence traceability
+D02: missing execution evidence
+D03: requirement has not passed
+D03: missing uat traceability
+D03: missing evidence traceability
+D03: missing execution evidence
+D04: requirement has not passed
+D04: missing uat traceability
+D04: missing evidence traceability
+D04: missing execution evidence
+D05: requirement has not passed
+D05: missing uat traceability
+D05: missing evidence traceability
+D05: missing execution evidence
+D06: requirement has not passed
+D06: missing uat traceability
+D06: missing evidence traceability
+D06: missing execution evidence
+D07: requirement has not passed
+D07: missing interfaces traceability
+D07: missing implementation traceability
+D07: missing uat traceability
+D07: missing evidence traceability
+D07: missing execution evidence
+D08: requirement has not passed
+D08: missing uat traceability
+D08: missing evidence traceability
+D08: missing execution evidence
+D09: requirement has not passed
+D09: missing uat traceability
+D09: missing evidence traceability
+D09: missing execution evidence
+D10: requirement has not passed
+D10: missing uat traceability
+D10: missing evidence traceability
+D10: missing execution evidence
+D11: requirement has not passed
+D11: missing uat traceability
+D11: missing evidence traceability
+D11: missing execution evidence
+D12: requirement has not passed
+D12: missing uat traceability
+D12: missing evidence traceability
+D12: missing execution evidence
+D13: requirement has not passed
+D13: missing uat traceability
+D13: missing evidence traceability
+D13: missing execution evidence
+D14: requirement has not passed
+D14: missing uat traceability
+D14: missing evidence traceability
+D14: missing execution evidence
+D15: requirement has not passed
+D15: missing uat traceability
+D15: missing evidence traceability
+D15: missing execution evidence
+D16: requirement has not passed
+D16: missing uat traceability
+D16: missing evidence traceability
+D16: missing execution evidence
+D17: requirement has not passed
+D17: missing interfaces traceability
+D17: missing implementation traceability
+D17: missing uat traceability
+D17: missing evidence traceability
+D17: missing execution evidence
+D18: requirement has not passed
+D18: missing interfaces traceability
+D18: missing implementation traceability
+D18: missing uat traceability
+D18: missing evidence traceability
+D18: missing execution evidence
+D19: requirement has not passed
+D19: missing uat traceability
+D19: missing evidence traceability
+D19: missing execution evidence
+D20: requirement has not passed
+D20: missing uat traceability
+D20: missing evidence traceability
+D20: missing execution evidence
+D21: requirement has not passed
+D21: missing uat traceability
+D21: missing evidence traceability
+D21: missing execution evidence
+D22: requirement has not passed
+D22: missing uat traceability
+D22: missing evidence traceability
+D22: missing execution evidence
+D23: requirement has not passed
+D23: missing interfaces traceability
+D23: missing implementation traceability
+D23: missing uat traceability
+D23: missing evidence traceability
+D23: missing execution evidence
+D24: requirement has not passed
+D24: missing interfaces traceability
+D24: missing implementation traceability
+D24: missing uat traceability
+D24: missing evidence traceability
+D24: missing execution evidence
+A01: NotRun
+A01: incomplete fixture / actual-result record
+A01: missing execution evidence
+A02: NotRun
+A02: incomplete fixture / actual-result record
+A02: missing execution evidence
+A03: NotRun
+A03: incomplete fixture / actual-result record
+A03: missing execution evidence
+A04: NotRun
+A04: incomplete fixture / actual-result record
+A04: missing execution evidence
+B01: NotRun
+B01: incomplete fixture / actual-result record
+B01: missing execution evidence
+B02: NotRun
+B02: incomplete fixture / actual-result record
+B02: missing execution evidence
+B03: NotRun
+B03: incomplete fixture / actual-result record
+B03: missing execution evidence
+C01: NotRun
+C01: incomplete fixture / actual-result record
+C01: missing execution evidence
+C02: NotRun
+C02: incomplete fixture / actual-result record
+C02: missing execution evidence
+C03: NotRun
+C03: incomplete fixture / actual-result record
+C03: missing execution evidence
+D01: NotRun
+D01: incomplete fixture / actual-result record
+D01: missing execution evidence
+D02: NotRun
+D02: incomplete fixture / actual-result record
+D02: missing execution evidence
+D03: NotRun
+D03: incomplete fixture / actual-result record
+D03: missing execution evidence
+D04: NotRun
+D04: incomplete fixture / actual-result record
+D04: missing execution evidence
+E01: NotRun
+E01: incomplete fixture / actual-result record
+E01: missing execution evidence
+E02: NotRun
+E02: incomplete fixture / actual-result record
+E02: missing execution evidence
+E03: NotRun
+E03: incomplete fixture / actual-result record
+E03: missing execution evidence
+F01: NotRun
+F01: incomplete fixture / actual-result record
+F01: missing execution evidence
+F02: NotRun
+F02: incomplete fixture / actual-result record
+F02: missing execution evidence
+F03: NotRun
+F03: incomplete fixture / actual-result record
+F03: missing execution evidence
+G01: NotRun
+G01: incomplete fixture / actual-result record
+G01: missing execution evidence
+G02: NotRun
+G02: incomplete fixture / actual-result record
+G02: missing execution evidence
+G03: NotRun
+G03: incomplete fixture / actual-result record
+G03: missing execution evidence
+H01: NotRun
+H01: incomplete fixture / actual-result record
+H01: missing execution evidence
+H02: NotRun
+H02: incomplete fixture / actual-result record
+H02: missing execution evidence
+H03: NotRun
+H03: incomplete fixture / actual-result record
+H03: missing execution evidence
+H04: NotRun
+H04: incomplete fixture / actual-result record
+H04: missing execution evidence
+S01: NotRun
+S01: incomplete fixture / actual-result record
+S01: missing execution evidence
+S02: NotRun
+S02: incomplete fixture / actual-result record
+S02: missing execution evidence
+S03: NotRun
+S03: incomplete fixture / actual-result record
+S03: missing execution evidence
+S04: NotRun
+S04: incomplete fixture / actual-result record
+S04: missing execution evidence
+S05: NotRun
+S05: incomplete fixture / actual-result record
+S05: missing execution evidence
+linux-gcc: NotRun
+linux-gcc: missing execution evidence
+windows-msvc: Blocked
+windows-msvc: missing execution evidence
+asan-ubsan: NotRun
+asan-ubsan: missing execution evidence
+postgresql-isolated-containers: NotRun
+postgresql-isolated-containers: missing execution evidence
+sqlite-transactions: NotRun
+sqlite-transactions: missing execution evidence
+c-dotnet8-java17-equivalence: NotRun
+c-dotnet8-java17-equivalence: missing execution evidence
+native-nuget-maven-install-consumption: NotRun
+native-nuget-maven-install-consumption: missing execution evidence
+quota-backpressure-spill: NotRun
+quota-backpressure-spill: missing execution evidence
+benchmark-recorded-hardware: NotRun
+benchmark-recorded-hardware: missing execution evidence
+s01-s05: NotRun
+s01-s05: missing execution evidence

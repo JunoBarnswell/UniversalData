@@ -1,7 +1,7 @@
 #ifndef UD_COMPUTE_INTERNAL_H
 #define UD_COMPUTE_INTERNAL_H
 #include "ud/compute.h"
-#include "../foundation/internal.h"
+#include "../data/internal.h"
 typedef struct {
     uint32_t column;
     int op;
@@ -23,6 +23,7 @@ struct ud_plan {
     uint32_t agg_n;
     char *schema_text, *commands;
     uint8_t fingerprint[32];
+    ud_batch *schema_owner;
 };
 int ud_value_compare(const ud_value *, const ud_value *);
 ud_status ud_plan_check_batch(const ud_plan *, const ud_batch *);
