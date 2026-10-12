@@ -4,9 +4,9 @@
   "abi": 6,
   "scope": {
     "name": "ETL four engines R0–R7 P0/P1",
-    "linux": "Required: Linux native, sanitizer, JNI and .NET acceptance",
+    "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
     "extensions": "Tracked independently; Planned/Partial remain incomplete",
-    "windows": "Exempt by current user decision"
+    "windows": "Exempt — explicit current user instruction"
   },
   "baseline": {
     "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
@@ -27,7 +27,7 @@
     "reason": "GitHub account payment/spending-limit restriction; no code steps ran"
   },
   "artifacts": null,
-  "requiredGates": 22,
+  "requiredGates": 18,
   "passedGates": 0,
   "remediations": [
     {

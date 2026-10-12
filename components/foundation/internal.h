@@ -39,6 +39,7 @@ ud_status ud_open_regular(ud_context *, const char *, FILE **);
 ud_status ud_move_noreplace(ud_context *, const char *, const char *);
 ud_status ud_distinct_directories(ud_context *, const char *, const char *);
 uint64_t ud_now_ms(void);
+uint64_t ud_thread_cpu_ns(void);
 void ud_sleep_ms(uint32_t);
 int ud_seek(FILE *, uint64_t);
 int64_t ud_tell(FILE *);

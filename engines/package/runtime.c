@@ -181,6 +181,7 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     atomic_init(&e->error_limit_reason, UD_OK);
     e->pipeline_reports.ctx=ctx;
     e->bound_plans.ctx=ctx;
+    e->control_reports.ctx=ctx;
     ud_mutex_init(&e->diagnostics_lock);
     ud_mutex_init(&e->cancellation_lock);
     ud_condition_init(&e->cancellation_changed);
@@ -500,6 +501,7 @@ ud_status ud_execution_destroy(ud_execution *e) {
         e->options.state_directory = (ud_string){0};
         ud_bytes_clear(&e->pipeline_reports);
         ud_bytes_clear(&e->bound_plans);
+        ud_bytes_clear(&e->control_reports);
         e->disposed = 1;
     }
     if (ud_memory_used(ctx) != ud_allocation_bytes(e)) {
@@ -548,12 +550,17 @@ ud_status ud_execution_diagnostics(ud_execution *e,char **out,uint32_t *length) 
     ud_bytes bytes={.ctx=e->ctx};
     ud_status status=ud_bytes_put(&bytes,"{\"connections\":",sizeof("{\"connections\":")-1);
     if (!status) status=ud_connections_diagnostics(e,&bytes);
-    if (!status) status=ud_bytes_put(&bytes,",\"pipelines\":[",sizeof(",\"pipelines\":[")-1);
+    if (!status) status=ud_bytes_put(&bytes,",\"scheduler\":",sizeof(",\"scheduler\":")-1);
+    if (!status) status=ud_executor_diagnostics(e->executor,&bytes);
+    if (!status) status=ud_bytes_put(&bytes,",\"tasks\":[",sizeof(",\"tasks\":[")-1);
+    if (!status) status=ud_bytes_put(&bytes,e->control_reports.data,e->control_reports.size);
+    char count[128];int count_size=snprintf(count,sizeof(count),"],\"taskRecords\":%llu,\"taskRecordsDropped\":%llu,\"pipelines\":[",(unsigned long long)e->control_record_count,(unsigned long long)e->control_records_dropped);
+    if (!status) status=ud_bytes_put(&bytes,count,(size_t)count_size);
     ud_mutex_lock(&e->diagnostics_lock);
     if (!status) status=ud_bytes_put(&bytes,e->pipeline_reports.data,e->pipeline_reports.size);
     ud_mutex_unlock(&e->diagnostics_lock);
-    char tail[256];int n=snprintf(tail,sizeof(tail),"],\"errorCount\":%u,\"workerHighWater\":%u,\"spillBytes\":%llu,\"state\":%d,\"outcome\":%d}",
-        atomic_load(&e->error_count),ud_executor_high_water(e->executor),(unsigned long long)atomic_load(&e->spill_bytes),
+    char tail[384];int n=snprintf(tail,sizeof(tail),"],\"pipelineRecords\":%llu,\"pipelineRecordsDropped\":%llu,\"errorCount\":%u,\"workerHighWater\":%u,\"spillBytes\":%llu,\"state\":%d,\"outcome\":%d}",
+        (unsigned long long)e->pipeline_record_count,(unsigned long long)e->pipeline_records_dropped,atomic_load(&e->error_count),ud_executor_high_water(e->executor),(unsigned long long)atomic_load(&e->spill_bytes),
         atomic_load(&e->state),atomic_load(&e->result));
     if (!status) status=ud_bytes_put(&bytes,tail,(size_t)n);
     if (!status) status=owned_json(&bytes,out,length);

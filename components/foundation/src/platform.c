@@ -332,6 +332,19 @@ uint64_t ud_now_ms(void) {
     return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 #endif
 }
+uint64_t ud_thread_cpu_ns(void) {
+#ifdef _WIN32
+    FILETIME created,ended,kernel,user;
+    if (!GetThreadTimes(GetCurrentThread(),&created,&ended,&kernel,&user)) return 0;
+    ULARGE_INTEGER k,u;k.LowPart=kernel.dwLowDateTime;k.HighPart=kernel.dwHighDateTime;
+    u.LowPart=user.dwLowDateTime;u.HighPart=user.dwHighDateTime;
+    return (k.QuadPart+u.QuadPart)*100;
+#else
+    struct timespec ts;
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID,&ts)) return 0;
+    return (uint64_t)ts.tv_sec*1000000000+(uint64_t)ts.tv_nsec;
+#endif
+}
 ud_status ud_distinct_directories(ud_context *c, const char *first, const char *second) {
 #ifdef _WIN32
     wchar_t *a = wide(first), *b = wide(second);

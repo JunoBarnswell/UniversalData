@@ -318,7 +318,7 @@ ud_status ud_control_iteration(ud_activation *e, const ud_json *children, uint64
         .package=e->package,.parameters=e->parameters,.scope=e->scope,
         .task_id={identity,(uint32_t)n},.depth=e->depth,.parallel=e->parallel,
         .transaction=e->transaction,.transaction_serial=e->transaction_serial,
-        .transaction_connection=e->transaction_connection};
+        .transaction_connection=e->transaction_connection,.event_depth=e->event_depth};
     atomic_init(&iteration.cancelled,0);
     ud_status result = ud_control_execute(&iteration, children);
     ud_free(identity);
@@ -483,6 +483,7 @@ typedef struct task_run {
     ud_activation activation;
     const ud_json *definition;
     ud_status result;
+    uint64_t ready_ms;
 } task_run;
 static ud_status task_result(task_run *run) {
     ud_activation *a = &run->activation;
@@ -615,12 +616,34 @@ static ud_status edge_pass(ud_activation *a, const control_edge *edge, int32_t s
             edge->evaluation == 2 ? result && expression : result || expression;
     return UD_OK;
 }
+static void record_task(task_run *run,int32_t state,int pass,uint64_t start,uint64_t cpu) {
+    ud_execution *e=run->activation.execution;
+    /* Diagnostics are optional and bounded; allocation failure cannot rewrite
+     * an already committed business outcome. Observers retain the full stream. */
+    ud_mutex_lock(&e->diagnostics_lock);
+    e->control_record_count++;
+    if (e->control_record_count>1024) { e->control_records_dropped++;ud_mutex_unlock(&e->diagnostics_lock);return; }
+    ud_bytes item={.ctx=e->ctx};
+    ud_status status=ud_bytes_put(&item,"{\"activation\":",sizeof("{\"activation\":")-1);
+    if (!status) status=ud_json_quote(&item,run->activation.task_id.data,run->activation.task_id.length);
+    char fields[256];int n=snprintf(fields,sizeof(fields),",\"state\":%d,\"outcome\":%d,\"precedencePassed\":%s,\"readyWaitMs\":%llu,\"elapsedMs\":%llu,\"cpuNs\":%llu}",state,run->result,pass?"true":"false",
+        (unsigned long long)(start-run->ready_ms),(unsigned long long)(ud_now_ms()-start),
+        (unsigned long long)(ud_thread_cpu_ns()-cpu));
+    if (!status) status=ud_bytes_put(&item,fields,(size_t)n);
+    uint64_t before=e->control_reports.size;
+    if (!status && before) status=ud_bytes_put(&e->control_reports,",",1);
+    if (!status) status=ud_bytes_put(&e->control_reports,item.data,item.size);
+    if (status) { e->control_reports.size=before;e->control_records_dropped++; }
+    ud_bytes_clear(&item);
+    ud_mutex_unlock(&e->diagnostics_lock);
+}
 static ud_status execute_task(void *user, uint32_t index) {
     control_run *flow = user;
     ud_activation *parent = flow->activation;
     UD_TRY(ud_activation_check(parent));
     ud_status stopped=atomic_load(&parent->execution->error_limit_reason);
     if (stopped && !parent->event_depth) return stopped;
+    uint64_t started=ud_now_ms(),cpu=ud_thread_cpu_ns();
     task_run *run = flow->runs + index;
     UD_TRY(init_task(parent, ud_json_at(flow->tasks, index), run));
     run->activation.parallel = parent->parallel || flow->plan.parallel;
@@ -663,9 +686,13 @@ static ud_status execute_task(void *user, uint32_t index) {
     for (uint32_t at = flow->plan.output_head[index]; !halted && at != UINT32_MAX;
          at = flow->plan.edges[at].next_output) {
         uint32_t target = flow->plan.edges[at].to;
-        if (!--flow->plan.remaining[target]) ud_work_group_ready(flow->group, target);
+        if (!--flow->plan.remaining[target]) {
+            flow->runs[target].ready_ms=ud_now_ms();
+            ud_work_group_ready(flow->group, target);
+        }
     }
     ud_mutex_unlock(&flow->mutex);
+    record_task(run,state,pass,started,cpu);
     ud_free((void *)run->activation.task_id.data);
     run->activation.task_id = (ud_string){0};
     if (status == UD_COMMIT_UNKNOWN) {
@@ -694,7 +721,9 @@ ud_status ud_control_execute(ud_activation *e, const ud_json *definition) {
     if (!status && count) {
         for (uint32_t i = 0; i < count; i++) {
             flow.states[i] = UD_EXEC_READY;
-            if (!flow.plan.remaining[i]) ud_work_group_ready(flow.group, i);
+            if (!flow.plan.remaining[i]) {
+                flow.runs[i].ready_ms=ud_now_ms();ud_work_group_ready(flow.group,i);
+            }
         }
         status = ud_work_group_wait(flow.group);
     }

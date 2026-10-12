@@ -16,6 +16,7 @@ void ud_work_group_ready(ud_work_group *, uint32_t);
 ud_status ud_work_group_wait(ud_work_group *);
 ud_status ud_work_group_destroy(ud_work_group *);
 void ud_executor_cancel(ud_executor *);
+ud_status ud_executor_diagnostics(ud_executor *, ud_bytes *);
 uint32_t ud_executor_high_water(const ud_executor *);
 ud_status ud_executor_destroy(ud_executor *);
 #endif

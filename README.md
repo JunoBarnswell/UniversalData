@@ -63,6 +63,18 @@ mvn -f bindings/java/pom.xml package
 
 CLI：`ud_cli execute package.json '{}' tenant execution-id /authorized/root`。默认拒绝文件/数据库访问；SDK 宿主通过授权和凭据解析回调授予权限。Worker 为独立进程，不是权限沙箱。Java JAR 使用同一 ZIP 内的 JNI 和原生库；按 RID 生成的 NuGet 自带同一次构建的核心原生库。数据库连接器位于 SDK 的 `lib/UniversalData/plugins`，需由宿主显式加载。
 
+## Linux 产物交付
+
+完成 Release/JNI 构建后，打包脚本直接安装已构建的二进制，生成 native NuGet、JAR/POM、SHA256 清单及 ZIP：
+
+```sh
+python packaging/package-linux.py --build build/four-engines-linux --output artifacts/1.2.0/linux-x64
+python tests/installed_sdk.py --bundle artifacts/1.2.0/UniversalData-1.2.0-linux-x64.zip --work /tmp/ud-sdk-consumer-fresh --evidence artifacts/linux-consumers.json
+python benchmarks/four_engines.py --cli build/four-engines-linux/hosts/ud_cli --output artifacts/linux-benchmark.json
+```
+
+输出目录和消费目录必须不存在。PostgreSQL 模块为显式可选项，要求 libpq 17+，使用可取消非阻塞命令/游标；每次复用清理 Session 状态。窗口、浮点 SUM、恢复与事务组合的实际边界见权威产品账本。Windows 本轮豁免，以下构建方式保留为平台说明。
+
 ## Windows 产物交付
 
 唯一 facade target 为 `ud_data`，文件名为 `ud_data.dll`。在启用 JNI、hosts 和所需连接器的构建目录配置完成后运行：

@@ -82,7 +82,8 @@ struct ud_execution {
     ud_condition finished;
     atomic_uint error_count;
     atomic_int error_limit_reason;
-    ud_bytes pipeline_reports, bound_plans;
+    ud_bytes pipeline_reports, bound_plans, control_reports;
+    uint64_t control_record_count, control_records_dropped, pipeline_record_count, pipeline_records_dropped;
     ud_mutex diagnostics_lock, cancellation_lock;
     ud_condition cancellation_changed;
     ud_activation *cancellable;

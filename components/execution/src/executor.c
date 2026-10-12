@@ -31,6 +31,7 @@ struct ud_work_group {
 struct ud_executor {
     ud_context *ctx;
     uint32_t limit, started, groups, busy, high_water;
+    uint64_t quanta, yields, blocks, signals;
     int running, closing;
     ud_mutex mutex;
     ud_condition changed;
@@ -99,6 +100,7 @@ static void run_work(ud_work_group *g, uint32_t index) {
         e->busy++;
         if (e->busy > e->high_water) e->high_water = e->busy;
     }
+    e->quanta++;
     ud_mutex_unlock(&e->mutex);
     current_frame = &frame;
     ud_status status = ud_is_cancelled(e->ctx) ? UD_CANCELLED : g->quantum(g->user, index);
@@ -110,10 +112,13 @@ static void run_work(ud_work_group *g, uint32_t index) {
     if (status == UD_OK) {
         item->state = JOB_DONE;
         g->done++;
-    } else if (status == UD_MORE || (status == UD_BUSY && item->signalled))
+    } else if (status == UD_MORE || (status == UD_BUSY && item->signalled)) {
+        e->yields++;
         enqueue(g, index);
-    else if (status == UD_BUSY)
+    } else if (status == UD_BUSY) {
+        e->blocks++;
         item->state = JOB_WAITING;
+    }
     else if (!g->result)
         g->result = status;
     if (g->result) remove_ready(g);
@@ -212,6 +217,7 @@ void ud_work_group_ready(ud_work_group *g, uint32_t index) {
     ud_executor *e = g->executor;
     ud_mutex_lock(&e->mutex);
     if (!g->result && !g->joined) {
+        e->signals++;
         work_item *item = g->items + index;
         if (item->state == JOB_RUNNING) item->signalled = 1;
         else if (item->state == JOB_WAITING) enqueue(g, index);
@@ -271,6 +277,16 @@ void ud_executor_cancel(ud_executor *e) {
     ud_mutex_lock(&e->mutex);
     ud_condition_wake(&e->changed);
     ud_mutex_unlock(&e->mutex);
+}
+ud_status ud_executor_diagnostics(ud_executor *e,ud_bytes *out) {
+    if (!e) return ud_bytes_put(out,"{}",2);
+    char json[384];
+    ud_mutex_lock(&e->mutex);
+    int size=snprintf(json,sizeof(json),"{\"workerLimit\":%u,\"helperWorkers\":%u,\"activeWorkers\":%u,\"workerHighWater\":%u,\"groups\":%u,\"quanta\":%llu,\"yields\":%llu,\"blockedQuanta\":%llu,\"readySignals\":%llu}",
+        e->limit,e->started,e->busy,e->high_water,e->groups,(unsigned long long)e->quanta,
+        (unsigned long long)e->yields,(unsigned long long)e->blocks,(unsigned long long)e->signals);
+    ud_mutex_unlock(&e->mutex);
+    return ud_bytes_put(out,json,(size_t)size);
 }
 uint32_t ud_executor_high_water(const ud_executor *executor) {
     if (!executor) return 0;

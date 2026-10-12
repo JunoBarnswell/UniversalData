@@ -33,3 +33,7 @@ Foreach 的默认 collection 与显式 core.variable/core.files/core.query/core.
 Cast `errorPolicy=fail/ignore/redirect` 使用同一 Data 标量转换和正规 error Path，包含 ErrorCode、ColumnID、SourceRowID。Redirect 必须连接 error port，并在 Prepare/I/O 前拒绝缺失路径。
 
 本轮仅验证 Linux；Windows 豁免。历史 ABI 4/5 Windows 记录保留作来源，不能当作 ABI 6 验收。
+
+池复用必须声明 `UD_CONNECT_POOL` 并实现 `reset_session`；重置失败立即退役，关闭失败仍由 manager 持有。SQLite 阻止跨租约的 PRAGMA/ATTACH/临时对象状态变更；PostgreSQL DISCARD ALL 后恢复原生 UTC/格式基线。PostgreSQL 模块要求 libpq 17+，命令、单行游标与非阻塞服务端取消共用同一 I/O owner。
+
+Diagnostics 包含任务 precedence 决策、ready 等待/耗时/CPU、树/组件/Path 行数及等待、共享调度量子和连接池结果。任务/管道记录分别限制 1024/256 条并报告丢弃计数；诊断分配失败不会改变已提交业务结果。

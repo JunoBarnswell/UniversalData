@@ -195,3 +195,8 @@ if(TARGET ud_data AND TARGET ud_package)
     set_tests_properties(native_custom_task PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
   endif()
 endif()
+
+if(TARGET ud_connector_postgresql)
+  add_executable(test_postgresql_values postgresql_values.c)
+  target_link_libraries(test_postgresql_values PRIVATE ud_plugins ud_columnar)
+endif()

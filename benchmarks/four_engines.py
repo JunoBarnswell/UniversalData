@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix='ud-four-engine-benchmark-') as work:
   p={'version':version,'id':'benchmark','policy':{'buffers':{'connection':'spill','residentBytes':4194304,'workingBytes':33554432,'spillBytes':2147483648,'maxBlocks':100000}},
      'connections':[{'id':'source','driver':'file','resource':str(source)},{'id':'target','driver':'file','resource':str(target)},{'id':'spill','driver':'file','resource':str(spill)}],
      'controlFlow':{'tasks':[{'id':'flow','kind':'dataFlow','config':{'pipeline':'p'}}],'constraints':[]},
-     'dataFlows':[{'id':'p','components':[{'id':'source','component':'file.csv.source','config':{'connection':'source','schema':{'version':version,'fields':[{'name':'key','type':'int64'},{'name':'value','type':'int64'}]}}},
+     'dataFlows':[{'id':'p','components':[{'id':'source','component':'file.csv.source','config':{'connection':'source','schema':{'version':version,'fields':[{'name':'key','type':'int64','nullable':False},{'name':'value','type':'int64','nullable':False}]}}},
         {'id':'sort','component':'sort','config':{'key':0,'partitions':workers}},{'id':'target','component':'file.csv.destination','config':{'connection':'target'}}],
         'paths':[{'from':'source','output':0,'to':'sort','input':0},{'from':'sort','output':0,'to':'target','input':0}]}]}
   package=r/'package.json';package.write_text(json.dumps(p));start=time.monotonic();before=resource.getrusage(resource.RUSAGE_CHILDREN)

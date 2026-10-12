@@ -8,11 +8,7 @@ permissions:
   contents: read
 jobs:
   package-and-bindings:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,71 +23,32 @@ jobs:
           java-version: '17'
       - name: Product authority
         run: python scripts/product_model.py check
-      - name: Prepare pinned SQLite
-        shell: pwsh
+      - name: Pinned SQLite and HTTP dependency
         run: |
-          $platform = if ($IsWindows) { 'windows' } else { 'linux' }
-          python scripts/fetch_deps.py --platform $platform --output build/deps
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Build current Package SDK and native tests
-        shell: pwsh
+          python scripts/fetch_deps.py --platform linux --output build/deps
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+      - name: Linux Release native and JNI
         run: |
-          $sqlite = (Resolve-Path build/deps/sqlite/sqlite-amalgamation-3490100).Path
-          cmake -S . -B build/full -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$sqlite" -DCMAKE_BUILD_TYPE=Debug
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          cmake --build build/full --config Debug --parallel 2
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          ctest --test-dir build/full -C Debug --output-on-failure
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          cmake --install build/full --config Debug --prefix build/install
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Build thin language packages and execute the same Package
-        shell: pwsh
+          cmake -S . -B build/full -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$PWD/build/deps/sqlite/sqlite-amalgamation-3490100" -DUD_WITH_HTTP=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/full --parallel 4
+          ctest --test-dir build/full --output-on-failure --parallel 4
+      - name: Linux distributable and independent C, NuGet and Maven consumers
         run: |
-          dotnet build examples/dotnet/Consumer.csproj --nologo --verbosity:minimal
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          dotnet build examples/dotnet-data/DataConsumer.csproj --nologo --verbosity:minimal
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          dotnet pack bindings/dotnet/UniversalData/UniversalData.csproj --no-restore --output build/packages
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          mvn -B -q -f bindings/java/pom.xml package
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          New-Item -ItemType Directory -Force build/java | Out-Null
-          javac -encoding UTF-8 -cp bindings/java/target/universal-data-@UD_SDK_VERSION@.jar -d build/java examples/java/Consumer.java examples/java/DataConsumer.java
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $cli = if ($IsWindows) { 'build/full/hosts/Debug/ud_cli.exe' } else { 'build/full/hosts/ud_cli' }
-          $data = if ($IsWindows) { 'build/full/tests/Debug/typed_data_runner.exe' } else { 'build/full/tests/typed_data_runner' }
-          $native = if ($IsWindows) { 'build/install/bin' } else { 'build/install/lib' }
-          $dotnet = (Get-Command dotnet).Source
-          $java = (Get-Command java).Source
-          python tests/package_language_parity.py $cli $data $dotnet examples/dotnet/bin/Debug/net8.0/Consumer.dll examples/dotnet-data/bin/Debug/net8.0/DataConsumer.dll $java build/java bindings/java/target/universal-data-@UD_SDK_VERSION@.jar $native
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python packaging/package-linux.py --build build/full --output build/delivery
+          python tests/installed_sdk.py --bundle build/UniversalData-@UD_SDK_VERSION@-linux-x64.zip --work "$RUNNER_TEMP/ud-sdk-$GITHUB_RUN_ID" --evidence build/sdk-consumers.json
+      - name: Million rows, spill and 1/2/4/8/16 worker comparison
+        run: python benchmarks/four_engines.py --cli build/full/hosts/ud_cli --output build/four-engine-benchmark.json
       - name: Public contracts and removed legacy exports
         run: python scripts/static_check.py
-      - name: Windows Release distributable and independent consumers
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          ./packaging/package.ps1 -BuildDirectory build/full -Output build/delivery
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          ctest --test-dir build/full -C Release --output-on-failure
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $work = Join-Path $env:RUNNER_TEMP ('ud-bundle-' + [guid]::NewGuid().ToString('N'))
-          python tests/installed_sdk.py --bundle build/delivery/UniversalData-@UD_SDK_VERSION@-win-x64.zip --work $work --evidence build/delivery/consumers.json
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
-        if: runner.os == 'Windows'
         with:
-          name: package-sdk-win-x64
-          path: build/delivery
-      - uses: actions/upload-artifact@v4
-        if: runner.os != 'Windows'
-        with:
-          name: package-sdk-${{ matrix.os }}
+          name: package-sdk-linux-x64
           path: |
-            build/install
-            build/packages
-            bindings/java/target/*.jar
+            build/delivery
+            build/UniversalData-@UD_SDK_VERSION@-linux-x64.zip
+            build/sdk-consumers.json
+            build/four-engine-benchmark.json
   minimal-components:
     runs-on: ubuntu-24.04
     steps:

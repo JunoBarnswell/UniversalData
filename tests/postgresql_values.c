@@ -137,6 +137,14 @@ int main(int argc, char **argv) {
     CHECK(ud_connection_read_next(db, &fields) == UD_END && !fields);
     OK(ud_connection_read_close(db));
     ud_batch_destroy(batch);
+    for (int kind=UD_METADATA_CATALOGS;kind<=UD_METADATA_INDEXES;kind++) {
+        ud_metadata_options metadata_options={.struct_size=sizeof(metadata_options),.abi_version=UD_ABI_VERSION,
+            .kind=kind,.parent={"ud_value_semantics",18},.limit=1};
+        ud_batch *page=NULL;OK(ud_connection_metadata(db,&metadata_options,&page));
+        CHECK(ud_batch_rows(page)<=1 && ud_batch_columns(page)==8);ud_batch_destroy(page);
+        metadata_options.offset=1;OK(ud_connection_metadata(db,&metadata_options,&page));
+        CHECK(ud_batch_rows(page)<=1);ud_batch_destroy(page);
+    }
     allowed = 0;
     CHECK(ud_connection_test(db) == UD_AUTH);
     allowed = 1;

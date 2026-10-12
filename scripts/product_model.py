@@ -42,7 +42,7 @@ def projections(model):
              "scope": model["scope"], "baseline": model["baseline"], "candidate": model["candidate"],
              "remoteCI": model["remoteCI"], "artifacts": model["artifacts"]}
     passed = [gate for gate in model["gates"] if gate["status"] == "Passed"]
-    progress = dict(facts, requiredGates=len(model["gates"]), passedGates=len(passed),
+    progress = dict(facts, requiredGates=sum(gate["status"] != "Exempt" for gate in model["gates"]), passedGates=len(passed),
                     remediations=model["remediations"])
     status = dict(facts, components="docs/product/component-catalog.md",
                   remediations=model["remediations"], workItems=model.get("fourEngineWorkItems",[]), limitations=model["limitations"])
@@ -62,15 +62,15 @@ def projections(model):
     catalog += "Arrow C Data Interface 与原生内存数据模型不等同于 Parquet driver。Microsoft .dtsx/COM/SSISDB/MSDTC 专属兼容不承诺；没有占位注册或旧 generic operation 路径。\n"
     progress_md = "# 当前实施与验收进度\n\n<!-- Generated from metadata/product.json. -->\n\n"
     progress_md += "SDK " + version + " / ABI " + str(abi) + "；" + model["candidate"]["state"] + "。\n\n"
-    progress_md += "门禁通过 " + str(len(passed)) + "/" + str(len(model["gates"])) + "；Linux 本轮必验，Windows 豁免；远程 CI 使用实际运行状态。\n\n"
+    progress_md += "门禁通过 " + str(len(passed)) + "/" + str(sum(gate["status"] != "Exempt" for gate in model["gates"])) + "；Linux 本轮必验，Windows 豁免；远程 CI 使用实际运行状态。\n\n"
     progress_md += "| 整改 | 当前状态 |\n|---|---|\n"
     for item in model["remediations"]:
         progress_md += "| " + item["id"] + " | " + item["state"] + " / " + item["verification"] + " |\n"
     trace = "# 四引擎需求与验收追踪\n\n<!-- Generated from metadata/product.json. -->\n\n"
     trace += "保留全部 69 项目标；下表是附件 78 项工作项的同源投影。Implemented 与 Verified 分开，能力组合边界见权威模型 limitations。\n\n"
-    trace += "| ID | 能力 | 代码 | 验收 | 69 项目标映射 |\n|---|---|---|---|---|\n"
+    trace += "| ID | 优先级 | 阶段 | 能力 | 代码 | 验收 | 69 项目标映射 |\n|---|---|---|---|---|---|---|\n"
     for row in model["fourEngineWorkItems"]:
-        trace += "| " + row["id"] + " | " + row["name"] + " | " + row["state"] + " | " + row["verification"] + " | " + ", ".join(row["goals"]) + " |\n"
+        trace += "| " + row["id"] + " | " + row["priority"] + " | " + row["phase"] + " | " + row["name"] + " | " + row["state"] + " | " + row["verification"] + " | " + ", ".join(row["goals"]) + " |\n"
     return {
         "docs/acceptance/etl-four-engine-traceability.md": trace,
         "VERSION": version + "\n",

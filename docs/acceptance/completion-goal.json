@@ -546,7 +546,10 @@
         "engines/data-flow/builtins.c"
       ],
       "dependsOn": [],
-      "externalPrerequisites": [],
+      "externalPrerequisites": [
+        "libpq >=17 for bounded nonblocking query/cancellation",
+        "Disposable local PostgreSQL >=17 integration fixture"
+      ],
       "evidence": [],
       "requiredThisDelivery": false,
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
@@ -950,11 +953,11 @@
     {
       "id": "G51",
       "phase": 6,
-      "name": "Windows 原生与 ABI 门禁；Linux 保留实现并免测",
+      "name": "Linux 原生与 ABI 门禁；Windows 本轮豁免",
       "priority": "P0",
       "code": "Implemented",
       "verification": "Pending current infrastructure delivery; prior evidence is historical",
-      "acceptance": "Linux 本地真实编译/测试/安装/插件/线程和跨语言消费证据；Windows 测试及远程 CI 状态按用户指令不作门禁，不声明其通过",
+      "acceptance": "Linux 编译/关键验收；Windows Exempt，不继承历史通过证据",
       "implementation": [
         ".github/workflows/ci.yml",
         "tests"

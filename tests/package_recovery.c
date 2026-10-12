@@ -78,7 +78,7 @@ static ud_status effect(void *u, const ud_component_context *ctx, ud_string conf
     return ok ? UD_OK : UD_IO;
 }
 int main(int argc, char **argv) {
-    CHECK(argc == 9);
+    CHECK(argc == 9 || argc == 10);
     fixture f = {.database = argv[2], .output = argv[3], .effect = argv[4], .mode = atoi(argv[7])};
     FILE *file = fopen(argv[1], "rb");
     CHECK(file);
@@ -110,6 +110,7 @@ int main(int argc, char **argv) {
                               .edge_capacity = 1,
                               .max_batch_rows = 7,
                               .max_depth = 16,
+                              .max_concurrency = 4,
                               .tenant = {"fixture", 7},
                               .execution_id = {"recovery-fixture", 16},
                               .authorize = allow,
@@ -142,7 +143,7 @@ int main(int argc, char **argv) {
             ud_value v;
             OK(ud_execution_variable(e, (ud_string){"n", 1}, &v));
             CHECK(v.integer == 4);
-            CHECK(m.input_rows == 31 && m.output_rows == 62 && m.executed_tasks == 6);
+            CHECK(m.input_rows == 31 && m.output_rows == 62 && m.executed_tasks == (uint64_t)(argc == 10 ? atoi(argv[9]) : 6));
         }
         OK(ud_execution_destroy(e));
     }

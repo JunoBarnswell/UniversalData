@@ -13,7 +13,7 @@ def source_hash():
         "CMakeLists.txt", "CMakePresets.json", "VERSION", ".github/workflows/ci.yml",
         "Directory.Build.props", "Directory.Build.targets", "UniversalData.sln")]
     for folder in ("include", "components", "engines", "connectors", "catalog", "plugins",
-                   "hosts", "bindings", "cmake", "tests", "examples", "scripts", "packaging", "metadata"):
+                   "hosts", "bindings", "cmake", "tests", "examples", "scripts", "packaging", "metadata", "benchmarks"):
         files.extend(p for p in (ROOT / folder).rglob("*") if p.is_file()
             and not set(p.relative_to(ROOT).parts) & {"bin", "obj", "target", "build", "__pycache__"}
             and p.suffix in {".c", ".h", ".cs", ".java", ".py", ".ps1", ".cmake", ".json",

@@ -31,6 +31,25 @@ with tempfile.TemporaryDirectory(prefix='ud-package-recovery-') as folder:
   r,p=fixture(name);run(r,mode=mode,exit=91)
   if mode==2: assert len(rows(r))==7 and not (r/'out.ndjson').exists()
   run(r,resume=1);verify(r)
+ r,p=fixture('partitioned-nested')
+ p['project']={'id':'fixture-project','parameters':{},'variables':{},'connections':[]}
+ p['deployment']={'id':'fixture-deployment','revision':1,'project':{'id':'fixture-project','revision':1},'package':{'id':'recovery','revision':1}}
+ p['variables']['item']={'type':'int64','default':0}
+ children=p['controlFlow']['tasks'][0]['children']
+ p['controlFlow']['tasks'][0]['children']={'tasks':[{'id':'foreach','kind':'foreach','config':{'variable':'item','items':[1]},'children':children}],'constraints':[]}
+ p['controlFlow']={'tasks':[{'id':'sequence','kind':'sequence','config':{},'children':p['controlFlow']}],'constraints':[]}
+ components=p['dataFlows'][0]['components'];source=components.pop(0)
+ for part in range(2):
+  partition=copy.deepcopy(source);partition['id']=f'source{part}';partition['config'].update(partitionCount=2,partitionId=part);components.insert(part,partition)
+ components.insert(2,{'id':'union','component':'unionAll','config':{}})
+ components.insert(3,{'id':'sort','component':'sort','config':{'key':0,'partitions':2}})
+ paths=p['dataFlows'][0]['paths'];paths.pop(0)
+ paths[:0]=[{'from':f'source{part}','output':0,'to':'union','input':part} for part in range(2)]+[{'from':'union','output':0,'to':'sort','input':0},{'from':'sort','output':0,'to':'multicast','input':0}]
+ (r/'package.json').write_text(json.dumps(p))
+ for resume,mode,code in [(0,2,91),(1,0,0),(1,0,0)]:
+  result=subprocess.run(args(r,resume=resume,mode=mode)+['11'],capture_output=True,text=True,timeout=30)
+  assert result.returncode==code,(result.stdout,result.stderr)
+  if not code:assert rows(r)==list(range(31)) and [json.loads(line) for line in (r/'out.ndjson').read_text().splitlines()]==[{'x':i} for i in range(31)]
  r,p=fixture('changed-source');run(r,mode=2,exit=91);(r/'source.ndjson').write_text('{"x":999}\n');run(r,resume=1,status=9);assert len(rows(r))==7
  r,p=fixture('changed-package');run(r,mode=2,exit=91);p['id']='changed';(r/'package.json').write_text(json.dumps(p));run(r,resume=1,status=10);assert len(rows(r))==7
  r,p=fixture('corrupt');run(r);record=sorted((r/'state').glob('*.udg'))[-1];b=bytearray(record.read_bytes());b[-1]^=1;record.write_bytes(b);run(r,resume=1,status=9)

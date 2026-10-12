@@ -49,7 +49,7 @@ typedef struct node {
     ud_activation activation;
     ud_component_context context;
     ud_component_plan binding;
-    uint64_t steps, processed, produced, rejected, wait_input, wait_capacity, cpu_ms, first_ms, end_ms;
+    uint64_t steps, processed, produced, rejected, wait_input, wait_capacity, callback_ms, cpu_ns, first_ms, end_ms;
 } node;
 typedef struct physical_plan {
     ud_activation *execution;
@@ -519,7 +519,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     ud_activation_notify(&n->activation, atomic_load(&n->state), UD_OK);
     memset(n->emitted, 0, n->descriptor.outputs);
     n->emit_allowed = 1;
-    uint64_t started=ud_now_ms();
+    uint64_t started=ud_now_ms(),cpu=ud_thread_cpu_ns();
     if (!n->first_ms) n->first_ms=started;
     n->steps++;
     if (input) n->processed+=input->rows;
@@ -527,7 +527,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     ud_status s = ud_activation_check(&n->activation);
     if (!s) s = n->descriptor.step(n->instance, &event);
     ud_task_cancel_unregister(&n->activation);
-    n->cpu_ms+=ud_now_ms()-started;
+    n->callback_ms+=ud_now_ms()-started;
+    n->cpu_ns+=ud_thread_cpu_ns()-cpu;
     n->emit_allowed = 0;
     int was_pending = n->pending;
     n->pending = s == UD_MORE;
@@ -627,9 +628,9 @@ static ud_status plan_json(physical_plan *p,ud_bytes *b,int runtime,ud_status ou
             }
             UD_TRY(ud_bytes_put(b,"]",sizeof("]")-1));
             if (runtime) {
-                const char *names[]={"state","steps","processedRows","producedRows","rejectedRows","inputWaits","capacityWaits","callbackMs","firstMs","endMs"};
-                uint64_t values[]={atomic_load(&n->state),n->steps,n->processed,n->produced,n->rejected,n->wait_input,n->wait_capacity,n->cpu_ms,n->first_ms,n->end_ms};
-                for (uint32_t k=0;k<10;k++) { UD_TRY(ud_bytes_put(b,",",sizeof(",")-1));UD_TRY(json_number(b,names[k],values[k])); }
+                const char *names[]={"state","steps","processedRows","producedRows","rejectedRows","inputWaits","capacityWaits","callbackMs","cpuNs","firstMs","endMs"};
+                uint64_t values[]={atomic_load(&n->state),n->steps,n->processed,n->produced,n->rejected,n->wait_input,n->wait_capacity,n->callback_ms,n->cpu_ns,n->first_ms,n->end_ms};
+                for (uint32_t k=0;k<11;k++) { UD_TRY(ud_bytes_put(b,",",sizeof(",")-1));UD_TRY(json_number(b,names[k],values[k])); }
             }
             UD_TRY(ud_bytes_put(b,"}",sizeof("}")-1));
         }
@@ -693,15 +694,15 @@ ud_status ud_pipeline_execute(ud_activation *activation, const ud_json *definiti
         for (uint32_t i=0;i<plan_value.count;i++) if (!plan_value.nodes[i].schemas) schemas=0;
         if (schemas) {
             ud_execution *e=activation->execution;ud_bytes report={.ctx=e->ctx};
-            ud_status recorded=plan_json(&plan_value,&report,1,status);
-            if (!recorded) {
-                ud_mutex_lock(&e->diagnostics_lock);
-                if (e->pipeline_reports.size) recorded=ud_bytes_put(&e->pipeline_reports,",",sizeof(",")-1);
-                if (!recorded) recorded=ud_bytes_put(&e->pipeline_reports,report.data,report.size);
-                ud_mutex_unlock(&e->diagnostics_lock);
-            }
+            ud_mutex_lock(&e->diagnostics_lock);
+            e->pipeline_record_count++;
+            ud_status recorded=e->pipeline_record_count>256 ? UD_RESOURCE : plan_json(&plan_value,&report,1,status);
+            uint64_t before=e->pipeline_reports.size;
+            if (!recorded && before) recorded=ud_bytes_put(&e->pipeline_reports,",",1);
+            if (!recorded) recorded=ud_bytes_put(&e->pipeline_reports,report.data,report.size);
+            if (recorded) { e->pipeline_reports.size=before;e->pipeline_records_dropped++; }
+            ud_mutex_unlock(&e->diagnostics_lock);
             ud_bytes_clear(&report);
-            if (!status && recorded) status=recorded;
         }
     }
     status = clear(&plan_value, status);

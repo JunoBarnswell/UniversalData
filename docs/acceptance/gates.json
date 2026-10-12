@@ -4,8 +4,8 @@
   "sdkVersion": "1.2.0",
   "abi": 6,
   "sourceFingerprint": null,
-  "linux": "Required: Linux native, sanitizer, JNI and .NET acceptance",
-  "windows": "Exempt by current user decision",
+  "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
+  "windows": "Exempt — explicit current user instruction",
   "gates": [
     {
       "id": "windows-msvc",
