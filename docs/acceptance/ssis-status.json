@@ -1,0 +1,91 @@
+{
+  "sdkVersion": "1.0.0",
+  "abi": 4,
+  "workingBranch": "codex/ssis-package-runtime",
+  "baseCommit": "c36a6c5",
+  "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
+  "delivery": "Verified Windows Release distributable and current core; extension backlog incomplete",
+  "platforms": {
+    "windows": "Verified: Release zero warnings; native 31/31; ASan 31/31; actual ZIP dynamic C/SQLite/resources/Pipeline, native NuGet without SDK PATH, Maven/JNI parity",
+    "linux": "Implemented same core operators and POSIX infrastructure; exempt from testing this delivery"
+  },
+  "phases": {
+    "0": {
+      "scope": "Product/architecture/SSIS/deletion matrix",
+      "design": "Implemented",
+      "code": "Implemented for current core scope",
+      "validation": "Verified product/architecture documents and source contracts",
+      "extensions": "See current component catalog"
+    },
+    "1": {
+      "scope": "Unified data/AST/functions/Registry/Compute/buffers",
+      "design": "Implemented",
+      "code": "Implemented for current core scope",
+      "validation": "Verified unified types/AST/Registry/Compute/buffers through native and ASan suites",
+      "extensions": "See current component catalog"
+    },
+    "2": {
+      "scope": "Package/Activation/control/scopes/events/concurrency",
+      "design": "Implemented",
+      "code": "Implemented for current core scope",
+      "validation": "Verified control/scopes/Activation/concurrency/events/timeouts and child execution",
+      "extensions": "See current component catalog"
+    },
+    "3": {
+      "scope": "Pipeline/ports/End/backpressure/shared operators",
+      "design": "Implemented",
+      "code": "Implemented for current core scope",
+      "validation": "Verified multiport Pipeline/backpressure/shared operators/spill and error destinations",
+      "extensions": "See current component catalog"
+    },
+    "4": {
+      "scope": "Manager/core native sources/transforms/destinations/quality",
+      "design": "Implemented",
+      "code": "Implemented for current core scope",
+      "validation": "Verified current file/SQLite core components; optional drivers retain explicit unverified state",
+      "extensions": "See current component catalog"
+    },
+    "5": {
+      "scope": "Journal/receipts/Catalog/deployment/history",
+      "design": "Implemented",
+      "code": "Implemented for current core scope",
+      "validation": "Verified journal/receipt/crash recovery, Catalog/Project/deployment/history",
+      "extensions": "See current component catalog"
+    },
+    "6": {
+      "scope": "Complete ABI4/bindings/hosts/installed consumers",
+      "design": "Implemented",
+      "code": "Implemented for current core scope",
+      "validation": "Verified actual Release ZIP, dynamic C facade, native NuGet and Maven/JNI consumers",
+      "extensions": "See current component catalog"
+    },
+    "7": {
+      "scope": "Core Lookup/Window/error/row count/audit integration; expansion backlog tracked",
+      "design": "Implemented",
+      "code": "Implemented for current core scope",
+      "validation": "Verified current core operators/components; extensions remain Planned/Partial",
+      "extensions": "Planned/Partial"
+    }
+  },
+  "components": "docs/product/component-catalog.md",
+  "breakingChanges": "docs/breaking-changes.md",
+  "evidence": "docs/acceptance/gates.json",
+  "limitations": [
+    "Protocol/advanced extensions remain Planned/Partial with explicit capabilities.",
+    "PostgreSQL implementation is present but not compiled/system-tested this delivery; HTTP native Task not enabled.",
+    "No arbitrary global distributed transaction, .dtsx/COM/SSISDB/MSDTC compatibility or general exactly-once claim.",
+    "Pipeline has one controller per Activation; concurrent Package tasks run independent pipelines. No TSan/race-freedom certification.",
+    "Resident budget is logical wire-block accounting; actual SDK allocations use Context quota. Third-party dependency allocations are not full-process RSS accounting.",
+    "Linux runtime/build result is not asserted; historical ABI3/Linux evidence is not current evidence."
+  ],
+  "artifacts": {
+    "archive": "artifacts/UniversalData-1.0.0-win-x64.zip",
+    "sha256": "07177d34bc9164aa11885b391ae5916560e4192e7c74f3ee1c8b2797739cfc97",
+    "manifest": "artifacts/1.0.0/win-x64/manifest.json",
+    "nativeLibrary": "artifacts/1.0.0/win-x64/sdk/bin/ud_data.dll",
+    "configuration": "Release",
+    "abiVersion": 4,
+    "verifiedFiles": 47,
+    "linuxBinary": "Not built; current delivery exempts Linux execution"
+  }
+}

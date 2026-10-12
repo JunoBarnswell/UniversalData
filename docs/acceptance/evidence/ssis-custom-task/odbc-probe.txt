@@ -1,0 +1,1 @@
+Current ABI3 ODBC generic plugin: full table, actual SQLite driver connect/one typed bounded read and clean close passed (no typed Connection Manager table)

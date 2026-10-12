@@ -1,0 +1,28 @@
+{
+  "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
+  "exitCode": 0,
+  "checks": [
+    {
+      "case": "guard-positive-before",
+      "exitCode": 0,
+      "output": "Core delivery evidence passed for source c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491"
+    },
+    {
+      "case": "guard-missing-dll",
+      "exitCode": 1,
+      "output": "Core delivery evidence incomplete:\nMissing delivered file: sdk/bin/ud_data.dll"
+    },
+    {
+      "case": "guard-corrupt-archive",
+      "exitCode": 1,
+      "output": "Core delivery evidence incomplete:\nDistributable archive hash mismatch"
+    },
+    {
+      "case": "guard-positive-after",
+      "exitCode": 0,
+      "output": "Core delivery evidence passed for source c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491"
+    }
+  ],
+  "archiveRestoredSha256": "07177d34bc9164aa11885b391ae5916560e4192e7c74f3ee1c8b2797739cfc97",
+  "nativeRestoredSha256": "cccf006677307ac81fa3686bd1a502e39c82583ed0e329ac83d090a974a812c3"
+}

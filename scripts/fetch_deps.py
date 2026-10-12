@@ -14,7 +14,6 @@ root = pathlib.Path(__file__).resolve().parents[1]
 lock = json.loads((root / "packaging/dependencies.lock.json").read_text())
 archives = {
     "sqlite": lock["sqlite"]["source"],
-    "duckdb": f'https://github.com/duckdb/duckdb/releases/download/v{lock["duckdb"]["version"]}/libduckdb-{a.platform}-amd64.zip',
 }
 a.output.mkdir(parents=True, exist_ok=True)
 for name, url in archives.items():

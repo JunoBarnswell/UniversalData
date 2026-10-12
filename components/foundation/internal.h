@@ -24,6 +24,7 @@ void ud_list_free(char **, uint32_t);
 ud_status ud_file_identity(ud_context *, const char *, uint64_t *device, uint64_t *file);
 ud_status ud_file_hash(ud_context *, const char *, uint8_t out[32]);
 void ud_hash(const void *, size_t, uint8_t out[32]);
+size_t ud_allocation_bytes(const void *);
 ud_status ud_flush(ud_context *, FILE *);
 ud_status ud_publish(ud_context *, const char *from, const char *to);
 ud_status ud_sync_parent(ud_context *, const char *path);
@@ -31,6 +32,10 @@ ud_status ud_lock(ud_context *, const char *, void **);
 void ud_unlock(void *);
 ud_status ud_remove_file(ud_context *, const char *);
 ud_status ud_reserve_file(ud_context *, const char *);
+ud_status ud_path_kind(ud_context *, const char *, int *); /* 0 absent, 1 file, 2 dir, 3 other */
+ud_status ud_path_no_symlinks(ud_context *, const char *);
+ud_status ud_open_regular(ud_context *, const char *, FILE **);
+ud_status ud_move_noreplace(ud_context *, const char *, const char *);
 ud_status ud_distinct_directories(ud_context *, const char *, const char *);
 uint64_t ud_now_ms(void);
 void ud_sleep_ms(uint32_t);

@@ -1,0 +1,38 @@
+{
+  "milestone": "native-profiling-task-and-shared-streaming-kernel",
+  "date": "2026-10-12",
+  "baseCommit": "0af4b74ea10ca98addf4697c7790c89b07a6beec",
+  "sourceManifest": "docs/acceptance/evidence/ssis-profile/source-manifest.json",
+  "sourceManifestSha256": "13519fcae6d0875147ab3e9dec50fd9c31dd2d10749c7ce1ce193939b757721a",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-profile/native-ctest.txt",
+      "sha256": "1ca746d0c3b228660da47000da65758a8e9a2d5d44618fc767a9d39b6dd612af",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 31,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-profile/asan-profile-package.txt",
+      "sha256": "dee7cb8d022c4dcbc3a4b40cb0a139f45d1fd88e7947251b36623cad1e8a7a1a",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R 'catalog|package|project|filesystem|process|http|profile' --output-on-failure",
+      "exitCode": 0,
+      "passed": 13,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-profile/language-parity.txt",
+      "sha256": "9f1256ec0a9b7e94aeec11322b764735bb3fb8f620c4b87c3d494358f21f1577",
+      "command": "tests/package_language_parity.py C/.NET8/Java17 actual Profiling Task + FileSystem/Project/child/Pipeline/data parity",
+      "exitCode": 0
+    }
+  ],
+  "limitations": [
+    "Scalar min/max supports bool/int64/float64/UTF8; wider variable types and advanced histograms/key profiles not implemented",
+    "Stats publish after successful full scan; rule failures keep actual stats and check count",
+    "Profiling reuses existing recovery and replay-safe Pipeline contract; persistent SQL snapshots still Unsupported",
+    "SDK quotas bound copied extrema, count of statistics and maximum rows; no retained full input",
+    "Windows tests and remote CI status explicitly waived by user"
+  ]
+}

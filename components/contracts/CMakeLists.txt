@@ -6,7 +6,7 @@ target_include_directories(ud_contracts INTERFACE $<BUILD_INTERFACE:${PROJECT_SO
 add_library(UniversalData::Contracts ALIAS ud_contracts)
 install(TARGETS ud_contracts EXPORT UniversalDataTargets)
 if("Plugins" IN_LIST UD_SELECTED)
-set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin.c)
+set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin.c ${CMAKE_CURRENT_SOURCE_DIR}/src/registry.c)
 ud_component(ud_plugins Plugins ${src})
 target_link_libraries(ud_plugins PUBLIC ud_columnar ud_contracts PRIVATE ${CMAKE_DL_LIBS})
 set(UD_ALL_SOURCES ${UD_ALL_SOURCES} ${src} PARENT_SCOPE)

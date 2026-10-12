@@ -1,10 +1,11 @@
+using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 using System.Text;
-using Microsoft.Win32.SafeHandles;
 
 namespace UniversalData;
 
-public enum Rounding { Exact = 0, TowardZero = 1, HalfEven = 2, HalfAway = 3, Floor = 4, Ceiling = 5 }
+public enum Rounding
+{ Exact = 0, TowardZero = 1, HalfEven = 2, HalfAway = 3, Floor = 4, Ceiling = 5 }
 
 /// <summary>Owned columnar batch. Schema and typed nested JSON follow the C contract.</summary>
 public sealed class Batch : IDisposable
@@ -13,6 +14,7 @@ public sealed class Batch : IDisposable
     private readonly BatchHandle batch;
     private readonly object execution = new();
     private bool disposed;
+
     public Batch(string schemaJson, string dataJson, Rounding rounding = Rounding.Exact, ulong memoryLimit = 268435456)
     {
         var schema = Utf8.Bytes(schemaJson); var data = Utf8.Bytes(dataJson);
@@ -25,7 +27,10 @@ public sealed class Batch : IDisposable
         }
         catch { context.Dispose(); throw; }
     }
-    private Batch(ContextHandle owner, IntPtr pointer) { context = owner; batch = new BatchHandle(pointer, owner); }
+
+    private Batch(ContextHandle owner, IntPtr pointer)
+    { context = owner; batch = new BatchHandle(pointer, owner); }
+
     public static Batch FromWire(byte[] wire, ulong memoryLimit = 268435456)
     {
         ArgumentNullException.ThrowIfNull(wire); var ctx = DataOwnership.Context(memoryLimit);
@@ -36,8 +41,12 @@ public sealed class Batch : IDisposable
         }
         catch { ctx.Dispose(); throw; }
     }
-    public uint Rows { get { lock (execution) { EnsureOpen(); return Native.ud_batch_rows(batch); } } }
-    public uint Columns { get { lock (execution) { EnsureOpen(); return Native.ud_batch_columns(batch); } } }
+
+    public uint Rows
+    { get { lock (execution) { EnsureOpen(); return Native.ud_batch_rows(batch); } } }
+    public uint Columns
+    { get { lock (execution) { EnsureOpen(); return Native.ud_batch_columns(batch); } } }
+
     public string ToJson()
     {
         lock (execution)
@@ -46,6 +55,7 @@ public sealed class Batch : IDisposable
             return DataOwnership.Text(pointer, length);
         }
     }
+
     public string SchemaJson
     {
         get
@@ -57,6 +67,7 @@ public sealed class Batch : IDisposable
             }
         }
     }
+
     public byte[] ToWire()
     {
         lock (execution)
@@ -70,6 +81,7 @@ public sealed class Batch : IDisposable
             finally { Native.ud_free(pointer); }
         }
     }
+
     public Batch Cast(string schemaJson, Rounding rounding = Rounding.Exact, ulong memoryLimit = 268435456)
     {
         var schema = Utf8.Bytes(schemaJson);
@@ -84,16 +96,20 @@ public sealed class Batch : IDisposable
             catch { ctx.Dispose(); throw; }
         }
     }
+
     private void EnsureOpen() => ObjectDisposedException.ThrowIf(disposed, this);
+
     public void Dispose()
     {
         lock (execution) { if (disposed) return; disposed = true; batch.Dispose(); context.Dispose(); }
         GC.SuppressFinalize(this);
     }
 }
+
 internal static class Utf8
 {
     private static readonly UTF8Encoding Encoding = new(false, true);
+
     internal static byte[] Bytes(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -101,20 +117,23 @@ internal static class Utf8
         catch (EncoderFallbackException) { throw new UniversalDataException(6, "Invalid UTF16 input"); }
     }
 }
+
 internal static class DataOwnership
 {
     internal static ContextHandle Context(ulong limit)
     {
-        var options = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = 2, Limit = limit };
+        var options = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = 4, Limit = limit };
         int status = Native.ud_context_create(ref options, out var pointer);
         if (status != 0) throw new UniversalDataException(status, "Cannot create native context");
         return new ContextHandle(pointer);
     }
+
     internal static void Check(ContextHandle ctx, int status)
     {
         _ = ctx;
         if (status != 0) throw new UniversalDataException(status, Marshal.PtrToStringUTF8(Native.ud_status_name(status)) ?? "Native error");
     }
+
     internal static string Text(IntPtr pointer, uint length)
     {
         try
@@ -125,23 +144,37 @@ internal static class DataOwnership
         finally { Native.ud_free(pointer); }
     }
 }
+
 internal sealed class BatchHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
     private readonly ContextHandle owner;
+
     internal BatchHandle(IntPtr pointer, ContextHandle context) : base(true)
     { owner = context; bool retained = false; context.DangerousAddRef(ref retained); SetHandle(pointer); }
-    protected override bool ReleaseHandle() { Native.ud_batch_destroy(handle); owner.DangerousRelease(); return true; }
+
+    protected override bool ReleaseHandle()
+    { Native.ud_batch_destroy(handle); owner.DangerousRelease(); return true; }
 }
+
 internal static partial class Native
 {
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr ud_status_name(int status);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_from_json_schema(ContextHandle ctx, byte[] schema, uint schemaLength, byte[] rows, uint length, int rounding, out IntPtr batch);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_cast_schema(ContextHandle ctx, BatchHandle batch, byte[] schema, uint schemaLength, int rounding, out IntPtr output);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint ud_batch_rows(BatchHandle batch);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint ud_batch_columns(BatchHandle batch);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_to_json(BatchHandle batch, out IntPtr json, out uint length);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_schema_to_json(BatchHandle batch, out IntPtr json, out uint length);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_serialize(BatchHandle batch, out IntPtr wire, out ulong length);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_deserialize(ContextHandle ctx, byte[] wire, ulong length, out IntPtr batch);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void ud_batch_destroy(IntPtr batch);
 }

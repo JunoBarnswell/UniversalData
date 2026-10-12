@@ -2,6 +2,7 @@
 #include "check.h"
 #include <sqlite3.h>
 #include <string.h>
+#include <math.h>
 static ud_status authorize(void *user,ud_string tenant,ud_string resource,int32_t action) {
     (void)resource;(void)action;
     return *(int *)user && tenant.length==8 && !memcmp(tenant.data,"tenant-a",8) ? UD_OK : UD_AUTH;
@@ -102,6 +103,48 @@ int main(int argc,char **argv) {
     }
     CHECK(count==10200 && sqlite3_step(right)==SQLITE_DONE);
     sqlite3_finalize(left);sqlite3_finalize(right);
+    /* SQLite itself coerces NaN to NULL. The driver must reject it, roll back
+     * all rows and the receipt, then accept a corrected retry of this batch. */
+    CHECK(exec_fixture(target, "CREATE TABLE float_values(f REAL NOT NULL)"));
+    ud_field float_field = {.name = "f", .name_length = 1, .type = UD_FLOAT64};
+    ud_batch *floats = NULL;
+    OK(ud_batch_create(ctx, &float_field, 1, 2, &floats));
+    ud_value value = {.type = UD_FLOAT64, .real = 1.0};
+    OK(ud_batch_append(floats, &value, 1));
+    value.real = NAN;
+    OK(ud_batch_append(floats, &value, 1));
+    ud_write_options float_write = {.struct_size = sizeof(float_write),
+                                    .abi_version = UD_ABI_VERSION,
+                                    .mode = UD_WRITE_APPEND,
+                                    .table = {"float_values", 12},
+                                    .job = {"nan", 3},
+                                    .batch_id = {"0", 1},
+                                    .source_position = {"2", 1}};
+    CHECK(ud_connection_write(dst, &float_write, floats) == UD_UNSUPPORTED);
+    ud_commit_receipt receipt;
+    OK(ud_connection_receipt(dst, float_write.job, float_write.batch_id, &receipt));
+    CHECK(!receipt.committed);
+    ud_free((void *)receipt.source_position.data);
+    ud_batch_destroy(floats);
+    CHECK(sqlite3_prepare_v2(target, "SELECT count(*) FROM float_values", -1, &right, NULL) ==
+          SQLITE_OK);
+    CHECK(sqlite3_step(right) == SQLITE_ROW && sqlite3_column_int64(right, 0) == 0);
+    sqlite3_finalize(right);
+    OK(ud_batch_create(ctx, &float_field, 1, 2, &floats));
+    value.real = INFINITY;
+    OK(ud_batch_append(floats, &value, 1));
+    value.real = -INFINITY;
+    OK(ud_batch_append(floats, &value, 1));
+    OK(ud_connection_write(dst, &float_write, floats));
+    ud_batch_destroy(floats);
+    CHECK(sqlite3_prepare_v2(target, "SELECT f FROM float_values ORDER BY rowid", -1, &right,
+                             NULL) == SQLITE_OK);
+    CHECK(sqlite3_step(right) == SQLITE_ROW && sqlite3_column_type(right, 0) == SQLITE_FLOAT &&
+          sqlite3_column_double(right, 0) == INFINITY);
+    CHECK(sqlite3_step(right) == SQLITE_ROW && sqlite3_column_type(right, 0) == SQLITE_FLOAT &&
+          sqlite3_column_double(right, 0) == -INFINITY);
+    CHECK(sqlite3_step(right) == SQLITE_DONE);
+    sqlite3_finalize(right);
     allowed=0;CHECK(ud_connection_test(dst)==UD_AUTH);allowed=1;
     CHECK(ud_plugin_unload(plugin)==UD_BUSY);
     OK(ud_connection_close(src));OK(ud_connection_close(dst));

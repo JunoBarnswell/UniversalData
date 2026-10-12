@@ -1,0 +1,2 @@
+NuGet 1.0.0 built with current Linux native SDK; package native SHA256 80df6fe399b2042823c504cd4fb43beb36954c39cc323b20d7a1b68db8fe5967
+Clean local-cache PackageReference restore/build; no ProjectReference or LD_LIBRARY_PATH; all 12 typed fields incl NaN/signed zero/nested NULL/Decimal/UTC/NUL/nested matched native JSON + wire bytes.

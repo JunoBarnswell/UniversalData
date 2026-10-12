@@ -1,4 +1,4 @@
-#include "ud/query.h"
+#include "ud/compute.h"
 #include <stdio.h>
 #include <time.h>
 int main(void) {
@@ -14,7 +14,7 @@ int main(void) {
         s = ud_batch_append(b, &v, 1);
     }
     if (!s)
-        s = ud_query_sort(ctx, b, 0, 0, &sorted);
+        s = ud_compute_sort(ctx, b, 0, 0, &sorted);
     if (!s)
         printf("rows=100000 cpu_seconds=%.6f live_bytes=%llu\n",
                (double)(clock() - start) / CLOCKS_PER_SEC, (unsigned long long)ud_memory_used(ctx));

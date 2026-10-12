@@ -1,16 +1,16 @@
 #include "check.h"
-#include "ud/query.h"
+#include "ud/compute.h"
 #include "ud/engine.h"
 #include <string.h>
 int main(void) {
     ud_context *c = NULL;
     OK(ud_context_create(NULL, &c));
-    const char *schema = UD_SCHEMA_HEADER "key utf8 nullable\namount int64 nullable\n";
-    const char *commands = UD_PLAN_HEADER "filter amount ge 0\nproject key amount\ngroup key\nsum amount "
-                           "total\ncount * rows\nmin amount smallest\nmax amount largest\n";
-    ud_plan *p = NULL;
-    OK(ud_plan_create(c, schema, (uint32_t)strlen(schema), commands, (uint32_t)strlen(commands),
-                      &p));
+    ud_field schema[]={{.name="key",.name_length=3,.type=UD_UTF8,.nullable=1},
+                       {.name="amount",.name_length=6,.type=UD_INT64,.nullable=1}};
+    const char *definition="{\"version\":4,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,\"type\":\"int64\"}]},\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\",\"column\":\"amount\",\"name\":\"total\"},{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"},{\"function\":\"min\",\"column\":\"amount\",\"name\":\"smallest\"},{\"function\":\"max\",\"column\":\"amount\",\"name\":\"largest\"}]}";
+    ud_plan *p=NULL;
+    OK(ud_plan_create_fields(c,UD_PLAN_VERSION,schema,2,
+                              (ud_string){definition,(uint32_t)strlen(definition)},NULL,&p));
     const ud_field *f;
     uint32_t n;
     OK(ud_plan_schema(p, &f, &n));
@@ -25,7 +25,7 @@ int main(void) {
     OK(ud_batch_append(input, v, 2));
     v[1].is_null = 1;
     OK(ud_batch_append(input, v, 2));
-    OK(ud_query_execute(p, input, &result));
+    OK(ud_compute_apply(p, input, &result));
     CHECK(ud_batch_rows(result) == 1);
     ud_value actual;
     OK(ud_batch_get(result, 0, 1, &actual));
@@ -48,10 +48,10 @@ int main(void) {
     ud_accumulator_destroy(acc);
     ud_batch_destroy(result);
     ud_batch *sorted = NULL, *page = NULL;
-    OK(ud_query_sort(c, input, 1, 0, &sorted));
+    OK(ud_compute_sort(c, input, 1, 0, &sorted));
     OK(ud_batch_get(sorted, 0, 1, &actual));
     CHECK(actual.is_null);
-    OK(ud_query_slice(c, sorted, 1, 2, &page));
+    OK(ud_compute_slice(c, sorted, 1, 2, &page));
     CHECK(ud_batch_rows(page) == 2);
     OK(ud_batch_get(page, 0, 1, &actual));
     CHECK(actual.integer == -1);
@@ -63,7 +63,7 @@ int main(void) {
     v[1].is_null = 0;
     v[1].integer = 99;
     OK(ud_batch_append(right, v, 2));
-    OK(ud_query_inner_join(c, input, 0, right, 0, &joined));
+    OK(ud_compute_inner_join(c, input, 0, right, 0, &joined));
     CHECK(ud_batch_rows(joined) == 4 && ud_batch_columns(joined) == 4);
     ud_batch_destroy(joined);
     ud_batch_destroy(right);

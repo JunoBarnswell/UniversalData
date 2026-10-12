@@ -1,0 +1,95 @@
+{
+  "milestone": "native-http-task-and-installed-consumers",
+  "date": "2026-10-12",
+  "baseCommit": "0e9a2f62e29a0dbfaff55b1b7ca0e83d274ce884",
+  "sourceManifest": "docs/acceptance/evidence/ssis-http/source-manifest.json",
+  "sourceManifestSha256": "5ecd752f441ac4898cf6dbc373061efdc57375e376a893029c92a067ca71396d",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-http/native-ctest.txt",
+      "sha256": "47d8a6209fe42cc0596cb2b1c50bbb99fccac2ca446c6cbc7e4d9b9d92f4cff0",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 29,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-http/asan-http-package.txt",
+      "sha256": "f63937ada494c3a3fcc847007143040eda4e5ce6234bfddd57defef2f26c9a63",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R 'catalog|package|project|filesystem|process|http' --output-on-failure",
+      "exitCode": 0,
+      "passed": 11,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-http/http-installed-c.txt",
+      "sha256": "a6d50133d2e4bbf859cfd5874eed5ae1b48bf2a4bd506b1e764da539b2327154",
+      "command": "cmake --install build/abi3 --prefix build/install-http; installed UniversalData::Package and ::Data consumers, each tests/http_task.py",
+      "exitCode": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-http/http-language.txt",
+      "sha256": "1fe621f459ed270da9969bdd46cb8998a6a8f33ac567c0c42b69e0d217b0a97a",
+      "command": "tests/http_task.py with current NuGet .NET8 consumer and Maven Java17/JNI consumer against native HTTP Task",
+      "exitCode": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-http/language-regression.txt",
+      "sha256": "f18a3abba9c857a192984660d49df142df9873382376cc2f163dd889335d57ba",
+      "command": "tests/package_language_parity.py with C/.NET8/Java17 ABI3 FileSystem/Project/child/Pipeline/data parity",
+      "exitCode": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-http/http-disabled.txt",
+      "sha256": "f4368871f709130d43c50bfa3d61ee52a7b93c55dbe9c2cc4ccc0e812690c70c",
+      "command": "HTTP-off Package-only configure/build and http_disabled_before_io",
+      "exitCode": 0,
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-http/nuget-build.txt",
+      "sha256": "0a2a4db0eacf74163abc7552cc7bd5f435712117a23577ae8324a422711fdf90",
+      "command": "dotnet pack with Linux NativeArtifacts; separate local-feed restore and independent HTTP consumer build",
+      "exitCode": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-http/maven-build.txt",
+      "sha256": "57da7b711ba3be8d44f359f4691c3470d5eefd1185270fcfa16f492faf9be3be",
+      "command": "mvn package with writable retained local repository; build only (no Maven unit tests)",
+      "exitCode": 0
+    }
+  ],
+  "testedLocalArtifacts": [
+    {
+      "path": "build/http-nuget/UniversalData.1.0.0.nupkg",
+      "sha256": "01c8541763f90ca3b576c25f2cbb157cb7029b0f49e340b5646cdd9b94d1d6ae"
+    },
+    {
+      "path": "bindings/java/target/universal-data-1.0.0.jar",
+      "sha256": "2e8167eef657c29e8da26e6e7cb9986f53a845c887c11c2c3e9ca008c89aa9e9"
+    },
+    {
+      "path": "build/abi3/libud_data.so",
+      "sha256": "301a2df8c488cab505c3b93a72c4ac9387ee392f6935a2bb8274784e9c2a3c48"
+    },
+    {
+      "path": "build/abi3/bindings/java/native/libud_java.so",
+      "sha256": "bc3274b6436badeafe68e3a4dc774dbfd216eed652e7001e2a94eb50d30c8057"
+    }
+  ],
+  "environmentDraft": {
+    "startSkill": "saved",
+    "applied": false,
+    "published": false
+  },
+  "limitations": [
+    "HTTP Task streams and discards response bodies; G61 Data Flow HTTP Source/Destination remains planned",
+    "Exact-resource authorization and routing policy belong to the host; redirects/proxy/netrc disabled",
+    "libcurl/TLS internal allocations are provider managed rather than SDK quota charged",
+    "GET/HEAD retry only explicit transient HTTP statuses; transport failures and write methods never application-retry",
+    "Interrupted invocation requires RecoveryRequired, no automatic request replay or global exactly-once",
+    "Maven package is build-only; actual installed Java HTTP consumer supplies behavioral evidence",
+    "Windows testing and remote CI status waived by user; no Windows verification claim"
+  ]
+}

@@ -1,0 +1,30 @@
+#ifndef UD_CONNECTION_MANAGER_H
+#define UD_CONNECTION_MANAGER_H
+#include "package.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+typedef struct ud_connection_lease ud_connection_lease;
+/* Uses Package connection definitions, current lexical bindings, authorization
+ * and host credential resolver. File/process/HTTP endpoints and SQL drivers share this
+ * logical model. Each lease owns a compatible physical connection/cursor. */
+UD_API ud_status ud_activation_acquire_connection(ud_activation *, ud_string id,
+                                                  uint64_t capabilities, ud_connection_lease **);
+UD_API ud_status ud_connection_lease_authorize(ud_connection_lease *, int32_t action);
+UD_API ud_status ud_connection_lease_path(const ud_connection_lease *, ud_string *);
+UD_API ud_status ud_connection_lease_read_open(ud_connection_lease *, const ud_read_options *,
+                                               const ud_batch *);
+UD_API ud_status ud_connection_lease_read_next(ud_connection_lease *, ud_batch **);
+UD_API ud_status ud_connection_lease_read_close(ud_connection_lease *);
+UD_API ud_status ud_connection_lease_digest(ud_connection_lease *, const ud_write_options *,
+                                            const ud_batch *, uint8_t out[32]);
+UD_API ud_status ud_connection_lease_write(ud_connection_lease *, const ud_write_options *,
+                                           const ud_batch *);
+UD_API ud_status ud_connection_lease_receipt(ud_connection_lease *, ud_string job,
+                                             ud_string batch_id, ud_commit_receipt *);
+UD_API ud_status ud_connection_lease_execute_sql(ud_connection_lease *, ud_string statement);
+UD_API ud_status ud_connection_lease_release(ud_connection_lease *);
+#ifdef __cplusplus
+}
+#endif
+#endif

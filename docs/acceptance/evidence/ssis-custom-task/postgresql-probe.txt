@@ -1,0 +1,1 @@
+Current ABI3 connector: full table, default deny, actual connection/test/bounded SELECT and clean close passed

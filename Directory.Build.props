@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj' And ('$(MSBuildProjectName)' == 'UniversalData' Or '$(MSBuildProjectName)' == 'Consumer' Or '$(MSBuildProjectName)' == 'DataConsumer')">
+    <Platforms>AnyCPU;x64</Platforms>
+    <PlatformTarget Condition="'$(Platform)' == 'x64'">x64</PlatformTarget>
+    <UniversalDataVsSolution Condition="'$(OS)' == 'Windows_NT' And '$(SolutionFileName)' == 'UniversalData.sln' And '$(SolutionDir)' == '$(MSBuildThisFileDirectory)'">true</UniversalDataVsSolution>
+    <UniversalDataVsNativeLibrary Condition="'$(UniversalDataVsSolution)' == 'true'">$(MSBuildThisFileDirectory)build\vs2026\$(Configuration)\ud_data.dll</UniversalDataVsNativeLibrary>
+  </PropertyGroup>
+</Project>

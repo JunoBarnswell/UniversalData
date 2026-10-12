@@ -1,0 +1,9 @@
+<Project>
+  <ItemGroup Condition="'$(UniversalDataVsSolution)' == 'true'">
+    <None Include="$(UniversalDataVsNativeLibrary)" Link="ud_data.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" Pack="false" />
+  </ItemGroup>
+  <Target Name="ValidateUniversalDataVsNativeLibrary" BeforeTargets="GetCopyToOutputDirectoryItems;CopyFilesToOutputDirectory" Condition="'$(UniversalDataVsSolution)' == 'true' And '$(DesignTimeBuild)' != 'true'">
+    <Error Condition="'$(Platform)' != 'x64'" Text="UniversalData.sln requires the x64 platform." />
+    <Error Condition="!Exists('$(UniversalDataVsNativeLibrary)')" Text="Missing native SDK: $(UniversalDataVsNativeLibrary). Build UniversalData.Native with the same configuration first." />
+  </Target>
+</Project>

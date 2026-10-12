@@ -1,3 +1,6 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include "../internal.h"
 #include <errno.h>
 #include <time.h>
@@ -28,6 +31,9 @@ FILE *ud_fopen(const char *p, const char *mode) {
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
 FILE *ud_fopen(const char *p, const char *mode) {
     return fopen(p, mode);
 }
@@ -201,20 +207,28 @@ ud_status ud_flush(ud_context *c, FILE *f) {
 ud_status ud_sync_parent(ud_context *c, const char *path) {
 #ifdef _WIN32
     /* Publication uses MoveFileExW(MOVEFILE_WRITE_THROUGH). */
-    (void)c;(void)path;return UD_OK;
+    (void)c;
+    (void)path;
+    return UD_OK;
 #else
-    const char *slash=strrchr(path,'/');
-    char *parent=slash?ud_strdup_n(c,path,slash==path?1:(size_t)(slash-path)):ud_strdup_n(c,".",1);
-    if(!parent) return UD_RESOURCE;
-    int flags=O_RDONLY;
+    const char *slash = strrchr(path, '/');
+    char *parent = slash ? ud_strdup_n(c, path, slash == path ? 1 : (size_t)(slash - path))
+                         : ud_strdup_n(c, ".", 1);
+    if (!parent)
+        return UD_RESOURCE;
+    int flags = O_RDONLY;
 #ifdef O_DIRECTORY
-    flags|=O_DIRECTORY;
+    flags |= O_DIRECTORY;
 #endif
-    int fd=open(parent,flags);ud_free(parent);
-    if(fd<0) return ud_fail(c,UD_IO,"cannot open publication directory");
-    struct stat info;int failed=fstat(fd,&info) || !S_ISDIR(info.st_mode) || fsync(fd);
-    if(close(fd)) failed=1;
-    return failed?ud_fail(c,UD_IO,"publication directory sync failed"):UD_OK;
+    int fd = open(parent, flags);
+    ud_free(parent);
+    if (fd < 0)
+        return ud_fail(c, UD_IO, "cannot open publication directory");
+    struct stat info;
+    int failed = fstat(fd, &info) || !S_ISDIR(info.st_mode) || fsync(fd);
+    if (close(fd))
+        failed = 1;
+    return failed ? ud_fail(c, UD_IO, "publication directory sync failed") : UD_OK;
 #endif
 }
 ud_status ud_publish(ud_context *c, const char *from, const char *to) {
@@ -228,10 +242,10 @@ ud_status ud_publish(ud_context *c, const char *from, const char *to) {
 #else
     /* link() atomically creates a name without replacing an existing generation. */
     if (!link(from, to)) {
-        UD_TRY(ud_sync_parent(c,to));
+        UD_TRY(ud_sync_parent(c, to));
         if (unlink(from))
             return ud_fail(c, UD_IO, "published but temporary unlink failed: %s", from);
-        return ud_sync_parent(c,from);
+        return ud_sync_parent(c, from);
     }
 #endif
     return ud_fail(c, UD_IO, "atomic publish failed or destination exists: %s", to);
@@ -284,10 +298,16 @@ ud_status ud_remove_file(ud_context *c, const char *path) {
 #endif
     return ud_fail(c, UD_IO, "cannot remove owned temporary file: %s", path);
 }
-ud_status ud_reserve_file(ud_context *ctx,const char *path) {
-    FILE *file=ud_fopen(path,"wbx");
-    if(!file) return ud_fail(ctx,errno==EEXIST?UD_BUSY:UD_IO,"cannot reserve an owned temporary file");
-    if(fclose(file)) { ud_remove_file(ctx,path);return UD_IO; }return UD_OK;
+ud_status ud_reserve_file(ud_context *ctx, const char *path) {
+    FILE *file = ud_fopen(path, "wbx");
+    if (!file)
+        return ud_fail(ctx, errno == EEXIST ? UD_BUSY : UD_IO,
+                       "cannot reserve an owned temporary file");
+    if (fclose(file)) {
+        ud_remove_file(ctx, path);
+        return UD_IO;
+    }
+    return UD_OK;
 }
 uint64_t ud_now_ms(void) {
 #ifdef _WIN32
@@ -353,4 +373,113 @@ int64_t ud_tell(FILE *f) {
 #else
     return (int64_t)ftello(f);
 #endif
+}
+
+ud_status ud_path_kind(ud_context *c, const char *path, int *kind) {
+    *kind = 0;
+#ifdef _WIN32
+    wchar_t *p = wide(path);
+    if (!p)
+        return UD_INVALID;
+    DWORD attr = GetFileAttributesW(p), error = GetLastError();
+    free(p);
+    if (attr == INVALID_FILE_ATTRIBUTES)
+        return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND
+                   ? UD_OK
+                   : ud_fail(c, UD_IO, "cannot inspect file resource");
+    *kind = attr & FILE_ATTRIBUTE_REPARSE_POINT ? 3 : attr & FILE_ATTRIBUTE_DIRECTORY ? 2 : 1;
+#else
+    struct stat info;
+    if (lstat(path, &info))
+        return errno == ENOENT ? UD_OK : ud_fail(c, UD_IO, "cannot inspect file resource");
+    *kind = S_ISREG(info.st_mode) ? 1 : S_ISDIR(info.st_mode) ? 2 : 3;
+#endif
+    return UD_OK;
+}
+ud_status ud_path_no_symlinks(ud_context *c, const char *path) {
+    size_t n = strlen(path);
+    char *part = ud_strdup_n(c, path, n);
+    if (!part)
+        return UD_RESOURCE;
+    ud_status s = UD_OK;
+#ifdef _WIN32
+    size_t start = 3;
+#else
+    size_t start = 1;
+#endif
+    for (size_t i = start; !s && i <= n; i++) {
+        if (i < n && path[i] != '/' && path[i] != '\\')
+            continue;
+#ifndef _WIN32
+        if (i < n && path[i] == '\\')
+            continue;
+#endif
+        if (i == start || (i < n && path[i - 1] == '/'))
+            continue;
+        char old = part[i];
+        part[i] = 0;
+        int kind = 0;
+        s = ud_path_kind(c, part, &kind);
+        part[i] = old;
+        if (!s && kind == 3)
+            s = UD_SCHEMA;
+        if (!s && i < n && kind != 2)
+            s = UD_IO;
+    }
+    ud_free(part);
+    return s;
+}
+ud_status ud_open_regular(ud_context *c, const char *path, FILE **out) {
+    *out = NULL;
+#ifdef _WIN32
+    int kind;
+    UD_TRY(ud_path_kind(c, path, &kind));
+    if (kind != 1)
+        return UD_IO;
+    FILE *f = ud_fopen(path, "rb");
+    if (!f)
+        return UD_IO;
+    *out = f;
+#else
+    int fd = open(path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0)
+        return ud_fail(c, UD_IO, "cannot open regular file");
+    struct stat info;
+    if (fstat(fd, &info) || !S_ISREG(info.st_mode)) {
+        close(fd);
+        return UD_SCHEMA;
+    }
+    FILE *f = fdopen(fd, "rb");
+    if (!f) {
+        close(fd);
+        return UD_IO;
+    }
+    *out = f;
+#endif
+    return UD_OK;
+}
+ud_status ud_move_noreplace(ud_context *c, const char *from, const char *to) {
+#ifdef _WIN32
+    wchar_t *a = wide(from), *b = wide(to);
+    BOOL ok = a && b && MoveFileExW(a, b, MOVEFILE_WRITE_THROUGH);
+    DWORD error = GetLastError();
+    free(a);
+    free(b);
+    if (!ok)
+        return error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS ? UD_BUSY : UD_IO;
+#elif defined(__linux__) && defined(SYS_renameat2)
+    if (syscall(SYS_renameat2, AT_FDCWD, from, AT_FDCWD, to, 1))
+        return errno == EEXIST                      ? UD_BUSY
+               : errno == ENOSYS || errno == EINVAL ? UD_UNSUPPORTED
+                                                    : UD_IO;
+#else
+    (void)c;
+    (void)from;
+    (void)to;
+    return UD_UNSUPPORTED;
+#endif
+    ud_status s = ud_sync_parent(c, to);
+    if (!s)
+        s = ud_sync_parent(c, from);
+    return s ? UD_COMMIT_UNKNOWN : UD_OK;
 }

@@ -1,0 +1,1 @@
+status=2 at tests/postgresql_values.c:45: ud_plugin_load(ctx, argv[1], 0, &p)

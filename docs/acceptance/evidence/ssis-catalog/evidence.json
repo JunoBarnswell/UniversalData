@@ -1,0 +1,31 @@
+{
+  "milestone": "embedded-catalog-foundation-3",
+  "date": "2026-10-12",
+  "baseCommit": "072b9db195b281c8433e38fa5a1364baba7f99fa",
+  "sourceManifest": "docs/acceptance/evidence/ssis-catalog/source-manifest.json",
+  "sourceManifestSha256": "1a5c5b4f825076c50266fb8b3977594c7d54210dbca2fb9ce904d8336c93648b",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-catalog/native-ctest.txt",
+      "sha256": "13980af80f6fde98f8e261fdf82f97e19506aeb6343fd0e02a560481ccf48f45",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 23,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-catalog/asan-package-catalog.txt",
+      "sha256": "8a71c0e0c27939b2f0d8215c9882f7d21f6a58e99dce981fd8f14378b224153e",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R 'catalog|package' --output-on-failure",
+      "exitCode": 0,
+      "passed": 5,
+      "failed": 0
+    }
+  ],
+  "limitations": [
+    "Repository foundation only; no Project/Environment runtime binding or deployment activation",
+    "No automatic abandoned staging recovery, deletion/retention or cross-document transactions",
+    "Full execution history/lineage/trace integration outstanding",
+    "Windows not executed"
+  ]
+}

@@ -1,0 +1,56 @@
+-- Install configuration: "Debug"
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/libud_foundation.a
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/libud_columnar.a
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/libud_expression.a
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/libud_compute.a
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/libud_runtime.a
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/libud_plugins.a
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/libud_query.a
+-- Installing: /workspace/UniversalData/build/install-http/lib/libud_package.a
+-- Installing: /workspace/UniversalData/build/install-http/lib/libud_data.so.1.0.0
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/libud_data.so.3
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/libud_data.so
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/UniversalData/plugins/ud_format_csv.so
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/UniversalData/plugins/ud_function_abs.so
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/UniversalData/plugins/ud_connector_sqlite.so
+-- Installing: /workspace/UniversalData/build/install-http/bin/ud_cli
+-- Installing: /workspace/UniversalData/build/install-http/bin/ud_worker
+-- Installing: /workspace/UniversalData/build/install-http/lib/libud_java.so
+-- Set non-toolchain portion of runtime path of "/workspace/UniversalData/build/install-http/lib/libud_java.so" to ""
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/compute.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/connector.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/csv.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/data.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/engine.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/format.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/json.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/memory.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/plugin.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/quality.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/quarantine.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/query.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/regex.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/status.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/component.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/expression.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/catalog.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/project.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/connection_manager.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/package.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/include/ud/execution.h
+-- Up-to-date: /workspace/UniversalData/build/install-http/share/UniversalData/LICENSE
+-- Up-to-date: /workspace/UniversalData/build/install-http/share/UniversalData/NOTICE
+-- Up-to-date: /workspace/UniversalData/build/install-http/share/UniversalData/licenses
+-- Up-to-date: /workspace/UniversalData/build/install-http/share/UniversalData/licenses/Apache-2.0.txt
+-- Up-to-date: /workspace/UniversalData/build/install-http/share/UniversalData/licenses/DuckDB-MIT.txt
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/cmake/UniversalData/UniversalDataTargets.cmake
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/cmake/UniversalData/UniversalDataTargets-debug.cmake
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/cmake/UniversalData/UniversalDataConfig.cmake
+-- Up-to-date: /workspace/UniversalData/build/install-http/lib/cmake/UniversalData/UniversalDataConfigVersion.cmake
+[ 25%] Linking C executable http_static
+[ 50%] Linking C executable http_shared
+[ 75%] Built target http_static
+[100%] Built target http_shared
+HTTP Task: real methods/body/status, resolver/default and network denial, trusted TLS plus CA/hostname rejection, no redirects, GET-only bounded retry/exhaustion, POST no retry, bounded body/headers, local/package timeout, live cancellation/revocation, quota/schema/read-only rejection, actual request effect/crash/Unknown and completed resume passed
+HTTP Task: real methods/body/status, resolver/default and network denial, trusted TLS plus CA/hostname rejection, no redirects, GET-only bounded retry/exhaustion, POST no retry, bounded body/headers, local/package timeout, live cancellation/revocation, quota/schema/read-only rejection, actual request effect/crash/Unknown and completed resume passed

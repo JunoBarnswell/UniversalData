@@ -1,31 +1,23 @@
-# 交付与验证记录
+# Windows 集中验收
 
-## 0.2.0 当前状态
+本轮在统一架构及核心源码完成后集中编译和验收；失败后只重跑受影响范围，修复涉及共享运行边界时执行完整门禁。Linux 按用户最新决定免测，核心算子和 POSIX 实现继续支持。
 
-全阶段运行验收尚未执行。开发阶段只进行 C 语法解析、公共契约检查、Python/JSON/XML 解析及 diff 检查；这些不证明编译、事务、内存、性能或跨语言正确性。新需求、用例和门禁见 [验收基线](acceptance/README.md)。
+| 门禁 | 真实覆盖 |
+|---|---|
+| MSVC Debug / JNI | C17、完整 ABI 4、零编译告警 |
+| Native CTest | 31 项实际行为；平台进程/文件、类型、表达式、队列、多端口、当前插件、Catalog/Project/Child/History |
+| MSVC AddressSanitizer | 同一 31 项；地址安全。MSVC 本轮没有 UBSan/LSan/TSan 结果 |
+| Ownership / quota | allocator fault sweep、context allocations 清零、writer fence、CRC/hash 错误、限额与取消清理 |
+| Concurrent Activation | 到达屏障证明实际并发、局部超时与兄弟隔离、串行作用域写入、事件顺序、共享 Journal |
+| Buffer / Compute | 实际外存多轮 Sort、Window、Aggregate、Join 值一致性、完整 schema/lineage、错误目标提交 |
+| SQLite / Recovery | 真实事务、rollback、receipt/upsert/幂等、源/Package 改变、journal 损坏/缺口、实际进程终止和 CommitUnknown |
+| C/.NET/Java | 同一 Package、Project/child/参数/10003 行、指标；Decimal/UTC/UTF8/NUL/nested/NaN/Infinity/NULL/wire 逐字节一致 |
+| Installed consumers | 仓库外 CMake install 消费、真实 nupkg 消费、独立 Maven repository/JAR 和 JNI 消费 |
+| Release distributable | `packaging/package.ps1` 生成版本/RID SDK 和 ZIP；Release Native CTest；逐文件 SHA256 校验 |
+| ZIP consumers | 仓库外解压后链接动态 `UniversalData::Data`；ABI/version、资源/并发、SQLite、实际 Pipeline、三语言一致性；NuGet 自带 DLL 且没有 SDK loader PATH |
 
-下文为基础提交的历史说明；原始外部日志未在当前工作区提供，不能转记为 0.2.0 验收证据。
+命令与源码 fingerprint 见 `acceptance/gates.json`，结果日志只保留有限摘要；长日志位于本机临时目录。构建/测试退出码保留。`scripts/static_check.py` 只做契约/元数据/JSON/XML/删除边界检查，不能代替行为证据。
 
-## 0.1.0 历史记录
+最新完整状态见 `acceptance/ssis-status.json`。PostgreSQL、可选 HTTP 和协议/高级扩展没有本轮系统验收；跨任意目标的全局事务、BI planner、CDC 等不在已完成能力内。
 
-2026-10-12：按用户更新后的授权，在连贯实现完成后统一编译与测试。
-
-## 本机已通过
-
-- Windows x64 / MSVC：完整原生构建（含 JNI、SQLite 3.49.1、ODBC、DuckDB 1.4.4），最后一次增量编译零警告。
-- CTest 9/9：基础内存、列式/Arrow、计算/查询、外存排序、CSV 恢复、插件生命周期、SQLite 事务、DuckDB/Parquet 往返、Worker 协议。
-- CSV 恢复套件包含四处真实子进程终止、重启、新文件、输入变更/缺失、检查点损坏、计划变更、双写锁、目录别名、错误 CSV、溢出、取消及内存超限。
-- Foundation/Columnar 独立构建、2/2 测试、安装导出，以及独立 CMake 消费程序运行；不需要 ETL、Java、.NET 或数据库依赖。
-- .NET 8 包装及消费者构建、Java 17/Maven/JNI 构建；两个消费者实际处理中文/跨行 CSV，并验证已提交快照与重启结果一致。
-- 外部插件仅通过安装后的 Contracts 构建，并被宿主实际加载执行。
-- CPack Native ZIP 生成；静态公共函数实现、依赖边界、JSON/XML 和许可检查通过。
-
-## 待远程或外部环境验收
-
-- Linux 构建、完整 CTest、三语言消费与 ASan/UBSan：由本分支 GitHub Actions 验证，结果以实际 CI 运行记录为准。
-- ODBC 原生编译已通过；真实驱动、DSN、事务失败路径尚未验收，需要测试数据库环境。
-- 断电耐久性、非本地文件系统语义尚未验收。
-
-详细本机日志保留在仓库外的临时目录 `UniversalData-validation-20261012`，不包含凭据或连接字符串。
-
-已明确的功能边界：没有外存聚合/Join、事件时间窗口、优化器、并行调度、Worker 权限沙箱及语言层全部 C API 包装。这些项不是占位实现，不记为已完成。
+先前的临时目录安装消费记录只证明当时的核心行为。当前产物交付还必须通过 `distributable-bundle` 门禁：磁盘上 ZIP、SDK、JNI、NuGet/JAR 和 manifest 均存在且 digest 匹配，仓库外独立消费成功。`scripts/release_guard.py` 同时检查这些实际文件，无法用仅有测试摘要代替产物。

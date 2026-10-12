@@ -1,0 +1,74 @@
+Internal ctest changing into directory: /workspace/UniversalData/build/abi3
+Test project /workspace/UniversalData/build/abi3
+      Start  1: foundation
+ 1/34 Test  #1: foundation .......................   Passed    0.00 sec
+      Start  2: json_document
+ 2/34 Test  #2: json_document ....................   Passed    0.01 sec
+      Start  3: columnar
+ 3/34 Test  #3: columnar .........................   Passed    0.00 sec
+      Start  4: extended_scalar_types
+ 4/34 Test  #4: extended_scalar_types ............   Passed    0.00 sec
+      Start  5: json_nested_format
+ 5/34 Test  #5: json_nested_format ...............   Passed    0.01 sec
+      Start  6: typed_external_operators
+ 6/34 Test  #6: typed_external_operators .........   Passed    1.39 sec
+      Start  7: compute_query
+ 7/34 Test  #7: compute_query ....................   Passed    0.00 sec
+      Start  8: nested_columnar_arrow
+ 8/34 Test  #8: nested_columnar_arrow ............   Passed    0.00 sec
+      Start  9: external_sort
+ 9/34 Test  #9: external_sort ....................   Passed    0.06 sec
+      Start 10: regex_nfa
+10/34 Test #10: regex_nfa ........................   Passed    0.00 sec
+      Start 11: field_mapping
+11/34 Test #11: field_mapping ....................   Passed    0.00 sec
+      Start 12: quality_acknowledgment
+12/34 Test #12: quality_acknowledgment ...........   Passed    0.00 sec
+      Start 13: durable_quarantine
+13/34 Test #13: durable_quarantine ...............   Passed    0.04 sec
+      Start 14: plugin_lifecycle
+14/34 Test #14: plugin_lifecycle .................   Passed    0.00 sec
+      Start 15: sqlite_transaction
+15/34 Test #15: sqlite_transaction ...............   Passed    0.00 sec
+      Start 16: sqlite_receipts_upsert
+16/34 Test #16: sqlite_receipts_upsert ...........   Passed    0.17 sec
+      Start 17: worker_protocol
+17/34 Test #17: worker_protocol ..................   Passed    0.12 sec
+      Start 18: architecture_foundation
+18/34 Test #18: architecture_foundation ..........   Passed    0.00 sec
+      Start 19: shared_value_semantics
+19/34 Test #19: shared_value_semantics ...........   Passed    0.01 sec
+      Start 20: package_execution
+20/34 Test #20: package_execution ................   Passed    0.09 sec
+      Start 21: value_semantics_pipeline
+21/34 Test #21: value_semantics_pipeline .........   Passed    0.33 sec
+      Start 22: package_failure_boundaries
+22/34 Test #22: package_failure_boundaries .......   Passed    0.20 sec
+      Start 23: package_sql_integration
+23/34 Test #23: package_sql_integration ..........   Passed    0.07 sec
+      Start 24: package_durable_recovery
+24/34 Test #24: package_durable_recovery .........   Passed    0.44 sec
+      Start 25: catalog_immutable_store
+25/34 Test #25: catalog_immutable_store ..........   Passed    0.13 sec
+      Start 26: project_environment_deployment
+26/34 Test #26: project_environment_deployment ...   Passed    0.13 sec
+      Start 27: child_package_execution
+27/34 Test #27: child_package_execution ..........   Passed    0.40 sec
+      Start 28: catalog_execution_history
+28/34 Test #28: catalog_execution_history ........   Passed    0.07 sec
+      Start 29: filesystem_task_execution
+29/34 Test #29: filesystem_task_execution ........   Passed    0.53 sec
+      Start 30: process_task_execution
+30/34 Test #30: process_task_execution ...........   Passed    3.52 sec
+      Start 31: http_task_execution
+31/34 Test #31: http_task_execution ..............   Passed    3.76 sec
+      Start 32: profile_statistics_kernel
+32/34 Test #32: profile_statistics_kernel ........   Passed    0.00 sec
+      Start 33: profile_task_execution
+33/34 Test #33: profile_task_execution ...........   Passed    0.74 sec
+      Start 34: native_custom_task
+34/34 Test #34: native_custom_task ...............   Passed    0.38 sec
+
+100% tests passed, 0 tests failed out of 34
+
+Total Test time (real) =  12.64 sec

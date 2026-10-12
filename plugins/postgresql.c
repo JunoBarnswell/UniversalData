@@ -37,7 +37,7 @@ static ud_status initialize(const ud_host_api *host,const char *config,uint32_t 
     char *copy=plugin_string(host,config,length);
     if(!copy) { host->deallocate(p);return UD_INVALID; }
     const char *keys[]={"dbname","connect_timeout","application_name",NULL};
-    const char *values[]={copy,"10","UniversalDataSDK/0.2.0",NULL};
+    const char *values[]={copy,"10","UniversalDataSDK/1.0.0",NULL};
     p->db=PQconnectdbParams(keys,values,1);host->deallocate(copy);
     ud_status s=!p->db ? UD_RESOURCE : PQstatus(p->db)!=CONNECTION_OK ? UD_IO : UD_OK;
     if(!s && PQsetClientEncoding(p->db,"UTF8")) s=UD_SCHEMA;
@@ -326,19 +326,16 @@ static ud_status write_batch(void *state,ud_string tenant,const ud_write_options
     } else if(command(p,"ROLLBACK")!=UD_OK) return h->report(h->context,UD_COMMIT_UNKNOWN,"rollback outcome is unknown; receipt verification is required");
     return s;
 }
-static ud_status execute(void *state,int32_t operation,const ud_batch *input,const char *argument,uint32_t length,ud_batch **out) {
-    (void)state;(void)operation;(void)input;(void)argument;(void)length;*out=NULL;return UD_UNSUPPORTED;
-}
-static void destroy(void *state) {
-    postgres_state *p=state;if(!p) return;
-    p->host.batch_destroy(p->schema);if(p->cancel) PQfreeCancel(p->cancel);PQfinish(p->db);p->host.deallocate(p);
+static ud_status execute_sql(void *state,ud_string statement) {
+    postgres_state *p=state;char *sql=plugin_string(&p->host,statement.data,statement.length);
+    if(!sql) return UD_RESOURCE;ud_status s=command(p,sql);p->host.deallocate(sql);return s;
 }
 static const ud_connector_api connector={sizeof(connector),UD_PLUGIN_ABI,
-    UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_SNAPSHOT,
-    test_connection,discover,open_read,next_read,close_read,write_batch,receipt,cancel_operation};
+    UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_SNAPSHOT|UD_CONNECT_EXECUTE_SQL,
+    test_connection,discover,open_read,next_read,close_read,write_batch,receipt,cancel_operation,execute_sql};
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version,ud_plugin_api *out) {
-    if(version!=UD_PLUGIN_ABI || !out || out->struct_size<sizeof(*out)) return UD_INCOMPATIBLE;
-    *out=(ud_plugin_api){sizeof(*out),UD_PLUGIN_ABI,"org.universaldata.connector.postgresql","0.2.0",
-        UD_PLUGIN_SOURCE|UD_PLUGIN_SINK,UD_CAP_TRANSACTION,initialize,execute,destroy,plugin_shutdown,&connector};
+    if(version!=UD_PLUGIN_ABI || !out || out->struct_size!=sizeof(*out)) return UD_INCOMPATIBLE;
+    *out=(ud_plugin_api){sizeof(*out),UD_PLUGIN_ABI,"org.universaldata.connector.postgresql","1.0.0",
+        UD_PLUGIN_CONNECTOR,UD_CAP_TRANSACTION,initialize,destroy,plugin_shutdown,&connector,NULL};
     return UD_OK;
 }

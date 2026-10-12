@@ -1,0 +1,10 @@
+{
+  "command": "packaging/package.ps1 -BuildDirectory build/abi4-windows; CMake Release build/install, NuGet native asset pack, Maven package",
+  "exitCode": 0,
+  "configuration": "Release",
+  "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
+  "warnings": 0,
+  "compiler": "MSVC 19.51 x64 C17; JNI JDK 17",
+  "logs": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\delivery-final-verified",
+  "manifest": "artifacts/1.0.0/win-x64/manifest.json"
+}

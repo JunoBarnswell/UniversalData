@@ -1,7 +1,10 @@
+using System.Text.Json;
 using UniversalData;
-if (args.Length != 2) throw new ArgumentException("input-directory state-directory required");
-const string schema = "ud-schema 2\nteam utf8 required\namount int64 nullable\n";
-const string commands = "ud-plan 2\nfilter amount ge 0\nproject team amount\ngroup team\nsum amount total\ncount * rows\n";
-using var job = new CsvJob(args[0], args[1], schema, commands);
-job.Poll();
-Console.WriteLine(CsvJob.LatestSnapshot(args[1]));
+
+if (args.Length != 4) throw new ArgumentException("package.json parameters.json execution-id authorized-root");
+string root = Path.GetFullPath(args[3]).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+using var package = new Package(File.ReadAllText(args[0]));
+using var execution = package.CreateExecution("fixture", (_, resource, _) => Path.IsPathFullyQualified(resource) && Path.GetFullPath(resource).StartsWith(root, StringComparison.Ordinal), File.ReadAllText(args[1]), args[2]);
+execution.Start(); while (!execution.Wait(100)) { }
+var m = execution.Metrics;
+Console.WriteLine(JsonSerializer.Serialize(new { state = (int)m.State, result = (int)m.Result, inputRows = m.InputRows, outputRows = m.OutputRows, rejectedRows = m.RejectedRows, completedTasks = m.CompletedTasks }));

@@ -1,0 +1,14 @@
+  Determining projects to restore...
+  Restored /workspace/UniversalData/bindings/dotnet/UniversalData/UniversalData.csproj (in 77 ms).
+  UniversalData -> /workspace/UniversalData/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  The package UniversalData.1.0.0 is missing a readme. Go to https://aka.ms/nuget/authoring-best-practices/readme to learn why package readmes are important.
+  Successfully created package '/workspace/UniversalData/build/http-nuget/UniversalData.1.0.0.nupkg'.
+  Determining projects to restore...
+  Restored /workspace/UniversalData/examples/dotnet-http/HttpConsumer.csproj (in 443 ms).
+  HttpConsumer -> /workspace/UniversalData/examples/dotnet-http/bin/Debug/net8.0/HttpConsumer.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:01.12

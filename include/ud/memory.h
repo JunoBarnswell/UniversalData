@@ -4,7 +4,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef struct ud_string { const char *data; uint32_t length; } ud_string;
+typedef struct ud_string {
+    const char *data;
+    uint32_t length;
+} ud_string;
 typedef void *(*ud_allocate_fn)(void *user, size_t bytes);
 typedef void (*ud_deallocate_fn)(void *user, void *ptr);
 typedef struct ud_context_options {

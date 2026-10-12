@@ -1,4 +1,4 @@
-set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/columnar.c ${CMAKE_CURRENT_SOURCE_DIR}/src/arrow.c ${CMAKE_CURRENT_SOURCE_DIR}/src/wire.c ${CMAKE_CURRENT_SOURCE_DIR}/src/csv.c ${CMAKE_CURRENT_SOURCE_DIR}/src/types.c ${CMAKE_CURRENT_SOURCE_DIR}/src/json.c ${CMAKE_CURRENT_SOURCE_DIR}/src/schema_json.c)
+set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/schema.c ${CMAKE_CURRENT_SOURCE_DIR}/src/numeric.c ${CMAKE_CURRENT_SOURCE_DIR}/src/semantics.c ${CMAKE_CURRENT_SOURCE_DIR}/src/columnar.c ${CMAKE_CURRENT_SOURCE_DIR}/src/arrow.c ${CMAKE_CURRENT_SOURCE_DIR}/src/wire.c ${CMAKE_CURRENT_SOURCE_DIR}/src/csv.c ${CMAKE_CURRENT_SOURCE_DIR}/src/types.c ${CMAKE_CURRENT_SOURCE_DIR}/src/json.c ${CMAKE_CURRENT_SOURCE_DIR}/src/schema_json.c)
 ud_component(ud_columnar Columnar ${src})
 target_link_libraries(ud_columnar PUBLIC ud_foundation)
 if(NOT WIN32)

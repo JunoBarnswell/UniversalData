@@ -1,0 +1,382 @@
+-- The C compiler identification is GNU 14.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Found Python3: /workspace/.universaldata-tools/bin/python3.12 (found version "3.12.14") found components: Interpreter
+-- Configuring done (1.0s)
+-- Generating done (0.1s)
+-- Build files have been written to: /workspace/UniversalData/build/http-off
+[  1%] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/foundation.c.o
+[  2%] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/platform.c.o
+[  3%] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/json.c.o
+[  4%] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/digest.c.o
+/workspace/UniversalData/components/foundation/src/platform.c: In function ‘add_name’:
+/workspace/UniversalData/components/foundation/src/platform.c:109:46: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  109 |     if (*n == UINT32_MAX || (size_t)(*n + 1) > SIZE_MAX / sizeof(char *))
+      |                                              ^
+/workspace/UniversalData/components/foundation/src/json.c: In function ‘add_member’:
+/workspace/UniversalData/components/foundation/src/json.c:82:52: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   82 |         if(capacity<v->capacity || (size_t)capacity>SIZE_MAX/sizeof(*v->members)) return UD_OVERFLOW;
+      |                                                    ^
+[  6%] Linking C static library libud_foundation.a
+[  6%] Built target ud_foundation
+[  7%] Building C object tests/CMakeFiles/test_foundation.dir/foundation.c.o
+[  8%] Building C object tests/CMakeFiles/test_json.dir/json.c.o
+[  9%] Building C object components/data/CMakeFiles/ud_columnar.dir/src/semantics.c.o
+[ 10%] Building C object components/data/CMakeFiles/ud_columnar.dir/src/columnar.c.o
+[ 12%] Linking C executable test_foundation
+[ 13%] Linking C executable test_json
+[ 13%] Built target test_foundation
+[ 14%] Building C object components/data/CMakeFiles/ud_columnar.dir/src/arrow.c.o
+[ 14%] Built target test_json
+/workspace/UniversalData/components/data/src/columnar.c: In function ‘create_depth’:
+/workspace/UniversalData/components/data/src/columnar.c:11:25: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   11 |         (size_t)columns > SIZE_MAX / sizeof(ud_column) || (size_t)capacity > SIZE_MAX / sizeof(void *) - 1)
+      |                         ^
+/workspace/UniversalData/components/data/src/columnar.c:11:76: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   11 |         (size_t)columns > SIZE_MAX / sizeof(ud_column) || (size_t)capacity > SIZE_MAX / sizeof(void *) - 1)
+      |                                                                            ^
+[ 15%] Building C object components/data/CMakeFiles/ud_columnar.dir/src/wire.c.o
+/workspace/UniversalData/components/data/src/columnar.c: In function ‘append_core’:
+/workspace/UniversalData/components/data/src/columnar.c:287:31: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  287 |             if ((size_t)count > SIZE_MAX / sizeof(ud_value)) s = UD_RESOURCE;
+      |                               ^
+/workspace/UniversalData/components/data/src/columnar.c: In function ‘ud_copy_value’:
+/workspace/UniversalData/components/data/src/columnar.c:368:56: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  368 |             if (!v->children || (size_t)v->child_count > SIZE_MAX / sizeof(ud_value)) return UD_INVALID;
+      |                                                        ^
+/workspace/UniversalData/components/data/src/arrow.c: In function ‘export_column’:
+/workspace/UniversalData/components/data/src/arrow.c:50:38: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   50 |         if (c->field.timezone_length > SIZE_MAX - 5) return UD_OVERFLOW;
+      |                                      ^
+[ 16%] Building C object components/data/CMakeFiles/ud_columnar.dir/src/csv.c.o
+/workspace/UniversalData/components/data/src/arrow.c: In function ‘import_value’:
+/workspace/UniversalData/components/data/src/arrow.c:235:27: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  235 |         if ((size_t)count > SIZE_MAX / sizeof(ud_value)) return UD_OVERFLOW;
+      |                           ^
+[ 18%] Building C object components/data/CMakeFiles/ud_columnar.dir/src/types.c.o
+/workspace/UniversalData/components/data/src/types.c: In function ‘ud_value_format’:
+/workspace/UniversalData/components/data/src/types.c:236:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  236 |         if(count<0 || count>=(int)sizeof(text)) return UD_OVERFLOW;n=(uint32_t)count;
+      |         ^~
+/workspace/UniversalData/components/data/src/types.c:236:68: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  236 |         if(count<0 || count>=(int)sizeof(text)) return UD_OVERFLOW;n=(uint32_t)count;
+      |                                                                    ^
+[ 19%] Building C object components/data/CMakeFiles/ud_columnar.dir/src/json.c.o
+/workspace/UniversalData/components/data/src/types.c: In function ‘integer_to_float’:
+/workspace/UniversalData/components/data/src/types.c:291:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  291 |     if(up) whole++;*out=ldexp((double)whole,(int)shift);if(negative) *out=-*out;return UD_OK;
+      |     ^~
+/workspace/UniversalData/components/data/src/types.c:291:20: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  291 |     if(up) whole++;*out=ldexp((double)whole,(int)shift);if(negative) *out=-*out;return UD_OK;
+      |                    ^
+/workspace/UniversalData/components/data/src/json.c: In function ‘parse_value’:
+/workspace/UniversalData/components/data/src/json.c:49:34: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   49 |         if(count && (size_t)count>SIZE_MAX/sizeof(ud_value)) return UD_OVERFLOW;
+      |                                  ^
+/workspace/UniversalData/components/data/src/json.c: In function ‘ud_json_writer_append’:
+/workspace/UniversalData/components/data/src/json.c:255:13: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  255 |             if(j) s=ud_bytes_put(&line,",",1);ud_field *f=&batch->column[j].field;ud_value value;
+      |             ^~
+/workspace/UniversalData/components/data/src/json.c:255:47: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  255 |             if(j) s=ud_bytes_put(&line,",",1);ud_field *f=&batch->column[j].field;ud_value value;
+      |                                               ^~~~~~~~
+/workspace/UniversalData/components/data/src/json.c:256:13: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  256 |             if(!s) s=ud_json_quote(&line,f->name,f->name_length);if(!s) s=ud_bytes_put(&line,":",1);
+      |             ^~
+/workspace/UniversalData/components/data/src/json.c:256:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  256 |             if(!s) s=ud_json_quote(&line,f->name,f->name_length);if(!s) s=ud_bytes_put(&line,":",1);
+      |                                                                  ^~
+/workspace/UniversalData/components/data/src/json.c:257:13: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  257 |             if(!s) s=ud_batch_get(batch,row,j,&value);if(!s) s=emit_value(&line,f,&value,0);
+      |             ^~
+/workspace/UniversalData/components/data/src/json.c:257:55: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  257 |             if(!s) s=ud_batch_get(batch,row,j,&value);if(!s) s=emit_value(&line,f,&value,0);
+      |                                                       ^~
+/workspace/UniversalData/components/data/src/json.c:265:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  265 |     if(s) writer->failed=s;ud_bytes_clear(&line);return s;
+      |     ^~
+/workspace/UniversalData/components/data/src/json.c:265:28: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  265 |     if(s) writer->failed=s;ud_bytes_clear(&line);return s;
+      |                            ^~~~~~~~~~~~~~
+[ 20%] Building C object components/data/CMakeFiles/ud_columnar.dir/src/schema_json.c.o
+/workspace/UniversalData/components/data/src/schema_json.c: In function ‘integer’:
+/workspace/UniversalData/components/data/src/schema_json.c:24:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   24 |     if(value.integer<INT32_MIN || value.integer>INT32_MAX) return UD_OVERFLOW;*out=(int32_t)value.integer;return UD_OK;
+      |     ^~
+/workspace/UniversalData/components/data/src/schema_json.c:24:79: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   24 |     if(value.integer<INT32_MIN || value.integer>INT32_MAX) return UD_OVERFLOW;*out=(int32_t)value.integer;return UD_OK;
+      |                                                                               ^
+/workspace/UniversalData/components/data/src/schema_json.c: In function ‘ud_schema_from_json’:
+/workspace/UniversalData/components/data/src/schema_json.c:63:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   63 |     if(!s) s=integer(ctx,member(doc,"version"),&version);if(!s && version!=UD_CONFIG_VERSION) s=UD_INCOMPATIBLE;
+      |     ^~
+/workspace/UniversalData/components/data/src/schema_json.c:63:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   63 |     if(!s) s=integer(ctx,member(doc,"version"),&version);if(!s && version!=UD_CONFIG_VERSION) s=UD_INCOMPATIBLE;
+      |                                                          ^~
+/workspace/UniversalData/components/data/src/schema_json.c: In function ‘ud_schema_to_json’:
+/workspace/UniversalData/components/data/src/schema_json.c:90:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   90 |     if(!s) s=emit_fields(&bytes,fields,schema->columns);if(!s) s=ud_bytes_put(&bytes,"}",1);
+      |     ^~
+/workspace/UniversalData/components/data/src/schema_json.c:90:57: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   90 |     if(!s) s=emit_fields(&bytes,fields,schema->columns);if(!s) s=ud_bytes_put(&bytes,"}",1);
+      |                                                         ^~
+[ 21%] Linking C static library libud_columnar.a
+[ 21%] Built target ud_columnar
+[ 22%] Building C object components/expression/CMakeFiles/ud_expression.dir/src/expression.c.o
+[ 24%] Building C object components/compute/CMakeFiles/ud_compute.dir/src/collection.c.o
+[ 25%] Building C object components/contracts/CMakeFiles/ud_plugins.dir/src/plugin.c.o
+[ 26%] Building C object components/execution/CMakeFiles/ud_runtime.dir/src/quarantine.c.o
+/workspace/UniversalData/components/execution/src/quarantine.c: In function ‘envelope’:
+/workspace/UniversalData/components/execution/src/quarantine.c:72:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   72 |     if(!status) status=ud_bytes_put(bytes,wire,(size_t)length);ud_free(wire);
+      |     ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:72:64: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   72 |     if(!status) status=ud_bytes_put(bytes,wire,(size_t)length);ud_free(wire);
+      |                                                                ^~~~~~~
+/workspace/UniversalData/components/execution/src/quarantine.c: In function ‘load’:
+/workspace/UniversalData/components/execution/src/quarantine.c:84:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   84 |     if(fclose(f)) return UD_IO;return ud_read_file(s->ctx,path,bytes);
+      |     ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:84:32: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   84 |     if(fclose(f)) return UD_IO;return ud_read_file(s->ctx,path,bytes);
+      |                                ^~~~~~
+/workspace/UniversalData/components/execution/src/quarantine.c: In function ‘ud_quarantine_read’:
+/workspace/UniversalData/components/execution/src/quarantine.c:122:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  122 |     if(!status) status=load(s,path,&bytes);ud_free(path);
+      |     ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:122:44: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  122 |     if(!status) status=load(s,path,&bytes);ud_free(path);
+      |                                            ^~~~~~~
+/workspace/UniversalData/components/execution/src/quarantine.c:131:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  131 |     if(!status) status=ud_get_u64(&bytes,&version);if(!status && version!=UD_CHECKPOINT_VERSION) status=UD_INCOMPATIBLE;
+      |     ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:131:52: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  131 |     if(!status) status=ud_get_u64(&bytes,&version);if(!status && version!=UD_CHECKPOINT_VERSION) status=UD_INCOMPATIBLE;
+      |                                                    ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:132:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  132 |     if(!status) status=ud_get_string(&bytes,&tenant);if(!status) status=ud_get_string(&bytes,&job);
+      |     ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:132:54: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  132 |     if(!status) status=ud_get_string(&bytes,&tenant);if(!status) status=ud_get_string(&bytes,&job);
+      |                                                      ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:133:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  133 |     if(!status) status=ud_get_string(&bytes,&batch_id);if(!status) status=ud_get_string(&bytes,&source);
+      |     ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:133:56: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  133 |     if(!status) status=ud_get_string(&bytes,&batch_id);if(!status) status=ud_get_string(&bytes,&source);
+      |                                                        ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:136:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  136 |     if(!status) status=ud_bytes_get(&bytes,digest,32);if(!status && memcmp(digest,s->plan,32)) status=UD_INCOMPATIBLE;
+      |     ^~
+/workspace/UniversalData/components/execution/src/quarantine.c:136:55: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  136 |     if(!status) status=ud_bytes_get(&bytes,digest,32);if(!status && memcmp(digest,s->plan,32)) status=UD_INCOMPATIBLE;
+      |                                                       ^~
+[ 27%] Building C object components/execution/CMakeFiles/ud_runtime.dir/src/state.c.o
+[ 28%] Building C object components/execution/CMakeFiles/ud_runtime.dir/src/runtime.c.o
+[ 30%] Linking C static library libud_runtime.a
+[ 31%] Building C object components/compute/CMakeFiles/ud_compute.dir/src/compute.c.o
+[ 32%] Linking C static library libud_expression.a
+[ 32%] Built target ud_runtime
+/workspace/UniversalData/components/compute/src/compute.c: In function ‘output_fields’:
+/workspace/UniversalData/components/compute/src/compute.c:562:24: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+  562 |                        a->kind == 0 ? UD_INT64 : p->fields[a->column].type, a->kind != 0};
+      |                        ^
+In file included from /workspace/UniversalData/include/ud/compute.h:3,
+                 from /workspace/UniversalData/components/compute/src/../internal.h:3,
+                 from /workspace/UniversalData/components/compute/src/compute.c:1:
+/workspace/UniversalData/include/ud/data.h:24:13: note: ‘precision’ declared here
+   24 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+[ 32%] Built target ud_expression
+[ 33%] Building C object tests/CMakeFiles/test_columnar.dir/columnar.c.o
+[ 34%] Building C object components/contracts/CMakeFiles/ud_plugins.dir/src/registry.c.o
+[ 36%] Building C object tests/CMakeFiles/test_types.dir/types.c.o
+/workspace/UniversalData/tests/columnar.c: In function ‘main’:
+/workspace/UniversalData/tests/columnar.c:20:5: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+   20 |     ud_field fields[] = {{"id", 2, UD_INT64, 0}, {"text", 4, UD_UTF8, 1}, {"flag", 4, UD_BOOL, 0}};
+      |     ^~~~~~~~
+In file included from /workspace/UniversalData/tests/columnar.c:2:
+/workspace/UniversalData/include/ud/data.h:24:13: note: ‘precision’ declared here
+   24 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+/workspace/UniversalData/tests/columnar.c:20:5: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+   20 |     ud_field fields[] = {{"id", 2, UD_INT64, 0}, {"text", 4, UD_UTF8, 1}, {"flag", 4, UD_BOOL, 0}};
+      |     ^~~~~~~~
+/workspace/UniversalData/include/ud/data.h:24:13: note: ‘precision’ declared here
+   24 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+/workspace/UniversalData/tests/columnar.c:20:5: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+   20 |     ud_field fields[] = {{"id", 2, UD_INT64, 0}, {"text", 4, UD_UTF8, 1}, {"flag", 4, UD_BOOL, 0}};
+      |     ^~~~~~~~
+/workspace/UniversalData/include/ud/data.h:24:13: note: ‘precision’ declared here
+   24 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+[ 37%] Building C object components/compute/CMakeFiles/ud_compute.dir/src/quality.c.o
+[ 38%] Linking C executable test_columnar
+[ 39%] Linking C static library libud_plugins.a
+[ 39%] Built target test_columnar
+[ 39%] Built target ud_plugins
+[ 40%] Linking C executable test_types
+[ 42%] Building C object components/compute/CMakeFiles/ud_compute.dir/src/mapping.c.o
+[ 43%] Building C object tests/CMakeFiles/test_format.dir/format.c.o
+[ 43%] Built target test_types
+[ 44%] Linking C executable test_format
+[ 45%] Building C object components/compute/CMakeFiles/ud_compute.dir/src/regex.c.o
+[ 46%] Building C object tests/CMakeFiles/test_architecture_foundation.dir/architecture_foundation.c.o
+[ 46%] Built target test_format
+[ 48%] Linking C executable test_architecture_foundation
+[ 49%] Building C object tests/CMakeFiles/typed_data_runner.dir/typed_data_runner.c.o
+[ 49%] Built target test_architecture_foundation
+[ 50%] Linking C executable typed_data_runner
+/workspace/UniversalData/components/compute/src/regex.c: In function ‘next_cp’:
+/workspace/UniversalData/components/compute/src/regex.c:28:5: warning: this ‘while’ clause does not guard... [-Wmisleading-indentation]
+   28 |     while(n--) cp=(cp<<6)|((unsigned char)text[(*pos)++]&63);return cp;
+      |     ^~~~~
+/workspace/UniversalData/components/compute/src/regex.c:28:62: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘while’
+   28 |     while(n--) cp=(cp<<6)|((unsigned char)text[(*pos)++]&63);return cp;
+      |                                                              ^~~~~~
+/workspace/UniversalData/components/compute/src/regex.c: In function ‘escaped’:
+/workspace/UniversalData/components/compute/src/regex.c:51:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   51 |     if(c=='n') return '\n';if(c=='r') return '\r';if(c=='t') return '\t';if(c=='f') return '\f';if(c=='v') return '\v';
+      |     ^~
+/workspace/UniversalData/components/compute/src/regex.c:51:28: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   51 |     if(c=='n') return '\n';if(c=='r') return '\r';if(c=='t') return '\t';if(c=='f') return '\f';if(c=='v') return '\v';
+      |                            ^~
+/workspace/UniversalData/components/compute/src/regex.c: In function ‘atom’:
+/workspace/UniversalData/components/compute/src/regex.c:69:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   69 |     if(at<0) return at;rx_node *n=p->nodes+at;
+      |     ^~
+/workspace/UniversalData/components/compute/src/regex.c:69:24: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   69 |     if(at<0) return at;rx_node *n=p->nodes+at;
+      |                        ^~~~~~~
+/workspace/UniversalData/components/compute/src/regex.c: In function ‘compile_ast’:
+/workspace/UniversalData/components/compute/src/regex.c:161:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  161 |     if(!s) r->start=result;ud_free(stack);return s;
+      |     ^~
+/workspace/UniversalData/components/compute/src/regex.c:161:28: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  161 |     if(!s) r->start=result;ud_free(stack);return s;
+      |                            ^~~~~~~
+/workspace/UniversalData/components/compute/src/regex.c: In function ‘ud_regex_compile’:
+/workspace/UniversalData/components/compute/src/regex.c:168:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  168 |     if(length>4096) return UD_RESOURCE;if(!ud_utf8_valid(text,length)) return UD_PARSE;
+      |     ^~
+/workspace/UniversalData/components/compute/src/regex.c:168:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  168 |     if(length>4096) return UD_RESOURCE;if(!ud_utf8_valid(text,length)) return UD_PARSE;
+      |                                        ^~
+[ 50%] Built target typed_data_runner
+[ 51%] Linking C static library libud_compute.a
+[ 51%] Built target ud_compute
+[ 53%] Building C object tests/CMakeFiles/test_regex.dir/regex.c.o
+[ 54%] Building C object tests/CMakeFiles/test_quality.dir/quality.c.o
+[ 55%] Building C object tests/CMakeFiles/test_mapping.dir/mapping.c.o
+[ 56%] Building C object engines/package/CMakeFiles/ud_package.dir/child.c.o
+[ 57%] Linking C executable test_mapping
+[ 59%] Building C object engines/package/CMakeFiles/ud_package.dir/project.c.o
+[ 60%] Linking C executable test_quality
+[ 61%] Linking C executable test_regex
+[ 62%] Building C object engines/package/CMakeFiles/ud_package.dir/model.c.o
+[ 62%] Built target test_mapping
+[ 63%] Building C object tests/CMakeFiles/test_quarantine.dir/quarantine.c.o
+[ 63%] Built target test_quality
+[ 63%] Built target test_regex
+[ 65%] Building C object engines/package/CMakeFiles/ud_package.dir/runtime.c.o
+[ 66%] Building C object engines/package/CMakeFiles/ud_package.dir/checkpoint.c.o
+[ 67%] Linking C executable test_quarantine
+[ 67%] Built target test_quarantine
+[ 68%] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/http.c.o
+[ 69%] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/process.c.o
+[ 71%] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/filesystem.c.o
+[ 72%] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/control.c.o
+[ 73%] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/pipeline.c.o
+[ 74%] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/builtins.c.o
+[ 75%] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/manager.c.o
+[ 77%] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/catalog.c.o
+[ 78%] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/deployment.c.o
+[ 79%] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/history.c.o
+[ 80%] Linking C static library libud_package.a
+[ 80%] Built target ud_package
+[ 81%] Building C object tests/CMakeFiles/test_package_outcome.dir/package_outcome.c.o
+[ 83%] Building C object tests/CMakeFiles/test_package_execution.dir/package_execution.c.o
+[ 84%] Building C object tests/CMakeFiles/test_project.dir/project.c.o
+[ 85%] Building C object tests/CMakeFiles/test_catalog.dir/catalog.c.o
+[ 86%] Linking C executable test_package_outcome
+[ 87%] Linking C executable test_package_execution
+[ 89%] Linking C executable test_catalog
+[ 90%] Linking C executable test_project
+[ 90%] Built target test_package_execution
+[ 90%] Built target test_package_outcome
+[ 91%] Building C object tests/CMakeFiles/test_child_package.dir/child_package.c.o
+[ 91%] Built target test_catalog
+[ 92%] Building C object tests/CMakeFiles/test_catalog_history.dir/catalog_history.c.o
+[ 92%] Built target test_project
+[ 93%] Building C object tests/CMakeFiles/test_filesystem_task.dir/filesystem_task.c.o
+[ 95%] Building C object tests/CMakeFiles/test_process_task.dir/process_task.c.o
+[ 96%] Linking C executable test_filesystem_task
+[ 97%] Linking C executable test_child_package
+[ 98%] Linking C executable test_catalog_history
+[100%] Linking C executable test_process_task
+[ 98%] Built target test_child_package
+[100%] Built target test_filesystem_task
+[100%] Built target test_catalog_history
+[100%] Built target test_process_task
+-- Configuring done (0.2s)
+-- Generating done (0.1s)
+-- Build files have been written to: /workspace/UniversalData/build/http-off
+Internal ctest changing into directory: /workspace/UniversalData/build/http-off
+Test project /workspace/UniversalData/build/http-off
+    Start 19: http_disabled_before_io
+1/1 Test #19: http_disabled_before_io ..........   Passed    0.05 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.06 sec
+[  6%] Built target ud_foundation
+[  8%] Built target test_foundation
+[ 10%] Built target test_json
+[ 21%] Built target ud_columnar
+[ 24%] Built target ud_expression
+[ 27%] Built target ud_plugins
+[ 34%] Built target ud_compute
+[ 39%] Built target ud_runtime
+[ 42%] Built target test_columnar
+[ 44%] Built target test_types
+[ 46%] Built target test_regex
+[ 49%] Built target test_format
+[ 51%] Built target test_quality
+[ 54%] Built target test_mapping
+[ 56%] Built target test_quarantine
+[ 59%] Built target test_architecture_foundation
+[ 61%] Built target typed_data_runner
+[ 62%] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/http.c.o
+[ 63%] Linking C static library libud_package.a
+[ 80%] Built target ud_package
+[ 81%] Linking C executable test_project
+[ 83%] Linking C executable test_package_execution
+[ 84%] Linking C executable test_catalog
+[ 85%] Built target test_project
+[ 86%] Linking C executable test_package_outcome
+[ 87%] Linking C executable test_child_package
+[ 89%] Built target test_package_execution
+[ 90%] Built target test_package_outcome
+[ 91%] Built target test_catalog
+[ 92%] Linking C executable test_catalog_history
+[ 93%] Built target test_child_package
+[ 95%] Linking C executable test_filesystem_task
+[ 96%] Linking C executable test_process_task
+[ 97%] Built target test_catalog_history
+[ 98%] Built target test_process_task
+[100%] Built target test_filesystem_task
+Internal ctest changing into directory: /workspace/UniversalData/build/http-off
+Test project /workspace/UniversalData/build/http-off
+    Start 19: http_disabled_before_io
+1/1 Test #19: http_disabled_before_io ..........   Passed    0.05 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.05 sec

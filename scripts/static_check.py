@@ -25,10 +25,15 @@ for path in root.rglob("*"):
             errors.append(f"foundation reverse dependency: {path}")
         if "examples" in path.parts and re.search(r'#include.*(internal|components/)', content):
             errors.append(f"example uses private API: {path}")
-sources = "\n".join(p.read_text(encoding="utf-8") for folder in ("components", "engines") for p in (root / folder).rglob("*.c"))
+sources = "\n".join(p.read_text(encoding="utf-8") for folder in ("components", "engines", "connectors", "catalog") for p in (root / folder).rglob("*.c"))
 for header in (root / "include" / "ud").glob("*.h"):
     for symbol in re.findall(r'UD_API\s+[^;]*?\b(ud_\w+)\s*\(', header.read_text(encoding="utf-8")):
         if not re.search(r'\b' + symbol + r'\s*\([^;]*?\)\s*\{', sources, re.S): errors.append(f"missing implementation: {symbol}")
+forbidden = re.compile(r'\bud_(?:job|dag|run)_\w+|\bud_snapshot_latest\b')
+for folder in ('include', 'components', 'engines', 'connectors', 'hosts', 'bindings'):
+    for path in (root / folder).rglob('*'):
+        if path.is_file() and path.suffix in {'.c', '.h', '.cs', '.java'} and not set(path.parts) & {'bin','obj','target','build'}:
+            if forbidden.search(path.read_text(encoding='utf-8')): errors.append(f'removed execution API present: {path}')
 if not (root / "licenses" / "Apache-2.0.txt").is_file(): errors.append("missing Arrow license")
 if errors:
     print("\n".join(errors)); sys.exit(1)

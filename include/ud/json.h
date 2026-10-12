@@ -5,8 +5,14 @@
 extern "C" {
 #endif
 typedef struct ud_json ud_json;
-enum { UD_JSON_NULL=0, UD_JSON_BOOL=1, UD_JSON_NUMBER=2, UD_JSON_STRING=3,
-       UD_JSON_ARRAY=4, UD_JSON_OBJECT=5 };
+enum {
+    UD_JSON_NULL = 0,
+    UD_JSON_BOOL = 1,
+    UD_JSON_NUMBER = 2,
+    UD_JSON_STRING = 3,
+    UD_JSON_ARRAY = 4,
+    UD_JSON_OBJECT = 5
+};
 /* Immutable owned document. Strict RFC 8259, UTF8, no duplicate object members.
  * Depth is limited to 64, node count to 1,000,000 and memory to the host quota.
  * Numbers retain their exact lexical representation; no floating conversion.

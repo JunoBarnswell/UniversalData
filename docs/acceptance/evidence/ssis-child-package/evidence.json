@@ -1,0 +1,36 @@
+{
+  "milestone": "real-child-package-single-core",
+  "date": "2026-10-12",
+  "baseCommit": "cc447ec479d98535be2ff337f9830d54a0c131a0",
+  "sourceManifest": "docs/acceptance/evidence/ssis-child-package/source-manifest.json",
+  "sourceManifestSha256": "34d74189e4c6944634fbe4abea121a1202cf6e360acabe32e0090792a24825c3",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-child-package/native-ctest.txt",
+      "sha256": "bcef48ab8c0a6a52903ed3667ca27f93f85f0ef2e34f74dcc08645647d3abda8",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 25,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-child-package/asan-package-catalog-project-child.txt",
+      "sha256": "a581eed5af5021f2d4863666505062e4f76467f17909fe0a32cca04e337ebf1d",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R 'catalog|package|project' --output-on-failure",
+      "exitCode": 0,
+      "passed": 7,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-child-package/language-parity.txt",
+      "sha256": "4ac5e19b58963df0a54105bb6343493287ae36b6c5948fba10df9395265eedb4",
+      "command": "tests/package_language_parity.py with ABI3 native/JNI, .NET8 and Java17; real child Package parameter mapping and datatype/wire parity",
+      "exitCode": 0
+    }
+  ],
+  "limitations": [
+    "Input parameter mapping only; no output-variable mapping or lazy remote Package loading",
+    "Child uses the root concurrency/depth policy",
+    "Windows not executed"
+  ]
+}

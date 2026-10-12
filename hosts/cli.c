@@ -1,90 +1,78 @@
-#include "ud/etl.h"
-#include "ud/engine.h"
+#include "ud/package.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
-/* OS signal handlers only touch sig_atomic_t; no allocator/atomic library calls. */
-static volatile sig_atomic_t interrupted = 0;
-static void stop(int sig) {
-    (void)sig;
-    interrupted = 1;
-}
-static char *read_text(const char *path, uint32_t *length) {
-    FILE *f = fopen(path, "rb");
-    if (!f)
-        return NULL;
-    if (fseek(f, 0, SEEK_END)) {
-        fclose(f);
-        return NULL;
-    }
-    long n = ftell(f);
-    if (n < 0 || n > UINT32_MAX || fseek(f, 0, SEEK_SET)) {
-        fclose(f);
-        return NULL;
-    }
-    char *s = calloc((size_t)n + 1, 1);
-    if (!s) {
-        fclose(f);
-        return NULL;
-    }
-    if (fread(s, 1, (size_t)n, f) != (size_t)n || ferror(f)) {
-        free(s);
-        fclose(f);
-        return NULL;
-    }
-    fclose(f);
-    *length = (uint32_t)n;
-    return s;
+static ud_status authorize(void *user, ud_string tenant, ud_string resource, int32_t action) {
+    (void)tenant;
+    if (action == UD_ACCESS_EXECUTE || action == UD_ACCESS_NETWORK)
+        return UD_AUTH; /* File-root policy never opts into programs/network. */
+    const char *root = user;
+    size_t length = root ? strlen(root) : 0;
+    return length && resource.length > length && !memcmp(resource.data, root, length) &&
+                   (resource.data[length] == '/' || resource.data[length] == '\\')
+               ? UD_OK
+               : UD_AUTH;
 }
 int main(int argc, char **argv) {
-    if (argc != 6 || (strcmp(argv[1], "once") && strcmp(argv[1], "watch"))) {
-        fprintf(stderr, "usage: ud_cli once|watch ABS_INPUT ABS_STATE schema.ud plan.ud\n");
+    if (argc < 3 || argc > 7 || strcmp(argv[1], "execute")) {
+        fprintf(stderr, "usage: ud_cli execute PACKAGE_JSON [PARAMETERS_JSON] [TENANT] "
+                        "[EXECUTION_ID] [AUTHORIZED_ABSOLUTE_ROOT]\n");
         return 2;
     }
-    uint32_t sn = 0, pn = 0;
-    char *schema = read_text(argv[4], &sn), *plan = read_text(argv[5], &pn);
-    if (!schema || !plan) {
-        fprintf(stderr, "cannot read schema/plan\n");
-        free(schema);
-        free(plan);
+    FILE *file = fopen(argv[2], "rb");
+    if (!file)
+        return 2;
+    if (fseek(file, 0, SEEK_END)) {
+        fclose(file);
         return 2;
     }
-    ud_context *ctx = NULL;
-    ud_status s = ud_context_create(NULL, &ctx);
-    ud_job *job = NULL;
-    ud_job_options o = {0};
+    long n = ftell(file);
+    if (n < 0 || n > 64 * 1024 * 1024 || fseek(file, 0, SEEK_SET)) {
+        fclose(file);
+        return 2;
+    }
+    char *text = malloc((size_t)n + 1);
+    if (!text) {
+        fclose(file);
+        return 2;
+    }
+    if (fread(text, 1, (size_t)n, file) != (size_t)n) {
+        free(text);
+        fclose(file);
+        return 2;
+    }
+    fclose(file);
+    ud_execution_options o = {0};
     o.struct_size = sizeof(o);
     o.abi_version = UD_ABI_VERSION;
-    o.input_directory = argv[2];
-    o.state_directory = argv[3];
-    o.schema = schema;
-    o.schema_length = sn;
-    o.commands = plan;
-    o.commands_length = pn;
+    o.context = (ud_context_options){
+        .struct_size = sizeof(o.context), .abi_version = UD_ABI_VERSION, .memory_limit = 268435456};
+    o.edge_capacity = 2;
+    o.max_batch_rows = 4096;
+    o.max_depth = 32;
+    const char *parameters = argc > 3 ? argv[3] : "{}", *tenant = argc > 4 ? argv[4] : "cli",
+               *id = argc > 5 ? argv[5] : "cli";
+    o.parameters = (ud_string){parameters, (uint32_t)strlen(parameters)};
+    o.tenant = (ud_string){tenant, (uint32_t)strlen(tenant)};
+    o.execution_id = (ud_string){id, (uint32_t)strlen(id)};
+    o.authorize = authorize;
+    o.authorize_user = argc > 6 ? argv[6] : NULL;
+    ud_execution *e = NULL;
+    ud_status s = ud_execution_create_json((ud_string){text, (uint32_t)n}, &o, &e);
+    free(text);
     if (!s)
-        s = ud_job_create(ctx, &o, &job);
-    free(schema);
-    free(plan);
-    signal(SIGINT, stop);
-    signal(SIGTERM, stop);
-    if (!s) {
-        do {
-            s = ud_job_poll(job);
-            if (s || !strcmp(argv[1], "once"))
-                break;
-            s = ud_wait(ctx, 250);
-            if (s)
-                break;
-            /* The synchronous CLI observes signals between complete polls. SDK
-             * hosts can call ud_cancel from a separate thread during a poll. */
-        } while (!interrupted);
+        s = ud_execution_execute(e);
+    if (e) {
+        ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
+        ud_execution_get_metrics(e, &m);
+        printf("{\"state\":%d,\"result\":%d,\"inputRows\":%llu,\"outputRows\":%llu,"
+               "\"completedTasks\":%llu,\"spillBytes\":%llu}\n",
+               m.state, m.result, (unsigned long long)m.input_rows,
+               (unsigned long long)m.output_rows, (unsigned long long)m.completed_tasks,
+               (unsigned long long)m.spill_bytes);
     }
     if (s)
-        fprintf(stderr, "%s: %s\n", ud_status_name(s), ud_error(ctx));
-    else
-        printf("generation=%llu\n", (unsigned long long)ud_job_generation(job));
-    ud_job_destroy(job);
-    ud_status clean = ud_context_destroy(ctx);
+        fprintf(stderr, "%s\n", ud_status_name(s));
+    ud_status clean = ud_execution_destroy(e);
     return s || clean ? 1 : 0;
 }

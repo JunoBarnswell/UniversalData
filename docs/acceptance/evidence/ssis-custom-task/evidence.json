@@ -1,0 +1,66 @@
+{
+  "milestone": "native-custom-task-current-abi-only-and-module-ownership",
+  "date": "2026-10-12",
+  "baseCommit": "86ec8c290072ef7ff490293db792e47c1c379302",
+  "sourceManifest": "docs/acceptance/evidence/ssis-custom-task/source-manifest.json",
+  "sourceManifestSha256": "d2b0b356205cce52a6771e350536cecd6640c39ef7c20bed951c1ea265fee5fc",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-custom-task/native-ctest.txt",
+      "sha256": "8c1796263b534743f2bd8b05ca7d0663507ae08d4f7f9fc86686c28d8346d6d3",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 32,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-custom-task/asan-custom-package.txt",
+      "sha256": "e0a9949aa3f7b9414325cd47584ca0ad6ffa6e1221167f152dbe963209acf222",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R 'catalog|package|project|filesystem|process|http|profile|native_custom|plugin_lifecycle' --output-on-failure",
+      "exitCode": 0,
+      "passed": 15,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-custom-task/installed-plugin.txt",
+      "sha256": "7b07f21c411ef9c830db9edfaab5a09f3d51ce30192b8bf4e57f543522f429b1",
+      "command": "installed SDK; examples/plugins with UD_BUILD_CUSTOM_TASK_PLUGIN=ON; actual module full custom_task.py",
+      "exitCode": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-custom-task/language-regression.txt",
+      "sha256": "9f1256ec0a9b7e94aeec11322b764735bb3fb8f620c4b87c3d494358f21f1577",
+      "command": "C/.NET8/Java17 actual profiling/child/Pipeline/type parity regression",
+      "exitCode": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-custom-task/connector-build-duckdb.txt",
+      "sha256": "fe763e67360e9725d72bee8c267ee4cc64f34e94730610bffdfe443b7c690fba",
+      "command": "current Package/Expression components; PostgreSQL/ODBC/DuckDB plugins build and duckdb_parquet",
+      "exitCode": 0,
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-custom-task/postgresql-probe.txt",
+      "sha256": "1ab6df95e62872b60c629aa9341a008fecd9faabbea6b4259305ba52645c1bd9",
+      "command": "current public SDK connector probe; local PostgreSQL17 full ABI/default-deny/bounded SELECT/END/cleanup",
+      "exitCode": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-custom-task/odbc-probe.txt",
+      "sha256": "f2a7b4e0e6baa0745105dd4754424e4db19ad536e744fdc6dda3e89f7f50a5b6",
+      "command": "current public SDK ODBC generic plugin probe; local SQLite ODBC driver one typed batch/cleanup (not full Connection Manager)",
+      "exitCode": 0
+    }
+  ],
+  "connectorProbeSourceSha256": "d818a0f176189c88ec1594ccb37e442b3a984db6cf714be27ebe240ce4a05099",
+  "limitations": [
+    "Only current complete ABI3; no old layout/version fallback",
+    "Trusted native code, not a sandbox; host owns module/registry lifetime serialization and callback behavior",
+    "C host validates custom registry lifecycle; broader G07/G21 category/language registry surfaces remain pending",
+    "ODBC probe verifies a single generic typed read only; full typed Connection Manager/cursor/receipt behavior remains pending G59",
+    "Interrupted non-replay-safe native effects require RecoveryRequired; no automatic rollback/global exactly-once",
+    "Windows/remote CI tests waived by user"
+  ]
+}
