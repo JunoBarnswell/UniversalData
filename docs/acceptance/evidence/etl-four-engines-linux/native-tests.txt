@@ -1,90 +1,80 @@
 Internal ctest changing into directory: /workspace/UniversalData/build/four-engines-linux
 Test project /workspace/UniversalData/build/four-engines-linux
+      Start 27: package_durable_recovery
       Start 34: http_task_execution
       Start 33: process_task_execution
       Start 20: core_runtime_resources
+ 1/37 Test #27: package_durable_recovery ..............   Passed    0.26 sec
       Start 18: indexed_segment_journal
- 1/37 Test #18: indexed_segment_journal ...............   Passed    0.34 sec
+ 2/37 Test #18: indexed_segment_journal ...............   Passed    0.35 sec
       Start 36: profile_task_execution
- 2/37 Test #36: profile_task_execution ................   Passed    0.31 sec
+ 3/37 Test #36: profile_task_execution ................   Passed    0.30 sec
       Start 37: native_custom_task
- 3/37 Test #37: native_custom_task ....................   Passed    0.23 sec
-      Start 27: package_durable_recovery
- 4/37 Test #27: package_durable_recovery ..............***Failed    0.11 sec
-Traceback (most recent call last):
-  File "/workspace/UniversalData/tests/package_recovery.py", line 51, in <module>
-    assert result.returncode==code,(result.stdout,result.stderr)
-           ^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError: ('', 'actual=5 (schema), expected=0\n/workspace/UniversalData/tests/package_recovery.c:134: s == atoi(argv[8])\n')
-
+ 4/37 Test #20: core_runtime_resources ................   Passed    1.05 sec
       Start 32: filesystem_task_execution
- 5/37 Test #20: core_runtime_resources ................   Passed    1.05 sec
-      Start 25: four_engine_connections_enumerators
- 6/37 Test #25: four_engine_connections_enumerators ...   Passed    0.10 sec
+ 5/37 Test #37: native_custom_task ....................   Passed    0.25 sec
       Start 23: value_semantics_pipeline
- 7/37 Test #32: filesystem_task_execution .............   Passed    0.20 sec
+ 6/37 Test #32: filesystem_task_execution .............   Passed    0.21 sec
+      Start 25: four_engine_connections_enumerators
+ 7/37 Test #23: value_semantics_pipeline ..............   Passed    0.14 sec
       Start 30: child_package_execution
- 8/37 Test #23: value_semantics_pipeline ..............   Passed    0.13 sec
+ 8/37 Test #25: four_engine_connections_enumerators ...   Passed    0.14 sec
       Start 11: sqlite_receipts_upsert
- 9/37 Test #30: child_package_execution ...............   Passed    0.14 sec
+ 9/37 Test #11: sqlite_receipts_upsert ................   Passed    0.06 sec
       Start 24: package_failure_boundaries
-10/37 Test #11: sqlite_receipts_upsert ................   Passed    0.06 sec
+10/37 Test #30: child_package_execution ...............   Passed    0.15 sec
       Start 29: project_environment_deployment
-11/37 Test #24: package_failure_boundaries ............   Passed    0.08 sec
+11/37 Test #29: project_environment_deployment ........   Passed    0.08 sec
       Start 12: worker_protocol
-12/37 Test #29: project_environment_deployment ........   Passed    0.06 sec
-      Start 21: core_pipeline_components
-13/37 Test #21: core_pipeline_components ..............   Passed    0.04 sec
-      Start 31: catalog_execution_history
-14/37 Test #12: worker_protocol .......................   Passed    0.06 sec
-      Start 26: package_sql_integration
-15/37 Test #31: catalog_execution_history .............   Passed    0.04 sec
+12/37 Test #24: package_failure_boundaries ............   Passed    0.09 sec
       Start 22: package_execution
-16/37 Test #26: package_sql_integration ...............   Passed    0.05 sec
+13/37 Test #12: worker_protocol .......................   Passed    0.04 sec
+      Start 21: core_pipeline_components
+14/37 Test #22: package_execution .....................   Passed    0.04 sec
+      Start 31: catalog_execution_history
+15/37 Test #21: core_pipeline_components ..............   Passed    0.04 sec
+      Start 26: package_sql_integration
+16/37 Test #31: catalog_execution_history .............   Passed    0.04 sec
       Start 28: catalog_immutable_store
 17/37 Test #28: catalog_immutable_store ...............   Passed    0.04 sec
       Start 19: logical_durable_task_facts
-18/37 Test #22: package_execution .....................   Passed    0.06 sec
+18/37 Test #26: package_sql_integration ...............   Passed    0.05 sec
       Start 14: shared_value_semantics
-19/37 Test #19: logical_durable_task_facts ............   Passed    0.03 sec
+19/37 Test #14: shared_value_semantics ................   Passed    0.03 sec
       Start 15: four_engine_scheduling_operators
-20/37 Test #15: four_engine_scheduling_operators ......   Passed    0.01 sec
+20/37 Test #19: logical_durable_task_facts ............   Passed    0.04 sec
       Start 17: pipeline_tree_parallelism
-21/37 Test #17: pipeline_tree_parallelism .............   Passed    0.01 sec
+21/37 Test #15: four_engine_scheduling_operators ......   Passed    0.01 sec
       Start 16: block_store_ownership
-22/37 Test #14: shared_value_semantics ................   Passed    0.04 sec
+22/37 Test #17: pipeline_tree_parallelism .............   Passed    0.01 sec
       Start 13: architecture_foundation
 23/37 Test #13: architecture_foundation ...............   Passed    0.00 sec
       Start  5: json_nested_format
-24/37 Test  #5: json_nested_format ....................   Passed    0.00 sec
+24/37 Test #16: block_store_ownership .................   Passed    0.01 sec
       Start  8: regex_nfa
-25/37 Test #16: block_store_ownership .................   Passed    0.01 sec
+25/37 Test  #8: regex_nfa .............................   Passed    0.00 sec
       Start  1: foundation
 26/37 Test  #1: foundation ............................   Passed    0.00 sec
       Start 35: profile_statistics_kernel
-27/37 Test  #8: regex_nfa .............................   Passed    0.00 sec
+27/37 Test  #5: json_nested_format ....................   Passed    0.00 sec
       Start  6: compute_plan
 28/37 Test #35: profile_statistics_kernel .............   Passed    0.00 sec
       Start  3: columnar
 29/37 Test  #6: compute_plan ..........................   Passed    0.00 sec
-      Start  7: nested_columnar_arrow
-30/37 Test  #3: columnar ..............................   Passed    0.00 sec
       Start  2: json_document
-31/37 Test  #7: nested_columnar_arrow .................   Passed    0.00 sec
-      Start  9: field_mapping
-32/37 Test  #2: json_document .........................   Passed    0.00 sec
-      Start 10: quality_classification
-33/37 Test  #9: field_mapping .........................   Passed    0.00 sec
+30/37 Test  #3: columnar ..............................   Passed    0.00 sec
+      Start  7: nested_columnar_arrow
+31/37 Test  #2: json_document .........................   Passed    0.00 sec
       Start  4: extended_scalar_types
-34/37 Test #10: quality_classification ................   Passed    0.00 sec
-35/37 Test  #4: extended_scalar_types .................   Passed    0.00 sec
-36/37 Test #33: process_task_execution ................   Passed    3.27 sec
+32/37 Test  #7: nested_columnar_arrow .................   Passed    0.00 sec
+      Start  9: field_mapping
+33/37 Test  #4: extended_scalar_types .................   Passed    0.00 sec
+      Start 10: quality_classification
+34/37 Test  #9: field_mapping .........................   Passed    0.00 sec
+35/37 Test #10: quality_classification ................   Passed    0.00 sec
+36/37 Test #33: process_task_execution ................   Passed    3.30 sec
 37/37 Test #34: http_task_execution ...................   Passed    3.38 sec
 
-97% tests passed, 1 tests failed out of 37
+100% tests passed, 0 tests failed out of 37
 
-Total Test time (real) =   3.38 sec
-
-The following tests FAILED:
-	 27 - package_durable_recovery (Failed)
-Errors while running CTest
+Total Test time (real) =   3.39 sec

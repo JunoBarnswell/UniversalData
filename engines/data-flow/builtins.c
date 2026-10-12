@@ -100,7 +100,7 @@ static ud_status connection_defined(const ud_component_context *ctx, ud_string i
     return ud_connection_definition(ctx->activation, id, &definition, &project_scope);
 }
 static ud_status check_config(int kind, const ud_json *config) {
-    static const char *source[] = {"connection", "schema", "batchSize", "sql", "nullMarker", "partitionCount", "partitionId", "partitionBegin", "partitionEnd"};
+    static const char *source[] = {"connection", "schema", "batchSize", "sql", "partitionCount", "partitionId", "partitionBegin", "partitionEnd"};
     static const char *sink[] = {"connection", "table", "mode", "keys"};
     static const char *cast[] = {"schema", "rounding", "errorPolicy"}, *derive[] = {"columns"},
                       *split[] = {"condition"}, *sort[] = {"key", "descending", "partitions"},
@@ -109,10 +109,12 @@ static ud_status check_config(int kind, const ud_json *config) {
         static const char *keys[] = {"connection", "schema", "batchSize", "nullMarker", "partitionCount", "partitionId", "partitionBegin", "partitionEnd"};
         return ud_json_keys(config, keys, 8);
     }
-    if (kind == JSON_SOURCE)
-        return ud_json_keys(config, source, 3);
+    if (kind == JSON_SOURCE) {
+        static const char *keys[] = {"connection","schema","batchSize","partitionCount","partitionId","partitionBegin","partitionEnd"};
+        return ud_json_keys(config,keys,7);
+    }
     if (kind == SQL_SOURCE)
-        return ud_json_keys(config, source, 4);
+        return ud_json_keys(config, source, 8);
     if (kind == CSV_SINK || kind == JSON_SINK)
         return ud_json_keys(config, sink, 1);
     if (kind == SQL_SINK)
