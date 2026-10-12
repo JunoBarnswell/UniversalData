@@ -52,7 +52,8 @@ typedef struct ud_execution_metrics {
     ud_status result;
     uint64_t input_rows, output_rows, rejected_rows, batches, queued_batches, queue_high_water,
         memory_used, executed_tasks, durable_tasks, recovery_tasks, resumed_tasks, spill_bytes,
-        pipeline_trees, tree_high_water, worker_high_water, committed_rows, acknowledged_rows, error_count;
+        pipeline_trees, tree_high_water, worker_high_water, committed_rows, acknowledged_rows,
+        error_count, error_rows, committed_error_rows, acknowledged_error_rows;
 } ud_execution_metrics;
 /* Package owns an immutable parsed document. Serializer returns owned ud_free
  * text. Current version only; old Job/DAG formats are incompatible. */
@@ -64,9 +65,12 @@ UD_API ud_status ud_execution_create(const ud_package *, const ud_execution_opti
 UD_API ud_status ud_execution_create_json(ud_string, const ud_execution_options *, ud_execution **);
 /* Owned JSON, released with ud_free. Both use the bound native model; neither
  * acquires external resources. Diagnostics are available after execution joins. */
-UD_API ud_status ud_activation_raise(ud_activation *,int32_t event_kind,ud_status original_result);
-UD_API ud_status ud_execution_explain(ud_execution *,char **,uint32_t *);
-UD_API ud_status ud_execution_diagnostics(ud_execution *,char **,uint32_t *);
+UD_API ud_status ud_activation_raise(ud_activation *, int32_t event_kind,
+                                     ud_status original_result);
+UD_API ud_status ud_execution_explain(ud_execution *, char **, uint32_t *);
+UD_API ud_status ud_execution_diagnostics(ud_execution *, char **, uint32_t *);
+UD_API ud_status ud_execution_discover_schema(ud_execution *, ud_string connection, ud_string table,
+                                              char **, uint32_t *);
 UD_API ud_status ud_execution_execute(ud_execution *);
 UD_API ud_status ud_execution_start(ud_execution *);
 UD_API ud_status ud_execution_wait(ud_execution *, uint32_t timeout_ms);

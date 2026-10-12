@@ -10,6 +10,7 @@ static ud_status put_field(ud_bytes *b, const ud_field *f, uint32_t depth) {
     UD_TRY(ud_put_string(b, f->timezone, f->timezone_length));
     UD_TRY(ud_put_u64(b, f->identity.high));
     UD_TRY(ud_put_u64(b, f->identity.low));
+    UD_TRY(ud_put_u64(b, f->key_order));
     UD_TRY(ud_put_u64(b, f->lineage_count));
     for (uint32_t i = 0; i < f->lineage_count; i++) {
         UD_TRY(ud_put_u64(b, f->lineage[i].high));
@@ -67,12 +68,16 @@ static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
     UD_TRY(ud_get_u64(b, &f->identity.low));
     if (!f->identity.high && !f->identity.low)
         return UD_CORRUPT;
-    uint64_t lineage;
+    uint64_t lineage, key_order;
+    UD_TRY(ud_get_u64(b, &key_order));
+    if (key_order > 65536)
+        return UD_CORRUPT;
+    f->key_order = (uint32_t)key_order;
     UD_TRY(ud_get_u64(b, &lineage));
     if (lineage > 4096)
         return UD_CORRUPT;
     if (lineage) {
-        ud_column_id *ids = ud_alloc(b->ctx, (size_t)lineage * sizeof(*ids));
+        ud_id *ids = ud_alloc(b->ctx, (size_t)lineage * sizeof(*ids));
         if (!ids)
             return UD_RESOURCE;
         f->lineage = ids;
@@ -80,8 +85,7 @@ static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
         for (uint32_t j = 0; j < lineage; j++) {
             UD_TRY(ud_get_u64(b, &ids[j].high));
             UD_TRY(ud_get_u64(b, &ids[j].low));
-            if ((!ids[j].high && !ids[j].low) ||
-                (j && ud_column_id_compare(ids[j - 1], ids[j]) >= 0))
+            if ((!ids[j].high && !ids[j].low) || (j && ud_id_compare(ids[j - 1], ids[j]) >= 0))
                 return UD_CORRUPT;
         }
     }
@@ -191,6 +195,20 @@ ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
             UD_TRY(ud_batch_get(table, r, j, &value));
             UD_TRY(put_value(b, &value, 0));
         }
+    int present = table->row_info != NULL;
+    for (const ud_batch *parent = table->data_owner; parent && !present;
+         parent = parent->data_owner)
+        present = parent->row_info != NULL;
+    UD_TRY(ud_put_u64(b, present));
+    for (uint32_t row = 0; present && row < table->rows; row++) {
+        ud_row_info info;
+        UD_TRY(ud_batch_row_info(table, row, &info));
+        UD_TRY(ud_put_u64(b, info.id.high));
+        UD_TRY(ud_put_u64(b, info.id.low));
+        UD_TRY(ud_put_u64(b, info.rule.high));
+        UD_TRY(ud_put_u64(b, info.rule.low));
+        UD_TRY(ud_put_u64(b, info.flags));
+    }
     return UD_OK;
 }
 ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
@@ -225,6 +243,29 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
             s = ud_batch_append(*out, values, (uint32_t)columns);
         for (uint32_t j = 0; j < columns; j++)
             ud_clear_value(values + j);
+    }
+    uint64_t present = 0;
+    if (!s)
+        s = ud_get_u64(b, &present);
+    if (!s && present > 1)
+        s = UD_CORRUPT;
+    for (uint32_t row = 0; !s && present && row < rows; row++) {
+        ud_row_info info = {0};
+        uint64_t flags = 0;
+        s = ud_get_u64(b, &info.id.high);
+        if (!s)
+            s = ud_get_u64(b, &info.id.low);
+        if (!s)
+            s = ud_get_u64(b, &info.rule.high);
+        if (!s)
+            s = ud_get_u64(b, &info.rule.low);
+        if (!s)
+            s = ud_get_u64(b, &flags);
+        if (!s && (flags & ~((uint64_t)UD_ROW_ERROR)))
+            s = UD_CORRUPT;
+        info.flags = (uint32_t)flags;
+        if (!s)
+            s = ud_batch_set_row_info(*out, row, &info);
     }
     for (uint32_t j = 0; j < columns; j++)
         clear_field(fields + j);

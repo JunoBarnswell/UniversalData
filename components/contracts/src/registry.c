@@ -24,8 +24,8 @@ static uint64_t identifier_hash(ud_string id) {
     return hash;
 }
 static int valid_string(ud_string text) {
-    return text.data && text.length && text.length <= 65536 &&
-           !memchr(text.data, 0, text.length) && ud_utf8_valid(text.data, text.length);
+    return text.data && text.length && text.length <= 65536 && !memchr(text.data, 0, text.length) &&
+           ud_utf8_valid(text.data, text.length);
 }
 static registry_entry *lookup(const ud_registry *r, ud_string id, uint64_t hash) {
     if (!r->capacity)
@@ -70,30 +70,38 @@ static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor 
         (d->error_output >= 0 && (uint32_t)d->error_output >= d->outputs))
         return UD_SCHEMA;
     if ((d->outputs < 64 && (d->optional_outputs >> d->outputs)) ||
-        ((d->capabilities & UD_COMPONENT_BLOCKING) && (d->capabilities & UD_COMPONENT_PARTIALLY_BLOCKING))) return UD_SCHEMA;
+        (d->inputs < 64 && (d->optional_inputs >> d->inputs)) ||
+        ((d->capabilities & UD_COMPONENT_BLOCKING) &&
+         (d->capabilities & UD_COMPONENT_PARTIALLY_BLOCKING)))
+        return UD_SCHEMA;
     int function = d->category == UD_COMPONENT_FUNCTION;
     int task = d->category == UD_COMPONENT_TASK;
     int enumerator = d->category == UD_COMPONENT_ENUMERATOR;
-    if ((function && d->cancel) || ((function || task || enumerator) && d->describe_plan)) return UD_SCHEMA;
-    if (!function && (d->function_bind || d->function_evaluate ||
-                      d->min_arguments || d->max_arguments ||
-                      (d->capabilities & (UD_FUNCTION_PURE | UD_FUNCTION_DETERMINISTIC))))
+    if ((function && d->cancel) || ((function || task || enumerator) && d->describe_plan))
+        return UD_SCHEMA;
+    if (!function &&
+        (d->function_bind || d->function_evaluate || d->min_arguments || d->max_arguments ||
+         (d->capabilities & (UD_FUNCTION_PURE | UD_FUNCTION_DETERMINISTIC))))
         return UD_SCHEMA;
     if (task && (!d->invoke || d->inputs || d->outputs || d->synchronous_input != -1 ||
-                 d->error_output != -1 || d->step || (!!d->prepare != !!d->dispose) || d->enumerate_next || d->enumerate_position))
+                 d->error_output != -1 || d->step || (!!d->prepare != !!d->dispose) ||
+                 d->enumerate_next || d->enumerate_position))
         return UD_SCHEMA;
-    if (function && (!(d->capabilities & UD_FUNCTION_PURE) || !d->function_bind ||
-                     !d->function_evaluate || d->min_arguments > d->max_arguments ||
-                     d->max_arguments > 16 || d->inputs || d->outputs ||
-                     d->synchronous_input != -1 || d->error_output != -1 || d->invoke ||
-                     d->configure || d->prepare || d->step || d->finish || d->dispose))
+    if (function &&
+        (!(d->capabilities & UD_FUNCTION_PURE) || !d->function_bind || !d->function_evaluate ||
+         d->min_arguments > d->max_arguments || d->max_arguments > 16 || d->inputs || d->outputs ||
+         d->synchronous_input != -1 || d->error_output != -1 || d->invoke || d->configure ||
+         d->prepare || d->step || d->finish || d->dispose))
         return UD_SCHEMA;
-    if (enumerator && (!d->configure || !d->prepare || !d->dispose || !d->enumerate_next ||
-        d->inputs || d->outputs || d->synchronous_input != -1 || d->error_output != -1 ||
-        d->step || d->invoke || d->function_bind || d->function_evaluate ||
-        ((d->capabilities & UD_ENUMERATOR_RESUMABLE) && (!d->enumerate_position ||
-          !(d->capabilities & UD_ENUMERATOR_DETERMINISTIC))))) return UD_SCHEMA;
-    if (!enumerator && (d->enumerate_next || d->enumerate_position)) return UD_SCHEMA;
+    if (enumerator &&
+        (!d->configure || !d->prepare || !d->dispose || !d->enumerate_next || d->inputs ||
+         d->outputs || d->synchronous_input != -1 || d->error_output != -1 || d->step ||
+         d->invoke || d->function_bind || d->function_evaluate ||
+         ((d->capabilities & UD_ENUMERATOR_RESUMABLE) &&
+          (!d->enumerate_position || !(d->capabilities & UD_ENUMERATOR_DETERMINISTIC)))))
+        return UD_SCHEMA;
+    if (!enumerator && (d->enumerate_next || d->enumerate_position))
+        return UD_SCHEMA;
     if (!function && !task && !enumerator &&
         (!d->configure || !d->prepare || !d->step || !d->finish || !d->dispose || d->invoke ||
          (d->category == UD_COMPONENT_SOURCE && (d->inputs || !d->outputs)) ||
@@ -102,7 +110,7 @@ static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor 
         return UD_SCHEMA;
     ud_json *schema = NULL;
     ud_status status = ud_json_parse(r->ctx, d->configuration_schema.data,
-                                    d->configuration_schema.length, &schema, NULL);
+                                     d->configuration_schema.length, &schema, NULL);
     if (!status && ud_json_kind(schema) != UD_JSON_OBJECT)
         status = UD_SCHEMA;
     ud_json_destroy(schema);

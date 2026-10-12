@@ -23,6 +23,15 @@ ud_status ud_list(ud_context *, const char *, const char *, char ***, uint32_t *
 void ud_list_free(char **, uint32_t);
 ud_status ud_file_identity(ud_context *, const char *, uint64_t *device, uint64_t *file);
 ud_status ud_file_hash(ud_context *, const char *, uint8_t out[32]);
+typedef struct ud_sha256 {
+    uint32_t h[8];
+    uint64_t bytes;
+    uint8_t block[64];
+    size_t used;
+} ud_sha256;
+void ud_sha256_init(ud_sha256 *);
+void ud_sha256_update(ud_sha256 *, const void *, size_t);
+void ud_sha256_finish(ud_sha256 *, uint8_t out[32]);
 void ud_hash(const void *, size_t, uint8_t out[32]);
 size_t ud_allocation_bytes(const void *);
 ud_status ud_flush(ud_context *, FILE *);

@@ -3,8 +3,11 @@
 static ud_status check_buffers(void *user) {
     ud_execution *e = user;
     UD_TRY(ud_activation_check(&e->root));
-    return e->buffer_lease ? ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_WRITE)
-                           : UD_OK;
+    if (!e->buffer_lease)
+        return UD_OK;
+    UD_TRY(ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_READ));
+    UD_TRY(ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_WRITE));
+    return ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_DELETE);
 }
 ud_status ud_execution_prepare_buffers(ud_execution *e) {
     const ud_json *policy = ud_member(ud_member(e->package->document, "policy"), "buffers");
@@ -59,6 +62,7 @@ ud_status ud_execution_release_buffers(ud_execution *e) {
         ud_buffer_metrics metrics;
         UD_TRY(ud_buffer_manager_metrics(e->buffers, &metrics));
         atomic_store(&e->spill_bytes, metrics.total_spill_bytes);
+        e->buffer_metrics = metrics;
         UD_TRY(ud_buffer_manager_destroy(e->buffers));
         e->buffers = NULL;
     }

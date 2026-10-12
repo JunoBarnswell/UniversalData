@@ -1,15 +1,9 @@
 #include "../internal.h"
 /* SHA-256, FIPS 180-4. No external implementation or runtime dependency. */
-typedef struct {
-    uint32_t h[8];
-    uint64_t bytes;
-    uint8_t block[64];
-    size_t used;
-} sha;
 static uint32_t rotr(uint32_t x, unsigned n) {
     return (x >> n) | (x << (32 - n));
 }
-static void transform(sha *s, const uint8_t *p) {
+static void transform(ud_sha256 *s, const uint8_t *p) {
     static const uint32_t k[64] = {
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
         0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
@@ -54,13 +48,14 @@ static void transform(sha *s, const uint8_t *p) {
     s->h[6] += g;
     s->h[7] += h;
 }
-static void init(sha *s) {
+void ud_sha256_init(ud_sha256 *s) {
     memset(s, 0, sizeof(*s));
     const uint32_t h[] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
                           0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
     memcpy(s->h, h, sizeof(h));
 }
-static void update(sha *s, const uint8_t *p, size_t n) {
+void ud_sha256_update(ud_sha256 *s, const void *data, size_t n) {
+    const uint8_t *p = data;
     s->bytes += n;
     while (n) {
         size_t k = 64 - s->used;
@@ -76,31 +71,31 @@ static void update(sha *s, const uint8_t *p, size_t n) {
         }
     }
 }
-static void finish(sha *s, uint8_t out[32]) {
+void ud_sha256_finish(ud_sha256 *s, uint8_t out[32]) {
     uint64_t bits = s->bytes * 8;
     uint8_t one = 0x80, zero = 0;
-    update(s, &one, 1);
+    ud_sha256_update(s, &one, 1);
     while (s->used != 56)
-        update(s, &zero, 1);
+        ud_sha256_update(s, &zero, 1);
     uint8_t tail[8];
     for (unsigned i = 0; i < 8; i++)
         tail[7 - i] = (uint8_t)(bits >> (i * 8));
-    update(s, tail, 8);
+    ud_sha256_update(s, tail, 8);
     for (unsigned i = 0; i < 32; i++)
         out[i] = (uint8_t)(s->h[i / 4] >> (24 - 8 * (i % 4)));
 }
 void ud_hash(const void *p, size_t n, uint8_t out[32]) {
-    sha s;
-    init(&s);
-    update(&s, p, n);
-    finish(&s, out);
+    ud_sha256 s;
+    ud_sha256_init(&s);
+    ud_sha256_update(&s, p, n);
+    ud_sha256_finish(&s, out);
 }
 ud_status ud_file_hash(ud_context *c, const char *p, uint8_t out[32]) {
     FILE *f = ud_fopen(p, "rb");
     if (!f)
         return ud_fail(c, UD_IO, "cannot hash %s", p);
-    sha s;
-    init(&s);
+    ud_sha256 s;
+    ud_sha256_init(&s);
     uint8_t block[8192];
     size_t n;
     while ((n = fread(block, 1, sizeof(block), f))) {
@@ -108,13 +103,13 @@ ud_status ud_file_hash(ud_context *c, const char *p, uint8_t out[32]) {
             fclose(f);
             return UD_CANCELLED;
         }
-        update(&s, block, n);
+        ud_sha256_update(&s, block, n);
     }
     int bad = ferror(f);
     if (fclose(f))
         bad = 1;
     if (bad)
         return ud_fail(c, UD_IO, "hash read failed: %s", p);
-    finish(&s, out);
+    ud_sha256_finish(&s, out);
     return UD_OK;
 }

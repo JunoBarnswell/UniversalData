@@ -5,13 +5,13 @@ with tempfile.TemporaryDirectory(prefix="ud-core-pipeline-") as folder:
     spill=root/"spill";spill.mkdir()
     source=root/"source.ndjson"
     source.write_text('\n'.join(json.dumps(r) for r in [dict(x=3,t=" a "),dict(x=None,t=" b "),dict(x=1,t=" c "),dict(x=2,t=" d ")])+"\n")
-    package={"version":6,"id":"core-pipeline","variables":{"rows":{"type":"int64","default":0}},
+    package={"version":7,"id":"core-pipeline","variables":{"rows":{"type":"int64","default":0}},
         "policy":{"buffers":{"connection":"spill","residentBytes":1,"spillBytes":10000000,"maxBlocks":256}},
         "connections":[dict(id=id,driver="file",resource=str(path)) for id,path in [("in",source),("ok",root/"ok.csv"),("bad",root/"bad.ndjson"),("spill",spill)]],
         "controlFlow":{"tasks":[dict(id="flow",kind="dataFlow",config=dict(pipeline="p"))],"constraints":[]},
         "dataFlows":[{"id":"p","components":[
-            dict(id="source",component="file.ndjson.source",config=dict(connection="in",schema={"version":6,"fields":[dict(name="x",type="int64",nullable=True),dict(name="t",type="utf8",nullable=False)]},batchSize=1)),
-            dict(id="quality",component="quality",config={"rules":[dict(id="required",kind="notNull",columns=["x"])]}),
+            dict(id="source",component="file.ndjson.source",config=dict(connection="in",schema={"version":7,"fields":[dict(name="x",type="int64",nullable=True),dict(name="t",type="utf8",nullable=False)]},batchSize=1)),
+            dict(id="quality",component="quality",config={"errorPolicy":"redirect","includeInput":True,"rules":[dict(id="required",kind="notNull",columns=["x"])]}),
             dict(id="chars",component="characterMap",config={"columns":[dict(column="t",function="trim")]}),
             dict(id="copy",component="copyColumn",config={"columns":[dict(column="t",name="copied")]}),
             dict(id="window",component="window",config=dict(keys=[0],partitionKeys=0,function="runningSum",column=0,name="total")),
@@ -27,6 +27,6 @@ with tempfile.TemporaryDirectory(prefix="ud-core-pipeline-") as folder:
     with (root/"ok.csv").open(newline="") as file: rows=list(csv.DictReader(file))
     assert rows==[dict(x=str(i),t=t,copied=t,total=str(total)) for i,t,total in [(1,"c",1),(2,"d",3),(3,"a",6)]],rows
     errors=[json.loads(s) for s in (root/"bad.ndjson").read_text().splitlines()]
-    assert len(errors)==1 and errors[0]["x"] is None and errors[0]["__ud_rule_id"]=="required" and errors[0]["__ud_source_row"]==1
+    assert len(errors)==1 and errors[0]["input"]["x"] is None and errors[0]["ruleId"]=="required" and len(errors[0]["sourceRowId"])==32 and errors[0]["ruleVersion"]==1
     assert not list(root.glob("*.udw"))
     print("Quality normal/error commits, Character Map/Copy/RowCount/Audit, Window and CSV with actual shared spill passed")

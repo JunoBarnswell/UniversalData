@@ -104,6 +104,7 @@ void ud_batch_destroy(ud_batch *b) {
             ud_free(v->offsets);
             ud_free(v->strings);
         }
+    ud_free(b->row_info);
     ud_free(b->column);
     ud_batch_destroy(b->data_owner);
     ud_schema_owner_release(b->schema);
@@ -540,6 +541,8 @@ ud_status ud_batch_clone(const ud_batch *b, ud_batch **out) {
         for (uint32_t i = 0; i < b->columns; i++)
             ud_batch_get(b, r, i, v + i);
         s = ud_batch_append(*out, v, b->columns);
+        if (!s)
+            s = ud_batch_copy_row_info(*out, (*out)->rows - 1, b, r);
     }
     ud_free(fields);
     ud_free(v);

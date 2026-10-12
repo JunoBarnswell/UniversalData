@@ -11,7 +11,7 @@ typedef struct expression_node {
     uint32_t column;
     ud_string name;
     ud_value value;
-    ud_column_id *lineage_owned;
+    ud_id *lineage_owned;
     ud_batch *literal_owner;
     int field_owned, value_owned;
     uint32_t argument_count;
@@ -137,7 +137,7 @@ static void literal_origins(ud_field *field) {
     ud_free((void *)field->lineage);
     field->lineage = NULL;
     field->lineage_count = 0;
-    field->identity = (ud_column_id){0};
+    field->identity = (ud_id){0};
     for (uint32_t j = 0; j < field->child_count; j++)
         literal_origins((ud_field *)field->children + j);
 }
@@ -201,7 +201,7 @@ static ud_status bind_literal(ud_expression *e, expression_node *n, const ud_jso
     if (!s)
         s = ud_batch_field(n->literal_owner, 0, &field);
     if (!s) {
-        s = ud_field_copy(e->ctx, &field, (ud_column_id){0}, &n->field);
+        s = ud_field_copy(e->ctx, &field, (ud_id){0}, &n->field);
         n->field_owned = !s;
     }
     if (!s) {
@@ -246,7 +246,7 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
             if (e->resolve_field) {
                 ud_field borrowed;
                 UD_TRY(e->resolve_field(e->user, n->name, &borrowed));
-                UD_TRY(ud_field_copy(e->ctx, &borrowed, (ud_column_id){0}, &n->field));
+                UD_TRY(ud_field_copy(e->ctx, &borrowed, (ud_id){0}, &n->field));
                 n->field_owned = 1;
                 if (n->field.type != n->type)
                     return UD_SCHEMA;
@@ -305,16 +305,16 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
             constant = constant && n->args[i]->constant;
         }
         UD_TRY(n->function.function_bind(n->function.user, fields, n->argument_count, &result));
-        UD_TRY(ud_field_copy(e->ctx, &result, (ud_column_id){0}, &n->field));
+        UD_TRY(ud_field_copy(e->ctx, &result, (ud_id){0}, &n->field));
         n->field_owned = 1;
         ud_free((void *)n->field.lineage);
         n->field.lineage = NULL;
         n->field.lineage_count = 0;
-        ud_column_id *origins = NULL;
+        ud_id *origins = NULL;
         UD_TRY(
             ud_lineage_merge(e->ctx, fields, n->argument_count, &origins, &n->field.lineage_count));
         n->field.lineage = origins;
-        n->field.identity = (ud_column_id){0};
+        n->field.identity = (ud_id){0};
         n->type = n->field.type;
         if (constant) {
             ud_value value;
@@ -363,7 +363,7 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
     UD_TRY(
         ud_lineage_merge(e->ctx, dependencies, count, &n->lineage_owned, &n->field.lineage_count));
     n->field.lineage = n->lineage_owned;
-    n->field.identity = (ud_column_id){0};
+    n->field.identity = (ud_id){0};
     if (n->args[0]->constant && (count == 1 || n->args[1]->constant)) {
         UD_TRY(eval(e, n, NULL, 0, &n->value));
         n->constant = 1;

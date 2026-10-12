@@ -68,6 +68,11 @@ public sealed class Batch : IDisposable
         }
     }
 
+    public string RowInfoJson(uint row)
+    {
+        lock (execution) { EnsureOpen(); DataOwnership.Check(context, Native.ud_batch_row_info_json(batch, row, out var text, out var length)); return DataOwnership.Text(text, length); }
+    }
+
     public byte[] ToWire()
     {
         lock (execution)

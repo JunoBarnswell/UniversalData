@@ -8,13 +8,7 @@ typedef struct ud_executor ud_executor;
 extern "C" {
 #endif
 typedef struct ud_operator ud_operator;
-enum {
-    UD_OPERATOR_SORT = 1,
-    UD_OPERATOR_AGGREGATE,
-    UD_OPERATOR_INNER_JOIN,
-    UD_OPERATOR_LOOKUP,
-    UD_OPERATOR_WINDOW
-};
+enum { UD_OPERATOR_SORT = 1, UD_OPERATOR_AGGREGATE, UD_OPERATOR_INNER_JOIN, UD_OPERATOR_WINDOW };
 enum { UD_WINDOW_ROW_NUMBER = 1, UD_WINDOW_RUNNING_SUM };
 typedef struct ud_operator_options {
     uint32_t struct_size, abi_version;
@@ -22,7 +16,7 @@ typedef struct ud_operator_options {
     uint32_t max_batch_rows;
     const uint32_t *keys;
     uint32_t key_count;
-    uint32_t right_key;
+    const uint32_t *right_keys; /* Same key_count as the left keys. */
     int32_t descending;
     ud_plan *aggregation;       /* Retained immutable plan, AGGREGATE only. */
     ud_buffer_manager *buffers; /* Borrowed until operator destruction. */
@@ -32,7 +26,7 @@ typedef struct ud_operator_options {
     int32_t window_function;
     ud_string window_name;
     uint32_t partition_count; /* 0 selects 1; <=64, same algorithms at every width. */
-    ud_executor *executor; /* Borrowed root pool; required above one partition. */
+    ud_executor *executor;    /* Borrowed root pool; required above one partition. */
 } ud_operator_options;
 /* Pure binding copies schemas. Separate instances may share Buffer Manager. */
 UD_API ud_status ud_operator_create(ud_context *, const ud_operator_options *,

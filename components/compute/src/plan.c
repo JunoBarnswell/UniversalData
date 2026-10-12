@@ -141,7 +141,7 @@ static ud_status result_schema(ud_plan *p) {
     for (uint32_t i = 0; !s && i < count; i++) {
         if (!p->agg_n || i < p->key_n) {
             uint32_t at = p->agg_n ? p->keys[i] : p->project_n ? p->projection[i] : i;
-            s = ud_field_copy(p->ctx, p->fields + at, (ud_column_id){0}, fields + i);
+            s = ud_field_copy(p->ctx, p->fields + at, (ud_id){0}, fields + i);
         } else {
             ud_aggregate_def *a = p->aggs + i - p->key_n;
             ud_field field = a->kind ? p->fields[a->column] : (ud_field){.type = UD_INT64};

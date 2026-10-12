@@ -16,10 +16,29 @@ ud_status ud_compute_join_schema(ud_context *ctx, const ud_batch *left, const ud
         const ud_field *source =
             j < left->columns ? &left->column[j].field : &right->column[j - left->columns].field;
         char id[33], scope[48];
-        ud_column_id_format(source->identity, id);
+        ud_id_format(source->identity, id);
         snprintf(scope, sizeof(scope), "join.%s.%s", j < left->columns ? "left" : "right", id);
-        s = ud_field_derive(ctx, source, (ud_string){scope, (uint32_t)strlen(scope)},
-                            (ud_string){source->name, source->name_length}, fields + j);
+        ud_string name = {source->name, source->name_length};
+        ud_bytes renamed = {.ctx = ctx};
+        if (j >= left->columns) {
+            int collision = 0;
+            for (uint32_t k = 0; k < j; k++)
+                if (fields[k].name_length == name.length &&
+                    !memcmp(fields[k].name, name.data, name.length))
+                    collision = 1;
+            if (collision) {
+                char suffix[48];
+                int n = snprintf(suffix, sizeof(suffix), "right.%u.", j - left->columns);
+                s = ud_bytes_put(&renamed, suffix, (size_t)n);
+                if (!s)
+                    s = ud_bytes_put(&renamed, name.data, name.length);
+                name = (ud_string){(char *)renamed.data, (uint32_t)renamed.size};
+            }
+        }
+        if (!s)
+            s = ud_field_derive(ctx, source, (ud_string){scope, (uint32_t)strlen(scope)}, name,
+                                fields + j);
+        ud_bytes_clear(&renamed);
     }
     if (!s)
         s = ud_batch_create(ctx, fields, count, 0, out);
@@ -35,7 +54,7 @@ static ud_status union_field(ud_context *ctx, const ud_field *left, const ud_fie
         memcmp(left->name, right->name, left->name_length))
         return UD_SCHEMA;
     ud_field parents[2] = {*left, *right}, spec = *left;
-    ud_column_id *origins = NULL;
+    ud_id *origins = NULL;
     uint32_t count = 0;
     UD_TRY(ud_lineage_merge(ctx, parents, 2, &origins, &count));
     spec.lineage = origins;
@@ -46,7 +65,7 @@ static ud_status union_field(ud_context *ctx, const ud_field *left, const ud_fie
     ud_free(origins);
     char nested[33];
     if (!s)
-        ud_column_id_format(out->identity, nested);
+        ud_id_format(out->identity, nested);
     for (uint32_t j = 0; !s && j < left->child_count; j++) {
         ud_field child = {0};
         s = union_field(ctx, left->children + j, right->children + j, (ud_string){nested, 32},
@@ -72,8 +91,8 @@ ud_status ud_compute_union_schema(ud_context *ctx, const ud_batch *left, const u
     ud_status s = UD_OK;
     for (uint32_t j = 0; !s && j < left->columns; j++) {
         char a[33], b[33], scope[80];
-        ud_column_id_format(left->column[j].field.identity, a);
-        ud_column_id_format(right->column[j].field.identity, b);
+        ud_id_format(left->column[j].field.identity, a);
+        ud_id_format(right->column[j].field.identity, b);
         snprintf(scope, sizeof(scope), "union.%s.%s", a, b);
         s = union_field(ctx, &left->column[j].field, &right->column[j].field,
                         (ud_string){scope, (uint32_t)strlen(scope)}, fields + j, 0);
@@ -98,7 +117,8 @@ static ud_status append_row(ud_batch *out, const ud_batch *in, uint32_t row, ud_
     uint32_t n = ud_batch_columns(in);
     for (uint32_t i = 0; i < n; i++)
         UD_TRY(ud_batch_get(in, row, i, v + i));
-    return ud_batch_append(out, v, n);
+    UD_TRY(ud_batch_append(out, v, n));
+    return ud_batch_copy_row_info(out, out->rows - 1, in, row);
 }
 ud_status ud_compute_slice(ud_context *c, const ud_batch *b, uint64_t offset, uint64_t limit,
                            ud_batch **out) {
@@ -200,7 +220,7 @@ ud_status ud_compute_inner_join(ud_context *ctx, const ud_batch *left, uint32_t 
         return UD_INVALID;
     const ud_batch *schemas[] = {left, right};
     ud_buffer_manager *buffers = NULL;
-    ud_operator *operator = NULL;
+    ud_operator *operator= NULL;
     ud_buffer_options budget = {.struct_size = sizeof(budget),
                                 .abi_version = UD_ABI_VERSION,
                                 .max_blocks = 16384,
@@ -213,13 +233,13 @@ ud_status ud_compute_inner_join(ud_context *ctx, const ud_batch *left, uint32_t 
                                    .max_batch_rows = 4096,
                                    .keys = &lk,
                                    .key_count = 1,
-                                   .right_key = rk,
+                                   .right_keys = &rk,
                                    .buffers = buffers};
     if (!s)
         s = ud_operator_create(ctx, &options, schemas, &operator);
     ud_batch *schema = NULL;
     if (!s)
-        s = ud_operator_schema(operator, &schema);
+        s = ud_operator_schema(operator, & schema);
     for (uint32_t port = 0; !s && port < 2; port++) {
         const ud_batch *input = schemas[port];
         for (uint32_t row = 0; !s && row < input->rows; row += 4096) {
@@ -239,7 +259,7 @@ ud_status ud_compute_inner_join(ud_context *ctx, const ud_batch *left, uint32_t 
     uint64_t rows = 0;
     while (!s) {
         ud_batch *batch = NULL;
-        s = ud_operator_pull(operator, &batch);
+        s = ud_operator_pull(operator, & batch);
         if (s == UD_END) {
             s = UD_OK;
             break;

@@ -1,4 +1,5 @@
 #include "internal.h"
+#include "ud/connection_manager.h"
 #ifdef _WIN32
 #include <process.h>
 #endif
@@ -69,17 +70,19 @@ void ud_task_fact(ud_activation *activation, uint32_t fact) {
     if (kind)
         ud_activation_notify_kind(activation, kind,
                                   fact == UD_TASK_UNCERTAIN ? UD_EXEC_RECOVERY_REQUIRED
-                                                          : UD_EXEC_RUNNING,
+                                                            : UD_EXEC_RUNNING,
                                   fact == UD_TASK_UNCERTAIN ? UD_COMMIT_UNKNOWN : UD_OK);
 }
 uint32_t ud_execution_concurrency(const ud_activation *activation) {
-    uint32_t concurrency=activation->execution->options.max_concurrency;
-    for (const ud_activation *a=activation;a;a=a->parent) {
-        const ud_json *policy=ud_member(a->package->document,"policy");
-        if (ud_member(policy,"maxConcurrency")) {
-            uint64_t requested=0;
-            if (ud_json_uint(ud_member(policy,"maxConcurrency"),&requested)) return 0;
-            if (requested<concurrency) concurrency=(uint32_t)requested;
+    uint32_t concurrency = activation->execution->options.max_concurrency;
+    for (const ud_activation *a = activation; a; a = a->parent) {
+        const ud_json *policy = ud_member(a->package->document, "policy");
+        if (ud_member(policy, "maxConcurrency")) {
+            uint64_t requested = 0;
+            if (ud_json_uint(ud_member(policy, "maxConcurrency"), &requested))
+                return 0;
+            if (requested < concurrency)
+                concurrency = (uint32_t)requested;
         }
     }
     return concurrency;
@@ -125,7 +128,8 @@ ud_status ud_activation_bind_roots(ud_activation *e) {
     return s;
 }
 ud_status ud_activation_validate_definition(ud_activation *e, uint32_t depth) {
-    UD_TRY(ud_transaction_enter(e,ud_member(ud_member(e->package->document,"policy"),"transaction"),1));
+    UD_TRY(ud_transaction_enter(
+        e, ud_member(ud_member(e->package->document, "policy"), "transaction"), 1));
     const ud_json *flows = ud_member(e->package->document, "dataFlows");
     for (uint32_t i = 0; i < ud_json_size(flows); i++)
         UD_TRY(ud_pipeline_validate(e, ud_json_at(flows, i)));
@@ -136,9 +140,8 @@ ud_status ud_activation_validate_definition(ud_activation *e, uint32_t depth) {
         uint32_t n;
         UD_TRY(ud_json_key(handlers, i, &key, &n));
         if (!((n == 7 && !memcmp(key, "failure", 7)) || (n == 6 && !memcmp(key, "before", 6)) ||
-              (n == 5 && !memcmp(key, "after", 5)) ||
-              (n == 7 && !memcmp(key,"warning",7)) || (n == 5 && !memcmp(key,"error",5)) ||
-              (n == 10 && !memcmp(key,"taskFailed",10))))
+              (n == 5 && !memcmp(key, "after", 5)) || (n == 7 && !memcmp(key, "warning", 7)) ||
+              (n == 5 && !memcmp(key, "error", 5)) || (n == 10 && !memcmp(key, "taskFailed", 10))))
             return UD_UNSUPPORTED;
         UD_TRY(ud_control_validate(e, ud_json_at(handlers, i), depth));
     }
@@ -172,17 +175,22 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     atomic_init(&e->root.input_rows, 0);
     atomic_init(&e->root.output_rows, 0);
     atomic_init(&e->root.rejected_rows, 0);
-    atomic_init(&e->root.committed_rows,0);atomic_init(&e->root.acknowledged_rows,0);
+    atomic_init(&e->root.committed_rows, 0);
+    atomic_init(&e->root.acknowledged_rows, 0);
+    atomic_init(&e->root.error_rows, 0);
+    atomic_init(&e->root.committed_error_rows, 0);
+    atomic_init(&e->root.acknowledged_error_rows, 0);
     ud_mutex_init(&e->events_lock);
     ud_mutex_init(&e->journal_lock);
     ud_mutex_init(&e->serial_tasks_lock);
     ud_condition_init(&e->finished);
     atomic_init(&e->error_count, 0);
     atomic_init(&e->error_limit_reason, UD_OK);
-    e->pipeline_reports.ctx=ctx;
-    e->bound_plans.ctx=ctx;
-    e->control_reports.ctx=ctx;
+    e->pipeline_reports.ctx = ctx;
+    e->bound_plans.ctx = ctx;
+    e->control_reports.ctx = ctx;
     ud_mutex_init(&e->diagnostics_lock);
+    ud_mutex_init(&e->asset_lock);
     ud_mutex_init(&e->cancellation_lock);
     ud_condition_init(&e->cancellation_changed);
     e->options = *options;
@@ -208,7 +216,11 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     atomic_init(&e->tree_active, 0);
     atomic_init(&e->tree_high_water, 0);
     atomic_init(&e->spill_bytes, 0);
-    atomic_init(&e->committed_rows,0);atomic_init(&e->acknowledged_rows,0);
+    atomic_init(&e->committed_rows, 0);
+    atomic_init(&e->acknowledged_rows, 0);
+    atomic_init(&e->error_rows, 0);
+    atomic_init(&e->committed_error_rows, 0);
+    atomic_init(&e->acknowledged_error_rows, 0);
     ud_status s = ud_executor_create(ctx, e->options.max_concurrency, &e->executor);
     if (!s)
         s = copy_string(ctx, options->tenant, &e->options.tenant);
@@ -269,6 +281,8 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     if (!s)
         s = ud_connections_create(e);
     if (!s)
+        s = ud_assets_create(e);
+    if (!s)
         s = ud_activation_validate_definition(&e->root, 0);
     if (s) {
         atomic_store(&e->state, UD_EXEC_FAILED);
@@ -294,9 +308,11 @@ ud_status ud_execution_create(const ud_package *p, const ud_execution_options *o
 }
 ud_status ud_activation_run_definition(ud_activation *e) {
     const ud_json *handlers = ud_member(e->package->document, "eventHandlers");
-    e->event_handlers=handlers;
+    e->event_handlers = handlers;
     ud_status s = ud_activation_check(e);
-    if (!s) s=ud_transaction_enter(e,ud_member(ud_member(e->package->document,"policy"),"transaction"),0);
+    if (!s)
+        s = ud_transaction_enter(
+            e, ud_member(ud_member(e->package->document, "policy"), "transaction"), 0);
     if (!s)
         s = ud_control_handler(e, ud_member(handlers, "before"), "before");
     if (!s)
@@ -308,7 +324,7 @@ ud_status ud_activation_run_definition(ud_activation *e) {
         if (secondary == UD_COMMIT_UNKNOWN)
             s = secondary;
     }
-    s=ud_transaction_leave(e,s);
+    s = ud_transaction_leave(e, s);
     return s == UD_BUSY ? UD_TRANSIENT : s;
 }
 static ud_status execute(ud_execution *e) {
@@ -332,6 +348,9 @@ static ud_status execute(ud_execution *e) {
         ud_activation_notify(&e->root, UD_EXEC_DRAINING, UD_OK);
     }
     ud_checkpoint_close(e);
+    ud_status assets = ud_assets_release(e);
+    if (!s && assets)
+        s = assets;
     ud_status released = ud_execution_release_buffers(e);
     if (!s && released)
         s = released;
@@ -410,14 +429,18 @@ void ud_execution_cancel(ud_execution *e) {
         ud_connections_cancel(e);
         ud_mutex_lock(&e->cancellation_lock);
         for (;;) {
-            ud_activation *a=e->cancellable;
-            while (a && a->cancel_sent) a=a->next_cancel;
-            if (!a) break;
-            a->cancel_sent=1;a->cancel_pins++;
+            ud_activation *a = e->cancellable;
+            while (a && a->cancel_sent)
+                a = a->next_cancel;
+            if (!a)
+                break;
+            a->cancel_sent = 1;
+            a->cancel_pins++;
             ud_mutex_unlock(&e->cancellation_lock);
             a->cancel_callback(a->cancel_instance);
             ud_mutex_lock(&e->cancellation_lock);
-            a->cancel_pins--;ud_condition_wake(&e->cancellation_changed);
+            a->cancel_pins--;
+            ud_condition_wake(&e->cancellation_changed);
         }
         ud_mutex_unlock(&e->cancellation_lock);
     }
@@ -444,7 +467,12 @@ ud_status ud_execution_get_metrics(const ud_execution *e, ud_execution_metrics *
     m->tree_high_water = atomic_load(&e->tree_high_water);
     m->worker_high_water = ud_executor_high_water(e->executor);
     m->spill_bytes = atomic_load(&e->spill_bytes);
-    m->committed_rows=atomic_load(&e->committed_rows);m->acknowledged_rows=atomic_load(&e->acknowledged_rows);m->error_count=atomic_load(&e->error_count);
+    m->error_rows = atomic_load(&e->error_rows);
+    m->committed_error_rows = atomic_load(&e->committed_error_rows);
+    m->acknowledged_error_rows = atomic_load(&e->acknowledged_error_rows);
+    m->committed_rows = atomic_load(&e->committed_rows);
+    m->acknowledged_rows = atomic_load(&e->acknowledged_rows);
+    m->error_count = atomic_load(&e->error_count);
     return UD_OK;
 }
 ud_status ud_execution_destroy(ud_execution *e) {
@@ -468,12 +496,17 @@ ud_status ud_execution_destroy(ud_execution *e) {
     }
     if (!e->disposed) {
         ud_checkpoint_close(e);
+        ud_assets_destroy(e);
+        ud_source_versions_destroy(e);
+        ud_rule_facts_destroy(&e->rule_facts);
+        ud_rule_facts_destroy(&e->root.rule_facts);
         ud_status cleanup = ud_execution_release_buffers(e);
         if (cleanup)
             return ud_fail(ctx, UD_RESOURCE, "execution retains buffer resources: %s",
                            ud_status_name(cleanup));
         cleanup = ud_connections_destroy(e);
-        if (cleanup) return cleanup;
+        if (cleanup)
+            return cleanup;
         ud_scope_leave(&e->root, &e->root.globals);
         ud_scope_leave(&e->root, &e->root.project_scope);
         cleanup = ud_registry_destroy(e->registry);
@@ -500,6 +533,7 @@ ud_status ud_execution_destroy(ud_execution *e) {
         ud_free((void *)e->options.state_directory.data);
         e->options.state_directory = (ud_string){0};
         ud_bytes_clear(&e->pipeline_reports);
+        ud_bytes_clear(&e->schema_reports);
         ud_bytes_clear(&e->bound_plans);
         ud_bytes_clear(&e->control_reports);
         e->disposed = 1;
@@ -513,6 +547,7 @@ ud_status ud_execution_destroy(ud_execution *e) {
     ud_mutex_destroy(&e->journal_lock);
     ud_mutex_destroy(&e->serial_tasks_lock);
     ud_condition_destroy(&e->finished);
+    ud_mutex_destroy(&e->asset_lock);
     ud_mutex_destroy(&e->diagnostics_lock);
     ud_mutex_destroy(&e->cancellation_lock);
     ud_condition_destroy(&e->cancellation_changed);
@@ -520,92 +555,270 @@ ud_status ud_execution_destroy(ud_execution *e) {
     return ud_context_destroy(ctx);
 }
 
-static ud_status owned_json(ud_bytes *bytes,char **out,uint32_t *length) {
-    if (bytes->size>UINT32_MAX) return UD_RESOURCE;
-    *out=ud_strdup_n(bytes->ctx,(const char *)bytes->data,bytes->size);
-    if (!*out) return UD_RESOURCE;
-    *length=(uint32_t)bytes->size;return UD_OK;
+static ud_status owned_json(ud_bytes *bytes, char **out, uint32_t *length) {
+    if (bytes->size > UINT32_MAX)
+        return UD_RESOURCE;
+    *out = ud_strdup_n(bytes->ctx, (const char *)bytes->data, bytes->size);
+    if (!*out)
+        return UD_RESOURCE;
+    *length = (uint32_t)bytes->size;
+    return UD_OK;
 }
-ud_status ud_execution_explain(ud_execution *e,char **out,uint32_t *length) {
-    if (!e || !out || !length) return UD_INVALID;
-    *out=NULL;*length=0;
-    int state=atomic_load(&e->state);
-    if (state==UD_EXEC_RUNNING || state==UD_EXEC_DRAINING) return UD_BUSY;
-    ud_bytes bytes={.ctx=e->ctx};
-    ud_status status=ud_bytes_put(&bytes,"{\"version\":",sizeof("{\"version\":")-1);
-    char version[128];int n=snprintf(version,sizeof(version),"%u,\"workerLimit\":%u,\"control\":",UD_PLAN_VERSION,e->options.max_concurrency);
-    if (!status) status=ud_bytes_put(&bytes,version,(size_t)n);
-    if (!status) status=ud_control_explain(&e->root,ud_member(e->package->document,"controlFlow"),&bytes);
-    if (!status) status=ud_bytes_put(&bytes,",\"pipelines\":[",sizeof(",\"pipelines\":[")-1);
-    if (!status) status=ud_bytes_put(&bytes,e->bound_plans.data,e->bound_plans.size);
-    if (!status) status=ud_bytes_put(&bytes,"]}",sizeof("]}")-1);
-    if (!status) status=owned_json(&bytes,out,length);
-    ud_bytes_clear(&bytes);return status;
+ud_status ud_execution_explain(ud_execution *e, char **out, uint32_t *length) {
+    if (!e || !out || !length)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    int state = atomic_load(&e->state);
+    if (state == UD_EXEC_RUNNING || state == UD_EXEC_DRAINING)
+        return UD_BUSY;
+    ud_bytes bytes = {.ctx = e->ctx};
+    ud_status status = ud_bytes_put(&bytes, "{\"version\":", sizeof("{\"version\":") - 1);
+    char version[128];
+    int n =
+        snprintf(version, sizeof(version), "%u,\"workerLimit\":%u,\"control\":", UD_PLAN_VERSION,
+                 e->options.max_concurrency);
+    if (!status)
+        status = ud_bytes_put(&bytes, version, (size_t)n);
+    if (!status)
+        status =
+            ud_control_explain(&e->root, ud_member(e->package->document, "controlFlow"), &bytes);
+    if (!status)
+        status = ud_bytes_put(&bytes, ",\"pipelines\":[", sizeof(",\"pipelines\":[") - 1);
+    if (!status)
+        status = ud_bytes_put(&bytes, e->bound_plans.data, e->bound_plans.size);
+    if (!status)
+        status = ud_bytes_put(&bytes, "]}", sizeof("]}") - 1);
+    if (!status)
+        status = owned_json(&bytes, out, length);
+    ud_bytes_clear(&bytes);
+    return status;
 }
-ud_status ud_execution_diagnostics(ud_execution *e,char **out,uint32_t *length) {
-    if (!e || !out || !length) return UD_INVALID;
-    *out=NULL;*length=0;
-    int state=atomic_load(&e->state);
-    if (state==UD_EXEC_RUNNING || state==UD_EXEC_DRAINING) return UD_BUSY;
-    ud_bytes bytes={.ctx=e->ctx};
-    ud_status status=ud_bytes_put(&bytes,"{\"connections\":",sizeof("{\"connections\":")-1);
-    if (!status) status=ud_connections_diagnostics(e,&bytes);
-    if (!status) status=ud_bytes_put(&bytes,",\"scheduler\":",sizeof(",\"scheduler\":")-1);
-    if (!status) status=ud_executor_diagnostics(e->executor,&bytes);
-    if (!status) status=ud_bytes_put(&bytes,",\"tasks\":[",sizeof(",\"tasks\":[")-1);
-    if (!status) status=ud_bytes_put(&bytes,e->control_reports.data,e->control_reports.size);
-    char count[128];int count_size=snprintf(count,sizeof(count),"],\"taskRecords\":%llu,\"taskRecordsDropped\":%llu,\"pipelines\":[",(unsigned long long)e->control_record_count,(unsigned long long)e->control_records_dropped);
-    if (!status) status=ud_bytes_put(&bytes,count,(size_t)count_size);
+ud_status ud_execution_diagnostics(ud_execution *e, char **out, uint32_t *length) {
+    if (!e || !out || !length)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    int state = atomic_load(&e->state);
+    if (state == UD_EXEC_RUNNING || state == UD_EXEC_DRAINING)
+        return UD_BUSY;
+    ud_bytes bytes = {.ctx = e->ctx};
+    ud_status status = ud_bytes_put(&bytes, "{\"connections\":", sizeof("{\"connections\":") - 1);
+    if (!status)
+        status = ud_connections_diagnostics(e, &bytes);
+    if (!status)
+        status = ud_bytes_put(&bytes, ",\"ruleDeliveries\":", 18);
+    if (!status)
+        status = ud_rule_facts_json(e->rule_facts, &bytes);
+    if (!status)
+        status = ud_bytes_put(&bytes, ",\"schemas\":[", 12);
+    if (!status)
+        status = ud_bytes_put(&bytes, e->schema_reports.data, e->schema_reports.size);
+    if (!status)
+        status = ud_bytes_put(&bytes, "]", 1);
+    if (!status)
+        status = ud_bytes_put(&bytes, ",\"caches\":", sizeof(",\"caches\":") - 1);
+    if (!status)
+        status = ud_assets_diagnostics(e, &bytes);
+    if (!status) {
+        ud_buffer_metrics m = e->buffer_metrics;
+        if (e->buffers)
+            status = ud_buffer_manager_metrics(e->buffers, &m);
+        char buffer[768];
+        int n = snprintf(
+            buffer, sizeof(buffer),
+            ",\"buffers\":{\"residentPeak\":%llu,\"workingPeak\":%llu,\"spillPeak\":%llu,"
+            "\"totalSpill\":%llu,\"encodes\":%llu,\"decodes\":%llu,\"encodedBytes\":%llu,"
+            "\"readBytes\":%llu,\"writeBytes\":%llu,\"encodeCpuNs\":%llu,\"decodeCpuNs\":%llu,"
+            "\"readMs\":%llu,\"writeMs\":%llu}",
+            (unsigned long long)m.resident_high_water, (unsigned long long)m.working_high_water,
+            (unsigned long long)m.spill_high_water, (unsigned long long)m.total_spill_bytes,
+            (unsigned long long)m.wire_encodes, (unsigned long long)m.wire_decodes,
+            (unsigned long long)m.encoded_bytes, (unsigned long long)m.read_bytes,
+            (unsigned long long)m.write_bytes, (unsigned long long)m.encode_cpu_ns,
+            (unsigned long long)m.decode_cpu_ns, (unsigned long long)m.read_ms,
+            (unsigned long long)m.write_ms);
+        if (!status)
+            status = ud_bytes_put(&bytes, buffer, (size_t)n);
+    }
+    if (!status)
+        status = ud_bytes_put(&bytes, ",\"scheduler\":", sizeof(",\"scheduler\":") - 1);
+    if (!status)
+        status = ud_executor_diagnostics(e->executor, &bytes);
+    if (!status)
+        status = ud_bytes_put(&bytes, ",\"tasks\":[", sizeof(",\"tasks\":[") - 1);
+    if (!status)
+        status = ud_bytes_put(&bytes, e->control_reports.data, e->control_reports.size);
+    char count[128];
+    int count_size = snprintf(count, sizeof(count),
+                              "],\"taskRecords\":%llu,\"taskRecordsDropped\":%llu,\"pipelines\":[",
+                              (unsigned long long)e->control_record_count,
+                              (unsigned long long)e->control_records_dropped);
+    if (!status)
+        status = ud_bytes_put(&bytes, count, (size_t)count_size);
     ud_mutex_lock(&e->diagnostics_lock);
-    if (!status) status=ud_bytes_put(&bytes,e->pipeline_reports.data,e->pipeline_reports.size);
+    if (!status)
+        status = ud_bytes_put(&bytes, e->pipeline_reports.data, e->pipeline_reports.size);
     ud_mutex_unlock(&e->diagnostics_lock);
-    char tail[384];int n=snprintf(tail,sizeof(tail),"],\"pipelineRecords\":%llu,\"pipelineRecordsDropped\":%llu,\"errorCount\":%u,\"workerHighWater\":%u,\"spillBytes\":%llu,\"state\":%d,\"outcome\":%d}",
-        (unsigned long long)e->pipeline_record_count,(unsigned long long)e->pipeline_records_dropped,atomic_load(&e->error_count),ud_executor_high_water(e->executor),(unsigned long long)atomic_load(&e->spill_bytes),
-        atomic_load(&e->state),atomic_load(&e->result));
-    if (!status) status=ud_bytes_put(&bytes,tail,(size_t)n);
-    if (!status) status=owned_json(&bytes,out,length);
-    ud_bytes_clear(&bytes);return status;
+    char tail[384];
+    int n = snprintf(tail, sizeof(tail),
+                     "],\"pipelineRecords\":%llu,\"pipelineRecordsDropped\":%llu,\"errorCount\":%u,"
+                     "\"workerHighWater\":%u,\"spillBytes\":%llu,\"state\":%d,\"outcome\":%d}",
+                     (unsigned long long)e->pipeline_record_count,
+                     (unsigned long long)e->pipeline_records_dropped, atomic_load(&e->error_count),
+                     ud_executor_high_water(e->executor),
+                     (unsigned long long)atomic_load(&e->spill_bytes), atomic_load(&e->state),
+                     atomic_load(&e->result));
+    if (!status)
+        status = ud_bytes_put(&bytes, tail, (size_t)n);
+    if (!status)
+        status = owned_json(&bytes, out, length);
+    ud_bytes_clear(&bytes);
+    return status;
 }
-ud_status ud_activation_raise(ud_activation *a,int32_t kind,ud_status result) {
-    if (!a || (kind!=UD_EXEC_EVENT_WARNING && kind!=UD_EXEC_EVENT_ERROR)) return UD_INVALID;
-    if (a->event_depth>=a->execution->options.max_depth) return UD_RESOURCE;
-    ud_activation_notify_kind(a,kind,UD_EXEC_RUNNING,result);
-    const char *handler=kind==UD_EXEC_EVENT_WARNING ? "warning" : "error";
+ud_status ud_activation_raise(ud_activation *a, int32_t kind, ud_status result) {
+    if (!a || (kind != UD_EXEC_EVENT_WARNING && kind != UD_EXEC_EVENT_ERROR))
+        return UD_INVALID;
+    if (a->event_depth >= a->execution->options.max_depth)
+        return UD_RESOURCE;
+    ud_activation_notify_kind(a, kind, UD_EXEC_RUNNING, result);
+    const char *handler = kind == UD_EXEC_EVENT_WARNING ? "warning" : "error";
     a->event_depth++;
-    ud_status status=UD_OK;
-    for (ud_activation *at=a;!status && at;at=at->parent)
-        status=ud_control_handler(at,ud_member(at->event_handlers,handler),handler);
+    ud_status status = UD_OK;
+    for (ud_activation *at = a; !status && at; at = at->parent)
+        status = ud_control_handler(at, ud_member(at->event_handlers, handler), handler);
     a->event_depth--;
     return status;
 }
 
-void ud_task_cancel_register(ud_activation *a,void *instance,void (*cancel)(void *)) {
-    if (!cancel) return;
-    ud_execution *e=a->execution;
+void ud_task_cancel_register(ud_activation *a, void *instance, void (*cancel)(void *)) {
+    if (!cancel)
+        return;
+    ud_execution *e = a->execution;
     ud_mutex_lock(&e->cancellation_lock);
-    a->cancel_instance=instance;a->cancel_callback=cancel;a->cancel_sent=0;
-    a->next_cancel=e->cancellable;e->cancellable=a;
+    a->cancel_instance = instance;
+    a->cancel_callback = cancel;
+    a->cancel_sent = 0;
+    a->next_cancel = e->cancellable;
+    e->cancellable = a;
     ud_mutex_unlock(&e->cancellation_lock);
-    if (ud_is_cancelled(e->ctx)) ud_execution_cancel(e);
+    if (ud_is_cancelled(e->ctx))
+        ud_execution_cancel(e);
 }
 void ud_task_cancel_unregister(ud_activation *a) {
-    if (!a->cancel_callback) return;
-    ud_execution *e=a->execution;
+    if (!a->cancel_callback)
+        return;
+    ud_execution *e = a->execution;
     ud_mutex_lock(&e->cancellation_lock);
-    while (a->cancel_pins) ud_condition_wait(&e->cancellation_changed,&e->cancellation_lock);
-    ud_activation **at=&e->cancellable;
-    while (*at && *at!=a) at=&(*at)->next_cancel;
-    if (*at) *at=a->next_cancel;
-    a->next_cancel=NULL;a->cancel_callback=NULL;
+    while (a->cancel_pins)
+        ud_condition_wait(&e->cancellation_changed, &e->cancellation_lock);
+    ud_activation **at = &e->cancellable;
+    while (*at && *at != a)
+        at = &(*at)->next_cancel;
+    if (*at)
+        *at = a->next_cancel;
+    a->next_cancel = NULL;
+    a->cancel_callback = NULL;
     ud_mutex_unlock(&e->cancellation_lock);
 }
 
-void ud_target_rows(ud_activation *a,uint64_t rows,int acknowledged) {
-    ud_activation *owner=a->scope_authority ? a->scope_authority : a;
+void ud_target_rows(ud_activation *a, uint64_t rows, uint64_t errors, int acknowledged) {
+    ud_activation *owner = a->scope_authority ? a->scope_authority : a;
     if (acknowledged) {
-        atomic_fetch_add(&a->execution->acknowledged_rows,rows);atomic_fetch_add(&owner->acknowledged_rows,rows);
+        atomic_fetch_add(&a->execution->acknowledged_rows, rows);
+        atomic_fetch_add(&owner->acknowledged_rows, rows);
+        atomic_fetch_add(&a->execution->acknowledged_error_rows, errors);
+        atomic_fetch_add(&owner->acknowledged_error_rows, errors);
     } else {
-        atomic_fetch_add(&a->execution->committed_rows,rows);atomic_fetch_add(&owner->committed_rows,rows);
-        ud_activation_notify_kind(a,UD_EXEC_EVENT_TARGET_COMMITTED,UD_EXEC_RUNNING,UD_OK);
+        atomic_fetch_add(&a->execution->committed_rows, rows);
+        atomic_fetch_add(&owner->committed_rows, rows);
+        atomic_fetch_add(&a->execution->committed_error_rows, errors);
+        atomic_fetch_add(&owner->committed_error_rows, errors);
+        ud_activation_notify_kind(a, UD_EXEC_EVENT_TARGET_COMMITTED, UD_EXEC_RUNNING, UD_OK);
     }
+}
+
+ud_status ud_connection_field_namespace(ud_activation *a, ud_string connection, ud_string table,
+                                        char out[33]) {
+    ud_bytes data = {.ctx = a->execution->ctx};
+    ud_string project = {0};
+    const ud_json *p = ud_member(a->package->document, "project");
+    ud_status status = p ? ud_json_string(ud_member(p, "id"), &project) : UD_OK;
+    ud_string parts[] = {a->execution->options.tenant, project, a->package->id, connection, table};
+    for (uint32_t i = 0; !status && i < 5; i++)
+        status = ud_put_string(&data, parts[i].data, parts[i].length);
+    if (!status) {
+        uint8_t hash[32];
+        ud_hash(data.data, data.size, hash);
+        ud_id id = {0};
+        for (uint32_t i = 0; i < 8; i++) {
+            id.high = (id.high << 8) | hash[i];
+            id.low = (id.low << 8) | hash[i + 8];
+        }
+        ud_id_format(id, out);
+    }
+    ud_bytes_clear(&data);
+    return status;
+}
+ud_status ud_execution_discover_schema(ud_execution *e, ud_string connection, ud_string table,
+                                       char **out, uint32_t *length) {
+    if (!e || !out || !length)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    if (atomic_load(&e->state) == UD_EXEC_RUNNING || atomic_load(&e->state) == UD_EXEC_DRAINING)
+        return UD_BUSY;
+    ud_connection_lease *lease = NULL;
+    ud_batch *schema = NULL;
+    char scope[33];
+    ud_status status = ud_connection_field_namespace(&e->root, connection, table, scope);
+    if (!status)
+        status =
+            ud_activation_acquire_connection(&e->root, connection, UD_CONNECT_METADATA, &lease);
+    if (!status)
+        status = ud_connection_lease_schema(lease, table, (ud_string){scope, 32}, &schema);
+    if (!status)
+        status = ud_schema_to_json(schema, out, length);
+    ud_batch_destroy(schema);
+    ud_status closed = ud_connection_lease_release(lease);
+    if (closed && !status) {
+        ud_free(*out);
+        *out = NULL;
+        *length = 0;
+        status = closed;
+    }
+    return status;
+}
+
+ud_status ud_schema_report(ud_activation *a, ud_string diff, ud_status result) {
+    ud_execution *e = a->execution;
+    ud_bytes record = {.ctx = e->ctx, .limit = 65536};
+    ud_status status = ud_bytes_put(&record, "{\"task\":", 8);
+    if (!status)
+        status = ud_json_quote(&record, a->task_id.data, a->task_id.length);
+    if (!status)
+        status = ud_bytes_put(&record, ",\"component\":", 13);
+    if (!status)
+        status = ud_json_quote(&record, a->component_id.data, a->component_id.length);
+    char code[64];
+    int n = snprintf(code, sizeof(code), ",\"result\":%d,\"diff\":", result);
+    if (!status)
+        status = ud_bytes_put(&record, code, (size_t)n);
+    if (!status)
+        status = ud_bytes_put(&record, diff.data, diff.length);
+    if (!status)
+        status = ud_bytes_put(&record, "}", 1);
+    ud_mutex_lock(&e->diagnostics_lock);
+    e->schema_reports.ctx = e->ctx;
+    e->schema_reports.limit = 1048576;
+    uint64_t before = e->schema_reports.size;
+    if (!status && before)
+        status = ud_bytes_put(&e->schema_reports, ",", 1);
+    if (!status)
+        status = ud_bytes_put(&e->schema_reports, record.data, record.size);
+    if (status)
+        e->schema_reports.size = before;
+    ud_mutex_unlock(&e->diagnostics_lock);
+    ud_bytes_clear(&record);
+    return status;
 }

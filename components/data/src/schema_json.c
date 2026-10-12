@@ -15,24 +15,6 @@ static ud_status text_value(const ud_json *v, const char **text, uint32_t *lengt
         return UD_SCHEMA;
     return ud_json_text(v, text, length);
 }
-static ud_status keys(const ud_json *v, const char *const *names, uint32_t count) {
-    if (ud_json_kind(v) != UD_JSON_OBJECT)
-        return UD_SCHEMA;
-    for (uint32_t i = 0; i < ud_json_size(v); i++) {
-        const char *key = NULL;
-        uint32_t length = 0;
-        UD_TRY(ud_json_key(v, i, &key, &length));
-        int found = 0;
-        for (uint32_t j = 0; j < count; j++)
-            if (equals(key, length, names[j])) {
-                found = 1;
-                break;
-            }
-        if (!found)
-            return UD_SCHEMA;
-    }
-    return UD_OK;
-}
 static ud_status integer(ud_context *ctx, const ud_json *json, int32_t *out) {
     if (ud_json_kind(json) != UD_JSON_NUMBER)
         return UD_SCHEMA;
@@ -69,24 +51,24 @@ static ud_status parse_fields(ud_context *ctx, const ud_json *array, uint32_t de
     *out = fields;
     *count = n;
     static const char *allowed[] = {"name",     "type",     "nullable", "precision", "scale",
-                                    "timezone", "children", "identity", "lineage"};
+                                    "timezone", "children", "identity", "lineage",   "keyOrder"};
     for (uint32_t j = 0; j < n; j++) {
         const ud_json *v = ud_json_at(array, j);
         ud_field *f = fields + j;
-        UD_TRY(keys(v, allowed, 9));
+        UD_TRY(ud_json_keys(v, allowed, 10));
         UD_TRY(text_value(member(v, "name"), &f->name, &f->name_length));
         const ud_json *id = member(v, "identity"), *lineage = member(v, "lineage");
         if (id) {
             const char *hex = NULL;
             uint32_t bytes = 0;
             UD_TRY(text_value(id, &hex, &bytes));
-            UD_TRY(ud_column_id_parse((ud_string){hex, bytes}, &f->identity));
+            UD_TRY(ud_id_parse((ud_string){hex, bytes}, &f->identity));
         }
         if (lineage) {
             if (!id || ud_json_kind(lineage) != UD_JSON_ARRAY || ud_json_size(lineage) > 4096)
                 return UD_SCHEMA;
             uint32_t origins = ud_json_size(lineage);
-            ud_column_id *ids = origins ? ud_alloc(ctx, origins * sizeof(*ids)) : NULL;
+            ud_id *ids = origins ? ud_alloc(ctx, origins * sizeof(*ids)) : NULL;
             if (origins && !ids)
                 return UD_RESOURCE;
             f->lineage = ids;
@@ -95,10 +77,10 @@ static ud_status parse_fields(ud_context *ctx, const ud_json *array, uint32_t de
                 const char *hex = NULL;
                 uint32_t bytes = 0;
                 UD_TRY(text_value(ud_json_at(lineage, k), &hex, &bytes));
-                UD_TRY(ud_column_id_parse((ud_string){hex, bytes}, ids + k));
+                UD_TRY(ud_id_parse((ud_string){hex, bytes}, ids + k));
             }
         } else if (id) {
-            ud_column_id *origin = ud_alloc(ctx, sizeof(*origin));
+            ud_id *origin = ud_alloc(ctx, sizeof(*origin));
             if (!origin)
                 return UD_RESOURCE;
             *origin = f->identity;
@@ -113,6 +95,13 @@ static ud_status parse_fields(ud_context *ctx, const ud_json *array, uint32_t de
                 f->type = (ud_type)k + 1;
         if (!f->type)
             return UD_UNSUPPORTED;
+        if (member(v, "keyOrder")) {
+            int32_t order = 0;
+            UD_TRY(integer(ctx, member(v, "keyOrder"), &order));
+            if (order < 0 || order > 65536)
+                return UD_SCHEMA;
+            f->key_order = (uint32_t)order;
+        }
         const ud_json *nullable = member(v, "nullable");
         if (ud_json_kind(nullable) != UD_JSON_BOOL)
             return UD_SCHEMA;
@@ -151,7 +140,7 @@ ud_status ud_schema_from_json(ud_context *ctx, const char *text, uint32_t length
     ud_json *doc = NULL;
     UD_TRY(ud_json_parse(ctx, text, length, &doc, NULL));
     static const char *root_keys[] = {"version", "fields", "namespace"};
-    ud_status s = keys(doc, root_keys, 3);
+    ud_status s = ud_json_keys(doc, root_keys, 3);
     int32_t version = 0;
     if (!s)
         s = integer(ctx, member(doc, "version"), &version);
@@ -180,17 +169,22 @@ static ud_status emit_fields(ud_bytes *bytes, const ud_field *fields, uint32_t c
         UD_TRY(ud_bytes_put(bytes, ",\"type\":", 8));
         UD_TRY(ud_json_quote(bytes, type_names[f->type - 1],
                              (uint32_t)strlen(type_names[f->type - 1])));
+        if (f->key_order) {
+            char key[40];
+            int n = snprintf(key, sizeof(key), ",\"keyOrder\":%u", f->key_order);
+            UD_TRY(ud_bytes_put(bytes, key, (size_t)n));
+        }
         UD_TRY(ud_bytes_put(bytes, ",\"nullable\":", 12));
         UD_TRY(ud_bytes_put(bytes, f->nullable ? "true" : "false", f->nullable ? 4 : 5));
         char identity[33];
-        ud_column_id_format(f->identity, identity);
+        ud_id_format(f->identity, identity);
         UD_TRY(ud_bytes_put(bytes, ",\"identity\":", 12));
         UD_TRY(ud_json_quote(bytes, identity, 32));
         UD_TRY(ud_bytes_put(bytes, ",\"lineage\":[", 12));
         for (uint32_t k = 0; k < f->lineage_count; k++) {
             if (k)
                 UD_TRY(ud_bytes_put(bytes, ",", 1));
-            ud_column_id_format(f->lineage[k], identity);
+            ud_id_format(f->lineage[k], identity);
             UD_TRY(ud_json_quote(bytes, identity, 32));
         }
         UD_TRY(ud_bytes_put(bytes, "]", 1));
@@ -273,7 +267,7 @@ ud_status ud_batch_cast_schema(ud_context *ctx, const ud_batch *input, const cha
     ud_json *doc = NULL;
     UD_TRY(ud_json_parse(ctx, schema_json, schema_length, &doc, NULL));
     static const char *allowed[] = {"version", "fields", "namespace"};
-    ud_status s = keys(doc, allowed, 3);
+    ud_status s = ud_json_keys(doc, allowed, 3);
     int32_t version = 0;
     if (!s)
         s = integer(ctx, member(doc, "version"), &version);

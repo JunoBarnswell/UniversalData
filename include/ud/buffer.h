@@ -17,6 +17,8 @@ typedef struct ud_buffer_options {
 typedef struct ud_buffer_metrics {
     uint64_t resident_bytes, working_bytes, spill_bytes, total_spill_bytes;
     uint64_t resident_high_water, working_high_water, wire_encodes;
+    uint64_t wire_decodes, encoded_bytes, read_bytes, write_bytes, spill_high_water;
+    uint64_t encode_cpu_ns, decode_cpu_ns, read_ms, write_ms;
     uint32_t blocks, views, cleanup_blocks;
 } ud_buffer_metrics;
 UD_API ud_status ud_buffer_manager_create(ud_context *, const ud_buffer_options *,

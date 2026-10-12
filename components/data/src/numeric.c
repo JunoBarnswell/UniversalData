@@ -8,7 +8,7 @@ ud_status ud_numeric_result_field(int32_t op, const ud_field *a, const ud_field 
         return UD_SCHEMA;
     *out = *a;
     out->nullable = a->nullable || b->nullable;
-    out->identity = (ud_column_id){0};
+    out->identity = (ud_id){0};
     out->lineage = NULL;
     out->lineage_count = 0;
     if (op == UD_NUMERIC_MULTIPLY && a->type == UD_DECIMAL128) {

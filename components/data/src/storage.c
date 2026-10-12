@@ -22,6 +22,7 @@ ud_status ud_batch_visit_storage(const ud_batch *batch, ud_storage_visit visit, 
         return UD_INVALID;
     UD_TRY(allocation(batch, visit, user));
     UD_TRY(allocation(batch->column, visit, user));
+    UD_TRY(allocation(batch->row_info, visit, user));
     UD_TRY(allocation(batch->schema, visit, user));
     UD_TRY(fields(batch->schema->fields, batch->schema->columns, visit, user));
     if (batch->data_owner)

@@ -2,23 +2,28 @@
   "modelVersion": 1,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "1.2.0",
-    "abiVersion": 6,
-    "protocolVersion": 6
+    "sdkVersion": "1.3.0",
+    "abiVersion": 7,
+    "protocolVersion": 7
   },
   "scope": {
-    "name": "ETL four engines R0–R7 P0/P1",
+    "name": "ETL next phase R1–R5 only",
     "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
     "extensions": "Tracked independently; Planned/Partial remain incomplete",
     "windows": "Exempt — explicit current user instruction"
   },
   "baseline": {
-    "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
-    "merged": true
+    "mainCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+    "merged": true,
+    "mergeEvidence": {
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/4",
+      "mergedAt": "2026-10-12T20:33:45Z",
+      "headCommit": "45c1d056a3d771389b1e115d28cc7977bcd2541b"
+    }
   },
   "candidate": {
-    "branch": "codex/ssis-infrastructure-convergence",
-    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
+    "branch": "codex/etl-next-phase-r1-r5",
+    "state": "R1–R5 batch implementation complete; concentrated Linux ABI 7 validation pending",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null
@@ -30,7 +35,7 @@
       "name": "产品/架构/SSIS 证据及破坏性矩阵",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "设计文件无矛盾；真实源码职责和官方证据可追溯；所有权/迁移标准明确",
       "implementation": [
         "docs/product",
@@ -41,7 +46,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": []
     },
     {
       "id": "G01",
@@ -49,7 +55,7 @@
       "name": "唯一执行器和主版本切换",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "仅 Package/Execution 启停；无 Job/Dag/Run/桥接导出；全部消费端 current ABI",
       "implementation": [
         "include/ud/package.h",
@@ -59,7 +65,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": []
     },
     {
       "id": "G02",
@@ -67,7 +74,7 @@
       "name": "统一 Schema 和列 identity/lineage",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "重命名/派生/Join/Arrow/Wire 保持或明确生成列 identity 和来源；ETL/Query 使用相同字段规范",
       "implementation": [
         "components/data",
@@ -85,7 +92,7 @@
       "name": "sealed Batch/Buffer 所有权",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "扇出无悬空引用；修改 sealed Buffer 拒绝；同步共享、异步独立；配额/销毁/Arrow 释放正确",
       "implementation": [
         "components/data/src/columnar.c",
@@ -94,7 +101,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": []
     },
     {
       "id": "G04",
@@ -102,7 +110,7 @@
       "name": "统一类型/转换/NULL/Compare/Hash",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "Decimal/UTC/NUL/嵌套/NaN/NULL 在表达式、ETL、Query、spill 中一致；同值 hash 相同",
       "implementation": [
         "components/data",
@@ -120,7 +128,7 @@
       "name": "统一表达式 AST/Binder/函数 Registry",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "参数/变量/列、类型推断、常量折叠、向量评估、函数目录与权限上下文；Control/Derived/Split 共用语义",
       "implementation": [
         "components/expression",
@@ -138,7 +146,7 @@
       "name": "唯一状态/错误/诊断模型",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "状态迁移合法；END 不冒充成功；CommitUnknown/取消/失败分类一致；终态结果可并发安全读取",
       "implementation": [
         "components/execution/src/state.c",
@@ -147,7 +155,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": []
     },
     {
       "id": "G07",
@@ -155,7 +164,7 @@
       "name": "统一组件/插件 Registry",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "Task/Source/Transform/Destination/Connection/Enumerator/LogProvider 均走同一版本化注册和卸载租用规则",
       "implementation": [
         "components/contracts",
@@ -174,7 +183,7 @@
       "name": "Project/Package/Environment 与作用域",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "Project→Package→Container→Task 遮蔽和只读参数规则；共享连接/环境绑定；一个 JSON 产品模型",
       "implementation": [
         "include/ud/project.h",
@@ -186,7 +195,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G09",
@@ -194,7 +204,7 @@
       "name": "Package 定义/绑定/运行生命周期",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "定义严格版本化；未知成员/依赖/端口/能力提前拒绝；一个执行资源上下文",
       "implementation": [
         "engines/package/model.c",
@@ -204,7 +214,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": []
     },
     {
       "id": "G10",
@@ -212,7 +223,7 @@
       "name": "Sequence/For/Foreach 控制流",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "嵌套/局部作用域、循环变量/边界/上限、退出/取消/错误传播均实际验证",
       "implementation": [
         "engines/control-flow/control.c"
@@ -229,7 +240,7 @@
       "name": "Success/Failure/Completion + expression + AND/OR",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "不同约束组合、Skipped 前驱、失败分支、循环体按明确控制语义执行",
       "implementation": [
         "engines/control-flow/control.c"
@@ -246,7 +257,7 @@
       "name": "受限并发/任务超时/事件处理器",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "任务预算与 Pipeline 预算共享；超时取消；处理器不抹除原错误；多个事件的防重入",
       "implementation": [
         "engines/control-flow",
@@ -264,7 +275,7 @@
       "name": "DataFlow Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "通过正式 Pipeline 接口承载独立数据流，不调用旧 executor",
       "implementation": [
         "engines/control-flow/control.c",
@@ -273,7 +284,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": []
     },
     {
       "id": "G14",
@@ -281,7 +293,7 @@
       "name": "Execute SQL Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "SQL Task 与 Source/Sink 使用同一 Manager；参数化、失败分类和恢复副作用清晰",
       "implementation": [
         "engines/control-flow",
@@ -291,7 +303,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": []
     },
     {
       "id": "G15",
@@ -299,7 +312,7 @@
       "name": "File System Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "明确操作范围/权限策略；路径/覆盖/失败/原子性与取消实际验证",
       "implementation": [
         "engines/control-flow/filesystem.c",
@@ -311,7 +324,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G16",
@@ -319,7 +333,7 @@
       "name": "Execute Process Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "默认禁用、显式宿主授权；退出码/超时/取消/资源清理；不承诺权限沙箱",
       "implementation": [
         "engines/control-flow/process.c",
@@ -331,7 +345,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G17",
@@ -339,7 +354,7 @@
       "name": "Execute Package Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "真正子 Package 的参数/作用域/错误/取消/资源传递；非另一运行时或 Sequence 别名",
       "implementation": [
         "engines/package/child.c",
@@ -351,7 +366,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G18",
@@ -359,7 +375,7 @@
       "name": "HTTP Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "同一连接和宿主授权；TLS/超时/取消/HTTP 失败/重试边界",
       "implementation": [
         "engines/control-flow/http.c",
@@ -370,7 +386,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": false
+      "requiredThisDelivery": false,
+      "evidence": []
     },
     {
       "id": "G19",
@@ -378,7 +395,7 @@
       "name": "Check/Data Profiling Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "实际统计和规则结果、失败和资源预算；不以空检查伪装完成",
       "implementation": [
         "include/ud/profile.h",
@@ -388,7 +405,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G20",
@@ -396,7 +414,7 @@
       "name": "Native Custom Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "公开版本化回调/生命周期/默认授权/不能访问私有结构，插件卸载和错误传播",
       "implementation": [
         "include/ud/component.h",
@@ -409,7 +427,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G21",
@@ -417,7 +436,7 @@
       "name": "组件 metadata/设计时与运行时生命周期",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "端口/外部列/配置 schema/权限/错误输出/资源和版本 metadata 可检索；Configure 无副作用，失败反序 Dispose",
       "implementation": [
         "include/ud/component.h",
@@ -435,7 +454,7 @@
       "name": "多输入/输出 Path/End/backpressure",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "多 Source/Join/Union/Multicast/Error Output 同一 scheduler；公平轮询；队列上界和每端口 End 契约",
       "implementation": [
         "engines/data-flow/pipeline.c"
@@ -452,7 +471,7 @@
       "name": "Execution Trees/Buffer Pool/资源调度",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "同步/异步树和两级并发共享预算；CPU/队列/内存/Spill 上限，所有取消路径释放资源",
       "implementation": [
         "engines/data-flow",
@@ -470,7 +489,7 @@
       "name": "阻塞 Sort/Aggregate/Join 的 Pipeline spill",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "不只是内存算子或外部文件 API；管道状态、分区、偏斜、稳定排序和恢复受统一预算",
       "implementation": [
         "engines/data-flow/builtins.c",
@@ -488,7 +507,7 @@
       "name": "逻辑 Connection Manager 与物理 Driver",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "定义/作用域/凭据引用/授权/租用/能力/释放统一；Source/Sink/SQL Task 无全局密钥旁路",
       "implementation": [
         "connectors/manager.c",
@@ -506,7 +525,7 @@
       "name": "CSV Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "严格 CSV、Schema/null marker/UTF8/跨行、源位置、目标发布，全部经 Manager",
       "implementation": [
         "components/data/src/csv.c",
@@ -524,7 +543,7 @@
       "name": "JSON/NDJSON Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "严格 JSON、递归 Schema/UTC/Decimal、输入错误、分页/恢复/原子文件提交",
       "implementation": [
         "components/data/src/json.c",
@@ -533,7 +552,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": []
     },
     {
       "id": "G28",
@@ -541,7 +561,7 @@
       "name": "SQLite Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "有界游标、能力/权限、Append/Upsert/Delete、schema/事务/receipt 和 Pipeline 恢复",
       "implementation": [
         "plugins/sqlite.c",
@@ -559,7 +579,7 @@
       "name": "PostgreSQL Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "真实 PostgreSQL 的类型、游标、权限、事务/回执、增量/恢复，含 Package 路径",
       "implementation": [
         "plugins/postgresql.c",
@@ -580,7 +600,7 @@
       "name": "Data Conversion",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "统一显式转换、精度/舍入/NULL/非法值和错误输出",
       "implementation": [
         "engines/data-flow",
@@ -599,7 +619,7 @@
       "name": "Derived Column",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "统一 AST/函数、保留原列、精度/NULL/lineage 和错误输出",
       "implementation": [
         "engines/data-flow",
@@ -618,7 +638,7 @@
       "name": "Copy Column",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "identity/lineage 规则、Buffer 共享正确",
       "implementation": [
         "engines/data-flow",
@@ -637,7 +657,7 @@
       "name": "Character Map",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "字符策略明确、Unicode/ASCII 边界和配置校验",
       "implementation": [
         "engines/data-flow",
@@ -656,7 +676,7 @@
       "name": "Conditional Split",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "多条件、默认输出、三值逻辑、命中规则和生命周期",
       "implementation": [
         "engines/data-flow",
@@ -675,7 +695,7 @@
       "name": "Multicast",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "同 Buffer 引用多输出，无深复制语义差异，背压/取消/释放",
       "implementation": [
         "engines/data-flow",
@@ -694,7 +714,7 @@
       "name": "Union All",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "多输入同 Schema、End 顺序、公平轮询、不重复或丢行",
       "implementation": [
         "engines/data-flow",
@@ -713,7 +733,7 @@
       "name": "Merge/Merge Join",
       "priority": "P0",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "有序输入契约、重复键/NULL、偏斜和 End/背压",
       "implementation": [
         "engines/data-flow",
@@ -732,7 +752,7 @@
       "name": "Aggregate",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "统一 NULL/Decimal/分组，async/spill 和状态恢复",
       "implementation": [
         "engines/data-flow",
@@ -751,7 +771,7 @@
       "name": "Sort",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "统一 Compare、稳定顺序、NULL/NaN、async/spill 和状态恢复",
       "implementation": [
         "engines/data-flow",
@@ -770,7 +790,7 @@
       "name": "Lookup/Cache Transform",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "缓存/缺失/重复键策略和一致类型、配额/错误输出",
       "implementation": [
         "engines/data-flow",
@@ -789,7 +809,7 @@
       "name": "Pivot/Unpivot",
       "priority": "P0",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "Schema/重复/聚合/NULL/资源契约和组合行为",
       "implementation": [
         "engines/data-flow",
@@ -808,7 +828,7 @@
       "name": "Error Output/Reject/Quarantine",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "质量错误在同一 Pipeline Path 和提交链路；隔离失败不推进状态",
       "implementation": [
         "engines/data-flow",
@@ -827,7 +847,7 @@
       "name": "Null/Unique/Range/Regex/Reference",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "统一规则状态与跨批次验证；失败分类；正常/错误输出",
       "implementation": [
         "engines/data-flow",
@@ -846,7 +866,7 @@
       "name": "Row Count/Audit",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "可核对输入/输出/拒绝/隔离和提交计数，不记录秘密",
       "implementation": [
         "engines/data-flow",
@@ -865,7 +885,7 @@
       "name": "统一任务/批次 Checkpoint Journal",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "一个版本化、校验、独占、原子发布日志；任务/循环/变量/源位置/算子/目标回执记录",
       "implementation": [
         "engines/package/checkpoint.c"
@@ -875,7 +895,8 @@
       ],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G46",
@@ -883,7 +904,7 @@
       "name": "CommitUnknown/事务和故障恢复",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "真实进程终止：提交前/后/日志前/后；不推进未确认源；回执核实；无伪成功/重复写/资源泄漏",
       "implementation": [
         "engines/package",
@@ -895,7 +916,8 @@
       ],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G47",
@@ -903,7 +925,7 @@
       "name": "Catalog/Deployment/Environment/Version",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "可嵌入可选持久实现或 repository ABI；版本、环境、参数、发布、运行历史分离，非 Web 服务",
       "implementation": [
         "catalog",
@@ -912,7 +934,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G48",
@@ -920,7 +943,7 @@
       "name": "结构化 Events/Logs/Trace/Metrics/Lineage/Audit",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "Package/Execution/Task/Pipeline/Component ID 完整；行数/重试/spill/等待/峰值；秘密不进入日志",
       "implementation": [
         "engines/package",
@@ -931,7 +954,8 @@
       ],
       "externalPrerequisites": [],
       "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。",
-      "requiredThisDelivery": true
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G49",
@@ -939,7 +963,7 @@
       "name": "薄 C/.NET/Java Package/Execution 绑定",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "仅 ABI 投影；无旧类/业务引擎；生命周期/编码/回调/错误/取消/并发一致",
       "implementation": [
         "bindings",
@@ -949,7 +973,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": []
     },
     {
       "id": "G50",
@@ -957,7 +982,7 @@
       "name": "独立 C/Native/NuGet/Maven 安装消费",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "安装后的同 ABI native/Java/.NET 组件与同 Package 实际运行；不能把纯托管包当双平台 native 发布",
       "implementation": [
         "packaging",
@@ -976,7 +1001,7 @@
       "name": "Linux 原生与 ABI 门禁；Windows 本轮豁免",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "Linux 编译/关键验收；Windows Exempt，不继承历史通过证据",
       "implementation": [
         ".github/workflows/ci.yml",
@@ -994,7 +1019,7 @@
       "name": "内存安全/线程竞态/资源故障门禁",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "ASan/UBSan、引用/卸载/跨线程取消、内存/磁盘/超时/拒绝访问，无伪成功",
       "implementation": [
         "tests",
@@ -1013,7 +1038,7 @@
       "name": "九项附件核心集成验收",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "附件 §10 九项全部有当前代码、实际用例和日志；不能用旧用例通过替代新模型",
       "implementation": [
         "tests",
@@ -1031,7 +1056,7 @@
       "name": "Slowly Changing Dimension",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "版本化 SCD 配置、键/属性/生效期和目标事务；Type 范围明确",
       "implementation": [
         "components/compute",
@@ -1051,7 +1076,7 @@
       "name": "Fuzzy Lookup/Fuzzy Grouping",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "公开独立算法/相似度/阈值/Unicode、确定性和资源边界，不复制微软专有实现",
       "implementation": [
         "components/compute",
@@ -1071,7 +1096,7 @@
       "name": "Term Extraction/Lookup",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "可组合文本算子、编码/词法/配置/资源/结果验收",
       "implementation": [
         "components/compute",
@@ -1091,7 +1116,7 @@
       "name": "CDC",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "PostgreSQL slot/快照/事务/LSN/ack/Schema 变化/故障重放与权限；目标确认后才推进",
       "implementation": [
         "components/compute",
@@ -1111,7 +1136,7 @@
       "name": "并行分区/Window/BI Dataset/Query",
       "priority": "P1/P2",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "共用 Compute/Expression/Planner/资源；新 API 不建立第二套语义或运行时",
       "implementation": [
         "components/compute",
@@ -1131,7 +1156,7 @@
       "name": "ODBC/SQL Server",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "真实驱动/DSN、类型/事务/失败/权限/Package 消费；SQLite ODBC 驱动不代表 SQL Server 已验收",
       "implementation": [
         "plugins",
@@ -1152,7 +1177,7 @@
       "name": "MySQL",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "真实驱动、schema/NULL/Decimal/UTC、事务/游标/恢复和 Package 消费",
       "implementation": [
         "plugins",
@@ -1173,7 +1198,7 @@
       "name": "HTTP 集成",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "Source/Destination/task 的连接、分页、TLS/权限/限流/取消/幂等语义",
       "implementation": [
         "plugins",
@@ -1194,7 +1219,7 @@
       "name": "SFTP",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "连接/凭据引用、主机身份校验、原子交付/恢复/取消",
       "implementation": [
         "plugins",
@@ -1215,7 +1240,7 @@
       "name": "Kafka",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "有界输入/分区/offset/事务、ack/重放/背压和授权",
       "implementation": [
         "plugins",
@@ -1236,7 +1261,7 @@
       "name": "RabbitMQ",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "确认/重投递/背压/失败与资源释放",
       "implementation": [
         "plugins",
@@ -1257,7 +1282,7 @@
       "name": "Cloud Object Storage",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "对象版本/分页/条件发布/重试/权限/提交不确定性",
       "implementation": [
         "plugins",
@@ -1278,7 +1303,7 @@
       "name": "Excel",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "格式/Schema/编码/类型/NULL/边界和资源限制；支持范围明确",
       "implementation": [
         "plugins",
@@ -1299,7 +1324,7 @@
       "name": "Parquet/Arrow",
       "priority": "P1/P2",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "批次/类型/Schema/所有权、平台相关库和 Pipeline 往返",
       "implementation": [
         "plugins",
@@ -1320,7 +1345,7 @@
       "name": "Microsoft 专属扩展和兼容边界",
       "priority": "Optional-contract",
       "code": "Documented boundary",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Pending current R1–R5/ABI 7 acceptance; prior evidence retained separately",
       "acceptance": "定义 WMI/SMO/SSAS/Agent/OLEDB/dtsx 插件类别与范围；无未验证兼容声明。不强制复制 Windows 专属实现。",
       "implementation": [
         "docs/product/component-catalog.md",
@@ -1601,8 +1626,8 @@
     },
     {
       "ssis": "Lookup",
-      "entries": "`lookup`",
-      "contract": "确定性首个匹配、inner lookup；无匹配不输出；独立 Cache Transform 尚未实现"
+      "entries": "`cacheBuild`, `cacheLookup`",
+      "contract": "Execution 内只读缓存；复合 typed key，First/Error/All；默认 First + miss Ignore（inner）；显式 Redirect 走普通错误目标。旧 inline lookup 删除。"
     },
     {
       "ssis": "Window",
@@ -1617,7 +1642,7 @@
     {
       "ssis": "Error Output / Data Quality",
       "entries": "`quality` 普通端口 0、错误端口 1",
-      "contract": "NotNull/Unique/PrimaryKey/Range/Regex/RowCount；错误行携带 rule、source row、code；目标负责持久化"
+      "contract": "Foreign Key 双输入、完整规则版本/政策、多 Violation、正规错误端口；分类与实际提交/确认分开。"
     },
     {
       "ssis": "Connection Manager",
@@ -1640,7 +1665,7 @@
       "contract": "当前版本索引式分段 Journal、原子快照/manifest、目标 receipt、不可变 artifacts/history；不提供跨任意目标的分布式事务"
     }
   ],
-  "deferredComponents": "Merge/Merge Join、Pivot/Unpivot、完整 Cache Transform、Pipeline ForeignKey reference input、SCD、Fuzzy、Term、CDC、并行分区、BI planner、ODBC/SQL Server、MySQL、HTTP Source/Destination、SFTP、Kafka、RabbitMQ、Cloud、Excel、Parquet",
+  "deferredComponents": "Merge/Merge Join、Pivot/Unpivot、SCD、Fuzzy、Term、Full CDC、Adaptive Scheduling、BI planner、ODBC/SQL Server、MySQL、HTTP Source/Destination、SFTP、Kafka、RabbitMQ、Cloud、Excel、Parquet",
   "historicalGoalEvidence": [
     {
       "id": "G00",
@@ -1850,7 +1875,7 @@
       "name": "ExecutableDefinition",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1875,7 +1900,7 @@
       "name": "Task Host",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1900,7 +1925,7 @@
       "name": "Control Graph Binder",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1926,7 +1951,7 @@
       "name": "Precedence Evaluator",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1951,7 +1976,7 @@
       "name": "Task State / Outcome",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1977,7 +2002,7 @@
       "name": "Ready Scheduler",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2002,7 +2027,7 @@
       "name": "Sequence Container",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2028,7 +2053,7 @@
       "name": "For Loop",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2053,7 +2078,7 @@
       "name": "Foreach Loop",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2078,7 +2103,7 @@
       "name": "Enumerator Registry",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/enumerator.c",
         "components/contracts/src/registry.c"
@@ -2103,7 +2128,7 @@
       "name": "Scoped Variables",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2129,7 +2154,7 @@
       "name": "Event Handlers",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2154,7 +2179,7 @@
       "name": "Failure Propagation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2179,7 +2204,7 @@
       "name": "Transaction Policy",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2204,7 +2229,7 @@
       "name": "Deadline / Cancel",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2231,7 +2256,7 @@
       "name": "Retry Semantics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2256,7 +2281,7 @@
       "name": "Child Package",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2281,7 +2306,7 @@
       "name": "Control Diagnostics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2305,7 +2330,7 @@
       "name": "Pipeline Definition",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2331,7 +2356,7 @@
       "name": "Component Metadata",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2356,7 +2381,7 @@
       "name": "Schema Binder",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2383,7 +2408,7 @@
       "name": "Physical Planner",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2407,7 +2432,7 @@
       "name": "Synchronous Execution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2434,7 +2459,7 @@
       "name": "Asynchronous Execution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2459,7 +2484,7 @@
       "name": "Component Lifecycle",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2484,7 +2509,7 @@
       "name": "Multiport Routing",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2512,7 +2537,7 @@
       "name": "Error Policies",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2537,7 +2562,7 @@
       "name": "Backpressure",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2562,7 +2587,7 @@
       "name": "Buffer Ownership",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2587,7 +2612,7 @@
       "name": "Buffer Layout",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2613,7 +2638,7 @@
       "name": "Spill",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2639,7 +2664,7 @@
       "name": "Shared Compute",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2668,7 +2693,7 @@
       "name": "Early Validation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2695,7 +2720,7 @@
       "name": "Explain / Inspector",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2720,7 +2745,7 @@
       "name": "Detailed Metrics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2744,7 +2769,7 @@
       "name": "Recoverable Pipeline",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2769,7 +2794,7 @@
       "name": "Connection Definition",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2797,7 +2822,7 @@
       "name": "Scope Resolution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2826,7 +2851,7 @@
       "name": "Registry Consistency",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2854,7 +2879,7 @@
       "name": "Factory",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2881,7 +2906,7 @@
       "name": "Lease",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2909,7 +2934,7 @@
       "name": "Capabilities",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2938,7 +2963,7 @@
       "name": "Credentials",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2966,7 +2991,7 @@
       "name": "Authorization",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2996,7 +3021,7 @@
       "name": "Pool",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3023,7 +3048,7 @@
       "name": "Session Isolation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3051,7 +3076,7 @@
       "name": "Thread Affinity",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3079,7 +3104,7 @@
       "name": "Transaction Enlistment",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3107,7 +3132,7 @@
       "name": "Metadata Discovery",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3136,7 +3161,7 @@
       "name": "Schema Evolution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3166,7 +3191,7 @@
       "name": "Bulk Reader / Writer",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3195,7 +3220,7 @@
       "name": "Retry / Reconnect",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3223,7 +3248,7 @@
       "name": "Error Normalization",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3252,7 +3277,7 @@
       "name": "Metrics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3280,7 +3305,7 @@
       "name": "Resource Unification",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3311,7 +3336,7 @@
       "name": "Native Driver Plugin",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3341,7 +3366,7 @@
       "name": "Execution Tree Builder",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3367,7 +3392,7 @@
       "name": "Tree Graph",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3394,7 +3419,7 @@
       "name": "Shared Worker Pool",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3421,7 +3446,7 @@
       "name": "Unified Work Scheduling",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3450,7 +3475,7 @@
       "name": "Work Item Identity",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3479,7 +3504,7 @@
       "name": "Event-driven Ready Queue",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3506,7 +3531,7 @@
       "name": "Cross-Tree Backpressure",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3533,7 +3558,7 @@
       "name": "Source Partitioning",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3562,7 +3587,7 @@
       "name": "Partition Strategies",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3589,7 +3614,7 @@
       "name": "Parallel Aggregate",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3617,7 +3642,7 @@
       "name": "Parallel Join",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3645,7 +3670,7 @@
       "name": "Parallel Sort",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3673,7 +3698,7 @@
       "name": "Ordering Contract",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3701,7 +3726,7 @@
       "name": "Component Concurrency",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3728,7 +3753,7 @@
       "name": "Driver Concurrency",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3756,7 +3781,7 @@
       "name": "Shared Resource Budget",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3784,7 +3809,7 @@
       "name": "Cancellation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3812,7 +3837,7 @@
       "name": "Checkpoint Barrier",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3840,7 +3865,7 @@
       "name": "Deterministic Semantics",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3868,7 +3893,7 @@
       "name": "Detailed Scheduler Metrics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3895,7 +3920,7 @@
       "name": "Adaptive Scheduling",
       "priority": "P2",
       "state": "Planned",
-      "verification": "Not in P0/P1 delivery (P2)",
+      "verification": "P2 — not in R1–R5 scope",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3915,7 +3940,7 @@
       "name": "Benchmark Harness",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Historical ABI 6 baseline; pending ABI 7 regression",
       "owner": [
         "benchmarks/four_engines.py"
       ],
@@ -3936,6 +3961,597 @@
         "benchmarks/four_engines.py"
       ],
       "evidence": []
+    }
+  ],
+  "previousDeliveries": [
+    {
+      "sdkVersion": "1.2.0",
+      "abiVersion": 6,
+      "sourceCommit": "45c1d056a3d771389b1e115d28cc7977bcd2541b",
+      "mainCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/4",
+      "mergedAt": "2026-10-12T20:33:45Z",
+      "sourceFingerprint": "0230c67a45b32339ce258bd4021f4007517c2d6eb26c2a187e6d598e783edab5",
+      "nativeTests": "37/37",
+      "sanitizerTests": "37/37",
+      "installedConsumers": "docs/acceptance/evidence/etl-four-engines-linux/installed-consumers.json",
+      "status": "Historical ABI 6 Linux evidence; Windows Exempt"
+    }
+  ],
+  "nextPhaseWorkItems": [
+    {
+      "id": "DQ-01",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "完成 `foreignKey` 规则的 Pipeline 配置绑定，支持独立 Reference 输入和快照/元数据校验；拒绝无一致性证明的 Resume"
+    },
+    {
+      "id": "DQ-02",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "保留已有 NotNull、Unique、PrimaryKey、Range、Regex、RowCount；统一 Rule ID/Version/Schema 约束"
+    },
+    {
+      "id": "DQ-03",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "对每规则明确 Fail/Redirect/Ignore 语义；现有 `ud_quality` 只有 Abort/Reject，可按严格规则扩展**唯一政策模型**，不要将 ignore 当成 committed"
+    },
+    {
+      "id": "DQ-04",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "多规则命中同一行时明确：保留一条数据、多个 Violation，或每规则独立错误行；协议必须定义确定性，避免行号错位"
+    },
+    {
+      "id": "DQ-05",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "正规错误记录含 `executionId`, `taskId`, `pipelineId`, `componentId`, `ruleId`, `ruleVersion`, `columnId`, `sourceRowId`, `errorCode`, `policy`；错误数据内容受权限/脱敏限制"
+    },
+    {
+      "id": "DQ-06",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "持久隔离写入复用 File/SQL Destination、Connection Lease、Journal 与 Receipt；普通与错误目标的部分提交不得误判为事务原子性"
+    },
+    {
+      "id": "DQ-07",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "规则级统计区分 evaluated、matched/failed、rejected、committed、acknowledged、unknown"
+    },
+    {
+      "id": "DQ-08",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "资源有界：大 Reference 集合允许使用统一 Buffer/Spill，支持取消清理；不新增私有文件格式"
+    },
+    {
+      "id": "DQ-09",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "对外公开规则描述、端口信息、错误列元数据，使后续设计器按 Registry discovery 自动识别"
+    },
+    {
+      "id": "INC-01",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "Source Capability/Incremental Policy 描述"
+    },
+    {
+      "id": "INC-02",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "规范化 Cursor 数据模型"
+    },
+    {
+      "id": "INC-03",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "Watermark / Composite Cursor Binder"
+    },
+    {
+      "id": "INC-04",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "SQLite/PostgreSQL 在支持范围内提供确定性增量游标"
+    },
+    {
+      "id": "INC-05",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "对 CSV/NDJSON 使用已有文件身份、位置、稳定边界"
+    },
+    {
+      "id": "INC-06",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "`ReadBatch → receipt → Journal → cursor advancement` 同一确认语义"
+    },
+    {
+      "id": "INC-07",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "Replay 与 Resume"
+    },
+    {
+      "id": "INC-08",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "Late Arrival / Overlap Policy"
+    },
+    {
+      "id": "INC-09",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "Snapshot/Schema/Policy Change Detection"
+    },
+    {
+      "id": "INC-10",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [],
+      "name": "Cursor Diagnostics"
+    },
+    {
+      "id": "SD-01",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [],
+      "name": "Connector Metadata → Canonical `ud_field`"
+    },
+    {
+      "id": "SD-02",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [],
+      "name": "Canonical Schema Fingerprint"
+    },
+    {
+      "id": "SD-03",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [],
+      "name": "Schema Diff"
+    },
+    {
+      "id": "SD-04",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [],
+      "name": "三种兼容策略"
+    },
+    {
+      "id": "SD-05",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [],
+      "name": "Binder Preflight"
+    },
+    {
+      "id": "SD-06",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [],
+      "name": "恢复绑定"
+    },
+    {
+      "id": "SD-07",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [],
+      "name": "元数据发现"
+    },
+    {
+      "id": "SD-08",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [],
+      "name": "C / .NET / Java 查询能力"
+    },
+    {
+      "id": "LC-01",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [],
+      "name": "Cache Transform 正式组件"
+    },
+    {
+      "id": "LC-02",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [],
+      "name": "复合键、NULL、Decimal、UTF-8、Date、Nested 规则"
+    },
+    {
+      "id": "LC-03",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [],
+      "name": "重复键政策"
+    },
+    {
+      "id": "LC-04",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [],
+      "name": "Cache Scope"
+    },
+    {
+      "id": "LC-05",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [],
+      "name": "Cache Quota/Spill"
+    },
+    {
+      "id": "LC-06",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [],
+      "name": "Snapshot/Fingerprint"
+    },
+    {
+      "id": "LC-07",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [],
+      "name": "Lookup Miss / Error Paths"
+    },
+    {
+      "id": "LC-08",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [],
+      "name": "Metrics"
+    },
+    {
+      "id": "OBS-01",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [],
+      "name": "Tree ready/running/blocked/end 时间"
+    },
+    {
+      "id": "OBS-02",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [],
+      "name": "Scheduler wakeup、quantum、Batch/rows"
+    },
+    {
+      "id": "OBS-03",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [],
+      "name": "Buffer 峰值、codec 与读写量"
+    },
+    {
+      "id": "OBS-04",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [],
+      "name": "Source/Operator/Destination CPU 与 I/O"
+    },
+    {
+      "id": "OBS-05",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [],
+      "name": "分区源扫描归因与恢复"
+    },
+    {
+      "id": "OBS-06",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending concentrated ABI 7 Linux validation",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [],
+      "name": "六负载并发矩阵与一致性"
     }
   ]
 }

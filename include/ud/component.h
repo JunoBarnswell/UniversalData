@@ -93,9 +93,13 @@ typedef struct ud_component_descriptor {
      * returns an owned sealed single-row ValueSet, END once iteration completes. */
     ud_status (*enumerate_next)(void *, ud_batch **);
     ud_status (*enumerate_position)(void *, uint64_t *);
+    uint64_t optional_inputs;
+    /* Runs after every finish succeeds: Source cursor confirmation barrier. */
+    ud_status (*confirm)(void *);
+    ud_status (*diagnostics)(void *, char **, uint32_t *);
     uint64_t optional_outputs; /* Unconnected optional ports never accept emitted data. */
-    ud_status (*describe_plan)(void *,const ud_component_context *,ud_string,
-                              const ud_batch *const *,ud_component_plan *);
+    ud_status (*describe_plan)(void *, const ud_component_context *, ud_string,
+                               const ud_batch *const *, ud_component_plan *);
 } ud_component_descriptor;
 UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
 /* Copies descriptor metadata, retains callback user by contract (host lifetime).

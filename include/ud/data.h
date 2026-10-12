@@ -24,10 +24,11 @@ typedef struct ud_decimal128 {
     uint64_t low;
     int64_t high;
 } ud_decimal128;
-/* Stable logical column identity, never derived from row values or addresses. */
-typedef struct ud_column_id {
+/* Canonical 128-bit identity. Column IDs use logical schema namespaces;
+ * record/rule IDs use their own explicit deterministic namespaces. */
+typedef struct ud_id {
     uint64_t high, low;
-} ud_column_id;
+} ud_id;
 enum {
     UD_ROUND_EXACT = 0,
     UD_ROUND_ZERO = 1,
@@ -46,9 +47,10 @@ typedef struct ud_field {
     uint32_t timezone_length;
     const struct ud_field *children;
     uint32_t child_count;
-    ud_column_id identity;
-    const ud_column_id *lineage; /* Canonical sorted distinct origin identities. */
+    ud_id identity;
+    const ud_id *lineage; /* Canonical sorted distinct origin identities. */
     uint32_t lineage_count;
+    uint32_t key_order; /* 0: not a declared primary key; positive canonical order. */
 } ud_field;
 enum { UD_FIELD_VALUE_TYPE = 0, UD_FIELD_PORT = 1, UD_FIELD_LAYOUT = 2 };
 /* VALUE_TYPE ignores root display name, identity, lineage and nullability;
@@ -56,13 +58,12 @@ enum { UD_FIELD_VALUE_TYPE = 0, UD_FIELD_PORT = 1, UD_FIELD_LAYOUT = 2 };
  * names remain part of a value shape. PORT includes all bound
  * metadata. LAYOUT includes names/nullability/types, ignoring identities. */
 UD_API int32_t ud_field_matches(const ud_field *, const ud_field *, int32_t mode);
-UD_API int32_t ud_column_id_compare(ud_column_id, ud_column_id);
+UD_API int32_t ud_id_compare(ud_id, ud_id);
 /* Deterministic SHA-256-derived 128-bit identity in a logical namespace. Both
  * arguments are UTF8 with explicit lengths, nonempty, without embedded NUL. */
-UD_API ud_status ud_column_id_make(ud_context *, ud_string name_space, ud_string symbol,
-                                   ud_column_id *);
-UD_API ud_status ud_column_id_parse(ud_string canonical_hex, ud_column_id *);
-UD_API void ud_column_id_format(ud_column_id, char output[33]);
+UD_API ud_status ud_id_make(ud_context *, ud_string name_space, ud_string symbol, ud_id *);
+UD_API ud_status ud_id_parse(ud_string canonical_hex, ud_id *);
+UD_API void ud_id_format(ud_id, char output[33]);
 typedef struct ud_value {
     ud_type type;
     int32_t is_null;
@@ -109,6 +110,39 @@ UD_API int32_t ud_truth_and(int32_t, int32_t);
 UD_API int32_t ud_truth_or(int32_t, int32_t);
 UD_API int32_t ud_truth_not(int32_t);
 typedef struct ud_batch ud_batch;
+enum { UD_SQL_CANONICAL = 0, UD_SQL_SQLITE = 1, UD_SQL_POSTGRESQL = 2 };
+/* Owned canonical schema/diff results. Native policy JSON accepts strict,
+ * compatible, or explicitMapping with complete expected/actual ID/name pairs. */
+UD_API ud_status ud_schema_fingerprint(const ud_batch *, uint8_t out[32]);
+UD_API ud_status ud_schema_from_metadata(ud_context *, const ud_batch *, ud_string, int32_t,
+                                         ud_batch **);
+UD_API ud_status ud_schema_compare(ud_context *, const ud_batch *, const ud_batch *, ud_string,
+                                   char **, uint32_t *);
+UD_API ud_status ud_schema_compare_json(ud_context *, ud_string, ud_string, ud_string, char **,
+                                        uint32_t *);
+UD_API ud_status ud_schema_map(ud_context *, const ud_batch *actual, const ud_batch *expected,
+                               ud_string, ud_batch **);
+
+enum { UD_ROW_ERROR = 1 };
+enum { UD_ERROR_FAIL = 0, UD_ERROR_REDIRECT = 1, UD_ERROR_IGNORE = 2 };
+typedef struct ud_row_info {
+    ud_id id, rule;
+    uint32_t flags, reserved;
+} ud_row_info;
+/* Metadata is native, owned with the Batch and preserved by Wire/Spill. Zero ID
+ * means unspecified direct-API provenance. Mutation requires an owned mutable batch. */
+UD_API ud_status ud_batch_row_info(const ud_batch *, uint32_t, ud_row_info *);
+UD_API ud_status ud_batch_set_row_info(ud_batch *, uint32_t, const ud_row_info *);
+UD_API ud_status ud_batch_append_from(ud_batch *, const ud_batch *, uint32_t);
+/* Returns a sealed column-sharing view with new deterministic source identities. */
+UD_API ud_status ud_batch_identify(ud_context *, const ud_batch *, ud_id scope, uint64_t first,
+                                   ud_batch **);
+UD_API ud_status ud_batch_row_info_json(const ud_batch *, uint32_t, char **, uint32_t *);
+UD_API ud_status ud_batch_identify_keys(ud_context *, const ud_batch *, ud_id, const uint32_t *,
+                                        uint32_t, ud_batch **);
+UD_API ud_status ud_batch_fingerprint(const ud_batch *, uint8_t out[32]);
+UD_API uint64_t ud_batch_error_rows(const ud_batch *);
+
 UD_API ud_status ud_batch_create(ud_context *ctx, const ud_field *fields, uint32_t columns,
                                  uint32_t capacity, ud_batch **out);
 /* A failed append does not add a partially initialized row. */

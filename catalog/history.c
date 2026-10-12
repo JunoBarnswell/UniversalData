@@ -28,7 +28,7 @@ ud_status ud_catalog_record_execution(ud_catalog *c, const ud_execution *e, uint
     hex_digest(e->package->fingerprint, definition);
     hex_digest(e->parameters_fingerprint, parameter_hash);
     ud_bytes b = {.ctx = c->ctx};
-    ud_status s = ud_bytes_put(&b, "{\"version\":6", 12);
+    ud_status s = ud_bytes_put(&b, "{\"version\":7", 12);
     if (!s)
         s = quoted_member(&b, "id", e->options.execution_id);
     if (!s)

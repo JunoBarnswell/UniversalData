@@ -15,7 +15,7 @@ def read_model():
     if (model["product"]["abiVersion"] != model["product"]["protocolVersion"]
             or not 0 < model["product"]["abiVersion"] <= 4294967295):
         raise ValueError("ABI and all protocol epochs must be one positive uint32 version.")
-    for key in ("goals", "gates", "remediations", "fourEngineWorkItems"):
+    for key in ("goals", "gates", "remediations", "fourEngineWorkItems", "nextPhaseWorkItems"):
         identifiers = [item["id"] for item in model[key]]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Duplicate identifiers in " + key)
@@ -45,7 +45,7 @@ def projections(model):
     progress = dict(facts, requiredGates=sum(gate["status"] != "Exempt" for gate in model["gates"]), passedGates=len(passed),
                     remediations=model["remediations"])
     status = dict(facts, components="docs/product/component-catalog.md",
-                  remediations=model["remediations"], workItems=model.get("fourEngineWorkItems",[]), limitations=model["limitations"])
+                  remediations=model["remediations"], workItems=model.get("fourEngineWorkItems",[]), nextPhaseWorkItems=model.get("nextPhaseWorkItems",[]), limitations=model["limitations"])
     goals = {"generatedFrom": marker, "goalVersion": protocol,
              "completionRule": "Current core/infrastructure gates are required; extensions retain their actual status.",
              "automaticMergeOrReleaseAuthorized": False, "items": model["goals"]}
@@ -71,7 +71,12 @@ def projections(model):
     trace += "| ID | 优先级 | 阶段 | 能力 | 代码 | 验收 | 69 项目标映射 |\n|---|---|---|---|---|---|---|\n"
     for row in model["fourEngineWorkItems"]:
         trace += "| " + row["id"] + " | " + row["priority"] + " | " + row["phase"] + " | " + row["name"] + " | " + row["state"] + " | " + row["verification"] + " | " + ", ".join(row["goals"]) + " |\n"
+    next_trace = "# R1–R5 主分支整改追踪\n\n<!-- Generated from metadata/product.json. -->\n\n"
+    next_trace += "仅本轮五阶段；OBS 是 R5 六项测量要求的内部追踪 ID。历史 ABI 6 不代替 ABI 7 验收。\n\n| ID | 阶段 | 能力 | 代码 | 验收 | 证据 |\n|---|---|---|---|---|---|\n"
+    for row in model["nextPhaseWorkItems"]:
+        next_trace += "| " + row["id"] + " | " + row["phase"] + " | " + row["name"] + " | " + row["state"] + " | " + row["verification"] + " | " + ", ".join(row["evidence"]) + " |\n"
     return {
+        "docs/acceptance/etl-next-phase-traceability.md": next_trace,
         "docs/acceptance/etl-four-engine-traceability.md": trace,
         "VERSION": version + "\n",
         "bindings/java/pom.xml": (ROOT / "metadata/java-pom.xml.in").read_text(encoding="utf-8").format(sdk_version=version),

@@ -27,6 +27,8 @@ UD_API ud_status ud_json_text(const ud_json *, const char **, uint32_t *length);
 UD_API uint32_t ud_json_size(const ud_json *);
 UD_API const ud_json *ud_json_at(const ud_json *, uint32_t index);
 UD_API const ud_json *ud_json_find(const ud_json *, const char *key, uint32_t length);
+/* Exact object allowlist validation, shared by all native binders. */
+UD_API ud_status ud_json_keys(const ud_json *, const char *const *, uint32_t);
 UD_API ud_status ud_json_key(const ud_json *, uint32_t index, const char **, uint32_t *);
 /* Compact UTF8 JSON. Caller releases with ud_free. Output is NUL terminated;
  * length excludes terminator. Key insertion order is preserved. */

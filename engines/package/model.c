@@ -32,28 +32,14 @@ ud_status ud_json_uint(const ud_json *v, uint64_t *out) {
     *out = value;
     return UD_OK;
 }
-ud_status ud_json_keys(const ud_json *v, const char *const *keys, uint32_t n) {
-    if (ud_json_kind(v) != UD_JSON_OBJECT)
-        return UD_SCHEMA;
-    for (uint32_t i = 0; i < ud_json_size(v); i++) {
-        const char *key;
-        uint32_t len;
-        UD_TRY(ud_json_key(v, i, &key, &len));
-        int found = 0;
-        for (uint32_t j = 0; j < n; j++)
-            if (len == strlen(keys[j]) && !memcmp(key, keys[j], len))
-                found = 1;
-        if (!found)
-            return UD_SCHEMA;
-    }
-    return UD_OK;
-}
 ud_status ud_connection_definitions_check(const ud_json *defs) {
     if (defs && ud_json_kind(defs) != UD_JSON_ARRAY)
         return UD_SCHEMA;
     for (uint32_t i = 0; i < ud_json_size(defs); i++) {
         const ud_json *def = ud_json_at(defs, i);
-        static const char *keys[] = {"id", "driver", "resource", "credentialReference", "revision", "maxLeases", "acquireTimeoutMs", "idleTimeoutMs"};
+        static const char *keys[] = {
+            "id",       "driver",    "resource",         "credentialReference",
+            "revision", "maxLeases", "acquireTimeoutMs", "idleTimeoutMs"};
         UD_TRY(ud_json_keys(def, keys, 8));
         ud_string id;
         UD_TRY(ud_json_string(ud_member(def, "id"), &id));
@@ -63,11 +49,14 @@ ud_status ud_connection_definitions_check(const ud_json *defs) {
             if (ud_same(id, other))
                 return UD_SCHEMA;
         }
-        const char *limits[]={"revision","maxLeases","acquireTimeoutMs","idleTimeoutMs"};
-        for (uint32_t k=0;k<4;k++) if (ud_member(def,limits[k])) {
-            uint64_t value;UD_TRY(ud_json_uint(ud_member(def,limits[k]),&value));
-            if ((k<2 && !value) || (k==1 && value>65536) || (k>=2 && value>3600000)) return UD_SCHEMA;
-        }
+        const char *limits[] = {"revision", "maxLeases", "acquireTimeoutMs", "idleTimeoutMs"};
+        for (uint32_t k = 0; k < 4; k++)
+            if (ud_member(def, limits[k])) {
+                uint64_t value;
+                UD_TRY(ud_json_uint(ud_member(def, limits[k]), &value));
+                if ((k < 2 && !value) || (k == 1 && value > 65536) || (k >= 2 && value > 3600000))
+                    return UD_SCHEMA;
+            }
         const char *fields[] = {"driver", "resource", "credentialReference"};
         for (int f = 0; f < 3; f++) {
             const ud_json *v = ud_member(def, fields[f]);
@@ -90,8 +79,8 @@ ud_status ud_connection_definitions_check(const ud_json *defs) {
 ud_status ud_package_check(const ud_package *p) {
     static const char *keys[] = {"version",       "id",          "parameters", "variables",
                                  "connections",   "controlFlow", "dataFlows",  "policy",
-                                 "eventHandlers", "project",     "deployment"};
-    UD_TRY(ud_json_keys(p->document, keys, 11));
+                                 "eventHandlers", "project",     "deployment", "caches"};
+    UD_TRY(ud_json_keys(p->document, keys, 12));
     uint64_t version;
     UD_TRY(ud_json_uint(ud_member(p->document, "version"), &version));
     if (version != UD_PACKAGE_VERSION)
@@ -149,7 +138,9 @@ ud_status ud_package_check(const ud_package *p) {
     }
     const ud_json *policy = ud_member(p->document, "policy");
     if (policy) {
-        static const char *allowed[] = {"maxConcurrency", "buffers", "connections", "maxErrorCount", "maxTrees", "maxPartitions", "transaction"};
+        static const char *allowed[] = {"maxConcurrency", "buffers",  "connections",
+                                        "maxErrorCount",  "maxTrees", "maxPartitions",
+                                        "transaction"};
         UD_TRY(ud_json_keys(policy, allowed, 7));
         if (ud_member(policy, "maxConcurrency")) {
             uint64_t concurrency;
@@ -157,14 +148,18 @@ ud_status ud_package_check(const ud_package *p) {
             if (!concurrency || concurrency > 64)
                 return UD_SCHEMA;
         }
-        const char *limits[]={"maxErrorCount","maxTrees","maxPartitions"};
-        for (uint32_t k=0;k<3;k++) if (ud_member(policy,limits[k])) {
-            uint64_t value;UD_TRY(ud_json_uint(ud_member(policy,limits[k]),&value));
-            if ((k && (!value || value>64)) || (!k && value>UINT32_MAX)) return UD_SCHEMA;
-        }
+        const char *limits[] = {"maxErrorCount", "maxTrees", "maxPartitions"};
+        for (uint32_t k = 0; k < 3; k++)
+            if (ud_member(policy, limits[k])) {
+                uint64_t value;
+                UD_TRY(ud_json_uint(ud_member(policy, limits[k]), &value));
+                if ((k && (!value || value > 64)) || (!k && value > UINT32_MAX))
+                    return UD_SCHEMA;
+            }
         const ud_json *buffers = ud_member(policy, "buffers");
         if (buffers) {
-            static const char *bk[] = {"connection", "residentBytes", "workingBytes", "spillBytes", "maxBlocks"};
+            static const char *bk[] = {"connection", "residentBytes", "workingBytes", "spillBytes",
+                                       "maxBlocks"};
             UD_TRY(ud_json_keys(buffers, bk, 5));
             const char *limits[] = {"residentBytes", "workingBytes", "spillBytes", "maxBlocks"};
             for (uint32_t i = 0; i < 4; i++)
@@ -253,7 +248,7 @@ ud_status ud_definition_box(ud_context *ctx, ud_string name_space, ud_string nam
     if (!value && required)
         return UD_SCHEMA;
     ud_bytes schema = {.ctx = ctx};
-    const char *prefix = "{\"version\":6,\"fields\":[{\"name\":";
+    const char *prefix = "{\"version\":7,\"fields\":[{\"name\":";
     ud_status s = ud_bytes_put(&schema, prefix, strlen(prefix));
     if (!s)
         s = ud_json_quote(&schema, name.data, name.length);
@@ -342,7 +337,7 @@ static ud_status slots_bind(ud_activation *e, ud_scope *scope, const ud_json *de
                             const ud_json *provided, int readonly, ud_variable **out) {
     UD_TRY(ud_parameters_check(e->execution->ctx, defs, provided, 1));
     char identity[33];
-    ud_column_id_format(scope->identity, identity);
+    ud_id_format(scope->identity, identity);
     ud_variable *slots = NULL;
     ud_status s = UD_OK;
     for (uint32_t i = 0; !s && i < ud_json_size(defs); i++) {
@@ -383,8 +378,8 @@ ud_status ud_scope_enter(ud_activation *e, ud_string name, const ud_json *defs, 
     ud_status s = UD_OK;
     char parent[33];
     if (scope->parent) {
-        ud_column_id_format(scope->parent->identity, parent);
-        s = ud_column_id_make(e->execution->ctx, (ud_string){parent, 32}, name, &scope->identity);
+        ud_id_format(scope->parent->identity, parent);
+        s = ud_id_make(e->execution->ctx, (ud_string){parent, 32}, name, &scope->identity);
     } else {
         s = ud_bytes_put(&root, "[", 1);
         if (!s)
@@ -399,9 +394,9 @@ ud_status ud_scope_enter(ud_activation *e, ud_string name, const ud_json *defs, 
         if (!s && root.size > UINT32_MAX)
             s = UD_OVERFLOW;
         if (!s)
-            s = ud_column_id_make(e->execution->ctx,
-                                  (ud_string){(const char *)root.data, (uint32_t)root.size}, name,
-                                  &scope->identity);
+            s = ud_id_make(e->execution->ctx,
+                           (ud_string){(const char *)root.data, (uint32_t)root.size}, name,
+                           &scope->identity);
     }
     ud_bytes_clear(&root);
     if (!s)
@@ -505,7 +500,7 @@ ud_status ud_variable_assign(ud_context *ctx, ud_variable *slot, const ud_value 
         (provenance && !ud_field_matches(provenance, &declared, UD_FIELD_VALUE_TYPE)))
         return UD_SCHEMA;
     ud_status s = provenance ? ud_field_cast_metadata(ctx, provenance, &declared, &target)
-                             : ud_field_copy(ctx, &declared, (ud_column_id){0}, &target);
+                             : ud_field_copy(ctx, &declared, (ud_id){0}, &target);
     ud_batch *box = NULL;
     if (!s)
         s = ud_batch_create(ctx, &target, 1, 1, &box);

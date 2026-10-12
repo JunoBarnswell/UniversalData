@@ -16,6 +16,8 @@ public final class Batch implements AutoCloseable {
     public synchronized long columns() { ensureOpen(); return nativeCount(handle, true); }
     public synchronized String toJson() { ensureOpen(); return nativeJson(handle, false); }
     public synchronized String schemaJson() { ensureOpen(); return nativeJson(handle, true); }
+    public synchronized String rowInfoJson(int row) { ensureOpen(); return nativeRowInfo(handle,row); }
+    private static native String nativeRowInfo(long handle,int row);
     public synchronized byte[] toWire() { ensureOpen(); return nativeWire(handle); }
     public synchronized Batch cast(String schemaJson, Rounding rounding, long memoryLimit) {
         ensureOpen(); return new Batch(nativeCast(handle, Utf8.bytes(schemaJson), Objects.requireNonNull(rounding).code, memoryLimit));

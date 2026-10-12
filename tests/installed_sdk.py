@@ -116,12 +116,13 @@ c_source = work / "c-source"
 c_source.mkdir()
 for origin, filename in [("hosts/cli.c", "package.c"), ("tests/typed_data_runner.c", "data.c"),
                          ("tests/core_runtime.c", "resources.c"), ("tests/package_sql.c", "sql.c"),
+                         ("tests/next_phase_queries.c", "query.c"),
                          ("tests/check.h", "check.h")]:
     shutil.copyfile(ROOT / origin, c_source / filename)
 (c_source / "CMakeLists.txt").write_text(
     "cmake_minimum_required(VERSION 3.24)\nproject(InstalledSDK C)\n"
     "find_package(UniversalData " + version + " EXACT CONFIG REQUIRED COMPONENTS Data)\n"
-    "foreach(name package data resources sql)\n"
+    "foreach(name package data resources sql query)\n"
     "  add_executable(consumer_\u0024{name} \u0024{name}.c)\n"
     "  target_link_libraries(consumer_\u0024{name} PRIVATE UniversalData::Data)\n"
     "  if(MSVC)\n    target_compile_options(consumer_\u0024{name} PRIVATE /utf-8 /experimental:c11atomics)\n"
@@ -193,6 +194,13 @@ run("bundle-language-parity",
      c_output / ("consumer_package" + executable), c_output / ("consumer_data" + executable),
      arguments.dotnet, *dotnet_outputs, arguments.java, java_client / "target/classes", installed_jar, native,
      "--managed-native-local"])
+if manifest["capabilities"]["sqlite"]:
+    run("bundle-native-query-parity", [sys.executable, ROOT / "tests/next_phase_queries.py",
+        "--query", c_output / ("consumer_query" + executable),
+        "--data", c_output / ("consumer_data" + executable), "--dotnet", arguments.dotnet,
+        "--data-dll", dotnet_outputs[1], "--java", arguments.java,
+        "--classes", java_client / "target/classes", "--jar", installed_jar,
+        "--native", native, "--sqlite", connector])
 record = {"exitCode": 0, "sdkVersion": version, "abiVersion": manifest["abiVersion"], "configuration": "Release",
           "sourceFingerprint": fingerprint, "archive": str(bundle), "archiveSha256": digest(bundle),
           "verifiedFiles": len(listed), "unpackedDirectory": str(unpacked), "logs": str(work),
@@ -202,6 +210,7 @@ record = {"exitCode": 0, "sdkVersion": version, "abiVersion": manifest["abiVersi
           "c": {"cmakeTarget": "UniversalData::Data", "dynamicPackage": True, "dynamicResources": True,
                 "installedHostPipeline": True, "dynamicSQLite": manifest["capabilities"]["sqlite"]},
           "languageParity": "10003 rows / 20006 input and output / 8 tasks; Package/Project/child and scalar/nested/wire equality",
+          "nativeQueryParity": "C/.NET/Java SQLite discovery/refresh, three compatibility policies and row identity from identified Wire",
           "commands": commands}
 arguments.evidence.parent.mkdir(parents=True, exist_ok=True)
 arguments.evidence.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")

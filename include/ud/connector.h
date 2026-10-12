@@ -23,8 +23,15 @@ enum {
     UD_CONNECT_POOL = 8192
 };
 enum { UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE };
-enum { UD_METADATA_CATALOGS = 1, UD_METADATA_SCHEMAS, UD_METADATA_TABLES,
-       UD_METADATA_COLUMNS, UD_METADATA_PRIMARY_KEYS, UD_METADATA_FOREIGN_KEYS, UD_METADATA_INDEXES };
+enum {
+    UD_METADATA_CATALOGS = 1,
+    UD_METADATA_SCHEMAS,
+    UD_METADATA_TABLES,
+    UD_METADATA_COLUMNS,
+    UD_METADATA_PRIMARY_KEYS,
+    UD_METADATA_FOREIGN_KEYS,
+    UD_METADATA_INDEXES
+};
 typedef struct ud_metadata_options {
     uint32_t struct_size, abi_version;
     int32_t kind;
@@ -102,6 +109,7 @@ typedef struct ud_connector_api {
     /* POOL requires a clean-session proof. No cursor, transaction or mutable
      * per-session SQL state may cross leases. Failure retires the session. */
     ud_status (*reset_session)(void *);
+    int32_t metadata_dialect; /* UD_SQL_*; provider declares its metadata grammar. */
 } ud_connector_api;
 UD_API ud_status ud_connection_open(ud_plugin *, const ud_connection_options *, ud_connection **);
 UD_API uint64_t ud_connection_capabilities(const ud_connection *);
@@ -111,6 +119,8 @@ UD_API ud_status ud_connection_commit(ud_connection *);
 UD_API ud_status ud_connection_rollback(ud_connection *);
 UD_API ud_status ud_connection_metadata(ud_connection *, const ud_metadata_options *, ud_batch **);
 UD_API ud_status ud_connection_test(ud_connection *);
+UD_API ud_status ud_connection_schema(ud_connection *, ud_string table, ud_string name_space,
+                                      ud_batch **);
 UD_API ud_status ud_connection_discover(ud_connection *, ud_string table, ud_batch **);
 UD_API ud_status ud_connection_read_open(ud_connection *, const ud_read_options *,
                                          const ud_batch *schema);

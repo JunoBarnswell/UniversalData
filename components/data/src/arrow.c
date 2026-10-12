@@ -48,13 +48,13 @@ static ud_status export_metadata(ud_context *ctx, const ud_field *field, const c
     ud_bytes metadata = {.ctx = ctx}, lineage = {.ctx = ctx};
     char id[33];
     ud_status s = metadata_integer(&metadata, 2);
-    ud_column_id_format(field->identity, id);
+    ud_id_format(field->identity, id);
     if (!s)
         s = metadata_pair(&metadata, "ud.column_id", id, 32);
     for (uint32_t j = 0; !s && j < field->lineage_count; j++) {
         if (j)
             s = ud_bytes_put(&lineage, ",", 1);
-        ud_column_id_format(field->lineage[j], id);
+        ud_id_format(field->lineage[j], id);
         if (!s)
             s = ud_bytes_put(&lineage, id, 32);
     }
@@ -281,8 +281,7 @@ static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *fi
         if (key_length == 12 && !memcmp(key, "ud.column_id", 12)) {
             if (id_seen++)
                 return UD_SCHEMA;
-            UD_TRY(
-                ud_column_id_parse((ud_string){value, (uint32_t)value_length}, &field->identity));
+            UD_TRY(ud_id_parse((ud_string){value, (uint32_t)value_length}, &field->identity));
         } else if (key_length == 10 && !memcmp(key, "ud.lineage", 10)) {
             if (lineage_seen++)
                 return UD_SCHEMA;
@@ -293,7 +292,7 @@ static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *fi
             uint32_t count = ((uint32_t)value_length + 1) / 33;
             if (count > 4096)
                 return UD_SCHEMA;
-            ud_column_id *ids = ud_alloc(ctx, count * sizeof(*ids));
+            ud_id *ids = ud_alloc(ctx, count * sizeof(*ids));
             if (!ids)
                 return UD_RESOURCE;
             field->lineage = ids;
@@ -301,8 +300,8 @@ static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *fi
             for (uint32_t k = 0; k < count; k++) {
                 if (k && value[k * 33 - 1] != ',')
                     return UD_SCHEMA;
-                UD_TRY(ud_column_id_parse((ud_string){value + k * 33, 32}, ids + k));
-                if (k && ud_column_id_compare(ids[k - 1], ids[k]) >= 0)
+                UD_TRY(ud_id_parse((ud_string){value + k * 33, 32}, ids + k));
+                if (k && ud_id_compare(ids[k - 1], ids[k]) >= 0)
                     return UD_SCHEMA;
             }
         }
