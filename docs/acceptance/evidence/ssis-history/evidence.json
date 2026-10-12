@@ -1,0 +1,36 @@
+{
+  "milestone": "native-catalog-execution-history",
+  "date": "2026-10-12",
+  "baseCommit": "b549be1d6ee89f30bc9f5fed341a6eda0357bbea",
+  "sourceManifest": "docs/acceptance/evidence/ssis-history/source-manifest.json",
+  "sourceManifestSha256": "9c9dd074ef90b790c9e30e31efc94266c6d0814249fb6aa506980c4d7d1ae4ed",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-history/native-ctest.txt",
+      "sha256": "eea21ade4e2ae419a8ba86641af17f7ada8c146268fcd2de675be8f287f78de4",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 26,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-history/asan-package-catalog-history.txt",
+      "sha256": "351f055add44d9587ce1c6c106001c09de27fac6c0eed075886e25b1ead92772",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R 'catalog|package|project' --output-on-failure",
+      "exitCode": 0,
+      "passed": 8,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-history/language-parity.txt",
+      "sha256": "4ac5e19b58963df0a54105bb6343493287ae36b6c5948fba10df9395265eedb4",
+      "command": "tests/package_language_parity.py with ABI3 native/JNI, .NET8 and Java17; real child Package mapping and datatype/wire parity",
+      "exitCode": 0
+    }
+  ],
+  "limitations": [
+    "Explicit Ready/terminal snapshots and observer events only; full Audit/Parameter Set/trace/lineage models remain outstanding",
+    "Current metrics only; retry/wait/peak extensions and history query indexes remain outstanding",
+    "Windows tests and remote CI status waived by explicit user instruction, not claimed passed"
+  ]
+}

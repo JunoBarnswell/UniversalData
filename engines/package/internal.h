@@ -33,6 +33,8 @@ struct ud_execution {
     ud_execution_options options;
     ud_registry *registry, *external;
     ud_json *parameters;
+    uint8_t parameters_fingerprint[32];
+    ud_string deployment_metadata; /* Immutable, cached before cancellation. */
     ud_scope *scope;
     ud_scope globals, project_scope;
     atomic_int state, result;

@@ -30,8 +30,8 @@
     },
     "5": {
       "design": "Implemented",
-      "code": "Implemented unified task/batch Journal 3, scoped variable/iteration recovery, source/file verification, SQL receipt replay, durability events; embedded immutable Catalog/event persistence implemented; deployment/environment semantics and wider observability Planned; exact immutable Deployment revision validation/selection/rollback implemented",
-      "validation": "Verified native 24/24; ASan/UBSan Package/Catalog/Project 6/6, process termination, immutable storage, version selection/rollback and resume"
+      "code": "Implemented unified task/batch Journal 3, scoped variable/iteration recovery, source/file verification, SQL receipt replay, durability events; embedded immutable Catalog/event persistence implemented; deployment/environment semantics and wider observability Planned; exact immutable Deployment revision validation/selection/rollback implemented; optional native Ready/terminal execution snapshots and events persisted without parameter/config/row values",
+      "validation": "Verified native 26/26, ASan/UBSan Package/Catalog/Project/Child/History 8/8, actual recovery process termination, immutable storage/deployment selection and native history outcome/privacy tests"
     },
     "6": {
       "design": "Implemented",

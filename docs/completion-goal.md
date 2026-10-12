@@ -113,3 +113,5 @@ main 已重新 fetch，当前分支没有落后；已有基础批次和 ABI 3 �
 Execute Package Task 已从草稿容器别名改为真正子 Package：参数映射、作用域隔离、同一 Execution/资源上下文、子/孙 Package、错误/取消/CommitUnknown 和真实终止恢复已验证。证据：acceptance/evidence/ssis-child-package。
 
 范围修订（2026-10-12）：Windows 测试及远程 CI 状态按用户明确指令不作本轮完成门禁；其余实现及本地验收范围不变。这是显式免测，不是测试通过。
+
+运行历史模块：原生 Ready/终态快照与事件持久化、取消后的元数据读取、租户边界、参数正文不落盘已通过。当前 native 26/26、内存专项 8/8、三语言子 Package 一致性通过；完整 G47/G48 仍有缺项。

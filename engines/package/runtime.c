@@ -133,6 +133,21 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         s = ud_json_parse(ctx, options->parameters.data ? options->parameters.data : "{}",
                           options->parameters.data ? options->parameters.length : 2, &e->parameters,
                           NULL);
+    if (!s) {
+        char *text = NULL;
+        uint32_t n;
+        s = ud_json_serialize(e->parameters, &text, &n);
+        if (!s)
+            ud_hash(text, n, e->parameters_fingerprint);
+        ud_free(text);
+        const ud_json *deployment = ud_member(e->package->document, "deployment");
+        if (!s && deployment) {
+            text = NULL;
+            s = ud_json_serialize(deployment, &text, &n);
+            if (!s)
+                e->deployment_metadata = (ud_string){text, n};
+        }
+    }
     if (!s)
         s = ud_execution_bind_roots(e);
     if (!s)
@@ -312,6 +327,7 @@ ud_status ud_execution_destroy(ud_execution *e) {
     ud_registry_release(e->external);
     ud_registry_destroy(e->registry);
     ud_json_destroy(e->parameters);
+    ud_free((void *)e->deployment_metadata.data);
     ud_package_destroy(e->package);
     ud_free((void *)e->options.tenant.data);
     ud_free((void *)e->options.execution_id.data);

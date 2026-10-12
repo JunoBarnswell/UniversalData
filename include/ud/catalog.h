@@ -54,6 +54,11 @@ typedef struct ud_catalog_binding {
  * the existing Execution API. No latest-version races or implicit activation. */
 UD_API ud_status ud_catalog_bind_package(ud_catalog *, const ud_catalog_binding *, ud_package **,
                                          char **parameters, uint32_t *length);
+/* Host records immutable Ready/terminal snapshots at explicit revisions.
+ * Running/Draining return BUSY. Serialize with start/destroy; tenant must
+ * match. Persists identifiers/fingerprints/metrics, never parameter/config/
+ * row/credential values. Errors belong to the host logging policy. */
+UD_API ud_status ud_catalog_record_execution(ud_catalog *, const ud_execution *, uint64_t revision);
 UD_API void ud_catalog_close(ud_catalog *);
 #ifdef __cplusplus
 }

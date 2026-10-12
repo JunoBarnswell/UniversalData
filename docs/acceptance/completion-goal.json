@@ -888,9 +888,13 @@
         {
           "reference": "docs/acceptance/evidence/ssis-project/evidence.json",
           "type": "verified-supported-subset"
+        },
+        {
+          "reference": "docs/acceptance/evidence/ssis-history/evidence.json",
+          "type": "verified-supported-subset"
         }
       ],
-      "progress": "Immutable Catalog, typed Project/Environment records, exact Deployment revision validation/selection/rollback and binding provenance implemented and verified. Activation routing, retention and complete execution history remain outstanding."
+      "progress": "Immutable Catalog, typed Project/Environment records, exact Deployment revision validation/selection/rollback and binding provenance implemented and verified. Activation routing, retention and complete execution history remain outstanding. Native Ready/terminal Execution metrics/identities/fingerprints and event history persistence now implemented and verified, including cancellation and no plaintext parameters."
     },
     {
       "id": "G48",
@@ -912,9 +916,13 @@
         {
           "reference": "docs/acceptance/evidence/ssis-catalog/evidence.json",
           "type": "verified-supported-subset"
+        },
+        {
+          "reference": "docs/acceptance/evidence/ssis-history/evidence.json",
+          "type": "verified-supported-subset"
         }
       ],
-      "progress": "Embedded immutable Catalog repository and structured event persistence implemented and verified. Full deployment/environment semantics, execution-history integration and observability remain outstanding."
+      "progress": "Embedded immutable Catalog repository and structured event persistence implemented and verified. Full deployment/environment semantics, execution-history integration and observability remain outstanding. Native Ready/terminal Execution metrics/identities/fingerprints and event history persistence now implemented and verified, including cancellation and no plaintext parameters."
     },
     {
       "id": "G49",

@@ -11,3 +11,5 @@ Writes take a repository writer lock, reserve a new temporary file exclusively, 
 `ud_catalog_record_event` stores explicit package/execution/task/pipeline/component ids, state, result, timestamp and event kind at a caller-assigned sequence. It does not persist row values, SQL or configuration from an Execution. Arbitrary supplied metadata documents remain the host's responsibility. This is a persistence primitive; Project/Environment binding and immutable Deployment validation/version selection are now implemented; activation routing, full run-history integration and lineage/trace remain outstanding G47/G48 work.
 
 Behavioral evidence: `tests/catalog.c` and `tests/catalog.py` exercise restart, immutable revisions/conflicts, two-tenant isolation, authorization revocation, native Package validation, structured event storage, checksum/filename corruption and preservation of an existing staging file. Saved test results are in `docs/acceptance/evidence/ssis-catalog`.
+
+Native Execution 快照与事件历史现已实现，见 [运行历史契约](execution-history.md)。完整 Audit/Parameter Set/trace/lineage 及更丰富检索仍是待办。
