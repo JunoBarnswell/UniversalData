@@ -8,9 +8,22 @@
 #include <sys/resource.h>
 #endif
 typedef struct fixture {
+    ud_execution *execution;
     int kill_kind, kill_after, seen;
     const char *kill_component, *deny_resource;
 } fixture;
+static void process_usage(FILE *stream) {
+#ifndef _WIN32
+    struct rusage usage;
+    if (getrusage(RUSAGE_SELF, &usage))
+        return;
+    fprintf(stream, ",\"maxRssKiB\":%ld,\"cpuSeconds\":%.6f", usage.ru_maxrss,
+            (double)usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1000000.0 +
+                usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1000000.0);
+#else
+    (void)stream;
+#endif
+}
 static ud_string str(const char *s) {
     return (ud_string){s, (uint32_t)strlen(s)};
 }
@@ -42,8 +55,20 @@ static void observe(void *user, const ud_execution_event *event) {
     int matches = !f->kill_component || (event->component_id.length == strlen(f->kill_component) &&
                                          !memcmp(event->component_id.data, f->kill_component,
                                                  event->component_id.length));
-    if (event->kind == f->kill_kind && matches && ++f->seen == f->kill_after)
+    if (event->kind == f->kill_kind && matches && ++f->seen == f->kill_after) {
+        ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
+        if (f->execution && !ud_execution_get_metrics(f->execution, &m)) {
+            fprintf(stderr,
+                    "{\"committed\":%llu,\"memoryUsed\":%llu,\"spillBytes\":%llu,"
+                    "\"workerHighWater\":%u",
+                    (unsigned long long)m.committed_rows, (unsigned long long)m.memory_used,
+                    (unsigned long long)m.spill_bytes, m.worker_high_water);
+            process_usage(stderr);
+            fputs("}\n", stderr);
+            fflush(stderr);
+        }
         _exit(91);
+    }
 }
 int main(int argc, char **argv) {
     CHECK(argc >= 5);
@@ -83,6 +108,7 @@ int main(int argc, char **argv) {
     ud_status result =
         ud_execution_create_json((ud_string){document, (uint32_t)bytes}, &options, &execution);
     free(document);
+    f.execution = execution;
     if (!result)
         result = ud_execution_execute(execution);
     if (!execution) {
@@ -102,13 +128,7 @@ int main(int argc, char **argv) {
            (unsigned long long)m.error_rows, (unsigned long long)m.committed_error_rows,
            (unsigned long long)m.acknowledged_error_rows, (int)length, diagnostics);
     ud_free(diagnostics);
-#ifndef _WIN32
-    struct rusage usage;
-    CHECK(!getrusage(RUSAGE_SELF, &usage));
-    printf(",\"maxRssKiB\":%ld,\"cpuSeconds\":%.6f", usage.ru_maxrss,
-           (double)usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1000000.0 +
-               usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1000000.0);
-#endif
+    process_usage(stdout);
     printf("}\n");
     OK(ud_execution_destroy(execution));
     return 0;

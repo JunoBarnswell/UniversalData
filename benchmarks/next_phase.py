@@ -18,7 +18,7 @@ def run(driver,document,root,workers,resume=False,kill=False):
     doc=dict(document);doc.pop('durable',None);package.write_text(json.dumps(doc))
     result=subprocess.run(command,capture_output=True,text=True,timeout=1200)
     if kill:
-        assert result.returncode==91,(result.stdout,result.stderr);return {'seconds':time.perf_counter()-start,'killed':True}
+        assert result.returncode==91,(result.stdout,result.stderr);return {'seconds':time.perf_counter()-start,'killed':True,**json.loads(result.stderr)}
     assert result.returncode==0,(result.stdout,result.stderr)
     facts=json.loads(result.stdout);assert facts['result']==0,facts
     facts['seconds']=time.perf_counter()-start;return facts
@@ -59,11 +59,13 @@ def main():
                 tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='flow'))];constraints=[]
                 if build:tasks.insert(0,dict(id='build',kind='dataFlow',config=dict(pipeline='build')));constraints=[{'from':'build','to':'flow','on':'success'}]
                 doc=dict(version=7,id='r5',connections=connections,caches=caches,policy=dict(maxConcurrency=workers,buffers=dict(connection='spill',residentBytes=65536,workingBytes=4194304,spillBytes=1000000000,maxBlocks=50000)),controlFlow=dict(tasks=tasks,constraints=constraints),dataFlows=([build] if build else [])+[dict(id='flow',components=nodes,paths=paths)])
-                if workload=='incrementalResume':doc['durable']=True;interrupted=run(args.driver,doc,root,workers,kill=True);facts=run(args.driver,doc,root,workers,resume=True);facts['interruptionSeconds']=interrupted['seconds'];db=sqlite3.connect(root/'target.db');assert db.execute('SELECT count(*) FROM output').fetchone()[0]==args.rows;db.close();signature={'rows':args.rows,'correctUpsertKeys':True}
+                if workload=='incrementalResume':doc['durable']=True;interrupted=run(args.driver,doc,root,workers,kill=True);facts=run(args.driver,doc,root,workers,resume=True);facts['interruption']=interrupted;facts['totalSeconds']=interrupted['seconds']+facts['seconds'];db=sqlite3.connect(root/'target.db');assert db.execute('SELECT count(*),min(id),max(id) FROM output').fetchone()==(args.rows,0,args.rows-1);assert db.execute('SELECT count(*) FROM output WHERE fk != id % ?', (args.references,)).fetchone()[0]==0;db.close();signature={'rows':args.rows,'correctUpsertKeys':True,'correctForeignKeys':True}
                 else:
                     facts=run(args.driver,doc,root,workers);signature=digest(root/'output.ndjson')
                     if workload=='errorDualSink':assert digest(root/'errors.ndjson')['rows']==min(args.rows//10,100000);assert facts['committedErrors']==min(args.rows//10,100000)
                     if workload=='cacheLookup':assert digest(root/'second.ndjson')==signature;assert facts['diagnostics']['caches'][0]['loaded']==args.references
+                expected_rows=args.rows-min(args.rows//10,100000) if workload=='errorDualSink' else args.rows
+                assert signature['rows']==expected_rows,(workload,signature,expected_rows)
                 if workload in golden:assert golden[workload]==signature,(workload,workers,signature,golden[workload])
                 else:golden[workload]=signature
                 matrix.append(dict(workload=workload,workers=workers,rows=args.rows,references=args.references,rowsPerSecond=args.rows/facts['seconds'],signature=signature,**facts));print(workload,workers,facts['seconds'],flush=True)
