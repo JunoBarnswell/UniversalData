@@ -36,6 +36,9 @@ typedef struct ud_component_context {
     ud_expression_resolver resolve;
     void *resolve_user;
 } ud_component_context;
+/* Task promises its effects may safely be replayed after an interrupted invoke.
+ * This is a host/plugin contract, not a claim inferred by the runtime. */
+#define UD_COMPONENT_REPLAY_SAFE UINT64_C(0x8000000000000000)
 typedef struct ud_component_descriptor {
     uint32_t struct_size, abi_version;
     ud_string id, name, version, configuration_schema;

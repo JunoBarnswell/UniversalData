@@ -201,6 +201,20 @@ ud_status ud_control_validate(ud_execution *e, const ud_json *flow, uint32_t dep
     ud_scope_leave(e, &scope);
     return s;
 }
+static ud_status execute_iteration(ud_execution *e, const ud_json *children, uint64_t number) {
+    ud_string parent = e->task_id;
+    size_t size = (size_t)parent.length + 64;
+    char *identity = ud_alloc(e->ctx, size);
+    if (!identity)
+        return UD_RESOURCE;
+    int n = snprintf(identity, size, "%.*s@iteration:%llu;", (int)parent.length,
+                     parent.data ? parent.data : "", (unsigned long long)number);
+    e->task_id = (ud_string){identity, (uint32_t)n};
+    ud_status result = ud_control_execute(e, children);
+    e->task_id = parent;
+    ud_free(identity);
+    return result;
+}
 static ud_status perform_task(ud_execution *e, const ud_json *task) {
     ud_string kind;
     UD_TRY(ud_json_string(ud_member(task, "kind"), &kind));
@@ -233,7 +247,7 @@ static ud_status perform_task(ud_execution *e, const ud_json *task) {
                 s = UD_RESOURCE;
                 break;
             }
-            s = ud_control_execute(e, ud_member(task, "children"));
+            s = execute_iteration(e, ud_member(task, "children"), iteration - 1);
             if (!s)
                 s = assignment(e, ud_member(config, "increment"), 1);
         }
@@ -251,7 +265,7 @@ static ud_status perform_task(ud_execution *e, const ud_json *task) {
             if (!s)
                 s = ud_execution_set_variable(e, name, &value);
             if (!s)
-                s = ud_control_execute(e, ud_member(task, "children"));
+                s = execute_iteration(e, ud_member(task, "children"), i);
         }
     } else if (!s && ud_named(kind, "dataFlow")) {
         ud_string name;
@@ -344,26 +358,47 @@ ud_status ud_control_execute(ud_execution *e, const ud_json *flow) {
             if (s || !ready)
                 continue;
             const ud_json *task = ud_json_at(tasks, i);
-            ud_json_string(ud_member(task, "id"), &e->task_id);
+            ud_string id;
+            ud_json_string(ud_member(task, "id"), &id);
+            size_t identity_size = (size_t)parent.length + id.length + 48;
+            char *identity = ud_alloc(e->ctx, identity_size);
+            if (!identity) {
+                s = UD_RESOURCE;
+                break;
+            }
+            int identity_length =
+                snprintf(identity, identity_size, "%.*s/%u:%.*s;", (int)parent.length,
+                         parent.data ? parent.data : "", id.length, (int)id.length, id.data);
+            e->task_id = (ud_string){identity, (uint32_t)identity_length};
             if (!pass) {
                 states[i] = UD_EXEC_SKIPPED;
                 ud_execution_notify(e, states[i], UD_OK);
             } else {
-                states[i] = UD_EXEC_RUNNING;
-                ud_execution_notify(e, states[i], UD_OK);
-                ud_status result = perform_task(e, task);
+                ud_string kind;
+                ud_json_string(ud_member(task, "kind"), &kind);
+                int completed = 0;
+                ud_status result = ud_checkpoint_task_begin(e, kind, &completed);
+                if (!result && !completed) {
+                    states[i] = UD_EXEC_RUNNING;
+                    ud_execution_notify(e, states[i], UD_OK);
+                    result = perform_task(e, task);
+                    if (!result) {
+                        atomic_fetch_add(&e->completed_tasks, 1);
+                        result = ud_checkpoint_task_done(e);
+                    }
+                }
                 states[i] = result == UD_CANCELLED        ? UD_EXEC_CANCELLED
                             : result == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
                             : result                      ? UD_EXEC_FAILED
                                                           : UD_EXEC_SUCCEEDED;
                 ud_execution_notify(e, states[i], result);
-                if (!result)
-                    atomic_fetch_add(&e->completed_tasks, 1);
-                else if (result == UD_CANCELLED || result == UD_COMMIT_UNKNOWN)
+                if (result == UD_CANCELLED || result == UD_COMMIT_UNKNOWN)
                     s = result;
-                else if (!failure)
+                else if (result && !failure)
                     failure = result;
             }
+            e->task_id = parent;
+            ud_free(identity);
             progress = 1;
             complete++;
         }

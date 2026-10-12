@@ -83,8 +83,8 @@ Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任�
 | G42 | 4 | Error Output/Reject/Quarantine | Planned | NotRun |
 | G43 | 4 | Null/Unique/Range/Regex/Reference | Planned | NotRun |
 | G44 | 4 | Row Count/Audit | Planned | NotRun |
-| G45 | 5 | 统一任务/批次 Checkpoint Journal | Planned | NotRun |
-| G46 | 5 | CommitUnknown/事务和故障恢复 | Planned | NotRun |
+| G45 | 5 | 统一任务/批次 Checkpoint Journal | Implemented | Verified（当前支持范围） |
+| G46 | 5 | CommitUnknown/事务和故障恢复 | Implemented | Verified（当前支持范围） |
 | G47 | 5 | Catalog/Deployment/Environment/Version | Planned | NotRun |
 | G48 | 5 | 结构化 Events/Logs/Trace/Metrics/Lineage/Audit | Planned | NotRun |
 | G49 | 6 | 薄 C/.NET/Java Package/Execution 绑定 | Implemented | Verified |

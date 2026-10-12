@@ -36,7 +36,7 @@ typedef struct builtin {
     ud_json_writer *writer;
     char *path, *temporary, *job;
     void *lock;
-    int published;
+    int published, existing, temporary_owned;
     uint64_t number;
     uint32_t *keys, key_count;
     int mode;
@@ -241,7 +241,7 @@ static void dispose(void *ptr, ud_status result) {
     ud_json_reader_close(b->reader);
     if (b->writer)
         (void)ud_json_writer_close(b->writer);
-    if (b->temporary && !b->published)
+    if (b->temporary && b->temporary_owned && !b->published)
         (void)ud_remove_file(b->context.memory, b->temporary);
     ud_unlock(b->lock);
     (void)ud_connection_lease_release(b->lease);
@@ -320,6 +320,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                 s = UD_RESOURCE;
         }
     }
+    if (!s && (kind == CSV_SOURCE || kind == JSON_SOURCE))
+        s = ud_checkpoint_source(c->execution, b->path);
     if (!s && kind == CSV_SOURCE) {
         ud_string null = {"\\N", 2};
         if (ud_member(b->config, "nullMarker"))
@@ -350,19 +352,30 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
             s = ud_lock(c->memory, lock, &b->lock);
             ud_free(lock);
         }
-        struct stat info;
-        if (!s && !stat(b->path, &info))
-            s = UD_BUSY;
-        else if (!s && errno != ENOENT)
-            s = UD_IO;
+        int replaying = 0;
         if (!s) {
             b->temporary = ud_alloc(c->memory, len + 32);
             if (!b->temporary)
                 s = UD_RESOURCE;
-            else {
+            else
                 snprintf(b->temporary, len + 32, "%s.ud-package.part", b->path);
-                s = ud_reserve_file(c->memory, b->temporary);
-            }
+        }
+        if (!s)
+            s = ud_checkpoint_stage(c->execution, b->path, b->temporary, &replaying);
+        struct stat info;
+        if (!s) {
+            b->existing = !stat(b->path, &info);
+            if (b->existing && !replaying)
+                s = UD_BUSY;
+            else if (!b->existing && errno != ENOENT)
+                s = UD_IO;
+        }
+        if (!s && replaying)
+            s = ud_remove_file(c->memory, b->temporary);
+        if (!s) {
+            s = ud_reserve_file(c->memory, b->temporary);
+            if (!s)
+                b->temporary_owned = 1;
         }
         if (!s)
             s = ud_json_writer_open(c->memory, b->temporary, b->fields, b->columns, 1048576,
@@ -394,10 +407,9 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
             if (!b->job)
                 s = UD_RESOURCE;
             else
-                snprintf(b->job, len, "%.*s/%.*s/%llu/%.*s", e->options.execution_id.length,
-                         e->options.execution_id.data, c->task_id.length, c->task_id.data,
-                         (unsigned long long)e->invocation, c->component_id.length,
-                         c->component_id.data);
+                snprintf(b->job, len, "%.*s/%.*s/%.*s", (int)e->options.execution_id.length,
+                         e->options.execution_id.data, (int)c->task_id.length, c->task_id.data,
+                         (int)c->component_id.length, c->component_id.data);
         }
     }
     if (!s && (kind == DERIVE || kind == SPLIT)) {
@@ -600,9 +612,38 @@ static ud_status step(void *ptr, const ud_component_event *event) {
                               {position, (uint32_t)strlen(position)},
                               b->keys,
                               b->key_count};
-        ud_status s = ud_connection_lease_write(b->lease, &o, event->batch);
+        uint8_t digest[32];
+        ud_status s = ud_connection_lease_digest(b->lease, &o, event->batch, digest);
+        size_t length = strlen(b->job) + strlen(id) + 8;
+        char *identity = ud_alloc(b->context.memory, length);
+        if (!identity)
+            return UD_RESOURCE;
+        snprintf(identity, length, "%s/%s", b->job, id);
+        ud_string key = {identity, (uint32_t)strlen(identity)};
+        int replaying = ud_checkpoint_batch_seen(b->context.execution, key);
+        if (!s)
+            s = ud_checkpoint_batch(b->context.execution, key, digest, 0);
+        if (!s && replaying) {
+            ud_commit_receipt receipt = {0};
+            s = ud_connection_lease_receipt(b->lease, o.job, o.batch_id, &receipt);
+            if (!s && receipt.committed &&
+                (memcmp(receipt.digest, digest, 32) ||
+                 !ud_same(receipt.source_position, o.source_position)))
+                s = UD_CORRUPT;
+            ud_free((void *)receipt.source_position.data);
+        }
+        if (!s)
+            s = ud_connection_lease_write(b->lease, &o, event->batch);
+        if (!s) {
+            ud_execution_notify_kind(b->context.execution, UD_EXEC_EVENT_TARGET_COMMITTED,
+                                     UD_EXEC_RUNNING, UD_OK);
+            s = ud_checkpoint_batch(b->context.execution, key, digest, 1);
+            if (s)
+                s = UD_COMMIT_UNKNOWN;
+        }
         if (!s)
             b->number++;
+        ud_free(identity);
         return s;
     }
     if (kind == SORT || kind == JOIN || kind == AGGREGATE)
@@ -611,16 +652,33 @@ static ud_status step(void *ptr, const ud_component_event *event) {
 }
 static ud_status finish(void *ptr) {
     builtin *b = ptr;
+    if (b->kind == CSV_SOURCE || b->kind == JSON_SOURCE)
+        return ud_checkpoint_source(b->context.execution, b->path);
     if (b->kind != JSON_SINK)
         return UD_OK;
     ud_status s = ud_json_writer_close(b->writer);
     b->writer = NULL;
     if (!s)
         s = ud_connection_lease_authorize(b->lease, UD_ACCESS_WRITE);
-    if (!s)
+    if (!s && b->existing) {
+        uint8_t expected[32], actual[32];
+        s = ud_file_hash(b->context.memory, b->temporary, expected);
+        if (!s)
+            s = ud_file_hash(b->context.memory, b->path, actual);
+        if (!s && memcmp(expected, actual, 32))
+            s = UD_CORRUPT;
+        if (!s)
+            s = ud_remove_file(b->context.memory, b->temporary);
+    } else if (!s)
         s = ud_publish(b->context.memory, b->temporary, b->path);
-    if (!s)
+    if (!s) {
         b->published = 1;
+        ud_execution_notify_kind(b->context.execution, UD_EXEC_EVENT_TARGET_COMMITTED,
+                                 UD_EXEC_RUNNING, UD_OK);
+        s = ud_checkpoint_file_done(b->context.execution, b->path);
+        if (s)
+            s = UD_COMMIT_UNKNOWN;
+    }
     return s;
 }
 static ud_status sql_task(void *user, const ud_component_context *c, ud_string text) {
@@ -675,6 +733,8 @@ ud_status ud_builtin_register(ud_registry *registry) {
                                      .version = {"1.0.0", 5},
                                      .configuration_schema = {"{\"type\":\"object\"}", 17},
                                      .category = category,
+                                     .capabilities =
+                                         kind == SQL_SOURCE ? 0 : UD_COMPONENT_REPLAY_SAFE,
                                      .inputs = entries[i].inputs,
                                      .outputs = entries[i].outputs,
                                      .synchronous_input = entries[i].sync,

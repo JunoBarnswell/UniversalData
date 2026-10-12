@@ -88,6 +88,9 @@ static ud_status plan(ud_execution *e, const ud_json *definition, physical_plan 
         n->descriptor = (ud_component_descriptor){.struct_size = sizeof(n->descriptor),
                                                   .abi_version = UD_ABI_VERSION};
         UD_TRY(ud_component_lookup(e, component, &n->descriptor));
+        if (e->options.state_directory.length &&
+            !(n->descriptor.capabilities & UD_COMPONENT_REPLAY_SAFE))
+            return UD_UNSUPPORTED;
         if (n->descriptor.category < UD_COMPONENT_SOURCE ||
             n->descriptor.category > UD_COMPONENT_DESTINATION)
             return UD_SCHEMA;

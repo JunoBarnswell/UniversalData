@@ -3,20 +3,34 @@
 #include <process.h>
 #endif
 static ud_status copy_string(ud_context *ctx, ud_string source, ud_string *out) {
-    if (!source.data && source.length)
+    if ((!source.data && source.length) ||
+        (source.length &&
+         (memchr(source.data, 0, source.length) || !ud_utf8_valid(source.data, source.length))))
         return UD_INVALID;
     out->data = ud_strdup_n(ctx, source.data ? source.data : "", source.length);
     out->length = source.length;
     return out->data ? UD_OK : UD_RESOURCE;
 }
-void ud_execution_notify(ud_execution *e, ud_execution_state state, ud_status result) {
+void ud_execution_notify_kind(ud_execution *e, int32_t kind, ud_execution_state state,
+                              ud_status result) {
     if (!e->options.observe)
         return;
-    ud_execution_event event = {
-        sizeof(event), UD_ABI_VERSION, e->package->id,  e->options.execution_id,
-        e->task_id,    e->pipeline_id, e->component_id, state,
-        result,        ud_now_ms()};
+    ud_execution_event event = {sizeof(event),
+                                UD_ABI_VERSION,
+                                e->package->id,
+                                e->options.execution_id,
+                                e->task_id,
+                                e->pipeline_id,
+                                e->component_id,
+                                state,
+                                result,
+                                ud_now_ms(),
+                                kind};
+    event.kind = kind;
     e->options.observe(e->options.observe_user, &event);
+}
+void ud_execution_notify(ud_execution *e, ud_execution_state state, ud_status result) {
+    ud_execution_notify_kind(e, UD_EXEC_EVENT_STATE, state, result);
 }
 ud_status ud_execution_check(ud_execution *e) {
     if (ud_is_cancelled(e->ctx))
@@ -73,7 +87,8 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         return UD_INCOMPATIBLE;
     if (!options->edge_capacity || options->edge_capacity > 65536 || !options->max_batch_rows ||
         options->max_batch_rows > 65536 || !options->max_depth || options->max_depth > 64 ||
-        options->resume < 0 || options->resume > 1)
+        options->resume < 0 || options->resume > 1 ||
+        (options->resume && !options->state_directory.length))
         return UD_INVALID;
     ud_context *ctx = NULL;
     UD_TRY(ud_context_create(&options->context, &ctx));
@@ -180,11 +195,14 @@ static ud_status execute(ud_execution *e) {
             e->options.timeout_ms > UINT64_MAX - now ? UINT64_MAX : now + e->options.timeout_ms;
     ud_execution_notify(e, UD_EXEC_RUNNING, UD_OK);
     ud_status s = ud_execution_check(e);
-    if (!s)
+    int journal_ready = 0;
+    if (!s) {
         s = ud_checkpoint_open(e);
+        journal_ready = !s;
+    }
     if (!s)
         s = ud_control_execute(e, ud_member(e->package->document, "controlFlow"));
-    if (s && s != UD_CANCELLED && s != UD_COMMIT_UNKNOWN) {
+    if (journal_ready && s && s != UD_CANCELLED && s != UD_COMMIT_UNKNOWN) {
         const ud_json *handler =
             ud_member(ud_member(e->package->document, "eventHandlers"), "failure");
         if (handler)

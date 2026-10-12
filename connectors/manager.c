@@ -153,3 +153,11 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
     ud_free(l);
     return UD_OK;
 }
+
+ud_status ud_connection_lease_digest(ud_connection_lease *l, const ud_write_options *options,
+                                     const ud_batch *batch, uint8_t digest[32]) {
+    if (!l || !l->connection)
+        return UD_UNSUPPORTED;
+    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_WRITE));
+    return ud_connection_digest(l->connection, options, batch, digest);
+}

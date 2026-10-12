@@ -63,6 +63,7 @@ ud_status ud_pipeline_execute(ud_execution *, const ud_json *);
 ud_status ud_builtin_register(ud_registry *);
 ud_status ud_component_lookup(ud_execution *, ud_string, ud_component_descriptor *);
 ud_status ud_execution_check(ud_execution *);
+void ud_execution_notify_kind(ud_execution *, int32_t kind, ud_execution_state, ud_status);
 void ud_execution_notify(ud_execution *, ud_execution_state, ud_status);
 ud_status ud_scope_enter(ud_execution *, const ud_json *, ud_scope *);
 void ud_scope_leave(ud_execution *, ud_scope *);
@@ -71,6 +72,15 @@ ud_status ud_expression_json(ud_execution *, const ud_json *, const ud_batch *, 
 ud_status ud_bound_config(ud_execution *, const ud_json *, ud_json **);
 ud_status ud_scalar_value(const ud_json *, ud_type, ud_value *);
 ud_status ud_checkpoint_open(ud_execution *);
-ud_status ud_checkpoint_task(ud_execution *, ud_string identity, int *completed);
+ud_status ud_checkpoint_task_begin(ud_execution *, ud_string kind, int *completed);
+ud_status ud_checkpoint_task_done(ud_execution *);
+ud_status ud_checkpoint_source(ud_execution *, const char *path);
+ud_status ud_checkpoint_stage(ud_execution *, const char *target, const char *temporary,
+                              int *replaying);
+ud_status ud_checkpoint_file_done(ud_execution *, const char *target);
+int ud_checkpoint_batch_seen(ud_execution *, ud_string identity);
+ud_status ud_checkpoint_batch(ud_execution *, ud_string identity, const uint8_t digest[32],
+                              int committed);
+
 void ud_checkpoint_close(ud_execution *);
 #endif

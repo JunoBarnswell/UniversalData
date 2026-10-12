@@ -16,6 +16,8 @@ UD_API ud_status ud_connection_lease_read_open(ud_connection_lease *, const ud_r
                                                const ud_batch *);
 UD_API ud_status ud_connection_lease_read_next(ud_connection_lease *, ud_batch **);
 UD_API ud_status ud_connection_lease_read_close(ud_connection_lease *);
+UD_API ud_status ud_connection_lease_digest(ud_connection_lease *, const ud_write_options *,
+                                            const ud_batch *, uint8_t out[32]);
 UD_API ud_status ud_connection_lease_write(ud_connection_lease *, const ud_write_options *,
                                            const ud_batch *);
 UD_API ud_status ud_connection_lease_receipt(ud_connection_lease *, ud_string job,

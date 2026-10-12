@@ -806,8 +806,8 @@
       "phase": 5,
       "name": "统一任务/批次 Checkpoint Journal",
       "priority": "P0",
-      "code": "Planned",
-      "verification": "NotRun",
+      "code": "Implemented",
+      "verification": "Verified",
       "acceptance": "一个版本化、校验、独占、原子发布日志；任务/循环/变量/源位置/算子/目标回执记录",
       "implementation": [
         "engines/package/checkpoint.c"
@@ -816,15 +816,20 @@
         "G25"
       ],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-recovery/evidence.json",
+          "scope": "Supported deterministic file-source recovery; general SQL-source snapshots and arbitrary side effects explicitly excluded"
+        }
+      ]
     },
     {
       "id": "G46",
       "phase": 5,
       "name": "CommitUnknown/事务和故障恢复",
       "priority": "P0",
-      "code": "Planned",
-      "verification": "NotRun",
+      "code": "Implemented",
+      "verification": "Verified",
       "acceptance": "真实进程终止：提交前/后/日志前/后；不推进未确认源；回执核实；无伪成功/重复写/资源泄漏",
       "implementation": [
         "engines/package",
@@ -835,7 +840,12 @@
         "G45"
       ],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-recovery/evidence.json",
+          "scope": "Supported deterministic file-source recovery; general SQL-source snapshots and arbitrary side effects explicitly excluded"
+        }
+      ]
     },
     {
       "id": "G47",

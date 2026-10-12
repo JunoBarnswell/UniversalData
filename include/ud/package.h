@@ -8,12 +8,19 @@ extern "C" {
 #endif
 #define UD_PACKAGE_VERSION 3u
 typedef struct ud_package ud_package;
+enum {
+    UD_EXEC_EVENT_STATE = 1,
+    UD_EXEC_EVENT_BEFORE_CHECKPOINT,
+    UD_EXEC_EVENT_AFTER_CHECKPOINT,
+    UD_EXEC_EVENT_TARGET_COMMITTED
+};
 typedef struct ud_execution_event {
     uint32_t struct_size, abi_version;
     ud_string package_id, execution_id, task_id, pipeline_id, component_id;
     int32_t state;
     ud_status result;
     uint64_t timestamp_ms;
+    int32_t kind; /* State changes or durability boundary; no data/secret values. */
 } ud_execution_event;
 typedef void (*ud_execution_observer)(void *, const ud_execution_event *);
 typedef struct ud_execution_options {

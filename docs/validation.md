@@ -18,4 +18,6 @@
 
 GitHub 观察：[运行 38197069720](https://github.com/JunoBarnswell/UniversalData/actions/runs/38197069720)，Windows check 114641994899 的 annotation 明确说任务未启动，不能计为编译或测试通过。新的 CI 已改为 ABI 3 Package/语言消费者命令，但配置存在不等于运行通过。
 
-剩余里程碑：统一持久 Journal/批次恢复、Catalog、完整 Pipeline Spill、更多任务与连接器、列级血缘/完整表达式函数目录和其他扩展。当前 resume/state_directory 明确返回 Unsupported；不称完整 SSIS 架构或全部验收完成。旧 .state/.commit 不再提供恢复入口。
+剩余里程碑：统一持久 Journal/批次恢复、Catalog、完整 Pipeline Spill、更多任务与连接器、列级血缘/完整表达式函数目录和其他扩展。现已提供 Journal 3 的受支持恢复链路；SQL Source 持久 snapshot 仍明确 Unsupported；不称完整 SSIS 架构或全部验收完成。旧 .state/.commit 不再提供恢复入口。
+
+统一恢复新门禁：native 22/22、ASan/UBSan Package 4/4，通过真实进程终止和日志/源完整性检查。证据在 docs/acceptance/evidence/ssis-recovery；范围见 transactions-and-recovery.md。

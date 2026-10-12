@@ -1,0 +1,30 @@
+{
+  "milestone": "unified-checkpoint-journal-3",
+  "sourceTreeHash": "cce7df44bb39fc3151cc003492911000d89178f6f05328beaa8c37b0d9f74355",
+  "date": "2026-10-12",
+  "baseCommit": "d92684b",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-recovery/native-ctest.log",
+      "sha256": "49f5331bbb6e383c6d3dbd161cec6ee658c5cfc87b4840a5129145ba5e108456",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 22,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-recovery/asan-package.log",
+      "sha256": "c1d64648daa4648aa3fcf59713c301e54c7c78fe0fdabfa8722b66fea9eb4719",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R '^package_' --output-on-failure",
+      "exitCode": 0,
+      "passed": 4,
+      "failed": 0
+    }
+  ],
+  "limitations": [
+    "SQL Source persistent snapshots unsupported for checkpoint mode",
+    "Unknown non-replayable Task effects require outcome verification, never automatic retry",
+    "Deterministic operators replay from immutable file inputs; no arbitrary operator-memory checkpoint",
+    "Windows not executed"
+  ]
+}

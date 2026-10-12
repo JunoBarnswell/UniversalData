@@ -30,8 +30,8 @@
     },
     "5": {
       "design": "Implemented",
-      "code": "Planned",
-      "validation": "Planned"
+      "code": "Implemented unified task/batch Journal 3, scoped variable/iteration recovery, source/file verification, SQL receipt replay, durability events; Catalog and wider observability Planned",
+      "validation": "Verified native 22/22; ASan/UBSan Package 4/4, including real process termination and CommitUnknown safety"
     },
     "6": {
       "design": "Implemented",
@@ -50,12 +50,14 @@
     "ownership-sanitizers": "Verified 21/21 ASan/UBSan + leak detection",
     "package-control-pipeline": "Verified nested loop + precedence + derive/split and SQL integration",
     "c-dotnet-java": "Verified same Package/parameters/control/native results, typed data + wire 3, independent NuGet consumer",
-    "recovery-commit-unknown": "Planned"
+    "recovery-commit-unknown": "Verified supported file-source deterministic pipelines, SQL receipts, file commits, journal integrity/writer fencing and unsafe Task outcome safety"
   },
   "limitations": [
-    "Durable journal/resume explicitly rejects UD_UNSUPPORTED until Phase 5; no silent fresh-run fallback",
     "Pipeline blocking operators currently quota-bounded in memory; full spill integration remains Planned",
     "Complete SSIS component catalog, all expression/lineage capabilities and Project/Catalog are not yet complete",
-    "No Windows native package or remote CI execution evidence; no public package release"
+    "No Windows native package or remote CI execution evidence; no public package release",
+    "Checkpoint mode rejects SQL Sources without persistent snapshot capability",
+    "Unsafe/custom Task interrupted before Done cannot automatically replay; outcome is RecoveryRequired",
+    "Supported Pipeline recovery deterministically recomputes operators and verifies receipts rather than persisting arbitrary operator memory"
   ]
 }
