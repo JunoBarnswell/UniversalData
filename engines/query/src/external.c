@@ -87,7 +87,7 @@ static ud_status partition(external_state *state,const char *path,const ud_field
             hash^=hash>>33;hash*=UINT64_C(0xff51afd7ed558ccd);hash^=hash>>33;hash*=UINT64_C(0xc4ceb9fe1a85ec53);hash^=hash>>33;
             bucket *b=buckets+(hash&15);
             if(!b->writer) { s=reserve(state,&b->path);if(!s) s=ud_json_writer_open(state->ctx,b->path,fields,n,state->options.max_record_bytes,&b->writer); }
-            ud_batch *one=NULL;if(!s) s=ud_query_slice(state->ctx,batch,row,1,&one);if(!s) s=append(state,b->writer,one);ud_batch_destroy(one);
+            ud_batch *one=NULL;if(!s) s=ud_compute_slice(state->ctx,batch,row,1,&one);if(!s) s=append(state,b->writer,one);ud_batch_destroy(one);
         }
         ud_batch_destroy(batch);
     }

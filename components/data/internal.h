@@ -2,6 +2,7 @@
 #define UD_COLUMNAR_INTERNAL_H
 #include "ud/data.h"
 #include "../foundation/internal.h"
+#include <stdatomic.h>
 typedef struct ud_column {
     ud_field field;
     uint8_t *validity;
@@ -13,6 +14,8 @@ typedef struct ud_column {
     ud_value **views;
 } ud_column;
 struct ud_batch {
+    atomic_uint references;
+    int sealed;
     ud_context *ctx;
     uint32_t columns, rows, capacity;
     ud_column *column;

@@ -48,10 +48,10 @@ int main(void) {
     ud_accumulator_destroy(acc);
     ud_batch_destroy(result);
     ud_batch *sorted = NULL, *page = NULL;
-    OK(ud_query_sort(c, input, 1, 0, &sorted));
+    OK(ud_compute_sort(c, input, 1, 0, &sorted));
     OK(ud_batch_get(sorted, 0, 1, &actual));
     CHECK(actual.is_null);
-    OK(ud_query_slice(c, sorted, 1, 2, &page));
+    OK(ud_compute_slice(c, sorted, 1, 2, &page));
     CHECK(ud_batch_rows(page) == 2);
     OK(ud_batch_get(page, 0, 1, &actual));
     CHECK(actual.integer == -1);
@@ -63,7 +63,7 @@ int main(void) {
     v[1].is_null = 0;
     v[1].integer = 99;
     OK(ud_batch_append(right, v, 2));
-    OK(ud_query_inner_join(c, input, 0, right, 0, &joined));
+    OK(ud_compute_inner_join(c, input, 0, right, 0, &joined));
     CHECK(ud_batch_rows(joined) == 4 && ud_batch_columns(joined) == 4);
     ud_batch_destroy(joined);
     ud_batch_destroy(right);

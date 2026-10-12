@@ -14,6 +14,7 @@ static ud_status create_depth(ud_context *c, const ud_field *fields, uint32_t co
     if (!b)
         return UD_RESOURCE;
     b->ctx = c;
+    atomic_init(&b->references, 1);
     b->columns = columns;
     b->capacity = capacity;
     b->column = ud_alloc(c, (size_t)columns * sizeof(*b->column));
@@ -91,6 +92,8 @@ ud_status ud_batch_create(ud_context *c, const ud_field *f, uint32_t n, uint32_t
 void ud_batch_destroy(ud_batch *b) {
     if (!b)
         return;
+    if (atomic_fetch_sub_explicit(&b->references, 1, memory_order_acq_rel) != 1)
+        return;
     if (b->column)
         for (uint32_t i = 0; i < b->columns; i++) {
             ud_column *v = b->column + i;
@@ -107,6 +110,20 @@ void ud_batch_destroy(ud_batch *b) {
         }
     ud_free(b->column);
     ud_free(b);
+}
+ud_status ud_batch_seal(ud_batch *b) {
+    if (!b) return UD_INVALID;
+    b->sealed = 1;
+    return UD_OK;
+}
+ud_status ud_batch_retain(ud_batch *b) {
+    if (!b || !b->sealed) return UD_INVALID;
+    unsigned current = atomic_load_explicit(&b->references, memory_order_relaxed);
+    do {
+        if (!current || current == UINT_MAX) return UD_RESOURCE;
+    } while (!atomic_compare_exchange_weak_explicit(&b->references, &current, current + 1,
+               memory_order_relaxed, memory_order_relaxed));
+    return UD_OK;
 }
 uint32_t ud_batch_rows(const ud_batch *b) {
     return b ? b->rows : 0;
@@ -362,6 +379,7 @@ ud_status ud_copy_value(ud_context *ctx, const ud_value *v, ud_value *out, uint3
 }
 ud_status ud_batch_append(ud_batch *b, const ud_value *v, uint32_t n) {
     if (!b || !v || n != b->columns) return UD_INVALID;
+    if (b->sealed) return UD_BUSY;
     /* Deep-copy before reserves: nested / same-batch views can alias any child buffer. */
     ud_value *copy = ud_alloc(b->ctx, (size_t)n * sizeof(*copy));
     if (!copy) return UD_RESOURCE;

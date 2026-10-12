@@ -52,12 +52,23 @@ UD_API ud_status ud_decimal_rescale(ud_decimal128, int32_t from_scale, int32_t p
                                     int32_t to_scale, int32_t rounding, ud_decimal128 *);
 UD_API ud_status ud_decimal_add(ud_decimal128, ud_decimal128, int32_t precision, ud_decimal128 *);
 UD_API int32_t ud_decimal_compare(ud_decimal128, ud_decimal128);
+/* Total order for values whose bound schemas match (including Decimal scale).
+ * NULL first; NaN after all numeric values, all NaNs equal, +/-0 equal. */
+UD_API int32_t ud_value_compare(const ud_value *, const ud_value *);
+UD_API int32_t ud_truth_and(int32_t, int32_t);
+UD_API int32_t ud_truth_or(int32_t, int32_t);
+UD_API int32_t ud_truth_not(int32_t);
 typedef struct ud_batch ud_batch;
 UD_API ud_status ud_batch_create(ud_context *ctx, const ud_field *fields, uint32_t columns,
                                  uint32_t capacity, ud_batch **out);
 /* A failed append does not add a partially initialized row. */
 UD_API ud_status ud_batch_append(ud_batch *batch, const ud_value *values, uint32_t columns);
 UD_API void ud_batch_destroy(ud_batch *batch);
+/* Sealed batches are immutable. retain requires sealing; destroy releases one
+ * owned reference. Mutable batches have exactly one owner. Seal before sharing;
+ * concurrent sealing/mutation is forbidden. */
+UD_API ud_status ud_batch_seal(ud_batch *);
+UD_API ud_status ud_batch_retain(ud_batch *);
 UD_API uint32_t ud_batch_rows(const ud_batch *batch);
 UD_API uint32_t ud_batch_columns(const ud_batch *batch);
 /* Field metadata is borrowed until the next append / batch destruction. */

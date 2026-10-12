@@ -101,7 +101,7 @@ ud_status ud_query_sort_csv(ud_context *c, const char *input, const char *output
             break;
         s = ud_compute_apply(p, batch, &filtered);
         if (!s)
-            s = ud_query_sort(c, filtered, key, desc, &sorted);
+            s = ud_compute_sort(c, filtered, key, desc, &sorted);
         char *path = NULL;
         if (!s)
             s = run_path(c, dir, next++, &path);

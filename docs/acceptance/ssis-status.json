@@ -5,13 +5,13 @@
   "phases": {
     "0": {
       "design": "Implemented",
-      "code": "Planned",
-      "validation": "Planned"
+      "code": "Implemented",
+      "validation": "Verified"
     },
     "1": {
       "design": "Implemented",
-      "code": "Planned",
-      "validation": "Planned"
+      "code": "Implemented (state, sealed Buffer, expression AST, Registry, shared collection kernels); ABI switch/lineage pending",
+      "validation": "Verified architecture_foundation 1/1 and affected kernel tests 4/4 on Linux"
     },
     "2": {
       "design": "Implemented",
