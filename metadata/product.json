@@ -2,14 +2,15 @@
   "modelVersion": 1,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "1.1.0",
-    "abiVersion": 5,
-    "protocolVersion": 5
+    "sdkVersion": "1.2.0",
+    "abiVersion": 6,
+    "protocolVersion": 6
   },
   "scope": {
-    "name": "unified infrastructure and current core",
-    "linux": "Exempt by current user decision",
-    "extensions": "Tracked independently; Planned/Partial remain incomplete"
+    "name": "ETL four engines R0–R7 P0/P1",
+    "linux": "Required: Linux native, sanitizer, JNI and .NET acceptance",
+    "extensions": "Tracked independently; Planned/Partial remain incomplete",
+    "windows": "Exempt by current user decision"
   },
   "baseline": {
     "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
@@ -17,7 +18,7 @@
   },
   "candidate": {
     "branch": "codex/ssis-infrastructure-convergence",
-    "state": "Implementation complete; Pending integrated acceptance",
+    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null
@@ -1370,22 +1371,25 @@
   "gates": [
     {
       "id": "windows-msvc",
-      "status": "Pending",
+      "status": "Exempt",
       "command": "packaging/package.ps1 -BuildDirectory build/windows; Release C17/JNI/SQLite",
-      "evidence": []
+      "evidence": [],
+      "reason": "Current user requires Linux only; Windows exempt"
     },
     {
       "id": "windows-native",
-      "status": "Pending",
+      "status": "Exempt",
       "command": "ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure",
-      "evidence": []
+      "evidence": [],
+      "reason": "Current user requires Linux only; Windows exempt"
     },
     {
       "id": "windows-asan",
-      "status": "Pending",
+      "status": "Exempt",
       "command": "ctest --test-dir build/abi4-asan-msvc -C Debug --parallel 4 --output-on-failure",
       "evidence": [],
-      "runtimeOptions": "halt_on_error=1:abort_on_error=1"
+      "runtimeOptions": "halt_on_error=1:abort_on_error=1",
+      "reason": "Current user requires Linux only; Windows exempt"
     },
     {
       "id": "sqlite-transactions-recovery",
@@ -1431,9 +1435,10 @@
     },
     {
       "id": "windows-release",
-      "status": "Pending",
+      "status": "Exempt",
       "command": "packaging/package.ps1; ctest -C Release",
-      "evidence": []
+      "evidence": [],
+      "reason": "Current user requires Linux only; Windows exempt"
     },
     {
       "id": "distributable-bundle",
@@ -1470,6 +1475,36 @@
       "status": "Pending",
       "evidence": [],
       "command": ""
+    },
+    {
+      "id": "linux-release",
+      "name": "Linux Release native/JNI build",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "linux-native",
+      "name": "Linux native end-to-end cases",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "linux-sanitizers",
+      "name": "Linux ASan/UBSan",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "four-engines",
+      "name": "Four-engine completion scheduling, partition semantics and transactions",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "million-row-benchmark",
+      "name": "1/2/4/8/16 workers, million rows and spill",
+      "status": "Pending",
+      "evidence": []
     }
   ],
   "artifacts": null,
@@ -1488,7 +1523,12 @@
   "limitations": [
     "No arbitrary global distributed transaction or general exactly-once guarantee",
     "Advanced protocols, CDC/SCD/Fuzzy and BI Planner remain outside the current core acceptance",
-    "Linux execution and sanitizer tools other than MSVC ASan remain unmeasured"
+    "Single-session container transactions; arbitrary resource combinations and transactional child checkpoints are rejected before effects",
+    "Query/Schema enumerators have no reproducible external snapshot token and reject checkpoint resume",
+    "Recovery plans serialize tree scheduling; operator partitions merge in deterministic partition order",
+    "Source ranges and round-robin partitions are stable logical row positions; file partitions scan the authorized immutable source instead of assuming record-safe byte offsets",
+    "Driver/external RSS is outside the native allocator quota; benchmark RSS is measured separately",
+    "Advanced SSIS components and BI Planner remain their existing Planned/Partial status; all 69 goals are retained"
   ],
   "componentCatalog": [
     {
@@ -1793,6 +1833,1804 @@
           "reference": "docs/validation.md",
           "type": "executed-development-milestone"
         }
+      ]
+    }
+  ],
+  "fourEngineWorkItems": [
+    {
+      "id": "CF-01",
+      "name": "ExecutableDefinition",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-02",
+      "name": "Task Host",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-03",
+      "name": "Control Graph Binder",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-04",
+      "name": "Precedence Evaluator",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-05",
+      "name": "Task State / Outcome",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-06",
+      "name": "Ready Scheduler",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-07",
+      "name": "Sequence Container",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-08",
+      "name": "For Loop",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-09",
+      "name": "Foreach Loop",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-10",
+      "name": "Enumerator Registry",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-11",
+      "name": "Scoped Variables",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-12",
+      "name": "Event Handlers",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-13",
+      "name": "Failure Propagation",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-14",
+      "name": "Transaction Policy",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-15",
+      "name": "Deadline / Cancel",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-16",
+      "name": "Retry Semantics",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-17",
+      "name": "Child Package",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "CF-18",
+      "name": "Control Diagnostics",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
+      ]
+    },
+    {
+      "id": "DF-01",
+      "name": "Pipeline Definition",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-02",
+      "name": "Component Metadata",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-03",
+      "name": "Schema Binder",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-04",
+      "name": "Physical Planner",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-05",
+      "name": "Synchronous Execution",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-06",
+      "name": "Asynchronous Execution",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-07",
+      "name": "Component Lifecycle",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-08",
+      "name": "Multiport Routing",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-09",
+      "name": "Error Policies",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-10",
+      "name": "Backpressure",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-11",
+      "name": "Buffer Ownership",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-12",
+      "name": "Buffer Layout",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-13",
+      "name": "Spill",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-14",
+      "name": "Shared Compute",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-15",
+      "name": "Early Validation",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-16",
+      "name": "Explain / Inspector",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-17",
+      "name": "Detailed Metrics",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "DF-18",
+      "name": "Recoverable Pipeline",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ]
+    },
+    {
+      "id": "CM-01",
+      "name": "Connection Definition",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-02",
+      "name": "Scope Resolution",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-03",
+      "name": "Registry Consistency",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-04",
+      "name": "Factory",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-05",
+      "name": "Lease",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-06",
+      "name": "Capabilities",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-07",
+      "name": "Credentials",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-08",
+      "name": "Authorization",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-09",
+      "name": "Pool",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-10",
+      "name": "Session Isolation",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-11",
+      "name": "Thread Affinity",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-12",
+      "name": "Transaction Enlistment",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-13",
+      "name": "Metadata Discovery",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-14",
+      "name": "Schema Evolution",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-15",
+      "name": "Bulk Reader / Writer",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-16",
+      "name": "Retry / Reconnect",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-17",
+      "name": "Error Normalization",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-18",
+      "name": "Metrics",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-19",
+      "name": "Resource Unification",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "CM-20",
+      "name": "Native Driver Plugin",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G31",
+        "G32",
+        "G33",
+        "G34",
+        "G35",
+        "G36"
+      ]
+    },
+    {
+      "id": "PP-01",
+      "name": "Execution Tree Builder",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-02",
+      "name": "Tree Graph",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-03",
+      "name": "Shared Worker Pool",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-04",
+      "name": "Unified Work Scheduling",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-05",
+      "name": "Work Item Identity",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-06",
+      "name": "Event-driven Ready Queue",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-07",
+      "name": "Cross-Tree Backpressure",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-08",
+      "name": "Source Partitioning",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-09",
+      "name": "Partition Strategies",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-10",
+      "name": "Parallel Aggregate",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-11",
+      "name": "Parallel Join",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-12",
+      "name": "Parallel Sort",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-13",
+      "name": "Ordering Contract",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-14",
+      "name": "Component Concurrency",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-15",
+      "name": "Driver Concurrency",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-16",
+      "name": "Shared Resource Budget",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-17",
+      "name": "Cancellation",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-18",
+      "name": "Checkpoint Barrier",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-19",
+      "name": "Deterministic Semantics",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-20",
+      "name": "Detailed Scheduler Metrics",
+      "priority": "P0/P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-21",
+      "name": "Adaptive Scheduling",
+      "priority": "P2",
+      "state": "Planned",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
+      ]
+    },
+    {
+      "id": "PP-22",
+      "name": "Benchmark Harness",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending integrated Linux acceptance",
+      "owner": [
+        "components/execution/src/executor.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c",
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G41"
       ]
     }
   ]

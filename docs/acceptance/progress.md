@@ -2,9 +2,9 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 1.1.0 / ABI 5；Implementation complete; Pending integrated acceptance。
+SDK 1.2.0 / ABI 6；R0–R6 implemented; pending concentrated Linux acceptance。
 
-门禁通过 0/17；Linux 本轮免测；CI 账单阻塞单独记录。
+门禁通过 0/22；Linux 本轮必验，Windows 豁免；远程 CI 使用实际运行状态。
 
 | 整改 | 当前状态 |
 |---|---|

@@ -7,7 +7,7 @@ int main(void) {
     OK(ud_context_create(NULL, &c));
     ud_field schema[]={{.name="key",.name_length=3,.type=UD_UTF8,.nullable=1},
                        {.name="amount",.name_length=6,.type=UD_INT64,.nullable=1}};
-    const char *definition="{\"version\":5,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,\"type\":\"int64\"}]},\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\",\"column\":\"amount\",\"name\":\"total\"},{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"},{\"function\":\"min\",\"column\":\"amount\",\"name\":\"smallest\"},{\"function\":\"max\",\"column\":\"amount\",\"name\":\"largest\"}]}";
+    const char *definition="{\"version\":6,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,\"type\":\"int64\"}]},\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\",\"column\":\"amount\",\"name\":\"total\"},{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"},{\"function\":\"min\",\"column\":\"amount\",\"name\":\"smallest\"},{\"function\":\"max\",\"column\":\"amount\",\"name\":\"largest\"}]}";
     ud_plan *p=NULL;
     OK(ud_plan_create_fields(c,UD_PLAN_VERSION,schema,2,
                               (ud_string){definition,(uint32_t)strlen(definition)},NULL,&p));

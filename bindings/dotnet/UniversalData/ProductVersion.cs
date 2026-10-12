@@ -2,5 +2,5 @@
 namespace UniversalData;
 internal static class ProductVersion
 {
-    internal const uint Abi = 5;
+    internal const uint Abi = 6;
 }

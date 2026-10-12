@@ -4,7 +4,7 @@
 #include <sys/stat.h>
 enum {
     RECORD_HEADER = 1, RECORD_TASK_BEGIN, RECORD_TASK_DONE, RECORD_SOURCE,
-    RECORD_STAGE, RECORD_FILE_DONE, RECORD_BATCH_INTENT, RECORD_BATCH_DONE
+    RECORD_STAGE, RECORD_FILE_DONE, RECORD_BATCH_INTENT, RECORD_BATCH_DONE, RECORD_ENUMERATOR
 };
 typedef struct checkpoint_journal {
     ud_execution *execution;
@@ -31,16 +31,10 @@ static void hex(const uint8_t hash[32], char out[65]) {
 }
 static ud_status append(checkpoint_journal *j, ud_activation *e, uint64_t kind,
                         ud_string key, ud_string payload) {
-    UD_TRY(grant(j->execution, j->directory, UD_ACCESS_WRITE));
     ud_string owner = kind == RECORD_TASK_BEGIN || kind == RECORD_BATCH_INTENT ||
                      kind == RECORD_BATCH_DONE ? e->task_id : (ud_string){0};
     ud_journal_record records[2] = {{kind, key, owner, payload}, {0, {0}, e->task_id, {0}}};
-    ud_activation_notify_kind(e, UD_EXEC_EVENT_BEFORE_CHECKPOINT, UD_EXEC_RUNNING, UD_OK);
-    UD_TRY(grant(j->execution, j->directory, UD_ACCESS_WRITE));
-    ud_status s = ud_journal_append(j->store, records, kind == RECORD_TASK_DONE ? 2 : 1);
-    if (!s)
-        ud_activation_notify_kind(e, UD_EXEC_EVENT_AFTER_CHECKPOINT, UD_EXEC_RUNNING, UD_OK);
-    return s;
+    return ud_journal_append(j->store, records, kind == RECORD_TASK_DONE ? 2 : 1);
 }
 static ud_status snapshot(ud_activation *e, ud_bytes *bytes) {
     UD_TRY(ud_bytes_put(bytes, "{\"scopes\":[", 11));
@@ -75,11 +69,13 @@ static ud_status snapshot(ud_activation *e, ud_bytes *bytes) {
     char metrics[512];
     int n = snprintf(
         metrics, sizeof(metrics),
-        "],\"invocation\":%llu,\"input\":%llu,\"output\":%llu,\"rejected\":%llu}",
+        "],\"invocation\":%llu,\"input\":%llu,\"output\":%llu,\"rejected\":%llu,\"committed\":%llu,\"acknowledged\":%llu}",
         (unsigned long long)e->invocation,
         (unsigned long long)atomic_load(&e->input_rows),
         (unsigned long long)atomic_load(&e->output_rows),
-        (unsigned long long)atomic_load(&e->rejected_rows));
+        (unsigned long long)atomic_load(&e->rejected_rows),
+        (unsigned long long)atomic_load(&e->committed_rows),
+        (unsigned long long)atomic_load(&e->acknowledged_rows));
     return ud_bytes_put(bytes, metrics, (size_t)n);
 }
 static ud_status restore(ud_activation *e, const ud_json *payload) {
@@ -145,7 +141,6 @@ static ud_status restore(ud_activation *e, const ud_json *payload) {
 }
 static ud_status file_record(checkpoint_journal *j, ud_activation *a, uint64_t kind,
                              const char *path) {
-    UD_TRY(grant(j->execution, path, UD_ACCESS_READ));
     uint8_t digest[32];
     UD_TRY(ud_file_hash(j->execution->ctx, path, digest));
     char encoded[65], payload[68];
@@ -163,13 +158,14 @@ static ud_status file_record(checkpoint_journal *j, ud_activation *a, uint64_t k
 static ud_status restore_fact(void *user, uint64_t kind, ud_string key, const ud_json *payload) {
     checkpoint_journal *j = user;
     ud_execution *e = j->execution;
-    if (kind < RECORD_HEADER || kind > RECORD_BATCH_DONE)
+    if (kind < RECORD_HEADER || kind > RECORD_ENUMERATOR)
         return UD_CORRUPT;
     if (kind == RECORD_SOURCE || kind == RECORD_FILE_DONE) {
         char *path = ud_strdup_n(e->ctx, key.data, key.length);
         if (!path)
             return UD_RESOURCE;
-        ud_status s = file_record(j, &e->root, kind, path);
+        ud_status s = grant(e,path,UD_ACCESS_READ);
+        if (!s) s = file_record(j, &e->root, kind, path);
         ud_free(path);
         return s;
     }
@@ -183,6 +179,10 @@ static ud_status restore_fact(void *user, uint64_t kind, ud_string key, const ud
         atomic_fetch_add(&e->input_rows, input);
         atomic_fetch_add(&e->output_rows, output);
         atomic_fetch_add(&e->rejected_rows, rejected);
+        uint64_t committed=0,acknowledged=0;
+        UD_TRY(ud_json_uint(ud_member(payload,"committed"),&committed));
+        UD_TRY(ud_json_uint(ud_member(payload,"acknowledged"),&acknowledged));
+        atomic_fetch_add(&e->committed_rows,committed);atomic_fetch_add(&e->acknowledged_rows,acknowledged);
         atomic_fetch_add(&e->executed_tasks, 1);
         atomic_fetch_add(&e->durable_tasks, 1);
     }
@@ -362,39 +362,62 @@ void ud_checkpoint_close(ud_execution *e) {
     ud_free(j);
     e->journal = NULL;
 }
+static ud_status checkpoint_before(ud_activation *a,const char *path) {
+    checkpoint_journal *j=a->execution->journal;
+    if (!j) return UD_OK;
+    UD_TRY(grant(a->execution,j->directory,UD_ACCESS_WRITE));
+    if (path) UD_TRY(grant(a->execution,path,UD_ACCESS_READ));
+    ud_activation_notify_kind(a,UD_EXEC_EVENT_BEFORE_CHECKPOINT,UD_EXEC_RUNNING,UD_OK);
+    return grant(a->execution,j->directory,UD_ACCESS_WRITE);
+}
+static void checkpoint_after(ud_activation *a,ud_status status) {
+    if (!status && a->execution->journal)
+        ud_activation_notify_kind(a,UD_EXEC_EVENT_AFTER_CHECKPOINT,UD_EXEC_RUNNING,UD_OK);
+}
 ud_status ud_checkpoint_task_begin(ud_activation *e, ud_string kind, int *completed) {
+    UD_TRY(checkpoint_before(e,NULL));
     ud_mutex_lock(&e->execution->journal_lock);
     ud_status result = ud_checkpoint_task_begin_record(e, kind, completed);
     ud_mutex_unlock(&e->execution->journal_lock);
+    checkpoint_after(e,result);
     return result;
 }
 
 ud_status ud_checkpoint_task_done(ud_activation *e) {
+    ud_status grant_status=checkpoint_before(e,NULL);
+    if (grant_status) return e->execution->journal ? UD_COMMIT_UNKNOWN : grant_status;
     ud_mutex_lock(&e->execution->journal_lock);
     ud_status result = ud_checkpoint_task_done_record(e);
     ud_mutex_unlock(&e->execution->journal_lock);
+    checkpoint_after(e,result);
     return result;
 }
 
 ud_status ud_checkpoint_source(ud_activation *e, const char *path) {
+    UD_TRY(checkpoint_before(e,path));
     ud_mutex_lock(&e->execution->journal_lock);
     ud_status result = ud_checkpoint_source_record(e, path);
     ud_mutex_unlock(&e->execution->journal_lock);
+    checkpoint_after(e,result);
     return result;
 }
 
 ud_status ud_checkpoint_stage(ud_activation *e, const char *target, const char *temporary,
                               int *replaying) {
+    UD_TRY(checkpoint_before(e,NULL));
     ud_mutex_lock(&e->execution->journal_lock);
     ud_status result = ud_checkpoint_stage_record(e, target, temporary, replaying);
     ud_mutex_unlock(&e->execution->journal_lock);
+    checkpoint_after(e,result);
     return result;
 }
 
 ud_status ud_checkpoint_file_done(ud_activation *e, const char *path) {
+    UD_TRY(checkpoint_before(e,path));
     ud_mutex_lock(&e->execution->journal_lock);
     ud_status result = ud_checkpoint_file_done_record(e, path);
     ud_mutex_unlock(&e->execution->journal_lock);
+    checkpoint_after(e,result);
     return result;
 }
 
@@ -407,8 +430,25 @@ int ud_checkpoint_batch_seen(ud_activation *e, ud_string identity) {
 
 ud_status ud_checkpoint_batch(ud_activation *e, ud_string identity, const uint8_t digest[32],
                               int committed) {
+    UD_TRY(checkpoint_before(e,NULL));
     ud_mutex_lock(&e->execution->journal_lock);
     ud_status result = ud_checkpoint_batch_record(e, identity, digest, committed);
     ud_mutex_unlock(&e->execution->journal_lock);
+    checkpoint_after(e,result);
     return result;
+}
+ud_status ud_checkpoint_enumerator(ud_activation *e,const uint8_t digest[32]) {
+    checkpoint_journal *j=e->execution->journal;
+    if (!j) return UD_OK;
+    char hash[65],payload[68];hex(digest,hash);snprintf(payload,sizeof(payload),"\"%s\"",hash);
+    UD_TRY(checkpoint_before(e,NULL));
+    ud_mutex_lock(&e->execution->journal_lock);
+    const ud_json *existing=find(j,RECORD_ENUMERATOR,e->task_id);
+    ud_status status=UD_OK;
+    if (existing) { ud_string expected;status=ud_json_string(existing,&expected);
+        if (!status && !ud_named(expected,hash)) status=UD_CORRUPT; }
+    else status=append(j,e,RECORD_ENUMERATOR,e->task_id,(ud_string){payload,66});
+    ud_mutex_unlock(&e->execution->journal_lock);
+    checkpoint_after(e,status);
+    return status;
 }

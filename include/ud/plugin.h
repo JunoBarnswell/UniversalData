@@ -7,7 +7,8 @@
 extern "C" {
 #endif
 enum { UD_PLUGIN_CONNECTOR = 1, UD_PLUGIN_COMPONENTS = 2 };
-enum { UD_CAP_READ = 1, UD_CAP_WRITE = 2, UD_CAP_SQL = 8, UD_CAP_TRANSACTION = 32 };
+enum { UD_CAP_READ = 1, UD_CAP_WRITE = 2, UD_CAP_SQL = 8, UD_CAP_TRANSACTION = 32,
+       UD_CAP_THREAD_SAFE = 64, UD_CAP_THREAD_AFFINE = 128 };
 typedef struct ud_host_api {
     uint32_t struct_size, abi_version;
     ud_context *context;
@@ -24,6 +25,8 @@ typedef struct ud_host_api {
     ud_status (*parse_field)(ud_context *, const ud_field *, const char *, uint32_t, int32_t,
                              ud_value *);
     ud_status (*format_value)(const ud_value *, char *, uint32_t, uint32_t *);
+    void *control_user;
+    ud_status (*check_io)(void *);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;
@@ -36,7 +39,7 @@ typedef struct ud_plugin_api {
     void (*destroy)(void *instance);
     void (*shutdown)(void);
     const ud_connector_api *connector; /* Optional current complete table. */
-    /* Optional component table in the current complete ABI4 layout. Table and callback user data
+    /* Optional component table in the current complete ABI layout. Table and callback user data
      * belong to the library; registration holds a module reference until registry destruction. */
     const struct ud_component_plugin_api *components;
 } ud_plugin_api;

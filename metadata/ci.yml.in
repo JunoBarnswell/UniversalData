@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-24.04]
+        os: [ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Product authority\n        run: python scripts/product_model.py check\n      - name: Prepare pinned SQLite
+      - name: Product authority
+        run: python scripts/product_model.py check
+      - name: Prepare pinned SQLite
         shell: pwsh
         run: |
           $platform = if ($IsWindows) { 'windows' } else { 'linux' }

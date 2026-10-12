@@ -15,7 +15,7 @@ def read_model():
     if (model["product"]["abiVersion"] != model["product"]["protocolVersion"]
             or not 0 < model["product"]["abiVersion"] <= 4294967295):
         raise ValueError("ABI and all protocol epochs must be one positive uint32 version.")
-    for key in ("goals", "gates", "remediations"):
+    for key in ("goals", "gates", "remediations", "fourEngineWorkItems"):
         identifiers = [item["id"] for item in model[key]]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Duplicate identifiers in " + key)
@@ -45,16 +45,16 @@ def projections(model):
     progress = dict(facts, requiredGates=len(model["gates"]), passedGates=len(passed),
                     remediations=model["remediations"])
     status = dict(facts, components="docs/product/component-catalog.md",
-                  remediations=model["remediations"], limitations=model["limitations"])
+                  remediations=model["remediations"], workItems=model.get("fourEngineWorkItems",[]), limitations=model["limitations"])
     goals = {"generatedFrom": marker, "goalVersion": protocol,
              "completionRule": "Current core/infrastructure gates are required; extensions retain their actual status.",
              "automaticMergeOrReleaseAuthorized": False, "items": model["goals"]}
     gates = {"generatedFrom": marker, "version": protocol, "sdkVersion": version, "abi": abi,
              "sourceFingerprint": model["candidate"]["sourceFingerprint"],
-             "linux": model["scope"]["linux"], "gates": model["gates"],
+             "linux": model["scope"]["linux"], "windows": model["scope"].get("windows"), "gates": model["gates"],
              "delivery": model["artifacts"]}
     catalog = "# 当前组件清单与 SSIS 映射\n\n<!-- Generated from metadata/product.json. -->\n\n"
-    catalog += "SDK " + version + "，唯一 ABI/协议 " + str(abi) + "。本轮范围：统一架构与原生核心。验收事实见 metadata/product.json；Linux 按用户决定免测。\n\n"
+    catalog += "SDK " + version + "，唯一 ABI/协议 " + str(abi) + "。本轮范围：统一架构与原生核心。验收事实见 metadata/product.json；本轮 Linux 集中验收，Windows 豁免。\n\n"
     catalog += "| SSIS 职责 | 实际入口/ID | 实现与边界 |\n|---|---|---|\n"
     for row in model["componentCatalog"]:
         catalog += "| " + row["ssis"] + " | " + row["entries"] + " | " + row["contract"] + " |\n"
@@ -62,11 +62,17 @@ def projections(model):
     catalog += "Arrow C Data Interface 与原生内存数据模型不等同于 Parquet driver。Microsoft .dtsx/COM/SSISDB/MSDTC 专属兼容不承诺；没有占位注册或旧 generic operation 路径。\n"
     progress_md = "# 当前实施与验收进度\n\n<!-- Generated from metadata/product.json. -->\n\n"
     progress_md += "SDK " + version + " / ABI " + str(abi) + "；" + model["candidate"]["state"] + "。\n\n"
-    progress_md += "门禁通过 " + str(len(passed)) + "/" + str(len(model["gates"])) + "；Linux 本轮免测；CI 账单阻塞单独记录。\n\n"
+    progress_md += "门禁通过 " + str(len(passed)) + "/" + str(len(model["gates"])) + "；Linux 本轮必验，Windows 豁免；远程 CI 使用实际运行状态。\n\n"
     progress_md += "| 整改 | 当前状态 |\n|---|---|\n"
     for item in model["remediations"]:
         progress_md += "| " + item["id"] + " | " + item["state"] + " / " + item["verification"] + " |\n"
+    trace = "# 四引擎需求与验收追踪\n\n<!-- Generated from metadata/product.json. -->\n\n"
+    trace += "保留全部 69 项目标；下表是附件 78 项工作项的同源投影。Implemented 与 Verified 分开，能力组合边界见权威模型 limitations。\n\n"
+    trace += "| ID | 能力 | 代码 | 验收 | 69 项目标映射 |\n|---|---|---|---|---|\n"
+    for row in model["fourEngineWorkItems"]:
+        trace += "| " + row["id"] + " | " + row["name"] + " | " + row["state"] + " | " + row["verification"] + " | " + ", ".join(row["goals"]) + " |\n"
     return {
+        "docs/acceptance/etl-four-engine-traceability.md": trace,
         "VERSION": version + "\n",
         "bindings/java/pom.xml": (ROOT / "metadata/java-pom.xml.in").read_text(encoding="utf-8").format(sdk_version=version),
         ".github/workflows/ci.yml": (ROOT / "metadata/ci.yml.in").read_text(encoding="utf-8").replace("@UD_SDK_VERSION@", version),

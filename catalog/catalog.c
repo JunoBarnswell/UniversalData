@@ -361,7 +361,7 @@ ud_status ud_catalog_record_event(ud_catalog *c, const ud_execution_event *event
         event->kind < UD_EXEC_EVENT_STATE || event->kind > UD_EXEC_EVENT_TASK_UNCERTAIN)
         return UD_INVALID;
     ud_bytes json = {.ctx = c->ctx};
-    ud_status s = ud_bytes_put(&json, "{\"version\":5", 12);
+    ud_status s = ud_bytes_put(&json, "{\"version\":6", 12);
     const char *keys[] = {"packageId", "executionId", "taskId", "pipelineId", "componentId"};
     ud_string values[] = {event->package_id, event->execution_id, event->task_id,
                           event->pipeline_id, event->component_id};

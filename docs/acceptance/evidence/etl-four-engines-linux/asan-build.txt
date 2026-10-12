@@ -1,0 +1,116 @@
+[1/93] Building C object components/data/CMakeFiles/ud_columnar.dir/src/schema_json.c.o
+[2/93] Building C object components/data/CMakeFiles/ud_columnar.dir/src/json.c.o
+/workspace/UniversalData/components/data/src/json.c: In function ‘parse_value’:
+/workspace/UniversalData/components/data/src/json.c:78:36: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   78 |         if (count && (size_t)count > SIZE_MAX / sizeof(ud_value))
+      |                                    ^
+[3/93] Building C object components/expression/CMakeFiles/ud_expression.dir/src/expression.c.o
+[4/93] Linking C static library components/data/libud_columnar.a
+[5/93] Building C object components/contracts/CMakeFiles/ud_plugins.dir/src/plugin.c.o
+[6/93] Linking C static library components/contracts/libud_plugins.a
+[7/93] Building C object CMakeFiles/ud_data.dir/components/data/src/json.c.o
+/workspace/UniversalData/components/data/src/json.c: In function ‘parse_value’:
+/workspace/UniversalData/components/data/src/json.c:78:36: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   78 |         if (count && (size_t)count > SIZE_MAX / sizeof(ud_value))
+      |                                    ^
+[8/93] Building C object CMakeFiles/ud_data.dir/components/data/src/schema_json.c.o
+[9/93] Building C object CMakeFiles/ud_data.dir/components/contracts/src/plugin.c.o
+[10/93] Building C object CMakeFiles/ud_data.dir/components/expression/src/expression.c.o
+[11/93] Building C object CMakeFiles/ud_data.dir/engines/control-flow/enumerator.c.o
+[12/93] Building C object CMakeFiles/ud_data.dir/engines/package/child.c.o
+[13/93] Building C object CMakeFiles/ud_data.dir/engines/package/resources.c.o
+[14/93] Building C object CMakeFiles/ud_data.dir/engines/package/project.c.o
+[15/93] Building C object CMakeFiles/ud_data.dir/engines/data-flow/transforms.c.o
+[16/93] Building C object CMakeFiles/ud_data.dir/engines/package/checkpoint.c.o
+[17/93] Building C object CMakeFiles/ud_data.dir/engines/package/model.c.o
+[18/93] Building C object CMakeFiles/ud_data.dir/engines/package/runtime.c.o
+[19/93] Building C object CMakeFiles/ud_data.dir/engines/control-flow/profile.c.o
+[20/93] Building C object CMakeFiles/ud_data.dir/engines/control-flow/filesystem.c.o
+[21/93] Building C object CMakeFiles/ud_data.dir/engines/control-flow/process.c.o
+[22/93] Building C object CMakeFiles/ud_data.dir/engines/control-flow/http.c.o
+[23/93] Building C object CMakeFiles/ud_data.dir/connectors/manager.c.o
+[24/93] Building C object CMakeFiles/ud_data.dir/engines/control-flow/control.c.o
+[25/93] Building C object CMakeFiles/ud_data.dir/catalog/deployment.c.o
+[26/93] Building C object CMakeFiles/ud_data.dir/catalog/catalog.c.o
+[27/93] Linking C static library components/expression/libud_expression.a
+[28/93] Building C object CMakeFiles/ud_data.dir/catalog/history.c.o
+[29/93] Building C object CMakeFiles/ud_data.dir/engines/data-flow/pipeline.c.o
+[30/93] Building C object engines/package/CMakeFiles/ud_package.dir/resources.c.o
+[31/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/enumerator.c.o
+[32/93] Building C object CMakeFiles/ud_data.dir/engines/data-flow/builtins.c.o
+[33/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/transforms.c.o
+[34/93] Building C object engines/package/CMakeFiles/ud_package.dir/child.c.o
+[35/93] Linking C shared library libud_data.so.1.2.0
+[36/93] Building C object engines/package/CMakeFiles/ud_package.dir/project.c.o
+[37/93] Building C object engines/package/CMakeFiles/ud_package.dir/model.c.o
+[38/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/profile.c.o
+[39/93] Building C object engines/package/CMakeFiles/ud_package.dir/checkpoint.c.o
+[40/93] Building C object engines/package/CMakeFiles/ud_package.dir/runtime.c.o
+[41/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/filesystem.c.o
+[42/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/process.c.o
+[43/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/http.c.o
+[44/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/control.c.o
+[45/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/manager.c.o
+[46/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/builtins.c.o
+[47/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/deployment.c.o
+[48/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/pipeline.c.o
+[49/93] Creating library symlink libud_data.so.6 libud_data.so
+[50/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/catalog.c.o
+[51/93] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/history.c.o
+[52/93] Building C object hosts/CMakeFiles/ud_cli.dir/cli.c.o
+[53/93] Linking C static library engines/package/libud_package.a
+[54/93] Building C object tests/CMakeFiles/test_format.dir/format.c.o
+[55/93] Building C object tests/CMakeFiles/typed_data_runner.dir/typed_data_runner.c.o
+[56/93] Building C object tests/CMakeFiles/test_project.dir/project.c.o
+[57/93] Building C object tests/CMakeFiles/test_value_semantics.dir/value_semantics.c.o
+/workspace/UniversalData/tests/value_semantics.c: In function ‘expressions’:
+/workspace/UniversalData/tests/value_semantics.c:304:5: warning: missing initializer for field ‘resolve_field’ of ‘ud_expression_options’ [-Wmissing-field-initializers]
+  304 |     ud_expression_options o = {sizeof(o), UD_ABI_VERSION, batch, NULL, NULL};
+      |     ^~~~~~~~~~~~~~~~~~~~~
+In file included from /workspace/UniversalData/include/ud/compute.h:4,
+                 from /workspace/UniversalData/tests/value_semantics.c:1:
+/workspace/UniversalData/include/ud/expression.h:18:34: note: ‘resolve_field’ declared here
+   18 |     ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
+      |                                  ^~~~~~~~~~~~~
+[58/93] Linking C executable hosts/ud_cli
+[59/93] Linking C executable tests/test_columnar
+[60/93] Building C object plugins/CMakeFiles/ud_connector_sqlite.dir/sqlite.c.o
+In file included from /workspace/UniversalData/plugins/connector_common.h:3,
+                 from /workspace/UniversalData/plugins/sqlite.c:1:
+/workspace/UniversalData/plugins/common.h: In function ‘plugin_identifier’:
+/workspace/UniversalData/plugins/common.h:28:51: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   28 |     if (!name.data || !name.length || name.length > (SIZE_MAX - 3) / 2 || memchr(name.data, 0, name.length)) return NULL;
+      |                                                   ^
+[61/93] Linking C executable tests/test_types
+[62/93] Linking C executable tests/test_format
+[63/93] Linking C executable tests/test_compute
+[64/93] Linking C executable tests/test_regex
+[65/93] Linking C executable hosts/ud_worker
+[66/93] Linking C executable tests/test_mapping
+[67/93] Linking C executable tests/test_nested
+[68/93] Linking C shared module plugins/ud_connector_sqlite.so
+[69/93] Linking C executable tests/test_architecture_foundation
+[70/93] Linking C executable tests/test_quality
+[71/93] Linking C executable tests/test_connector_sqlite
+[72/93] Linking C executable tests/test_value_semantics
+[73/93] Linking C executable tests/test_four_engines
+[74/93] Linking C executable tests/test_core_runtime
+[75/93] Linking C executable tests/test_package_execution
+[76/93] Linking C executable tests/test_infrastructure
+[77/93] Linking C executable tests/typed_data_runner
+[78/93] Linking C executable tests/test_package_outcome
+[79/93] Linking C executable tests/test_four_engine_connections
+[80/93] Linking C executable tests/test_package_sql
+[81/93] Linking C executable tests/test_catalog
+[82/93] Linking C executable tests/test_package_recovery
+[83/93] Linking C executable tests/test_project
+[84/93] Linking C executable tests/test_child_package
+[85/93] Linking C executable tests/test_catalog_history
+[86/93] Linking C executable tests/test_profile
+[87/93] Linking C executable tests/test_filesystem_task
+[88/93] Linking C executable tests/test_process_task
+[89/93] Linking C shared module tests/sample_custom_task.so
+[90/93] Linking C shared module tests/sample_custom_bad.so
+[91/93] Linking C executable tests/test_http_task
+[92/93] Linking C executable tests/test_custom_task
+[93/93] Linking C executable tests/test_profile_task

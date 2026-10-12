@@ -77,7 +77,7 @@ static int buffers_and_operators(const char *directory) {
     for(uint32_t i=0;i<3;i++){ud_value value;OK(ud_batch_get(batch,i,1,&value));CHECK(value.integer==sums[i]);}
     ud_batch_destroy(batch);batch=NULL;CHECK(ud_operator_pull(op,&batch)==UD_END);OK(ud_operator_destroy(op));
     ud_plan *plan=NULL;
-    const char *definition="{\"version\":5,\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
+    const char *definition="{\"version\":6,\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
     OK(ud_plan_create_fields(ctx,UD_PLAN_VERSION,&field,1,text(definition),NULL,&plan));
     spec.kind=UD_OPERATOR_AGGREGATE;spec.aggregation=plan;
     OK(ud_operator_create(ctx,&spec,inputs,&op));ud_plan_destroy(plan);
@@ -152,7 +152,7 @@ static int activations(void) {
         .context={.struct_size=sizeof(o.context),.abi_version=UD_ABI_VERSION,.memory_limit=16000000},
         .edge_capacity=1,.max_batch_rows=3,.max_depth=16,.registry=registry,
         .tenant={"fixture",7},.max_concurrency=3,.observe=observe,.observe_user=&f};
-    const char *package="{\"version\":5,\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
+    const char *package="{\"version\":6,\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
         "{\"id\":\"deadline\",\"kind\":\"test.delay\",\"timeoutMs\":1000,\"config\":{}},"
         "{\"id\":\"sibling\",\"kind\":\"test.delay\",\"config\":{}}],\"constraints\":[]},\"dataFlows\":[]}";
     ud_execution *execution=NULL;OK(ud_execution_create_json(text(package),&o,&execution));
@@ -164,7 +164,7 @@ static int activations(void) {
     OK(ud_execution_destroy(execution));
     /* Sequential sibling tasks may write their shared lexical parent. */
     o.max_concurrency=1;f.sequence=0;
-    package="{\"version\":5,\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":0}},"
+    package="{\"version\":6,\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":0}},"
         "\"eventHandlers\":{\"after\":{\"tasks\":[{\"id\":\"after\",\"kind\":\"set\",\"config\":{\"name\":\"n\",\"value\":{\"literal\":3,\"type\":\"int64\"}}}],\"constraints\":[]}},"
         "\"controlFlow\":{\"tasks\":[{\"id\":\"a\",\"kind\":\"set\",\"config\":{\"name\":\"n\",\"value\":{\"literal\":1,\"type\":\"int64\"}}},"
         "{\"id\":\"b\",\"kind\":\"set\",\"config\":{\"name\":\"n\",\"value\":{\"literal\":2,\"type\":\"int64\"}}}],\"constraints\":[]},\"dataFlows\":[]}";

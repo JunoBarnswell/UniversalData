@@ -68,6 +68,10 @@ with zipfile.ZipFile(bundle) as archive:
         path = pathlib.PurePosixPath(name.replace("\\", "/"))
         assert not path.is_absolute() and ".." not in path.parts and ":" not in name, "Invalid ZIP path."
     archive.extractall(unpacked)
+    if os.name != "nt":
+        for entry in archive.infolist():
+            mode=(entry.external_attr>>16)&0o777
+            if mode and not entry.is_dir(): (unpacked/entry.filename).chmod(mode)
 manifest = json.loads((unpacked / "manifest.json").read_text(encoding="utf-8"))
 version = manifest["sdkVersion"]
 assert manifest["schemaVersion"] == 1 and manifest["abiVersion"] == json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]["abiVersion"] and manifest["configuration"] == "Release"

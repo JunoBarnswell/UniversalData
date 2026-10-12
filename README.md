@@ -1,6 +1,6 @@
 # UniversalData
 
-纯 C17、可嵌入的数据集成 SDK，采用 SSIS 风格的 Package / Control Flow / Data Flow 分层。当前 `1.1.0` 是破坏性重构开发版本，ABI、Package、Schema、Plan、Wire、Plugin 和 Worker 协议为 5；仅接受当前完整布局；ABI 4 及更早的对象、包和检查点需要重新生成。
+纯 C17、可嵌入的数据集成 SDK，采用 SSIS 风格的 Package / Control Flow / Data Flow 分层。当前 `1.2.0` 是破坏性重构开发版本，ABI、Package、Schema、Plan、Wire、Plugin 和 Worker 协议为 6；仅接受当前完整布局；ABI 5 及更早的对象、包和检查点需要重新生成。
 
 ```mermaid
 flowchart LR
@@ -47,7 +47,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-vs2026.ps1
 cmake --preset windows
 cmake --build --preset windows --parallel 4
 ctest --preset windows
-# Linux 支持源码/构建；本轮免测
+# 本轮集中验证 Linux；Windows 豁免
 cmake --preset linux
 cmake --build --preset linux --parallel 4
 ctest --preset linux
@@ -57,7 +57,7 @@ dotnet build examples/dotnet/Consumer.csproj
 mvn -f bindings/java/pom.xml package
 ```
 
-最小消费者只需 Foundation/Columnar；Package 静态组件自动选择 Expression/Compute/Runtime/Plugins。Windows 需支持 C17 的 MSVC；本轮 Windows 编译/关键验收，Linux 免测。
+最小消费者只需 Foundation/Columnar；Package 静态组件自动选择 Expression/Compute/Runtime/Plugins。Windows 需支持 C17 的 MSVC；本轮 Linux 编译/关键验收，Windows 豁免。
 
 原生 [HTTP Task](docs/architecture/http-task.md) 使用同一逻辑连接、宿主网络授权和凭据 resolver，强制 TLS 校验、禁用重定向并限制重试。HTTP Data Flow 源/目标仍为独立待办。
 
@@ -71,13 +71,15 @@ CLI：`ud_cli execute package.json '{}' tenant execution-id /authorized/root`。
 ./packaging/package.ps1 -BuildDirectory build/windows
 ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure
 $consumerWork = Join-Path $env:TEMP ('ud-sdk-consumer-' + [guid]::NewGuid().ToString('N'))
-python tests/installed_sdk.py --bundle artifacts/UniversalData-1.1.0-win-x64.zip --work $consumerWork --evidence artifacts/consumers.json
+python tests/installed_sdk.py --bundle artifacts/UniversalData-1.2.0-win-x64.zip --work $consumerWork --evidence artifacts/consumers.json
 ```
 
-脚本重新构建 Release，然后生成 `artifacts/1.1.0/win-x64/sdk`、带 Windows DLL 的 NuGet、Java JAR/POM、逐文件 SHA256 清单及 `artifacts/UniversalData-1.1.0-win-x64.zip`。已存在的同版本交付不会自动覆盖。长日志写入临时目录。独立消费测试只使用 ZIP 解压后的头文件、CMake exports、DLL、连接器和语言包，C# 执行时不添加 SDK 的加载路径。
+脚本重新构建 Release，然后生成 `artifacts/1.2.0/win-x64/sdk`、带 Windows DLL 的 NuGet、Java JAR/POM、逐文件 SHA256 清单及 `artifacts/UniversalData-1.2.0-win-x64.zip`。已存在的同版本交付不会自动覆盖。长日志写入临时目录。独立消费测试只使用 ZIP 解压后的头文件、CMake exports、DLL、连接器和语言包，C# 执行时不添加 SDK 的加载路径。
 
-原生 Windows 消费需要 x64 Microsoft Visual C++ Runtime；C# 需要 .NET 8，Java 需要 JDK 17。Linux 使用同一核心源码和算子；本轮没有生成或验收 Linux 二进制，Windows 打包不要求它存在。
+原生 Windows 消费需要 x64 Microsoft Visual C++ Runtime；C# 需要 .NET 8，Java 需要 JDK 17。Linux 使用同一核心源码和算子；本轮交付与验收 Linux 二进制，Windows 豁免。
 
 当前权威 [Phase 0–7 产品和技术设计](docs/architecture/phase-0-7-design.md)、[核心与扩展清单](docs/product/component-catalog.md)。
 
 设计与边界：[产品](docs/product/product-model.md)、[架构](docs/architecture/target-architecture.md)、[SSIS 公开文档映射](docs/architecture/ssis-reference-matrix.md)、[破坏性变更](docs/breaking-changes.md)、[公共 ABI](docs/architecture/public-c-abi.md)、[路线图](docs/roadmap.md)。不声称 `.dtsx`/COM/SSISDB/SQL Agent 兼容；不提供默认 Web 管理平台或跨任意目标的全局 exactly-once。
+
+四引擎本轮设计与追踪：[产品模型](docs/product/etl-four-engine-product-model.md)、[目标架构](docs/architecture/etl-four-engine-target.md)、[运行决策](docs/architecture/etl-runtime-decisions.md)、[删除矩阵](docs/architecture/etl-destructive-migration.md)、[78 项工作项与 69 目标同源映射](docs/acceptance/etl-four-engine-traceability.md)。`ud_cli inspect package.json` 读取原生绑定计划；`ud_execution_diagnostics` / `.NET Execution.Diagnostics()` / `Java Execution.diagnostics()` 返回统一运行事实。

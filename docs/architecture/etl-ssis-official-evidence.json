@@ -1,0 +1,101 @@
+[
+  {
+    "id": "control",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/control-flow/control-flow?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/control-flow/control-flow?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Control Flow - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "precedence",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/control-flow/precedence-constraints?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/control-flow/precedence-constraints?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Precedence Constraints - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "foreach",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/control-flow/foreach-loop-container?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/control-flow/foreach-loop-container?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Foreach Loop Container - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "plan",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/extending-packages-custom-objects/data-flow/execution-plan-and-buffer-allocation?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/extending-packages-custom-objects/data-flow/execution-plan-and-buffer-allocation?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Execution Plan and Buffer Allocation - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "synchronous",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/understanding-synchronous-and-asynchronous-transformations?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/understanding-synchronous-and-asynchronous-transformations?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Understanding Synchronous and Asynchronous Transformations - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "connections",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/connection-manager/integration-services-ssis-connections?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/connection-manager/integration-services-ssis-connections?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Integration Services (SSIS) Connections - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "custom-connection",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/extending-packages-custom-objects/connection-manager/creating-a-custom-connection-manager?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/extending-packages-custom-objects/connection-manager/creating-a-custom-connection-manager?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Creating a Custom Connection Manager - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "performance",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/data-flow/data-flow-performance-features?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/data-flow/data-flow-performance-features?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Data Flow Performance Features - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "errors",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/data-flow/error-handling-in-data?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/data-flow/error-handling-in-data?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Error Handling in Data - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "transactions",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/integration-services-transactions?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/integration-services-transactions?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Integration Services Transactions - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  },
+  {
+    "id": "data-flow-task",
+    "requestedUrl": "https://learn.microsoft.com/en-us/sql/integration-services/control-flow/data-flow-task?view=sql-server-ver17",
+    "url": "https://learn.microsoft.com/en-us/sql/integration-services/control-flow/data-flow-task?view=sql-server-ver17",
+    "httpStatus": 200,
+    "title": "Data Flow Task - SQL Server Integration Services (SSIS) | Microsoft Learn",
+    "source": "Microsoft Learn",
+    "date": "2026-10-13"
+  }
+]

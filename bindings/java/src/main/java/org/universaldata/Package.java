@@ -1,5 +1,5 @@
 package org.universaldata;
-/** Immutable native ABI-3 Package definition; no Java planning logic. */
+/** Immutable native Package definition; no Java planning logic. */
 public final class Package implements AutoCloseable {
     static { ProductVersion.requireNative(); }
     private long handle;

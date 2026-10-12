@@ -1,0 +1,16 @@
+-- The C compiler identification is GNU 14.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Found CURL: /usr/lib/x86_64-linux-gnu/libcurl.so (found suitable version "8.14.1", minimum required is "7.85")
+-- Found PostgreSQL: /lib/x86_64-linux-gnu/libpq.so.5 (Required is at least version "14")
+-- Found JNI: /workspace/.universaldata-tools/jdk17/include  found components: AWT JVM
+-- Found Python3: /workspace/.universaldata-tools/bin/python3.12 (found version "3.12.14") found components: Interpreter
+-- Configuring done (0.8s)
+-- Generating done (0.1s)
+-- Build files have been written to: /workspace/UniversalData/build/four-engines-linux

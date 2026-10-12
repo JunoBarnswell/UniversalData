@@ -14,9 +14,9 @@ static ud_status authorize(void *user, ud_string tenant, ud_string resource, int
                : UD_AUTH;
 }
 int main(int argc, char **argv) {
-    if (argc < 3 || argc > 7 || strcmp(argv[1], "execute")) {
-        fprintf(stderr, "usage: ud_cli execute PACKAGE_JSON [PARAMETERS_JSON] [TENANT] "
-                        "[EXECUTION_ID] [AUTHORIZED_ABSOLUTE_ROOT]\n");
+    if (argc < 3 || argc > 8 || (strcmp(argv[1], "execute") && strcmp(argv[1],"inspect"))) {
+        fprintf(stderr, "usage: ud_cli execute|inspect PACKAGE_JSON [PARAMETERS_JSON] [TENANT] "
+                        "[EXECUTION_ID] [AUTHORIZED_ABSOLUTE_ROOT] [MAX_WORKERS]\n");
         return 2;
     }
     FILE *file = fopen(argv[2], "rb");
@@ -50,6 +50,11 @@ int main(int argc, char **argv) {
     o.edge_capacity = 2;
     o.max_batch_rows = 4096;
     o.max_depth = 32;
+    if (argc>7) {
+        char *end=NULL;unsigned long workers=strtoul(argv[7],&end,10);
+        if (!workers || workers>64 || !end || *end) { free(text);return 2; }
+        o.max_concurrency=(uint32_t)workers;
+    }
     const char *parameters = argc > 3 ? argv[3] : "{}", *tenant = argc > 4 ? argv[4] : "cli",
                *id = argc > 5 ? argv[5] : "cli";
     o.parameters = (ud_string){parameters, (uint32_t)strlen(parameters)};
@@ -60,9 +65,13 @@ int main(int argc, char **argv) {
     ud_execution *e = NULL;
     ud_status s = ud_execution_create_json((ud_string){text, (uint32_t)n}, &o, &e);
     free(text);
-    if (!s)
-        s = ud_execution_execute(e);
-    if (e) {
+    int inspect=!strcmp(argv[1],"inspect");
+    if (!s && inspect) {
+        char *plan=NULL;uint32_t size=0;s=ud_execution_explain(e,&plan,&size);
+        if (!s) printf("%.*s\n",(int)size,plan);
+        ud_free(plan);
+    } else if (!s) s = ud_execution_execute(e);
+    if (e && !inspect) {
         ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
         ud_execution_get_metrics(e, &m);
         printf("{\"state\":%d,\"result\":%d,\"inputRows\":%llu,\"outputRows\":%llu,"

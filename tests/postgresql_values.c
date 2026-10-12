@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
                 "DOUBLE PRECISION,s TEXT,d NUMERIC(38,2),date DATE,time TIME,at TIMESTAMPTZ,raw "
                 "BYTEA)")));
     const char *schema =
-        "{\"version\":5,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false},{"
+        "{\"version\":6,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false},{"
         "\"name\":\"b\",\"type\":\"bool\",\"nullable\":false},{\"name\":\"f\",\"type\":\"float64\","
         "\"nullable\":true},{\"name\":\"s\",\"type\":\"utf8\",\"nullable\":true},{\"name\":\"d\","
         "\"type\":\"decimal128\",\"precision\":38,\"scale\":2,\"nullable\":true},{\"name\":"

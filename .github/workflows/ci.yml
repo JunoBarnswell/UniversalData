@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-24.04]
+        os: [ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Product authority\n        run: python scripts/product_model.py check\n      - name: Prepare pinned SQLite
+      - name: Product authority
+        run: python scripts/product_model.py check
+      - name: Prepare pinned SQLite
         shell: pwsh
         run: |
           $platform = if ($IsWindows) { 'windows' } else { 'linux' }
@@ -55,14 +57,14 @@ jobs:
           mvn -B -q -f bindings/java/pom.xml package
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force build/java | Out-Null
-          javac -encoding UTF-8 -cp bindings/java/target/universal-data-1.1.0.jar -d build/java examples/java/Consumer.java examples/java/DataConsumer.java
+          javac -encoding UTF-8 -cp bindings/java/target/universal-data-1.2.0.jar -d build/java examples/java/Consumer.java examples/java/DataConsumer.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $cli = if ($IsWindows) { 'build/full/hosts/Debug/ud_cli.exe' } else { 'build/full/hosts/ud_cli' }
           $data = if ($IsWindows) { 'build/full/tests/Debug/typed_data_runner.exe' } else { 'build/full/tests/typed_data_runner' }
           $native = if ($IsWindows) { 'build/install/bin' } else { 'build/install/lib' }
           $dotnet = (Get-Command dotnet).Source
           $java = (Get-Command java).Source
-          python tests/package_language_parity.py $cli $data $dotnet examples/dotnet/bin/Debug/net8.0/Consumer.dll examples/dotnet-data/bin/Debug/net8.0/DataConsumer.dll $java build/java bindings/java/target/universal-data-1.1.0.jar $native
+          python tests/package_language_parity.py $cli $data $dotnet examples/dotnet/bin/Debug/net8.0/Consumer.dll examples/dotnet-data/bin/Debug/net8.0/DataConsumer.dll $java build/java bindings/java/target/universal-data-1.2.0.jar $native
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Public contracts and removed legacy exports
         run: python scripts/static_check.py
@@ -75,7 +77,7 @@ jobs:
           ctest --test-dir build/full -C Release --output-on-failure
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $work = Join-Path $env:RUNNER_TEMP ('ud-bundle-' + [guid]::NewGuid().ToString('N'))
-          python tests/installed_sdk.py --bundle build/delivery/UniversalData-1.1.0-win-x64.zip --work $work --evidence build/delivery/consumers.json
+          python tests/installed_sdk.py --bundle build/delivery/UniversalData-1.2.0-win-x64.zip --work $work --evidence build/delivery/consumers.json
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'

@@ -2,7 +2,7 @@
 
 | 边界 | 当前契约 |
 |---|---|
-| SDK / ABI | metadata/product.json 生成 SDK 1.1.0、唯一 ABI/协议 5；拒绝 ABI 4 及更早的定义、插件和检查点 |
+| SDK / ABI | metadata/product.json 生成 SDK 1.2.0、唯一 ABI/协议 6；拒绝 ABI 4 及更早的定义、插件和检查点 |
 | Windows | x64 MSVC C17；本轮集中构建及 native/ASan/事务恢复/独立安装消费 |
 | Linux | 相同核心算子；POSIX 文件、线程、进程及动态加载实现；本轮按用户决定免测 |
 | C# | net8.0 薄 PInvoke；版本及 ABI 从产品模型生成 |

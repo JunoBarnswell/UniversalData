@@ -10,7 +10,7 @@ with socket.socket() as server, tempfile.TemporaryDirectory(prefix="ud-http-disa
     server.bind(("127.0.0.1", 0))
     server.listen()
     port = server.getsockname()[1]
-    doc = {"version": 5, "id": "disabled", "connections": [
+    doc = {"version": 6, "id": "disabled", "connections": [
         {"id": "endpoint", "driver": "http", "resource": f"http://127.0.0.1:{port}/"}],
         "controlFlow": {"tasks": [{"id": "request", "kind": "http.request",
                                   "config": {"connection": "endpoint"}}], "constraints": []},

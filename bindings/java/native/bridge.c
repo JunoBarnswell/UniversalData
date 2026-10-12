@@ -485,10 +485,10 @@ JNIEXPORT jlongArray JNICALL Java_org_universaldata_Execution_nativeMetrics(JNIE
                  (jlong)m.spill_bytes,
                  (jlong)m.pipeline_trees,
                  (jlong)m.tree_high_water,
-                 (jlong)m.worker_high_water};
-    jlongArray result = (*e)->NewLongArray(e, 17);
+                 (jlong)m.worker_high_water,(jlong)m.committed_rows,(jlong)m.acknowledged_rows,(jlong)m.error_count};
+    jlongArray result = (*e)->NewLongArray(e, 20);
     if (result)
-        (*e)->SetLongArrayRegion(e, result, 0, 17, v);
+        (*e)->SetLongArrayRegion(e, result, 0, 20, v);
     return result;
 }
 JNIEXPORT void JNICALL Java_org_universaldata_Execution_nativeClose(JNIEnv *e, jclass cls,
@@ -497,4 +497,13 @@ JNIEXPORT void JNICALL Java_org_universaldata_Execution_nativeClose(JNIEnv *e, j
     ud_status s = execution_destroy(e, (java_execution *)(intptr_t)handle);
     if (s)
         fail(e, s, ud_status_name(s));
+}
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeInspect(JNIEnv *env,jclass cls,jlong handle,jboolean diagnostics) {
+    (void)cls;java_execution *j=(java_execution *)(intptr_t)handle;
+    char *text=NULL;uint32_t size=0;
+    ud_status status=diagnostics ? ud_execution_diagnostics(j->execution,&text,&size) :
+                                 ud_execution_explain(j->execution,&text,&size);
+    if (status) { fail(env,status,ud_status_name(status));return NULL; }
+    jstring result=utf8(env,text);ud_free(text);return result;
 }

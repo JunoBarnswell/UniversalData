@@ -1,3 +1,5 @@
+> 前轮设计记录：本轮架构和 API 以 [四引擎目标](../architecture/etl-four-engine-target.md)、[运行决策](../architecture/etl-runtime-decisions.md) 与当前公开头文件为准。当前版本、能力状态和 Linux 验收统一来自 `metadata/product.json`；Windows 本轮豁免。
+
 # 当前唯一 C ABI：4
 
 SDK 1.0.0 开发版，ABI/Package/Schema/Plan/Wire/Plugin/Worker/Checkpoint 为 4。所有布局必须 `struct_size == sizeof(current)` 且版本完全匹配；没有旧前缀兼容。调用方、driver、JNI、PInvoke 同批重编。

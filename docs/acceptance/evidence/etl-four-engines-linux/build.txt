@@ -1,0 +1,65 @@
+[1/46] Linking C static library engines/package/libud_package.a
+[2/46] Linking C shared library libud_data.so.1.2.0
+[3/46] Creating library symlink libud_data.so.6 libud_data.so
+[4/46] Building C object tests/CMakeFiles/test_format.dir/format.c.o
+[5/46] Building C object bindings/java/native/CMakeFiles/ud_java.dir/bridge.c.o
+[6/46] Building C object tests/CMakeFiles/typed_data_runner.dir/typed_data_runner.c.o
+[7/46] Linking C shared module plugins/ud_connector_sqlite.so
+[8/46] Building C object tests/CMakeFiles/test_project.dir/project.c.o
+[9/46] Linking C executable hosts/ud_cli
+[10/46] Linking C shared library bindings/java/native/libud_java.so
+[11/46] Linking C executable tests/test_columnar
+[12/46] Linking C executable tests/test_types
+[13/46] Linking C executable hosts/ud_worker
+[14/46] Linking C executable tests/test_format
+[15/46] Linking C executable tests/test_compute
+[16/46] Building C object tests/CMakeFiles/test_value_semantics.dir/value_semantics.c.o
+/workspace/UniversalData/tests/value_semantics.c: In function ‘expressions’:
+/workspace/UniversalData/tests/value_semantics.c:304:5: warning: missing initializer for field ‘resolve_field’ of ‘ud_expression_options’ [-Wmissing-field-initializers]
+  304 |     ud_expression_options o = {sizeof(o), UD_ABI_VERSION, batch, NULL, NULL};
+      |     ^~~~~~~~~~~~~~~~~~~~~
+In file included from /workspace/UniversalData/include/ud/compute.h:4,
+                 from /workspace/UniversalData/tests/value_semantics.c:1:
+/workspace/UniversalData/include/ud/expression.h:18:34: note: ‘resolve_field’ declared here
+   18 |     ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
+      |                                  ^~~~~~~~~~~~~
+[17/46] Linking C executable tests/test_regex
+[18/46] Linking C executable tests/test_nested
+[19/46] Linking C executable tests/test_mapping
+[20/46] Linking C executable tests/test_quality
+[21/46] Linking C executable tests/test_architecture_foundation
+[22/46] Linking C executable tests/test_connector_sqlite
+[23/46] Linking C executable tests/test_value_semantics
+[24/46] Linking C executable tests/test_infrastructure
+[25/46] Linking C executable tests/test_four_engines
+[26/46] Linking C executable tests/test_core_runtime
+[27/46] Building C object plugins/CMakeFiles/ud_connector_postgresql.dir/postgresql.c.o
+In file included from /workspace/UniversalData/plugins/connector_common.h:3,
+                 from /workspace/UniversalData/plugins/postgresql.c:1:
+/workspace/UniversalData/plugins/common.h: In function ‘plugin_identifier’:
+/workspace/UniversalData/plugins/common.h:28:51: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   28 |     if (!name.data || !name.length || name.length > (SIZE_MAX - 3) / 2 || memchr(name.data, 0, name.length)) return NULL;
+      |                                                   ^
+/workspace/UniversalData/plugins/postgresql.c: In function ‘open_read’:
+/workspace/UniversalData/plugins/postgresql.c:183:41: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  183 |     if(p->reading || options->sql.length>SIZE_MAX-64) return UD_INVALID;
+      |                                         ^
+[28/46] Linking C shared module plugins/ud_connector_postgresql.so
+[29/46] Linking C executable tests/test_package_execution
+[30/46] Linking C executable tests/test_package_outcome
+[31/46] Linking C executable tests/typed_data_runner
+[32/46] Linking C executable tests/test_four_engine_connections
+[33/46] Linking C executable tests/test_catalog
+[34/46] Linking C executable tests/test_package_sql
+[35/46] Linking C executable tests/test_package_recovery
+[36/46] Linking C executable tests/test_project
+[37/46] Linking C executable tests/test_child_package
+[38/46] Linking C executable tests/test_catalog_history
+[39/46] Linking C executable tests/test_filesystem_task
+[40/46] Linking C executable tests/test_profile
+[41/46] Linking C executable tests/test_process_task
+[42/46] Linking C executable tests/test_http_task
+[43/46] Linking C shared module tests/sample_custom_task.so
+[44/46] Linking C shared module tests/sample_custom_bad.so
+[45/46] Linking C executable tests/test_profile_task
+[46/46] Linking C executable tests/test_custom_task

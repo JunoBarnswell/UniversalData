@@ -1,11 +1,12 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "1.1.0",
-  "abi": 5,
+  "sdkVersion": "1.2.0",
+  "abi": 6,
   "scope": {
-    "name": "unified infrastructure and current core",
-    "linux": "Exempt by current user decision",
-    "extensions": "Tracked independently; Planned/Partial remain incomplete"
+    "name": "ETL four engines R0–R7 P0/P1",
+    "linux": "Required: Linux native, sanitizer, JNI and .NET acceptance",
+    "extensions": "Tracked independently; Planned/Partial remain incomplete",
+    "windows": "Exempt by current user decision"
   },
   "baseline": {
     "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
@@ -13,7 +14,7 @@
   },
   "candidate": {
     "branch": "codex/ssis-infrastructure-convergence",
-    "state": "Implementation complete; Pending integrated acceptance",
+    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null
@@ -26,7 +27,7 @@
     "reason": "GitHub account payment/spending-limit restriction; no code steps ran"
   },
   "artifacts": null,
-  "requiredGates": 17,
+  "requiredGates": 22,
   "passedGates": 0,
   "remediations": [
     {

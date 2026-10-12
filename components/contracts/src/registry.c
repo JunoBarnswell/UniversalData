@@ -64,19 +64,23 @@ static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor 
         return UD_INCOMPATIBLE;
     if (!valid_string(d->id) || !valid_string(d->name) || !valid_string(d->version) ||
         !valid_string(d->configuration_schema) || d->inputs > 64 || d->outputs > 64 ||
-        d->category < UD_COMPONENT_TASK || d->category > UD_COMPONENT_FUNCTION ||
+        d->category < UD_COMPONENT_TASK || d->category > UD_COMPONENT_ENUMERATOR ||
         d->synchronous_input < -1 || d->error_output < -1 ||
         (d->synchronous_input >= 0 && (uint32_t)d->synchronous_input >= d->inputs) ||
         (d->error_output >= 0 && (uint32_t)d->error_output >= d->outputs))
         return UD_SCHEMA;
+    if ((d->outputs < 64 && (d->optional_outputs >> d->outputs)) ||
+        ((d->capabilities & UD_COMPONENT_BLOCKING) && (d->capabilities & UD_COMPONENT_PARTIALLY_BLOCKING))) return UD_SCHEMA;
     int function = d->category == UD_COMPONENT_FUNCTION;
     int task = d->category == UD_COMPONENT_TASK;
+    int enumerator = d->category == UD_COMPONENT_ENUMERATOR;
+    if ((function && d->cancel) || ((function || task || enumerator) && d->describe_plan)) return UD_SCHEMA;
     if (!function && (d->function_bind || d->function_evaluate ||
                       d->min_arguments || d->max_arguments ||
                       (d->capabilities & (UD_FUNCTION_PURE | UD_FUNCTION_DETERMINISTIC))))
         return UD_SCHEMA;
     if (task && (!d->invoke || d->inputs || d->outputs || d->synchronous_input != -1 ||
-                 d->error_output != -1 || d->prepare || d->step || d->finish || d->dispose))
+                 d->error_output != -1 || d->step || (!!d->prepare != !!d->dispose) || d->enumerate_next || d->enumerate_position))
         return UD_SCHEMA;
     if (function && (!(d->capabilities & UD_FUNCTION_PURE) || !d->function_bind ||
                      !d->function_evaluate || d->min_arguments > d->max_arguments ||
@@ -84,7 +88,13 @@ static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor 
                      d->synchronous_input != -1 || d->error_output != -1 || d->invoke ||
                      d->configure || d->prepare || d->step || d->finish || d->dispose))
         return UD_SCHEMA;
-    if (!function && !task &&
+    if (enumerator && (!d->configure || !d->prepare || !d->dispose || !d->enumerate_next ||
+        d->inputs || d->outputs || d->synchronous_input != -1 || d->error_output != -1 ||
+        d->step || d->invoke || d->function_bind || d->function_evaluate ||
+        ((d->capabilities & UD_ENUMERATOR_RESUMABLE) && (!d->enumerate_position ||
+          !(d->capabilities & UD_ENUMERATOR_DETERMINISTIC))))) return UD_SCHEMA;
+    if (!enumerator && (d->enumerate_next || d->enumerate_position)) return UD_SCHEMA;
+    if (!function && !task && !enumerator &&
         (!d->configure || !d->prepare || !d->step || !d->finish || !d->dispose || d->invoke ||
          (d->category == UD_COMPONENT_SOURCE && (d->inputs || !d->outputs)) ||
          (d->category == UD_COMPONENT_DESTINATION && !d->inputs) ||

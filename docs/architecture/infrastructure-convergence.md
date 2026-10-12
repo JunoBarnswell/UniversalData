@@ -1,6 +1,8 @@
+> 前轮设计记录：本轮架构和 API 以 [四引擎目标](../architecture/etl-four-engine-target.md)、[运行决策](../architecture/etl-runtime-decisions.md) 与当前公开头文件为准。当前版本、能力状态和 Linux 验收统一来自 `metadata/product.json`；Windows 本轮豁免。
+
 # 基础设施统一整改设计
 
-基线：`ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39`，已在 GitHub main。实施分支：`codex/ssis-infrastructure-convergence`。本轮覆盖复查报告的六个基础问题；高级连接器、CDC/SCD/Fuzzy 和 BI Planner 继续保留真实待实现状态。Windows 集中编译和关键验收；Linux 的同一实现及平台支持保留，本轮免测。
+基线：`ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39`，已在 GitHub main。实施分支：`codex/ssis-infrastructure-convergence`。本轮覆盖复查报告的六个基础问题；高级连接器、CDC/SCD/Fuzzy 和 BI Planner 继续保留真实待实现状态。本轮 Linux 集中编译和关键验收；Windows 按用户明确要求豁免。
 
 ## 已确认的问题与边界
 
@@ -80,7 +82,7 @@ flowchart TD
 
 ## C ABI 与移除策略
 
-上述 Buffer view、指标和类别调整是公共契约变化。SDK 升为 `1.1.0`，当前 ABI/Package/Schema/Plan/Wire/Plugin/Worker/Checkpoint 族为 `5`；整批迁移 C、P/Invoke、JNI、hosts、示例及关键测试。旧 ABI 4 下线，不保留桥接、别名、双日志格式或旧遍历执行器。旧 Journal 和旧定义明确 Incompatible，由宿主重新提交定义并选择新的执行身份。
+上述 Buffer view、指标和类别调整是公共契约变化。SDK 升为 `1.2.0`，当前 ABI/Package/Schema/Plan/Wire/Plugin/Worker/Checkpoint 族为 `5`；整批迁移 C、P/Invoke、JNI、hosts、示例及关键测试。旧 ABI 4 下线，不保留桥接、别名、双日志格式或旧遍历执行器。旧 Journal 和旧定义明确 Incompatible，由宿主重新提交定义并选择新的执行身份。
 
 ## 一次性实施及验收清单
 

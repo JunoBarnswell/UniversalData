@@ -2,6 +2,8 @@
 #define UD_OPERATOR_H
 #include "compute.h"
 #include "buffer.h"
+#include "partition.h"
+typedef struct ud_executor ud_executor;
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,10 +31,13 @@ typedef struct ud_operator_options {
     uint32_t partition_key_count, window_column;
     int32_t window_function;
     ud_string window_name;
+    uint32_t partition_count; /* 0 selects 1; <=64, same algorithms at every width. */
+    ud_executor *executor; /* Borrowed root pool; required above one partition. */
 } ud_operator_options;
 /* Pure binding copies schemas. Separate instances may share Buffer Manager. */
 UD_API ud_status ud_operator_create(ud_context *, const ud_operator_options *,
                                     const ud_batch *const *, ud_operator **);
+UD_API uint32_t ud_operator_partition_count(const ud_operator *);
 UD_API ud_status ud_operator_schema(const ud_operator *, ud_batch **);
 /* push borrows sealed input; success owns retained/spilled blocks. End is once
  * per port. pull returns owned bounded batches, END only after all inputs end.

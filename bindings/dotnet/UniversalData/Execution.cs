@@ -13,7 +13,7 @@ public delegate bool PackageAuthorizer(string tenant, string resource, Connectio
 
 public delegate string PackageCredentialResolver(string tenant, string resource, string reference);
 
-public sealed record ExecutionMetrics(ExecutionState State, StatusCode Result, ulong InputRows, ulong OutputRows, ulong RejectedRows, ulong Batches, ulong QueuedBatches, ulong QueueHighWater, ulong MemoryUsed, ulong ExecutedTasks, ulong DurableTasks, ulong RecoveryTasks, ulong ResumedTasks, ulong SpillBytes, ulong PipelineTrees, ulong TreeHighWater, ulong WorkerHighWater);
+public sealed record ExecutionMetrics(ExecutionState State, StatusCode Result, ulong InputRows, ulong OutputRows, ulong RejectedRows, ulong Batches, ulong QueuedBatches, ulong QueueHighWater, ulong MemoryUsed, ulong ExecutedTasks, ulong DurableTasks, ulong RecoveryTasks, ulong ResumedTasks, ulong SpillBytes, ulong PipelineTrees, ulong TreeHighWater, ulong WorkerHighWater, ulong CommittedRows, ulong AcknowledgedRows, ulong ErrorCount);
 
 /// <summary>Thin projection of the only native Package execution lifecycle.</summary>
 public sealed class Execution : IDisposable
@@ -96,7 +96,23 @@ public sealed class Execution : IDisposable
 
     public ExecutionMetrics Metrics
     {
-        get { Open(); var m = new Native.ExecutionMetricsValue { Size = (uint)Marshal.SizeOf<Native.ExecutionMetricsValue>(), Abi = ProductVersion.Abi }; Check(Native.ud_execution_get_metrics(execution, ref m)); return new((ExecutionState)m.State, (StatusCode)m.Result, m.Input, m.Output, m.Rejected, m.Batches, m.Queued, m.HighWater, m.Memory, m.Executed, m.Durable, m.Recovery, m.Resumed, m.Spill, m.Trees, m.TreeHighWater, m.WorkerHighWater); }
+        get { Open(); var m = new Native.ExecutionMetricsValue { Size = (uint)Marshal.SizeOf<Native.ExecutionMetricsValue>(), Abi = ProductVersion.Abi }; Check(Native.ud_execution_get_metrics(execution, ref m)); return new((ExecutionState)m.State, (StatusCode)m.Result, m.Input, m.Output, m.Rejected, m.Batches, m.Queued, m.HighWater, m.Memory, m.Executed, m.Durable, m.Recovery, m.Resumed, m.Spill, m.Trees, m.TreeHighWater, m.WorkerHighWater, m.Committed, m.Acknowledged, m.Errors); }
+    }
+
+    public string Explain() => Inspect(false);
+
+    public string Diagnostics() => Inspect(true);
+
+    private string Inspect(bool diagnostics)
+    {
+        Control(); lock (controller)
+        {
+            Open(); IntPtr text; uint length;
+            Check(diagnostics ? Native.ud_execution_diagnostics(execution, out text, out length)
+                              : Native.ud_execution_explain(execution, out text, out length));
+            try { return Marshal.PtrToStringUTF8(text, checked((int)length)) ?? ""; }
+            finally { Native.ud_free(text); }
+        }
     }
 
     public void Dispose()
@@ -135,7 +151,7 @@ internal static partial class Native
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct ExecutionMetricsValue
-    { internal uint Size, Abi; internal int State, Result; internal ulong Input, Output, Rejected, Batches, Queued, HighWater, Memory, Executed, Durable, Recovery, Resumed, Spill, Trees, TreeHighWater, WorkerHighWater; }
+    { internal uint Size, Abi; internal int State, Result; internal ulong Input, Output, Rejected, Batches, Queued, HighWater, Memory, Executed, Durable, Recovery, Resumed, Spill, Trees, TreeHighWater, WorkerHighWater, Committed, Acknowledged, Errors; }
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_create_json(StringValue json, ref ExecutionOptions options, out IntPtr execution);
 
@@ -152,6 +168,10 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_execution_cancel")] internal static extern void ud_execution_cancel_raw(IntPtr execution);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_execution_wait")] internal static extern int ud_execution_wait_raw(IntPtr execution, uint timeout);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_explain(ExecutionHandle execution, out IntPtr text, out uint length);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_diagnostics(ExecutionHandle execution, out IntPtr text, out uint length);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_destroy(IntPtr execution);
 }

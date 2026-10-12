@@ -1,29 +1,33 @@
 {
   "generatedFrom": "metadata/product.json",
-  "version": 5,
-  "sdkVersion": "1.1.0",
-  "abi": 5,
+  "version": 6,
+  "sdkVersion": "1.2.0",
+  "abi": 6,
   "sourceFingerprint": null,
-  "linux": "Exempt by current user decision",
+  "linux": "Required: Linux native, sanitizer, JNI and .NET acceptance",
+  "windows": "Exempt by current user decision",
   "gates": [
     {
       "id": "windows-msvc",
-      "status": "Pending",
+      "status": "Exempt",
       "command": "packaging/package.ps1 -BuildDirectory build/windows; Release C17/JNI/SQLite",
-      "evidence": []
+      "evidence": [],
+      "reason": "Current user requires Linux only; Windows exempt"
     },
     {
       "id": "windows-native",
-      "status": "Pending",
+      "status": "Exempt",
       "command": "ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure",
-      "evidence": []
+      "evidence": [],
+      "reason": "Current user requires Linux only; Windows exempt"
     },
     {
       "id": "windows-asan",
-      "status": "Pending",
+      "status": "Exempt",
       "command": "ctest --test-dir build/abi4-asan-msvc -C Debug --parallel 4 --output-on-failure",
       "evidence": [],
-      "runtimeOptions": "halt_on_error=1:abort_on_error=1"
+      "runtimeOptions": "halt_on_error=1:abort_on_error=1",
+      "reason": "Current user requires Linux only; Windows exempt"
     },
     {
       "id": "sqlite-transactions-recovery",
@@ -69,9 +73,10 @@
     },
     {
       "id": "windows-release",
-      "status": "Pending",
+      "status": "Exempt",
       "command": "packaging/package.ps1; ctest -C Release",
-      "evidence": []
+      "evidence": [],
+      "reason": "Current user requires Linux only; Windows exempt"
     },
     {
       "id": "distributable-bundle",
@@ -108,6 +113,36 @@
       "status": "Pending",
       "evidence": [],
       "command": ""
+    },
+    {
+      "id": "linux-release",
+      "name": "Linux Release native/JNI build",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "linux-native",
+      "name": "Linux native end-to-end cases",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "linux-sanitizers",
+      "name": "Linux ASan/UBSan",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "four-engines",
+      "name": "Four-engine completion scheduling, partition semantics and transactions",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "million-row-benchmark",
+      "name": "1/2/4/8/16 workers, million rows and spill",
+      "status": "Pending",
+      "evidence": []
     }
   ],
   "delivery": null

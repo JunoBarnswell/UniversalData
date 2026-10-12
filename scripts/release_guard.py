@@ -42,6 +42,8 @@ def check():
         errors.append("Source changed after sealed evidence")
     for gate in model["gates"]:
         identifier = gate["id"]
+        if gate["status"] == "Exempt":
+            continue
         if gate["status"] != "Passed":
             errors.append(identifier + ": required core gate did not pass")
             continue
@@ -67,12 +69,16 @@ def check():
         bundle = json.loads(manifest.read_text(encoding="utf-8"))
         if (bundle.get("sourceFingerprint") != fingerprint or bundle.get("abiVersion") != abi
                 or bundle.get("sdkVersion") != version or bundle.get("configuration") != "Release"
-                or bundle.get("runtimeIdentifier") != "win-x64"):
+                or bundle.get("runtimeIdentifier") != delivery.get("runtimeIdentifier")):
             errors.append("Artifact manifest differs from current source/ABI")
         expected = {"sdk/bin/ud_data.dll", "sdk/bin/ud_java.dll", "sdk/bin/ud_cli.exe",
                     "sdk/bin/ud_worker.exe", f"packages/UniversalData.{version}.nupkg",
                     f"packages/universal-data-{version}.jar", "sdk/include/ud/version.h",
                     "sdk/include/ud/package.h", "sdk/lib/ud_data.lib"}
+        if delivery.get("runtimeIdentifier")=="linux-x64":
+            expected={"sdk/lib/libud_data.so","sdk/lib/libud_java.so","sdk/bin/ud_cli","sdk/bin/ud_worker",
+                      f"packages/UniversalData.{version}.nupkg",f"packages/universal-data-{version}.jar",
+                      "sdk/include/ud/version.h","sdk/include/ud/package.h"}
         if not expected.issubset({entry["path"] for entry in bundle.get("files", [])}):
             errors.append("Incomplete artifact manifest")
         for entry in bundle.get("files", []):

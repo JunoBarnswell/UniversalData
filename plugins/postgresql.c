@@ -1,6 +1,11 @@
 #include "connector_common.h"
 #include <libpq-fe.h>
 #include <stdatomic.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <poll.h>
+#endif
 typedef struct {
     ud_host_api host;
     PGconn *db;
@@ -9,11 +14,59 @@ typedef struct {
     uint32_t batch_size;
     int reading, finished;
     atomic_int cancelled;
+    void *control_user;
+    ud_status (*check)(void *);
+    ud_status control_status;
+    int transaction, cleaning, broken;
 } postgres_state;
+static ud_status control(postgres_state *p) {
+    if (p->cleaning) return UD_OK;
+    if (p->check) { ud_status status=p->check(p->control_user); if (status) return status; }
+    return atomic_load(&p->cancelled) || p->host.cancelled(p->host.context) ? UD_CANCELLED : UD_OK;
+}
+static void set_control(void *state,void *user,ud_status (*check)(void *)) {
+    postgres_state *p=state; p->control_user=user; p->check=check;
+    p->control_status=UD_OK; atomic_store(&p->cancelled,0);
+}
+/* One bounded cursor/session, socket readiness with cancellation/deadline checks.
+ * No separate SQL executor or buffered full-result fallback is introduced. */
+static PGresult *query(postgres_state *p,const char *sql,int n,const Oid *types,
+                       const char *const *values,const int *lengths,const int *formats,int result_format) {
+    p->control_status=control(p);
+    if (p->control_status || p->broken) return NULL;
+    if (!PQsendQueryParams(p->db,sql,n,types,values,lengths,formats,result_format)) return NULL;
+    int flushing=PQflush(p->db);
+    if (flushing<0) { p->broken=1;return NULL; }
+    uint32_t cleanup_waits=0;
+    while (flushing || PQisBusy(p->db)) {
+        if (p->cleaning && ++cleanup_waits>200) { p->control_status=UD_TIMEOUT;p->broken=1;return NULL; }
+        p->control_status=control(p);
+        if (p->control_status) { p->broken=1;return NULL; }
+        int socket=PQsocket(p->db);
+        if (socket<0) { p->broken=1;return NULL; }
+#ifdef _WIN32
+        fd_set reads,writes;FD_ZERO(&reads);FD_ZERO(&writes);
+        FD_SET((SOCKET)socket,&reads);if (flushing) FD_SET((SOCKET)socket,&writes);
+        struct timeval timeout={0,25000};
+        int ready=select(socket+1,&reads,flushing ? &writes : NULL,NULL,&timeout);
+#else
+        struct pollfd fd={socket,(short)(POLLIN|(flushing ? POLLOUT : 0)),0};
+        int ready=poll(&fd,1,25);
+#endif
+        if (ready<0 || (ready && !PQconsumeInput(p->db))) { p->broken=1;return NULL; }
+        if (ready && flushing) flushing=PQflush(p->db);
+        if (flushing<0) { p->broken=1;return NULL; }
+    }
+    /* A completed query drains its protocol; interrupted sessions are retired. */
+    PGresult *result=PQgetResult(p->db), *extra;
+    while ((extra=PQgetResult(p->db))!=NULL) { PQclear(result); result=extra; }
+    return result;
+}
 static ud_status pg_failure(postgres_state *p,const PGresult *result) {
     const char *code=result ? PQresultErrorField(result,PG_DIAG_SQLSTATE) : NULL;
     ud_status status=PQstatus(p->db)!=CONNECTION_OK ? UD_TRANSIENT : UD_IO;
-    if(atomic_load(&p->cancelled)) status=UD_CANCELLED;
+    if(p->control_status) status=p->control_status;
+    else if(atomic_load(&p->cancelled)) status=UD_CANCELLED;
     else if(code) {
         if(!strcmp(code,"42501") || !strncmp(code,"28",2)) status=UD_AUTH;
         else if(!strcmp(code,"40001") || !strcmp(code,"40P01") || !strncmp(code,"08",2)) status=UD_TRANSIENT;
@@ -26,24 +79,45 @@ static ud_status pg_failure(postgres_state *p,const PGresult *result) {
     return p->host.report(p->host.context,status,code ? code : "PostgreSQL connection / protocol failure");
 }
 static ud_status command(postgres_state *p,const char *sql) {
-    PGresult *r=PQexecParams(p->db,sql,0,NULL,NULL,NULL,NULL,0);
+    PGresult *r=query(p,sql,0,NULL,NULL,NULL,NULL,0);
     ud_status s=r && PQresultStatus(r)==PGRES_COMMAND_OK ? UD_OK : pg_failure(p,r);
     PQclear(r);return s;
+}
+static ud_status session_settings(postgres_state *p) {
+    ud_status status=command(p,"SET TIME ZONE 'UTC'");
+    if (!status) status=command(p,"SET DateStyle TO ISO, YMD");
+    if (!status) status=command(p,"SET extra_float_digits TO 3");
+    return status;
 }
 static ud_status initialize(const ud_host_api *host,const char *config,uint32_t length,void **out) {
     *out=NULL;postgres_state *p=host->allocate(host->context,sizeof(*p));
     if(!p) return UD_RESOURCE;
-    p->host=*host;atomic_init(&p->cancelled,0);
+    p->host=*host;p->control_user=host->control_user;p->check=host->check_io;atomic_init(&p->cancelled,0);
     char *copy=plugin_string(host,config,length);
     if(!copy) { host->deallocate(p);return UD_INVALID; }
     const char *keys[]={"dbname","connect_timeout","application_name",NULL};
     const char *values[]={copy,"10","UniversalDataSDK/1.0.0",NULL};
-    p->db=PQconnectdbParams(keys,values,1);host->deallocate(copy);
-    ud_status s=!p->db ? UD_RESOURCE : PQstatus(p->db)!=CONNECTION_OK ? UD_IO : UD_OK;
+    p->db=PQconnectStartParams(keys,values,1);host->deallocate(copy);
+    ud_status s=!p->db ? UD_RESOURCE : UD_OK;
+    PostgresPollingStatusType progress=PGRES_POLLING_WRITING;
+    while (!s && progress!=PGRES_POLLING_OK) {
+        s=control(p);if (s) break;
+        int socket=PQsocket(p->db);if (socket<0) { s=UD_IO;break; }
+#ifdef _WIN32
+        fd_set fds;FD_ZERO(&fds);FD_SET((SOCKET)socket,&fds);struct timeval timeout={0,25000};
+        int ready=select(socket+1,progress==PGRES_POLLING_READING ? &fds : NULL,
+            progress==PGRES_POLLING_WRITING ? &fds : NULL,NULL,&timeout);
+#else
+        struct pollfd fd={socket,progress==PGRES_POLLING_READING ? POLLIN : POLLOUT,0};
+        int ready=poll(&fd,1,25);
+#endif
+        if (ready<0) { s=UD_IO;break; }
+        if (ready) progress=PQconnectPoll(p->db);
+        if (progress==PGRES_POLLING_FAILED) s=UD_IO;
+    }
+    if (!s && PQsetnonblocking(p->db,1)) s=UD_IO;
     if(!s && PQsetClientEncoding(p->db,"UTF8")) s=UD_SCHEMA;
-    if(!s) s=command(p,"SET TIME ZONE 'UTC'");
-    if(!s) s=command(p,"SET DateStyle TO ISO, YMD");
-    if(!s) s=command(p,"SET extra_float_digits TO 3");
+    if(!s) s=session_settings(p);
     if(!s) { p->cancel=PQgetCancel(p->db);if(!p->cancel) s=UD_RESOURCE; }
     if(s) {
         if(p->db) PQfinish(p->db);
@@ -53,7 +127,7 @@ static ud_status initialize(const ud_host_api *host,const char *config,uint32_t 
     *out=p;return UD_OK;
 }
 static ud_status test_connection(void *state) {
-    postgres_state *p=state;PGresult *r=PQexecParams(p->db,"SELECT 1",0,NULL,NULL,NULL,NULL,0);
+    postgres_state *p=state;if (p->broken) return UD_TRANSIENT;PGresult *r=query(p,"SELECT 1",0,NULL,NULL,NULL,NULL,0);
     ud_status s=r && PQresultStatus(r)==PGRES_TUPLES_OK ? UD_OK : pg_failure(p,r);
     PQclear(r);return s;
 }
@@ -61,7 +135,7 @@ static ud_status discover(void *state,ud_string table,ud_batch **out) {
     postgres_state *p=state;ud_host_api *h=&p->host;char *quoted=plugin_identifier(h,table);
     if(!quoted) return UD_RESOURCE;
     const char *args[]={quoted};
-    PGresult *r=PQexecParams(p->db,
+    PGresult *r=query(p,
         "SELECT a.attname,format_type(a.atttypid,a.atttypmod),NOT a.attnotnull,"
         "COALESCE(array_position(i.indkey::smallint[],a.attnum)-array_lower(i.indkey::smallint[],1)+1,0),"
         "has_column_privilege(a.attrelid,a.attname,'SELECT'),has_column_privilege(a.attrelid,a.attname,'INSERT'),"
@@ -94,7 +168,7 @@ static ud_status discover(void *state,ud_string table,ud_batch **out) {
     PQclear(r);return s;
 }
 static ud_status close_read(void *state) {
-    postgres_state *p=state;ud_status s=p->reading ? command(p,"ROLLBACK") : UD_OK;
+    postgres_state *p=state;p->cleaning=1;ud_status s=p->reading && !p->transaction && !p->broken ? command(p,"ROLLBACK") : UD_OK;p->cleaning=0;
     p->reading=0;p->finished=1;p->host.batch_destroy(p->schema);p->schema=NULL;
     return s;
 }
@@ -108,7 +182,7 @@ static ud_status open_read(void *state,const ud_read_options *options,const ud_b
     postgres_state *p=state;ud_host_api *h=&p->host;
     if(p->reading || options->sql.length>SIZE_MAX-64) return UD_INVALID;
     atomic_store(&p->cancelled,0);
-    ud_status s=command(p,"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    ud_status s=p->transaction ? UD_OK : command(p,"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     if(s) return s;
     p->reading=1;
     size_t length=(size_t)options->sql.length+64;
@@ -119,7 +193,7 @@ static ud_status open_read(void *state,const ud_read_options *options,const ud_b
         memcpy(sql,prefix,n);memcpy(sql+n,options->sql.data,options->sql.length);
         s=command(p,sql);h->deallocate(sql);
     }
-    PGresult *r=!s ? PQexecParams(p->db,"FETCH FORWARD 0 FROM ud_sdk_cursor",0,NULL,NULL,NULL,NULL,0) : NULL;
+    PGresult *r=!s ? query(p,"FETCH FORWARD 0 FROM ud_sdk_cursor",0,NULL,NULL,NULL,NULL,0) : NULL;
     if(!s && (!r || PQresultStatus(r)!=PGRES_TUPLES_OK)) s=pg_failure(p,r);
     uint32_t columns=h->columns(schema);ud_field *fields=NULL;
     if(!s && PQnfields(r)!=(int)columns) s=UD_SCHEMA;
@@ -191,14 +265,13 @@ static ud_status next_read(void *state,ud_batch **out) {
 }
 static void cancel_operation(void *state) {
     postgres_state *p=state;atomic_store(&p->cancelled,1);
-    char error[256];if(p->cancel) PQcancel(p->cancel,error,sizeof(error));
 }
 static ud_status receipt(void *state,ud_string tenant,ud_string job,ud_string batch_id,ud_commit_receipt *out) {
     postgres_state *p=state;ud_host_api *h=&p->host;memset(out,0,sizeof(*out));
     ud_string strings[]={tenant,job,batch_id};char *owned[3]={0};ud_status s=UD_OK;
     for(int j=0;!s && j<3;j++) { owned[j]=plugin_string(h,strings[j].data,strings[j].length);if(!owned[j]) s=UD_RESOURCE; }
     const char *args[]={owned[0],owned[1],owned[2]};
-    PGresult *r=!s ? PQexecParams(p->db,"SELECT encode(digest,'hex'),source_position FROM ud_sdk_receipts_v2 WHERE tenant=$1 AND job=$2 AND batch_id=$3",3,NULL,args,NULL,NULL,0) : NULL;
+    PGresult *r=!s ? query(p,"SELECT encode(digest,'hex'),source_position FROM ud_sdk_receipts_v2 WHERE tenant=$1 AND job=$2 AND batch_id=$3",3,NULL,args,NULL,NULL,0) : NULL;
     if(!s && (!r || PQresultStatus(r)!=PGRES_TUPLES_OK)) s=h->report(h->context,UD_COMMIT_UNKNOWN,"receipt store is unavailable; source position must not advance");
     if(!s && PQntuples(r)>1) s=UD_CORRUPT;
     if(!s && PQntuples(r)==1) {
@@ -226,7 +299,7 @@ static ud_status validate_target(postgres_state *p,ud_string table,const ud_batc
     ud_host_api *h=&p->host;char *name=plugin_identifier(h,table);
     if(!name) return UD_RESOURCE;
     const char *args[]={name};
-    PGresult *r=PQexecParams(p->db,"SELECT attname,atttypid::text,atttypmod::text FROM pg_attribute WHERE attrelid=$1::regclass AND attnum>0 AND NOT attisdropped",1,NULL,args,NULL,NULL,0);
+    PGresult *r=query(p,"SELECT attname,atttypid::text,atttypmod::text FROM pg_attribute WHERE attrelid=$1::regclass AND attnum>0 AND NOT attisdropped",1,NULL,args,NULL,NULL,0);
     h->deallocate(name);
     if(!r || PQresultStatus(r)!=PGRES_TUPLES_OK) { ud_status s=pg_failure(p,r);PQclear(r);return s; }
     ud_status s=UD_OK;
@@ -260,7 +333,8 @@ static ud_status write_batch(void *state,ud_string tenant,const ud_write_options
     atomic_store(&p->cancelled,0);
     char *sql=NULL;ud_status s=connector_write_sql(h,options,batch,1,&sql);
     if(s) return s;
-    s=command(p,"BEGIN");
+    int own=!p->transaction;
+    s=own ? command(p,"BEGIN") : UD_OK;
     if(s) { h->deallocate(sql);return s; }
     if(!s) s=command(p,"CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))");
     char *table=plugin_identifier(h,options->table);
@@ -276,7 +350,7 @@ static ud_status write_batch(void *state,ud_string tenant,const ud_write_options
     for(int j=0;!s && j<4;j++) { identity[j]=plugin_string(h,strings[j].data?strings[j].data:"",strings[j].length);if(!identity[j]) s=UD_RESOURCE; }
     const char *reserve[]={identity[0],identity[1],identity[2],(const char *)digest,identity[3]};
     Oid reserve_types[]={25,25,25,17,25};int reserve_lengths[]={0,0,0,32,0},reserve_formats[]={0,0,0,1,0};
-    PGresult *result=!s ? PQexecParams(p->db,"INSERT INTO ud_sdk_receipts_v2(tenant,job,batch_id,digest,source_position) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING batch_id",5,reserve_types,reserve,reserve_lengths,reserve_formats,0) : NULL;
+    PGresult *result=!s ? query(p,"INSERT INTO ud_sdk_receipts_v2(tenant,job,batch_id,digest,source_position) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING batch_id",5,reserve_types,reserve,reserve_lengths,reserve_formats,0) : NULL;
     if(!s && (!result || PQresultStatus(result)!=PGRES_TUPLES_OK)) s=pg_failure(p,result);
     int existing=!s && PQntuples(result)==0;PQclear(result);
     if(!s && existing) {
@@ -312,30 +386,140 @@ static ud_status write_batch(void *state,ud_string tenant,const ud_write_options
                 if(!s) { owned[j]=plugin_string(h,number,required-1);if(!owned[j]) s=UD_RESOURCE;else parameters[j]=owned[j]; }
             }
         }
-        result=!s ? PQexecParams(p->db,sql,(int)columns,types,parameters,lengths,formats,0) : NULL;
+        result=!s ? query(p,sql,(int)columns,types,parameters,lengths,formats,0) : NULL;
         if(!s && (!result || PQresultStatus(result)!=PGRES_COMMAND_OK)) s=pg_failure(p,result);
         PQclear(result);
         for(uint32_t j=0;j<columns;j++) { h->deallocate(owned[j]);owned[j]=NULL; }
     }
     h->deallocate(parameters);h->deallocate(owned);h->deallocate(types);h->deallocate(lengths);h->deallocate(formats);
-    for(int j=0;j<4;j++) h->deallocate(identity[j]);h->deallocate(sql);
+    for(int j=0;j<4;j++) h->deallocate(identity[j]);
+    h->deallocate(sql);
     if(!s && (h->cancelled(h->context) || atomic_load(&p->cancelled))) s=UD_CANCELLED;
-    if(!s) {
+    if(!s && own) {
         s=command(p,"COMMIT");
         if(s) { command(p,"ROLLBACK");return h->report(h->context,UD_COMMIT_UNKNOWN,"commit outcome requires receipt verification before advancing source position"); }
-    } else if(command(p,"ROLLBACK")!=UD_OK) return h->report(h->context,UD_COMMIT_UNKNOWN,"rollback outcome is unknown; receipt verification is required");
+    } else if(s && own && command(p,"ROLLBACK")!=UD_OK) return h->report(h->context,UD_COMMIT_UNKNOWN,"rollback outcome is unknown; receipt verification is required");
     return s;
+}
+static void destroy(void *state) {
+    postgres_state *p=state;if (!p) return;
+    p->host.batch_destroy(p->schema);p->schema=NULL;
+    if (p->cancel) PQfreeCancel(p->cancel);
+    if (p->db) PQfinish(p->db);
+    p->host.deallocate(p);
+}
+static int transaction_statement(const char *sql) {
+    const unsigned char *p=(const unsigned char *)sql;
+    for (;;) {
+        while (*p && (*p==' ' || *p=='\n' || *p=='\r' || *p=='\t')) p++;
+        if (p[0]=='-' && p[1]=='-') { while (*p && *p!='\n') p++;continue; }
+        if (p[0]=='/' && p[1]=='*') {
+            unsigned depth=1;p+=2;
+            while (*p && depth) {
+                if (p[0]=='/' && p[1]=='*') { depth++;p+=2; }
+                else if (p[0]=='*' && p[1]=='/') { depth--;p+=2; } else p++;
+            }
+            continue;
+        }
+        break;
+    }
+    char token[32];unsigned n=0;
+    while (*p && n+1<sizeof(token) && ((*p>='a' && *p<='z') || (*p>='A' && *p<='Z'))) {
+        token[n++]=(char)(*p>='a' && *p<='z' ? *p-'a'+'A' : *p);p++;
+    }
+    token[n]=0;
+    return !strcmp(token,"BEGIN") || !strcmp(token,"START") || !strcmp(token,"COMMIT") ||
+        !strcmp(token,"ROLLBACK") || !strcmp(token,"SAVEPOINT") || !strcmp(token,"RELEASE") ||
+        !strcmp(token,"END") || !strcmp(token,"PREPARE");
 }
 static ud_status execute_sql(void *state,ud_string statement) {
     postgres_state *p=state;char *sql=plugin_string(&p->host,statement.data,statement.length);
-    if(!sql) return UD_RESOURCE;ud_status s=command(p,sql);p->host.deallocate(sql);return s;
+    if(!sql) return UD_RESOURCE;
+    ud_status s=transaction_statement(sql) ? UD_UNSUPPORTED : command(p,sql);
+    if (s && s!=UD_UNSUPPORTED && (p->broken || PQstatus(p->db)!=CONNECTION_OK)) s=UD_COMMIT_UNKNOWN;
+    p->host.deallocate(sql);return s;
+}
+static ud_status begin_transaction(void *state,int32_t isolation) {
+    postgres_state *p=state;
+    if (p->transaction) return UD_INVALID;
+    const char *sql=isolation==UD_ISOLATION_SERIALIZABLE ? "BEGIN ISOLATION LEVEL SERIALIZABLE" :
+        isolation==UD_ISOLATION_REPEATABLE_READ ? "BEGIN ISOLATION LEVEL REPEATABLE READ" :
+        isolation==UD_ISOLATION_READ_COMMITTED ? "BEGIN ISOLATION LEVEL READ COMMITTED" : NULL;
+    if (!sql) return UD_INVALID;
+    ud_status status=command(p,sql); if (!status) p->transaction=1; return status;
+}
+static ud_status commit_transaction(void *state) {
+    postgres_state *p=state;
+    if (!p->transaction) return UD_INVALID;
+    ud_status status=command(p,"COMMIT");
+    if (status) return UD_COMMIT_UNKNOWN;
+    p->transaction=0; return UD_OK;
+}
+static ud_status rollback_transaction(void *state) {
+    postgres_state *p=state;
+    if (!p->transaction) return UD_INVALID;
+    p->cleaning=1; ud_status status=command(p,"ROLLBACK"); p->cleaning=0;
+    if (status) return UD_COMMIT_UNKNOWN;
+    p->transaction=0; return UD_OK;
+}
+static ud_status metadata(void *state,const ud_metadata_options *o,ud_batch **out) {
+    postgres_state *p=state;ud_host_api *h=&p->host;
+    if (o->offset>INT64_MAX) return UD_INVALID;
+    const char *queries[]={NULL,
+        "SELECT current_database(),''::text,'catalog'::text,0::text,'f'::text,0::text,''::text,'f'::text LIMIT $2 OFFSET $3",
+        "SELECT nspname,''::text,'schema'::text,0::text,'f'::text,0::text,''::text,'f'::text FROM pg_namespace WHERE has_schema_privilege(oid,'USAGE') ORDER BY nspname LIMIT $2 OFFSET $3",
+        "SELECT table_name,table_schema,table_type,0::text,'f'::text,0::text,''::text,'f'::text FROM information_schema.tables WHERE ($1='' OR table_schema=$1) ORDER BY table_schema,table_name LIMIT $2 OFFSET $3",
+        "SELECT column_name,table_schema||'.'||table_name,data_type,ordinal_position::text,(is_nullable='YES')::text,0::text,''::text,'f'::text FROM information_schema.columns WHERE table_name=$1 OR table_schema||'.'||table_name=$1 ORDER BY ordinal_position LIMIT $2 OFFSET $3",
+        "SELECT k.column_name,k.table_schema||'.'||k.table_name,'primary_key'::text,k.ordinal_position::text,'f'::text,k.ordinal_position::text,''::text,'t'::text FROM information_schema.table_constraints c JOIN information_schema.key_column_usage k USING(constraint_catalog,constraint_schema,constraint_name) WHERE c.constraint_type='PRIMARY KEY' AND (k.table_name=$1 OR k.table_schema||'.'||k.table_name=$1) ORDER BY k.ordinal_position LIMIT $2 OFFSET $3",
+        "SELECT k.column_name,k.table_schema||'.'||k.table_name,'foreign_key'::text,k.ordinal_position::text,'t'::text,k.ordinal_position::text,u.table_schema||'.'||u.table_name||'.'||u.column_name,'f'::text FROM information_schema.table_constraints c JOIN information_schema.key_column_usage k USING(constraint_catalog,constraint_schema,constraint_name) JOIN information_schema.constraint_column_usage u USING(constraint_catalog,constraint_schema,constraint_name) WHERE c.constraint_type='FOREIGN KEY' AND (k.table_name=$1 OR k.table_schema||'.'||k.table_name=$1) ORDER BY k.constraint_name,k.ordinal_position LIMIT $2 OFFSET $3",
+        "SELECT indexname,schemaname||'.'||tablename,'index'::text,0::text,'f'::text,0::text,indexdef,(indexdef LIKE 'CREATE UNIQUE%')::text FROM pg_indexes WHERE (tablename=$1 OR schemaname||'.'||tablename=$1) AND has_table_privilege((quote_ident(schemaname)||'.'||quote_ident(tablename))::regclass,'SELECT') ORDER BY indexname LIMIT $2 OFFSET $3"};
+    if (o->kind<UD_METADATA_CATALOGS || o->kind>UD_METADATA_INDEXES) return UD_INVALID;
+    char *parent=plugin_string(h,o->parent.data?o->parent.data:"",o->parent.length);
+    if (!parent) return UD_RESOURCE;
+    char limit[32],offset[32];snprintf(limit,sizeof(limit),"%u",o->limit);snprintf(offset,sizeof(offset),"%llu",(unsigned long long)o->offset);
+    const char *args[]={parent,limit,offset};const Oid types[]={25,20,20};
+    PGresult *r=query(p,queries[o->kind],3,types,args,NULL,NULL,0);h->deallocate(parent);
+    if (!r || PQresultStatus(r)!=PGRES_TUPLES_OK) { ud_status status=pg_failure(p,r);PQclear(r);return status; }
+    ud_field fields[]={
+        {.name="name",.name_length=4,.type=UD_UTF8,.nullable=1},
+        {.name="parent",.name_length=6,.type=UD_UTF8,.nullable=1},
+        {.name="declared_type",.name_length=13,.type=UD_UTF8,.nullable=1},
+        {.name="ordinal",.name_length=7,.type=UD_INT64},
+        {.name="nullable",.name_length=8,.type=UD_BOOL},
+        {.name="key_order",.name_length=9,.type=UD_INT64},
+        {.name="reference",.name_length=9,.type=UD_UTF8,.nullable=1},
+        {.name="unique",.name_length=6,.type=UD_BOOL}};
+    ud_status status=h->batch_create(h->context,fields,8,(uint32_t)PQntuples(r),out);
+    for (int row=0;!status && row<PQntuples(r);row++) {
+        ud_value v[8]={{0}};
+        for (int i=0;i<8;i++) {
+            v[i].type=fields[i].type;v[i].is_null=fields[i].nullable && PQgetisnull(r,row,i);
+            const char *value=PQgetvalue(r,row,i);
+            if (fields[i].type==UD_UTF8) { v[i].text=value;v[i].text_length=(uint32_t)PQgetlength(r,row,i); }
+            else if (fields[i].type==UD_BOOL) v[i].integer=!strcmp(value,"t") || !strcmp(value,"true");
+            else v[i].integer=strtoll(value,NULL,10);
+        }
+        status=h->append(*out,v,8);
+    }
+    PQclear(r);return status;
+}
+static ud_status reset_session(void *state) {
+    postgres_state *p=state;
+    if (p->reading || p->transaction || p->broken || PQtransactionStatus(p->db)!=PQTRANS_IDLE)
+        return UD_CORRUPT;
+    p->cleaning=1;
+    ud_status status=command(p,"DISCARD ALL");
+    if (!status) status=session_settings(p);
+    p->cleaning=0;
+    return status;
 }
 static const ud_connector_api connector={sizeof(connector),UD_PLUGIN_ABI,
-    UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_SNAPSHOT|UD_CONNECT_EXECUTE_SQL,
-    test_connection,discover,open_read,next_read,close_read,write_batch,receipt,cancel_operation,execute_sql};
+    UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_SNAPSHOT|UD_CONNECT_EXECUTE_SQL|UD_CONNECT_TRANSACTION|UD_CONNECT_METADATA|UD_CONNECT_POOL,
+    test_connection,discover,open_read,next_read,close_read,write_batch,receipt,cancel_operation,execute_sql,
+    begin_transaction,commit_transaction,rollback_transaction,metadata,set_control,reset_session};
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version,ud_plugin_api *out) {
     if(version!=UD_PLUGIN_ABI || !out || out->struct_size!=sizeof(*out)) return UD_INCOMPATIBLE;
     *out=(ud_plugin_api){sizeof(*out),UD_PLUGIN_ABI,"org.universaldata.connector.postgresql","1.0.0",
-        UD_PLUGIN_CONNECTOR,UD_CAP_TRANSACTION,initialize,destroy,plugin_shutdown,&connector,NULL};
+        UD_PLUGIN_CONNECTOR,UD_CAP_TRANSACTION|UD_CAP_THREAD_SAFE,initialize,destroy,plugin_shutdown,&connector,NULL};
     return UD_OK;
 }
