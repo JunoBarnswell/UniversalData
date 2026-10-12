@@ -1,0 +1,81 @@
+{
+  "sourceTreeHash": "a53ffa1a38e753de22668ad95b4bab3aa8e26ccbd0965140e22a447c797ce179",
+  "checks": [
+    {
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python",
+        "scripts/c_syntax_check.py"
+      ],
+      "startedAt": "2026-10-11T20:29:50.857626+00:00",
+      "finishedAt": "2026-10-11T20:29:51.000348+00:00",
+      "exitCode": 0,
+      "sourceTreeHash": "a53ffa1a38e753de22668ad95b4bab3aa8e26ccbd0965140e22a447c797ce179",
+      "path": "docs/acceptance/evidence/static-1.txt",
+      "sha256": "4812d9df26beb35aa1819660379df614c6c8e0798b518d2292756abb999bff96",
+      "scope": "Static development check only; no SDK compilation or execution"
+    },
+    {
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python",
+        "scripts/language_syntax_check.py"
+      ],
+      "startedAt": "2026-10-11T20:29:51.000800+00:00",
+      "finishedAt": "2026-10-11T20:29:51.053505+00:00",
+      "exitCode": 0,
+      "sourceTreeHash": "a53ffa1a38e753de22668ad95b4bab3aa8e26ccbd0965140e22a447c797ce179",
+      "path": "docs/acceptance/evidence/static-2.txt",
+      "sha256": "b5e4e51d6d629fdb0b6dbb3f38a61281ed72bb1a532c7e7b3404776ea29b62e7",
+      "scope": "Static development check only; no SDK compilation or execution"
+    },
+    {
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python",
+        "scripts/static_check.py"
+      ],
+      "startedAt": "2026-10-11T20:29:51.053856+00:00",
+      "finishedAt": "2026-10-11T20:29:51.624497+00:00",
+      "exitCode": 0,
+      "sourceTreeHash": "a53ffa1a38e753de22668ad95b4bab3aa8e26ccbd0965140e22a447c797ce179",
+      "path": "docs/acceptance/evidence/static-3.txt",
+      "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000",
+      "scope": "Static development check only; no SDK compilation or execution"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "startedAt": "2026-10-11T20:29:51.625048+00:00",
+      "finishedAt": "2026-10-11T20:29:51.634640+00:00",
+      "exitCode": 0,
+      "sourceTreeHash": "a53ffa1a38e753de22668ad95b4bab3aa8e26ccbd0965140e22a447c797ce179",
+      "path": "docs/acceptance/evidence/static-4.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "scope": "Static development check only; no SDK compilation or execution"
+    },
+    {
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python",
+        "scripts/release_guard.py"
+      ],
+      "startedAt": "2026-10-11T20:29:51.634950+00:00",
+      "finishedAt": "2026-10-11T20:29:51.677435+00:00",
+      "exitCode": 1,
+      "sourceTreeHash": "a53ffa1a38e753de22668ad95b4bab3aa8e26ccbd0965140e22a447c797ce179",
+      "path": "docs/acceptance/evidence/release-guard.txt",
+      "sha256": "6fb64314d8bd159802a7b6a3758c04157e213325bc748d437d2c3983cc759166",
+      "scope": "Release guard state only; no SDK execution"
+    }
+  ],
+  "compilerInvoked": false,
+  "sdkOrTestExecuted": false,
+  "runtimeAcceptance": "NotRun",
+  "releaseEligible": false,
+  "syntaxToolVersions": {
+    "tree-sitter": "0.25.2",
+    "tree-sitter-c": "0.24.1",
+    "tree-sitter-c-sharp": "0.23.1",
+    "tree-sitter-java": "0.23.5"
+  }
+}

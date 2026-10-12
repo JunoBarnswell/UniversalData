@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>UniversalData</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Description>Component-first native data SDK: recoverable CSV processing.</Description>
     <RepositoryUrl>https://github.com/JunoBarnswell/UniversalData</RepositoryUrl>

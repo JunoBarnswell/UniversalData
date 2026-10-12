@@ -140,6 +140,10 @@ static ud_status parquet_write(duck_state *p, const ud_batch *b, const char *pat
     if (!b || !n)
         return UD_INVALID;
     ud_host_api *h = &p->host;
+    for (uint32_t j=0;j<h->columns(b);j++) {
+        ud_field f;h->field(b,j,&f);
+        if(f.type>UD_UTF8) return UD_UNSUPPORTED;
+    }
     ud_status s = command(p, "BEGIN TRANSACTION");
     if (s)
         return s;
@@ -282,17 +286,18 @@ static void destroy(void *ptr) {
     p->host.deallocate(p);
 }
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
-    if (version != 1 || !out || out->struct_size < sizeof(*out))
+    if (version != UD_PLUGIN_ABI || !out || out->struct_size < sizeof(*out))
         return UD_INCOMPATIBLE;
     *out = (ud_plugin_api){sizeof(*out),
-                           1,
+                           UD_PLUGIN_ABI,
                            "org.universaldata.backend.duckdb",
-                           "0.1.0",
+                           "0.2.0",
                            UD_PLUGIN_BACKEND | UD_PLUGIN_FORMAT,
                            UD_CAP_SQL | UD_CAP_PARQUET,
                            initialize,
                            execute,
                            destroy,
-                           plugin_shutdown};
+                           plugin_shutdown,
+                           NULL};
     return UD_OK;
 }

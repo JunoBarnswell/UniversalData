@@ -12,18 +12,18 @@ int main(int argc, char **argv) {
     int phase = argc > 3 ? atoi(argv[3]) : 0;
     const char *mode = argc > 4 ? argv[4] : "";
     ud_context *ctx = NULL;
-    ud_context_options co = {sizeof(co), 1,    !strcmp(mode, "quota") ? 8192 : 64 * 1024 * 1024,
+    ud_context_options co = {sizeof(co), UD_ABI_VERSION,    !strcmp(mode, "quota") ? 8192 : 64 * 1024 * 1024,
                              NULL,       NULL, NULL};
     ud_status s = ud_context_create(&co, &ctx);
     ud_job *j = NULL;
-    const char *schema = "team utf8 required\namount int64 nullable\n";
+    const char *schema = UD_SCHEMA_HEADER "team utf8 required\namount int64 nullable\n";
     const char *plan = !strcmp(mode, "changed")
-                           ? "filter amount ge 1\ngroup team\nsum amount total\ncount * rows\n"
-                           : "filter amount ge 0\nproject team amount\ngroup team\nsum amount "
+                           ? UD_PLAN_HEADER "filter amount ge 1\ngroup team\nsum amount total\ncount * rows\n"
+                           : UD_PLAN_HEADER "filter amount ge 0\nproject team amount\ngroup team\nsum amount "
                              "total\ncount * rows\n";
     ud_job_options o = {0};
     o.struct_size = sizeof(o);
-    o.abi_version = 1;
+    o.abi_version = UD_ABI_VERSION;
     o.input_directory = argv[1];
     o.state_directory = argv[2];
     o.schema = schema;

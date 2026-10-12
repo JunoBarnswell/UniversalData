@@ -20,7 +20,7 @@ static ud_status merge(ud_context *c, char **inputs, uint32_t count, const char 
                        const ud_field *fields, uint32_t columns, uint32_t key, int desc) {
     cursor streams[8] = {{0}};
     ud_csv_writer *writer = NULL;
-    ud_csv_options options = {sizeof(options), 1, 1, "\\N", 2};
+    ud_csv_options options = {sizeof(options), UD_ABI_VERSION, 1, "\\N", 2};
     ud_status s = ud_csv_writer_open(c, out, fields, columns, "\\N", &writer);
     for (uint32_t i = 0; !s && i < count; i++) {
         s = ud_csv_open(c, inputs[i], fields, columns, &options, &streams[i].reader);
@@ -82,7 +82,7 @@ ud_status ud_query_sort_csv(ud_context *c, const char *input, const char *output
         ud_unlock(lock);
         return ud_fail(c, UD_INVALID, "external sort destination must not exist");
     }
-    ud_csv_options options = {sizeof(options), 1, run_rows, "\\N", 2};
+    ud_csv_options options = {sizeof(options), UD_ABI_VERSION, run_rows, "\\N", 2};
     ud_csv_reader *reader = NULL;
     s = ud_csv_open(c, input, p->fields, p->n, &options, &reader);
     char **runs = NULL;

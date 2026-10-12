@@ -23,7 +23,7 @@ int32_t ud_truth_not(int32_t a) {
 int ud_value_compare(const ud_value *a, const ud_value *b) {
     if (a->is_null || b->is_null)
         return a->is_null == b->is_null ? 0 : a->is_null ? -1 : 1;
-    if (a->type == UD_UTF8) {
+    if (a->type == UD_UTF8 || a->type == UD_BINARY) {
         uint32_t n = a->text_length < b->text_length ? a->text_length : b->text_length;
         int v = n ? memcmp(a->text, b->text, n) : 0;
         return v ? (v > 0 ? 1 : -1)
@@ -31,6 +31,16 @@ int ud_value_compare(const ud_value *a, const ud_value *b) {
     }
     if (a->type == UD_FLOAT64)
         return (a->real > b->real) - (a->real < b->real);
+    if (a->type == UD_DECIMAL128)
+        return ud_decimal_compare(a->decimal, b->decimal);
+    if (a->type >= UD_STRUCT) {
+        uint32_t count = a->child_count < b->child_count ? a->child_count : b->child_count;
+        for (uint32_t j = 0; j < count; j++) {
+            int cmp = ud_value_compare(a->children + j, b->children + j);
+            if (cmp) return cmp;
+        }
+        return (a->child_count > b->child_count) - (a->child_count < b->child_count);
+    }
     return (a->integer > b->integer) - (a->integer < b->integer);
 }
 static char *token(char **cursor) {
@@ -93,6 +103,11 @@ static ud_status parse_schema(ud_plan *p, char *text) {
                     : !strcmp(type, "int64")   ? UD_INT64
                     : !strcmp(type, "float64") ? UD_FLOAT64
                     : !strcmp(type, "utf8")    ? UD_UTF8
+                    : !strcmp(type, "date32")  ? UD_DATE32
+                    : !strcmp(type, "time64")  ? UD_TIME64
+                    : !strcmp(type, "binary")  ? UD_BINARY
+                    : !strncmp(type, "decimal(", 8) ? UD_DECIMAL128
+                    : !strncmp(type, "timestamp(", 10) ? UD_TIMESTAMP
                                                : 0;
         if (!t || (strcmp(nullable, "nullable") && strcmp(nullable, "required")))
             return UD_SCHEMA;
@@ -105,6 +120,18 @@ static ud_status parse_schema(ud_plan *p, char *text) {
         f->type = t;
         f->nullable = !strcmp(nullable, "nullable");
         p->n++;
+        if (t == UD_DECIMAL128) {
+            int pos = 0;
+            if (sscanf(type, "decimal(%d,%d)%n", &f->precision, &f->scale, &pos) != 2 ||
+                type[pos] || f->precision < 1 || f->precision > 38 || f->scale < -38 || f->scale > 38)
+                return UD_SCHEMA;
+        } else if (t == UD_TIMESTAMP) {
+            size_t len = strlen(type);
+            if (len < 12 || type[len - 1] != ')') return UD_SCHEMA;
+            f->timezone_length = (uint32_t)(len - 11);
+            f->timezone = ud_strdup_n(p->ctx, type + 10, f->timezone_length);
+            if (!f->timezone) return UD_RESOURCE;
+        }
         line = end;
     }
     return p->n ? UD_OK : UD_SCHEMA;
@@ -164,12 +191,12 @@ static ud_status parse_commands(ud_plan *p, char *text) {
                 if (!strcmp(cursor, "\\N"))
                     pred.value.is_null = 1;
                 else
-                    UD_TRY(ud_value_parse(p->ctx, pred.value.type, cursor, (uint32_t)len,
-                                          &pred.value));
+                    UD_TRY(ud_value_parse_field(p->ctx, p->fields + col, cursor, (uint32_t)len,
+                                                UD_ROUND_EXACT, &pred.value));
             } else if (len)
                 return UD_PARSE;
             UD_TRY(grow(p->ctx, (void **)&p->predicates, p->predicate_n, sizeof(pred)));
-            if (pred.value.type == UD_UTF8 && !pred.value.is_null && kind < 6) {
+            if ((pred.value.type == UD_UTF8 || pred.value.type == UD_BINARY) && !pred.value.is_null && kind < 6) {
                 pred.value.text = ud_strdup_n(p->ctx, cursor, len);
                 if (!pred.value.text)
                     return UD_RESOURCE;
@@ -190,7 +217,7 @@ static ud_status parse_commands(ud_plan *p, char *text) {
             else if (index < 0)
                 return UD_SCHEMA;
             if (kind == 1 && p->fields[index].type != UD_INT64 &&
-                p->fields[index].type != UD_FLOAT64)
+                p->fields[index].type != UD_FLOAT64 && p->fields[index].type != UD_DECIMAL128)
                 return UD_UNSUPPORTED;
             for (uint32_t i = 0; i < p->agg_n; i++)
                 if (!strcmp(p->aggs[i].name, alias))
@@ -242,6 +269,10 @@ ud_status ud_plan_create(ud_context *ctx, const char *schema, uint32_t sn, const
         (cn && memchr(commands, 0, cn)) || !ud_utf8_valid(schema, sn) ||
         !ud_utf8_valid(commands, cn))
         return UD_INVALID;
+    size_t schema_header = sizeof(UD_SCHEMA_HEADER) - 1, plan_header = sizeof(UD_PLAN_HEADER) - 1;
+    if (sn < schema_header || memcmp(schema, UD_SCHEMA_HEADER, schema_header) ||
+        cn < plan_header || memcmp(commands, UD_PLAN_HEADER, plan_header))
+        return ud_fail(ctx, UD_INCOMPATIBLE, "schema / plan document requires explicit version 2 header");
     ud_plan *p = ud_alloc(ctx, sizeof(*p));
     if (!p)
         return UD_RESOURCE;
@@ -251,9 +282,9 @@ ud_status ud_plan_create(ud_context *ctx, const char *schema, uint32_t sn, const
     char *s = ud_strdup_n(ctx, schema, sn), *c = ud_strdup_n(ctx, commands ? commands : "", cn);
     ud_status code = UD_RESOURCE;
     if (s && c && p->schema_text && p->commands) {
-        code = parse_schema(p, s);
+        code = parse_schema(p, s + schema_header);
         if (!code)
-            code = parse_commands(p, c);
+            code = parse_commands(p, c + plan_header);
     }
     ud_free(s);
     ud_free(c);
@@ -276,10 +307,12 @@ ud_status ud_plan_create(ud_context *ctx, const char *schema, uint32_t sn, const
 void ud_plan_destroy(ud_plan *p) {
     if (!p)
         return;
-    for (uint32_t i = 0; i < p->n; i++)
+    for (uint32_t i = 0; !p->schema_owner && i < p->n; i++) {
         ud_free((void *)p->fields[i].name);
+        ud_free((void *)p->fields[i].timezone);
+    }
     for (uint32_t i = 0; i < p->predicate_n; i++)
-        if (p->predicates[i].value.type == UD_UTF8)
+        if ((p->predicates[i].value.type == UD_UTF8 || p->predicates[i].value.type == UD_BINARY))
             ud_free((void *)p->predicates[i].value.text);
     for (uint32_t i = 0; i < p->agg_n; i++)
         ud_free(p->aggs[i].name);
@@ -290,7 +323,42 @@ void ud_plan_destroy(ud_plan *p) {
     ud_free(p->aggs);
     ud_free(p->schema_text);
     ud_free(p->commands);
+    ud_batch_destroy(p->schema_owner);
     ud_free(p);
+}
+ud_status ud_plan_create_fields(ud_context *ctx, uint32_t version, const ud_field *fields,
+                                 uint32_t columns, const char *commands, uint32_t length,
+                                 ud_plan **out) {
+    if (!out) return UD_INVALID;
+    *out = NULL;
+    if (version != UD_PLAN_VERSION) return UD_INCOMPATIBLE;
+    if (!ctx || (!commands && length) || (length && memchr(commands, 0, length)) ||
+        !ud_utf8_valid(commands, length)) return UD_INVALID;
+    ud_plan *p = ud_alloc(ctx, sizeof(*p));
+    if (!p) return UD_RESOURCE;
+    p->ctx = ctx;
+    ud_status s = ud_batch_create(ctx, fields, columns, 0, &p->schema_owner);
+    if (!s) {
+        p->fields = ud_alloc(ctx, columns * sizeof(*p->fields));
+        if (!p->fields) s = UD_RESOURCE;
+        else {
+            p->n = columns;
+            for (uint32_t j = 0; j < columns; j++) ud_batch_field(p->schema_owner, j, p->fields + j);
+        }
+    }
+    p->commands = ud_strdup_n(ctx, commands ? commands : "", length);
+    char *copy = ud_strdup_n(ctx, commands ? commands : "", length);
+    if (!s && (!p->commands || !copy)) s = UD_RESOURCE;
+    if (!s) s = parse_commands(p, copy);
+    ud_free(copy);
+    ud_bytes wire = {.ctx=ctx};
+    if (!s) s = ud_put_u64(&wire, UD_PLAN_VERSION);
+    if (!s) s = ud_encode_batch(&wire, p->schema_owner);
+    if (!s) s = ud_put_string(&wire, commands, length);
+    if (!s) ud_hash(wire.data, wire.size, p->fingerprint);
+    ud_bytes_clear(&wire);
+    if (s) { ud_plan_destroy(p); return s; }
+    *out = p; return UD_OK;
 }
 ud_status ud_plan_schema(const ud_plan *p, const ud_field **f, uint32_t *n) {
     if (!p || !f || !n)
@@ -309,9 +377,7 @@ ud_status ud_plan_check_batch(const ud_plan *p, const ud_batch *b) {
     for (uint32_t i = 0; i < p->n; i++) {
         ud_field f;
         ud_batch_field(b, i, &f);
-        if (f.type != p->fields[i].type || f.nullable != p->fields[i].nullable ||
-            f.name_length != p->fields[i].name_length ||
-            memcmp(f.name, p->fields[i].name, f.name_length))
+        if (!ud_field_equal(&f, p->fields + i, 1))
             return ud_fail(p->ctx, UD_SCHEMA, "input schema mismatch at column %u", i);
     }
     return UD_OK;
@@ -362,20 +428,14 @@ ud_status ud_plan_accept(const ud_plan *p, const ud_batch *b, uint32_t row, int 
     return UD_OK;
 }
 static ud_status own_value(ud_context *ctx, ud_value *target, const ud_value *source) {
-    *target = *source;
-    if (source->type == UD_UTF8 && !source->is_null) {
-        target->text = ud_strdup_n(ctx, source->text, source->text_length);
-        if (!target->text)
-            return UD_RESOURCE;
-    }
-    return UD_OK;
+    ud_status s = ud_copy_value(ctx, source, target, 0);
+    if (s) ud_clear_value(target);
+    return s;
 }
 static void clear_values(ud_value *v, uint32_t n) {
     if (!v)
         return;
-    for (uint32_t i = 0; i < n; i++)
-        if (v[i].type == UD_UTF8)
-            ud_free((void *)v[i].text);
+    for (uint32_t i = 0; i < n; i++) ud_clear_value(v + i);
     ud_free(v);
 }
 static ud_status new_group(ud_accumulator *a, const ud_batch *b, uint32_t row, group **out) {
@@ -405,6 +465,10 @@ static ud_status new_group(ud_accumulator *a, const ud_batch *b, uint32_t row, g
         ud_value *v = g->values + p->key_n + i;
         v->type = p->aggs[i].kind == 0 ? UD_INT64 : p->fields[p->aggs[i].column].type;
         v->is_null = p->aggs[i].kind != 0;
+        if (p->aggs[i].kind != 0) {
+            v->precision = p->fields[p->aggs[i].column].precision;
+            v->scale = p->fields[p->aggs[i].column].scale;
+        }
     }
     if (a->tail)
         a->tail->next = g;
@@ -479,10 +543,12 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b) {
                     return UD_OVERFLOW;
                 v->integer++;
             } else if (v->is_null) {
-                ud_free(v->type == UD_UTF8 ? (void *)v->text : NULL);
+                ud_clear_value(v);
                 UD_TRY(own_value(p->ctx, v, &input));
             } else if (def->kind == 1) {
-                if (v->type == UD_INT64) {
+                if (v->type == UD_DECIMAL128) {
+                    UD_TRY(ud_decimal_add(v->decimal, input.decimal, v->precision, &v->decimal));
+                } else if (v->type == UD_INT64) {
                     if ((input.integer > 0 && v->integer > INT64_MAX - input.integer) ||
                         (input.integer < 0 && v->integer < INT64_MIN - input.integer))
                         return ud_fail(p->ctx, UD_OVERFLOW, "SUM int64 overflow");
@@ -498,8 +564,7 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b) {
                 if ((def->kind == 2 && cmp < 0) || (def->kind == 3 && cmp > 0)) {
                     ud_value replacement;
                     UD_TRY(own_value(p->ctx, &replacement, &input));
-                    if (v->type == UD_UTF8)
-                        ud_free((void *)v->text);
+                    ud_clear_value(v);
                     *v = replacement;
                 }
             }
@@ -527,6 +592,14 @@ static ud_status output_fields(const ud_plan *p, ud_field **out, uint32_t *n) {
         (*out)[p->key_n + i] =
             (ud_field){a->name, (uint32_t)strlen(a->name),
                        a->kind == 0 ? UD_INT64 : p->fields[a->column].type, a->kind != 0};
+        if (a->kind != 0) {
+            (*out)[p->key_n + i].precision = p->fields[a->column].precision;
+            (*out)[p->key_n + i].scale = p->fields[a->column].scale;
+            (*out)[p->key_n + i].timezone = p->fields[a->column].timezone;
+            (*out)[p->key_n + i].timezone_length = p->fields[a->column].timezone_length;
+            (*out)[p->key_n + i].children = p->fields[a->column].children;
+            (*out)[p->key_n + i].child_count = p->fields[a->column].child_count;
+        }
     }
     return UD_OK;
 }
@@ -559,8 +632,7 @@ ud_status ud_accumulator_restore(ud_accumulator *a, const ud_batch *b) {
     for (uint32_t i = 0; !s && i < n; i++) {
         ud_field f;
         ud_batch_field(b, i, &f);
-        if (f.type != fields[i].type || f.nullable != fields[i].nullable ||
-            f.name_length != fields[i].name_length || memcmp(f.name, fields[i].name, f.name_length))
+        if (!ud_field_equal(&f, fields + i, 1))
             s = UD_CORRUPT;
     }
     ud_free(fields);

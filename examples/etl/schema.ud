@@ -1,2 +1,3 @@
+ud-schema 2
 team utf8 required
 amount int64 nullable

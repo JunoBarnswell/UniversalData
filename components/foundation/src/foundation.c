@@ -26,13 +26,14 @@ static void default_free(void *user, void *p) {
     free(p);
 }
 const char *ud_version(void) {
-    return "0.1.0";
+    return "0.2.0";
 }
 const char *ud_status_name(ud_status s) {
     static const char *names[] = {"ok",           "end",   "invalid",    "io",        "resource",
                                   "schema",       "parse", "overflow",   "cancelled", "corrupt",
-                                  "incompatible", "busy",  "unsupported"};
-    return s >= 0 && s < 13 ? names[s] : "unknown";
+                                  "incompatible", "busy",  "unsupported", "auth", "quality", "transient",
+                                  "commit_unknown", "fenced"};
+    return s >= 0 && s < 18 ? names[s] : "unknown";
 }
 const char *ud_error(const ud_context *ctx) {
     return ctx ? ctx->error : "no context";
@@ -54,17 +55,14 @@ ud_status ud_context_create(const ud_context_options *options, ud_context **out)
         (options->struct_size < sizeof(*options) || options->abi_version != UD_ABI_VERSION ||
          (!!options->allocate != !!options->deallocate)))
         return UD_INCOMPATIBLE;
-    ud_context *c = calloc(1, sizeof(*c));
+    ud_context_options effective={0};
+    if(options) effective=*options;
+    if(!effective.memory_limit) effective.memory_limit=UINT64_C(268435456);
+    if(!effective.allocate) { effective.allocate=default_alloc;effective.deallocate=default_free; }
+    ud_context *c = effective.allocate(effective.allocator_user,sizeof(*c));
     if (!c)
         return UD_RESOURCE;
-    if (options)
-        c->options = *options;
-    if (!c->options.memory_limit)
-        c->options.memory_limit = UINT64_C(268435456);
-    if (!c->options.allocate) {
-        c->options.allocate = default_alloc;
-        c->options.deallocate = default_free;
-    }
+    memset(c,0,sizeof(*c));c->options=effective;
     atomic_init(&c->used, 0);
     atomic_init(&c->cancelled, 0);
     *out = c;
@@ -75,7 +73,8 @@ ud_status ud_context_destroy(ud_context *c) {
         return UD_OK;
     if (atomic_load(&c->used))
         return ud_fail(c, UD_BUSY, "context has live allocations");
-    free(c);
+    void *user=c->options.allocator_user;ud_deallocate_fn deallocate=c->options.deallocate;
+    deallocate(user,c);
     return UD_OK;
 }
 uint64_t ud_memory_used(const ud_context *c) {
@@ -170,6 +169,7 @@ ud_status ud_bytes_put(ud_bytes *b, const void *p, size_t n) {
     if (n > SIZE_MAX - b->size)
         return UD_OVERFLOW;
     size_t need = b->size + n;
+    if(b->limit && need>b->limit) return ud_fail(b->ctx,UD_RESOURCE,"buffer byte limit exceeded");
     if (need > b->capacity) {
         size_t cap = b->capacity ? b->capacity : 256;
         while (cap < need) {
@@ -263,92 +263,4 @@ ud_status ud_write_file(ud_context *c, const char *path, const void *p, size_t n
     if (fclose(f) && !s)
         s = UD_IO;
     return s ? ud_fail(c, s, "write failed: %s", path) : UD_OK;
-}
-ud_status ud_value_parse(ud_context *c, ud_type type, const char *text, uint32_t n, ud_value *out) {
-    if (!out || !text || !ud_utf8_valid(text, n))
-        return ud_fail(c, UD_PARSE, "invalid UTF-8 value");
-    memset(out, 0, sizeof(*out));
-    out->type = type;
-    if (type == UD_UTF8) {
-        out->text = text;
-        out->text_length = n;
-        return UD_OK;
-    }
-    if (!n || memchr(text, 0, n))
-        return ud_fail(c, UD_PARSE, "empty or NUL numeric value");
-    if (type == UD_BOOL) {
-        if ((n == 4 && !memcmp(text, "true", 4)) || (n == 1 && *text == '1'))
-            out->integer = 1;
-        else if (!((n == 5 && !memcmp(text, "false", 5)) || (n == 1 && *text == '0')))
-            return ud_fail(c, UD_PARSE, "invalid boolean");
-        return UD_OK;
-    }
-    if (type == UD_INT64) {
-        uint32_t i = 0;
-        int neg = text[0] == '-';
-        if (neg || text[0] == '+')
-            i++;
-        if (i == n)
-            return UD_PARSE;
-        uint64_t v = 0, limit = neg ? (uint64_t)INT64_MAX + 1 : INT64_MAX;
-        for (; i < n; i++) {
-            unsigned d = (unsigned char)text[i] - '0';
-            if (d > 9)
-                return ud_fail(c, UD_PARSE, "invalid int64");
-            if (v > (limit - d) / 10)
-                return ud_fail(c, UD_OVERFLOW, "int64 overflow");
-            v = v * 10 + d;
-        }
-        out->integer = neg ? (v == (uint64_t)INT64_MAX + 1 ? INT64_MIN : -(int64_t)v) : (int64_t)v;
-        return UD_OK;
-    }
-    if (type != UD_FLOAT64)
-        return ud_fail(c, UD_UNSUPPORTED, "unsupported type %d", type);
-    /* Explicit decimal grammar; locale-independent conversion, finite values only. */
-    uint32_t i = 0;
-    int sign = 1;
-    if (text[i] == '-' || text[i] == '+') {
-        if (text[i] == '-')
-            sign = -1;
-        i++;
-    }
-    long double v = 0;
-    int frac = 0, exp = 0, exp_sign = 1, digits = 0;
-    while (i < n && text[i] >= '0' && text[i] <= '9') {
-        v = v * 10 + (text[i++] - '0');
-        digits++;
-    }
-    if (i < n && text[i] == '.') {
-        i++;
-        while (i < n && text[i] >= '0' && text[i] <= '9') {
-            v = v * 10 + (text[i++] - '0');
-            frac++;
-            digits++;
-        }
-    }
-    if (!digits)
-        return UD_PARSE;
-    if (i < n && (text[i] == 'e' || text[i] == 'E')) {
-        i++;
-        if (i < n && (text[i] == '+' || text[i] == '-')) {
-            if (text[i] == '-')
-                exp_sign = -1;
-            i++;
-        }
-        uint32_t start = i;
-        while (i < n && text[i] >= '0' && text[i] <= '9') {
-            if (exp < 100000)
-                exp = exp * 10 + (text[i] - '0');
-            i++;
-        }
-        if (start == i)
-            return UD_PARSE;
-    }
-    if (i != n)
-        return ud_fail(c, UD_PARSE, "invalid float64");
-    long double result = sign * v * powl(10.0L, exp_sign * exp - frac);
-    out->real = (double)result;
-    if (!isfinite(out->real) || (v != 0 && out->real == 0))
-        return ud_fail(c, UD_OVERFLOW, "float64 range exceeded");
-    return UD_OK;
 }

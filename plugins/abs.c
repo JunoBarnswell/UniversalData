@@ -53,17 +53,18 @@ static void destroy(void *p) {
     }
 }
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
-    if (version != 1 || !out || out->struct_size < sizeof(*out))
+    if (version != UD_PLUGIN_ABI || !out || out->struct_size < sizeof(*out))
         return UD_INCOMPATIBLE;
     *out = (ud_plugin_api){sizeof(*out),
-                           1,
+                           UD_PLUGIN_ABI,
                            "org.universaldata.function.abs",
-                           "0.1.0",
+                           "0.2.0",
                            UD_PLUGIN_FUNCTION,
                            UD_CAP_SCALAR,
                            initialize,
                            execute,
                            destroy,
-                           plugin_shutdown};
+                           plugin_shutdown,
+                           NULL};
     return UD_OK;
 }

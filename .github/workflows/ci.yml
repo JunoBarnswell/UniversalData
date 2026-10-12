@@ -51,15 +51,28 @@ jobs:
         run: |
           dotnet build examples/dotnet/Consumer.csproj --nologo --verbosity:minimal
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet build examples/dotnet-data/DataConsumer.csproj --nologo --verbosity:minimal
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet build examples/dotnet-run/RunConsumer.csproj --nologo --verbosity:minimal
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           mvn -q -f bindings/java/pom.xml package
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force build/java | Out-Null
-          javac -encoding UTF-8 -cp bindings/java/target/universal-data-0.1.0.jar -d build/java examples/java/Consumer.java
+          javac -encoding UTF-8 -cp bindings/java/target/universal-data-0.2.0.jar -d build/java examples/java/Consumer.java examples/java/DataConsumer.java examples/java/RunConsumer.java
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cmake --install build/full --config Debug --prefix build/install
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $native = if ($IsWindows) { 'build/install/bin' } else { 'build/install/lib' }
-          python scripts/smoke_bindings.py --native-dir $native --dotnet-dll examples/dotnet/bin/Debug/net8.0/Consumer.dll --java-classes build/java --java-jar bindings/java/target/universal-data-0.1.0.jar
+          python scripts/smoke_bindings.py --native-dir $native --dotnet-dll examples/dotnet/bin/Debug/net8.0/Consumer.dll --java-classes build/java --java-jar bindings/java/target/universal-data-0.2.0.jar
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $nativePath = (Resolve-Path $native).Path
+          if ($IsWindows) { $env:PATH = "$nativePath;$env:PATH" }
+          else { $env:LD_LIBRARY_PATH = "$nativePath`:$env:LD_LIBRARY_PATH" }
+          $dataRunner = if ($IsWindows) { 'build/full/tests/Debug/data_runner.exe' } else { 'build/full/tests/data_runner' }
+          $runRunner = if ($IsWindows) { 'build/full/tests/Debug/run_runner.exe' } else { 'build/full/tests/run_runner' }
+          python tests/data_parity.py $dataRunner dotnet examples/dotnet-data/bin/Debug/net8.0/DataConsumer.dll java build/java bindings/java/target/universal-data-0.2.0.jar
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python tests/run_parity.py $runRunner dotnet examples/dotnet-run/bin/Debug/net8.0/RunConsumer.dll java build/java bindings/java/target/universal-data-0.2.0.jar $nativePath
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Static contracts
         run: python scripts/static_check.py

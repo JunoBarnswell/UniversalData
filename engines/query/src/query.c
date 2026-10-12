@@ -117,7 +117,8 @@ ud_status ud_query_inner_join(ud_context *c, const ud_batch *left, uint32_t lk,
     ud_field a, b;
     ud_batch_field(left, lk, &a);
     ud_batch_field(right, rk, &b);
-    if (a.type != b.type)
+    b.nullable = a.nullable;
+    if (!ud_field_equal(&a, &b, 0))
         return UD_SCHEMA;
     uint32_t ln = ud_batch_columns(left), rn = ud_batch_columns(right), n = ln + rn;
     if (n < ln || n > 65536)

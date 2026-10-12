@@ -1,0 +1,818 @@
+{
+  "baselineVersion": 1,
+  "source": "session-user-checklist",
+  "originalAttachmentAvailable": false,
+  "requirements": [
+    {
+      "id": "D01",
+      "domain": "01",
+      "name": "连接管理",
+      "phases": [
+        "B"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_connection_open",
+        "ud_connection_test"
+      ],
+      "implementation": [
+        "include/ud/connector.h",
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "cases": [
+        "B01",
+        "B02"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D02",
+      "domain": "02",
+      "name": "Schema 与权限发现",
+      "phases": [
+        "B"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_connection_discover"
+      ],
+      "implementation": [
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "cases": [
+        "B01",
+        "B02"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D03",
+      "domain": "03",
+      "name": "流式抽取与分页分片",
+      "phases": [
+        "B"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_connection_read_open",
+        "ud_connection_read_next",
+        "ud_connection_read_close",
+        "ud_json_reader_open",
+        "ud_json_reader_next",
+        "ud_run_create",
+        "ud_run_execute"
+      ],
+      "implementation": [
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c",
+        "include/ud/format.h",
+        "components/data/src/json.c",
+        "include/ud/run.h",
+        "engines/etl/src/run.c"
+      ],
+      "cases": [
+        "B01",
+        "S01"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D04",
+      "domain": "04",
+      "name": "增量同步",
+      "phases": [
+        "D"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_connection_write"
+      ],
+      "implementation": [
+        "plugins/sqlite.c",
+        "plugins/postgresql.c",
+        "tests/connector_sqlite.c"
+      ],
+      "cases": [
+        "D01",
+        "S02"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D05",
+      "domain": "05",
+      "name": "扩展数据模型",
+      "phases": [
+        "A"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_value_parse_field",
+        "ud_batch_create",
+        "ud_batch_cast",
+        "ud_decimal_parse",
+        "ud_batch_from_json",
+        "ud_batch_to_json",
+        "ud_schema_from_json",
+        "ud_schema_to_json",
+        "ud_batch_from_json_schema",
+        "ud_batch_cast_schema"
+      ],
+      "implementation": [
+        "components/data/src/types.c",
+        "components/data/src/columnar.c",
+        "tests/types.c",
+        "tests/nested.c",
+        "components/data/src/json.c",
+        "components/data/src/schema_json.c"
+      ],
+      "cases": [
+        "A01",
+        "A02",
+        "A03"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D06",
+      "domain": "06",
+      "name": "字段转换",
+      "phases": [
+        "C"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_compute_map",
+        "ud_batch_cast"
+      ],
+      "implementation": [
+        "components/compute/src/mapping.c",
+        "components/data/src/types.c",
+        "tests/mapping.c"
+      ],
+      "cases": [
+        "C01",
+        "S01"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D07",
+      "domain": "07",
+      "name": "表达式与条件",
+      "phases": [
+        "C"
+      ],
+      "status": "Planned",
+      "interfaces": [],
+      "implementation": [],
+      "cases": [
+        "C01"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D08",
+      "domain": "08",
+      "name": "Join、排序与聚合",
+      "phases": [
+        "C"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_value_compare",
+        "ud_query_inner_join",
+        "ud_query_aggregate_ndjson",
+        "ud_query_join_ndjson"
+      ],
+      "implementation": [
+        "components/compute/src/compute.c",
+        "engines/query/src/query.c",
+        "engines/query/src/external.c",
+        "include/ud/query.h"
+      ],
+      "cases": [
+        "C02",
+        "H04",
+        "S04"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D09",
+      "domain": "09",
+      "name": "事务加载",
+      "phases": [
+        "B"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_connection_write"
+      ],
+      "implementation": [
+        "plugins/sqlite.c",
+        "plugins/postgresql.c",
+        "tests/connector_sqlite.c"
+      ],
+      "cases": [
+        "B01",
+        "B03",
+        "D01",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D10",
+      "domain": "10",
+      "name": "DAG 执行",
+      "phases": [
+        "D"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_dag_create",
+        "ud_dag_build",
+        "ud_dag_bind",
+        "ud_dag_topology",
+        "ud_run_create",
+        "ud_run_start",
+        "ud_run_wait",
+        "ud_run_cancel",
+        "ud_run_node_state"
+      ],
+      "implementation": [
+        "include/ud/dag.h",
+        "engines/etl/src/dag.c",
+        "include/ud/run.h",
+        "engines/etl/src/run.c"
+      ],
+      "cases": [
+        "D02",
+        "H04"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D11",
+      "domain": "11",
+      "name": "数据质量",
+      "phases": [
+        "C"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_quality_create",
+        "ud_quality_apply",
+        "ud_quality_finish",
+        "ud_regex_compile",
+        "ud_regex_test",
+        "ud_quarantine_open",
+        "ud_quarantine_write",
+        "ud_quarantine_read"
+      ],
+      "implementation": [
+        "components/compute/src/quality.c",
+        "tests/quality.c",
+        "include/ud/regex.h",
+        "components/compute/src/regex.c",
+        "include/ud/quarantine.h",
+        "engines/etl/src/quarantine.c"
+      ],
+      "cases": [
+        "C03",
+        "S02"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D12",
+      "domain": "12",
+      "name": "错误处理与隔离",
+      "phases": [
+        "D"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_quality_apply",
+        "ud_status_name"
+      ],
+      "implementation": [
+        "components/compute/src/quality.c",
+        "components/foundation/src/foundation.c"
+      ],
+      "cases": [
+        "C03",
+        "D03",
+        "D04"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D13",
+      "domain": "13",
+      "name": "配置版本与恢复",
+      "phases": [
+        "A",
+        "D"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "UD_CONFIG_VERSION",
+        "UD_PLAN_VERSION",
+        "UD_CHECKPOINT_VERSION",
+        "UD_WORKER_VERSION"
+      ],
+      "implementation": [
+        "include/ud/status.h",
+        "engines/etl/src/etl.c",
+        "hosts/worker.c",
+        "components/data/src/wire.c"
+      ],
+      "cases": [
+        "A04",
+        "D03"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D14",
+      "domain": "14",
+      "name": "Arrow 交换",
+      "phases": [
+        "A"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_batch_export_arrow",
+        "ud_batch_import_arrow",
+        "ud_batch_export_stream"
+      ],
+      "implementation": [
+        "components/data/src/arrow.c",
+        "tests/nested.c",
+        "tests/types.c"
+      ],
+      "cases": [
+        "A01",
+        "A02",
+        "A03",
+        "H02"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D15",
+      "domain": "15",
+      "name": "C/.NET/Java 与发行",
+      "phases": [
+        "H"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "UD_ABI_VERSION",
+        "UD_PLUGIN_ABI",
+        "Batch",
+        "Dag",
+        "StatusCode",
+        "ud_run_create_json"
+      ],
+      "implementation": [
+        "include/ud/status.h",
+        "include/ud/plugin.h",
+        "bindings/dotnet/UniversalData/CsvJob.cs",
+        "bindings/java/native/bridge.c",
+        "bindings/dotnet/UniversalData/Batch.cs",
+        "bindings/dotnet/UniversalData/Dag.cs",
+        "bindings/java/src/main/java/org/universaldata/Batch.java",
+        "bindings/java/src/main/java/org/universaldata/Dag.java",
+        "include/ud/run.h",
+        "engines/etl/src/run.c",
+        "bindings/dotnet/UniversalData/Run.cs",
+        "bindings/java/src/main/java/org/universaldata/Run.java"
+      ],
+      "cases": [
+        "A04",
+        "H01",
+        "H02",
+        "H03",
+        "H04"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D16",
+      "domain": "16",
+      "name": "提交凭据与幂等",
+      "phases": [
+        "D"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_connection_write",
+        "ud_connection_receipt"
+      ],
+      "implementation": [
+        "components/contracts/src/plugin.c",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "cases": [
+        "B03",
+        "D01",
+        "D03",
+        "E02",
+        "G02"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D17",
+      "domain": "17",
+      "name": "PostgreSQL CDC",
+      "phases": [
+        "E"
+      ],
+      "status": "Planned",
+      "interfaces": [],
+      "implementation": [],
+      "cases": [
+        "E01",
+        "E02",
+        "E03",
+        "S03"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D18",
+      "domain": "18",
+      "name": "嵌入式调度",
+      "phases": [
+        "F"
+      ],
+      "status": "Planned",
+      "interfaces": [],
+      "implementation": [],
+      "cases": [
+        "F01",
+        "S05"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D19",
+      "domain": "19",
+      "name": "日志指标 Trace",
+      "phases": [
+        "F"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_quality_get_metrics",
+        "ud_run_get_metrics"
+      ],
+      "implementation": [
+        "components/compute/src/quality.c",
+        "include/ud/run.h",
+        "engines/etl/src/run.c"
+      ],
+      "cases": [
+        "F02"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D20",
+      "domain": "20",
+      "name": "凭据授权审计",
+      "phases": [
+        "F"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_authorize_fn",
+        "ud_credential_resolver_fn",
+        "ud_connection_open",
+        "ud_run_create_json"
+      ],
+      "implementation": [
+        "include/ud/connector.h",
+        "components/contracts/src/plugin.c",
+        "tests/connector_sqlite.c",
+        "include/ud/run.h",
+        "engines/etl/src/run.c"
+      ],
+      "cases": [
+        "B02",
+        "F02",
+        "S05"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D21",
+      "domain": "21",
+      "name": "Schema/计划版本与血缘",
+      "phases": [
+        "F"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_plan_create_fields",
+        "ud_plan_fingerprint"
+      ],
+      "implementation": [
+        "components/compute/src/compute.c"
+      ],
+      "cases": [
+        "E03",
+        "F03"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D22",
+      "domain": "22",
+      "name": "JSON/压缩/Parquet",
+      "phases": [
+        "F"
+      ],
+      "status": "InProgress",
+      "interfaces": [
+        "ud_batch_from_json",
+        "ud_batch_to_json",
+        "ud_json_reader_resume",
+        "ud_json_writer_open",
+        "ud_json_writer_append",
+        "ud_json_writer_close"
+      ],
+      "implementation": [
+        "include/ud/format.h",
+        "components/data/src/json.c"
+      ],
+      "cases": [
+        "F03",
+        "S04"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D23",
+      "domain": "23",
+      "name": "分布式 Worker",
+      "phases": [
+        "G"
+      ],
+      "status": "Planned",
+      "interfaces": [],
+      "implementation": [],
+      "cases": [
+        "G01",
+        "G02",
+        "S05"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    },
+    {
+      "id": "D24",
+      "domain": "24",
+      "name": "BI/ELT 数据集",
+      "phases": [
+        "G"
+      ],
+      "status": "Planned",
+      "interfaces": [],
+      "implementation": [],
+      "cases": [
+        "B03",
+        "G03",
+        "S04",
+        "S05"
+      ],
+      "uat": [],
+      "evidence": [],
+      "releaseGates": [
+        "linux-gcc",
+        "windows-msvc",
+        "asan-ubsan",
+        "c-dotnet8-java17-equivalence",
+        "native-nuget-maven-install-consumption",
+        "s01-s05"
+      ]
+    }
+  ]
+}

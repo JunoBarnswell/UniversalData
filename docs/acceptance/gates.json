@@ -1,0 +1,90 @@
+{
+  "baselineVersion": 1,
+  "sdkVersion": "0.2.0",
+  "baseCommit": "d86e18e0b7cbfd887a80da92955415fcac2ae420",
+  "originalAttachmentAvailable": false,
+  "original166CasesCovered": false,
+  "phases": {
+    "A": "InProgress",
+    "B": "InProgress",
+    "C": "InProgress",
+    "D": "InProgress",
+    "E": "Planned",
+    "F": "InProgress",
+    "G": "Planned",
+    "H": "InProgress"
+  },
+  "gates": [
+    {
+      "id": "linux-gcc",
+      "status": "NotRun",
+      "evidence": null
+    },
+    {
+      "id": "windows-msvc",
+      "status": "Blocked",
+      "evidence": null,
+      "blocker": "Current executor is Linux; Windows/MSVC executor unavailable; configured GitHub Actions did not start due to billing restriction."
+    },
+    {
+      "id": "asan-ubsan",
+      "status": "NotRun",
+      "evidence": null
+    },
+    {
+      "id": "postgresql-isolated-containers",
+      "status": "NotRun",
+      "evidence": null
+    },
+    {
+      "id": "sqlite-transactions",
+      "status": "NotRun",
+      "evidence": null
+    },
+    {
+      "id": "c-dotnet8-java17-equivalence",
+      "status": "NotRun",
+      "evidence": null,
+      "developmentNote": "Verified official prebuilt .NET SDK 8.0.425, Java 17.0.20+101 and Maven 3.9.11 are available under work/toolchains. Full SDK language bindings remain incomplete; no SDK compilation or acceptance was run."
+    },
+    {
+      "id": "native-nuget-maven-install-consumption",
+      "status": "NotRun",
+      "evidence": null
+    },
+    {
+      "id": "quota-backpressure-spill",
+      "status": "NotRun",
+      "evidence": null
+    },
+    {
+      "id": "benchmark-recorded-hardware",
+      "status": "NotRun",
+      "evidence": null
+    },
+    {
+      "id": "s01-s05",
+      "status": "NotRun",
+      "evidence": null
+    },
+    {
+      "id": "github-actions",
+      "status": "Blocked",
+      "evidence": null,
+      "blocker": "Latest run 38160104876 executed no steps; check-run 114531030866 reports failed recent account payments or spending limit.",
+      "observation": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38160104876",
+      "required": false,
+      "developmentNote": "Availability observation only; actual Windows/Linux and other mandatory execution evidence is still required."
+    }
+  ],
+  "codeStatus": {
+    "A": "InProgress",
+    "B": "InProgress",
+    "C": "InProgress",
+    "D": "InProgress",
+    "E": "Planned",
+    "F": "InProgress",
+    "G": "Planned",
+    "H": "InProgress"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "downloads": [
+    {
+      "name": "dotnet8",
+      "version": "8.0.425",
+      "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0.425/dotnet-sdk-8.0.425-linux-x64.tar.gz",
+      "checksum": "934b8060a7190e5909ad1fd0785db542f487b3bbf6cdd14826b02095fdd0d0394298b1634085eff302928fccc33f7c1a7253e9b87df555fc36fce819bcd2e798",
+      "algorithm": "sha512",
+      "downloadedAt": "2026-10-11T19:23:58.987245+00:00",
+      "localPath": "/workspace/UniversalData/work/toolchains/dotnet8",
+      "checksumVerified": true
+    },
+    {
+      "name": "java17",
+      "version": "17.0.20+101",
+      "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz",
+      "checksum": "3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e",
+      "algorithm": "sha256",
+      "downloadedAt": "2026-10-11T19:24:13.893873+00:00",
+      "localPath": "/workspace/UniversalData/work/toolchains/java17",
+      "checksumVerified": true
+    },
+    {
+      "name": "maven",
+      "version": "3.9.11",
+      "url": "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.11/apache-maven-3.9.11-bin.tar.gz",
+      "checksum": "bcfe4fe305c962ace56ac7b5fc7a08b87d5abd8b7e89027ab251069faebee516b0ded8961445d6d91ec1985dfe30f8153268843c89aa392733d1a3ec956c9978",
+      "algorithm": "sha512",
+      "downloadedAt": "2026-10-11T19:24:15.335270+00:00",
+      "localPath": "/workspace/UniversalData/work/toolchains/maven",
+      "checksumVerified": true
+    }
+  ],
+  "observations": [
+    {
+      "command": [
+        "/workspace/UniversalData/work/toolchains/dotnet8/dotnet",
+        "--info"
+      ],
+      "exitCode": 0,
+      "stdout": ".NET SDK:\n Version:           8.0.425\n Commit:            4a98f641c7\n Workload version:  8.0.400-manifests.ac071bc2\n MSBuild version:   17.11.48+02bf66295\n\nRuntime Environment:\n OS Name:     debian\n OS Version:  13\n OS Platform: Linux\n RID:         linux-x64\n Base Path:   /workspace/UniversalData/work/toolchains/dotnet8/sdk/8.0.425/\n\n.NET workloads installed:\nConfigured to use loose manifests when installing new manifests.\nThere are no installed workloads to display.\n\nHost:\n  Version:      8.0.31\n  Architecture: x64\n  Commit:       1219a42122\n\n.NET SDKs installed:\n  8.0.425 [/workspace/UniversalData/work/toolchains/dotnet8/sdk]\n\n.NET runtimes installed:\n  Microsoft.AspNetCore.App 8.0.31 [/workspace/UniversalData/work/toolchains/dotnet8/shared/Microsoft.AspNetCore.App]\n  Microsoft.NETCore.App 8.0.31 [/workspace/UniversalData/work/toolchains/dotnet8/shared/Microsoft.NETCore.App]\n\nOther architectures found:\n  None\n\nEnvironment variables:\n  Not set\n\nglobal.json file:\n  Not found\n\nLearn more:\n  https://aka.ms/dotnet/info\n\nDownload .NET:\n  https://aka.ms/dotnet/download\n",
+      "stderr": "",
+      "observedAt": "2026-10-11T19:25:10.643473+00:00"
+    },
+    {
+      "command": [
+        "/workspace/UniversalData/work/toolchains/java17/jdk-17.0.20.1+1/bin/java",
+        "-version"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "openjdk version \"17.0.20.1\" 2026-08-18\nOpenJDK Runtime Environment Temurin-17.0.20.1+1 (build 17.0.20.1+1)\nOpenJDK 64-Bit Server VM Temurin-17.0.20.1+1 (build 17.0.20.1+1, mixed mode, sharing)\n",
+      "observedAt": "2026-10-11T19:25:10.664357+00:00"
+    },
+    {
+      "command": [
+        "/workspace/UniversalData/work/toolchains/maven/apache-maven-3.9.11/bin/mvn",
+        "--version"
+      ],
+      "exitCode": 0,
+      "stdout": "Apache Maven 3.9.11 (3e54c93a704957b63ee3494413a2b544fd3d825b)\nMaven home: /workspace/UniversalData/work/toolchains/maven/apache-maven-3.9.11\nJava version: 17.0.20.1, vendor: Eclipse Adoptium, runtime: /workspace/UniversalData/work/toolchains/java17/jdk-17.0.20.1+1\nDefault locale: en, platform encoding: UTF-8\nOS name: \"linux\", version: \"6.18.44\", arch: \"amd64\", family: \"unix\"\n",
+      "stderr": "",
+      "observedAt": "2026-10-11T19:25:10.828545+00:00"
+    }
+  ],
+  "scope": "Environment checks only; SDK build and tests not run",
+  "postgresql": {
+    "developmentPackage": {
+      "Package": "libpq-dev",
+      "Version": "17.11-0+deb13u1",
+      "Architecture": "amd64",
+      "Filename": "pool/main/p/postgresql-17/libpq-dev_17.11-0+deb13u1_amd64.deb",
+      "SHA256": "54c0ee29d174e4fa0cfb8d6d37af5ad7b338ee3b29d392ae189425e122aee1f5",
+      "url": "https://deb.debian.org/debian/pool/main/p/postgresql-17/libpq-dev_17.11-0+deb13u1_amd64.deb"
+    },
+    "checksumVerified": true,
+    "includeDirectory": "/workspace/UniversalData/work/toolchains/libpq/usr/include/postgresql",
+    "library": "/lib/x86_64-linux-gnu/libpq.so.5",
+    "scope": "Prebuilt development package extracted; no SDK compilation or database test"
+  }
+}

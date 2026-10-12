@@ -4,6 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+typedef struct ud_string { const char *data; uint32_t length; } ud_string;
 typedef void *(*ud_allocate_fn)(void *user, size_t bytes);
 typedef void (*ud_deallocate_fn)(void *user, void *ptr);
 typedef struct ud_context_options {
@@ -17,6 +18,8 @@ UD_API ud_status ud_context_create(const ud_context_options *options, ud_context
 /* Returns BUSY if any context-owned allocation is still alive. */
 UD_API ud_status ud_context_destroy(ud_context *ctx);
 UD_API uint64_t ud_memory_used(const ud_context *ctx);
+/* Quota/counter cover ud_alloc blocks including their allocation headers. The
+ * fixed context handle itself uses the host allocator but is outside the quota. */
 UD_API void *ud_alloc(ud_context *ctx, size_t bytes);
 UD_API void ud_free(void *ptr);
 UD_API void ud_cancel(ud_context *ctx);

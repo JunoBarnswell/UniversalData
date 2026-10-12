@@ -1,10 +1,14 @@
 # UniversalData
 
-组件优先的 C17 通用数据处理 SDK，MIT 许可。ETL、Query、插件与语言绑定可组合；Web UI、产品调度与业务权限属于外部消费者。
+组件优先的 C17 通用数据处理 SDK，MIT 许可。ETL、Query、插件与语言绑定可组合；调度、授权和审计按嵌入式 SDK 组件规划，不开发 Web 管理平台。
 
 当前实现：独立 CMake 组件、配额分配器、Arrow 列式交换、严格 CSV、原生结构化计划、过滤/投影/聚合、目录增量与崩溃恢复、连接/排序/分页、外存归并排序、动态插件、可选 SQLite/ODBC/DuckDB/Parquet、.NET 8、Java 17、CLI 与独立 Worker。
 
-聚合目前使用受配额约束的内存状态，**不提供外存聚合或分布式流处理**。Worker 是进程故障隔离，不是操作系统权限沙箱。尚未验证的能力与环境见 [交付记录](docs/validation.md)。
+基础聚合使用受配额约束的内存状态；0.2.0 新增的外存 NDJSON 聚合/Join 尚未运行验收。分布式流处理仍待实现。Worker 是进程故障隔离，不是操作系统权限沙箱。尚未验证的能力与环境见 [交付记录](docs/validation.md)。
+
+`codex/sdk-0.2.0` 正在实施 [24 域验收基线](docs/acceptance/README.md)。新增扩展类型、连接器及质量代码只执行了静态检查；全部阶段代码完成后才统一编译、运行验收和打包。[实施记录](docs/acceptance/progress.md) 区分开发进度及运行证据。
+
+新增 C 接口：Decimal128、日期/微秒时间/UTC 时间点、Binary、Struct/List/Map、递归 Arrow/版本化序列化、映射/默认值/转换、质量规则，以及带凭据解析和授权回调的 PostgreSQL/SQLite 游标与事务批次凭据。已写入严格 JSON/NDJSON、外存 Join/聚合、DAG JSON/C 契约及参数绑定、独立 Run/后台线程/有界队列与文件节点、持久隔离存储、内置正则，以及 .NET/Java 类型化 Batch、Dag 和 Run 包装。统一 DAG 持久恢复、数据库节点、CDC、企业组件、完整语言绑定及全阶段验收仍待完成；新增代码尚未编译或运行。
 
 ## 构建与测试
 

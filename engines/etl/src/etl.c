@@ -88,7 +88,9 @@ static ud_status validate_commit(ud_context *c, const char *dir, uint64_t gen, c
         s = ud_get_u64(&bytes, &number);
     if (!s)
         s = ud_bytes_get(&bytes, hashes, 64);
-    if (!s && (version != 1 || number != gen || bytes.pos != bytes.size))
+    if (!s && version != UD_CHECKPOINT_VERSION)
+        s = UD_INCOMPATIBLE;
+    if (!s && (number != gen || bytes.pos != bytes.size))
         s = UD_CORRUPT;
     if (!s)
         s = generation_path(c, dir, gen, "state", state);
@@ -167,7 +169,7 @@ static ud_status restore(ud_job *j) {
         s = ud_get_string(&b, &input);
     if (!s)
         s = ud_get_string(&b, &marker);
-    if (!s && (version != 1 || generation != j->generation ||
+    if (!s && (version != UD_CHECKPOINT_VERSION || generation != j->generation ||
                memcmp(fingerprint, j->plan->fingerprint, 32) || strcmp(input, j->input) ||
                strcmp(marker, j->null_marker)))
         s = UD_INCOMPATIBLE;
@@ -241,7 +243,7 @@ static ud_status checkpoint(ud_job *j) {
     char *state = NULL, *csv = NULL, *tmp = NULL, *marker = NULL;
     ud_status s = ud_accumulator_snapshot(j->acc, &snapshot);
     if (!s)
-        s = ud_put_u64(&b, 1);
+        s = ud_put_u64(&b, UD_CHECKPOINT_VERSION);
     if (!s)
         s = ud_put_u64(&b, gen);
     if (!s)
@@ -292,7 +294,7 @@ static ud_status checkpoint(ud_job *j) {
     if (!s)
         s = ud_file_hash(j->ctx, csv, hashes + 32);
     if (!s)
-        s = ud_put_u64(&commit, 1);
+        s = ud_put_u64(&commit, UD_CHECKPOINT_VERSION);
     if (!s)
         s = ud_put_u64(&commit, gen);
     if (!s)
@@ -328,11 +330,11 @@ ud_status ud_job_create(ud_context *ctx, const ud_job_options *o, ud_job **out) 
     if (!out)
         return UD_INVALID;
     *out = NULL;
-    if (!ctx || !o || o->struct_size < sizeof(*o) || o->abi_version != 1 ||
+    if (!ctx || !o || o->struct_size < sizeof(*o) || o->abi_version != UD_ABI_VERSION ||
         !absolute_path(o->input_directory) || !absolute_path(o->state_directory) ||
         !strcmp(o->input_directory, o->state_directory))
         return ud_fail(ctx, UD_INVALID,
-                       "job requires ABI 1 and distinct absolute input/state paths");
+                       "job requires ABI 2 and distinct absolute input/state paths");
     ud_job *j = ud_alloc(ctx, sizeof(*j));
     if (!j)
         return UD_RESOURCE;
@@ -433,7 +435,7 @@ static ud_status process_input(ud_job *j, uint32_t index) {
         return UD_OK;
     char *path = NULL;
     UD_TRY(ud_join_path(j->ctx, j->input, e->name, &path));
-    ud_csv_options o = {sizeof(o), 1, j->batch_size, j->null_marker, j->null_length};
+    ud_csv_options o = {sizeof(o), UD_ABI_VERSION, j->batch_size, j->null_marker, j->null_length};
     ud_csv_reader *reader = NULL;
     ud_status s = ud_csv_open(j->ctx, path, j->plan->fields, j->plan->n, &o, &reader);
     ud_free(path);

@@ -1,5 +1,4 @@
 package org.universaldata;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -12,7 +11,7 @@ public final class CsvJob implements AutoCloseable {
     public CsvJob(Path input, Path state, String schema, String commands) {
         handle = nativeOpen(bytes(input.toAbsolutePath().normalize().toString()), bytes(state.toAbsolutePath().normalize().toString()), bytes(schema), bytes(commands), 268435456L);
     }
-    private static byte[] bytes(String value) { return value.getBytes(StandardCharsets.UTF_8); }
+    private static byte[] bytes(String value) { return Utf8.bytes(value); }
     private void ensureOpen() { if (handle == 0) throw new IllegalStateException("Job is closed"); }
     public void poll() { execution.lock(); lifecycle.readLock().lock(); try { ensureOpen(); nativePoll(handle, false); } finally { lifecycle.readLock().unlock(); execution.unlock(); } }
     public void run() { execution.lock(); lifecycle.readLock().lock(); try { ensureOpen(); nativePoll(handle, true); } finally { lifecycle.readLock().unlock(); execution.unlock(); } }

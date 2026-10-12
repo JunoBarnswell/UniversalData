@@ -304,6 +304,10 @@ static ud_status write_batch(odbc_state *p, const ud_batch *b, const char *sql, 
         return h->report(h->context, UD_UNSUPPORTED, "ODBC driver has no transaction capability");
     if (!b || !n || p->read || h->columns(b) > INT16_MAX)
         return UD_INVALID;
+    for (uint32_t j=0;j<h->columns(b);j++) {
+        ud_field f;h->field(b,j,&f);
+        if(f.type>UD_UTF8) return UD_UNSUPPORTED;
+    }
     uint32_t units;
     SQLWCHAR *wide = to_wide(h, sql, n, &units);
     if (!wide)
@@ -419,17 +423,18 @@ static ud_status execute(void *ptr, int32_t op, const ud_batch *b, const char *a
     return UD_UNSUPPORTED;
 }
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
-    if (version != 1 || !out || out->struct_size < sizeof(*out))
+    if (version != UD_PLUGIN_ABI || !out || out->struct_size < sizeof(*out))
         return UD_INCOMPATIBLE;
     *out = (ud_plugin_api){sizeof(*out),
-                           1,
+                           UD_PLUGIN_ABI,
                            "org.universaldata.connector.odbc",
-                           "0.1.0",
+                           "0.2.0",
                            UD_PLUGIN_SOURCE | UD_PLUGIN_SINK,
                            UD_CAP_READ | UD_CAP_WRITE | UD_CAP_TRANSACTION,
                            initialize,
                            execute,
                            destroy,
-                           plugin_shutdown};
+                           plugin_shutdown,
+                           NULL};
     return UD_OK;
 }

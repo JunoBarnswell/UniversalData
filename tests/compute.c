@@ -5,8 +5,8 @@
 int main(void) {
     ud_context *c = NULL;
     OK(ud_context_create(NULL, &c));
-    const char *schema = "key utf8 nullable\namount int64 nullable\n";
-    const char *commands = "filter amount ge 0\nproject key amount\ngroup key\nsum amount "
+    const char *schema = UD_SCHEMA_HEADER "key utf8 nullable\namount int64 nullable\n";
+    const char *commands = UD_PLAN_HEADER "filter amount ge 0\nproject key amount\ngroup key\nsum amount "
                            "total\ncount * rows\nmin amount smallest\nmax amount largest\n";
     ud_plan *p = NULL;
     OK(ud_plan_create(c, schema, (uint32_t)strlen(schema), commands, (uint32_t)strlen(commands),

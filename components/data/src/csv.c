@@ -122,8 +122,11 @@ ud_status ud_csv_open(ud_context *c, const char *path, const ud_field *f, uint32
     if (!out)
         return UD_INVALID;
     *out = NULL;
-    if (!path || !f || !n || (o && (o->struct_size < sizeof(*o) || o->abi_version != 1)))
+    if (!path || !f || !n || (o && (o->struct_size < sizeof(*o) || o->abi_version != UD_ABI_VERSION)))
         return UD_INVALID;
+    for (uint32_t i = 0; i < n; i++)
+        if (f[i].type == UD_BINARY || f[i].type >= UD_STRUCT)
+            return ud_fail(c, UD_UNSUPPORTED, "CSV complex / binary fields require an explicit format transform");
     ud_batch *check = NULL;
     UD_TRY(ud_batch_create(c, f, n, 0, &check));
     ud_batch_destroy(check);
@@ -152,7 +155,9 @@ ud_status ud_csv_open(ud_context *c, const char *path, const ud_field *f, uint32
     for (uint32_t i = 0; i < n; i++) {
         r->fields[i] = f[i];
         r->fields[i].name = ud_strdup_n(c, f[i].name, f[i].name_length);
-        if (!r->fields[i].name) {
+        r->fields[i].timezone = NULL;
+        if (f[i].timezone_length) r->fields[i].timezone = ud_strdup_n(c, f[i].timezone, f[i].timezone_length);
+        if (!r->fields[i].name || (f[i].timezone_length && !r->fields[i].timezone)) {
             ud_csv_close(r);
             return UD_RESOURCE;
         }
@@ -197,7 +202,7 @@ void ud_csv_close(ud_csv_reader *r) {
         fclose(r->file);
     if (r->fields)
         for (uint32_t i = 0; i < r->columns; i++)
-            ud_free((void *)r->fields[i].name);
+            { ud_free((void *)r->fields[i].name); ud_free((void *)r->fields[i].timezone); }
     ud_free(r->fields);
     ud_free(r->path);
     ud_free(r->null_marker);
@@ -250,7 +255,8 @@ ud_status ud_csv_next(ud_csv_reader *r, ud_batch **out) {
                 if (!r->fields[i].nullable)
                     s = UD_SCHEMA;
             } else
-                s = ud_value_parse(r->ctx, r->fields[i].type, row.text[i], row.length[i], v + i);
+                s = ud_value_parse_field(r->ctx, r->fields + i, row.text[i], row.length[i],
+                                          UD_ROUND_EXACT, v + i);
             if (s) {
                 ud_fail(r->ctx, s, "%s: record %llu field %u: invalid typed value", r->path,
                         (unsigned long long)r->record, i + 1);
@@ -337,8 +343,7 @@ ud_status ud_csv_writer_append(ud_csv_writer *w, const ud_batch *b) {
         ud_field x, y;
         ud_batch_field(b, i, &x);
         ud_batch_field(w->schema, i, &y);
-        if (x.type != y.type || x.nullable != y.nullable || x.name_length != y.name_length ||
-            memcmp(x.name, y.name, x.name_length))
+        if (!ud_field_equal(&x, &y, 1))
             return UD_SCHEMA;
     }
     for (uint32_t r = 0; !s && r < b->rows; r++) {
@@ -359,19 +364,14 @@ ud_status ud_csv_writer_append(ud_csv_writer *w, const ud_batch *b) {
                                 "text value equals null marker; choose another marker");
                     break;
                 }
-            } else if (v.type == UD_BOOL) {
-                p = v.integer ? "true" : "false";
-                n = strlen(p);
-            } else if (v.type == UD_INT64)
-                n = (size_t)snprintf(num, sizeof(num), "%lld", (long long)v.integer);
-            else {
-                n = (size_t)snprintf(num, sizeof(num), "%.17g",
-                                     v.real); /* Do not mutate process locale. */
-                const char *decimal = localeconv()->decimal_point;
-                if (decimal && strcmp(decimal, ".")) {
-                    s = ud_fail(c, UD_UNSUPPORTED, "CSV float output requires C numeric locale");
-                    break;
-                }
+            } else if (v.type == UD_BINARY) {
+                s = ud_fail(c, UD_UNSUPPORTED, "Binary CSV requires an explicit encoding transform");
+                break;
+            } else {
+                uint32_t required = 0;
+                s = ud_value_format(&v, num, sizeof(num), &required);
+                if (s) break;
+                n = required - 1;
             }
             if ((i && fputc(',', f) == EOF) || !write_field(f, p, n)) {
                 s = UD_IO;

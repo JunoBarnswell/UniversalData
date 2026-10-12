@@ -16,7 +16,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define UD_ABI_VERSION 1u
+#define UD_ABI_VERSION 2u
+#define UD_CONFIG_VERSION 2u
+#define UD_PLAN_VERSION 2u
+#define UD_CHECKPOINT_VERSION 2u
+#define UD_WORKER_VERSION 2u
 typedef int32_t ud_status;
 enum {
     UD_OK = 0,
@@ -31,7 +35,12 @@ enum {
     UD_CORRUPT = 9,
     UD_INCOMPATIBLE = 10,
     UD_BUSY = 11,
-    UD_UNSUPPORTED = 12
+    UD_UNSUPPORTED = 12,
+    UD_AUTH = 13,
+    UD_QUALITY = 14,
+    UD_TRANSIENT = 15,
+    UD_COMMIT_UNKNOWN = 16,
+    UD_FENCED = 17
 };
 typedef struct ud_context ud_context;
 UD_API const char *ud_version(void);
