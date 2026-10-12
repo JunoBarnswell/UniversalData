@@ -46,7 +46,7 @@ Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任�
 | G05 | 1 | 统一表达式 AST/Binder/函数 Registry | Planned | NotRun |
 | G06 | 1 | 唯一状态/错误/诊断模型 | Implemented | Verified |
 | G07 | 1 | 统一组件/插件 Registry | Planned | NotRun |
-| G08 | 2 | Project/Package/Environment 与作用域 | Planned | NotRun |
+| G08 | 2 | Project/Package/Environment 与作用域 | Implemented | Verified |
 | G09 | 2 | Package 定义/绑定/运行生命周期 | Implemented | Verified |
 | G10 | 2 | Sequence/For/Foreach 控制流 | Implemented | NotRun |
 | G11 | 2 | Success/Failure/Completion + expression + AND/OR | Implemented | NotRun |
@@ -107,3 +107,5 @@ Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任�
 | G66 | 7 | Excel | Planned | NotRun |
 | G67 | 7 | Parquet/Arrow | Planned | NotRun |
 | G68 | 7 | Microsoft 专属扩展和兼容边界 | Planned | NotRun |
+
+最新模块：原生 Project/Environment 绑定、四层作用域及共享连接已通过；Catalog 固定部署修订的选择、版本切换和回退已验证。G47 的激活路由/保留/完整历史和 G48 的完整观测仍保留待办。证据：acceptance/evidence/ssis-project。

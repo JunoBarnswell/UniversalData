@@ -77,14 +77,9 @@ static ud_status bind_expr(const ud_component_context *c, const ud_json *value,
     return s;
 }
 static ud_status connection_defined(const ud_component_context *ctx, ud_string id) {
-    const ud_json *defs = ud_member(ctx->execution->package->document, "connections");
-    for (uint32_t i = 0; i < ud_json_size(defs); i++) {
-        ud_string name;
-        UD_TRY(ud_json_string(ud_member(ud_json_at(defs, i), "id"), &name));
-        if (ud_same(name, id))
-            return UD_OK;
-    }
-    return UD_SCHEMA;
+    const ud_json *definition = NULL;
+    int project_scope = 0;
+    return ud_connection_definition(ctx->execution, id, &definition, &project_scope);
 }
 static ud_status check_config(int kind, const ud_json *config) {
     static const char *source[] = {"connection", "schema", "batchSize", "sql", "nullMarker"};

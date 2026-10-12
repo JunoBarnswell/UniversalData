@@ -8,12 +8,13 @@ with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
  r=pathlib.Path(folder);source=r/'in.ndjson';source.write_text(''.join(json.dumps({'x':i})+'\n' for i in range(10003)))
  lit=lambda v:{'literal':v,'type':'int64'}
  p={'version':3,'id':'parity','parameters':{'a':{'type':'utf8'},'b':{'type':'utf8'}},'variables':{'i':{'type':'int64','default':0},'n':{'type':'int64','default':0}},
- 'connections':[{'id':'source','driver':'file','resource':str(source)},{'id':'a','driver':'file','resource':{'$parameter':'a'}},{'id':'b','driver':'file','resource':{'$parameter':'b'}}],
+ 'project':{'id':'project','parameters':{'factor':{'type':'int64','default':2},'input':{'type':'utf8','default':str(source)}},'variables':{'n':{'type':'int64','default':99}},'connections':[{'id':'source','driver':'file','resource':{'$parameter':'input'}}]},
+ 'connections':[{'id':'a','driver':'file','resource':{'$parameter':'a'}},{'id':'b','driver':'file','resource':{'$parameter':'b'}}],
  'controlFlow':{'tasks':[{'id':'loop','kind':'for','config':{'initialize':{'name':'i','value':lit(0)},'condition':{'op':'lt','args':[{'ref':'i'},lit(3)]},'increment':{'name':'i','value':{'op':'add','args':[{'ref':'i'},lit(1)]}},'maxIterations':3},
  'children':{'tasks':[{'id':'count','kind':'set','config':{'name':'n','value':{'op':'add','args':[{'ref':'n'},lit(1)]}}}],'constraints':[]}},
  {'id':'flow','kind':'dataFlow','config':{'pipeline':'p'}}],'constraints':[{'from':'loop','to':'flow','on':'success','expression':{'op':'eq','args':[{'ref':'n'},lit(3)]}}]},
  'dataFlows':[{'id':'p','components':[{'id':'source','component':'file.ndjson.source','config':{'connection':'source','schema':{'version':3,'fields':[{'name':'x','type':'int64','nullable':False}]},'batchSize':19}},
- {'id':'derive','component':'derive','config':{'columns':[{'name':'twice','expression':{'op':'mul','args':[{'column':'x'},lit(2)]}}]}},
+ {'id':'derive','component':'derive','config':{'columns':[{'name':'twice','expression':{'op':'mul','args':[{'column':'x'},{'ref':'factor'}]}}]}},
  {'id':'split','component':'split','config':{'condition':{'op':'lt','args':[{'column':'x'},lit(5000)]}}},
  {'id':'a','component':'file.ndjson.destination','config':{'connection':'a'}},{'id':'b','component':'file.ndjson.destination','config':{'connection':'b'}}],
  'paths':[{'from':a,'output':port,'to':b,'input':0} for a,port,b in [('source',0,'derive'),('derive',0,'split'),('split',0,'a'),('split',1,'b')]]}]}
@@ -40,4 +41,4 @@ with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
  for suffix in ['data.json','wire']:
   expected=(r/f'0.{suffix}').read_bytes();assert all((r/f'{i}.{suffix}').read_bytes()==expected for i in [1,2])
  actual=json.loads((r/'0.data.json').read_text());assert actual[0]['at']=='2024-02-29T00:00:00.000000Z' and actual[0]['profile']['missing'] is None
- print('C/.NET8/Java17 ABI 3: same Package/parameters/control loops/precedence/10003-row derive+split outputs and result metrics; Decimal/UTC/UTF8/nested/wire parity passed')
+ print('C/.NET8/Java17 ABI 3: same Package/Project outer parameters/shared connection/scopes/control loops/precedence/10003-row derive+split outputs and result metrics; Decimal/UTC/UTF8/nested/wire parity passed')

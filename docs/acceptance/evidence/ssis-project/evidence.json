@@ -1,0 +1,37 @@
+{
+  "milestone": "native-project-environment-deployment-binding",
+  "date": "2026-10-12",
+  "baseCommit": "6b8d607d523e253852e59b5e4bf8265be9526916",
+  "sourceManifest": "docs/acceptance/evidence/ssis-project/source-manifest.json",
+  "sourceManifestSha256": "b5bbb9041e4ae7d567ced87bfc6f40afa3866ce12b56e2590605cab197ec4a6a",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-project/native-ctest.txt",
+      "sha256": "57619987b1b52bd9f701e675609412229d14a13888d85f8a0324e7dec058ca52",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 24,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-project/asan-package-catalog-project.txt",
+      "sha256": "339b23e3446c9ede3198c8c9d1d85bded447e1eb6f93b3d78a1b738cd4f53bd5",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R 'catalog|package|project' --output-on-failure",
+      "exitCode": 0,
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-project/language-parity.txt",
+      "sha256": "882d5f2ad0e434214f6de7cef87f9d5fcb4e40d515c256791765733456c414d9",
+      "command": "tests/package_language_parity.py with ABI3 native/JNI, .NET8 and Java17; Project parameters/shared connections and datatype/wire parity",
+      "exitCode": 0
+    }
+  ],
+  "limitations": [
+    "Supported scalar parameters/variables: bool/int64/float64/utf8; wider typed semantics remain separate goals",
+    "Explicit immutable Deployment revision selection only; activation routing/retention/distributed repository outstanding",
+    "Complete Execution history/Audit/trace/lineage integration outstanding",
+    "Windows not executed"
+  ]
+}

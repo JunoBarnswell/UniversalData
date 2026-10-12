@@ -24,6 +24,8 @@ static ud_status assignment(ud_execution *e, const ud_json *v, int perform) {
     UD_TRY(ud_json_string(ud_member(v, "name"), &name));
     ud_value old;
     UD_TRY(ud_execution_variable(e, name, &old));
+    ud_variable *target;
+    UD_TRY(ud_variable_writable(e, name, &target));
     ud_expression *expr = NULL;
     UD_TRY(ud_expression_json(e, ud_member(v, "value"), NULL, &expr));
     ud_status s = ud_expression_type(expr) == old.type ? UD_OK : UD_SCHEMA;
@@ -107,6 +109,9 @@ ud_status ud_control_validate(ud_execution *e, const ud_json *flow, uint32_t dep
                     s = ud_json_string(ud_member(config, "variable"), &name);
                 if (!s)
                     s = ud_execution_variable(e, name, &v);
+                ud_variable *target;
+                if (!s)
+                    s = ud_variable_writable(e, name, &target);
                 if (!s && ud_json_kind(ud_member(config, "items")) != UD_JSON_ARRAY)
                     s = UD_SCHEMA;
                 for (uint32_t j = 0; !s && j < ud_json_size(ud_member(config, "items")); j++) {

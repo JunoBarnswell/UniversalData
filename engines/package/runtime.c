@@ -47,35 +47,6 @@ ud_status ud_component_lookup(ud_execution *e, ud_string id, ud_component_descri
         s = ud_registry_find(e->external, id, out);
     return s;
 }
-static ud_status validate_parameters(ud_execution *e) {
-    const ud_json *defs = ud_member(e->package->document, "parameters");
-    if (ud_json_kind(e->parameters) != UD_JSON_OBJECT)
-        return UD_SCHEMA;
-    for (uint32_t i = 0; i < ud_json_size(e->parameters); i++) {
-        const char *key;
-        uint32_t n;
-        UD_TRY(ud_json_key(e->parameters, i, &key, &n));
-        if (!ud_json_find(defs, key, n))
-            return UD_SCHEMA;
-    }
-    for (uint32_t i = 0; i < ud_json_size(defs); i++) {
-        const char *key;
-        uint32_t n;
-        UD_TRY(ud_json_key(defs, i, &key, &n));
-        const ud_json *def = ud_json_at(defs, i), *provided = ud_json_find(e->parameters, key, n),
-                      *value = provided ? provided : ud_member(def, "default");
-        ud_string type;
-        UD_TRY(ud_json_string(ud_member(def, "type"), &type));
-        ud_type t = ud_named(type, "bool")      ? UD_BOOL
-                    : ud_named(type, "int64")   ? UD_INT64
-                    : ud_named(type, "float64") ? UD_FLOAT64
-                    : ud_named(type, "utf8")    ? UD_UTF8
-                                                : 0;
-        ud_value v;
-        UD_TRY(ud_scalar_value(value, t, &v));
-    }
-    return UD_OK;
-}
 ud_status ud_execution_create_json(ud_string json, const ud_execution_options *options,
                                    ud_execution **out) {
     if (!out)
@@ -128,10 +99,20 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         s = ud_json_parse(ctx, options->parameters.data ? options->parameters.data : "{}",
                           options->parameters.data ? options->parameters.length : 2, &e->parameters,
                           NULL);
+    if (!s) {
+        const ud_json *project = ud_member(e->package->document, "project");
+        if (project) {
+            s = ud_scope_enter(e, ud_member(project, "variables"), &e->project_scope);
+            e->project_scope.parameters = ud_member(project, "parameters");
+        }
+    }
     if (!s)
         s = ud_scope_enter(e, ud_member(e->package->document, "variables"), &e->globals);
-    if (!s)
-        s = validate_parameters(e);
+    if (!s) {
+        e->globals.parameters = ud_member(e->package->document, "parameters");
+        e->globals.provided = e->parameters;
+        s = ud_parameters_check(e->globals.parameters, e->parameters, 1);
+    }
     if (!s)
         s = ud_registry_create(ctx, &e->registry);
     if (!s)
@@ -316,8 +297,8 @@ ud_status ud_execution_destroy(ud_execution *e) {
     }
     ud_context *ctx = e->ctx;
     ud_checkpoint_close(e);
-    if (e->scope)
-        ud_scope_leave(e, &e->globals);
+    ud_scope_leave(e, &e->globals);
+    ud_scope_leave(e, &e->project_scope);
     ud_registry_release(e->external);
     ud_registry_destroy(e->registry);
     ud_json_destroy(e->parameters);

@@ -43,6 +43,17 @@ UD_API ud_status ud_catalog_list(ud_catalog *, int32_t kind, char **json, uint32
  * data. sequence is explicit; returned errors belong to the host log policy. */
 UD_API ud_status ud_catalog_record_event(ud_catalog *, const ud_execution_event *,
                                          uint64_t sequence);
+typedef struct ud_catalog_binding {
+    uint32_t struct_size, abi_version;
+    ud_string deployment_id;
+    uint64_t deployment_revision;
+    ud_string package_id, project_parameters, package_parameters;
+} ud_catalog_binding;
+/* Resolves exact immutable Deployment/Project/Environment/Package revisions,
+ * delegates binding to the native Project model, and returns one Package for
+ * the existing Execution API. No latest-version races or implicit activation. */
+UD_API ud_status ud_catalog_bind_package(ud_catalog *, const ud_catalog_binding *, ud_package **,
+                                         char **parameters, uint32_t *length);
 UD_API void ud_catalog_close(ud_catalog *);
 #ifdef __cplusplus
 }

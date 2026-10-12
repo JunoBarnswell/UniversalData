@@ -1,0 +1,18 @@
+Internal ctest changing into directory: /workspace/UniversalData/build/asan3
+Test project /workspace/UniversalData/build/asan3
+    Start 19: package_execution
+1/6 Test #19: package_execution ................   Passed    0.07 sec
+    Start 20: package_failure_boundaries
+2/6 Test #20: package_failure_boundaries .......   Passed    0.15 sec
+    Start 21: package_sql_integration
+3/6 Test #21: package_sql_integration ..........   Passed    0.09 sec
+    Start 22: package_durable_recovery
+4/6 Test #22: package_durable_recovery .........   Passed    0.70 sec
+    Start 23: catalog_immutable_store
+5/6 Test #23: catalog_immutable_store ..........   Passed    0.14 sec
+    Start 24: project_environment_deployment
+6/6 Test #24: project_environment_deployment ...   Passed    0.14 sec
+
+100% tests passed, 0 tests failed out of 6
+
+Total Test time (real) =   1.30 sec

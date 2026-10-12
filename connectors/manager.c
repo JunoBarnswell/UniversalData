@@ -21,6 +21,27 @@ ud_status ud_connection_lease_authorize(ud_connection_lease *l, int32_t action) 
                ? UD_OK
                : UD_AUTH;
 }
+ud_status ud_connection_definition(ud_execution *e, ud_string id, const ud_json **out,
+                                   int *project_scope) {
+    const ud_json *defs = ud_member(e->package->document, "connections"), *def = NULL;
+    *out = NULL;
+    *project_scope = 0;
+    for (int level = 0; !def && level < 2; level++) {
+        if (level)
+            defs = ud_member(ud_member(e->package->document, "project"), "connections");
+        for (uint32_t i = 0; i < ud_json_size(defs); i++) {
+            ud_string name;
+            UD_TRY(ud_json_string(ud_member(ud_json_at(defs, i), "id"), &name));
+            if (ud_same(name, id)) {
+                def = ud_json_at(defs, i);
+                *project_scope = level;
+                break;
+            }
+        }
+    }
+    *out = def;
+    return def ? UD_OK : UD_SCHEMA;
+}
 ud_status ud_execution_acquire_connection(ud_execution *e, ud_string id, uint64_t caps,
                                           ud_connection_lease **out) {
     if (!out)
@@ -28,23 +49,19 @@ ud_status ud_execution_acquire_connection(ud_execution *e, ud_string id, uint64_
     *out = NULL;
     if (!e)
         return UD_INVALID;
-    const ud_json *defs = ud_member(e->package->document, "connections"), *def = NULL;
-    for (uint32_t i = 0; i < ud_json_size(defs); i++) {
-        ud_string name;
-        UD_TRY(ud_json_string(ud_member(ud_json_at(defs, i), "id"), &name));
-        if (ud_same(name, id)) {
-            def = ud_json_at(defs, i);
-            break;
-        }
-    }
-    if (!def)
-        return UD_SCHEMA;
+    const ud_json *def = NULL;
+    int project_definition = 0;
+    UD_TRY(ud_connection_definition(e, id, &def, &project_definition));
     ud_connection_lease *l = ud_alloc(e->ctx, sizeof(*l));
     if (!l)
         return UD_RESOURCE;
     l->execution = e;
     l->id = id;
+    ud_scope *saved_scope = e->scope;
+    if (project_definition)
+        e->scope = &e->project_scope;
     ud_status s = ud_bound_config(e, def, &l->definition);
+    e->scope = saved_scope;
     static const char *keys[] = {"id", "driver", "resource", "credentialReference"};
     if (!s)
         s = ud_json_keys(l->definition, keys, 4);

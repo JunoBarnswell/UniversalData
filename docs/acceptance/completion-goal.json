@@ -170,16 +170,25 @@
       "phase": 2,
       "name": "Project/Package/Environment 与作用域",
       "priority": "P0",
-      "code": "Planned",
-      "verification": "NotRun",
+      "code": "Implemented",
+      "verification": "Verified",
       "acceptance": "Project→Package→Container→Task 遮蔽和只读参数规则；共享连接/环境绑定；一个 JSON 产品模型",
       "implementation": [
-        "engines/package",
-        "catalog"
+        "include/ud/project.h",
+        "engines/package/project.c",
+        "engines/package/model.c",
+        "connectors/manager.c",
+        "catalog/deployment.c"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-project/evidence.json",
+          "type": "executed-scope-environment-binding"
+        }
+      ],
+      "progress": "Native scalar Project/Environment binding and Task→Container→Package→Project scopes, read-only parameters and Project-owned shared connections verified; wider type/function support tracked separately."
     },
     {
       "id": "G09",
@@ -867,9 +876,13 @@
         {
           "reference": "docs/acceptance/evidence/ssis-catalog/evidence.json",
           "type": "verified-supported-subset"
+        },
+        {
+          "reference": "docs/acceptance/evidence/ssis-project/evidence.json",
+          "type": "verified-supported-subset"
         }
       ],
-      "progress": "Embedded immutable Catalog repository and structured event persistence implemented and verified. Full deployment/environment semantics, execution-history integration and observability remain outstanding."
+      "progress": "Immutable Catalog, typed Project/Environment records, exact Deployment revision validation/selection/rollback and binding provenance implemented and verified. Activation routing, retention and complete execution history remain outstanding."
     },
     {
       "id": "G48",

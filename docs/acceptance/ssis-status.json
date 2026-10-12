@@ -15,8 +15,8 @@
     },
     "2": {
       "design": "Implemented",
-      "code": "Implemented Package loader/runtime, lexical scalar scopes, Sequence/For/Foreach, expression precedence, failure handler, native tasks",
-      "validation": "Verified package_execution + package_failure_boundaries on Linux"
+      "code": "Implemented Package loader/runtime, lexical scalar scopes, Sequence/For/Foreach, expression precedence, failure handler, native tasks; native Project/Environment binder, four-level scope and shared connections implemented",
+      "validation": "Verified native 24/24 and Package/Catalog/Project ASan 6/6; Project scope/environment/deployment test and C/.NET/Java Project semantics parity"
     },
     "3": {
       "design": "Implemented",
@@ -30,8 +30,8 @@
     },
     "5": {
       "design": "Implemented",
-      "code": "Implemented unified task/batch Journal 3, scoped variable/iteration recovery, source/file verification, SQL receipt replay, durability events; embedded immutable Catalog/event persistence implemented; deployment/environment semantics and wider observability Planned",
-      "validation": "Verified current-source native 23/23; ASan/UBSan Package/Catalog 5/5, including real recovery process termination and immutable Catalog failure boundaries"
+      "code": "Implemented unified task/batch Journal 3, scoped variable/iteration recovery, source/file verification, SQL receipt replay, durability events; embedded immutable Catalog/event persistence implemented; deployment/environment semantics and wider observability Planned; exact immutable Deployment revision validation/selection/rollback implemented",
+      "validation": "Verified native 24/24; ASan/UBSan Package/Catalog/Project 6/6, process termination, immutable storage, version selection/rollback and resume"
     },
     "6": {
       "design": "Implemented",

@@ -1,0 +1,1 @@
+C/.NET8/Java17 ABI 3: same Package/Project outer parameters/shared connection/scopes/control loops/precedence/10003-row derive+split outputs and result metrics; Decimal/UTC/UTF8/nested/wire parity passed

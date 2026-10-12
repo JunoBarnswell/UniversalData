@@ -48,15 +48,91 @@ ud_status ud_json_keys(const ud_json *v, const char *const *keys, uint32_t n) {
     }
     return UD_OK;
 }
+ud_status ud_connection_definitions_check(const ud_json *defs) {
+    if (defs && ud_json_kind(defs) != UD_JSON_ARRAY)
+        return UD_SCHEMA;
+    for (uint32_t i = 0; i < ud_json_size(defs); i++) {
+        const ud_json *def = ud_json_at(defs, i);
+        static const char *keys[] = {"id", "driver", "resource", "credentialReference"};
+        UD_TRY(ud_json_keys(def, keys, 4));
+        ud_string id;
+        UD_TRY(ud_json_string(ud_member(def, "id"), &id));
+        for (uint32_t j = 0; j < i; j++) {
+            ud_string other;
+            UD_TRY(ud_json_string(ud_member(ud_json_at(defs, j), "id"), &other));
+            if (ud_same(id, other))
+                return UD_SCHEMA;
+        }
+        const char *fields[] = {"driver", "resource", "credentialReference"};
+        for (int f = 0; f < 3; f++) {
+            const ud_json *v = ud_member(def, fields[f]);
+            if (f == 2 && !v)
+                continue;
+            if (ud_json_kind(v) == UD_JSON_STRING) {
+                ud_string value;
+                UD_TRY(ud_json_string(v, &value));
+            } else {
+                const ud_json *ref = ud_member(v, "$parameter"), *var = ud_member(v, "$variable");
+                if (ud_json_kind(v) != UD_JSON_OBJECT || ud_json_size(v) != 1 || (!ref && !var))
+                    return UD_SCHEMA;
+                ud_string name;
+                UD_TRY(ud_json_string(ref ? ref : var, &name));
+            }
+        }
+    }
+    return UD_OK;
+}
 ud_status ud_package_check(const ud_package *p) {
-    static const char *keys[] = {"version",   "id",          "parameters",
-                                 "variables", "connections", "controlFlow",
-                                 "dataFlows", "policy",      "eventHandlers"};
-    UD_TRY(ud_json_keys(p->document, keys, 9));
+    static const char *keys[] = {"version",       "id",          "parameters", "variables",
+                                 "connections",   "controlFlow", "dataFlows",  "policy",
+                                 "eventHandlers", "project",     "deployment"};
+    UD_TRY(ud_json_keys(p->document, keys, 11));
     uint64_t version;
     UD_TRY(ud_json_uint(ud_member(p->document, "version"), &version));
     if (version != UD_PACKAGE_VERSION)
         return UD_INCOMPATIBLE;
+    const ud_json *project = ud_member(p->document, "project");
+    if (project) {
+        static const char *pk[] = {"id", "parameters", "variables", "connections"};
+        UD_TRY(ud_json_keys(project, pk, 4));
+        ud_string id;
+        UD_TRY(ud_json_string(ud_member(project, "id"), &id));
+        UD_TRY(ud_parameters_check(ud_member(project, "parameters"), NULL, 1));
+        UD_TRY(ud_parameters_check(ud_member(project, "variables"), NULL, 1));
+        const ud_json *connections = ud_member(project, "connections");
+        UD_TRY(ud_connection_definitions_check(connections));
+    }
+    const ud_json *deployment = ud_member(p->document, "deployment");
+    if (deployment) {
+        static const char *dk[] = {"id", "revision", "project", "package", "environment"};
+        UD_TRY(ud_json_keys(deployment, dk, 5));
+        ud_string id;
+        uint64_t revision;
+        UD_TRY(ud_json_string(ud_member(deployment, "id"), &id));
+        UD_TRY(ud_json_uint(ud_member(deployment, "revision"), &revision));
+        if (!revision || !project)
+            return UD_SCHEMA;
+        const char *names[] = {"project", "package", "environment"};
+        for (int i = 0; i < 3; i++) {
+            const ud_json *ref = ud_member(deployment, names[i]);
+            if (i == 2 && !ref)
+                continue;
+            static const char *rk[] = {"id", "revision"};
+            UD_TRY(ud_json_keys(ref, rk, 2));
+            UD_TRY(ud_json_string(ud_member(ref, "id"), &id));
+            UD_TRY(ud_json_uint(ud_member(ref, "revision"), &revision));
+            if (!revision)
+                return UD_SCHEMA;
+            if (i < 2) {
+                ud_string expected;
+                UD_TRY(ud_json_string(ud_member(i ? p->document : project, "id"), &expected));
+                if (!ud_same(id, expected))
+                    return UD_SCHEMA;
+            }
+        }
+    }
+    UD_TRY(ud_parameters_check(ud_member(p->document, "parameters"), NULL, 0));
+    UD_TRY(ud_parameters_check(ud_member(p->document, "variables"), NULL, 1));
     if (ud_json_kind(ud_member(p->document, "controlFlow")) != UD_JSON_OBJECT ||
         ud_json_kind(ud_member(p->document, "dataFlows")) != UD_JSON_ARRAY)
         return UD_SCHEMA;
@@ -78,8 +154,7 @@ ud_status ud_package_check(const ud_package *p) {
         }
     }
     const ud_json *connections = ud_member(p->document, "connections");
-    if (connections && ud_json_kind(connections) != UD_JSON_ARRAY)
-        return UD_SCHEMA;
+    UD_TRY(ud_connection_definitions_check(connections));
     const ud_json *flows = ud_member(p->document, "dataFlows");
     for (uint32_t i = 0; i < ud_json_size(flows); i++) {
         ud_string id;
@@ -150,19 +225,54 @@ ud_status ud_scalar_value(const ud_json *v, ud_type type, ud_value *out) {
     UD_TRY(ud_json_text(v, &text, &len));
     return ud_value_parse(NULL, type, text, len, out);
 }
-static ud_type type_name(ud_string s) {
+ud_type ud_scalar_type(ud_string s) {
     return ud_named(s, "bool")      ? UD_BOOL
            : ud_named(s, "int64")   ? UD_INT64
            : ud_named(s, "float64") ? UD_FLOAT64
            : ud_named(s, "utf8")    ? UD_UTF8
                                     : 0;
 }
+ud_status ud_parameters_check(const ud_json *defs, const ud_json *provided, int required) {
+    if ((defs && ud_json_kind(defs) != UD_JSON_OBJECT) ||
+        (provided && ud_json_kind(provided) != UD_JSON_OBJECT))
+        return UD_SCHEMA;
+    for (uint32_t i = 0; i < ud_json_size(provided); i++) {
+        const char *key;
+        uint32_t n;
+        UD_TRY(ud_json_key(provided, i, &key, &n));
+        if (!ud_json_find(defs, key, n))
+            return UD_SCHEMA;
+    }
+    for (uint32_t i = 0; i < ud_json_size(defs); i++) {
+        const char *key;
+        uint32_t n;
+        UD_TRY(ud_json_key(defs, i, &key, &n));
+        if (!n || memchr(key, 0, n))
+            return UD_SCHEMA;
+        const ud_json *def = ud_json_at(defs, i);
+        static const char *keys[] = {"type", "default"};
+        UD_TRY(ud_json_keys(def, keys, 2));
+        ud_string type;
+        UD_TRY(ud_json_string(ud_member(def, "type"), &type));
+        ud_type t = ud_scalar_type(type);
+        if (!t)
+            return UD_UNSUPPORTED;
+        const ud_json *value = ud_json_find(provided, key, n);
+        if (!value)
+            value = ud_member(def, "default");
+        if (value || required) {
+            ud_value v;
+            UD_TRY(ud_scalar_value(value, t, &v));
+        }
+    }
+    return UD_OK;
+}
 ud_status ud_scope_enter(ud_execution *e, const ud_json *defs, ud_scope *scope) {
     scope->parent = e->scope;
     scope->values = NULL;
+    scope->parameters = scope->provided = NULL;
     e->scope = scope;
-    if (defs && ud_json_kind(defs) != UD_JSON_OBJECT)
-        return UD_SCHEMA;
+    UD_TRY(ud_parameters_check(defs, NULL, 1));
     for (uint32_t i = 0; i < ud_json_size(defs); i++) {
         const char *key;
         uint32_t len;
@@ -177,7 +287,7 @@ ud_status ud_scope_enter(ud_execution *e, const ud_json *defs, ud_scope *scope) 
         scope->values = v;
         v->name = (ud_string){key, len};
         ud_value value;
-        UD_TRY(ud_scalar_value(ud_member(def, "default"), type_name(t), &value));
+        UD_TRY(ud_scalar_value(ud_member(def, "default"), ud_scalar_type(t), &value));
         UD_TRY(ud_copy_value(e->ctx, &value, &v->value, 0));
     }
     return UD_OK;
@@ -196,39 +306,52 @@ void ud_scope_leave(ud_execution *e, ud_scope *scope) {
 ud_status ud_execution_variable(const ud_execution *e, ud_string name, ud_value *out) {
     if (!e || !out)
         return UD_INVALID;
-    for (ud_scope *s = e->scope; s; s = s->parent)
+    for (ud_scope *s = e->scope; s; s = s->parent) {
         for (ud_variable *v = s->values; v; v = v->next)
             if (ud_same(v->name, name)) {
                 *out = v->value;
                 return UD_OK;
             }
-    const ud_json *def =
-        ud_json_find(ud_member(e->package->document, "parameters"), name.data, name.length);
-    if (!def)
-        return UD_SCHEMA;
-    const ud_json *provided = ud_json_find(e->parameters, name.data, name.length),
-                  *value = provided ? provided : ud_member(def, "default");
-    ud_string type;
-    UD_TRY(ud_json_string(ud_member(def, "type"), &type));
-    return ud_scalar_value(value, type_name(type), out);
+        const ud_json *def = ud_json_find(s->parameters, name.data, name.length);
+        if (!def)
+            continue;
+        const ud_json *provided = ud_json_find(s->provided, name.data, name.length),
+                      *value = provided ? provided : ud_member(def, "default");
+        ud_string type;
+        UD_TRY(ud_json_string(ud_member(def, "type"), &type));
+        return ud_scalar_value(value, ud_scalar_type(type), out);
+    }
+    return UD_SCHEMA;
 }
-ud_status ud_execution_set_variable(ud_execution *e, ud_string name, const ud_value *value) {
-    if (!e || !value)
+ud_status ud_variable_writable(ud_execution *e, ud_string name, ud_variable **out) {
+    if (!e || !out)
         return UD_INVALID;
-    for (ud_scope *s = e->scope; s; s = s->parent)
+    *out = NULL;
+    for (ud_scope *s = e->scope; s; s = s->parent) {
         for (ud_variable *v = s->values; v; v = v->next)
             if (ud_same(v->name, name)) {
                 if (v->readonly)
                     return UD_AUTH;
-                if (v->value.type != value->type)
-                    return UD_SCHEMA;
-                ud_value copy = {0};
-                UD_TRY(ud_copy_value(e->ctx, value, &copy, 0));
-                ud_clear_value(&v->value);
-                v->value = copy;
+                *out = v;
                 return UD_OK;
             }
+        if (ud_json_find(s->parameters, name.data, name.length))
+            return UD_AUTH;
+    }
     return UD_SCHEMA;
+}
+ud_status ud_execution_set_variable(ud_execution *e, ud_string name, const ud_value *value) {
+    if (!e || !value)
+        return UD_INVALID;
+    ud_variable *v = NULL;
+    UD_TRY(ud_variable_writable(e, name, &v));
+    if (v->value.type != value->type)
+        return UD_SCHEMA;
+    ud_value copy = {0};
+    UD_TRY(ud_copy_value(e->ctx, value, &copy, 0));
+    ud_clear_value(&v->value);
+    v->value = copy;
+    return UD_OK;
 }
 ud_status ud_resolve_value(void *user, ud_string name, ud_value *out) {
     return ud_execution_variable(user, name, out);
@@ -261,15 +384,17 @@ static ud_status bound_put(ud_execution *e, ud_bytes *b, const ud_json *v) {
         ud_string name;
         UD_TRY(ud_json_string(p ? p : var, &name));
         if (p) {
-            const ud_json *def =
-                ud_json_find(ud_member(e->package->document, "parameters"), name.data, name.length);
-            if (!def)
-                return UD_SCHEMA;
-            const ud_json *provided = ud_json_find(e->parameters, name.data, name.length);
-            const ud_json *value = provided ? provided : ud_member(def, "default");
-            if (!value)
-                return UD_SCHEMA;
-            return bound_put(e, b, value);
+            for (ud_scope *scope = e->scope; scope; scope = scope->parent) {
+                const ud_json *def = ud_json_find(scope->parameters, name.data, name.length);
+                if (!def)
+                    continue;
+                const ud_json *provided = ud_json_find(scope->provided, name.data, name.length);
+                const ud_json *value = provided ? provided : ud_member(def, "default");
+                if (!value)
+                    return UD_SCHEMA;
+                return bound_put(e, b, value);
+            }
+            return UD_SCHEMA;
         }
         ud_value value;
         UD_TRY(ud_execution_variable(e, name, &value));

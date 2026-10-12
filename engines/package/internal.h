@@ -19,6 +19,7 @@ typedef struct ud_variable {
 typedef struct ud_scope {
     ud_variable *values;
     struct ud_scope *parent;
+    const ud_json *parameters, *provided;
 } ud_scope;
 struct ud_package {
     ud_context *ctx;
@@ -33,7 +34,7 @@ struct ud_execution {
     ud_registry *registry, *external;
     ud_json *parameters;
     ud_scope *scope;
-    ud_scope globals;
+    ud_scope globals, project_scope;
     atomic_int state, result;
     atomic_uint_fast64_t input_rows, output_rows, rejected_rows, batches, queued, high_water,
         completed_tasks, spill_bytes;
@@ -71,6 +72,11 @@ ud_status ud_resolve_value(void *, ud_string, ud_value *);
 ud_status ud_expression_json(ud_execution *, const ud_json *, const ud_batch *, ud_expression **);
 ud_status ud_bound_config(ud_execution *, const ud_json *, ud_json **);
 ud_status ud_scalar_value(const ud_json *, ud_type, ud_value *);
+ud_type ud_scalar_type(ud_string);
+ud_status ud_parameters_check(const ud_json *, const ud_json *, int require_values);
+ud_status ud_variable_writable(ud_execution *, ud_string, ud_variable **);
+ud_status ud_connection_definition(ud_execution *, ud_string, const ud_json **, int *project_scope);
+ud_status ud_connection_definitions_check(const ud_json *);
 ud_status ud_checkpoint_open(ud_execution *);
 ud_status ud_checkpoint_task_begin(ud_execution *, ud_string kind, int *completed);
 ud_status ud_checkpoint_task_done(ud_execution *);

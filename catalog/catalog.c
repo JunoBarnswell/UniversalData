@@ -1,12 +1,7 @@
 #include "ud/catalog.h"
 #include "ud/json.h"
 #include <errno.h>
-#include "../components/foundation/internal.h"
-struct ud_catalog {
-    ud_context *ctx;
-    ud_catalog_options options;
-    char *directory, *tenant;
-};
+#include "internal.h"
 static int kind_valid(int32_t kind) {
     return kind >= UD_CATALOG_PROJECT && kind <= UD_CATALOG_AUDIT;
 }
@@ -150,6 +145,8 @@ static ud_status normalize(ud_catalog *c, const ud_catalog_key *key, ud_string i
         if (!s && (n != key->id.length || memcmp(text, key->id.data, n)))
             s = UD_SCHEMA;
     }
+    if (!s)
+        s = ud_catalog_definition_check(c, key, document);
     if (!s)
         s = ud_json_serialize(document, json, length);
     ud_json_destroy(document);
