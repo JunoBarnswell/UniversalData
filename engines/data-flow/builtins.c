@@ -123,7 +123,8 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
         if (ud_json_kind(columns) != UD_JSON_ARRAY || !count || count > 65536 - original)
             s = UD_SCHEMA;
         ud_field *fields = !s ? ud_alloc(c->memory, (original + count) * sizeof(*fields)) : NULL;
-        if (!s && !fields)
+        ud_expression **bound = !s ? ud_alloc(c->memory, count * sizeof(*bound)) : NULL;
+        if (!s && (!fields || !bound))
             s = UD_RESOURCE;
         for (uint32_t i = 0; !s && i < original; i++)
             s = ud_batch_field(in[0], i, fields + i);
@@ -134,18 +135,20 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
             ud_string name;
             if (!s)
                 s = ud_json_string(ud_member(col, "name"), &name);
-            ud_expression *e = NULL;
             if (!s)
-                s = bind_expr(c, ud_member(col, "expression"), in[0], &e);
+                s = bind_expr(c, ud_member(col, "expression"), in[0], bound + i);
             if (!s)
-                fields[original + i] = (ud_field){.name = name.data,
-                                                  .name_length = name.length,
-                                                  .type = ud_expression_type(e),
-                                                  .nullable = 1};
-            ud_expression_destroy(e);
+                s = ud_expression_field(bound[i], fields + original + i);
+            if (!s) {
+                fields[original + i].name = name.data;
+                fields[original + i].name_length = name.length;
+            }
         }
         if (!s)
             s = ud_batch_create(c->memory, fields, original + count, 0, out);
+        for (uint32_t i = 0; bound && i < count; i++)
+            ud_expression_destroy(bound[i]);
+        ud_free(bound);
         ud_free(fields);
     } else if (!s && kind == JOIN) {
         uint32_t a = ud_batch_columns(in[0]), b = ud_batch_columns(in[1]);
@@ -431,10 +434,40 @@ static ud_status append_input(builtin *b, const ud_batch *in, uint32_t port) {
         return UD_SCHEMA;
     if (!b->buffer[port])
         UD_TRY(clone_schema(b->context.memory, b->inputs[port], b->buffer + port));
+    ud_batch *buffer = b->buffer[port];
+    uint64_t required = (uint64_t)buffer->rows + in->rows;
+    if (required > INT32_MAX)
+        return UD_RESOURCE;
     ud_value *values = ud_alloc(b->context.memory, in->columns * sizeof(*values));
     if (!values)
         return UD_RESOURCE;
     ud_status s = UD_OK;
+    if (required > buffer->capacity) {
+        uint64_t capacity = buffer->capacity ? buffer->capacity : in->rows;
+        while (capacity < required)
+            capacity = capacity > INT32_MAX / 2 ? INT32_MAX : capacity * 2;
+        ud_field *fields = ud_alloc(b->context.memory, in->columns * sizeof(*fields));
+        ud_batch *grown = NULL;
+        if (!fields)
+            s = UD_RESOURCE;
+        for (uint32_t j = 0; !s && j < in->columns; j++)
+            s = ud_batch_field(buffer, j, fields + j);
+        if (!s)
+            s = ud_batch_create(b->context.memory, fields, in->columns, (uint32_t)capacity, &grown);
+        ud_free(fields);
+        for (uint32_t row = 0; !s && row < buffer->rows; row++) {
+            s = ud_execution_check(b->context.execution);
+            for (uint32_t j = 0; !s && j < in->columns; j++)
+                s = ud_batch_get(buffer, row, j, values + j);
+            if (!s)
+                s = ud_batch_append(grown, values, in->columns);
+        }
+        if (!s) {
+            ud_batch_destroy(buffer);
+            b->buffer[port] = grown;
+        } else
+            ud_batch_destroy(grown);
+    }
     for (uint32_t row = 0; !s && row < in->rows; row++) {
         s = ud_execution_check(b->context.execution);
         for (uint32_t j = 0; !s && j < in->columns; j++)

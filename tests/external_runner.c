@@ -11,8 +11,11 @@ int main(int argc,char **argv) {
     if(!strcmp(argv[8],"quota")) options.spill_limit=64;
     if(!strcmp(argv[8],"cancel")) ud_cancel(ctx);
     ud_plan *plan=NULL;ud_batch *left=NULL,*right=NULL;ud_bytes schema[2]={{0}};
-    if(!strcmp(argv[1],"aggregate")) {
-        const char *definition=UD_SCHEMA_HEADER "k int64 nullable\nv decimal(38,2) nullable\n";
+    if (!strcmp(argv[1], "aggregate") || !strcmp(argv[1], "aggregate-float")) {
+        const char *definition = !strcmp(argv[1], "aggregate-float") ? UD_SCHEMA_HEADER
+                                     "k float64 nullable\nv decimal(38,2) nullable\n"
+                                                                     : UD_SCHEMA_HEADER
+                                     "k int64 nullable\nv decimal(38,2) nullable\n";
         const char *commands=UD_PLAN_HEADER "group k\ncount * cnt\nsum v total\n";
         s=ud_plan_create(ctx,definition,(uint32_t)strlen(definition),commands,(uint32_t)strlen(commands),&plan);
         if(!s) s=ud_query_aggregate_ndjson(ctx,str(argv[2]),str(argv[3]),plan,&options);

@@ -1,0 +1,1 @@
+value semantics: all types/NULL/NUL/Decimal/UTC/NaN wire+Arrow+JSON, stable Sort, hash Join, restored Group, cross-batch Unique/FK/Range and bound expressions passed

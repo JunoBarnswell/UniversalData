@@ -234,8 +234,6 @@ static ud_status append_core(ud_batch *b, const ud_value *v, uint32_t n, int mas
         if (validated) return ud_fail(b->ctx, validated, "column %u type or nullability mismatch", i);
         if (v[i].is_null)
             continue;
-        if (v[i].type == UD_FLOAT64 && !isfinite(v[i].real))
-            return UD_OVERFLOW;
         if (v[i].type == UD_BOOL && v[i].integer != 0 && v[i].integer != 1)
             return UD_PARSE;
         if (v[i].type == UD_DATE32 && (v[i].integer < INT32_MIN || v[i].integer > INT32_MAX))

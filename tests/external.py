@@ -6,6 +6,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from semantic_cases import CASES, semantic_key
 
 runner = str(pathlib.Path(sys.argv[1]).resolve())
 def write_rows(path, rows):
@@ -61,4 +62,26 @@ with tempfile.TemporaryDirectory(prefix='ud-external-') as folder:
     for row in actual_rows:
         assert row['tags'] == left_rows[row['left_id']]['tags'] and row['amount'] == '2.50'
     run(root, 'join', left, root / 'join-quota.ndjson', spill, right, *paths, 'quota', 4)
-print('typed external aggregation/join: adaptive quota, exact Decimal/NULL/nested/skew, cancellation and spill quota fixtures passed')
+    # The same independent equality fixtures also run through the Package Pipeline.
+    for field, keys in CASES:
+        left_rows = [{'lk':key,'left_id':i} for i,key in enumerate(keys)]
+        right_rows = [{'rk':key,'right_id':i} for i,key in enumerate(reversed(keys))]
+        write_rows(left,left_rows);write_rows(right,right_rows)
+        for path,name,id_name in zip(paths,['lk','rk'],['left_id','right_id']):
+            path.write_text(json.dumps({'version':3,'fields':[dict(field,name=name),
+                {'name':id_name,'type':'int64','nullable':False}]}),encoding='utf-8')
+        result = root / (field['type']+'-join.ndjson')
+        run(root,'join',left,result,spill,right,*paths)
+        expected_pairs = collections.Counter((l['left_id'],r['right_id']) for l in left_rows for r in right_rows
+            if l['lk'] is not None and r['rk'] is not None and semantic_key(field,l['lk']) == semantic_key(field,r['rk']))
+        actual_rows = [json.loads(line) for line in result.read_text(encoding='utf-8').splitlines()]
+        assert collections.Counter((r['left_id'],r['right_id']) for r in actual_rows) == expected_pairs, field['type']
+    float_field,float_keys = CASES[2]
+    write_rows(source,[{'k':key,'v':'1.25'} for key in float_keys])
+    float_output = root / 'float-groups.ndjson'
+    run(root,'aggregate-float',source,float_output,spill,source,source,source)
+    expected_counts = collections.Counter(semantic_key(float_field,key) for key in float_keys)
+    groups = [json.loads(line) for line in float_output.read_text(encoding='utf-8').splitlines()]
+    assert {semantic_key(float_field,g['k']):g['cnt'] for g in groups} == expected_counts
+    assert all(decimal.Decimal(g['total']) == decimal.Decimal('1.25')*g['cnt'] for g in groups)
+print('typed external aggregation/join: all 12 shared key types/NaN/zeros/NULL/Decimal/UTC/NUL/nested, adaptive quota/skew, cancellation and spill quota passed')

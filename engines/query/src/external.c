@@ -53,20 +53,6 @@ static ud_status append(external_state *state,ud_json_writer *writer,const ud_ba
     if(state->written>state->options.spill_limit || bytes>state->options.spill_limit-state->written) return UD_RESOURCE;
     UD_TRY(ud_json_writer_append(writer,batch));state->written+=bytes;return UD_OK;
 }
-static uint64_t hash_byte(uint64_t hash,uint8_t byte) { return (hash^byte)*UINT64_C(1099511628211); }
-static uint64_t hash_integer(uint64_t hash,uint64_t value) {
-    for(uint32_t j=0;j<8;j++) hash=hash_byte(hash,(uint8_t)(value>>(8*j)));return hash;
-}
-static uint64_t hash_value(uint64_t hash,const ud_value *v) {
-    hash=hash_integer(hash,(uint64_t)v->type);hash=hash_byte(hash,(uint8_t)v->is_null);if(v->is_null) return hash;
-    if(v->type==UD_UTF8 || v->type==UD_BINARY) {
-        hash=hash_integer(hash,v->text_length);for(uint32_t j=0;j<v->text_length;j++) hash=hash_byte(hash,(uint8_t)v->text[j]);
-    } else if(v->type>=UD_STRUCT) {
-        hash=hash_integer(hash,v->child_count);for(uint32_t j=0;j<v->child_count;j++) hash=hash_value(hash,v->children+j);
-    } else if(v->type==UD_DECIMAL128) { hash=hash_integer(hash,v->decimal.low);hash=hash_integer(hash,(uint64_t)v->decimal.high); }
-    else if(v->type==UD_FLOAT64) { uint64_t bits=0;if(v->real!=0) memcpy(&bits,&v->real,8);hash=hash_integer(hash,bits); }
-    else hash=hash_integer(hash,(uint64_t)v->integer);return hash;
-}
 static ud_status buckets_close(bucket buckets[16],ud_status status) {
     for(uint32_t j=0;j<16;j++) { ud_status s=ud_json_writer_close(buckets[j].writer);buckets[j].writer=NULL;if(!status && s) status=s; }return status;
 }
@@ -81,8 +67,16 @@ static ud_status partition(external_state *state,const char *path,const ud_field
             if(filter) { int accepted=0;s=ud_plan_accept(filter,batch,row,&accepted);if(s || !accepted) continue; }
             /* Murmur finalization of a depth-salted FNV key gives independent
              * buckets on repartition, including common prefixes / integer keys. */
-            uint64_t hash=UINT64_C(14695981039346656037)^((uint64_t)depth*UINT64_C(0x9e3779b97f4a7c15));int null=0;
-            for(uint32_t j=0;!s && j<key_count;j++) { ud_value v;s=ud_batch_get(batch,row,keys[j],&v);if(!s) { null|=v.is_null;hash=hash_value(hash,&v); } }
+            uint64_t hash = UD_VALUE_HASH_SEED ^ ((uint64_t)depth * UINT64_C(0x9e3779b97f4a7c15));
+            int null = 0;
+            for (uint32_t j = 0; !s && j < key_count; j++) {
+                ud_value v;
+                s = ud_batch_get(batch, row, keys[j], &v);
+                if (!s) {
+                    null |= v.is_null;
+                    hash = ud_value_hash(&v, hash);
+                }
+            }
             if(s || (skip_null && null)) continue;
             hash^=hash>>33;hash*=UINT64_C(0xff51afd7ed558ccd);hash^=hash>>33;hash*=UINT64_C(0xc4ceb9fe1a85ec53);hash^=hash>>33;
             bucket *b=buckets+(hash&15);

@@ -1,0 +1,53 @@
+{
+  "milestone": "shared-value-semantics-source-module",
+  "date": "2026-10-12",
+  "baseCommit": "b9fe4dbf52409d0fd7fc966a0b94534010678e19",
+  "verification": "NotRunForFinalSource",
+  "sourceManifest": "docs/acceptance/evidence/ssis-value-semantics/source-manifest.json",
+  "sourceManifestSha256": "a7c6dd2a7532866b9c5505a441973391fac5977bd398fc74d1bcf3d52e14941b",
+  "checksBeforeFinalGateInstruction": [
+    {
+      "path": "docs/acceptance/evidence/ssis-value-semantics/asan-ctest.txt",
+      "sha256": "f582664846add9646198d37676f30693d1cd78ebe85a8f5bec308b46e19cd27f",
+      "outcome": "PassedHistoricalDevelopmentCheck",
+      "finalAcceptance": false
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-value-semantics/installed-c.txt",
+      "sha256": "21439a8b989bc3b637bb6e2ac51f11581ae875350b3d2decde3dca06e5787efd",
+      "outcome": "PassedHistoricalDevelopmentCheck",
+      "finalAcceptance": false
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-value-semantics/language-parity.txt",
+      "sha256": "e25753c1f5f42ff49c9069c0a3680d7db2dc95c495d550cd3bb52f55b85f915b",
+      "outcome": "PassedHistoricalDevelopmentCheck",
+      "finalAcceptance": false
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-value-semantics/native-ctest.txt",
+      "sha256": "92a4685bc83e3d186f9a8d0ec436eb7f97a50e21f36884fe920723b8d815362d",
+      "outcome": "PassedHistoricalDevelopmentCheck",
+      "finalAcceptance": false
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-value-semantics/nuget-consumer.txt",
+      "sha256": "65ea9a78f8a8e287bd9697ece8ff1e13b033d4a903dd88d4cdd3b25989fd801e",
+      "outcome": "PassedHistoricalDevelopmentCheck",
+      "finalAcceptance": false
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-value-semantics/postgresql.txt",
+      "sha256": "0c2b4cc51a1ca3a0ef75be55a535f4f4cf1cb784a34b4f6eb2739a417a6c9872",
+      "outcome": "FailedInvocation",
+      "finalAcceptance": false
+    }
+  ],
+  "limitations": [
+    "User now requires Phase 0\u20137 source complete before centralized compilation/acceptance; no further checks during source implementation.",
+    "Historical 34/34 native, 34/34 ASan/UBSan, installed C, native language/type parity and NuGet checks are development evidence only; not final-source acceptance.",
+    "Live PostgreSQL invocation supplied a relative plugin path, violating absolute-path loader precondition; failure retained, no PostgreSQL success claim.",
+    "Query-private external operator state and Pipeline-private blocking state still require shared Compute/block-store convergence.",
+    "Windows/remote CI waived; no Windows passed claim."
+  ]
+}

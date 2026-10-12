@@ -1,4 +1,5 @@
 #include "common.h"
+#include <math.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -361,6 +362,11 @@ static ud_status write_batch(odbc_state *p, const ud_batch *b, const char *sql, 
                 if (!v.is_null)
                     a->indicator = (SQLLEN)len * sizeof(SQLWCHAR);
             } else if (v.type == UD_FLOAT64) {
+                if (!v.is_null && !isfinite(v.real)) {
+                    s = h->report(h->context, UD_UNSUPPORTED,
+                                  "ODBC driver has no declared nonfinite Float64 capability");
+                    break;
+                }
                 a->real = v.real;
                 ctype = SQL_C_DOUBLE;
                 sqltype = SQL_DOUBLE;

@@ -5,6 +5,7 @@
 typedef struct expression_node {
     int kind, op, constant;
     ud_type type;
+    ud_field field;
     uint32_t column;
     ud_string name;
     ud_value value;
@@ -81,7 +82,7 @@ static ud_status eval(const ud_expression *e, const expression_node *n, const ud
         out->real = n->op == ADD   ? a.real + z.real
                     : n->op == SUB ? a.real - z.real
                                    : a.real * z.real;
-        return isfinite(out->real) ? UD_OK : UD_OVERFLOW;
+        return isfinite(out->real) || !isfinite(a.real) || !isfinite(z.real) ? UD_OK : UD_OVERFLOW;
     }
     int64_t x = a.integer, y = z.integer;
     if (n->op == ADD) {
@@ -137,6 +138,8 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
         n->kind = LITERAL;
         n->constant = 1;
         n->value.type = n->type;
+        n->field.type = n->type;
+        n->field.nullable = 1;
         int kind = ud_json_kind(literal);
         if (kind == UD_JSON_NULL) {
             n->value.is_null = 1;
@@ -144,12 +147,16 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
         }
         if ((n->type == UD_BOOL && kind != UD_JSON_BOOL) ||
             (n->type == UD_UTF8 && kind != UD_JSON_STRING) ||
-            ((n->type == UD_INT64 || n->type == UD_FLOAT64) && kind != UD_JSON_NUMBER))
+            (n->type == UD_INT64 && kind != UD_JSON_NUMBER) ||
+            (n->type == UD_FLOAT64 && kind != UD_JSON_NUMBER && kind != UD_JSON_STRING))
             return UD_SCHEMA;
         const char *text;
         uint32_t length;
         UD_TRY(ud_json_text(literal, &text, &length));
-        return ud_value_parse(e->ctx, n->type, text, length, &n->value);
+        UD_TRY(ud_value_parse(e->ctx, n->type, text, length, &n->value));
+        return n->type == UD_FLOAT64 && kind == UD_JSON_STRING && isfinite(n->value.real)
+                   ? UD_SCHEMA
+                   : UD_OK;
     }
     if (ref || col) {
         if (ud_json_size(json) != 1)
@@ -166,6 +173,8 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
             n->type = v.type;
             if (n->type < UD_BOOL || n->type > UD_UTF8)
                 return UD_UNSUPPORTED;
+            n->field.type = n->type;
+            n->field.nullable = 1;
         } else {
             if (!e->schema)
                 return UD_SCHEMA;
@@ -178,6 +187,7 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
                     !memcmp(f.name, n->name.data, n->name.length)) {
                     n->column = i;
                     n->type = f.type;
+                    n->field = f;
                     found = 1;
                     break;
                 }
@@ -211,15 +221,20 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
         if (a != b || (a != UD_INT64 && a != UD_FLOAT64))
             return UD_SCHEMA;
         n->type = a;
+        n->field = n->args[0]->field;
     } else {
-        if (n->op != ISNULL && (a != b || a >= UD_STRUCT))
+        if (n->op != ISNULL && a != b)
             return UD_SCHEMA;
         if (n->op >= AND && n->op <= NOT && a != UD_BOOL)
             return UD_SCHEMA;
-        /* Decimal comparisons require explicit bound scale in future AST metadata. */
-        if (a == UD_DECIMAL128)
-            return UD_UNSUPPORTED;
+        if (n->op >= EQ && n->op <= GE) {
+            ud_field left = n->args[0]->field, right = n->args[1]->field;
+            left.nullable = right.nullable = 1;
+            if (!ud_field_equal(&left, &right, 0))
+                return UD_SCHEMA;
+        }
         n->type = UD_BOOL;
+        n->field = (ud_field){.type = UD_BOOL, .nullable = 1};
     }
     if (n->args[0]->constant && (count == 1 || n->args[1]->constant)) {
         UD_TRY(eval(e, n, NULL, 0, &n->value));
@@ -266,6 +281,13 @@ ud_status ud_expression_create(ud_context *ctx, ud_string json, const ud_express
 ud_type ud_expression_type(const ud_expression *e) {
     return e ? e->root->type : 0;
 }
+ud_status ud_expression_field(const ud_expression *e, ud_field *out) {
+    if (!e || !out)
+        return UD_INVALID;
+    *out = e->root->field;
+    out->nullable = 1;
+    return UD_OK;
+}
 ud_status ud_expression_evaluate(const ud_expression *e, const ud_batch *b, uint32_t row,
                                  ud_value *out) {
     if (!e || !out || (e->schema && (!b || row >= ud_batch_rows(b))))
@@ -292,8 +314,10 @@ ud_status ud_expression_evaluate_batch(const ud_expression *e, const ud_batch *b
     *out = NULL;
     if (!e || !b)
         return UD_INVALID;
-    ud_field f = {
-        .name = name.data, .name_length = name.length, .type = e->root->type, .nullable = 1};
+    ud_field f = e->root->field;
+    f.name = name.data;
+    f.name_length = name.length;
+    f.nullable = 1;
     ud_status s = ud_batch_create(e->ctx, &f, 1, ud_batch_rows(b), out);
     for (uint32_t i = 0; !s && i < ud_batch_rows(b); i++) {
         ud_value v;

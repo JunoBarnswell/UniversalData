@@ -47,12 +47,13 @@ with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
  schema={'version':3,'fields':[{'name':'id','type':'int64','nullable':False},{'name':'amount','type':'decimal128','precision':38,'scale':2,'nullable':False},
  {'name':'at','type':'timestamp','timezone':'Asia/Shanghai','nullable':False},{'name':'raw','type':'binary','nullable':False},
  {'name':'profile','type':'struct','nullable':False,'children':[{'name':'name','type':'utf8','nullable':False},{'name':'missing','type':'int64','nullable':True}]},
- {'name':'tags','type':'list','nullable':False,'children':[{'name':'item','type':'utf8','nullable':True}]}]}
- rows=[{'id':9223372036854775807,'amount':'123456789012345678901234567890123456.78','at':'2024-02-29T08:00:00+08:00','raw':'AP9B','profile':{'name':'中文\0'},'tags':['',None,'中文']}]
+ {'name':'tags','type':'list','nullable':False,'children':[{'name':'item','type':'utf8','nullable':True}]},
+ {'name':'floats','type':'list','nullable':False,'children':[{'name':'item','type':'float64','nullable':True}]}]}
+ rows=[{'id':9223372036854775807,'amount':'123456789012345678901234567890123456.78','at':'2024-02-29T08:00:00+08:00','raw':'AP9B','profile':{'name':'中文\0'},'tags':['',None,'中文'],'floats':['NaN','Infinity','-Infinity',-0.0,0.0,None]}]
  sc=r/'schema.json';sc.write_text(json.dumps(schema));rs=r/'rows.json';rs.write_text(json.dumps(rows,ensure_ascii=False))
  for index,cmd in enumerate([[data],[dotnet,data_dll],[java,'-cp',classes+os.pathsep+jar,'DataConsumer']]):
   subprocess.run(cmd+[str(sc),str(rs),str(r/f'{index}.data.json'),str(r/f'{index}.wire')],env=env,check=True,timeout=30)
  for suffix in ['data.json','wire']:
   expected=(r/f'0.{suffix}').read_bytes();assert all((r/f'{i}.{suffix}').read_bytes()==expected for i in [1,2])
- actual=json.loads((r/'0.data.json').read_text());assert actual[0]['at']=='2024-02-29T00:00:00.000000Z' and actual[0]['profile']['missing'] is None
- print('C/.NET8/Java17 ABI 3: same Package/Project outer parameters/shared connection/scopes/File System copy/Data Profiling checks/real child Package mapping/control loops/precedence/10003-row derive+split outputs and result metrics; Decimal/UTC/UTF8/nested/wire parity passed')
+ actual=json.loads((r/'0.data.json').read_text());assert actual[0]['at']=='2024-02-29T00:00:00.000000Z' and actual[0]['profile']['missing'] is None and actual[0]['floats']==rows[0]['floats']
+ print('C/.NET8/Java17 ABI 3: same Package/Project parameters/scopes/File System/Profiling/child/control loops/precedence/10003-row outputs and metrics; Decimal/UTC/UTF8/NUL/nested/NaN/Infinity/zeros/NULL and binary wire parity passed')

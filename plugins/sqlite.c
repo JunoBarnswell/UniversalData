@@ -2,6 +2,7 @@
 #include <sqlite3.h>
 #include <ctype.h>
 #include <stdatomic.h>
+#include <math.h>
 typedef struct {
     ud_host_api host;
     sqlite3 *db;
@@ -187,10 +188,15 @@ static ud_status write_batch(sqlite_state *p, const ud_batch *b, const char *sql
                 s = h->format_value(&v, text, sizeof(text), &required);
                 if (s) break;
                 rc = sqlite3_bind_text(stmt, index, text, (int)required - 1, SQLITE_TRANSIENT);
-            }
-            else if (v.type == UD_FLOAT64)
+            } else if (v.type == UD_FLOAT64) {
+                if (isnan(v.real)) {
+                    s = h->report(
+                        h->context, UD_UNSUPPORTED,
+                        "SQLite cannot preserve Float64 NaN; refusing SQL NULL conversion");
+                    break;
+                }
                 rc = sqlite3_bind_double(stmt, index, v.real);
-            else if (v.type <= UD_TIMESTAMP)
+            } else if (v.type <= UD_TIMESTAMP)
                 rc = sqlite3_bind_int64(stmt, index, v.integer);
             else { s = UD_UNSUPPORTED; break; }
             if (rc != SQLITE_OK) {
@@ -335,8 +341,14 @@ static ud_status bind_connector_value(sqlite_state *p,sqlite3_stmt *stmt,int ind
         ud_status s=p->host.format_value(v,text,sizeof(text),&length);
         if(s) return s;
         rc=sqlite3_bind_text(stmt,index,text,(int)length-1,SQLITE_TRANSIENT);
-    } else if(v->type==UD_FLOAT64) rc=sqlite3_bind_double(stmt,index,v->real);
-    else if(v->type<=UD_TIMESTAMP) rc=sqlite3_bind_int64(stmt,index,v->integer);
+    } else if (v->type == UD_FLOAT64) {
+        if (isnan(v->real))
+            return p->host.report(
+                p->host.context, UD_UNSUPPORTED,
+                "SQLite cannot preserve Float64 NaN; refusing SQL NULL conversion");
+        rc = sqlite3_bind_double(stmt, index, v->real);
+    } else if (v->type <= UD_TIMESTAMP)
+        rc = sqlite3_bind_int64(stmt, index, v->integer);
     else return UD_UNSUPPORTED;
     return rc==SQLITE_OK ? UD_OK : failure(p,rc);
 }

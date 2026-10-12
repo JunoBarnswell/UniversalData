@@ -19,6 +19,8 @@ UD_API ud_status ud_batch_cast_schema(ud_context *, const ud_batch *, const char
  * nullable members become NULL. Nested Struct uses objects; List and Map use
  * arrays (Map entries are objects with the schema's key/value field names).
  * Decimal accepts exact JSON number or string and emits a decimal string.
+ * Float64 nonfinite values use exactly "NaN", "Infinity", "-Infinity" strings;
+ * finite floats use JSON numbers. Quoted finite floats are rejected.
  * Date/Time/Timestamp are explicit ISO strings; Binary is canonical base64.
  * No inferred schema, float Decimal conversion, or implicit local timezone. */
 UD_API ud_status ud_batch_from_json(ud_context *, const ud_field *, uint32_t columns,

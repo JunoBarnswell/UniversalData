@@ -64,4 +64,4 @@ C/.NET8/Java17 同一 Package 增加 Profiling Task：10003 行实际 row/null/m
 
 数据库插件按当前 ABI 重新构建：SQLite 的交易/receipt/Pipeline 随原生套件通过；PostgreSQL 实际本地连接、默认拒绝、bounded SELECT/END/close 通过；DuckDB SQL/Parquet roundtrip 通过。ODBC 通过 SQLite ODBC 驱动的实际连接和一批 typed read/close 验证，但仍缺少 ud_connector_api 表和完整 Connection Manager/游标/receipt 门禁；G59 不计为完成。旧 build/full 的 ETL 缓存组件配置已替换为当前 Package/Expression 列表，未保留旧入口。证据：`docs/acceptance/evidence/ssis-custom-task/evidence.json`。
 
-Native 插件是可信宿主代码，不是沙箱；回调自己释放 per-invoke 资源，并遵循不得控制借用 Execution 生命周期的契约。G43 全类别扩展和线程竞态门禁仍待办；Windows/远程 CI 状态按用户免作门禁。
+Native 插件是可信宿主代码，不是沙箱；回调自己释放 per-invoke 资源，并遵循不得控制借用 Execution 生命周期的契约。G07/G21 全类别扩展和线程竞态门禁仍待办；Windows/远程 CI 状态按用户免作门禁。

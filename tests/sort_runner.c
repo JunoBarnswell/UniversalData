@@ -2,12 +2,14 @@
 #include <string.h>
 #include <stdio.h>
 int main(int argc, char **argv) {
-    if (argc != 4)
+    if (argc != 4 && argc != 5)
         return 2;
     ud_context *ctx = NULL;
     ud_plan *plan = NULL;
     ud_status s = ud_context_create(NULL, &ctx);
-    const char *schema = UD_SCHEMA_HEADER "team utf8 required\namount int64 nullable\n";
+    const char *schema = argc == 5 ? UD_SCHEMA_HEADER
+                             "team utf8 required\namount float64 nullable\n"
+                                   : UD_SCHEMA_HEADER "team utf8 required\namount int64 nullable\n";
     if (!s)
         s = ud_plan_create(ctx, schema, (uint32_t)strlen(schema), UD_PLAN_HEADER, sizeof(UD_PLAN_HEADER) - 1, &plan);
     if (!s)

@@ -3,12 +3,14 @@
 #include <ctype.h>
 typedef struct group {
     ud_value *values;
-    struct group *next;
+    uint64_t hash;
+    struct group *next, *bucket_next;
 } group;
 struct ud_accumulator {
     const ud_plan *plan;
     group *head, *tail;
-    uint32_t groups;
+    group **buckets;
+    uint32_t groups, bucket_count;
     int failed;
 };
 static char *token(char **cursor) {
@@ -406,7 +408,30 @@ static void clear_values(ud_value *v, uint32_t n) {
     for (uint32_t i = 0; i < n; i++) ud_clear_value(v + i);
     ud_free(v);
 }
-static ud_status new_group(ud_accumulator *a, const ud_batch *b, uint32_t row, group **out) {
+static ud_status index_group(ud_accumulator *a, group *g) {
+    if (!a->plan->key_n)
+        return UD_OK;
+    if (!a->bucket_count || (a->groups >= a->bucket_count && a->bucket_count < 65536)) {
+        uint32_t count = a->bucket_count ? a->bucket_count * 2 : 64;
+        group **buckets = ud_alloc(a->plan->ctx, (size_t)count * sizeof(*buckets));
+        if (!buckets)
+            return UD_RESOURCE;
+        for (group *prior = a->head; prior; prior = prior->next) {
+            uint32_t slot = (uint32_t)(prior->hash & (count - 1));
+            prior->bucket_next = buckets[slot];
+            buckets[slot] = prior;
+        }
+        ud_free(a->buckets);
+        a->buckets = buckets;
+        a->bucket_count = count;
+    }
+    uint32_t slot = (uint32_t)(g->hash & (a->bucket_count - 1));
+    g->bucket_next = a->buckets[slot];
+    a->buckets[slot] = g;
+    return UD_OK;
+}
+static ud_status new_group(ud_accumulator *a, const ud_batch *b, uint32_t row, uint64_t hash,
+                           group **out) {
     const ud_plan *p = a->plan;
     uint32_t n = p->key_n + p->agg_n;
     if (a->groups == INT32_MAX)
@@ -438,6 +463,13 @@ static ud_status new_group(ud_accumulator *a, const ud_batch *b, uint32_t row, g
             v->scale = p->fields[p->aggs[i].column].scale;
         }
     }
+    g->hash = hash;
+    ud_status indexed = index_group(a, g);
+    if (indexed) {
+        clear_values(g->values, n);
+        ud_free(g);
+        return indexed;
+    }
     if (a->tail)
         a->tail->next = g;
     else
@@ -456,7 +488,7 @@ ud_status ud_accumulator_create(const ud_plan *p, ud_accumulator **out) {
     (*out)->plan = p;
     if (!p->key_n) {
         group *g;
-        ud_status s = new_group(*out, NULL, 0, &g);
+        ud_status s = new_group(*out, NULL, 0, UD_VALUE_HASH_SEED, &g);
         if (s) {
             ud_accumulator_destroy(*out);
             *out = NULL;
@@ -475,6 +507,7 @@ void ud_accumulator_destroy(ud_accumulator *a) {
         ud_free(g);
         g = next;
     }
+    ud_free(a->buckets);
     ud_free(a);
 }
 static ud_status add_rows(ud_accumulator *a, const ud_batch *b) {
@@ -485,8 +518,18 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b) {
         UD_TRY(ud_plan_accept(p, b, r, &accept));
         if (!accept)
             continue;
-        group *g;
-        for (g = a->head; g; g = g->next) {
+        uint64_t hash = UD_VALUE_HASH_SEED;
+        for (uint32_t k = 0; k < p->key_n; k++) {
+            ud_value v;
+            UD_TRY(ud_batch_get(b, r, p->keys[k], &v));
+            hash = ud_value_hash(&v, hash);
+        }
+        group *g = !p->key_n         ? a->head
+                   : a->bucket_count ? a->buckets[hash & (a->bucket_count - 1)]
+                                     : NULL;
+        for (; g; g = g->bucket_next) {
+            if (g->hash != hash)
+                continue;
             uint32_t k = 0;
             for (; k < p->key_n; k++) {
                 ud_value v;
@@ -498,7 +541,7 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b) {
                 break;
         }
         if (!g)
-            UD_TRY(new_group(a, b, r, &g));
+            UD_TRY(new_group(a, b, r, hash, &g));
         for (uint32_t i = 0; i < p->agg_n; i++) {
             const ud_aggregate_def *def = p->aggs + i;
             ud_value input = {.type = UD_INT64}, *v = g->values + p->key_n + i;
@@ -523,7 +566,7 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b) {
                     v->integer += input.integer;
                 } else {
                     double sum = v->real + input.real;
-                    if (!isfinite(sum))
+                    if (!isfinite(sum) && isfinite(v->real) && isfinite(input.real))
                         return UD_OVERFLOW;
                     v->real = sum;
                 }
@@ -612,6 +655,9 @@ ud_status ud_accumulator_restore(ud_accumulator *a, const ud_batch *b) {
         a->head = a->tail = NULL;
         a->groups = 0;
     }
+    ud_free(a->buckets);
+    a->buckets = NULL;
+    a->bucket_count = 0;
     for (uint32_t r = 0; r < ud_batch_rows(b); r++) {
         group *g = ud_alloc(a->plan->ctx, sizeof(*g));
         if (!g) {
@@ -631,6 +677,26 @@ ud_status ud_accumulator_restore(ud_accumulator *a, const ud_batch *b) {
             if (s)
                 break;
         }
+        g->hash = UD_VALUE_HASH_SEED;
+        for (uint32_t k = 0; !s && k < a->plan->key_n; k++)
+            g->hash = ud_value_hash(g->values + k, g->hash);
+        if (!s && a->bucket_count) {
+            for (group *prior = a->buckets[g->hash & (a->bucket_count - 1)]; prior;
+                 prior = prior->bucket_next) {
+                if (prior->hash != g->hash)
+                    continue;
+                uint32_t k = 0;
+                for (; k < a->plan->key_n; k++)
+                    if (ud_value_compare(prior->values + k, g->values + k))
+                        break;
+                if (k == a->plan->key_n) {
+                    s = UD_CORRUPT;
+                    break;
+                }
+            }
+        }
+        if (!s)
+            s = index_group(a, g);
         if (s) {
             clear_values(g->values, n);
             ud_free(g);

@@ -223,8 +223,11 @@ ud_status ud_value_format(const ud_value *v, char *out, uint32_t cap, uint32_t *
     else if (v->type == UD_BOOL) { if (v->integer != 0 && v->integer != 1) return UD_PARSE; p = v->integer ? "true" : "false"; n = (uint32_t)strlen(p); }
     else if (v->type == UD_INT64) n = (uint32_t)snprintf(text, sizeof(text), "%lld", (long long)v->integer);
     else if (v->type == UD_FLOAT64) {
-        if (!isfinite(v->real)) return UD_OVERFLOW;
-        int count;
+        if (!isfinite(v->real)) {
+            p = isnan(v->real) ? "NaN" : v->real < 0 ? "-Infinity" : "Infinity";
+            n = (uint32_t)strlen(p);
+        } else {
+            int count;
 #ifdef _WIN32
         _locale_t numeric=_create_locale(LC_NUMERIC,"C");if(!numeric) return UD_RESOURCE;
         count=_snprintf_l(text,sizeof(text),"%.17g",numeric,v->real);_free_locale(numeric);
@@ -234,6 +237,7 @@ ud_status ud_value_format(const ud_value *v, char *out, uint32_t cap, uint32_t *
         count=snprintf(text,sizeof(text),"%.17g",v->real);uselocale(old);freelocale(numeric);
 #endif
         if(count<0 || count>=(int)sizeof(text)) return UD_OVERFLOW;n=(uint32_t)count;
+        }
     } else if (v->type == UD_DECIMAL128) {
         if (v->precision < 1 || v->precision > 38 || v->scale < -38 || v->scale > 38) return UD_SCHEMA;
         char d[40]; int count = (int)coefficient(v->decimal, d);
@@ -432,7 +436,19 @@ ud_status ud_value_parse(ud_context *c, ud_type type, const char *text, uint32_t
     }
     if (type != UD_FLOAT64)
         return ud_fail(c, UD_UNSUPPORTED, "unsupported type %d", type);
-    /* Validate decimal grammar before libc conversion; exclude hex/NaN/Infinity.
+    if (n == 3 && !memcmp(text, "NaN", 3)) {
+        out->real = NAN;
+        return UD_OK;
+    }
+    if (n == 8 && !memcmp(text, "Infinity", 8)) {
+        out->real = INFINITY;
+        return UD_OK;
+    }
+    if (n == 9 && !memcmp(text, "-Infinity", 9)) {
+        out->real = -INFINITY;
+        return UD_OK;
+    }
+    /* Validate decimal grammar before libc conversion; exclude libc extensions.
      * libc performs correct binary rounding in a private C numeric locale. */
     uint32_t i=0;int nonzero_digit=0,digits=0;
     if(text[i]=='-' || text[i]=='+') i++;

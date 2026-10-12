@@ -55,6 +55,12 @@ UD_API int32_t ud_decimal_compare(ud_decimal128, ud_decimal128);
 /* Total order for values whose bound schemas match (including Decimal scale).
  * NULL first; NaN after all numeric values, all NaNs equal, +/-0 equal. */
 UD_API int32_t ud_value_compare(const ud_value *, const ud_value *);
+/* Seeded canonical FNV-1a key hash for valid values under matching schemas.
+ * Equal values have equal hashes, including all NaNs, +/-0 and NULL payloads.
+ * Hash collisions require Compare. Not a security digest. Start with this seed;
+ * compose ordered keys by passing each result as the seed for the next value. */
+#define UD_VALUE_HASH_SEED UINT64_C(14695981039346656037)
+UD_API uint64_t ud_value_hash(const ud_value *, uint64_t seed);
 UD_API int32_t ud_truth_and(int32_t, int32_t);
 UD_API int32_t ud_truth_or(int32_t, int32_t);
 UD_API int32_t ud_truth_not(int32_t);

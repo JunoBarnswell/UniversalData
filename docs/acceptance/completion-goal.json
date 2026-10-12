@@ -99,7 +99,7 @@
       "phase": 1,
       "name": "统一类型/转换/NULL/Compare/Hash",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Implemented",
       "verification": "NotRun",
       "acceptance": "Decimal/UTC/NUL/嵌套/NaN/NULL 在表达式、ETL、Query、spill 中一致；同值 hash 相同",
       "implementation": [
@@ -108,7 +108,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Single Data Compare/seeded canonical Hash (NaN/zeros/NULL/recursive types); Compute Group/Join/Unique/FK and Query partitions share it. Typed JSON/Arrow/wire/Expression result metadata and SQLite NaN capability rejection implemented. Historical native 34/34, ASan/UBSan 34/34 and language/NuGet consumer checks occurred before the final centralized-gate instruction. Final source verification deferred until all Phase 0–7 code is complete."
     },
     {
       "id": "G05",
@@ -163,7 +164,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native component table and atomic registry ownership now hold loaded modules safely across Execution leases; actual public-SDK Task shared libraries verified. Full Source/Transform/Destination/Enumerator/LogProvider extension acceptance and language registry surfaces remain pending."
     },
     {
       "id": "G08",
@@ -450,7 +452,7 @@
           "type": "executed-public-sdk-shared-module-registration-ownership-authorization-recovery"
         }
       ],
-      "progress": "Current complete ABI3 only: old version/layout rejected and legacy fallback/module removed per user. Real installed-header DLL Tasks, atomic descriptor/owner rollback, component-only factory absence, registry/module/Execution/instance unload guards, shared native expressions/variables, resource default deny, callback status/error/cancel/deadline, actual file effect/crash Unknown and completed resume verified. Broader G43 plugin categories and language registry exposure remain separate."
+      "progress": "Current complete ABI3 only: old version/layout rejected and legacy fallback/module removed per user. Real installed-header DLL Tasks, atomic descriptor/owner rollback, component-only factory absence, registry/module/Execution/instance unload guards, shared native expressions/variables, resource default deny, callback status/error/cancel/deadline, actual file effect/crash Unknown and completed resume verified. Broader G07/G21 plugin categories and language registry exposure remain separate."
     },
     {
       "id": "G21",
@@ -466,7 +468,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Pure configure/metadata binding before IO and leased native component lifecycle/module ownership are implemented; complete category metadata/resource/error-port contracts remain pending."
     },
     {
       "id": "G22",
@@ -513,7 +516,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Pipeline zero-capacity input accumulation identified and made functional under the shared context memory quota. Full shared stateful Compute operators/block store/spill/recovery convergence is still required; this memory-buffer change is not G24 completion."
     },
     {
       "id": "G25",
@@ -837,8 +841,7 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
-      "progress": "Native component table and atomic registry ownership now hold loaded modules safely across Execution leases; actual public-SDK Task shared libraries verified. Full Source/Transform/Destination/Enumerator/LogProvider extension acceptance and language registry surfaces remain pending."
+      "evidence": []
     },
     {
       "id": "G44",
@@ -1018,7 +1021,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "User explicitly waived Windows testing and remote CI status; Linux local gates remain required."
+      "progress": "User reconfirmed Windows test waiver on 2026-10-12 after the full completion criteria; remote CI status remains waived. Linux local evidence is required; Windows is not counted as verified."
     },
     {
       "id": "G52",
@@ -1338,5 +1341,6 @@
       "instruction": "无需关注ci的状态，Windows 无需测试",
       "effect": "Windows verification and remote CI status are not acceptance gates for this goal. Linux local behavioral, memory, transaction, recovery and C/.NET/Java evidence remain mandatory. No Windows verification claim."
     }
-  ]
+  ],
+  "implementationCadence": "User requires all Phase 0–7 source implementation before centralized compilation and key acceptance. During implementation only architecture reasoning/source review; prompt module commits to draft PR; final verification NotRun until the centralized gates. Historical development evidence does not establish final-source acceptance."
 }

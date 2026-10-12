@@ -1,6 +1,7 @@
 #include "../internal.h"
 #include "ud/json.h"
 #include "ud/format.h"
+#include <math.h>
 static const char alphabet[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 static int base64_digit(unsigned char c) {
     const char *p=c?strchr(alphabet,c):NULL;return p?(int)(p-alphabet):-1;
@@ -59,12 +60,15 @@ static ud_status parse_value(ud_context *ctx,const ud_field *field,const ud_json
     }
     if(field->type==UD_BOOL && kind!=UD_JSON_BOOL) return UD_SCHEMA;
     if((field->type==UD_INT64 || field->type==UD_DECIMAL128) && kind!=UD_JSON_NUMBER && kind!=UD_JSON_STRING) return UD_SCHEMA;
-    if(field->type==UD_FLOAT64 && kind!=UD_JSON_NUMBER) return UD_SCHEMA;
+    if (field->type == UD_FLOAT64 && kind != UD_JSON_NUMBER && kind != UD_JSON_STRING)
+        return UD_SCHEMA;
     if((field->type==UD_UTF8 || field->type==UD_BINARY || field->type==UD_DATE32 ||
         field->type==UD_TIME64 || field->type==UD_TIMESTAMP) && kind!=UD_JSON_STRING) return UD_SCHEMA;
     const char *text=NULL;uint32_t length=0;UD_TRY(ud_json_text(json,&text,&length));
     if(field->type==UD_BINARY) return unbase64(ctx,text,length,out);
     ud_value parsed;UD_TRY(ud_value_parse_field(ctx,field,text,length,rounding,&parsed));
+    if (field->type == UD_FLOAT64 && kind == UD_JSON_STRING && isfinite(parsed.real))
+        return UD_SCHEMA;
     return ud_copy_value(ctx,&parsed,out,0);
 }
 static ud_status append_object(ud_batch *batch,const ud_json *object,int32_t rounding) {
@@ -123,8 +127,12 @@ static ud_status emit_value(ud_bytes *bytes,const ud_field *field,const ud_value
     if(s!=UD_RESOURCE) return s;
     char *text=ud_alloc(bytes->ctx,required);if(!text) return UD_RESOURCE;
     s=ud_value_format(value,text,required,&required);
-    if(!s) s=field->type==UD_DECIMAL128 || field->type==UD_DATE32 || field->type==UD_TIME64 || field->type==UD_TIMESTAMP?
-        ud_json_quote(bytes,text,required-1):ud_bytes_put(bytes,text,required-1);
+    if (!s)
+        s = field->type == UD_DECIMAL128 || field->type == UD_DATE32 || field->type == UD_TIME64 ||
+                    field->type == UD_TIMESTAMP ||
+                    (field->type == UD_FLOAT64 && !isfinite(value->real))
+                ? ud_json_quote(bytes, text, required - 1)
+                : ud_bytes_put(bytes, text, required - 1);
     ud_free(text);return s;
 }
 ud_status ud_batch_to_json(const ud_batch *batch,char **out,uint32_t *length) {

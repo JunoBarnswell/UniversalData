@@ -58,7 +58,7 @@
   "limitations": [
     "Only current complete ABI3; no old layout/version fallback",
     "Trusted native code, not a sandbox; host owns module/registry lifetime serialization and callback behavior",
-    "C host validates custom registry lifecycle; broader G43 category/language registry surfaces remain pending",
+    "C host validates custom registry lifecycle; broader G07/G21 category/language registry surfaces remain pending",
     "ODBC probe verifies a single generic typed read only; full typed Connection Manager/cursor/receipt behavior remains pending G59",
     "Interrupted non-replay-safe native effects require RecoveryRequired; no automatic rollback/global exactly-once",
     "Windows/remote CI tests waived by user"

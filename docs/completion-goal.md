@@ -42,7 +42,7 @@ main 已重新 fetch，当前分支没有落后；已有基础批次和 ABI 3 �
 | G01 | 1 | 唯一执行器和主版本切换 | Implemented | Verified |
 | G02 | 1 | 统一 Schema 和列 identity/lineage | Planned | NotRun |
 | G03 | 1 | sealed Batch/Buffer 所有权 | Implemented | Verified |
-| G04 | 1 | 统一类型/转换/NULL/Compare/Hash | Planned | NotRun |
+| G04 | 1 | 统一类型/转换/NULL/Compare/Hash | Implemented | NotRun（全部 Phase 落代码后集中验收） |
 | G05 | 1 | 统一表达式 AST/Binder/函数 Registry | Planned | NotRun |
 | G06 | 1 | 唯一状态/错误/诊断模型 | Implemented | Verified |
 | G07 | 1 | 统一组件/插件 Registry | Planned | NotRun |
@@ -125,3 +125,7 @@ HTTP Task 已实现同一逻辑连接/宿主授权/resolver、TLS 校验、方�
 Check/Data Profiling Task 已通过实际 File/SQLite 统计、NULL/极值/表达式规则与失败分支、资源预算、授权/取消/期限和真实扫描崩溃恢复。原生 31/31、内存专项 13/13、三语言实际统计规则及子 Package 回归通过。高级统计/键关系等扩展不计入本 Task 的基本统计契约。
 
 Native Custom Task 实际共享库/安装 SDK、原子注册回滚及模块/registry/Execution/实例卸载门禁通过；旧 ABI/旧布局兼容按用户指令删除，只接受当前完整 ABI 3。原生 32/32、内存专项 15/15；PostgreSQL 当前 ABI 有真实连接/查询、DuckDB Parquet 通过，ODBC 为单批通用插件读取验证，完整 G59 仍待办。
+
+## 最新开发节奏
+
+用户要求 Phase 0–7 全部代码完成后再集中编译和关键验收。当前实施只做架构推演、代码与源码审查，按功能模块持续提交草稿 PR；新增和迁移代码保持最终验收 NotRun。此前通过的日志仅为历史开发证据，不能作为最终源版本通过声明。统一整改契约见 [convergence-blueprint](architecture/convergence-blueprint.md)。

@@ -1,11 +1,17 @@
 #include "ud/quality.h"
 #include "ud/regex.h"
 #include "../internal.h"
-typedef struct seen_key { ud_value *values; struct seen_key *next; } seen_key;
+typedef struct seen_key {
+    ud_value *values;
+    uint64_t hash;
+    struct seen_key *next, *bucket_next;
+} seen_key;
 typedef struct quality_rule {
     ud_quality_rule config;
     ud_batch *reference;
     seen_key *seen;
+    seen_key **buckets;
+    uint64_t *reference_hashes;
     ud_regex *regex;
 } quality_rule;
 struct ud_quality {
@@ -16,6 +22,16 @@ struct ud_quality {
     ud_quarantine_fn quarantine; void *user;
     ud_quality_metrics metrics;
 };
+static ud_status key_hash(const ud_batch *batch, uint32_t row, const uint32_t *columns,
+                          uint32_t count, uint64_t *out) {
+    *out = UD_VALUE_HASH_SEED;
+    for (uint32_t j = 0; j < count; j++) {
+        ud_value v;
+        UD_TRY(ud_batch_get(batch, row, columns[j], &v));
+        *out = ud_value_hash(&v, *out);
+    }
+    return UD_OK;
+}
 static ud_status copy_reference(ud_context *ctx,const ud_batch *reference,ud_batch **out) {
     uint32_t n=ud_batch_columns(reference);
     ud_field *fields=ud_alloc(ctx,n*sizeof(*fields));
@@ -32,6 +48,8 @@ void ud_quality_destroy(ud_quality *q) {
         ud_clear_value(&r->config.minimum);ud_clear_value(&r->config.maximum);
         ud_batch_destroy(r->reference);
         ud_regex_destroy(r->regex);
+        ud_free(r->buckets);
+        ud_free(r->reference_hashes);
         seen_key *key=r->seen;
         while(key) {
             seen_key *next=key->next;
@@ -96,6 +114,20 @@ ud_status ud_quality_create(ud_context *ctx,const ud_field *fields,uint32_t colu
                 if(!s && !ud_field_equal(&field,&reference,0)) s=UD_SCHEMA;
             }
             if(!s) s=copy_reference(ctx,input->reference,&r->reference);
+            uint32_t rows = ud_batch_rows(r->reference);
+            if (!s && rows) {
+                r->reference_hashes = ud_alloc(ctx, (size_t)rows * sizeof(*r->reference_hashes));
+                if (!r->reference_hashes)
+                    s = UD_RESOURCE;
+            }
+            for (uint32_t row = 0; !s && row < rows; row++) {
+                if (ud_is_cancelled(ctx)) {
+                    s = UD_CANCELLED;
+                    break;
+                }
+                s = key_hash(r->reference, row, indices, input->column_count,
+                             r->reference_hashes + row);
+            }
         } else if(input->kind==UD_RULE_REGEX) {
             if(fields[input->columns[0]].type!=UD_UTF8 || (!input->pattern && input->pattern_length) ||
                 !ud_utf8_valid(input->pattern,input->pattern_length)) { s=UD_SCHEMA;break; }
@@ -131,7 +163,13 @@ static ud_status check_rule(ud_quality *q,quality_rule *r,const ud_batch *input,
         *valid=matched;
     } else if(rule->kind==UD_RULE_FOREIGN_KEY) {
         *valid=0;
+        uint64_t hash;
+        UD_TRY(key_hash(input, row, rule->columns, rule->column_count, &hash));
         for(uint32_t ref=0;ref<ud_batch_rows(r->reference) && !*valid;ref++) {
+            if (ud_is_cancelled(q->ctx))
+                return UD_CANCELLED;
+            if (hash != r->reference_hashes[ref])
+                continue;
             int equal=1;
             for(uint32_t j=0;j<rule->column_count && equal;j++) {
                 ud_value left,right;UD_TRY(ud_batch_get(input,row,rule->columns[j],&left));
@@ -141,7 +179,14 @@ static ud_status check_rule(ud_quality *q,quality_rule *r,const ud_batch *input,
             *valid=equal;
         }
     } else {
-        for(seen_key *key=r->seen;key;key=key->next) {
+        uint64_t hash;
+        UD_TRY(key_hash(input, row, rule->columns, rule->column_count, &hash));
+        for (seen_key *key = r->buckets ? r->buckets[hash & 63] : NULL; key;
+             key = key->bucket_next) {
+            if (ud_is_cancelled(q->ctx))
+                return UD_CANCELLED;
+            if (key->hash != hash)
+                continue;
             uint32_t j=0;
             for(;j<rule->column_count;j++) {
                 ud_value value;UD_TRY(ud_batch_get(input,row,rule->columns[j],&value));
@@ -150,7 +195,7 @@ static ud_status check_rule(ud_quality *q,quality_rule *r,const ud_batch *input,
             if(j==rule->column_count) { *valid=0;break; }
         }
     }
-    (void)q;return UD_OK;
+    return UD_OK;
 }
 static ud_status record_keys(ud_quality *q,const ud_batch *input,uint32_t row) {
     for(uint32_t r=0;r<q->count;r++) {
@@ -159,6 +204,11 @@ static ud_status record_keys(ud_quality *q,const ud_batch *input,uint32_t row) {
         int null=0;
         for(uint32_t j=0;j<rule->config.column_count;j++) { ud_value value;UD_TRY(ud_batch_get(input,row,rule->config.columns[j],&value));null|=value.is_null; }
         if(null) continue;
+        if (!rule->buckets) {
+            rule->buckets = ud_alloc(q->ctx, 64 * sizeof(*rule->buckets));
+            if (!rule->buckets)
+                return UD_RESOURCE;
+        }
         seen_key *key=ud_alloc(q->ctx,sizeof(*key));if(!key) return UD_RESOURCE;
         key->values=ud_alloc(q->ctx,rule->config.column_count*sizeof(*key->values));
         if(!key->values) { ud_free(key);return UD_RESOURCE; }
@@ -167,6 +217,9 @@ static ud_status record_keys(ud_quality *q,const ud_batch *input,uint32_t row) {
             ud_value value;UD_TRY(ud_batch_get(input,row,rule->config.columns[j],&value));
             UD_TRY(ud_copy_value(q->ctx,&value,key->values+j,0));
         }
+        UD_TRY(key_hash(input, row, rule->config.columns, rule->config.column_count, &key->hash));
+        key->bucket_next = rule->buckets[key->hash & 63];
+        rule->buckets[key->hash & 63] = key;
     }
     return UD_OK;
 }
