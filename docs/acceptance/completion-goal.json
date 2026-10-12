@@ -1,12 +1,12 @@
 {
-  "goalVersion": 1,
+  "goalVersion": 2,
   "sourceAttachment": "UniversalData_SSIS_Architecture_Codex_Prompt.md",
   "sourceSha256": "56b4eb3689cdd910df93ae143b96ff819b9bac86c12e8a67b2cddcc265723f56",
   "baselineCommit": "ed3237a9852ac29831d85d93c03fc8b173cdbf6f",
   "workingBranch": "codex/ssis-package-runtime",
   "draftPullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/3",
   "deadline": null,
-  "completionRule": "All required items must have code=Implemented, verification=Verified and inspectable current-source evidence. Blocked/NotRun/optional contracts never count as a passed required implementation.",
+  "completionRule": "All required items in the current user-approved scope must have code=Implemented, verification=Verified and inspectable current-source evidence. Windows tests and remote CI status are waived by explicit user instruction; waiver is not a passed test. Other Blocked/NotRun/subset implementations never count as complete.",
   "automaticMergeOrReleaseAuthorized": false,
   "items": [
     {
@@ -959,20 +959,19 @@
     {
       "id": "G51",
       "phase": 6,
-      "name": "Windows/Linux 原生与 ABI 门禁",
+      "name": "Linux 原生与 ABI 门禁（Windows 免测）",
       "priority": "P0",
       "code": "Planned",
       "verification": "NotRun",
-      "acceptance": "两个平台真实编译/测试/安装/插件/线程和跨语言消费证据；CI 配置不等于执行",
+      "acceptance": "Linux 本地真实编译/测试/安装/插件/线程和跨语言消费证据；Windows 测试及远程 CI 状态按用户指令不作门禁，不声明其通过",
       "implementation": [
         ".github/workflows/ci.yml",
         "tests"
       ],
       "dependsOn": [],
-      "externalPrerequisites": [
-        "Windows 执行器或恢复 GitHub Actions 账户支付/额度"
-      ],
-      "evidence": []
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "User explicitly waived Windows testing and remote CI status; Linux local gates remain required."
     },
     {
       "id": "G52",
@@ -1283,6 +1282,14 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": []
+    }
+  ],
+  "scopeChanges": [
+    {
+      "date": "2026-10-12",
+      "source": "explicit user instruction",
+      "instruction": "无需关注ci的状态，Windows 无需测试",
+      "effect": "Windows verification and remote CI status are not acceptance gates for this goal. Linux local behavioral, memory, transaction, recovery and C/.NET/Java evidence remain mandatory. No Windows verification claim."
     }
   ]
 }

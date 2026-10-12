@@ -59,5 +59,11 @@
     "Checkpoint mode rejects SQL Sources without persistent snapshot capability",
     "Unsafe/custom Task interrupted before Done cannot automatically replay; outcome is RecoveryRequired",
     "Supported Pipeline recovery deterministically recomputes operators and verifies receipts rather than persisting arbitrary operator memory"
-  ]
+  ],
+  "userScope": {
+    "windowsTestsRequired": false,
+    "remoteCiStatusRequired": false,
+    "linuxLocalEvidenceRequired": true,
+    "instruction": "无需关注ci的状态，Windows 无需测试"
+  }
 }

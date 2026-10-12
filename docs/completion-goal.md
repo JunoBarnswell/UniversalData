@@ -9,7 +9,7 @@
 1. 一个 Package/Execution 核心，Control Flow 与 Data Flow 分责；无旧 Job/Dag/Run 或长期适配/桥接路径。
 2. Schema/Batch/Expression/Compute/Connection/Status/Checkpoint 各只有一套契约；.NET/JNI 仅投影 native ABI。
 3. 附件规定的任务、端口、同步/异步 Buffer、多输入输出、连接器、质量输出、恢复、Catalog/观测及扩展逐项实现；未知能力明确 Unsupported，不能计为完成。
-4. C/.NET/Java 同 Package/参数/结果；Windows/Linux、内存/线程/配额、事务、真实进程终止、CommitUnknown 和安装消费门禁全部实际通过。
+4. C/.NET/Java 同 Package/参数/结果；Linux 本地、内存/线程/配额、事务、真实进程终止、CommitUnknown 和安装消费门禁全部实际通过。
 5. 每个必需条目同时满足 Implemented + Verified + 当前源代码的可核查证据。Blocked、NotRun、静态检查、编译、PR 合并不能冒充行为验收。
 6. 文档、代码归属、Breaking Changes、SSIS 映射和清单同步；最终报告列明组件、API、删除/合并清单、唯一代码路径及后续 BI 复用。
 
@@ -24,7 +24,7 @@
 | 3 | Catalog、Project/Environment、版本/部署/运行历史和结构化观测 | 恢复之后推进 |
 | 4 | 完整核心任务、表达式/lineage、Pipeline spill、多端口/质量组件 | 按依赖提交和集成验证 |
 | 5 | 所有列明的 P1/P2 组件与集成、CDC、BI 共用基础 | 分组件实现并记录外部测试前提 |
-| 6 | 九项核心集成、Windows/Linux、三语言、内存/线程和安装消费验收 | 全部门禁通过后才满足最终目标 |
+| 6 | 九项核心集成、Linux 本地、三语言、内存/线程和安装消费验收 | 全部门禁通过后才满足最终目标 |
 
 不设置无依据的日历承诺。工作期限待完整依赖和外部资源梳理后评估；截止时间未设置不影响继续执行。每个功能模块单独 commit/push 到草稿 PR，并更新 Code/Verification/Evidence。范围变更必须显式记录，不能用缩小统计口径提高完成率。
 
@@ -32,7 +32,7 @@
 
 main 已重新 fetch，当前分支没有落后；已有基础批次和 ABI 3 迁移位于 PR #3。历史开发验证：Linux CTest 21/21、ASan/UBSan 21/21、core-only 5/5、三语言 10,003 行 Package 与类型/Wire 一致性通过；这些证明对应开发里程碑，不证明本目标全部完成。
 
-Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任何步骤，不能记 Passed。恢复与 Catalog 已交付受支持子范围；完整恢复、部署/环境管理、spill/组件目录及其他缺项仍在清单中保留。旧 0.2.0 验收清单不替代本目标。
+用户最新指令“无需关注ci的状态，Windows 无需测试”：本轮移除 Windows 测试和远程 CI 状态门禁，保留 Linux 本地真实验证；Windows 不计为已验证。恢复与 Catalog 已交付受支持子范围；完整恢复、部署/环境管理、spill/组件目录及其他缺项仍在清单中保留。旧 0.2.0 验收清单不替代本目标。
 
 ## 逐项目标
 
@@ -89,7 +89,7 @@ Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任�
 | G48 | 5 | 结构化 Events/Logs/Trace/Metrics/Lineage/Audit | Planned（已交付受支持子范围） | NotRun（完整目标） |
 | G49 | 6 | 薄 C/.NET/Java Package/Execution 绑定 | Implemented | Verified |
 | G50 | 6 | 独立 C/Native/NuGet/Maven 安装消费 | Implemented | NotRun |
-| G51 | 6 | Windows/Linux 原生与 ABI 门禁 | Planned | NotRun |
+| G51 | 6 | Linux 原生与 ABI 门禁（Windows 免测） | Planned | NotRun |
 | G52 | 6 | 内存安全/线程竞态/资源故障门禁 | Implemented | NotRun |
 | G53 | 6 | 九项附件核心集成验收 | Planned | NotRun |
 | G54 | 7 | Slowly Changing Dimension | Planned | NotRun |
@@ -111,3 +111,5 @@ Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任�
 最新模块：原生 Project/Environment 绑定、四层作用域及共享连接已通过；Catalog 固定部署修订的选择、版本切换和回退已验证。G47 的激活路由/保留/完整历史和 G48 的完整观测仍保留待办。证据：acceptance/evidence/ssis-project。
 
 Execute Package Task 已从草稿容器别名改为真正子 Package：参数映射、作用域隔离、同一 Execution/资源上下文、子/孙 Package、错误/取消/CommitUnknown 和真实终止恢复已验证。证据：acceptance/evidence/ssis-child-package。
+
+范围修订（2026-10-12）：Windows 测试及远程 CI 状态按用户明确指令不作本轮完成门禁；其余实现及本地验收范围不变。这是显式免测，不是测试通过。
