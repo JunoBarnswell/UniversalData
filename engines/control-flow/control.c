@@ -4,7 +4,7 @@
 #endif
 static int task_index(const ud_json *tasks, ud_string id) {
     for (uint32_t i = 0; i < ud_json_size(tasks); i++) {
-        ud_string other;
+        ud_string other={0};
         if (!ud_json_string(ud_member(ud_json_at(tasks, i), "id"), &other) && ud_same(id, other))
             return (int)i;
     }
@@ -14,7 +14,7 @@ static const ud_json *pipeline(ud_activation *e, ud_string id) {
     const ud_json *flows = ud_member(e->package->document, "dataFlows");
     for (uint32_t i = 0; i < ud_json_size(flows); i++) {
         const ud_json *p = ud_json_at(flows, i);
-        ud_string other;
+        ud_string other={0};
         if (!ud_json_string(ud_member(p, "id"), &other) && ud_same(id, other))
             return p;
     }
@@ -23,7 +23,7 @@ static const ud_json *pipeline(ud_activation *e, ud_string id) {
 static ud_status assignment(ud_activation *e, const ud_json *v, int perform) {
     static const char *keys[] = {"name", "value"};
     UD_TRY(ud_json_keys(v, keys, 2));
-    ud_string name;
+    ud_string name={0};
     UD_TRY(ud_json_string(ud_member(v, "name"), &name));
     ud_value old;
     UD_TRY(ud_activation_variable(e, name, &old));
@@ -33,7 +33,7 @@ static ud_status assignment(ud_activation *e, const ud_json *v, int perform) {
     UD_TRY(ud_expression_json(e, ud_member(v, "value"), NULL, &expr));
     ud_status s = ud_expression_type(expr) == old.type ? UD_OK : UD_SCHEMA;
     if (!s && perform) {
-        ud_value value;
+        ud_value value={0};
         s = ud_expression_evaluate(expr, NULL, 0, &value);
         if (!s)
             s = ud_activation_set_variable(e, name, &value, &target->box->column[0].field);
@@ -113,8 +113,8 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
             } else if (ud_named(kind, "foreach")) {
                 static const char *fk[] = {"variable", "items"};
                 s = ud_json_keys(config, fk, 2);
-                ud_string name;
-                ud_value v;
+                ud_string name={0};
+                ud_value v={0};
                 if (!s)
                     s = ud_json_string(ud_member(config, "variable"), &name);
                 if (!s)
@@ -140,7 +140,7 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
         } else if (!s && ud_named(kind, "dataFlow")) {
             static const char *dk[] = {"pipeline"};
             s = ud_json_keys(config, dk, 1);
-            ud_string name;
+            ud_string name={0};
             if (!s)
                 s = ud_json_string(ud_member(config, "pipeline"), &name);
             if (!s && !pipeline(e, name))
@@ -162,7 +162,7 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
             if (!s && d.configure) {
                 ud_json *bound = NULL;
                 char *text = NULL;
-                uint32_t n;
+                uint32_t n=0;
                 s = ud_bound_config(e, config, &bound);
                 if (!s)
                     s = ud_json_serialize(bound, &text, &n);
@@ -196,7 +196,7 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
         const ud_json *c = ud_json_at(constraints, j);
         static const char *keys[] = {"from", "to", "on", "expression", "combine"};
         s = ud_json_keys(c, keys, 5);
-        ud_string a, b, on, combine = {"and", 3};
+        ud_string a={0}, b={0}, on={0}, combine = {"and", 3};
         if (!s)
             s = ud_json_string(ud_member(c, "from"), &a);
         if (!s)
@@ -238,7 +238,7 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
                 complete++;
                 progress = 1;
                 for (uint32_t j = 0; j < ud_json_size(constraints); j++) {
-                    ud_string from, to;
+                    ud_string from={0}, to={0};
                     ud_json_string(ud_member(ud_json_at(constraints, j), "from"), &from);
                     ud_json_string(ud_member(ud_json_at(constraints, j), "to"), &to);
                     if (task_index(tasks, from) == (int)i)
@@ -280,7 +280,7 @@ ud_status ud_control_handler(ud_activation *e,const ud_json *flow,const char *ki
     e->task_id=parent;ud_free(identity);return s;
 }
 static ud_status perform_task(ud_activation *e, const ud_json *task) {
-    ud_string kind;
+    ud_string kind={0};
     UD_TRY(ud_json_string(ud_member(task, "kind"), &kind));
     const ud_json *config = ud_member(task, "config");
     ud_scope scope = {0};
@@ -322,7 +322,7 @@ static ud_status perform_task(ud_activation *e, const ud_json *task) {
                 s = assignment(e, ud_member(config, "increment"), 1);
         }
     } else if (!s && ud_named(kind, "foreach")) {
-        ud_string name;
+        ud_string name={0};
         ud_json_string(ud_member(config, "variable"), &name);
         ud_field field = {0};
         s = ud_activation_variable_field(e, name, &field);
@@ -336,7 +336,7 @@ static ud_status perform_task(ud_activation *e, const ud_json *task) {
             if (!s) s = execute_iteration(e, ud_member(task, "children"), i);
         }
     } else if (!s && ud_named(kind, "dataFlow")) {
-        ud_string name;
+        ud_string name={0};
         ud_json_string(ud_member(config, "pipeline"), &name);
         const ud_json *p = pipeline(e, name);
         if (!p)
@@ -401,7 +401,7 @@ typedef struct task_run {
 } task_run;
 static ud_status task_result(task_run *run) {
     ud_activation *a = &run->activation;
-    ud_string kind;
+    ud_string kind={0};
     UD_TRY(ud_json_string(ud_member(run->definition, "kind"), &kind));
     int completed = 0;
     ud_status s = ud_checkpoint_task_begin(a, kind, &completed);
@@ -434,14 +434,14 @@ static void *task_thread(void *user) {
 #endif
 }
 static int parallel_task(ud_activation *e, const ud_json *task) {
-    ud_string kind;
+    ud_string kind={0};
     if (ud_json_string(ud_member(task,"kind"), &kind)) return 0;
     if (ud_named(kind,"dataFlow")) {
-        ud_string id;
+        ud_string id={0};
         if (ud_json_string(ud_member(ud_member(task,"config"),"pipeline"), &id)) return 0;
         const ud_json *flow = pipeline(e,id), *components = ud_member(flow,"components");
         for (uint32_t i=0; i<ud_json_size(components); i++) {
-            ud_string component;
+            ud_string component={0};
             if (ud_json_string(ud_member(ud_json_at(components,i),"component"),&component)) return 0;
             ud_component_descriptor d={.struct_size=sizeof(d),.abi_version=UD_ABI_VERSION};
             if (ud_component_lookup(e,component,&d) || !(d.capabilities & UD_COMPONENT_THREAD_SAFE)) return 0;
@@ -483,7 +483,7 @@ static ud_status init_task(ud_activation *parent, const ud_json *definition, tas
     a->depth=parent->depth;a->parallel=parent->parallel;
     atomic_init(&a->cancelled,0);atomic_init(&run->done,0);
     run->definition=definition;
-    ud_string id;
+    ud_string id={0};
     UD_TRY(ud_json_string(ud_member(definition,"id"),&id));
     size_t size=(size_t)parent->task_id.length+id.length+48;
     char *identity=ud_alloc(a->execution->ctx,size);
@@ -516,7 +516,7 @@ ud_status ud_control_execute(ud_activation *e, const ud_json *flow) {
         if(!s && policy<cap)cap=(uint32_t)policy;
     }
     while(!s && complete<count) {
-        uint32_t active=0;int progress=0;
+        uint32_t asynchronous=0;int progress=0;
         for(uint32_t i=0;!s && i<count;i++) {
             if(states[i]!=UD_EXEC_READY)continue;
             s=ud_activation_check(e);if(s)break;
@@ -524,7 +524,7 @@ ud_status ud_control_execute(ud_activation *e, const ud_json *flow) {
             if(s || !runnable)continue;
             const ud_json *task=ud_json_at(tasks,i);
             int safe=parallel_task(e,task);
-            if(active && !safe)continue;
+            if(asynchronous && !safe)continue;
             s=init_task(e,task,runs+i);if(s)break;
             task_run *run=runs+i;
             if(!pass) {
@@ -540,7 +540,7 @@ ud_status ud_control_execute(ud_activation *e, const ud_json *flow) {
                     if(atomic_compare_exchange_weak(&e->execution->workers,&workers,workers+1)) {slot=1;break;}
                 }
             }
-            run->activation.parallel=e->parallel || slot || active;
+            run->activation.parallel=e->parallel || slot || asynchronous;
             if(slot) {
                 run->threaded=1;
 #ifdef _WIN32
@@ -552,11 +552,11 @@ ud_status ud_control_execute(ud_activation *e, const ud_json *flow) {
                 if(failed) {
                     atomic_fetch_sub(&e->execution->workers,1);run->threaded=0;run->result=UD_RESOURCE;
                     atomic_store(&run->done,1);
-                }
+                } else asynchronous++;
             } else {
                 run->result=task_result(run);atomic_store(&run->done,1);
             }
-            active++;progress=1;
+            progress=1;
             /* Running records are joined as a wave before activating their
              * successors, so completion never depends on a timing race. */
             if(!slot && !safe)break;

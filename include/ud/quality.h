@@ -31,7 +31,9 @@ UD_API ud_status ud_quality_create(ud_context *, const ud_field *, uint32_t colu
                                     const ud_quality_rule *, uint32_t rule_count, int32_t policy,
                                     ud_quality **);
 /* State spans all successful apply calls. Unique ignores keys containing NULL;
- * primary keys reject NULL. Foreign keys use MATCH SIMPLE semantics. */
+ * primary keys reject NULL. Foreign keys use MATCH SIMPLE semantics.
+ * Supply all three rejection outputs together, or NULL for deliberate drop.
+ * Results/violation array are owned; classification never acknowledges sources. */
 UD_API ud_status ud_quality_apply(ud_quality *, const ud_batch *, ud_batch **accepted,
                                    ud_batch **rejected, ud_quality_violation **, uint32_t *);
 UD_API ud_status ud_quality_finish(ud_quality *);

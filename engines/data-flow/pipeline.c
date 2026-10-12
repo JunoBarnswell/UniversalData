@@ -47,7 +47,7 @@ static void clear(physical_plan *p, ud_status result) {
     if (p->edges)
         for (uint32_t i = 0; i < p->paths; i++) {
             if (p->edges[i].queue) {
-                atomic_fetch_sub(&p->execution->queued, p->edges[i].count);
+                atomic_fetch_sub(&p->execution->execution->queued, p->edges[i].count);
                 ud_queue_destroy(p->edges[i].queue);
             }
         }
@@ -95,7 +95,7 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
         UD_TRY(ud_json_string(ud_member(def, "id"), &n->id));
         if (index_of(p, n->id) != (int)i)
             return UD_SCHEMA;
-        ud_string component;
+        ud_string component={0};
         UD_TRY(ud_json_string(ud_member(def, "component"), &component));
         n->descriptor = (ud_component_descriptor){.struct_size = sizeof(n->descriptor),
                                                   .abi_version = UD_ABI_VERSION};
@@ -129,7 +129,7 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
         const ud_json *def = ud_json_at(paths, i);
         static const char *ek[] = {"from", "output", "to", "input"};
         s = ud_json_keys(def, ek, 4);
-        ud_string from, to;
+        ud_string from={0}, to={0};
         uint64_t output = 0, input = 0;
         if (!s)
             s = ud_json_string(ud_member(def, "from"), &from);

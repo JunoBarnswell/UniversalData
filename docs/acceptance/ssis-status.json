@@ -1,69 +1,81 @@
 {
-  "baseline": "ed3237a9852ac29831d85d93c03fc8b173cdbf6f",
-  "targetVersion": "1.0.0",
-  "abi": 3,
+  "sdkVersion": "1.0.0",
+  "abi": 4,
+  "workingBranch": "codex/ssis-package-runtime",
+  "baseCommit": "62019b482a9b9cb7fe7169e04b78434746536180",
+  "sourceFingerprint": "f32934d5377821e07d1571635061be5b510a033fa0c16dffddfa56390371c0a7",
+  "delivery": "Verified current unified architecture and core components; full extension backlog incomplete",
+  "platforms": {
+    "windows": "Verified: MSVC zero warnings; native 31/31; ASan 31/31; SQLite/crash/concurrency; installed C/NuGet/Maven/JNI",
+    "linux": "Implemented same core operators and POSIX infrastructure; exempt from testing this delivery"
+  },
   "phases": {
     "0": {
+      "scope": "Product/architecture/SSIS/deletion matrix",
       "design": "Implemented",
-      "code": "Implemented",
-      "validation": "Verified"
+      "code": "Implemented for current core scope",
+      "validation": "Verified Windows (documentation/contracts for Phase 0)",
+      "extensions": "See current component catalog"
     },
     "1": {
+      "scope": "Unified data/AST/functions/Registry/Compute/buffers",
       "design": "Implemented",
-      "code": "Implemented sealed Buffer/state/AST/Registry/shared collection kernels and ABI 3; column lineage/function extensions Planned",
-      "validation": "Verified architecture_foundation 1/1 and affected kernel tests 4/4 on Linux"
+      "code": "Implemented for current core scope",
+      "validation": "Verified Windows (documentation/contracts for Phase 0)",
+      "extensions": "See current component catalog"
     },
     "2": {
+      "scope": "Package/Activation/control/scopes/events/concurrency",
       "design": "Implemented",
-      "code": "Implemented Package loader/runtime, lexical scalar scopes, Sequence/For/Foreach, expression precedence, failure handler, native tasks; native Project/Environment binder, four-level scope and shared connections implemented; real Execute Package frame with explicit mappings/isolated roots on the same Execution/context; bounded file.system Task and pure optional Task configure prevalidation implemented; explicit-authorized native process.execute Task with shared lifecycle/deadline/recovery",
-      "validation": "Verified Linux native 28/28, related ASan/UBSan 10/10, actual process authorization/exit/timeout/live group cancellation/crash cases; C/.NET/Java existing file/child/data regression"
+      "code": "Implemented for current core scope",
+      "validation": "Verified Windows (documentation/contracts for Phase 0)",
+      "extensions": "See current component catalog"
     },
     "3": {
+      "scope": "Pipeline/ports/End/backpressure/shared operators",
       "design": "Implemented",
-      "code": "Implemented multi-port native Pipeline and removed old CSV/DAG executors and public lifecycles; blocking spill integration Planned",
-      "validation": "Verified derive/split/file flow, cancellation/authorization/parse failure; blocking/spill and plugin integration pending"
+      "code": "Implemented for current core scope",
+      "validation": "Verified Windows (documentation/contracts for Phase 0)",
+      "extensions": "See current component catalog"
     },
     "4": {
+      "scope": "Manager/core native sources/transforms/destinations/quality",
       "design": "Implemented",
-      "code": "Implemented file/SQL connection leases, SQLite/PostgreSQL Execute SQL capability, file/SQL source/destination and compute components",
-      "validation": "Verified file flow and SQL task/source/destination with SQLite, transactional receipts, derive/split and file branch"
+      "code": "Implemented for current core scope",
+      "validation": "Verified Windows (documentation/contracts for Phase 0)",
+      "extensions": "See current component catalog"
     },
     "5": {
+      "scope": "Journal/receipts/Catalog/deployment/history",
       "design": "Implemented",
-      "code": "Implemented unified task/batch Journal 3, scoped variable/iteration recovery, source/file verification, SQL receipt replay, durability events; embedded immutable Catalog/event persistence implemented; deployment/environment semantics and wider observability Planned; exact immutable Deployment revision validation/selection/rollback implemented; optional native Ready/terminal execution snapshots and events persisted without parameter/config/row values",
-      "validation": "Verified native 26/26, ASan/UBSan Package/Catalog/Project/Child/History 8/8, actual recovery process termination, immutable storage/deployment selection and native history outcome/privacy tests"
+      "code": "Implemented for current core scope",
+      "validation": "Verified Windows (documentation/contracts for Phase 0)",
+      "extensions": "See current component catalog"
     },
     "6": {
+      "scope": "Complete ABI4/bindings/hosts/installed consumers",
       "design": "Implemented",
-      "code": "Implemented Package/Execution C ABI 3, thin .NET PInvoke/Java JNI, same-definition examples, Package-only CLI/Worker, version switch and old API removal",
-      "validation": "Verified native CTest 21/21, ASan/UBSan 21/21, core 5/5, C/.NET/Java 10003-row Package + datatype/wire parity, independent NuGet consumer; Windows Blocked"
+      "code": "Implemented for current core scope",
+      "validation": "Verified Windows (documentation/contracts for Phase 0)",
+      "extensions": "See current component catalog"
     },
     "7": {
+      "scope": "Core Lookup/Window/error/row count/audit integration; expansion backlog tracked",
       "design": "Implemented",
-      "code": "Planned",
-      "validation": "Planned"
+      "code": "Implemented for current core scope",
+      "validation": "Verified Windows (documentation/contracts for Phase 0)",
+      "extensions": "Planned/Partial"
     }
   },
-  "gates": {
-    "windows": "Blocked: Windows executor absent; actual GitHub annotation account billing/spending limit; jobs have zero steps",
-    "linux": "Verified 21/21 CTest (ABI 3 + JNI + SQLite)",
-    "ownership-sanitizers": "Verified 21/21 ASan/UBSan + leak detection",
-    "package-control-pipeline": "Verified nested loop + precedence + derive/split and SQL integration",
-    "c-dotnet-java": "Verified same Package/parameters/control/native results, typed data + wire 3, independent NuGet consumer",
-    "recovery-commit-unknown": "Verified supported file-source deterministic pipelines, SQL receipts, file commits, journal integrity/writer fencing and unsafe Task outcome safety"
-  },
+  "components": "docs/product/component-catalog.md",
+  "breakingChanges": "docs/breaking-changes.md",
+  "evidence": "docs/acceptance/gates.json",
   "limitations": [
-    "Pipeline blocking operators currently quota-bounded in memory; full spill integration remains Planned",
-    "Complete SSIS component catalog, all expression/lineage capabilities and Project/Catalog are not yet complete",
-    "No Windows native package or remote CI execution evidence; no public package release",
-    "Checkpoint mode rejects SQL Sources without persistent snapshot capability",
-    "Unsafe/custom Task interrupted before Done cannot automatically replay; outcome is RecoveryRequired",
-    "Supported Pipeline recovery deterministically recomputes operators and verifies receipts rather than persisting arbitrary operator memory"
-  ],
-  "userScope": {
-    "windowsTestsRequired": false,
-    "remoteCiStatusRequired": false,
-    "linuxLocalEvidenceRequired": true,
-    "instruction": "无需关注ci的状态，Windows 无需测试"
-  }
+    "Protocol/advanced extensions remain Planned/Partial with explicit capabilities.",
+    "PostgreSQL implementation is present but not compiled/system-tested this delivery; HTTP native Task not enabled.",
+    "No arbitrary global distributed transaction, .dtsx/COM/SSISDB/MSDTC compatibility or general exactly-once claim.",
+    "Pipeline has one controller per Activation; concurrent Package tasks run independent pipelines. No TSan/race-freedom certification.",
+    "Resident budget is logical wire-block accounting; actual SDK allocations use Context quota. Third-party dependency allocations are not full-process RSS accounting.",
+    "Linux runtime/build result is not asserted; historical ABI3/Linux evidence is not current evidence."
+  ]
 }

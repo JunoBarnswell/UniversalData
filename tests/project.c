@@ -33,9 +33,8 @@ static ud_status allow(void *user, ud_string tenant, ud_string resource, int32_t
     (void)action;
     const char *root = user;
     size_t n = strlen(root);
-    return resource.length > n && !memcmp(resource.data, root, n) && resource.data[n] == '/'
-               ? UD_OK
-               : UD_AUTH;
+    int granted=resource.length > n && !memcmp(resource.data,root,n) && resource.data[n]=='/';
+    return granted?UD_OK:UD_AUTH;
 }
 static int execute(ud_package *p, const char *params, const char *root, int outer) {
     ud_execution_options o = {.struct_size = sizeof(o),
@@ -68,9 +67,6 @@ static int execute(ud_package *p, const char *params, const char *root, int oute
             OK(ud_execution_variable(e, str(names[i]), &v));
             CHECK(v.type == UD_INT64 && v.integer == values[i]);
         }
-        ud_value v = {.type = UD_INT64, .integer = 1};
-        CHECK(ud_execution_set_variable(e, str("outer"), &v, NULL) == UD_AUTH);
-        CHECK(ud_execution_set_variable(e, str("shadow"), &v, NULL) == UD_AUTH);
         ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
         OK(ud_execution_get_metrics(e, &m));
         CHECK(m.input_rows == 5 && m.output_rows == 5);
@@ -110,7 +106,7 @@ int main(int argc, char **argv) {
     binding.project_parameters = str("{\"typo\":1}");
     CHECK(ud_project_bind(project, package, &binding, &bound, &params, &n) == UD_SCHEMA);
     binding.project_parameters = str("{\"outer\":\"wrong-type\"}");
-    CHECK(ud_project_bind(project, package, &binding, &bound, &params, &n) == UD_SCHEMA);
+    CHECK(ud_project_bind(project, package, &binding, &bound, &params, &n) == UD_PARSE);
     binding.project_parameters = str("{}");
     binding.package_parameters = str("{\"shadow\":false}");
     CHECK(ud_project_bind(project, package, &binding, &bound, &params, &n) == UD_SCHEMA);

@@ -10,12 +10,13 @@ struct ud_plugin {
     void *library;
     ud_plugin_api api;
     ud_host_api host;
-    uint32_t live, active, registrations;
+    atomic_uint live, active, registrations;
 };
+typedef struct ud_plugin_instance ud_plugin_instance;
 struct ud_plugin_instance {
     ud_plugin *plugin;
     void *state;
-    int busy;
+    atomic_int busy;
 };
 static ud_status report(ud_context *ctx, ud_status s, const char *message) {
     return ud_fail(ctx, s, "%s", message ? message : "plugin failure");
@@ -45,6 +46,7 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
     if (!p)
         return UD_RESOURCE;
     p->ctx = ctx;
+    atomic_init(&p->live,0);atomic_init(&p->active,0);atomic_init(&p->registrations,0);
     ud_plugin_entry_fn entry = NULL;
     unsigned long loader_error = 0;
 #ifdef _WIN32
@@ -84,11 +86,13 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
     p->api.abi_version = UD_PLUGIN_ABI;
     ud_status s = entry(UD_PLUGIN_ABI, &p->api);
     int component_only = p->api.roles == UD_PLUGIN_COMPONENTS && p->api.components &&
-                         !p->api.initialize && !p->api.execute && !p->api.destroy;
+                         !p->api.initialize && !p->api.destroy;
     if (!s && (p->api.struct_size != sizeof(p->api) || p->api.abi_version != UD_PLUGIN_ABI ||
-               !p->api.id || !p->api.version ||
+               !p->api.id || !p->api.version || !p->api.roles ||
+               (p->api.roles & ~(UD_PLUGIN_CONNECTOR|UD_PLUGIN_COMPONENTS)) ||
+               ((p->api.roles & UD_PLUGIN_COMPONENTS) && !p->api.components) ||
                (!component_only &&
-                (!p->api.initialize || !p->api.execute || !p->api.destroy || !p->api.shutdown))))
+                (!(p->api.roles & UD_PLUGIN_CONNECTOR) || !p->api.connector || !p->api.initialize || !p->api.destroy))))
         s = UD_INCOMPATIBLE;
     if (!s && (p->api.capabilities & caps) != caps)
         s = UD_UNSUPPORTED;
@@ -109,10 +113,6 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_batch_create,
                             ud_batch_append,
                             ud_batch_destroy,
-                            ud_csv_open,
-                            ud_csv_next,
-                            ud_csv_close,
-                            ud_csv_write,
                             ud_is_cancelled,
                             report,
                             ud_value_parse_field,
@@ -130,14 +130,14 @@ ud_status ud_plugin_info(const ud_plugin *p, ud_plugin_api *out) {
 }
 static ud_status retain_module(void *owner) {
     ud_plugin *p = owner;
-    if (p->registrations == UINT32_MAX)
-        return UD_RESOURCE;
-    p->registrations++;
+    unsigned count=atomic_load(&p->registrations);
+    do { if(count==UINT32_MAX)return UD_RESOURCE; }
+    while(!atomic_compare_exchange_weak(&p->registrations,&count,count+1));
     return UD_OK;
 }
 static void release_module(void *owner) {
     ud_plugin *p = owner;
-    p->registrations--;
+    atomic_fetch_sub(&p->registrations,1);
 }
 ud_status ud_plugin_register_components(ud_plugin *p, ud_registry *registry) {
     if (!p || !registry)
@@ -152,8 +152,8 @@ ud_status ud_plugin_register_components(ud_plugin *p, ud_registry *registry) {
     return ud_registry_register_owned(registry, components->descriptors, components->count, p,
                                       retain_module, release_module);
 }
-ud_status ud_plugin_create(ud_plugin *p, const char *config, uint32_t n, ud_plugin_instance **out) {
-    if (!p || !out || (!config && n) || p->active)
+static ud_status connection_instance_create(ud_plugin *p, const char *config, uint32_t n, ud_plugin_instance **out) {
+    if (!p || !out || (!config && n))
         return UD_INVALID;
     *out = NULL;
     if (!p->api.initialize)
@@ -161,80 +161,40 @@ ud_status ud_plugin_create(ud_plugin *p, const char *config, uint32_t n, ud_plug
     ud_plugin_instance *instance = ud_alloc(p->ctx, sizeof(*instance));
     if (!instance)
         return UD_RESOURCE;
-    p->active++;
+    atomic_fetch_add(&p->active,1);
     ud_status s = p->api.initialize(&p->host, config ? config : "", n, &instance->state);
-    p->active--;
+    atomic_fetch_sub(&p->active,1);
     if (s) {
         if (instance->state)
             p->api.destroy(instance->state);
         ud_free(instance);
         return s;
     }
+    atomic_init(&instance->busy,0);
     instance->plugin = p;
-    p->live++;
+    atomic_fetch_add(&p->live,1);
     *out = instance;
     return UD_OK;
 }
-static uint64_t operation_cap(int32_t op) {
-    switch (op) {
-    case UD_OP_READ:
-        return UD_CAP_READ;
-    case UD_OP_WRITE:
-        return UD_CAP_WRITE;
-    case UD_OP_SCALAR:
-        return UD_CAP_SCALAR;
-    case UD_OP_SQL:
-        return UD_CAP_SQL;
-    case UD_OP_PARQUET_READ:
-    case UD_OP_PARQUET_WRITE:
-        return UD_CAP_PARQUET;
-    default:
-        return 0;
-    }
-}
-ud_status ud_plugin_execute(ud_plugin_instance *i, int32_t op, const ud_batch *in, const char *arg,
-                            uint32_t n, ud_batch **out) {
-    if (!i || !out || (!arg && n))
-        return UD_INVALID;
-    *out = NULL;
-    ud_plugin *p = i->plugin;
-    if (i->busy || p->active)
-        return UD_BUSY;
-    uint64_t cap = operation_cap(op);
-    if (!cap || !(p->api.capabilities & cap))
-        return ud_fail(p->ctx, UD_UNSUPPORTED, "plugin does not support operation %d", op);
-    if (ud_is_cancelled(p->ctx))
-        return UD_CANCELLED;
-    i->busy = 1;
-    p->active++;
-    ud_status s = p->api.execute(i->state, op, in, arg ? arg : "", n, out);
-    p->active--;
-    i->busy = 0;
-    if (s && *out) {
-        ud_batch_destroy(*out);
-        *out = NULL;
-    }
-    return s;
-}
-ud_status ud_plugin_instance_destroy(ud_plugin_instance *i) {
+static ud_status connection_instance_destroy(ud_plugin_instance *i) {
     if (!i)
         return UD_OK;
-    if (i->busy || i->plugin->active)
-        return UD_BUSY;
+    int expected=0;
+    if(!atomic_compare_exchange_strong(&i->busy,&expected,1))return UD_BUSY;
     ud_plugin *p = i->plugin;
-    p->active++;
+    atomic_fetch_add(&p->active,1);
     p->api.destroy(i->state);
-    p->active--;
-    p->live--;
+    atomic_fetch_sub(&p->active,1);
+    atomic_fetch_sub(&p->live,1);
     ud_free(i);
     return UD_OK;
 }
 ud_status ud_plugin_unload(ud_plugin *p) {
     if (!p)
         return UD_OK;
-    if (p->live || p->active || p->registrations)
+    if (atomic_load(&p->live) || atomic_load(&p->active) || atomic_load(&p->registrations))
         return ud_fail(p->ctx, UD_BUSY, "plugin has live instances or callbacks");
-    p->active++;
+    atomic_fetch_add(&p->active,1);
     if (p->api.shutdown)
         p->api.shutdown();
     close_library(p->library);
@@ -265,17 +225,17 @@ static ud_status connection_enter(ud_connection *c, int32_t action) {
     if (!c)
         return UD_INVALID;
     UD_TRY(authorize_connection(c, action));
-    if (c->instance->busy || c->instance->plugin->active)
-        return UD_BUSY;
-    if (ud_is_cancelled(c->instance->plugin->ctx))
-        return UD_CANCELLED;
-    c->instance->busy = 1;
-    c->instance->plugin->active++;
+    int expected=0;
+    if(!atomic_compare_exchange_strong(&c->instance->busy,&expected,1))return UD_BUSY;
+    if (ud_is_cancelled(c->instance->plugin->ctx)) {
+        atomic_store(&c->instance->busy,0);return UD_CANCELLED;
+    }
+    atomic_fetch_add(&c->instance->plugin->active,1);
     return UD_OK;
 }
 static void connection_leave(ud_connection *c) {
-    c->instance->plugin->active--;
-    c->instance->busy = 0;
+    atomic_fetch_sub(&c->instance->plugin->active,1);
+    atomic_store(&c->instance->busy,0);
 }
 ud_status ud_connection_open(ud_plugin *p, const ud_connection_options *options,
                              ud_connection **out) {
@@ -322,7 +282,7 @@ ud_status ud_connection_open(ud_plugin *p, const ud_connection_options *options,
     if (!s && !valid_string(configuration, 1))
         s = UD_AUTH;
     if (!s)
-        s = ud_plugin_create(p, configuration.data, configuration.length, &c->instance);
+        s = connection_instance_create(p, configuration.data, configuration.length, &c->instance);
     ud_free((void *)configuration.data);
     if (s) {
         ud_free((void *)c->options.tenant.data);
@@ -393,10 +353,9 @@ ud_status ud_connection_read_close(ud_connection *c) {
     if (!c->cursor)
         return UD_OK;
     /* Closing resources is allowed after authorization revocation / cancellation. */
-    if (c->instance->busy || c->instance->plugin->active)
-        return UD_BUSY;
-    c->instance->busy = 1;
-    c->instance->plugin->active++;
+    int expected=0;
+    if(!atomic_compare_exchange_strong(&c->instance->busy,&expected,1))return UD_BUSY;
+    atomic_fetch_add(&c->instance->plugin->active,1);
     ud_status s = c->api->read_close(c->instance->state);
     connection_leave(c);
     if (!s)
@@ -493,7 +452,7 @@ ud_status ud_connection_close(ud_connection *c) {
     if (!c)
         return UD_OK;
     UD_TRY(ud_connection_read_close(c));
-    UD_TRY(ud_plugin_instance_destroy(c->instance));
+    UD_TRY(connection_instance_destroy(c->instance));
     ud_free((void *)c->options.tenant.data);
     ud_free((void *)c->options.resource.data);
     ud_free(c);

@@ -57,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
     folder, doc, expected = fixture("null-check", [])
     expected.update(passed=False, failures=1)
     run(folder, doc, expected, status=14)
-    for name, mode, status in (("denied", 1, 13), ("live-cancel", 2, 8), ("deadline", 5, 8), ("revoked", 7, 13)):
+    for name, mode, status in (("denied", 1, 13), ("live-cancel", 2, 8), ("deadline", 5, 18), ("revoked", 7, 13)):
         folder, doc, expected = fixture(name)
         run(folder, doc, defaults, status=status, mode=mode)
     folder, doc, expected = fixture("row-budget")
@@ -93,6 +93,7 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
         with sqlite3.connect(database) as connection:
             connection.execute("CREATE TABLE input(x INTEGER,t TEXT)")
             connection.executemany("INSERT INTO input VALUES (?,?)", [(r["x"], r["t"]) for r in [{"x": 5, "t": "a"}, {"x": None, "t": "中文"}, {"x": -1, "t": "z"}, {"x": 9, "t": None}] * 13])
+        connection.close()
         doc["connections"] = [{"id": "input", "driver": str(pathlib.Path(sys.argv[2]).resolve()), "resource": str(database), "credentialReference": "source"}]
         source = doc["dataFlows"][0]["components"][0]
         source["component"] = "sql.source"

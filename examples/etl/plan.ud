@@ -1,6 +1,0 @@
-ud-plan 4
-filter amount ge 0
-project team amount
-group team
-sum amount total
-count * rows

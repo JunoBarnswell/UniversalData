@@ -49,7 +49,8 @@ static ud_status build_entry(ud_registry *r, const ud_component_descriptor *d, e
         return UD_INCOMPATIBLE;
     if (!valid(d->id) || !valid(d->name) || !valid(d->version) || !valid(d->configuration_schema) ||
         d->inputs > 64 || d->outputs > 64 || d->category < UD_COMPONENT_TASK ||
-        d->category > UD_COMPONENT_FUNCTION || d->synchronous_input < -1 ||
+        d->category > UD_COMPONENT_FUNCTION ||
+        (d->category > UD_COMPONENT_DESTINATION && d->category < UD_COMPONENT_FUNCTION) || d->synchronous_input < -1 ||
         d->error_output < -1 ||
         (d->synchronous_input >= 0 && (uint32_t)d->synchronous_input >= d->inputs) ||
         (d->error_output >= 0 && (uint32_t)d->error_output >= d->outputs))

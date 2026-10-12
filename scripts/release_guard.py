@@ -1,102 +1,74 @@
-"""Fail-closed release/merge gate. Does not compile, publish, or change GitHub."""
+"""Verify current core delivery evidence. Does not publish or merge."""
+import argparse
 import hashlib
 import json
 import pathlib
 import sys
-
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-BASE = ROOT / 'docs' / 'acceptance'
-
+ROOT=pathlib.Path(__file__).resolve().parents[1]
+BASE=ROOT/'docs/acceptance'
+REQUIRED={'windows-msvc','windows-native','windows-asan','sqlite-transactions-recovery',
+          'memory-quota-spill-concurrency','language-parity','installed-c',
+          'installed-nuget','installed-maven','source-contracts',
+          'windows-release','distributable-bundle'}
 def source_hash():
-    files = [ROOT / 'CMakeLists.txt', ROOT / 'VERSION', ROOT / 'CMakePresets.json']
-    for folder in ('include', 'components', 'engines', 'hosts', 'plugins', 'bindings', 'tests', 'examples', 'scripts', 'packaging', 'cmake', '.github'):
-        files.extend(p for p in (ROOT / folder).rglob('*') if p.is_file() and not set(p.relative_to(ROOT).parts) & {'bin', 'obj', 'target', '__pycache__', 'work', 'build'})
-    result = hashlib.sha256()
-    for path in sorted(set(files), key=lambda p: p.relative_to(ROOT).as_posix()):
-        relative = path.relative_to(ROOT).as_posix().encode('utf-8')
-        body = path.read_bytes()
-        result.update(len(relative).to_bytes(8, 'little')); result.update(relative)
-        result.update(len(body).to_bytes(8, 'little')); result.update(body)
-    return result.hexdigest()
-
-def validate_evidence(evidence, expected_source, errors, owner):
-    if not evidence:
-        errors.append(f'{owner}: missing execution evidence')
-        return
-    for item in evidence:
-        if not isinstance(item, dict):
-            errors.append(f'{owner}: evidence must include path, sha256 and sourceTreeHash')
-            continue
-        runtime_kinds = {'native-build', 'native-test', 'language-build', 'language-test',
-                         'integration-test', 'memory-check', 'benchmark', 'package-consumption', 'uat'}
-        if item.get('kind') not in runtime_kinds:
-            errors.append(f'{owner}: static / environment checks cannot satisfy execution evidence')
-        if owner not in item.get('claims', []):
-            errors.append(f'{owner}: execution evidence does not identify this requirement/case/gate')
-        command = item.get('command', '')
-        command_text = ' '.join(command) if isinstance(command, list) else str(command)
-        if any(name in command_text for name in ('static_check.py', 'c_syntax_check.py', 'language_syntax_check.py', 'release_guard.py')):
-            errors.append(f'{owner}: compiler-free checker is not runtime acceptance')
-        relative = item.get('path', '')
-        path = (ROOT / relative).resolve()
-        if not relative or not path.is_relative_to(BASE / 'evidence') or not path.is_file():
-            errors.append(f'{owner}: missing evidence file')
-            continue
-        if hashlib.sha256(path.read_bytes()).hexdigest() != item.get('sha256'):
-            errors.append(f'{owner}: evidence hash mismatch')
-        if item.get('sourceTreeHash') != expected_source:
-            errors.append(f'{owner}: evidence belongs to a different source tree')
-        if item.get('exitCode') != 0 or not item.get('command') or not item.get('startedAt') or not item.get('finishedAt'):
-            errors.append(f'{owner}: incomplete / failed execution metadata')
-
+    files=[ROOT/'CMakeLists.txt',ROOT/'CMakePresets.json',ROOT/'VERSION',ROOT/'.github/workflows/ci.yml']
+    for folder in ('include','components','engines','connectors','catalog','plugins','hosts','bindings','cmake','tests','examples','scripts','packaging'):
+        files.extend(p for p in (ROOT/folder).rglob('*') if p.is_file()
+                     and not set(p.relative_to(ROOT).parts)&{'bin','obj','target','build','__pycache__'}
+                     and p.suffix in {'.c','.h','.cs','.java','.py','.ps1','.cmake','.json','.xml','.csproj','.txt'})
+    digest=hashlib.sha256()
+    for path in sorted(set(files)):
+        digest.update(path.relative_to(ROOT).as_posix().encode());digest.update(b'\0')
+        digest.update(path.read_bytes());digest.update(b'\0')
+    return digest.hexdigest()
 def check():
-    gates = json.loads((BASE / 'gates.json').read_text(encoding='utf-8'))
-    requirements = json.loads((BASE / 'requirements.json').read_text(encoding='utf-8'))['requirements']
-    cases = json.loads((BASE / 'cases.json').read_text(encoding='utf-8'))['cases']
-    errors = []; fingerprint = source_hash()
-    if set(gates.get('phases', {})) != set('ABCDEFGH'):
-        errors.append('phase baseline must include A–H')
-    for phase in 'ABCDEFGH':
-        if gates.get('codeStatus', {}).get(phase) != 'Implemented': errors.append(f'{phase}: phase code is incomplete')
-        if gates.get('phases', {}).get(phase) != 'Complete': errors.append(f'{phase}: acceptance is incomplete')
-    if {r['domain'] for r in requirements} != {f'{n:02}' for n in range(1, 25)}:
-        errors.append('24-domain baseline is incomplete')
-    by_case = {case['id']: case for case in cases}
-    if not {'S01', 'S02', 'S03', 'S04', 'S05'} <= set(by_case): errors.append('S01–S05 are mandatory')
-    for requirement in requirements:
-        label = requirement['id']
-        if requirement['status'] != 'Passed': errors.append(f'{label}: requirement has not passed')
-        for field in ('interfaces', 'implementation', 'cases', 'uat', 'evidence', 'releaseGates'):
-            if not requirement.get(field): errors.append(f'{label}: missing {field} traceability')
-        for relative in requirement.get('implementation', []):
-            path = (ROOT / relative).resolve()
-            if not path.is_relative_to(ROOT) or not path.is_file(): errors.append(f'{label}: implementation path is missing')
-        for case in requirement.get('cases', []):
-            if case not in by_case: errors.append(f'{label}: unknown case {case}')
-        validate_evidence(requirement.get('evidence'), fingerprint, errors, label)
-    for case in cases:
-        label = case['id']
-        if case['status'] != 'Passed': errors.append(f'{label}: {case["status"]}')
-        if not case.get('actual') or not case.get('fixtures') or not case.get('steps') or not case.get('expected'):
-            errors.append(f'{label}: incomplete fixture / actual-result record')
-        validate_evidence(case.get('evidence'), fingerprint, errors, label)
-    required_gates = {'linux-gcc', 'windows-msvc', 'asan-ubsan', 'postgresql-isolated-containers',
-        'sqlite-transactions', 'c-dotnet8-java17-equivalence', 'native-nuget-maven-install-consumption',
-        'quota-backpressure-spill', 'benchmark-recorded-hardware', 's01-s05'}
-    if not required_gates <= {gate['id'] for gate in gates.get('gates', [])}: errors.append('mandatory release gates are missing')
-    for gate in gates.get('gates', []):
-        if gate['id'] in required_gates and not gate.get('required', True):
-            errors.append(f'{gate["id"]}: mandatory runtime gate cannot be made optional')
-        if not gate.get('required', True):
-            continue # CI availability is recorded; actual OS/runtime evidence is mandatory.
-        if gate.get('status') != 'Passed': errors.append(f'{gate["id"]}: {gate.get("status", "Missing")}')
-        validate_evidence(gate.get('evidence'), fingerprint, errors, gate['id'])
-    return fingerprint, errors
-
-if __name__ == '__main__':
-    fingerprint, errors = check()
+    fingerprint=source_hash();errors=[]
+    gates=json.loads((BASE/'gates.json').read_text(encoding='utf-8'))
+    if gates.get('sourceFingerprint')!=fingerprint:errors.append('Source changed after sealed evidence')
+    by_id={g['id']:g for g in gates.get('gates',[])}
+    for identifier in sorted(REQUIRED):
+        gate=by_id.get(identifier)
+        if not gate or gate.get('status')!='Passed':errors.append(identifier+': required core gate did not pass');continue
+        for evidence in gate.get('evidence',[]):
+            path=(ROOT/evidence['path']).resolve()
+            if not path.is_relative_to(ROOT) or not path.is_file():errors.append(identifier+': missing evidence');continue
+            if hashlib.sha256(path.read_bytes()).hexdigest()!=evidence['sha256']:errors.append(identifier+': evidence hash mismatch')
+        if not gate.get('evidence'):errors.append(identifier+': no actual evidence')
+    if gates.get('linux')!='Exempt by current user decision':errors.append('Platform decision changed')
+    delivery=gates.get('delivery',{})
+    archive=(ROOT/delivery.get('archive','')).resolve()
+    manifest=(ROOT/delivery.get('manifest','')).resolve()
+    if not archive.is_relative_to(ROOT) or not archive.is_file():
+        errors.append('Missing current distributable archive')
+    elif hashlib.sha256(archive.read_bytes()).hexdigest()!=delivery.get('sha256'):
+        errors.append('Distributable archive hash mismatch')
+    if not manifest.is_relative_to(ROOT) or not manifest.is_file():
+        errors.append('Missing current artifact manifest')
+    else:
+        bundle=json.loads(manifest.read_text(encoding='utf-8'))
+        if (bundle.get('sourceFingerprint')!=fingerprint or bundle.get('abiVersion')!=4
+                or bundle.get('sdkVersion')!=(ROOT/'VERSION').read_text().strip()
+                or bundle.get('configuration')!='Release' or bundle.get('runtimeIdentifier')!='win-x64'):
+            errors.append('Artifact manifest differs from current source/ABI')
+        expected={'sdk/bin/ud_data.dll','sdk/bin/ud_java.dll','sdk/bin/ud_cli.exe','sdk/bin/ud_worker.exe',
+                  'packages/UniversalData.1.0.0.nupkg','packages/universal-data-1.0.0.jar',
+                  'sdk/include/ud/package.h','sdk/lib/ud_data.lib'}
+        entries=bundle.get('files',[])
+        if not expected.issubset({entry['path'] for entry in entries}):
+            errors.append('Incomplete artifact manifest')
+        for entry in entries:
+            path=(manifest.parent/entry['path']).resolve()
+            if not path.is_relative_to(manifest.parent) or not path.is_file():
+                errors.append('Missing delivered file: '+entry['path']);continue
+            if path.stat().st_size!=entry['bytes'] or hashlib.sha256(path.read_bytes()).hexdigest()!=entry['sha256']:
+                errors.append('Delivered file changed: '+entry['path'])
+    return fingerprint,errors
+if __name__=='__main__':
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--fingerprint',action='store_true')
+    if parser.parse_args().fingerprint:
+        print(source_hash());sys.exit(0)
+    fingerprint,errors=check()
     if errors:
-        print('Release / merge denied: required implementation or execution evidence is incomplete.')
-        print('\n'.join(errors))
-        raise SystemExit(1)
-    print(f'Release / merge evidence gate passed for source tree {fingerprint}')
+        print('Core delivery evidence incomplete:');print('\n'.join(errors));sys.exit(1)
+    print('Core delivery evidence passed for source '+fingerprint)

@@ -25,6 +25,7 @@ typedef struct ud_expression_options {
  * No implicit type coercion. Typed NULL has the explicit type. AST depth <= 64,
  * nodes <= 4096. Constants fold once, including overflow diagnostics. Float64
  * nonfinite literals use the exact typed JSON strings from ud/format.h. Column
+ * One controller per expression; use separate instances for parallel evaluation.
  * comparisons require matching bound metadata, including Decimal scale and
  * recursive shape; vector results preserve the bound field's metadata. */
 UD_API ud_status ud_expression_create(ud_context *, ud_string json, const ud_expression_options *,

@@ -36,14 +36,26 @@ with tempfile.TemporaryDirectory(prefix="ud-process-task-") as temporary:
     run(folder, marker, doc, code=7)
     folder, marker, doc = fixture("missing-executable", extra={"expectedExitCode": 127})
     doc["connections"][0]["resource"] = str(folder / "no-program")
-    run(folder, marker, doc, status=3, code=127)
-    if os.name != "nt":
+    run(folder, marker, doc, status=3, code=-1 if os.name=="nt" else 127)
+    if True:
         script = "import subprocess,sys,os,pathlib,json,time;child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)']);pathlib.Path('marker.json').write_text(json.dumps({'pid':os.getpid(),'child':child.pid}));time.sleep(30)"
-        for name, mode, status, code in [("timeout", 0, 15, -9), ("cancel", 3, 8, -1), ("package-deadline", 5, 8, -1)]:
+        for name, mode, status, code in [("timeout", 0, 18, -1 if os.name=="nt" else -9), ("cancel", 3, 8, -1), ("package-deadline", 5, 18, -1)]:
             folder, marker, doc = fixture(name, script, {"timeoutMs": 2000 if mode == 0 else 5000})
             run(folder, marker, doc, mode=mode, status=status, code=code)
             pids = json.loads(marker.read_text())
             def alive(pid):
+                if os.name == "nt":
+                    import ctypes
+                    kernel=ctypes.WinDLL("kernel32",use_last_error=True)
+                    kernel.OpenProcess.restype=ctypes.c_void_p
+                    kernel.OpenProcess.argtypes=[ctypes.c_uint32,ctypes.c_int,ctypes.c_uint32]
+                    kernel.GetExitCodeProcess.argtypes=[ctypes.c_void_p,ctypes.POINTER(ctypes.c_uint32)]
+                    kernel.CloseHandle.argtypes=[ctypes.c_void_p]
+                    handle=kernel.OpenProcess(0x1000,0,pid)
+                    if not handle:return False
+                    code=ctypes.c_uint32();ok=kernel.GetExitCodeProcess(handle,ctypes.byref(code));kernel.CloseHandle(handle)
+                    if not ok:raise RuntimeError("Cannot read process exit status")
+                    return code.value==259
                 path = pathlib.Path(f"/proc/{pid}/stat")
                 if not path.exists():
                     return False

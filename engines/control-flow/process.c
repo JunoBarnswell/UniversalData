@@ -39,8 +39,8 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
     uint64_t total_arguments = 0;
     for (uint32_t i = 0; !s && i < ud_json_size(p->arguments); i++) {
         const ud_json *arg = ud_json_at(p->arguments, i);
-        const char *value;
-        uint32_t n;
+        const char *value=NULL;
+        uint32_t n=0;
         if (ud_json_kind(arg) != UD_JSON_STRING)
             s = UD_SCHEMA;
         if (!s)
@@ -75,7 +75,7 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
             int owner;
             s = ud_connection_definition(c->activation, ids[i], &def, &owner);
             const ud_json *driver = ud_member(def, "driver");
-            ud_string value;
+            ud_string value={0};
             if (!s && ud_json_kind(driver) == UD_JSON_STRING) {
                 s = ud_json_string(driver, &value);
                 if (!s && !ud_named(value, i ? "file" : "process"))
@@ -98,7 +98,7 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
 static ud_status interrupted(ud_activation *e, uint64_t deadline) {
     ud_status s = ud_activation_check(e);
     if (!s && ud_now_ms() >= deadline)
-        s = UD_TRANSIENT;
+        s = UD_TIMEOUT;
     return s;
 }
 #ifndef _WIN32
@@ -375,7 +375,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     }
     for (uint32_t i = 0; !s && i < count; i++) {
         const char *arg;
-        uint32_t n;
+        uint32_t n=0;
         s = ud_json_text(ud_json_at(p.arguments, i), &arg, &n);
         if (!s) {
             argv[i + 1] = ud_strdup_n(c->memory, arg, n);

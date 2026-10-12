@@ -1,7 +1,22 @@
 {
   "policy": "No implicit downloads in the default build. Optional dependencies are supplied by the consumer; CI pins listed versions.",
-  "duckdb": {"version": "1.4.4", "source": "https://github.com/duckdb/duckdb/releases/tag/v1.4.4", "license": "MIT", "sha256": {"windows": "18184f2d73bf962cb78eeefb17196d112fcd18b9411b16a3b47cd718693e004c", "linux": "09cc288295964d897b47665d1898e16e8ef176cae9ea615797fc136eae15bd5d"}},
-  "sqlite": {"version": "3.49.1", "source": "https://www.sqlite.org/2025/sqlite-amalgamation-3490100.zip", "license": "public-domain", "sha256": {"windows": "6cebd1d8403fc58c30e93939b246f3e6e58d0765a5cd50546f16c00fd805d2c3", "linux": "6cebd1d8403fc58c30e93939b246f3e6e58d0765a5cd50546f16c00fd805d2c3"}},
-  "java": {"release": 17}, "dotnet": {"targetFramework": "net8.0"},
-  "cmake": {"minimum": "3.24", "presetSchemaMinimum": "3.25"}
+  "sqlite": {
+    "version": "3.49.1",
+    "source": "https://www.sqlite.org/2025/sqlite-amalgamation-3490100.zip",
+    "license": "public-domain",
+    "sha256": {
+      "windows": "6cebd1d8403fc58c30e93939b246f3e6e58d0765a5cd50546f16c00fd805d2c3",
+      "linux": "6cebd1d8403fc58c30e93939b246f3e6e58d0765a5cd50546f16c00fd805d2c3"
+    }
+  },
+  "java": {
+    "release": 17
+  },
+  "dotnet": {
+    "targetFramework": "net8.0"
+  },
+  "cmake": {
+    "minimum": "3.24",
+    "presetSchemaMinimum": "3.25"
+  }
 }

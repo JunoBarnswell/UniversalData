@@ -130,7 +130,7 @@ typedef struct transfer {
 static ud_status check(transfer *t) {
     ud_status s = ud_connection_lease_authorize(t->connection, UD_ACCESS_NETWORK);
     if (!s && ud_now_ms() >= t->deadline)
-        s = UD_TRANSIENT;
+        s = UD_TIMEOUT;
     if (s)
         t->status = s;
     return s;
@@ -336,7 +336,7 @@ static ud_status perform(CURL *easy, transfer *t, long *status) {
     if (t->status)
         s = t->status;
     if (!s && (!received || result != CURLE_OK))
-        s = result == CURLE_OPERATION_TIMEDOUT ? UD_TRANSIENT : UD_IO;
+        s = result == CURLE_OPERATION_TIMEDOUT ? UD_TIMEOUT : UD_IO;
     return s;
 }
 static int retry_status(long code) {

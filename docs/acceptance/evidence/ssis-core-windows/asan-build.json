@@ -1,0 +1,8 @@
+{
+  "command": "cmake --build build/abi4-asan-msvc --config Debug --parallel 4 -- /nologo /verbosity:quiet",
+  "exitCode": 0,
+  "sourceFingerprint": "f32934d5377821e07d1571635061be5b510a033fa0c16dffddfa56390371c0a7",
+  "warnings": 0,
+  "generatorInstance": "D:/Program Files/Microsoft Visual Studio/18/Enterprise",
+  "addressSanitizer": true
+}

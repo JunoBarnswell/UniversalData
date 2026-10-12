@@ -187,7 +187,39 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
         ud_field *fields = !s ? ud_alloc(ctx, (inputs[0]->columns + 1) * sizeof(*fields)) : NULL;
         if (!s && !fields) s = UD_RESOURCE;
         ud_field derived = {0};
-        if (!s) s = ud_field_derive(ctx, &spec, (ud_string){"compute.window", 14}, options->window_name, &derived);
+        ud_bytes signature = {.ctx=ctx};
+        ud_field *dependencies = NULL;
+        ud_column_id *origins = NULL;
+        uint32_t origin_count=0, dependency_count=0;
+        if (!s && (options->key_count>inputs[0]->columns ||
+                   (options->key_count && !options->keys))) s=UD_SCHEMA;
+        if (!s) {
+            dependencies=ud_alloc(ctx,(options->key_count+1)*sizeof(*dependencies));
+            if(!dependencies)s=UD_RESOURCE;
+        }
+        for(uint32_t i=0;!s && i<inputs[0]->columns;i++) {
+            char id[33];ud_column_id_format(inputs[0]->column[i].field.identity,id);
+            s=ud_bytes_put(&signature,id,32);
+        }
+        const uint64_t semantics[]={options->window_function,options->window_column,
+            options->partition_key_count,options->descending,options->key_count};
+        for(uint32_t i=0;!s && i<5;i++)s=ud_put_u64(&signature,semantics[i]);
+        for(uint32_t i=0;!s && i<options->key_count;i++) {
+            if(options->keys[i]>=inputs[0]->columns)s=UD_SCHEMA;
+            if(!s)s=ud_put_u64(&signature,options->keys[i]);
+            if(!s)dependencies[dependency_count++]=inputs[0]->column[options->keys[i]].field;
+        }
+        if(!s && options->window_function==UD_WINDOW_RUNNING_SUM)
+            dependencies[dependency_count++]=inputs[0]->column[options->window_column].field;
+        if(!s)s=ud_lineage_merge(ctx,dependencies,dependency_count,&origins,&origin_count);
+        if(!s) {
+            uint8_t digest[32];char scope[65];static const char hex[]="0123456789abcdef";
+            ud_hash(signature.data,signature.size,digest);
+            for(uint32_t i=0;i<32;i++){scope[2*i]=hex[digest[i]>>4];scope[2*i+1]=hex[digest[i]&15];}
+            scope[64]=0;spec.lineage=origins;spec.lineage_count=origin_count;
+            s=ud_field_derive(ctx,&spec,(ud_string){scope,64},options->window_name,&derived);
+        }
+        ud_free(origins);ud_free(dependencies);ud_bytes_clear(&signature);
         if (!s) {
             for (uint32_t i = 0; i < inputs[0]->columns; i++) fields[i] = inputs[0]->column[i].field;
             fields[inputs[0]->columns] = derived;
@@ -294,7 +326,7 @@ static ud_status join_pull(ud_operator *o, ud_batch **out) {
         for (uint32_t i = 0; !s && i < o->left.batch->columns; i++)
             s = ud_batch_get(o->left.batch, o->left.row, i, values + i);
         for (uint32_t i = 0; !s && i < o->right.batch->columns; i++)
-            s = ud_batch_get(o->right.batch, row, i, values + o->left.batch->columns);
+            s = ud_batch_get(o->right.batch, row, i, values + o->left.batch->columns + i);
         if (!s) s = ud_batch_append(*out, values, o->schema->columns);
         if (!s && o->options.kind == UD_OPERATOR_LOOKUP) {
             o->left.row++; o->right.next = o->right_start;

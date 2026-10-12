@@ -207,8 +207,8 @@ ud_status ud_catalog_get(ud_catalog *c, const ud_catalog_key *key, char **json, 
     char *file = NULL;
     UD_TRY(path(c, key, &file));
     char *id = NULL;
-    uint64_t revision;
-    int32_t kind;
+    uint64_t revision=0;
+    int32_t kind=0;
     ud_status s = read_envelope(c, file, key, &kind, &id, &revision, json, length);
     ud_free(file);
     ud_free(id);
@@ -233,8 +233,8 @@ ud_status ud_catalog_put(ud_catalog *c, const ud_catalog_key *key, ud_string inp
     ud_free(lockfile);
     char *id = NULL, *previous = NULL;
     uint32_t previous_length = 0;
-    uint64_t revision;
-    int32_t kind;
+    uint64_t revision=0;
+    int32_t kind=0;
     if (!s) {
         ud_status found =
             read_envelope(c, file, key, &kind, &id, &revision, &previous, &previous_length);
@@ -308,8 +308,8 @@ ud_status ud_catalog_list(ud_catalog *c, int32_t type, char **json, uint32_t *le
     for (uint32_t i = 0; !s && i < count; i++) {
         char *file = NULL, *id = NULL, *payload = NULL;
         uint32_t size;
-        uint64_t revision;
-        int32_t kind;
+        uint64_t revision=0;
+        int32_t kind=0;
         s = ud_join_path(c->ctx, c->directory, names[i], &file);
         if (!s)
             s = read_envelope(c, file, NULL, &kind, &id, &revision, &payload, &size);

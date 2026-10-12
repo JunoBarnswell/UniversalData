@@ -2,14 +2,12 @@
 #include "ud/connection_manager.h"
 #include "ud/json.h"
 #include <stdio.h>
-#include <stdatomic.h>
 #include <string.h>
 #include <time.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
 /* Only installed public SDK headers; no engine/private structures. */
-static atomic_uint invoked, active, configured;
 typedef struct task_config {
     ud_json *doc;
     ud_expression *expression;
@@ -34,7 +32,7 @@ static ud_status parse(const ud_component_context *c, ud_string config, task_con
         return UD_SCHEMA;
     for (uint32_t i = 0; i < ud_json_size(p->doc); i++) {
         const char *key;
-        uint32_t n;
+        uint32_t n=0;
         ud_json_key(p->doc, i, &key, &n);
         const char *allowed[] = {"connection",   "variable", "expression",
                                  "returnStatus", "holdMs",   "appendMarker"};
@@ -48,15 +46,15 @@ static ud_status parse(const ud_component_context *c, ud_string config, task_con
     s = text(ud_json_find(p->doc, "connection", 10), &p->connection);
     if (!s)
         s = text(ud_json_find(p->doc, "variable", 8), &p->variable);
-    ud_value v;
+    ud_value v={0};
     if (!s)
         s = ud_activation_variable(c->activation, p->variable, &v);
     if (!s && v.type != UD_INT64)
         s = UD_SCHEMA;
     const ud_json *marker = ud_json_find(p->doc, "appendMarker", 12);
     if (!s && marker) {
-        const char *value;
-        uint32_t n;
+        const char *value=NULL;
+        uint32_t n=0;
         s = ud_json_kind(marker) == UD_JSON_BOOL ? ud_json_text(marker, &value, &n) : UD_SCHEMA;
         if (!s)
             p->marker = n == 4 && !memcmp(value, "true", 4);
@@ -66,8 +64,8 @@ static ud_status parse(const ud_component_context *c, ud_string config, task_con
         const ud_json *j = ud_json_find(p->doc, numbers[i], (uint32_t)strlen(numbers[i]));
         if (!j)
             continue;
-        const char *value;
-        uint32_t n;
+        const char *value=NULL;
+        uint32_t n=0;
         s = ud_json_kind(j) == UD_JSON_NUMBER ? ud_json_text(j, &value, &n) : UD_SCHEMA;
         if (!s)
             s = ud_value_parse(c->memory, UD_INT64, value, n, &v);
@@ -81,7 +79,7 @@ static ud_status parse(const ud_component_context *c, ud_string config, task_con
         }
     }
     char *json = NULL;
-    uint32_t n;
+    uint32_t n=0;
     if (!s)
         s = ud_json_serialize(ud_json_find(p->doc, "expression", 10), &json, &n);
     ud_expression_options options = {sizeof(options), UD_ABI_VERSION, NULL, c->resolve,
@@ -102,7 +100,6 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     (void)user;
     (void)in;
     (void)out;
-    atomic_fetch_add(&configured, 1);
     task_config p;
     ud_status s = parse(c, config, &p);
     clear(&p);
@@ -115,8 +112,6 @@ static uint64_t now(void) {
 }
 static ud_status invoke(void *user, const ud_component_context *c, ud_string config) {
     (void)user;
-    atomic_fetch_add(&invoked, 1);
-    atomic_fetch_add(&active, 1);
     task_config p;
     ud_status s = parse(c, config, &p);
     ud_connection_lease *lease = NULL;
@@ -134,13 +129,13 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string con
         nanosleep(&tick, NULL);
 #endif
     }
-    ud_value value;
+    ud_value value={0};
     if (!s)
         s = ud_expression_evaluate(p.expression, NULL, 0, &value);
     if (!s)
         s = ud_activation_set_variable(c->activation, p.variable, &value, NULL);
     if (!s && p.marker) {
-        ud_string path;
+        ud_string path={0};
         s = ud_connection_lease_path(lease, &path);
         char *file_name = !s ? ud_alloc(c->memory, path.length + 1) : NULL;
         if (!s && !file_name)
@@ -165,7 +160,6 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string con
     if (!s)
         s = closed;
     clear(&p);
-    atomic_fetch_sub(&active, 1);
     return s;
 }
 static const char schema[] =
@@ -205,72 +199,9 @@ static const ud_component_descriptor descriptors[] = {
      .invoke = invoke}};
 static const ud_component_plugin_api components = {sizeof(components), UD_ABI_VERSION, 2,
                                                    descriptors};
-typedef struct instance {
-    ud_host_api host;
-} instance;
-static ud_status initialize(const ud_host_api *host, const char *config, uint32_t n, void **out) {
-    (void)config;
-    (void)n;
-    instance *p = host->allocate(host->context, sizeof(*p));
-    if (!p)
-        return UD_RESOURCE;
-    p->host = *host;
-    *out = p;
-    return UD_OK;
-}
-static ud_status execute(void *state, int32_t operation, const ud_batch *input,
-                         const char *argument, uint32_t n, ud_batch **out) {
-    (void)input;
-    (void)argument;
-    (void)n;
-    instance *p = state;
-    *out = NULL;
-    if (operation != UD_OP_SCALAR)
-        return UD_UNSUPPORTED;
-    ud_field fields[] = {{.name = "invoked", .name_length = 7, .type = UD_INT64},
-                         {.name = "active", .name_length = 6, .type = UD_INT64},
-                         {.name = "configured", .name_length = 10, .type = UD_INT64}};
-    ud_status s = p->host.batch_create(p->host.context, fields, 3, 1, out);
-    ud_value values[] = {{.type = UD_INT64, .integer = atomic_load(&invoked)},
-                         {.type = UD_INT64, .integer = atomic_load(&active)},
-                         {.type = UD_INT64, .integer = atomic_load(&configured)}};
-    if (!s)
-        s = p->host.append(*out, values, 3);
-    return s;
-}
-static void destroy(void *state) {
-    instance *p = state;
-    if (p)
-        p->host.deallocate(p);
-}
-static void shutdown(void) {}
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t abi, ud_plugin_api *out) {
-    if (abi != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
-        return UD_INCOMPATIBLE;
-#ifdef UD_COMPONENT_ONLY
-    if (out->struct_size < sizeof(*out))
-        return UD_INCOMPATIBLE;
-    *out = (ud_plugin_api){.struct_size = sizeof(*out),
-                           .abi_version = UD_PLUGIN_ABI,
-                           .id = "sample.component-only",
-                           .version = "1.0.0",
-                           .roles = UD_PLUGIN_COMPONENTS,
-                           .components = &components};
+    if (abi != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out)) return UD_INCOMPATIBLE;
+    *out = (ud_plugin_api){.struct_size=sizeof(*out), .abi_version=UD_PLUGIN_ABI,
+        .id="sample.custom", .version="1.0.0", .roles=UD_PLUGIN_COMPONENTS, .components=&components};
     return UD_OK;
-#else
-    if (out->struct_size < sizeof(*out))
-        return UD_INCOMPATIBLE;
-    *out = (ud_plugin_api){.struct_size = sizeof(*out),
-                           .abi_version = UD_PLUGIN_ABI,
-                           .id = "sample.custom",
-                           .version = "1.0.0",
-                           .roles = UD_PLUGIN_COMPONENTS | UD_PLUGIN_FUNCTION,
-                           .capabilities = UD_CAP_SCALAR,
-                           .initialize = initialize,
-                           .execute = execute,
-                           .destroy = destroy,
-                           .shutdown = shutdown,
-                           .components = &components};
-    return UD_OK;
-#endif
 }

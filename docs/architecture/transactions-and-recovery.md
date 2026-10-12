@@ -16,7 +16,7 @@ CommitUnknown→RecoveryRequired→停止推进源→receipt 查询→digest/源
 
 轨迹：第 2 批已提交、Journal 未发布、进程终止→重开读取回执→确认第 2 批→从下一位置继续。Loop checkpoint 包括迭代栈，不能跨迭代错误跳过。恢复未实现的部分保持 Planned/Unsupported，不称为 Verified。归属 engines/package/checkpoint.c、connectors/、tests/recovery/。
 
-## 当前实现：Checkpoint Journal 3
+## 当前实现：Checkpoint Journal 4
 
 `state_directory` 是授权的绝对目录，`execution_id` 必须非空。`resume=0` 只创建新日志；目录已有日志拒绝覆盖。`resume=1` 要求有效日志，不能静默创建新执行。每个 `record-<20 位序号>.udj` 包含版本、连续序号、前一记录 SHA-256、记录类别/identity/payload 和当前 SHA-256；先写/flush 临时文件，再原子不覆盖发布。`writer.lock` 限制单 writer。
 

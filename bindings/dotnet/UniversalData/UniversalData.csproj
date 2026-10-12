@@ -9,8 +9,15 @@
     <Description>Native Package/Execution and columnar data SDK with thin .NET bindings.</Description>
     <RepositoryUrl>https://github.com/JunoBarnswell/UniversalData</RepositoryUrl>
   </PropertyGroup>
-  <ItemGroup Condition="'$(NativeArtifacts)' != ''">
-    <None Include="$(NativeArtifacts)/win-x64/ud_data.dll" Condition="Exists('$(NativeArtifacts)/win-x64/ud_data.dll')" Pack="true" PackagePath="runtimes/win-x64/native/" />
-    <None Include="$(NativeArtifacts)/linux-x64/libud_data.so" Condition="Exists('$(NativeArtifacts)/linux-x64/libud_data.so')" Pack="true" PackagePath="runtimes/linux-x64/native/" />
+  <PropertyGroup Condition="'$(NativeRuntimeIdentifier)' != ''">
+    <NativeLibraryName Condition="'$(NativeRuntimeIdentifier)' == 'win-x64'">ud_data.dll</NativeLibraryName>
+    <NativeLibraryName Condition="'$(NativeRuntimeIdentifier)' == 'linux-x64'">libud_data.so</NativeLibraryName>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(NativeLibraryDirectory)' != ''">
+    <None Include="$(NativeLibraryDirectory)/$(NativeLibraryName)" Pack="true" PackagePath="runtimes/$(NativeRuntimeIdentifier)/native/" />
   </ItemGroup>
+  <Target Name="ValidateNativePackage" BeforeTargets="GenerateNuspec">
+    <Error Condition="('$(NativeLibraryDirectory)' != '' Or '$(NativeRuntimeIdentifier)' != '') And ('$(NativeLibraryDirectory)' == '' Or '$(NativeLibraryName)' == '')" Text="Specify NativeLibraryDirectory and a supported NativeRuntimeIdentifier together." />
+    <Error Condition="'$(NativeLibraryDirectory)' != '' And !Exists('$(NativeLibraryDirectory)/$(NativeLibraryName)')" Text="Missing native runtime library for $(NativeRuntimeIdentifier)." />
+  </Target>
 </Project>

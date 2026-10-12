@@ -40,7 +40,7 @@ static ud_status character_expression(const ud_component_context *c,const ud_jso
     if(!s)s=ud_json_quote(&json,name.data,name.length);
     if(!s)s=ud_bytes_put(&json,"}]}",3);
     ud_expression_options options={sizeof(options),UD_ABI_VERSION,schema,c->resolve,c->resolve_user,
-                                    c->resolve_field,c->execution->registry,0};
+                                    c->resolve_field,c->execution->registry,c->activation->parallel?UD_COMPONENT_THREAD_SAFE:0};
     if(!s)s=ud_expression_create(c->memory,(ud_string){(char*)json.data,(uint32_t)json.size},&options,out);
     ud_bytes_clear(&json);return s;
 }
@@ -265,11 +265,18 @@ static ud_status finish(void *instance) {
     return UD_OK;
 }
 ud_status ud_transforms_register(ud_registry *registry) {
+    static const char *schemas[]={
+        "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"}},\"required\":[\"columns\"],\"additionalProperties\":false}",
+        "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"}},\"required\":[\"columns\"],\"additionalProperties\":false}",
+        "{\"type\":\"object\",\"properties\":{\"variable\":{\"type\":\"string\"}},\"required\":[\"variable\"],\"additionalProperties\":false}",
+        "{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}",
+        "{\"type\":\"object\",\"properties\":{\"rules\":{\"type\":\"array\"},\"policy\":{\"type\":\"string\"}},\"required\":[\"rules\"],\"additionalProperties\":false}"
+    };
     static const char *names[]={"copyColumn","characterMap","rowCount","audit","quality"};
     for(uint32_t i=0;i<5;i++) {
         ud_component_descriptor d={.struct_size=sizeof(d),.abi_version=UD_ABI_VERSION,
             .id={names[i],(uint32_t)strlen(names[i])},.name={names[i],(uint32_t)strlen(names[i])},
-            .version={"1.0.0",5},.configuration_schema={"{\"type\":\"object\"}",17},
+            .version={"1.0.0",5},.configuration_schema={schemas[i],(uint32_t)strlen(schemas[i])},
             .category=UD_COMPONENT_TRANSFORM,.inputs=1,.outputs=i==4?2:1,
             .synchronous_input=i==2 || i==3?0:-1,.error_output=i==4?1:-1,
             .capabilities=UD_COMPONENT_REPLAY_SAFE|UD_COMPONENT_THREAD_SAFE,.user=(void*)(intptr_t)(i+1),

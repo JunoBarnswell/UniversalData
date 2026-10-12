@@ -47,10 +47,7 @@ ud_status ud_activation_check(const ud_activation *e) {
     return UD_OK;
 }
 ud_status ud_component_lookup(ud_activation *e, ud_string id, ud_component_descriptor *out) {
-    ud_status s = ud_registry_find(e->execution->registry, id, out);
-    if (s == UD_UNSUPPORTED && e->execution->external)
-        s = ud_registry_find(e->execution->external, id, out);
-    return s;
+    return ud_registry_find(e->execution->registry, id, out);
 }
 ud_status ud_activation_bind_roots(ud_activation *e) {
     ud_status s = UD_OK;

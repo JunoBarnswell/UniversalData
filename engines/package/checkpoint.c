@@ -215,7 +215,7 @@ static ud_status restore(ud_activation *e, const ud_json *payload) {
             ud_value decoded = {0};
             status = ud_json_value_decode(e->execution->ctx, &expected, ud_member(record, "value"),
                                           UD_ROUND_EXACT, &decoded);
-            if (!status) status = ud_activation_set_variable(e, name, &decoded, &expected);
+            if (!status) status = ud_variable_assign(e->execution->ctx, v, &decoded, &expected);
             ud_clear_value(&decoded);
             if (status) return status;
         }
@@ -368,6 +368,7 @@ ud_status ud_checkpoint_open(ud_execution *e) {
         s = ud_put_u64(&manifest, e->options.max_batch_rows);
     if (!s)
         s = ud_put_u64(&manifest, e->options.edge_capacity);
+    if (!s) s = ud_put_u64(&manifest, e->options.max_concurrency);
     uint8_t digest[32];
     char encoded[65], payload[68];
     if (!s) {
@@ -388,7 +389,7 @@ ud_status ud_checkpoint_open(ud_execution *e) {
                 char *path = ud_strdup_n(e->ctx, p->key.data, p->key.length);
                 if (!path)
                     return UD_RESOURCE;
-                s = file_record(j, p->kind, path);
+                s = file_record(j, &e->root, p->kind, path);
                 ud_free(path);
                 if (s)
                     return s;

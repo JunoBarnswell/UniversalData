@@ -1,67 +1,23 @@
-# ABI 3 / Package 迁移验证
+# Windows 集中验收
 
-基线 main `ed3237a9852ac29831d85d93c03fc8b173cdbf6f`，工作分支 `codex/ssis-package-runtime`，草稿 PR #3。下列是本轮实际运行证据，不继承历史 SDK 的通过状态。
+本轮在统一架构及核心源码完成后集中编译和验收；失败后只重跑受影响范围，修复涉及共享运行边界时执行完整门禁。Linux 按用户最新决定免测，核心算子和 POSIX 实现继续支持。
 
-| 检查 | 实际结果 | 命令/范围 |
-|---|---|---|
-| Linux native ABI 3 + JNI + SQLite | 通过 | CMake Debug build/abi3 |
-| 原生 CTest | 21/21 Passed | `ctest --test-dir build/abi3 --output-on-failure` |
-| ASan/UBSan + leak detection | 21/21 Passed | build/asan3，`ASAN_OPTIONS=detect_leaks=1 ctest ...` |
-| Foundation/Columnar 最小 SDK | 5/5 Passed | core-only、安装导出及未改语义的独立 C 消费者 |
-| .NET 8 / Maven Java 17 | 构建通过 | examples/dotnet、dotnet-data、bindings/java/pom.xml |
-| 新 Package 三语言执行 | 通过 | package_language_parity.py；同 JSON/参数、循环、表达式优先约束、10,003 行 Derived/Split、多目标输出、状态/结果/任务计数一致 |
-| 类型/批次 Wire 3 三语言 | 通过 | Decimal38、UTC、UTF8/NUL、Binary、Struct/List、NULL、JSON/Wire 字节一致 |
-| 安装后托管 NuGet 1.0.0 消费 | 通过 | 仓库外 PackageReference 消费者从本地 NuGet 源恢复，再执行同 Package；native Linux 库单独安装 |
-| 旧入口删除 | 通过 | 当前源代码静态 gate；ABI 3 共享库 `nm -D` 无 ud_job_/ud_dag_/ud_run_/ud_snapshot_latest 导出 |
-| 公共契约/JSON/XML/Python | 通过 | scripts/static_check.py；git diff --check |
-| Windows / GitHub Actions | Blocked | 当前机器 Linux；实际 GitHub job 未执行任何步骤，annotation 为账户支付失败/额度限制 |
+| 门禁 | 真实覆盖 |
+|---|---|
+| MSVC Debug / JNI | C17、完整 ABI 4、零编译告警 |
+| Native CTest | 31 项实际行为；平台进程/文件、类型、表达式、队列、多端口、当前插件、Catalog/Project/Child/History |
+| MSVC AddressSanitizer | 同一 31 项；地址安全。MSVC 本轮没有 UBSan/LSan/TSan 结果 |
+| Ownership / quota | allocator fault sweep、context allocations 清零、writer fence、CRC/hash 错误、限额与取消清理 |
+| Concurrent Activation | 到达屏障证明实际并发、局部超时与兄弟隔离、串行作用域写入、事件顺序、共享 Journal |
+| Buffer / Compute | 实际外存多轮 Sort、Window、Aggregate、Join 值一致性、完整 schema/lineage、错误目标提交 |
+| SQLite / Recovery | 真实事务、rollback、receipt/upsert/幂等、源/Package 改变、journal 损坏/缺口、实际进程终止和 CommitUnknown |
+| C/.NET/Java | 同一 Package、Project/child/参数/10003 行、指标；Decimal/UTC/UTF8/NUL/nested/NaN/Infinity/NULL/wire 逐字节一致 |
+| Installed consumers | 仓库外 CMake install 消费、真实 nupkg 消费、独立 Maven repository/JAR 和 JNI 消费 |
+| Release distributable | `packaging/package.ps1` 生成版本/RID SDK 和 ZIP；Release Native CTest；逐文件 SHA256 校验 |
+| ZIP consumers | 仓库外解压后链接动态 `UniversalData::Data`；ABI/version、资源/并发、SQLite、实际 Pipeline、三语言一致性；NuGet 自带 DLL 且没有 SDK loader PATH |
 
-GitHub 观察：[运行 38197069720](https://github.com/JunoBarnswell/UniversalData/actions/runs/38197069720)，Windows check 114641994899 的 annotation 明确说任务未启动，不能计为编译或测试通过。新的 CI 已改为 ABI 3 Package/语言消费者命令，但配置存在不等于运行通过。
+命令与源码 fingerprint 见 `acceptance/gates.json`，结果日志只保留有限摘要；长日志位于本机临时目录。构建/测试退出码保留。`scripts/static_check.py` 只做契约/元数据/JSON/XML/删除边界检查，不能代替行为证据。
 
-剩余里程碑：统一持久 Journal/批次恢复、Catalog、完整 Pipeline Spill、更多任务与连接器、列级血缘/完整表达式函数目录和其他扩展。现已提供 Journal 3 的受支持恢复链路；SQL Source 持久 snapshot 仍明确 Unsupported；不称完整 SSIS 架构或全部验收完成。旧 .state/.commit 不再提供恢复入口。
+最新完整状态见 `acceptance/ssis-status.json`。PostgreSQL、可选 HTTP 和协议/高级扩展没有本轮系统验收；跨任意目标的全局事务、BI planner、CDC 等不在已完成能力内。
 
-统一恢复新门禁：native 22/22、ASan/UBSan Package 4/4，通过真实进程终止和日志/源完整性检查。证据在 docs/acceptance/evidence/ssis-recovery；范围见 transactions-and-recovery.md。
-
-Catalog 基础新门禁：native 23/23、ASan/UBSan + leak detection 的 Package/Catalog 5/5。测试覆盖不可变版本、租户隔离、重启、授权撤回、结构校验、校验损坏/重命名和已有 staging 文件保护。证据见 docs/acceptance/evidence/ssis-catalog；部署/环境语义及完整历史仍未完成。
-
-Project/Environment/Deployment 新门禁：当前源代码 native 24/24、ASan/UBSan + leak detection 的 Package/Catalog/Project 6/6，以及 C/.NET8/Java17 同 Package 的 Project 参数/共享连接/遮蔽、10,003 行输出和类型/Wire 一致性通过。明确固定修订绑定与回退、重复 checkpoint resume；完整激活/历史/观测不在本模块完成范围。证据见 docs/acceptance/evidence/ssis-project。
-
-真正 Execute Package 新门禁：当前 native 25/25、ASan/UBSan + leak detection 的 Package/Catalog/Project/Child 7/7；C/.NET8/Java17 通过真实子 Package 的参数映射执行 10,003 行管道并得到一致结果（完成任务数 6）。专门测试真实子 checkpoint 终止恢复、子/孙调用、同一资源上下文、隔离、取消/CommitUnknown、深度和旧别名拒绝。证据见 docs/acceptance/evidence/ssis-child-package。
-
-用户范围修订（2026-10-12）：“无需关注ci的状态，Windows 无需测试”。因此本轮完成门禁以 Linux 本地实际验证为准；以上历史 Windows/远程 CI 观察不再阻塞本轮目标，且不代表 Windows 通过。
-
-运行历史新门禁：当前源代码 native 26/26、ASan/UBSan + leak detection 的 Package/Catalog/Project/Child/History 8/8；三语言真实子 Package/Project/类型与 Wire 一致性重新通过。历史测试覆盖原生成功/失败/取消/RecoveryRequired、Ready/终态快照、租户、BUSY、重开、参数指纹/部署版本和敏感正文不落盘。证据：docs/acceptance/evidence/ssis-history。Windows 和远程 CI 按用户指令不作门禁。
-
-File System 新门禁：native 27/27、ASan/UBSan + leak detection 的 Package/Catalog/Project/Child/History/FileSystem 9/9；C/.NET8/Java17 同文件复制、子 Package、10,003 行管道和类型/Wire 一致性通过（任务数 7）。路径/覆盖/临时文件保护、移动/删除/建目录、中途取消/撤权、FIFO/符号链接拒绝和真实效应后终止/CommitUnknown 已实际验证。证据：docs/acceptance/evidence/ssis-filesystem。
-
-Execute Process 新门禁：当前 native 28/28、ASan/UBSan + leak detection 的 Package/相关模块 10/10；真实进程授权拒绝、argv/cwd、退出策略/exec 失败、任务和 Package timeout、运行中取消/子进程组清理、效应后真实终止/Unknown、完成后 resume 实际通过。三语言文件/子 Package/数据回归通过，未把它冒充托管端正向进程授权测试。证据：docs/acceptance/evidence/ssis-process。
-
-## HTTP Task 与安装消费（2026-10-12）
-
-主线已 fetch，仍为 `ed3237a9852ac29831d85d93c03fc8b173cdbf6f`，当前工作分支已包含该提交。`UD_WITH_HTTP=ON` 使用系统 libcurl 8.14.1，最低契约 7.85 + TLS/异步 DNS；默认 OFF 的 Package 构建没有此依赖，并实测绑定时 Unsupported、无网络 I/O。
-
-原生 29/29 和 ASan/UBSan+leak 的 Package/Catalog/File/Process/HTTP 11/11 通过。真实本地 HTTP/HTTPS 验证方法/NUL/Unicode body、状态变量、授权及凭据拒绝、CA/hostname 错误、禁用重定向、GET/HEAD 重试上限与 POST 单次请求、有界响应/头、任务/Package 超时、运行中取消/撤销授权、资源/配置拒绝。真实 POST 产生服务器效应后 `_exit(91)`，resume 返回 CommitUnknown 且未再次请求；完成后 resume 同样不重复请求。
-
-安装后的 UniversalData::Package 静态消费者与 UniversalData::Data 共享消费者均执行同一完整 HTTP 行为套件。NuGet 包含 Linux ABI3 原生库，通过独立本地 feed/新缓存安装；Java 使用 Maven 1.0.0 JAR 和 ABI3 JNI。两者实际调用 HTTPS Task，检查明确 NETWORK 授权、resolver 凭据送达、网络拒绝及 resolver 抛异常的默认拒绝。Maven package 是构建检查（项目无单元测试），验证来自真实消费者，不将零测试算作通过。修复了 Linux-only NativeArtifacts 打包因不存在 Windows 路径失败的问题，未制造或测试 Windows 文件。
-
-已有三语言 FileSystem/真实子 Package/10003 行 Pipeline 和 Decimal/UTC/UTF8/nested/wire 一致性回归通过。全部证据和当前源哈希见 `docs/acceptance/evidence/ssis-http/evidence.json`。HTTP Task 响应仅有界消费并丢弃，不冒充 G61 Source/Destination；libcurl/TLS 内部分配不计入 SDK quota；无端到端 exactly-once。Windows 测试及远程 CI 状态按用户指令免作门禁。
-
-## Check/Data Profiling（2026-10-12）
-
-`data.profile` 复用已有 Pipeline、Source/Transform、连接和恢复服务；唯一 `profile.statistics` Destination 调用新的共享 Compute profiler，流式 row/null count 和 bool/int64/float64/UTF8 extrema 不保留输入 Batch，全部预算在共同 Execution 中。Task 的非空 bool 检查使用现有表达式；false/NULL 均失败，完整 scan 后保留统计和失败数供 Failure 分支使用。绑定时拒绝未知/重复字段、类型/只读变量、非法列、空规则和其他写入 Destination。
-
-当前源码原生 **31/31**、ASan/UBSan+leak 专项 **13/13** 通过。实际 File/SQLite 的多批读取验证行数、空值数、极值、空输入、全空值、Float/UTF8、多个失败与 Failure precedence。权限拒绝/撤销、读取后取消/Package deadline、row/memory 配额、生命周期 cleanup 均实际执行。进程在扫描中和统计产出后/TaskDone 前 `_exit(91)`，恢复重算并得到相同结果；已完成任务 resume 跳过并恢复变量，源数据变化拒绝恢复。持久 SQL Source snapshot 仍明确 Unsupported。
-
-C/.NET8/Java17 同一 Package 增加 Profiling Task：10003 行实际 row/null/min/max 四个规则通过后再执行原有真实子 Package derive/split。两条 Pipeline 的总指标 input/output 20006、completedTasks 8；发布行仍为 10003，三语言输出和指标相同。Decimal/UTC/UTF8/nested/wire 既有回归通过。证据和源码哈希在 `docs/acceptance/evidence/ssis-profile/evidence.json`。高级分布/键关系和更广类型变量不冒充已实现；Windows/远程 CI 状态仍按用户指令免作门禁。
-
-## Native Custom Task 与单一 ABI（2026-10-12）
-
-公开 component/plugin ABI 表接入同一 loader/registry/Control Flow。新增批量 owned 注册先验证/复制所有 metadata，再保留 owner；无效第二描述符完整回滚。注册回调持有真实 module reference；registry 有 Execution 租用则不能变更/销毁，module 在 registry/实例存活时不能卸载。组件专属库无需通用空 factory，ud_plugin_create 明确 Unsupported。使用安装 SDK 的外部项目实际编译 Task 模块，只有公共 include/ud 头及共享库依赖。
-
-按用户“旧 ABI 可以下线删除，只保留唯一版本”的指令，删除旧结构前缀/布局 fallback、legacy fixture/target 和当前构建中的 legacy 生成库。loader、所有自带 plugin entry 和 info 仅接受当前完整 ABI 3 布局。旧 version/layout 的负向拒绝仍验证。Sdk 1.0.0/ABI 3 尚为开发契约；旧插件必须按当前头文件重编。
-
-当前 Linux 原生 **32/32**、ASan/UBSan+leak 专项 **15/15** 通过：实际 DLL、原子回滚、组件专属库、模块/registry/Execution/通用实例各生命周期 Busy、共享表达式/作用域、资源默认拒绝/WRITE 拒绝、只读/配置错误、IO/Busy 及非法 Task END 返回、运行中取消/deadline、授权的真实文件效应后 `_exit(91)`/Unknown 不重放、完成后 resume。C/.NET/Java Profiling/子 Package/Pipeline/类型回归通过。自定义 Task 的模块注册生命周期主要由 C 宿主验收；未宣称新增托管 registry API。
-
-数据库插件按当前 ABI 重新构建：SQLite 的交易/receipt/Pipeline 随原生套件通过；PostgreSQL 实际本地连接、默认拒绝、bounded SELECT/END/close 通过；DuckDB SQL/Parquet roundtrip 通过。ODBC 通过 SQLite ODBC 驱动的实际连接和一批 typed read/close 验证，但仍缺少 ud_connector_api 表和完整 Connection Manager/游标/receipt 门禁；G59 不计为完成。旧 build/full 的 ETL 缓存组件配置已替换为当前 Package/Expression 列表，未保留旧入口。证据：`docs/acceptance/evidence/ssis-custom-task/evidence.json`。
-
-Native 插件是可信宿主代码，不是沙箱；回调自己释放 per-invoke 资源，并遵循不得控制借用 Execution 生命周期的契约。G07/G21 全类别扩展和线程竞态门禁仍待办；Windows/远程 CI 状态按用户免作门禁。
+先前的临时目录安装消费记录只证明当时的核心行为。当前产物交付还必须通过 `distributable-bundle` 门禁：磁盘上 ZIP、SDK、JNI、NuGet/JAR 和 manifest 均存在且 digest 匹配，仓库外独立消费成功。`scripts/release_guard.py` 同时检查这些实际文件，无法用仅有测试摘要代替产物。

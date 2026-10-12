@@ -2,6 +2,7 @@
 #define UD_PACKAGE_INTERNAL_H
 #include "ud/package.h"
 #include "ud/json.h"
+#include "ud/format.h"
 #include "../../components/data/internal.h"
 #include "../../components/contracts/registry_internal.h"
 #include "../../components/foundation/thread.h"
@@ -90,7 +91,6 @@ ud_status ud_pipeline_field_namespace(const ud_component_context *, char output[
 ud_status ud_transforms_register(ud_registry *);
 ud_status ud_builtin_register(ud_registry *);
 ud_status ud_component_lookup(ud_activation *, ud_string, ud_component_descriptor *);
-ud_status ud_activation_check(ud_activation *);
 void ud_activation_notify_kind(ud_activation *, int32_t kind, ud_execution_state, ud_status);
 void ud_activation_notify(ud_activation *, ud_execution_state, ud_status);
 ud_status ud_scope_enter(ud_activation *, ud_string name, const ud_json *, ud_scope *);
@@ -107,6 +107,7 @@ ud_status ud_activation_validate_definition(ud_activation *, uint32_t depth);
 ud_status ud_activation_run_definition(ud_activation *);
 ud_status ud_child_package(ud_activation *, const ud_json *, int execute, uint32_t depth);
 ud_status ud_parameters_check(ud_context *, const ud_json *, const ud_json *, int require_values);
+ud_status ud_variable_assign(ud_context *, ud_variable *, const ud_value *, const ud_field *);
 ud_status ud_variable_writable(ud_activation *, ud_string, ud_variable **);
 ud_status ud_connection_definition(ud_activation *, ud_string, const ud_json **, int *project_scope);
 ud_status ud_connection_definitions_check(const ud_json *);

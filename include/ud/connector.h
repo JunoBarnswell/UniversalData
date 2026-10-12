@@ -26,7 +26,7 @@ enum {
     UD_ACCESS_READ = 3,
     UD_ACCESS_WRITE = 4,
     UD_ACCESS_RECEIPT = 5,
-    UD_ACCESS_DELETE = 8, /* 6/7 reserved by the quarantine contract. */
+    UD_ACCESS_DELETE = 8, /* 6/7 are reserved. */
     UD_ACCESS_EXECUTE = 9,
     UD_ACCESS_NETWORK = 10
 };

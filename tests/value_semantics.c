@@ -370,7 +370,7 @@ static void fault_free(void *user, void *pointer) {
 static int allocation_failures(void) {
     uint32_t failures[3] = {0}, successes[3] = {0};
     for (uint32_t operation = 0; operation < 3; operation++) {
-        for (uint64_t offset = 1; offset <= 96; offset++) {
+        for (uint64_t offset = 1; offset <= 512; offset++) {
             allocation_fault fault = {0};
             ud_context_options o = {sizeof(o), UD_ABI_VERSION, 16 * 1024 * 1024,
                                     &fault,    fault_allocate, fault_free};

@@ -1,6 +1,6 @@
 # UniversalData
 
-纯 C17、可嵌入的数据集成 SDK，采用 SSIS 风格的 Package / Control Flow / Data Flow 分层。当前 `1.0.0` 是破坏性重构开发版本，ABI、Package、Schema、Plan、Wire、Plugin 和 Worker 协议为 3；不能加载 0.x 对象、包或检查点。
+纯 C17、可嵌入的数据集成 SDK，采用 SSIS 风格的 Package / Control Flow / Data Flow 分层。当前 `1.0.0` 是破坏性重构开发版本，ABI、Package、Schema、Plan、Wire、Plugin 和 Worker 协议为 4；不能加载 0.x 对象、包或检查点。
 
 ```mermaid
 flowchart LR
@@ -14,26 +14,70 @@ Registry --> Compute[共享 Expression / Compute]
 
 当前代码提供：不可变 Package、原生绑定与标量作用域、Sequence/For/Foreach、表达式优先约束、失败控制流、后台执行/取消/指标、多端口 Pipeline、有界队列、共享不可变 Batch、CSV/NDJSON/SQL 源、Derived Column、Conditional Split、Multicast、Union All、Cast、Sort/Join/Aggregate、文件及 SQL 目标、Connection Manager 和统一组件描述注册。组件与恢复的实际完成/验证状态见 [实施状态](docs/acceptance/ssis-status.json)，不能把源代码目录或旧 SDK 验收记录当作新架构验收。
 
-SDK 仅保留 `ud_package` / `ud_execution` 执行链路。旧 CSV Job、DAG、Run 及其 .NET/Java 类已删除，没有兼容桥接。Query 复用数据与 Compute 内核；C# P/Invoke 和 Java JNI 只投影 native ABI。
+SDK 仅保留 `ud_package` / `ud_execution` 执行链路。旧 CSV Job、DAG、Run 及其 .NET/Java 类已删除，没有兼容桥接。嵌入式查询和 ETL 复用同一 Compute 算子；未来 BI planner 保留待实现状态；C# P/Invoke 和 Java JNI 只投影 native ABI。
 
 ## 构建
 
-需要 CMake 3.25+、C17 编译器、Ninja；JNI 需要 JDK 17，语言包需要 .NET 8 和 Maven。
+### Visual Studio 2026
+
+安装 VS2026 的“使用 C++ 的桌面开发”（含 MSVC x64、Windows SDK、“适用于 Windows 的 C++ CMake 工具”）和“.NET 桌面开发”组件，并安装 .NET 8 SDK/目标包。VS2026 生成器需要 CMake 4.2+；构建入口优先使用当前 VS 实例自带的 CMake，没有内置 CMake 时使用 PATH 中的 CMake。
+
+双击根目录的 `UniversalData.sln`，选择 `Debug | x64` 或 `Release | x64`，执行“生成解决方案”（Ctrl+Shift+B）。解决方案包含 `UniversalData.Native`、.NET SDK、`Consumer` 和 `DataConsumer`；原生项目先构建，再编译托管项目，并将对应配置的 `ud_data.dll` 复制到托管输出目录。
+
+原生项目通过 Makefile 工程调用现有 CMake，支持源码浏览、IntelliSense、生成、重新生成与清理。默认编译全部原生 SDK 组件及 CLI/Worker；不要求 JDK、Maven 或 Python。JNI、SQLite/PostgreSQL、HTTP、测试和 benchmark 使用其他预设或显式配置启用。
+
+原生产物位于 `build/vs2026/<Debug|Release>/ud_data.dll`，CLI/Worker 位于 `build/vs2026/hosts/<Debug|Release>/`；托管 SDK 和示例位于各项目的 `bin/x64/<Debug|Release>/net8.0/`。原生构建完整日志保存在 `%TEMP%/UniversalData-vs2026/`，失败时输出真实退出码及错误摘要。默认原生启动项目为 CLI，调试前在项目属性中填写执行参数。
+
+在 VS2026 Developer PowerShell 中也可编译完整解决方案：
+
+```powershell
+MSBuild.exe UniversalData.sln /restore /m /p:Configuration=Debug /p:Platform=x64 /nologo /verbosity:minimal
+MSBuild.exe UniversalData.sln /restore /m /p:Configuration=Release /p:Platform=x64 /nologo /verbosity:minimal
+# 独立编译原生项目（自动查找 VS2026），也支持 -Action Rebuild 或 Clean。
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-vs2026.ps1 -Action Build -Configuration Debug
+```
+
+`build/vs2026` 为专用构建目录。切换 VS 安装实例导致缓存冲突时，确认路径后仅删除该目录，再生成解决方案。`Clean` 清理当前配置的产物，`Rebuild` 清理并重新编译当前配置。
+
+### 其他构建方式
+
+通用预设需要 CMake 3.25+、C17 编译器；Windows 预设需要 CMake 4.2+ 和 VS2026，Ninja 预设需要 Ninja。现有 `windows`/`linux` 预设启用 JNI，需要 JDK 17；.NET 绑定需要 .NET 8 SDK，Java 包需要 Maven。
 
 ```sh
+cmake --preset windows
+cmake --build --preset windows --parallel 4
+ctest --preset windows
+# Linux 支持源码/构建；本轮免测
 cmake --preset linux
 cmake --build --preset linux --parallel 4
 ctest --preset linux
-# 可选 SQLite/PostgreSQL/ODBC/DuckDB 必须显式提供依赖，默认不下载。
+# 可选 SQLite/PostgreSQL 必须显式提供依赖，默认不下载。
 # HTTP Task 可选：cmake --preset linux -DUD_WITH_HTTP=ON（需 libcurl >=7.85，TLS/异步 DNS）。
 dotnet build examples/dotnet/Consumer.csproj
 mvn -f bindings/java/pom.xml package
 ```
 
-最小消费者只需 Foundation/Columnar；Package 静态组件自动选择 Expression/Compute/Runtime/Plugins。Windows 需支持 C17 的 MSVC；实际 Windows 验证状态独立记录。
+最小消费者只需 Foundation/Columnar；Package 静态组件自动选择 Expression/Compute/Runtime/Plugins。Windows 需支持 C17 的 MSVC；本轮 Windows 编译/关键验收，Linux 免测。
 
 原生 [HTTP Task](docs/architecture/http-task.md) 使用同一逻辑连接、宿主网络授权和凭据 resolver，强制 TLS 校验、禁用重定向并限制重试。HTTP Data Flow 源/目标仍为独立待办。
 
-CLI：`ud_cli execute package.json '{}' tenant execution-id /authorized/root`。默认拒绝文件/数据库访问；SDK 宿主通过授权和凭据解析回调授予权限。Worker 为独立进程，不是权限沙箱。Java JAR 和托管 NuGet 包配合单独安装的同 ABI 原生库使用。
+CLI：`ud_cli execute package.json '{}' tenant execution-id /authorized/root`。默认拒绝文件/数据库访问；SDK 宿主通过授权和凭据解析回调授予权限。Worker 为独立进程，不是权限沙箱。Java JAR 使用同一 ZIP 内的 JNI 和原生库；按 RID 生成的 NuGet 自带同一次构建的核心原生库。数据库连接器位于 SDK 的 `lib/UniversalData/plugins`，需由宿主显式加载。
+
+## Windows 产物交付
+
+唯一 facade target 为 `ud_data`，文件名为 `ud_data.dll`。在启用 JNI、hosts 和所需连接器的构建目录配置完成后运行：
+
+```powershell
+./packaging/package.ps1 -BuildDirectory build/abi4-windows
+ctest --test-dir build/abi4-windows -C Release --parallel 4 --output-on-failure
+$consumerWork = Join-Path $env:TEMP ('ud-sdk-consumer-' + [guid]::NewGuid().ToString('N'))
+python tests/installed_sdk.py --bundle artifacts/UniversalData-1.0.0-win-x64.zip --work $consumerWork --evidence artifacts/consumers.json
+```
+
+脚本重新构建 Release，然后生成 `artifacts/1.0.0/win-x64/sdk`、带 Windows DLL 的 NuGet、Java JAR/POM、逐文件 SHA256 清单及 `artifacts/UniversalData-1.0.0-win-x64.zip`。已存在的同版本交付不会自动覆盖。长日志写入临时目录。独立消费测试只使用 ZIP 解压后的头文件、CMake exports、DLL、连接器和语言包，C# 执行时不添加 SDK 的加载路径。
+
+原生 Windows 消费需要 x64 Microsoft Visual C++ Runtime；C# 需要 .NET 8，Java 需要 JDK 17。Linux 使用同一核心源码和算子；本轮没有生成或验收 Linux 二进制，Windows 打包不要求它存在。
+
+当前权威 [Phase 0–7 产品和技术设计](docs/architecture/phase-0-7-design.md)、[核心与扩展清单](docs/product/component-catalog.md)。
 
 设计与边界：[产品](docs/product/product-model.md)、[架构](docs/architecture/target-architecture.md)、[SSIS 公开文档映射](docs/architecture/ssis-reference-matrix.md)、[破坏性变更](docs/breaking-changes.md)、[公共 ABI](docs/architecture/public-c-abi.md)、[路线图](docs/roadmap.md)。不声称 `.dtsx`/COM/SSISDB/SQL Agent 兼容；不提供默认 Web 管理平台或跨任意目标的全局 exactly-once。

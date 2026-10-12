@@ -1,10 +1,30 @@
 {
   "version": 6,
   "configurePresets": [
-    {"name":"windows","generator":"Visual Studio 18 2026","architecture":"x64","binaryDir":"${sourceDir}/build/windows","cacheVariables":{"UD_BUILD_JNI":"ON"}},
+    {
+      "name": "vs2026",
+      "displayName": "VS2026 x64 SDK",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/vs2026",
+      "condition": {"type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows"},
+      "cacheVariables": {
+        "UD_COMPONENTS": "Foundation;Columnar;Expression;Compute;Runtime;Contracts;Plugins;Package;Data",
+        "UD_BUILD_HOSTS": "ON",
+        "UD_BUILD_TESTS": "OFF",
+        "UD_BUILD_JNI": "OFF",
+        "UD_WITH_SQLITE": "OFF",
+        "UD_WITH_POSTGRESQL": "OFF",
+        "UD_WITH_HTTP": "OFF",
+        "UD_BUILD_BENCHMARKS": "OFF",
+        "UD_SANITIZE": "OFF"
+      },
+      "vendor": {"microsoft.com/VisualStudioSettings/CMake/1.0": {"hostOS": ["Windows"]}}
+    },
+    {"name":"windows","generator":"Visual Studio 18 2026","architecture":"x64","binaryDir":"${sourceDir}/build/abi4-windows","cacheVariables":{"UD_BUILD_JNI":"ON"}},
     {"name":"linux","generator":"Ninja","binaryDir":"${sourceDir}/build/linux","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","UD_BUILD_JNI":"ON"}},
-    {"name":"core-only","generator":"Ninja","binaryDir":"${sourceDir}/build/core","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","UD_COMPONENTS":"Foundation;Columnar","UD_BUILD_HOSTS":"OFF","UD_BUILD_JNI":"OFF","UD_BUILD_PLUGINS":"OFF"}}
+    {"name":"core-only","generator":"Ninja","binaryDir":"${sourceDir}/build/core","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","UD_COMPONENTS":"Foundation;Columnar","UD_BUILD_HOSTS":"OFF","UD_BUILD_JNI":"OFF"}}
   ],
-  "buildPresets":[{"name":"windows","configurePreset":"windows","configuration":"Debug"},{"name":"linux","configurePreset":"linux"},{"name":"core-only","configurePreset":"core-only"}],
+  "buildPresets":[{"name":"vs2026-debug","configurePreset":"vs2026","configuration":"Debug"},{"name":"vs2026-release","configurePreset":"vs2026","configuration":"Release"},{"name":"windows","configurePreset":"windows","configuration":"Debug"},{"name":"linux","configurePreset":"linux"},{"name":"core-only","configurePreset":"core-only"}],
   "testPresets":[{"name":"windows","configurePreset":"windows","configuration":"Debug","output":{"outputOnFailure":true}},{"name":"linux","configurePreset":"linux","output":{"outputOnFailure":true}},{"name":"core-only","configurePreset":"core-only","output":{"outputOnFailure":true}}]
 }

@@ -2,7 +2,7 @@
 #include "ud/project.h"
 static ud_status get_document(ud_catalog *c, const ud_catalog_key *key, ud_json **out) {
     char *text = NULL;
-    uint32_t n;
+    uint32_t n=0;
     *out = NULL;
     ud_status s = ud_catalog_get(c, key, &text, &n);
     if (!s)
@@ -21,7 +21,7 @@ static ud_status key_from_ref(const ud_json *ref, int32_t kind, ud_catalog_key *
 }
 static ud_status document_header(const ud_json *doc, const ud_catalog_key *key) {
     uint64_t v;
-    ud_string id;
+    ud_string id={0};
     UD_TRY(ud_json_uint(ud_member(doc, "version"), &v));
     if (v != UD_CONFIG_VERSION)
         return UD_INCOMPATIBLE;
@@ -32,7 +32,7 @@ static ud_status environment_shape(const ud_json *doc) {
     static const char *keys[] = {"version", "id", "projectId", "projectParameters",
                                  "packageParameters"};
     UD_TRY(ud_json_keys(doc, keys, 5));
-    ud_string id;
+    ud_string id={0};
     UD_TRY(ud_json_string(ud_member(doc, "projectId"), &id));
     const char *objects[] = {"projectParameters", "packageParameters"};
     for (int i = 0; i < 2; i++) {
@@ -64,7 +64,7 @@ static ud_status deployment_documents(ud_catalog *c, const ud_json *deployment, 
 }
 static ud_status validate_references(ud_catalog *c, const ud_json *project, const ud_json *env) {
     const ud_json *refs = ud_member(project, "packages");
-    ud_string project_id, environment_project;
+    ud_string project_id={0}, environment_project={0};
     UD_TRY(ud_json_string(ud_member(project, "id"), &project_id));
     if (env) {
         UD_TRY(environment_shape(env));
@@ -77,11 +77,11 @@ static ud_status validate_references(ud_catalog *c, const ud_json *project, cons
     const ud_json *parameters = ud_member(env, "packageParameters");
     for (uint32_t i = 0; i < ud_json_size(parameters); i++) {
         const char *name;
-        uint32_t n;
+        uint32_t n=0;
         UD_TRY(ud_json_key(parameters, i, &name, &n));
         int found = 0;
         for (uint32_t j = 0; j < ud_json_size(refs); j++) {
-            ud_string id;
+            ud_string id={0};
             UD_TRY(ud_json_string(ud_member(ud_json_at(refs, j), "id"), &id));
             if (ud_same(id, (ud_string){name, n}))
                 found = 1;
@@ -115,7 +115,7 @@ ud_status ud_catalog_definition_check(ud_catalog *c, const ud_catalog_key *key,
         return environment_shape(doc);
     if (key->kind == UD_CATALOG_PROJECT) {
         char *text = NULL;
-        uint32_t n;
+        uint32_t n=0;
         ud_project *project = NULL;
         ud_status s = ud_json_serialize(doc, &text, &n);
         if (!s)
@@ -135,7 +135,7 @@ ud_status ud_catalog_definition_check(ud_catalog *c, const ud_catalog_key *key,
 static ud_status provenance(ud_catalog *c, const ud_catalog_binding *o, const ud_json *deployment,
                             uint64_t package_revision, ud_package **package) {
     char *text = NULL;
-    uint32_t n;
+    uint32_t n=0;
     ud_status s = ud_package_serialize(*package, &text, &n);
     ud_bytes b = {.ctx = c->ctx};
     if (!s)
@@ -158,7 +158,7 @@ static ud_status provenance(ud_catalog *c, const ud_catalog_binding *o, const ud
         if (i)
             s = ud_bytes_put(&b, ",\"environment\":", 15);
         char *ref_text = NULL;
-        uint32_t rn;
+        uint32_t rn=0;
         if (!s)
             s = ud_json_serialize(ref, &ref_text, &rn);
         if (!s)
@@ -218,7 +218,7 @@ ud_status ud_catalog_bind_package(ud_catalog *c, const ud_catalog_binding *o, ud
         const ud_json *refs = ud_member(project_doc, "packages");
         const ud_json *selected = NULL;
         for (uint32_t i = 0; i < ud_json_size(refs); i++) {
-            ud_string id;
+            ud_string id={0};
             s = ud_json_string(ud_member(ud_json_at(refs, i), "id"), &id);
             if (s)
                 break;

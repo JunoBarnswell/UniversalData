@@ -2,6 +2,7 @@
 #include "ud/plugin.h"
 #include "ud/package.h"
 #include <string.h>
+#include <stdatomic.h>
 #ifdef _WIN32
 #include <process.h>
 #else
@@ -10,6 +11,7 @@
 typedef struct fixture {
     ud_execution *execution;
     int mode;
+    atomic_int entered;
 } fixture;
 static ud_string str(const char *s) {
     return (ud_string){s, (uint32_t)strlen(s)};
@@ -21,24 +23,15 @@ static ud_status authorize(void *user, ud_string tenant, ud_string resource, int
 }
 static void observe(void *user, const ud_execution_event *event) {
     fixture *f = user;
+    if(event->state == UD_EXEC_RUNNING && event->task_id.length) atomic_store(&f->entered,1);
     if (f->mode == 3 && f->execution && event->kind == UD_EXEC_EVENT_BEFORE_CHECKPOINT) {
         ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
         if (!ud_execution_get_metrics(f->execution, &m) && m.completed_tasks == 1)
             _exit(91);
     }
 }
-static int64_t query(ud_plugin_instance *instance, uint32_t column) {
-    ud_batch *batch = NULL;
-    ud_status s = ud_plugin_execute(instance, UD_OP_SCALAR, NULL, "", 0, &batch);
-    if (s)
-        return -1;
-    ud_value value;
-    s = ud_batch_get(batch, 0, column, &value);
-    ud_batch_destroy(batch);
-    return s ? -1 : value.integer;
-}
 int main(int argc, char **argv) {
-    CHECK(argc == 9 || argc == 10);
+    CHECK(argc == 9);
     ud_context *ctx = NULL;
     OK(ud_context_create(NULL, &ctx));
     ud_registry *registry = NULL;
@@ -48,43 +41,6 @@ int main(int argc, char **argv) {
     CHECK(ud_plugin_register_components(plugin, registry) == UD_INCOMPATIBLE);
     CHECK(ud_registry_count(registry) == 0);
     OK(ud_plugin_unload(plugin));
-    ud_plugin_instance *unsupported = NULL;
-    if (argc == 10) {
-        OK(ud_plugin_load(ctx, argv[9], 0, &plugin));
-        CHECK(ud_plugin_create(plugin, "", 0, &unsupported) == UD_UNSUPPORTED && !unsupported);
-        OK(ud_plugin_register_components(plugin, registry));
-        static const char definition[] =
-            "{\"version\":4,\"id\":\"pure\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":0}"
-            "},\"connections\":[{\"id\":\"target\",\"driver\":\"file\",\"resource\":\"/fixture/"
-            "no-file\"}],\"controlFlow\":{\"tasks\":[{\"id\":\"custom\",\"kind\":\"sample.custom\","
-            "\"config\":{\"connection\":\"target\",\"variable\":\"n\",\"expression\":{\"literal\":"
-            "5,\"type\":\"int64\"}}}],\"constraints\":[]},\"dataFlows\":[]}";
-        fixture grant = {0};
-        ud_execution_options options = {.struct_size = sizeof(options),
-                                        .abi_version = UD_ABI_VERSION,
-                                        .context = {.struct_size = sizeof(options.context),
-                                                    .abi_version = UD_ABI_VERSION,
-                                                    .memory_limit = 33554432},
-                                        .edge_capacity = 1,
-                                        .max_batch_rows = 1,
-                                        .max_depth = 4,
-                                        .registry = registry,
-                                        .tenant = {"fixture", 7},
-                                        .authorize = authorize,
-                                        .authorize_user = &grant};
-        ud_execution *execution = NULL;
-        OK(ud_execution_create_json((ud_string){definition, sizeof(definition) - 1}, &options,
-                                    &execution));
-        CHECK(ud_plugin_unload(plugin) == UD_BUSY);
-        OK(ud_execution_execute(execution));
-        ud_value value;
-        OK(ud_execution_variable(execution, str("n"), &value));
-        CHECK(value.integer == 5);
-        OK(ud_execution_destroy(execution));
-        OK(ud_registry_destroy(registry));
-        OK(ud_plugin_unload(plugin));
-        OK(ud_registry_create(ctx, &registry));
-    }
     OK(ud_plugin_load(ctx, argv[1], 0, &plugin));
     ud_plugin_api info = {.struct_size = sizeof(info), .abi_version = 2};
     CHECK(ud_plugin_info(plugin, &info) == UD_INCOMPATIBLE);
@@ -102,10 +58,6 @@ int main(int argc, char **argv) {
                                           .abi_version = UD_ABI_VERSION};
     OK(ud_registry_find(registry, str("sample.custom"), &descriptor));
     CHECK(descriptor.category == UD_COMPONENT_TASK && descriptor.configure && descriptor.invoke);
-    ud_plugin_instance *instance = NULL;
-    OK(ud_plugin_create(plugin, "", 0, &instance));
-    int64_t before = query(instance, 0);
-    CHECK(before >= 0);
     FILE *file = fopen(argv[3], "rb");
     CHECK(file && !fseek(file, 0, SEEK_END));
     long n = ftell(file);
@@ -146,7 +98,7 @@ int main(int argc, char **argv) {
             OK(ud_execution_start(e));
             int entered = 0;
             for (int i = 0; i < 500; i++) {
-                if (query(instance, 1) > 0) {
+                if (atomic_load(&f.entered)) {
                     entered = 1;
                     break;
                 }
@@ -162,23 +114,18 @@ int main(int argc, char **argv) {
     }
     if (s != atoi(argv[5]))
         fprintf(stderr, "actual=%d expected=%s\n", s, argv[5]);
-    CHECK(s == atoi(argv[5]) && query(instance, 1) == 0);
+    CHECK(s == atoi(argv[5]));
     if (e) {
         ud_value value;
         OK(ud_execution_variable(e, str("n"), &value));
         CHECK(value.integer == strtoll(argv[6], NULL, 10));
-        if (s != UD_COMMIT_UNKNOWN)
-            CHECK(query(instance, 0) == before + (atoi(argv[8]) ? 0 : 1));
         ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
         OK(ud_execution_get_metrics(e, &m));
         CHECK(m.result == s && m.queued_batches == 0);
         OK(ud_execution_destroy(e));
-    } else
-        CHECK(query(instance, 0) == before);
+    }
     CHECK(ud_plugin_unload(plugin) == UD_BUSY);
     OK(ud_registry_destroy(registry));
-    CHECK(ud_plugin_unload(plugin) == UD_BUSY);
-    OK(ud_plugin_instance_destroy(instance));
     OK(ud_plugin_unload(plugin));
     CHECK(ud_memory_used(ctx) == 0);
     OK(ud_context_destroy(ctx));

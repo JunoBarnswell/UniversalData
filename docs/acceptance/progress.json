@@ -1,0 +1,17 @@
+{
+  "scope": "current Phase 0-7 core",
+  "state": "Verified Windows",
+  "native": {
+    "passed": 31,
+    "total": 31
+  },
+  "asan": {
+    "passed": 31,
+    "total": 31
+  },
+  "sourceFingerprint": "f32934d5377821e07d1571635061be5b510a033fa0c16dffddfa56390371c0a7",
+  "extensions": "Incomplete, explicit Planned/Partial states",
+  "linux": "Exempt by current user decision",
+  "published": false,
+  "merged": false
+}

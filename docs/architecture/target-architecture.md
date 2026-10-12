@@ -1,27 +1,25 @@
-# 目标架构和依赖方向
+# 目标代码结构与单向依赖
 
-```mermaid
-flowchart TD
-Definition[Project/Package Definition] --> Bind[Parser / Semantic Binder]
-Bind --> Logical[Logical Control + Pipeline Plan]
-Logical --> Physical[Physical Resource / Execution Trees]
-Physical --> Package[Package Runtime]
-Package --> Control[Control Flow Engine]
-Control --> Pipeline[Data Flow Engine]
-Package --> Services[Execution State / Events / Checkpoint]
-Pipeline --> Registry[Component Registry]
-Pipeline --> Connections[Connection Managers]
-Connections --> Drivers[Physical Connector Drivers]
-Pipeline --> Compute
-Compute --> Expression
-Expression --> Data[Batch / Schema / Arrow]
-Data --> Foundation
-```
+完整产品/技术设计及三次反思见 [Phase 0–7 设计](phase-0-7-design.md)。
 
-Package 是唯一启动/等待/取消/结果权威。Control/Pipeline 不再公开独立运行句柄或上下文；它们接受同一 Execution Context。无 ud_job/ud_run 桥接。Columnar、CSV/JSON codecs、Compute 内核及 SQLite/PostgreSQL 驱动保留并原生注册。Query 的集合算法下移 Compute；Query 只绑定/调用共享算子。
+| 路径 | 唯一职责 | 依赖 |
+|---|---|---|
+| components/foundation | allocation/quota、平台文件/锁、JSON、hash、线程、诊断 | C17 + Windows/POSIX |
+| components/data | schema owner、identity/lineage、typed value、sealed Batch、Arrow/wire/codec | Foundation |
+| components/contracts | Registry、plugin module、physical connector 调用契约 | Columnar |
+| components/expression | typed AST、binder、函数注册及求值 | Columnar、Plugins |
+| components/execution | 状态模型、bounded queue、Buffer Manager | Columnar、Threads |
+| components/compute | typed collection kernels、JSON Plan、stream operators、quality/profile | Columnar、Expression、Runtime |
+| engines/package | immutable Package、root Execution、Activation、绑定、Journal | 上述基础设施 |
+| engines/control-flow | task/container/precedence/handlers 调度 | Package 内部帧、Registry |
+| engines/data-flow | 端口/path/execution trees、组件生命周期和 backpressure | 同一 Package、Compute、Manager |
+| connectors | 逻辑连接定义、授权/resolver、Activation lease | Package、connector 契约 |
+| catalog | immutable artifacts/deployments/metadata/history | 唯一 Package 状态和事件 |
+| plugins | SQLite/PostgreSQL physical protocols | public host/connector ABI |
+| hosts / bindings | CLI/Worker、C# PInvoke、Java JNI | public ABI |
 
-engines/package 存 Definition、Binder、Execution、Event、Checkpoint；engines/control-flow 存容器/约束/调度；engines/data-flow 存端口、路径、实例、队列、Execution Tree。connectors 持逻辑连接和物理实例；components/contracts 持统一注册与 ABI 描述；components/execution 只提供共享状态/资源/队列，不再是可启动第二引擎。
+删除范围：旧 engines/etl、旧 Job/Dag/Run；engines/query 的格式专属外存实现及无语义转发层；Pipeline 全输入缓存；Compute 文本 schema/predicate DSL；独立 quarantine store；generic operation plugin API；重复 ABS/CSV plugin；ODBC/DuckDB 未接入统一链路的原型和相应旧测试。
 
-轨迹：Package Bind 全部名称/连接/端口/表达式→Prepare 资源→Control 激活 DataFlow Task→Pipeline 按 Execution Tree 和有界队列传递 sealed Batch→目标提交→Task result→Package result。Prepare 不允许写目标。清理按反序，失败不创建成功标记。
+合并范围：Query/ETL 集合计算进入唯一 Compute operator；阻塞状态、wire spill 与配额归 Buffer Manager；所有纯函数进入 Registry/Expression；quality 只分类，错误持久化使用正常 Pipeline destination；child/task 可变状态从根迁移到 Activation。
 
-迁移门槛：旧 CSV/DAG executor、其公共头与语言入口删除；所有调用方改用 Package；代码搜索不出现旧生命周期；没有旧 API 重定向新 Runtime。阶段中间提交只能留在 draft PR，状态必须明确未完成，不能作为正式双轨架构发布。
+Windows/POSIX 只有基础设施差异，同一组件及算子源码同时支持两平台。本轮 Windows 实际门禁，Linux 按用户约定免测。

@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
     ud_status s = ud_execution_create_json((ud_string){text, (uint32_t)size}, &o, &e);
     free(text);
     if (f.mode == 5 || f.mode == 6 || f.mode == 8 || f.mode == 9) {
-        CHECK(s == (f.mode == 5 ? UD_RESOURCE : UD_SCHEMA) && !e);
+        CHECK(s == (f.mode == 5 ? UD_RESOURCE : f.mode==8?UD_PARSE:UD_SCHEMA) && !e);
     } else {
         OK(s);
         f.execution = e;

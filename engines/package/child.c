@@ -9,10 +9,10 @@ static ud_status mapped_parameters(ud_activation *e, const ud_json *mapping, ud_
     ud_status s = ud_bytes_put(&b, "{", 1);
     for (uint32_t i = 0; !s && i < ud_json_size(mapping); i++) {
         const char *key;
-        uint32_t n;
+        uint32_t n=0;
         s = ud_json_key(mapping, i, &key, &n);
         ud_expression *expr = NULL;
-        ud_value value;
+        ud_value value={0};
         if (!s)
             s = ud_expression_json(e, ud_json_at(mapping, i), NULL, &expr);
         if (!s)
@@ -49,7 +49,7 @@ ud_status ud_child_package(ud_activation *e, const ud_json *config, int execute,
     ud_package *package = NULL;
     ud_status s = mapped_parameters(e, ud_member(config, "parameters"), &parameters);
     char *text = NULL;
-    uint32_t n;
+    uint32_t n=0;
     if (!s)
         s = ud_json_serialize(definition, &text, &n);
     if (!s)

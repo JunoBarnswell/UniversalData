@@ -9,6 +9,7 @@ static ud_status expression(ud_context *c, const char *json, const ud_batch *sch
     ud_expression_options o = {sizeof(o), UD_ABI_VERSION, schema, NULL, NULL};
     return ud_expression_create(c, (ud_string){json, (uint32_t)strlen(json)}, &o, out);
 }
+static ud_status task(void *u,const ud_component_context *c,ud_string config) { (void)u;(void)c;(void)config;return UD_OK; }
 int main(void) {
     ud_context *c = NULL;
     OK(ud_context_create(NULL, &c));
@@ -62,15 +63,15 @@ int main(void) {
                                  .name = {"Driver", 6},
                                  .version = {"1", 1},
                                  .configuration_schema = {"{}", 2},
-                                 .category = UD_COMPONENT_CONNECTION,
+                                 .category = UD_COMPONENT_TASK,
                                  .synchronous_input = -1,
-                                 .error_output = -1};
+                                 .error_output = -1, .invoke=task};
     OK(ud_registry_register(r, &d));
     CHECK(ud_registry_register(r, &d) == UD_SCHEMA);
     CHECK(ud_registry_count(r) == 1);
     ud_component_descriptor got = {.struct_size = sizeof(got), .abi_version = UD_ABI_VERSION};
     OK(ud_registry_find(r, (ud_string){"driver", 6}, &got));
-    CHECK(got.category == UD_COMPONENT_CONNECTION);
+    CHECK(got.category == UD_COMPONENT_TASK);
     OK(ud_registry_destroy(r));
     ud_batch_destroy(b);
     CHECK(ud_memory_used(c) == 0);

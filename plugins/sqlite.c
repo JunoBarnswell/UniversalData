@@ -136,103 +136,6 @@ static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char 
     }
     return s;
 }
-static ud_status write_batch(sqlite_state *p, const ud_batch *b, const char *sql, uint32_t n) {
-    if (!b || !n || n > INT_MAX || p->read)
-        return UD_INVALID;
-    ud_host_api *h = &p->host;
-    for (uint32_t j=0;j<h->columns(b);j++) {
-        ud_field f;h->field(b,j,&f);
-        if(f.type>UD_UTF8) return h->report(h->context,UD_UNSUPPORTED,"extended writes require the typed connector API with target schema validation");
-    }
-    int rc = sqlite3_exec(p->db, "BEGIN IMMEDIATE", NULL, NULL, NULL);
-    if (rc != SQLITE_OK)
-        return failure(p, rc);
-    sqlite3_stmt *stmt = NULL;
-    const char *tail = NULL;
-    ud_status s = UD_OK;
-    rc = sqlite3_prepare_v2(p->db, sql, (int)n, &stmt, &tail);
-    if (rc != SQLITE_OK)
-        s = failure(p, rc);
-    if (!s) {
-        while (tail < sql + n && (*tail == ' ' || *tail == '\n' || *tail == '\r' || *tail == '\t'))
-            tail++;
-        if (tail != sql + n || !stmt || sqlite3_stmt_readonly(stmt))
-            s = UD_INVALID;
-        else if (sqlite3_bind_parameter_count(stmt) != (int)h->columns(b) &&
-                 !(sqlite3_bind_parameter_count(stmt) == 0 && h->rows(b) == 0))
-            s = UD_INVALID;
-    }
-    if (!s && !h->rows(b) && sqlite3_bind_parameter_count(stmt) == 0 &&
-        (rc = sqlite3_step(stmt)) != SQLITE_DONE)
-        s = failure(p, rc);
-    for (uint32_t r = 0; !s && r < h->rows(b); r++) {
-        if (h->cancelled(h->context)) {
-            s = UD_CANCELLED;
-            break;
-        }
-        sqlite3_reset(stmt);
-        sqlite3_clear_bindings(stmt);
-        for (uint32_t i = 0; i < h->columns(b); i++) {
-            ud_value v;
-            h->get(b, r, i, &v);
-            int index = (int)i + 1;
-            if (v.is_null)
-                rc = sqlite3_bind_null(stmt, index);
-            else if (v.type == UD_UTF8)
-                rc = sqlite3_bind_text64(stmt, index, v.text, v.text_length, SQLITE_TRANSIENT,
-                                         SQLITE_UTF8);
-            else if (v.type == UD_BINARY)
-                rc = sqlite3_bind_blob64(stmt, index, v.text ? v.text : "", v.text_length, SQLITE_TRANSIENT);
-            else if (v.type == UD_DECIMAL128) {
-                char text[160]; uint32_t required;
-                s = h->format_value(&v, text, sizeof(text), &required);
-                if (s) break;
-                rc = sqlite3_bind_text(stmt, index, text, (int)required - 1, SQLITE_TRANSIENT);
-            } else if (v.type == UD_FLOAT64) {
-                if (isnan(v.real)) {
-                    s = h->report(
-                        h->context, UD_UNSUPPORTED,
-                        "SQLite cannot preserve Float64 NaN; refusing SQL NULL conversion");
-                    break;
-                }
-                rc = sqlite3_bind_double(stmt, index, v.real);
-            } else if (v.type <= UD_TIMESTAMP)
-                rc = sqlite3_bind_int64(stmt, index, v.integer);
-            else { s = UD_UNSUPPORTED; break; }
-            if (rc != SQLITE_OK) {
-                s = failure(p, rc);
-                break;
-            }
-        }
-        if (!s && (rc = sqlite3_step(stmt)) != SQLITE_DONE)
-            s = failure(p, rc);
-    }
-    sqlite3_finalize(stmt);
-    if (!s) {
-        rc = sqlite3_exec(p->db, "COMMIT", NULL, NULL, NULL);
-        if (rc != SQLITE_OK)
-            s = failure(p, rc);
-    }
-    if (s) {
-        rc = sqlite3_exec(p->db, "ROLLBACK", NULL, NULL, NULL);
-        if (rc != SQLITE_OK)
-            return h->report(h->context, UD_IO,
-                             "SQLite rollback failed; transaction state requires inspection");
-    }
-    return s;
-}
-static ud_status execute(void *ptr, int32_t op, const ud_batch *b, const char *arg, uint32_t n,
-                         ud_batch **out) {
-    sqlite_state *p = ptr;
-    *out = NULL;
-    if (n && memchr(arg, 0, n))
-        return UD_INVALID;
-    if (op == UD_OP_READ)
-        return read_batch(p, b, arg, n, out);
-    if (op == UD_OP_WRITE)
-        return write_batch(p, b, arg, n);
-    return UD_UNSUPPORTED;
-}
 static void destroy(void *ptr) {
     sqlite_state *p = ptr;
     if (!p)
@@ -455,10 +358,9 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
                            UD_PLUGIN_ABI,
                            "org.universaldata.connector.sqlite",
                            "1.0.0",
-                           UD_PLUGIN_SOURCE | UD_PLUGIN_SINK,
+                           UD_PLUGIN_CONNECTOR,
                            UD_CAP_READ | UD_CAP_WRITE | UD_CAP_TRANSACTION,
                            initialize,
-                           execute,
                            destroy,
                            plugin_shutdown,
                            &connector, NULL};

@@ -1,90 +1,153 @@
 {
-  "baselineVersion": 1,
-  "sdkVersion": "0.2.0",
-  "baseCommit": "d86e18e0b7cbfd887a80da92955415fcac2ae420",
-  "originalAttachmentAvailable": false,
-  "original166CasesCovered": false,
-  "phases": {
-    "A": "InProgress",
-    "B": "InProgress",
-    "C": "InProgress",
-    "D": "InProgress",
-    "E": "Planned",
-    "F": "InProgress",
-    "G": "Planned",
-    "H": "InProgress"
-  },
+  "version": 3,
+  "sdkVersion": "1.0.0",
+  "abi": 4,
+  "date": "2026-10-12",
+  "scope": "current core delivery; extensions excluded by user decision",
+  "sourceFingerprint": "f32934d5377821e07d1571635061be5b510a033fa0c16dffddfa56390371c0a7",
+  "linux": "Exempt by current user decision",
   "gates": [
     {
-      "id": "linux-gcc",
-      "status": "NotRun",
-      "evidence": null
-    },
-    {
       "id": "windows-msvc",
-      "status": "Blocked",
-      "evidence": null,
-      "blocker": "Current executor is Linux; Windows/MSVC executor unavailable; configured GitHub Actions did not start due to billing restriction."
+      "status": "Passed",
+      "command": "cmake configure/build Debug + SQLite + JNI",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/build.json",
+          "sha256": "7a8d2a79db56b5d9a63fdd45c482fcf8834328aab98adc22196fd29df72c0835"
+        }
+      ]
     },
     {
-      "id": "asan-ubsan",
-      "status": "NotRun",
-      "evidence": null
+      "id": "windows-native",
+      "status": "Passed",
+      "command": "ctest --test-dir build/abi4-windows -C Debug --parallel 4 --output-on-failure",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/native-tests.txt",
+          "sha256": "f61974971460cca4d07233eadc51f8d1cbeddcf964c4ddc7eed24494fa2d358b"
+        }
+      ],
+      "passed": 31,
+      "total": 31
     },
     {
-      "id": "postgresql-isolated-containers",
-      "status": "NotRun",
-      "evidence": null
+      "id": "windows-asan",
+      "status": "Passed",
+      "command": "ctest --test-dir build/abi4-asan-msvc -C Debug --parallel 4 --output-on-failure",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/asan-build.json",
+          "sha256": "9ee41b07ef417a580a54f037980df83d2a0185f6746fb8386606e80829db5cd8"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/asan-tests.txt",
+          "sha256": "67397b0f3f762babc98930b73388bbd1a5d2b1037dbb5d8a412ef996f1f2b9f8"
+        }
+      ],
+      "passed": 31,
+      "total": 31,
+      "runtimeOptions": "halt_on_error=1:abort_on_error=1"
     },
     {
-      "id": "sqlite-transactions",
-      "status": "NotRun",
-      "evidence": null
+      "id": "sqlite-transactions-recovery",
+      "status": "Passed",
+      "command": "sqlite_receipts_upsert/package_sql_integration/package_durable_recovery/child_package_execution/project_environment_deployment",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/native-tests.txt",
+          "sha256": "f61974971460cca4d07233eadc51f8d1cbeddcf964c4ddc7eed24494fa2d358b"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/asan-tests.txt",
+          "sha256": "67397b0f3f762babc98930b73388bbd1a5d2b1037dbb5d8a412ef996f1f2b9f8"
+        }
+      ]
     },
     {
-      "id": "c-dotnet8-java17-equivalence",
-      "status": "NotRun",
-      "evidence": null,
-      "developmentNote": "Verified official prebuilt .NET SDK 8.0.425, Java 17.0.20+101 and Maven 3.9.11 are available under work/toolchains. Full SDK language bindings remain incomplete; no SDK compilation or acceptance was run."
+      "id": "memory-quota-spill-concurrency",
+      "status": "Passed",
+      "command": "shared_value_semantics/core_runtime_resources/core_pipeline_components/package_failure_boundaries/process_task_execution",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/native-tests.txt",
+          "sha256": "f61974971460cca4d07233eadc51f8d1cbeddcf964c4ddc7eed24494fa2d358b"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/asan-tests.txt",
+          "sha256": "67397b0f3f762babc98930b73388bbd1a5d2b1037dbb5d8a412ef996f1f2b9f8"
+        }
+      ]
     },
     {
-      "id": "native-nuget-maven-install-consumption",
-      "status": "NotRun",
-      "evidence": null
+      "id": "language-parity",
+      "status": "Passed",
+      "command": "python tests/package_language_parity.py with installed native + nupkg + independent Maven/JNI consumer",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/installed-language-parity.txt",
+          "sha256": "4334e6a14a9785b1d92372d4638817273cb441cfb40d01d536733c254095651b"
+        }
+      ]
     },
     {
-      "id": "quota-backpressure-spill",
-      "status": "NotRun",
-      "evidence": null
+      "id": "installed-c",
+      "status": "Passed",
+      "command": "cmake -S examples/c -B external c-consumer -DCMAKE_PREFIX_PATH=installed SDK; build and execute",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/installed-consumers.json",
+          "sha256": "4b4808a88989b47ec4c1206033f5126c8b41f559956eca4c9d3d94360960d1b6"
+        }
+      ]
     },
     {
-      "id": "benchmark-recorded-hardware",
-      "status": "NotRun",
-      "evidence": null
+      "id": "installed-nuget",
+      "status": "Passed",
+      "command": "dotnet pack; build external clients --source local nupkg; execute same Package/typed data",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/installed-consumers.json",
+          "sha256": "4b4808a88989b47ec4c1206033f5126c8b41f559956eca4c9d3d94360960d1b6"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/installed-language-parity.txt",
+          "sha256": "4334e6a14a9785b1d92372d4638817273cb441cfb40d01d536733c254095651b"
+        }
+      ]
     },
     {
-      "id": "s01-s05",
-      "status": "NotRun",
-      "evidence": null
+      "id": "installed-maven",
+      "status": "Passed",
+      "command": "Maven install-file to external repository; external Maven client package; execute with installed JNI",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/installed-consumers.json",
+          "sha256": "4b4808a88989b47ec4c1206033f5126c8b41f559956eca4c9d3d94360960d1b6"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/installed-language-parity.txt",
+          "sha256": "4334e6a14a9785b1d92372d4638817273cb441cfb40d01d536733c254095651b"
+        }
+      ]
     },
     {
-      "id": "github-actions",
-      "status": "Blocked",
-      "evidence": null,
-      "blocker": "Latest run 38160104876 executed no steps; check-run 114531030866 reports failed recent account payments or spending limit.",
-      "observation": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38160104876",
-      "required": false,
-      "developmentNote": "Availability observation only; actual Windows/Linux and other mandatory execution evidence is still required."
+      "id": "source-contracts",
+      "status": "Passed",
+      "command": "python scripts/static_check.py; git diff --check; removed ABI/API reference audit",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/contracts.txt",
+          "sha256": "95c57a318302381e389655762d3a32efdf44d59be1b8d30b52b2c385c6d36be7"
+        }
+      ]
     }
   ],
-  "codeStatus": {
-    "A": "InProgress",
-    "B": "InProgress",
-    "C": "InProgress",
-    "D": "InProgress",
-    "E": "Planned",
-    "F": "InProgress",
-    "G": "Planned",
-    "H": "InProgress"
-  }
+  "notMeasured": [
+    "Linux execution",
+    "MSVC UBSan/LSan/TSan",
+    "PostgreSQL system integration",
+    "optional HTTP TLS/network integration",
+    "deferred protocol/advanced component backlog"
+  ]
 }

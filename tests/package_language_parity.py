@@ -1,10 +1,15 @@
-"""ABI-3 C/.NET/Java Package execution and datatype/wire parity.
+"""ABI-4 C/.NET/Java Package execution and datatype/wire parity.
 Args: native CLI, C data runner, dotnet, package.dll, data.dll, java, classes, jar, native lib dir.
 """
-import json,os,pathlib,subprocess,sys,tempfile
-cli,data,dotnet,package_dll,data_dll,java,classes,jar,native=map(lambda x:str(pathlib.Path(x).resolve()),sys.argv[1:])
+import argparse,json,os,pathlib,subprocess,sys,tempfile
+parser=argparse.ArgumentParser()
+parser.add_argument('paths',nargs=9)
+parser.add_argument('--managed-native-local',action='store_true',help='Do not add the SDK directory to the .NET process loader path.')
+arguments=parser.parse_args()
+cli,data,dotnet,package_dll,data_dll,java,classes,jar,native=map(lambda x:str(pathlib.Path(x).resolve()),arguments.paths)
+managed_env=dict(os.environ)
 env=dict(os.environ);env['LD_LIBRARY_PATH']=native+os.pathsep+env.get('LD_LIBRARY_PATH','');env['PATH']=native+os.pathsep+env.get('PATH','')
-with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
+with tempfile.TemporaryDirectory(prefix='ud-abi4-language-') as folder:
  r=pathlib.Path(folder);source=r/'in.ndjson';source.write_text(''.join(json.dumps({'x':i})+'\n' for i in range(10003)))
  lit=lambda v:{'literal':v,'type':'int64'}
  p={'version':4,'id':'parity','parameters':{'a':{'type':'utf8'},'b':{'type':'utf8'}},'variables':{'i':{'type':'int64','default':0},'n':{'type':'int64','default':0}},
@@ -37,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
   if index==0: command=[cli,'execute',str(definition),json.dumps(params),'fixture','same-id',str(r)]
   elif index==1: command=[dotnet,package_dll,str(definition),str(values),'same-id',str(r)]
   else: command=[java,'-Djava.library.path='+native,'-cp',classes+os.pathsep+jar,'Consumer',str(definition),str(values),'same-id',str(r)]
-  result=subprocess.run(command,env=env,capture_output=True,text=True,check=True,timeout=120);m=json.loads(result.stdout);assert m['state']==5 and m['result']==0 and m['inputRows']==20006 and m['outputRows']==20006 and m['completedTasks']==8;metrics.append(m)
+  result=subprocess.run(command,env=managed_env if index==1 and arguments.managed_native_local else env,capture_output=True,text=True,check=True,timeout=120);m=json.loads(result.stdout);assert m['state']==5 and m['result']==0 and m['inputRows']==20006 and m['outputRows']==20006 and m['completedTasks']==8;metrics.append(m)
   assert (r/f'{index}-source.ndjson').read_bytes()==source.read_bytes()
   for port in ['a','b']:
    actual=(r/f'{index}-{port}.ndjson').read_bytes()
@@ -51,8 +56,8 @@ with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
  {'name':'floats','type':'list','nullable':False,'children':[{'name':'item','type':'float64','nullable':True}]}]}
  rows=[{'id':9223372036854775807,'amount':'123456789012345678901234567890123456.78','at':'2024-02-29T08:00:00+08:00','raw':'AP9B','profile':{'name':'中文\0'},'tags':['',None,'中文'],'floats':['NaN','Infinity','-Infinity',-0.0,0.0,None]}]
  sc=r/'schema.json';sc.write_text(json.dumps(schema));rs=r/'rows.json';rs.write_text(json.dumps(rows,ensure_ascii=False))
- for index,cmd in enumerate([[data],[dotnet,data_dll],[java,'-cp',classes+os.pathsep+jar,'DataConsumer']]):
-  subprocess.run(cmd+[str(sc),str(rs),str(r/f'{index}.data.json'),str(r/f'{index}.wire')],env=env,check=True,timeout=30)
+ for index,cmd in enumerate([[data],[dotnet,data_dll],[java,'-Djava.library.path='+native,'-cp',classes+os.pathsep+jar,'DataConsumer']]):
+  subprocess.run(cmd+[str(sc),str(rs),str(r/f'{index}.data.json'),str(r/f'{index}.wire')],env=managed_env if index==1 and arguments.managed_native_local else env,check=True,timeout=30)
  for suffix in ['data.json','wire']:
   expected=(r/f'0.{suffix}').read_bytes();assert all((r/f'{i}.{suffix}').read_bytes()==expected for i in [1,2])
  actual=json.loads((r/'0.data.json').read_text());assert actual[0]['at']=='2024-02-29T00:00:00.000000Z' and actual[0]['profile']['missing'] is None and actual[0]['floats']==rows[0]['floats']

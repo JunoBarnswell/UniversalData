@@ -9,7 +9,7 @@ static ud_status config_read(const ud_component_context *c, ud_string text, ud_j
     UD_TRY(ud_json_parse(c->memory, text.data, text.length, out, NULL));
     static const char *keys[] = {"operation", "source", "target"};
     ud_status s = ud_json_keys(*out, keys, 3);
-    ud_string operation;
+    ud_string operation={0};
     if (!s)
         s = ud_json_string(ud_member(*out, "operation"), &operation);
     if (!s) {
@@ -36,7 +36,7 @@ static ud_status config_read(const ud_component_context *c, ud_string text, ud_j
             int owner;
             s = ud_connection_definition(c->activation, ids[i], &def, &owner);
             const ud_json *driver = ud_member(def, "driver");
-            ud_string value;
+            ud_string value={0};
             if (!s && ud_json_kind(driver) == UD_JSON_STRING) {
                 s = ud_json_string(driver, &value);
                 if (!s && !ud_named(value, "file"))
@@ -52,13 +52,13 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     (void)outputs;
     ud_json *config = NULL;
     int op;
-    ud_string source, target;
+    ud_string source={0}, target={0};
     ud_status s = config_read(c, text, &config, &op, &source, &target);
     ud_json_destroy(config);
     return s;
 }
 static ud_status path_copy(ud_context *ctx, ud_connection_lease *lease, char **out) {
-    ud_string path;
+    ud_string path={0};
     UD_TRY(ud_connection_lease_path(lease, &path));
     size_t start = 0;
     for (size_t i = 0; i <= path.length; i++)
@@ -154,7 +154,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     (void)user;
     ud_json *config = NULL;
     int op = 0;
-    ud_string source_id, target_id;
+    ud_string source_id={0}, target_id={0};
     ud_status s = config_read(c, text, &config, &op, &source_id, &target_id);
     ud_connection_lease *source = NULL, *target = NULL;
     char *from = NULL, *to = NULL;

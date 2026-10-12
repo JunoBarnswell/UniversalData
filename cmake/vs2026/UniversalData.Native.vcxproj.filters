@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Components" />
+    <Filter Include="Engines" />
+    <Filter Include="Catalog" />
+    <Filter Include="Connections" />
+    <Filter Include="Hosts" />
+    <Filter Include="Public headers" />
+    <Filter Include="Build" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\components\compute\internal.h">
+      <Filter>Components</Filter>
+    </ClInclude>
+    <ClCompile Include="..\..\components\compute\src\collection.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\compute\src\compute.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\compute\src\mapping.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\compute\src\operator.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\compute\src\plan.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\compute\src\profile.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\compute\src\quality.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\compute\src\regex.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClInclude Include="..\..\components\contracts\registry_internal.h">
+      <Filter>Components</Filter>
+    </ClInclude>
+    <ClCompile Include="..\..\components\contracts\src\plugin.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\contracts\src\registry.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClInclude Include="..\..\components\data\internal.h">
+      <Filter>Components</Filter>
+    </ClInclude>
+    <ClCompile Include="..\..\components\data\src\arrow.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\data\src\columnar.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\data\src\csv.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\data\src\json.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\data\src\numeric.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\data\src\schema_json.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\data\src\schema.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\data\src\semantics.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\data\src\types.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\data\src\wire.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\execution\src\buffer.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\execution\src\runtime.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\execution\src\state.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\expression\src\expression.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\expression\src\functions.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClInclude Include="..\..\components\foundation\internal.h">
+      <Filter>Components</Filter>
+    </ClInclude>
+    <ClCompile Include="..\..\components\foundation\src\digest.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\foundation\src\foundation.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\foundation\src\json.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\components\foundation\src\platform.c">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClInclude Include="..\..\components\foundation\thread.h">
+      <Filter>Components</Filter>
+    </ClInclude>
+    <ClCompile Include="..\..\engines\control-flow\control.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\control-flow\filesystem.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\control-flow\http.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\control-flow\process.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\control-flow\profile.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\data-flow\builtins.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\data-flow\pipeline.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\data-flow\transforms.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\package\checkpoint.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\package\child.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClInclude Include="..\..\engines\package\internal.h">
+      <Filter>Engines</Filter>
+    </ClInclude>
+    <ClCompile Include="..\..\engines\package\model.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\package\project.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\package\resources.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\engines\package\runtime.c">
+      <Filter>Engines</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\catalog\catalog.c">
+      <Filter>Catalog</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\catalog\deployment.c">
+      <Filter>Catalog</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\catalog\history.c">
+      <Filter>Catalog</Filter>
+    </ClCompile>
+    <ClInclude Include="..\..\catalog\internal.h">
+      <Filter>Catalog</Filter>
+    </ClInclude>
+    <ClCompile Include="..\..\connectors\manager.c">
+      <Filter>Connections</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\hosts\cli.c">
+      <Filter>Hosts</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\hosts\worker.c">
+      <Filter>Hosts</Filter>
+    </ClCompile>
+    <ClInclude Include="..\..\include\ud\activation.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\buffer.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\catalog.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\component.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\compute.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\connection_manager.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\connector.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\csv.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\data.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\engine.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\execution.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\expression.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\format.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\json.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\memory.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\operator.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\package.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\plugin.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\profile.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\project.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\quality.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\regex.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\ud\status.h">
+      <Filter>Public headers</Filter>
+    </ClInclude>
+    <None Include="..\..\CMakeLists.txt">
+      <Filter>Build</Filter>
+    </None>
+    <None Include="..\..\CMakePresets.json">
+      <Filter>Build</Filter>
+    </None>
+    <None Include="..\..\scripts\build-vs2026.ps1">
+      <Filter>Build</Filter>
+    </None>
+    <None Include="..\..\README.md">
+      <Filter>Build</Filter>
+    </None>
+  </ItemGroup>
+</Project>

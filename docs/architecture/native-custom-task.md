@@ -1,28 +1,13 @@
-# Native Custom Task and module ownership
+# Native Custom Task / Function 插件契约
 
-Native Tasks use the public `ud_component_descriptor` ABI 3 configure/invoke callbacks, registered in the same registry and run by the same Control Flow core as built-ins. `examples/plugins/custom_task.c` compiles with installed public headers only and links the shared SDK. It evaluates the shared expression AST against native lexical variables and acquires/authorizes a logical connection through the public Connection Manager; it does not create another executor or access private structures.
+只使用安装后的 public SDK headers。模块导出 `ud_plugin_get_api`，只接受当前完整 ABI 4；component-only 模块提供 `UD_PLUGIN_COMPONENTS` 和 component table，没有 dummy factory 或 generic execute 入口。Physical connector 模块提供单独 connector table 和必要连接 factories。
 
-```mermaid
-flowchart LR
-Host[Trusted host loads module] --> Loader[Existing ud_plugin_load]
-Loader --> Table[Current ABI 3 component table]
-Table --> Register[Atomic owned registration]
-Register --> Registry[Copied metadata and retained module]
-Registry --> Execution[Execution leases registry]
-Execution --> Invoke[Pure configure and invoke]
-Execution --> Release[Destroy Execution]
-Release --> Destroy[Destroy registry and release module references]
-Destroy --> Unload[Unload after all instances and references end]
-```
+Registry 原子复制元数据并 retain 模块；重复 ID、旧版本、裁剪布局或非法 callback table 整体拒绝。Root Execution 合并同一 Registry 描述，并租用外部 Registry；Expression 同样租用函数所属 Registry。存在活动引用时 unload/destroy Busy，调用方先结束 Execution/Expression、销毁 Registry，再卸载模块。
 
-`ud_plugin_api.components` points to an immutable module-owned `ud_component_plugin_api` table of descriptors. `UD_PLUGIN_COMPONENTS` identifies that role. A component-only module may omit generic initialize/execute/destroy and shutdown; calling `ud_plugin_create` on it returns Unsupported rather than an empty successful factory. Generic/mixed modules retain the existing complete generic factory contract. Components can be registered using `ud_plugin_register_components` without a second library loader or wire/config protocol.
+Task `configure` 为可选纯绑定验证，不执行 I/O；`invoke` 收到 root Execution、borrowed Activation、当前 allocator、身份和表达式 resolver。资源经 `ud_activation_acquire_connection` 与授权取得；变量经 Activation 读写。回调不得缓存 Activation、重入执行控制或绕过目标提交/receipt 契约。Task 中的 End/More 返回 Invalid，Busy 在 Package 边界映射为 Transient。
 
-`ud_registry_register_owned` stages copied metadata for every descriptor, validates ABI/category/callbacks and duplicate IDs, and acquires paired owner references. Failure anywhere rolls back all staged entries and references, leaving the registry unchanged. Successful entries hold the module until registry destruction, even before/after an Execution runs. Registry registration/destruction returns Busy while an Execution leases it. `ud_plugin_unload` returns Busy while generic instances, callbacks or registered component references remain. Consequently a terminated Execution cannot leave callback pointers into an unloaded library. Runtime plan copies remain protected by the leased external registry. Hosts serialize module/registry lifetime operations; ownership callbacks do not reenter registry mutation or Execution control.
+Function descriptor 具有 Pure capability、arity、function_bind/function_evaluate。输出 metadata 经 Data model 克隆，pointer payload owned，由 Expression 释放。并行任务只绑定 ThreadSafe 函数。一个 Expression instance 只有一个控制器；宿主不能把函数放到第二套托管执行器。
 
-Only the current complete ABI 3 is accepted. The loader and all bundled providers require the current exact `ud_plugin_api` size and version. Info requests with older version/layout return Incompatible. Old-prefix fallback and legacy fixture modules are excluded under the user's explicit single-version instruction. SDK/plugin callers must rebuild from the current headers. This is a development contract within SDK 1.0.0, not published compatibility with older draft binaries or 0.x.
+Source/Transform/Destination 使用 configure → prepare → step(Data/InputEnd/Poll) → finish → dispose。每步每输出最多一个 sealed Batch；More 表示继续 Poll。finish 仅在所有输入结束且输出排空后提交。组件未声明 ThreadSafe 时不在并发 Activation 内运行；未声明 ReplaySafe 的外部效果中断进入 RecoveryRequired。
 
-Loading native code is a trusted host action, not a sandbox or an implicit Package privilege grant. Resource access in the example requires common OPEN/WRITE authorization; missing callbacks/default deny prevent variable/file effects. Optional marker append is an intentionally nontransactional fixture effect on an explicitly granted logical file. Callback resources and parsed expression/config are released on success, error, cancel and deadline. Tasks must not start/wait/destroy their borrowed Execution inside callbacks. `UD_END` and invalid status values from invoke are rejected as Invalid; Busy becomes the shared terminal Transient outcome. Errors and cancellation use normal Control Flow precedence and Package states.
-
-The example declares no replay-safe capability. A real file effect followed by process exit before TaskDone resumes as CommitUnknown without another invoke/effect; completed resume restores variables and skips invocation. The SDK does not infer arbitrary native effects are safe or roll them back. A host may register other descriptors with an explicit replay-safe contract, subject to the same registry/Journal rules.
-
-Tests cover actual shared libraries, invalid second-descriptor rollback, a component-only module without dummy factories, current ABI/version/layout rejection, registry/module/Execution/instance unload guards, native expressions/scopes, default/write denial, readonly/config errors, IO/Busy/END propagation, running cancellation/deadline, and actual effect/crash/Unknown/completed resume. The independent CMake consumer builds the module against installed SDK headers/libraries using `-DUD_BUILD_CUSTOM_TASK_PLUGIN=ON`; the existing Contracts-only function example remains available without that option. Current evidence is under `docs/acceptance/evidence/ssis-custom-task`. Broader G07/G21 plugin categories, language registry exposure and thread-race gates remain separate work; Windows/remote CI gates are waived by user instruction.
+示例位于 `examples/plugins/custom_task.c`，测试使用实际动态模块、当前公共头、原子注册 rollback、模块引用、native AST/scopes、授权、取消/期限、真实文件效果及进程终止恢复。平台和证据以 `../acceptance/ssis-status.json` 为准；历史 Linux 结果不证明当前源码。

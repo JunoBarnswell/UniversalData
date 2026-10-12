@@ -120,34 +120,29 @@ static ud_status stat_step(void *instance, const ud_component_event *event) {
                                               : UD_OK;
 }
 static ud_status stat_finish(void *instance) {
-    profile_sink *p = instance;
-    ud_value *values = ud_alloc(p->context.memory, p->count * sizeof(*values));
-    ud_variable **targets = ud_alloc(p->context.memory, p->count * sizeof(*targets));
-    ud_status s = !values || !targets ? UD_RESOURCE : UD_OK;
-    for (uint32_t i = 0; !s && i < p->count; i++) {
-        ud_value value;
-        s = ud_profile_get(p->profile, i, &value);
-        if (!s)
-            s = ud_variable_writable(p->context.activation, p->names[i], targets + i);
-        if (!s && targets[i]->value.type != value.type)
-            s = UD_SCHEMA;
-        if (!s)
-            s = ud_copy_value(p->context.memory, &value, values + i, 0);
+    profile_sink *p=instance;
+    ud_batch **boxes=ud_alloc(p->context.memory,p->count*sizeof(*boxes));
+    ud_variable **targets=ud_alloc(p->context.memory,p->count*sizeof(*targets));
+    ud_status s=!boxes || !targets?UD_RESOURCE:UD_OK;
+    for(uint32_t i=0;!s && i<p->count;i++) {
+        ud_value value={0};ud_field field={0};
+        s=ud_profile_get(p->profile,i,&value);
+        if(!s)s=ud_variable_writable(p->context.activation,p->names[i],targets+i);
+        if(!s)s=ud_batch_field(targets[i]->box,0,&field);
+        if(!s && field.type!=value.type)s=UD_SCHEMA;
+        if(!s)s=ud_batch_create(p->context.memory,&field,1,1,boxes+i);
+        if(!s)s=ud_batch_append(boxes[i],&value,1);
+        if(!s)s=ud_batch_seal(boxes[i]);
     }
-    if (!s)
-        s = ud_activation_check(p->context.activation);
-    if (!s)
-        for (uint32_t i = 0; i < p->count; i++) {
-            ud_clear_value(&targets[i]->value);
-            targets[i]->value = values[i];
-            memset(values + i, 0, sizeof(*values));
-        }
-    if (values)
-        for (uint32_t i = 0; i < p->count; i++)
-            ud_clear_value(values + i);
-    ud_free(values);
-    ud_free(targets);
-    return s;
+    if(!s)s=ud_activation_check(p->context.activation);
+    if(!s)for(uint32_t i=0;i<p->count;i++) {
+        ud_batch *previous=targets[i]->box;
+        targets[i]->box=boxes[i];boxes[i]=NULL;
+        ud_batch_get(targets[i]->box,0,0,&targets[i]->value);
+        ud_batch_destroy(previous);
+    }
+    if(boxes)for(uint32_t i=0;i<p->count;i++)ud_batch_destroy(boxes[i]);
+    ud_free(boxes);ud_free(targets);return s;
 }
 static void stat_dispose(void *instance, ud_status outcome) {
     (void)outcome;

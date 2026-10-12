@@ -420,14 +420,19 @@ ud_status ud_activation_set_variable(ud_activation *e, ud_string name, const ud_
     if (!e || !value) return UD_INVALID;
     ud_variable *slot = NULL;
     UD_TRY(ud_variable_writable(e, name, &slot));
+    return ud_variable_assign(e->execution->ctx,slot,value,provenance);
+}
+ud_status ud_variable_assign(ud_context *ctx,ud_variable *slot,const ud_value *value,const ud_field *provenance) {
+    if(!ctx || !slot || !value)return UD_INVALID;
+    if(slot->readonly)return UD_AUTH;
     ud_field declared = {0}, target = {0};
     UD_TRY(ud_batch_field(slot->box, 0, &declared));
     if (value->type != declared.type ||
         (provenance && !ud_field_matches(provenance, &declared, UD_FIELD_VALUE_TYPE))) return UD_SCHEMA;
-    ud_status s = provenance ? ud_field_cast_metadata(e->execution->ctx, provenance, &declared, &target)
-                             : ud_field_copy(e->execution->ctx, &declared, (ud_column_id){0}, &target);
+    ud_status s = provenance ? ud_field_cast_metadata(ctx, provenance, &declared, &target)
+                             : ud_field_copy(ctx, &declared, (ud_column_id){0}, &target);
     ud_batch *box = NULL;
-    if (!s) s = ud_batch_create(e->execution->ctx, &target, 1, 1, &box);
+    if (!s) s = ud_batch_create(ctx, &target, 1, 1, &box);
     ud_field_clear(&target);
     if (!s) s = ud_batch_append(box, value, 1);
     if (!s) s = ud_batch_seal(box);
@@ -449,7 +454,7 @@ ud_status ud_expression_json(ud_activation *e, const ud_json *value, const ud_ba
     uint32_t length;
     UD_TRY(ud_json_serialize(value, &json, &length));
     ud_expression_options options = {sizeof(options), UD_ABI_VERSION, schema, ud_resolve_value, e,
-                                      ud_resolve_field, e->execution->registry, 0};
+                                      ud_resolve_field, e->execution->registry, e->parallel?UD_COMPONENT_THREAD_SAFE:0};
     ud_status s = ud_expression_create(e->execution->ctx, (ud_string){json, length}, &options, out);
     ud_free(json);
     return s;

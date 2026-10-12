@@ -1,6 +1,6 @@
 # UniversalData 统一产品架构与 Phase 0–7 实施设计
 
-设计日期：2026-10-12。审查基线：PR #3 的 `902b45d`。本轮允许删除旧 API、协议与实现；只接受一个当前版本族。用户最新验收约定为 **Windows 编译和测试，Linux 免测**。全部阶段源码完成后集中编译与关键验收；历史 Linux 记录不证明本轮代码。
+设计日期：2026-10-12。审查基线：PR #3 的 `902b45d`。本轮允许删除旧 API、协议与实现；只接受一个当前版本族。用户最新验收约定为 **Windows 编译和测试，Linux 免测**。本轮 Phase 0–7 的统一架构与核心组件源码完成后集中编译与关键验收；协议及高级扩展保留真实待实现状态；历史 Linux 记录不证明本轮代码。
 
 ## 产品、职责和边界
 
@@ -18,7 +18,7 @@ Control Flow 描述 Tasks、Containers 和 Precedence Constraints；Data Flow �
 | `components/data` | 已有 Schema owner、identity/lineage、sealed Batch、wire/Arrow 和值语义；代码版本为 4 | 保留唯一数据模型，补齐消费者，删除文档中的版本 3 声明 |
 | `components/expression` | 已有 AST/绑定/常量折叠；只有固定操作符，没有纯函数扩展 | 增加同一 Registry 的函数类别及模块租用；禁止独立函数执行入口 |
 | `components/compute` | 集合、分组与文本谓词在本模块；表达式另有 AST | 统一谓词入口为 AST；集合状态与外存归共享 Compute |
-| `engines/query/src/external*` | CSV Sort 与 NDJSON Join/Group 各持 spill 文件、预算和算法 | 删除专属外存实现；Query 使用共享算子和 Buffer Manager |
+| `engines/query/src/external*` | CSV Sort 与 NDJSON Join/Group 各持 spill 文件、预算和算法 | 删除专属外存实现；嵌入式查询消费共享算子和 Buffer Manager；删除无语义 Query 转发层 |
 | `engines/data-flow/builtins.c` | Sort/Join/Aggregate 累积完整输入，再生成完整结果 | 删除 Pipeline 私有阻塞缓存，使用共享流式算子 |
 | `components/execution` | 队列有界，缺共享块存储 | 增加有界块资源、wire spill、checksum 和清理所有权 |
 | `engines/package`、`engines/control-flow` | scope、task/pipeline/component ID、depth 和 child definition 挂在共享 Execution 上 | 改为任务 Activation 拥有可变帧；根 Execution 只持共享服务 |
@@ -89,15 +89,17 @@ Buffer Manager 计量 resident、spill、block 数及输出预算；临时资源
 
 Database write 与 receipt 必须处于同一目标事务；File sink 用 stage→flush→hash→原子发布→journal。跨目标没有隐含全局事务。Package 失败可能包含已提交目标，必须在事件和历史中可见。不能通过重试、默认值或“成功处理错误”覆盖 CommitUnknown。
 
-同一 journal 记录任务、迭代、变量、输入证据、算子/block identity 与目标提交。可确定性重放的管道可以重算，必须核对所有 receipt 和源内容；不能把重算描述为任意算子内存快照恢复。SQL source 无持久 snapshot、外部效果无幂等确认时，绑定拒绝相应恢复模式。中断效果不明进入 RecoveryRequired，停止源确认。旧日志、旧 Package、旧 wire/插件布局直接 Incompatible。
+同一 journal 记录任务、迭代、变量、输入证据、算子/block identity 与目标提交。可确定性重放的管道可以重算，必须核对所有 receipt 和源内容；不能把重算描述为任意算子内存快照恢复。SQL source 无持久 snapshot、外部效果无幂等确认时，绑定拒绝相应恢复模式。中断效果不明进入 RecoveryRequired，停止源确认。旧日志、旧 Package、旧 wire/插件布局直接 Incompatible。Windows 和 Linux 编译同一套算子，仅线程、文件、进程及动态加载使用平台实现；本轮 Linux 免测。
 
 Catalog 的 Project、Environment、Deployment、Package 与 execution history 分开。历史记录身份、状态、结果、计数及提交事实；不得写入凭据、原始配置或行数据。真正的跨目标分布式事务、CDC acknowledgment 和外部 broker 提交必须有相应 driver 实现及故障证据。
 
 ## 当前唯一 C ABI
 
-本分支源码已进入 **ABI/Package/Schema/Plan/Wire/Plugin/Worker/Checkpoint 4**；本轮完成这个唯一版本族，不保留 ABI 3 路径。SDK 产品版本保持 `1.0.0` 开发版；SONAME 为 4。完整 public struct 带 size/version，固定宽度计数、显式 UTF8 长度、opaque handles；有布局变化的全部 native driver、JNI、PInvoke、host 和示例一起重编。未知版本及裁剪布局拒绝。
+本分支源码已进入 **ABI/Package/Schema/Plan/Wire/Plugin/Worker/Checkpoint 4**；本轮完成这个唯一版本族，删除旧 ABI 路径。SDK 产品版本保持 `1.0.0` 开发版；SONAME 为 4。完整 public struct 带 size/version，固定宽度计数、显式 UTF8 长度、opaque handles；有布局变化的全部 native driver、JNI、PInvoke、host 和示例一起重编。未知版本及裁剪布局拒绝。
 
-Public 批次、表达式和算子 API 是嵌入式消费接口，不是第二执行状态机。新增生命周期必须有真实资源/模型职责；禁止无语义转发函数。被替代的格式专属 Query 文件执行 API、文本谓词和旧 ABI 示例删除。公共导出不因没有内部调用就判定死代码，但必须有明确的 SDK 能力、安装消费者或组件注册用途。
+Public 批次、表达式和算子 API 是嵌入式消费接口，不是第二执行状态机。新增生命周期必须有真实资源/模型职责；禁止无语义转发函数。被替代的格式专属 Query 文件执行 API、文本谓词和旧 ABI 示例删除。旧 generic plugin operation API、重复 ABS/CSV plugin 与尚未接入统一连接契约的 ODBC/DuckDB 原型删除，后两项扩展回归 Planned；SQLite/PostgreSQL 保留当前连接表。
+
+公共导出不因没有内部调用就判定死代码，但必须有明确的 SDK 能力、安装消费者或组件注册用途。
 
 ## 三次设计反思
 
@@ -118,6 +120,16 @@ Public 批次、表达式和算子 API 是嵌入式消费接口，不是第二�
 | 6 | ABI/Bindings/Hosts/安装消费者 | C/.NET/Java 同定义同原生结果；删除旧入口 |
 | 7 | 同一 Registry/Compute/driver 的扩展 | BI、分区/window 与各协议按真实能力接入；无占位注册 |
 
-原 69 项 G00–G68 保持逐项可追踪，外部系统和依赖未提供时保留对应 Blocked/未验收状态，不能用本架构设计将其标为实现。Microsoft 专属 artifacts 是明确不兼容边界。源码完成状态与行为验证状态分别记录。
+依据用户范围确认，本轮交付统一架构与核心组件；原 69 项 G00–G68 保持逐项可追踪，协议及高级扩展保留 Planned，已有码但未验收的可选能力保留 Implemented/未验收状态，不能用本架构设计将其标为实现。Microsoft 专属 artifacts 是明确不兼容边界。源码完成状态与行为验证状态分别记录。
 
 集中 Windows 门禁包括：native 编译、内存所有权/配额/故障清理、实际并发和取消/超时、SQLite 事务及提交回执、真实子进程终止恢复、三语言一致性和独立安装消费。只有相关源码变化、门禁失败或未解决假设才重复检查。Linux 本轮免测；未执行结果不得写 Verified。
+
+## 本轮产物交付整改
+
+实际发现：当前 ABI 4 DLL 仅位于新构建目录及本机临时安装目录；`artifacts/native` 仍是 ABI 旧版 0.1.0，当前语言消费记录使用临时安装，未完成可分发 ZIP 的验收。由此不能将先前的核心行为测试等同于完整产物交付。
+
+1. **产物边界反思。** `ud_data` 是唯一 native facade 的 CMake target 和库名，Windows 文件为 `ud_data.dll`。交付一个明确的版本/RID 目录及 ZIP，包含同一次 Release 构建的 SDK、JNI、启用的连接器、头文件、CMake exports、许可证和语言包；不能通过复制旧目录或建立别名补足“存在”。
+2. **平台边界反思。** 一个 Windows 包不能因缺少免测的 Linux 二进制而无法生成。打包只要求所选 RID 的真实产物，保留同一核心与 POSIX 算子实现；Linux 当前二进制状态明确为未构建、未验收。
+3. **消费者与失败反思。** 从生成的 ZIP 解压到仓库外，校验逐文件 digest，再以唯一动态 Data 库运行 C Package 和类型消费；NuGet 必须包含该 RID 的同一 DLL，并在没有构建/SDK PATH 的独立消费者中运行；Java 使用 ZIP 内 JAR/JNI。产物缺失、digest 不符、ABI 错误或任一消费者失败，交付门禁失败。
+
+实施范围是 `packaging`、语言包原生产物声明、产物消费测试、交付门禁和必要文档。构建日志保存在仓库外；清单关联源码 fingerprint，门禁同时检查当前磁盘上的 ZIP、DLL 和语言包。验收包括 Windows Release 原生行为、已有 ASan 内存门禁、ZIP 完整性及三语言实际执行。当前无发布、迁移或外部数据写入。

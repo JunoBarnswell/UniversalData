@@ -33,9 +33,14 @@ with tempfile.TemporaryDirectory(prefix="ud-project-") as folder:
     deploy2["project"]["revision"] = deploy2["environment"]["revision"] = 2
     readonly = {"version": 4, "id": "readonly", "parameters": {"shadow": scalar(7)}, "project": {"id": "project", "variables": {"shadow": scalar(99)}}, "controlFlow": {"tasks": [assign("shadow", literal(1))], "constraints": []}, "dataFlows": []}
     documents = {"project.json": project, "project-v2.json": project2, "package.json": package, "package-v2.json": package2, "environment.json": catalog_env1, "environment-v2.json": env2, "deployment.json": deployment, "deployment-v2.json": deploy2, "readonly.json": readonly}
-    for name, document in documents.items():
-        (root / name).write_text(json.dumps(document))
-    subprocess.run([sys.argv[1], str(root)], check=True)
+    def normalize_paths(value):
+        if isinstance(value,dict):return {k:normalize_paths(v) for k,v in value.items()}
+        if isinstance(value,list):return [normalize_paths(v) for v in value]
+        if isinstance(value,str) and value.startswith(str(root)):return value.replace("\\","/")
+        return value
+    for name,document in documents.items():
+        (root/name).write_text(json.dumps(normalize_paths(document)))
+    subprocess.run([sys.argv[1], root.as_posix()], check=True)
     for name in ["direct.ndjson", "v1.ndjson", "v2.ndjson", "rollback.ndjson"]:
         assert [json.loads(line) for line in (root / name).read_text().splitlines()] == [{"x": i} for i in range(5)]
     print("Project/Environment/Deployment: outer scopes, nearest shadowing, read-only parameters, shared connection owner scope, typed overrides, exact revisions, restart, version switch and rollback passed")

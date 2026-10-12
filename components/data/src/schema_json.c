@@ -47,9 +47,9 @@ static ud_status parse_fields(ud_context *ctx,const ud_json *array,uint32_t dept
         }
         if(lineage) {
             if(!id || ud_json_kind(lineage)!=UD_JSON_ARRAY || ud_json_size(lineage)>4096) return UD_SCHEMA;
-            uint32_t n=ud_json_size(lineage);ud_column_id *ids=n?ud_alloc(ctx,n*sizeof(*ids)):NULL;
-            if(n && !ids) return UD_RESOURCE;f->lineage=ids;f->lineage_count=n;
-            for(uint32_t k=0;k<n;k++) {
+            uint32_t origins=ud_json_size(lineage);ud_column_id *ids=origins?ud_alloc(ctx,origins*sizeof(*ids)):NULL;
+            if(origins && !ids) return UD_RESOURCE;f->lineage=ids;f->lineage_count=origins;
+            for(uint32_t k=0;k<origins;k++) {
                 const char *hex=NULL;uint32_t bytes=0;UD_TRY(text_value(ud_json_at(lineage,k),&hex,&bytes));
                 UD_TRY(ud_column_id_parse((ud_string){hex,bytes},ids+k));
             }

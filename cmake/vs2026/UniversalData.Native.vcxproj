@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{23637667-0A3B-4C35-AC5C-EF6508199B60}</ProjectGuid>
+    <Keyword>MakeFileProj</Keyword>
+    <ProjectName>UniversalData.Native</ProjectName>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <UseDebugLibraries Condition="'$(Configuration)' == 'Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)' == 'Release'">false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)..\..\build\vs2026\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)..\..\build\vs2026\ide\$(Configuration)\</IntDir>
+    <NMakeBuildCommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)..\..\scripts\build-vs2026.ps1" -Action Build -Configuration $(Configuration) -VisualStudioPath "$(VSInstallDir)."</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)..\..\scripts\build-vs2026.ps1" -Action Rebuild -Configuration $(Configuration) -VisualStudioPath "$(VSInstallDir)."</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)..\..\scripts\build-vs2026.ps1" -Action Clean -Configuration $(Configuration) -VisualStudioPath "$(VSInstallDir)."</NMakeCleanCommandLine>
+    <NMakeOutput>$(OutDir)ud_data.dll</NMakeOutput>
+    <NMakeIncludeSearchPath>$(ProjectDir)..\..\include;$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
+    <NMakePreprocessorDefinitions>UD_BUILD_SHARED;_CRT_SECURE_NO_WARNINGS;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakeAdditionalOptions>/std:c17 /utf-8 /experimental:c11atomics $(NMakeAdditionalOptions)</NMakeAdditionalOptions>
+    <LocalDebuggerCommand>$(ProjectDir)..\..\build\vs2026\hosts\$(Configuration)\ud_cli.exe</LocalDebuggerCommand>
+    <LocalDebuggerWorkingDirectory>$(ProjectDir)..\..</LocalDebuggerWorkingDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\components\compute\internal.h" />
+    <ClCompile Include="..\..\components\compute\src\collection.c" />
+    <ClCompile Include="..\..\components\compute\src\compute.c" />
+    <ClCompile Include="..\..\components\compute\src\mapping.c" />
+    <ClCompile Include="..\..\components\compute\src\operator.c" />
+    <ClCompile Include="..\..\components\compute\src\plan.c" />
+    <ClCompile Include="..\..\components\compute\src\profile.c" />
+    <ClCompile Include="..\..\components\compute\src\quality.c" />
+    <ClCompile Include="..\..\components\compute\src\regex.c" />
+    <ClInclude Include="..\..\components\contracts\registry_internal.h" />
+    <ClCompile Include="..\..\components\contracts\src\plugin.c" />
+    <ClCompile Include="..\..\components\contracts\src\registry.c" />
+    <ClInclude Include="..\..\components\data\internal.h" />
+    <ClCompile Include="..\..\components\data\src\arrow.c" />
+    <ClCompile Include="..\..\components\data\src\columnar.c" />
+    <ClCompile Include="..\..\components\data\src\csv.c" />
+    <ClCompile Include="..\..\components\data\src\json.c" />
+    <ClCompile Include="..\..\components\data\src\numeric.c" />
+    <ClCompile Include="..\..\components\data\src\schema_json.c" />
+    <ClCompile Include="..\..\components\data\src\schema.c" />
+    <ClCompile Include="..\..\components\data\src\semantics.c" />
+    <ClCompile Include="..\..\components\data\src\types.c" />
+    <ClCompile Include="..\..\components\data\src\wire.c" />
+    <ClCompile Include="..\..\components\execution\src\buffer.c" />
+    <ClCompile Include="..\..\components\execution\src\runtime.c" />
+    <ClCompile Include="..\..\components\execution\src\state.c" />
+    <ClCompile Include="..\..\components\expression\src\expression.c" />
+    <ClCompile Include="..\..\components\expression\src\functions.c" />
+    <ClInclude Include="..\..\components\foundation\internal.h" />
+    <ClCompile Include="..\..\components\foundation\src\digest.c" />
+    <ClCompile Include="..\..\components\foundation\src\foundation.c" />
+    <ClCompile Include="..\..\components\foundation\src\json.c" />
+    <ClCompile Include="..\..\components\foundation\src\platform.c" />
+    <ClInclude Include="..\..\components\foundation\thread.h" />
+    <ClCompile Include="..\..\engines\control-flow\control.c" />
+    <ClCompile Include="..\..\engines\control-flow\filesystem.c" />
+    <ClCompile Include="..\..\engines\control-flow\http.c" />
+    <ClCompile Include="..\..\engines\control-flow\process.c" />
+    <ClCompile Include="..\..\engines\control-flow\profile.c" />
+    <ClCompile Include="..\..\engines\data-flow\builtins.c" />
+    <ClCompile Include="..\..\engines\data-flow\pipeline.c" />
+    <ClCompile Include="..\..\engines\data-flow\transforms.c" />
+    <ClCompile Include="..\..\engines\package\checkpoint.c" />
+    <ClCompile Include="..\..\engines\package\child.c" />
+    <ClInclude Include="..\..\engines\package\internal.h" />
+    <ClCompile Include="..\..\engines\package\model.c" />
+    <ClCompile Include="..\..\engines\package\project.c" />
+    <ClCompile Include="..\..\engines\package\resources.c" />
+    <ClCompile Include="..\..\engines\package\runtime.c" />
+    <ClCompile Include="..\..\catalog\catalog.c" />
+    <ClCompile Include="..\..\catalog\deployment.c" />
+    <ClCompile Include="..\..\catalog\history.c" />
+    <ClInclude Include="..\..\catalog\internal.h" />
+    <ClCompile Include="..\..\connectors\manager.c" />
+    <ClCompile Include="..\..\hosts\cli.c" />
+    <ClCompile Include="..\..\hosts\worker.c" />
+    <ClInclude Include="..\..\include\ud\activation.h" />
+    <ClInclude Include="..\..\include\ud\buffer.h" />
+    <ClInclude Include="..\..\include\ud\catalog.h" />
+    <ClInclude Include="..\..\include\ud\component.h" />
+    <ClInclude Include="..\..\include\ud\compute.h" />
+    <ClInclude Include="..\..\include\ud\connection_manager.h" />
+    <ClInclude Include="..\..\include\ud\connector.h" />
+    <ClInclude Include="..\..\include\ud\csv.h" />
+    <ClInclude Include="..\..\include\ud\data.h" />
+    <ClInclude Include="..\..\include\ud\engine.h" />
+    <ClInclude Include="..\..\include\ud\execution.h" />
+    <ClInclude Include="..\..\include\ud\expression.h" />
+    <ClInclude Include="..\..\include\ud\format.h" />
+    <ClInclude Include="..\..\include\ud\json.h" />
+    <ClInclude Include="..\..\include\ud\memory.h" />
+    <ClInclude Include="..\..\include\ud\operator.h" />
+    <ClInclude Include="..\..\include\ud\package.h" />
+    <ClInclude Include="..\..\include\ud\plugin.h" />
+    <ClInclude Include="..\..\include\ud\profile.h" />
+    <ClInclude Include="..\..\include\ud\project.h" />
+    <ClInclude Include="..\..\include\ud\quality.h" />
+    <ClInclude Include="..\..\include\ud\regex.h" />
+    <ClInclude Include="..\..\include\ud\status.h" />
+    <None Include="..\..\CMakeLists.txt" />
+    <None Include="..\..\CMakePresets.json" />
+    <None Include="..\..\scripts\build-vs2026.ps1" />
+    <None Include="..\..\README.md" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

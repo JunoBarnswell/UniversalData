@@ -1,0 +1,33 @@
+{
+  "command": "CMake install + external C consumer; nupkg-only external .NET clients; Maven install-file to external repository + external client; same-definition native/JNI run",
+  "exitCode": 0,
+  "sourceFingerprint": "f32934d5377821e07d1571635061be5b510a033fa0c16dffddfa56390371c0a7",
+  "artifacts": [
+    {
+      "name": "ud_data",
+      "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\sdk\\bin\\ud_data.dll",
+      "sha256": "ec29b10350dd7b82add7420e8f4239b3072e05216f649ce224f263c5eeaf8505"
+    },
+    {
+      "name": "ud_java",
+      "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\sdk\\bin\\ud_java.dll",
+      "sha256": "dc6086d54baec3b58d8f145e2a5d76b649f00fabccf073d35adb14c0cc718f26"
+    },
+    {
+      "name": "sqlite",
+      "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\sdk\\lib\\UniversalData\\plugins\\ud_connector_sqlite.dll",
+      "sha256": "7acb9522c84d299089d20634da751e473e111efaaead20f1809610d0495e2618"
+    },
+    {
+      "name": "nuget",
+      "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\packages\\UniversalData.1.0.0.nupkg",
+      "sha256": "5f43b951ab1c176fa3d80a30ae6aac87d4c55f9769ce599ec9eeb07533337de2"
+    },
+    {
+      "name": "maven",
+      "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\maven-repository\\org\\universaldata\\universal-data\\1.0.0\\universal-data-1.0.0.jar",
+      "sha256": "d82e4a3c97927b5dd561bc8fb185d1212ed9db8b6d85e7ee4f86f5a5185a5c39"
+    }
+  ],
+  "tests": "10003 rows, Project/child/parameters/control/file/profile; scalar/nested/wire byte equality"
+}
