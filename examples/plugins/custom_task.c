@@ -138,7 +138,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string con
     if (!s)
         s = ud_expression_evaluate(p.expression, NULL, 0, &value);
     if (!s)
-        s = ud_execution_set_variable(c->execution, p.variable, &value);
+        s = ud_execution_set_variable(c->execution, p.variable, &value, NULL);
     if (!s && p.marker) {
         ud_string path;
         s = ud_connection_lease_path(lease, &path);

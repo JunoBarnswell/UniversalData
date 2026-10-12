@@ -9,7 +9,7 @@ with tempfile.TemporaryDirectory(prefix="ud-native-custom-") as temporary:
     root=pathlib.Path(temporary)
     def fixture(name,extra=None):
         folder=root/name;folder.mkdir()
-        doc={"version":3,"id":"custom","variables":{"n":{"type":"int64","default":0}},
+        doc={"version":4,"id":"custom","variables":{"n":{"type":"int64","default":0}},
              "connections":[{"id":"target","driver":"file","resource":str(folder/"marker")}],
              "controlFlow":{"tasks":[{"id":"custom","kind":"sample.custom","config":{"connection":"target","variable":"n","expression":{"op":"add","args":[{"ref":"n"},{"literal":5,"type":"int64"}]},**(extra or {})}}],"constraints":[]},"dataFlows":[]}
         return folder,doc
@@ -32,4 +32,4 @@ with tempfile.TemporaryDirectory(prefix="ud-native-custom-") as temporary:
     # Completed resume skips invoke, unlike ordinary executions.
     # Runner's callback count expectation is adjusted by the resume flag.
     run(folder,doc,checkpoint=True,resume=1);assert (folder/"marker").read_text()=="effect\n"
-    print("Native Custom Task: actual shared library/public headers, atomic descriptor rollback, current ABI3 only, old version/layout rejected, module/registry/execution/instance unload guards, native expression/scopes, default/write denial, errors, live cancellation/deadline, real effect/crash/Unknown and completed resume passed")
+    print("Native Custom Task: actual shared library/public headers, atomic descriptor rollback, current ABI4 only, old version/layout rejected, module/registry/execution/instance unload guards, native expression/scopes, default/write denial, errors, live cancellation/deadline, real effect/crash/Unknown and completed resume passed")

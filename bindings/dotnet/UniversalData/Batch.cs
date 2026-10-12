@@ -105,7 +105,7 @@ internal static class DataOwnership
 {
     internal static ContextHandle Context(ulong limit)
     {
-        var options = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = 3, Limit = limit };
+        var options = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = 4, Limit = limit };
         int status = Native.ud_context_create(ref options, out var pointer);
         if (status != 0) throw new UniversalDataException(status, "Cannot create native context");
         return new ContextHandle(pointer);

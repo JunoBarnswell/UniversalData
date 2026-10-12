@@ -2,104 +2,59 @@
 #include <math.h>
 static int variable(ud_type t) { return t == UD_UTF8 || t == UD_BINARY; }
 static size_t width(ud_type t) { return t == UD_DATE32 ? 4 : t == UD_DECIMAL128 ? 16 : 8; }
-static ud_status create_depth(ud_context *c, const ud_field *fields, uint32_t columns,
-                          uint32_t capacity, ud_batch **out, uint32_t depth) {
-    if (!out)
-        return UD_INVALID;
+static ud_status create_depth(ud_context *ctx, ud_schema_owner *schema, const ud_field *fields,
+                              uint32_t columns, uint32_t capacity, ud_batch **out, uint32_t depth) {
     *out = NULL;
-    if (depth > 32 || !c || !fields || !columns || columns > 65536 || capacity > INT32_MAX ||
-        (size_t)columns > SIZE_MAX / sizeof(ud_column) || (size_t)capacity > SIZE_MAX / sizeof(void *) - 1)
-        return ud_fail(c, UD_INVALID, "invalid batch dimensions");
-    ud_batch *b = ud_alloc(c, sizeof(*b));
-    if (!b)
-        return UD_RESOURCE;
-    b->ctx = c;
-    atomic_init(&b->references, 1);
-    b->columns = columns;
-    b->capacity = capacity;
-    b->column = ud_alloc(c, (size_t)columns * sizeof(*b->column));
-    if (!b->column) {
-        ud_batch_destroy(b);
-        return UD_RESOURCE;
-    }
-    ud_status s = UD_OK;
-    for (uint32_t i = 0; i < columns; i++) {
-        ud_column *col = b->column + i;
-        const ud_field *f = fields + i;
-        if (!f->name || !f->name_length || memchr(f->name, 0, f->name_length) ||
-            !ud_utf8_valid(f->name, f->name_length) || f->type < UD_BOOL || f->type > UD_MAP ||
-            (f->nullable != 0 && f->nullable != 1) ||
-            (f->type == UD_DECIMAL128 && (f->precision < 1 || f->precision > 38 || f->scale < -38 || f->scale > 38)) ||
-            (f->type != UD_DECIMAL128 && (f->precision || f->scale)) ||
-            (f->type == UD_TIMESTAMP && (!f->timezone || !f->timezone_length ||
-             memchr(f->timezone, 0, f->timezone_length) || !ud_utf8_valid(f->timezone, f->timezone_length))) ||
-            (f->type != UD_TIMESTAMP && f->timezone_length) ||
-            (f->type < UD_STRUCT && f->child_count) ||
-            (f->type >= UD_STRUCT && (!f->children || !f->child_count)) ||
-            (f->type >= UD_LIST && f->child_count != 1) ||
-            (f->type == UD_MAP && (f->children[0].type != UD_STRUCT || f->children[0].nullable ||
-             f->children[0].child_count != 2 || !f->children[0].children || f->children[0].children[0].nullable))) {
-            s = UD_SCHEMA;
-            break;
-        }
-        for (uint32_t j = 0; j < i; j++)
-            if (f->name_length == fields[j].name_length &&
-                !memcmp(f->name, fields[j].name, f->name_length)) {
-                s = UD_SCHEMA;
-                break;
-            }
-        if (s)
-            break;
-        col->field = *f;
-        col->field.name = ud_strdup_n(c, f->name, f->name_length);
-        col->field.timezone = NULL;
-        col->field.children = NULL;
-        if (f->timezone_length)
-            col->field.timezone = ud_strdup_n(c, f->timezone, f->timezone_length);
-        col->validity = ud_alloc(c, ((size_t)capacity + 7) / 8 + 1);
+    if (depth > 32 || !ctx || !schema || schema->ctx != ctx || !fields || !columns || columns > 65536 ||
+        capacity > INT32_MAX || (uint64_t)capacity + 1 > SIZE_MAX / sizeof(void *)) return UD_INVALID;
+    ud_batch *b = ud_alloc(ctx, sizeof(*b));
+    if (!b) return UD_RESOURCE;
+    b->ctx = ctx; b->columns = columns; b->capacity = capacity; atomic_init(&b->references, 1);
+    ud_status s = ud_schema_owner_retain(schema);
+    if (!s) b->schema = schema;
+    if (!s) { b->column = ud_alloc(ctx, columns * sizeof(*b->column)); if (!b->column) s = UD_RESOURCE; }
+    for (uint32_t j = 0; !s && j < columns; j++) {
+        ud_column *col = b->column + j; const ud_field *f = fields + j;
+        col->field = *f; /* Immutable views owned by one retained schema tree. */
+        col->validity = ud_alloc(ctx, ((size_t)capacity + 7) / 8 + 1);
+        if (!col->validity) { s = UD_RESOURCE; break; }
         if ((size_t)capacity > SIZE_MAX / width(f->type)) { s = UD_OVERFLOW; break; }
         size_t bytes = f->type == UD_BOOL ? ((size_t)capacity + 7) / 8 + 1 : (size_t)capacity * width(f->type);
         if (f->type >= UD_STRUCT) {
-            s = create_depth(c, f->children, f->child_count, f->type == UD_STRUCT ? capacity : 0,
-                              &col->nested, depth + 1);
-            if (s) break;
-            ud_field *children = ud_alloc(c, f->child_count * sizeof(*children));
-            col->field.children = children;
-            col->views = ud_alloc(c, (size_t)capacity * sizeof(*col->views) + 1);
-            if (!children || !col->views) { s = UD_RESOURCE; break; }
-            for (uint32_t j = 0; j < f->child_count; j++) children[j] = col->nested->column[j].field;
+            s = create_depth(ctx, schema, f->children, f->child_count, f->type == UD_STRUCT ? capacity : 0,
+                             &col->nested, depth + 1);
+            if (!s) { col->views = ud_alloc(ctx, (size_t)capacity * sizeof(*col->views) + 1); if (!col->views) s = UD_RESOURCE; }
         }
-        if (variable(f->type) || f->type >= UD_LIST)
-            col->offsets = ud_alloc(c, ((size_t)capacity + 1) * sizeof(int32_t));
-        else if (f->type < UD_STRUCT)
-            col->values = ud_alloc(c, bytes ? bytes : 1);
-        if (!col->field.name || !col->validity || (f->timezone_length && !col->field.timezone) ||
-            ((variable(f->type) || f->type >= UD_LIST) ? !col->offsets : f->type == UD_STRUCT ? !col->nested : !col->values)) {
-            s = UD_RESOURCE;
-            break;
+        if (!s && (variable(f->type) || f->type >= UD_LIST)) {
+            col->offsets = ud_alloc(ctx, ((size_t)capacity + 1) * sizeof(int32_t)); if (!col->offsets) s = UD_RESOURCE;
+        } else if (!s && f->type < UD_STRUCT) {
+            col->values = ud_alloc(ctx, bytes ? bytes : 1); if (!col->values) s = UD_RESOURCE;
         }
     }
-    if (s) {
-        ud_batch_destroy(b);
-        return ud_fail(c, s, "batch schema or allocation failed");
-    }
-    *out = b;
-    return UD_OK;
+    if (s) { ud_batch_destroy(b); return ud_fail(ctx, s, "batch allocation failed"); }
+    *out = b; return UD_OK;
 }
-ud_status ud_batch_create(ud_context *c, const ud_field *f, uint32_t n, uint32_t capacity, ud_batch **out) {
-    return create_depth(c, f, n, capacity, out, 0);
+ud_status ud_batch_create_named(ud_context *ctx, const ud_field *fields, uint32_t columns,
+                                uint32_t capacity, ud_string scope, ud_batch **out) {
+    if (!out) return UD_INVALID;
+    *out = NULL;
+    if (capacity > INT32_MAX) return UD_INVALID;
+    ud_schema_owner *schema = NULL;
+    UD_TRY(ud_schema_owner_create(ctx, fields, columns, scope, &schema));
+    ud_status s = create_depth(ctx, schema, schema->fields, columns, capacity, out, 0);
+    ud_schema_owner_release(schema); return s;
+}
+ud_status ud_batch_create(ud_context *ctx, const ud_field *fields, uint32_t columns, uint32_t capacity, ud_batch **out) {
+    return ud_batch_create_named(ctx, fields, columns, capacity, (ud_string){0}, out);
 }
 void ud_batch_destroy(ud_batch *b) {
     if (!b)
         return;
     if (atomic_fetch_sub_explicit(&b->references, 1, memory_order_acq_rel) != 1)
         return;
-    if (b->column)
+    if (b->column && !b->data_owner)
         for (uint32_t i = 0; i < b->columns; i++) {
             ud_column *v = b->column + i;
-            ud_free((void *)v->field.name);
-            ud_free((void *)v->field.timezone);
-            ud_free((void *)v->field.children);
             if (v->views) for (uint32_t r = 0; r < b->capacity; r++) ud_free(v->views[r]);
             ud_free(v->views);
             ud_batch_destroy(v->nested);
@@ -109,10 +64,18 @@ void ud_batch_destroy(ud_batch *b) {
             ud_free(v->strings);
         }
     ud_free(b->column);
+    ud_batch_destroy(b->data_owner);
+    ud_schema_owner_release(b->schema);
     ud_free(b);
 }
 ud_status ud_batch_seal(ud_batch *b) {
     if (!b) return UD_INVALID;
+    if (b->sealed) return UD_OK;
+    for (uint32_t j = 0; j < b->columns; j++) {
+        if (!b->column[j].nested) continue;
+        UD_TRY(ud_batch_seal(b->column[j].nested));
+        for (uint32_t row = 0; row < b->rows; row++) { ud_value value; UD_TRY(ud_batch_get(b, row, j, &value)); }
+    }
     b->sealed = 1;
     return UD_OK;
 }
@@ -124,6 +87,37 @@ ud_status ud_batch_retain(ud_batch *b) {
     } while (!atomic_compare_exchange_weak_explicit(&b->references, &current, current + 1,
                memory_order_relaxed, memory_order_relaxed));
     return UD_OK;
+}
+static int accepts_nullability(const ud_field *target, const ud_field *source) {
+    if (source->nullable && !target->nullable) return 0;
+    for (uint32_t j = 0; j < source->child_count; j++)
+        if (!accepts_nullability(target->children + j, source->children + j)) return 0;
+    return 1;
+}
+ud_status ud_batch_project(ud_context *ctx, const ud_batch *input, const uint32_t *indices,
+                            const ud_field *fields, uint32_t columns, ud_batch **out) {
+    if (!out) return UD_INVALID;
+    *out = NULL;
+    if (!ctx || !input || input->ctx != ctx || !input->sealed || !indices || !fields || !columns || columns > 65536) return UD_INVALID;
+    for (uint32_t j = 0; j < columns; j++) {
+        if (indices[j] >= input->columns) return UD_SCHEMA;
+        const ud_field *source = &input->column[indices[j]].field;
+        if (!ud_field_matches(source, fields + j, UD_FIELD_VALUE_TYPE) || !accepts_nullability(fields + j, source)) return UD_SCHEMA;
+    }
+    ud_schema_owner *schema = NULL;
+    UD_TRY(ud_schema_owner_create(ctx, fields, columns, (ud_string){0}, &schema));
+    ud_batch *b = ud_alloc(ctx, sizeof(*b));
+    if (!b) { ud_schema_owner_release(schema); return UD_RESOURCE; }
+    atomic_init(&b->references, 1); b->ctx = ctx; b->schema = schema; b->columns = columns;
+    b->rows = b->capacity = input->rows; b->sealed = 1;
+    b->column = ud_alloc(ctx, columns * sizeof(*b->column));
+    ud_status s = b->column ? ud_batch_retain((ud_batch *)input) : UD_RESOURCE;
+    if (!s) {
+        b->data_owner = (ud_batch *)input;
+        for (uint32_t j = 0; j < columns; j++) { b->column[j] = input->column[indices[j]]; b->column[j].field = schema->fields[j]; }
+    }
+    if (s) { ud_batch_destroy(b); return s; }
+    *out = b; return UD_OK;
 }
 uint32_t ud_batch_rows(const ud_batch *b) {
     return b ? b->rows : 0;
@@ -151,7 +145,7 @@ ud_status ud_batch_get(const ud_batch *b, uint32_t row, uint32_t col, ud_value *
     if (out->type >= UD_STRUCT) {
         uint32_t start = out->type == UD_STRUCT ? row : (uint32_t)v->offsets[row];
         uint32_t count = out->type == UD_STRUCT ? v->field.child_count : (uint32_t)(v->offsets[row + 1] - v->offsets[row]);
-        for (uint32_t j = 0; j < count; j++) {
+        for (uint32_t j = 0; !b->sealed && j < count; j++) {
             ud_status s = ud_batch_get(v->nested, out->type == UD_STRUCT ? row : start + j,
                                        out->type == UD_STRUCT ? j : 0, v->views[row] + j);
             if (s) return s;
@@ -199,7 +193,7 @@ static ud_status grow_nested(ud_column *c, uint32_t need) {
     uint32_t cap = c->nested->capacity ? c->nested->capacity : 8;
     while (cap < need) { if (cap > INT32_MAX / 2) { cap = need; break; } cap *= 2; }
     ud_batch *replacement = NULL;
-    UD_TRY(ud_batch_create(c->nested->ctx, c->field.children, c->field.child_count, cap, &replacement));
+    UD_TRY(create_depth(c->nested->ctx, c->nested->schema, c->field.children, c->field.child_count, cap, &replacement, 0));
     ud_value *v = ud_alloc(c->nested->ctx, c->field.child_count * sizeof(*v));
     if (!v) { ud_batch_destroy(replacement); return UD_RESOURCE; }
     ud_status s = UD_OK;
@@ -210,7 +204,6 @@ static ud_status grow_nested(ud_column *c, uint32_t need) {
     ud_free(v);
     if (s) { ud_batch_destroy(replacement); return s; }
     ud_batch_destroy(c->nested); c->nested = replacement;
-    for (uint32_t j = 0; j < c->field.child_count; j++) ((ud_field *)c->field.children)[j] = replacement->column[j].field;
     return UD_OK;
 }
 static ud_status validate_value(const ud_field *f, const ud_value *v, uint32_t depth, int masked) {
@@ -386,14 +379,6 @@ ud_status ud_batch_append(ud_batch *b, const ud_value *v, uint32_t n) {
     if (!s) s = append_core(b, copy, n, 0);
     for (uint32_t i = 0; i < n; i++) ud_clear_value(copy + i);
     ud_free(copy); return s;
-}
-int ud_field_equal(const ud_field *a, const ud_field *b, int names) {
-    if (!a || !b || a->type != b->type || a->nullable != b->nullable || a->precision != b->precision ||
-        a->scale != b->scale || a->timezone_length != b->timezone_length || a->child_count != b->child_count ||
-        (names && (a->name_length != b->name_length || memcmp(a->name, b->name, a->name_length))) ||
-        (a->timezone_length && memcmp(a->timezone, b->timezone, a->timezone_length))) return 0;
-    for (uint32_t j = 0; j < a->child_count; j++) if (!ud_field_equal(a->children + j, b->children + j, 1)) return 0;
-    return 1;
 }
 ud_status ud_batch_clone(const ud_batch *b, ud_batch **out) {
     ud_field *fields = ud_alloc(b->ctx, b->columns * sizeof(*fields));

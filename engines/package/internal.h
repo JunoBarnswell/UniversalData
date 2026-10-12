@@ -13,11 +13,14 @@
 typedef struct ud_variable {
     ud_string name;
     ud_value value;
+    ud_batch *box; /* One sealed owned value, including immutable type metadata. */
     int readonly;
     struct ud_variable *next;
 } ud_variable;
 typedef struct ud_scope {
+    ud_column_id identity; /* Logical lexical path; independent of iteration. */
     ud_variable *values;
+    ud_variable *parameter_values;
     struct ud_scope *parent;
     const ud_json *parameters, *provided;
 } ud_scope;
@@ -68,19 +71,20 @@ ud_status ud_component_lookup(ud_execution *, ud_string, ud_component_descriptor
 ud_status ud_execution_check(ud_execution *);
 void ud_execution_notify_kind(ud_execution *, int32_t kind, ud_execution_state, ud_status);
 void ud_execution_notify(ud_execution *, ud_execution_state, ud_status);
-ud_status ud_scope_enter(ud_execution *, const ud_json *, ud_scope *);
+ud_status ud_scope_enter(ud_execution *, ud_string name, const ud_json *, ud_scope *);
 void ud_scope_leave(ud_execution *, ud_scope *);
 ud_status ud_resolve_value(void *, ud_string, ud_value *);
 ud_status ud_expression_json(ud_execution *, const ud_json *, const ud_batch *, ud_expression **);
 ud_status ud_bound_config(ud_execution *, const ud_json *, ud_json **);
-ud_status ud_scalar_value(const ud_json *, ud_type, ud_value *);
-ud_status ud_scalar_json(ud_bytes *, const ud_value *);
+ud_status ud_scalar_json(ud_bytes *, const ud_field *, const ud_value *);
+ud_status ud_scope_bind_parameters(ud_execution *, ud_scope *);
+ud_status ud_definition_box(ud_context *, ud_string name_space, ud_string name, const ud_json *, const ud_json *, int required, ud_batch **);
+ud_status ud_resolve_field(void *, ud_string, ud_field *);
 ud_status ud_execution_bind_roots(ud_execution *);
 ud_status ud_execution_validate_definition(ud_execution *, uint32_t depth);
 ud_status ud_execution_run_definition(ud_execution *);
 ud_status ud_child_package(ud_execution *, const ud_json *, int execute, uint32_t depth);
-ud_type ud_scalar_type(ud_string);
-ud_status ud_parameters_check(const ud_json *, const ud_json *, int require_values);
+ud_status ud_parameters_check(ud_context *, const ud_json *, const ud_json *, int require_values);
 ud_status ud_variable_writable(ud_execution *, ud_string, ud_variable **);
 ud_status ud_connection_definition(ud_execution *, ud_string, const ud_json **, int *project_scope);
 ud_status ud_connection_definitions_check(const ud_json *);

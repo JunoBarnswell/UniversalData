@@ -7,21 +7,28 @@ static ud_status put_field(ud_bytes *b, const ud_field *f, uint32_t depth) {
     UD_TRY(ud_put_u64(b, (uint64_t)(int64_t)f->precision));
     UD_TRY(ud_put_u64(b, (uint64_t)(int64_t)f->scale));
     UD_TRY(ud_put_string(b, f->timezone, f->timezone_length));
+    UD_TRY(ud_put_u64(b, f->identity.high)); UD_TRY(ud_put_u64(b, f->identity.low));
+    UD_TRY(ud_put_u64(b, f->lineage_count));
+    for (uint32_t i = 0; i < f->lineage_count; i++) {
+        UD_TRY(ud_put_u64(b, f->lineage[i].high)); UD_TRY(ud_put_u64(b, f->lineage[i].low));
+    }
     UD_TRY(ud_put_u64(b, f->child_count));
     for (uint32_t i = 0; i < f->child_count; i++) UD_TRY(put_field(b, f->children + i, depth + 1));
     return UD_OK;
 }
 static void clear_field(ud_field *f) {
-    ud_free((void *)f->name); ud_free((void *)f->timezone);
+    ud_free((void *)f->name); ud_free((void *)f->timezone); ud_free((void *)f->lineage);
     for (uint32_t i = 0; i < f->child_count; i++) clear_field((ud_field *)f->children + i);
     ud_free((void *)f->children); memset(f, 0, sizeof(*f));
 }
 static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
     if (depth > 32) return UD_SCHEMA;
     char *name = NULL, *timezone = NULL;
+    size_t start = b->pos;
     ud_status s = ud_get_string(b, &name); f->name = name;
     if (s) return s;
     f->name_length = (uint32_t)strlen(name);
+    if (b->pos - start - 8 != f->name_length) return UD_CORRUPT;
     uint64_t type, nullable, precision, scale, children;
     UD_TRY(ud_get_u64(b, &type)); UD_TRY(ud_get_u64(b, &nullable));
     UD_TRY(ud_get_u64(b, &precision)); UD_TRY(ud_get_u64(b, &scale));
@@ -29,9 +36,24 @@ static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
     if (type < UD_BOOL || type > UD_MAP || nullable > 1 || precision > 38 || signed_scale < -38 || signed_scale > 38) return UD_CORRUPT;
     f->type = (ud_type)type; f->nullable = (int32_t)nullable;
     f->precision = (int32_t)precision; f->scale = (int32_t)signed_scale;
+    start = b->pos;
     s = ud_get_string(b, &timezone); f->timezone = timezone;
     if (s) return s;
     f->timezone_length = (uint32_t)strlen(timezone);
+    if (b->pos - start - 8 != f->timezone_length) return UD_CORRUPT;
+    UD_TRY(ud_get_u64(b, &f->identity.high)); UD_TRY(ud_get_u64(b, &f->identity.low));
+    if (!f->identity.high && !f->identity.low) return UD_CORRUPT;
+    uint64_t lineage; UD_TRY(ud_get_u64(b, &lineage));
+    if (lineage > 4096) return UD_CORRUPT;
+    if (lineage) {
+        ud_column_id *ids = ud_alloc(b->ctx, (size_t)lineage * sizeof(*ids));
+        if (!ids) return UD_RESOURCE;
+        f->lineage = ids; f->lineage_count = (uint32_t)lineage;
+        for (uint32_t j = 0; j < lineage; j++) {
+            UD_TRY(ud_get_u64(b, &ids[j].high)); UD_TRY(ud_get_u64(b, &ids[j].low));
+            if ((!ids[j].high && !ids[j].low) || (j && ud_column_id_compare(ids[j-1],ids[j]) >= 0)) return UD_CORRUPT;
+        }
+    }
     UD_TRY(ud_get_u64(b, &children));
     if (children > 65536 || (f->type < UD_STRUCT && children) ||
         (f->type == UD_STRUCT && !children) || (f->type >= UD_LIST && children != 1)) return UD_CORRUPT;
@@ -97,7 +119,7 @@ static ud_status get_value(ud_bytes *b, const ud_field *f, ud_value *v, uint32_t
 }
 ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
     if (!b || !table) return UD_INVALID;
-    UD_TRY(ud_put_u64(b, UD_WORKER_VERSION));
+    UD_TRY(ud_put_u64(b, UD_WIRE_VERSION));
     UD_TRY(ud_put_u64(b, table->columns)); UD_TRY(ud_put_u64(b, table->rows));
     for (uint32_t j = 0; j < table->columns; j++) UD_TRY(put_field(b, &table->column[j].field, 0));
     for (uint32_t r = 0; r < table->rows; r++) for (uint32_t j = 0; j < table->columns; j++) {
@@ -110,7 +132,7 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
     *out = NULL;
     uint64_t version, columns, rows;
     UD_TRY(ud_get_u64(b, &version));
-    if (version != UD_WORKER_VERSION) return UD_INCOMPATIBLE;
+    if (version != UD_WIRE_VERSION) return UD_INCOMPATIBLE;
     UD_TRY(ud_get_u64(b, &columns)); UD_TRY(ud_get_u64(b, &rows));
     if (!columns || columns > 65536 || rows > INT32_MAX) return UD_CORRUPT;
     ud_field *fields = ud_alloc(b->ctx, (size_t)columns * sizeof(*fields));

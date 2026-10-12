@@ -54,12 +54,25 @@ static ud_status clone_schema(ud_context *ctx, const ud_batch *in, ud_batch **ou
     ud_free(fields);
     return s;
 }
-static ud_status schema_config(ud_context *ctx, const ud_json *config, ud_batch **out) {
+static ud_status component_namespace(const ud_component_context *c, char output[33]) {
+    ud_bytes bytes={.ctx=c->memory};
+    ud_string package={0},project={0};
+    ud_status s=ud_json_string(ud_member(c->execution->package->document,"id"),&package);
+    const ud_json *p=ud_member(c->execution->package->document,"project");
+    if(!s && p)s=ud_json_string(ud_member(p,"id"),&project);
+    ud_string parts[]={c->execution->options.tenant,project,package,c->pipeline_id,c->component_id};
+    for(uint32_t j=0;!s && j<5;j++)s=ud_put_string(&bytes,parts[j].data,parts[j].length);
+    if(!s){uint8_t hash[32];ud_hash(bytes.data,bytes.size,hash);ud_column_id id={0};
+        for(uint32_t j=0;j<8;j++){id.high=(id.high<<8)|hash[j];id.low=(id.low<<8)|hash[j+8];}ud_column_id_format(id,output);}
+    ud_bytes_clear(&bytes);return s;
+}
+static ud_status schema_config(const ud_component_context *c, const ud_json *config, ud_batch **out) {
     const ud_json *s = ud_member(config, "schema");
     char *json = NULL;
     uint32_t n;
     UD_TRY(ud_json_serialize(s, &json, &n));
-    ud_status status = ud_schema_from_json(ctx, json, n, out);
+    char scope[33];ud_status status=component_namespace(c,scope);
+    if(!status)status=ud_schema_from_json(c->memory,json,n,(ud_string){scope,32},out);
     ud_free(json);
     return status;
 }
@@ -71,7 +84,8 @@ static ud_status bind_expr(const ud_component_context *c, const ud_json *value,
     char *json;
     uint32_t n;
     UD_TRY(ud_json_serialize(value, &json, &n));
-    ud_expression_options o = {sizeof(o), UD_ABI_VERSION, schema, c->resolve, c->resolve_user};
+    ud_expression_options o = {sizeof(o), UD_ABI_VERSION, schema, c->resolve, c->resolve_user,
+                               c->resolve_field};
     ud_status s = ud_expression_create(c->memory, (ud_string){json, n}, &o, out);
     ud_free(json);
     return s;
@@ -113,10 +127,16 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     if (!s)
         s = check_config(kind, config);
     if (!s && (kind <= SQL_SOURCE))
-        s = schema_config(c->memory, config, out);
+        s = schema_config(c, config, out);
     else if (!s && (kind == JSON_SINK || kind == SQL_SINK)) { /* No output schemas. */
-    } else if (!s && kind == CAST)
-        s = schema_config(c->memory, config, out);
+    } else if (!s && kind == CAST) {
+        char *schema=NULL;uint32_t length=0;uint64_t rounding=0;
+        s=ud_json_serialize(ud_member(config,"schema"),&schema,&length);
+        if(!s && ud_member(config,"rounding"))s=ud_json_uint(ud_member(config,"rounding"),&rounding);
+        if(!s && rounding>UD_ROUND_CEILING)s=UD_SCHEMA;
+        if(!s)s=ud_batch_cast_schema(c->memory,in[0],schema,length,(int32_t)rounding,out);
+        ud_free(schema);
+    }
     else if (!s && kind == DERIVE) {
         const ud_json *columns = ud_member(config, "columns");
         uint32_t count = ud_json_size(columns), original = ud_batch_columns(in[0]);
@@ -124,8 +144,10 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
             s = UD_SCHEMA;
         ud_field *fields = !s ? ud_alloc(c->memory, (original + count) * sizeof(*fields)) : NULL;
         ud_expression **bound = !s ? ud_alloc(c->memory, count * sizeof(*bound)) : NULL;
-        if (!s && (!fields || !bound))
+        ud_field *derived = !s ? ud_alloc(c->memory, count * sizeof(*derived)) : NULL;
+        if (!s && (!fields || !bound || !derived))
             s = UD_RESOURCE;
+        char scope[33];if(!s)s=component_namespace(c,scope);
         for (uint32_t i = 0; !s && i < original; i++)
             s = ud_batch_field(in[0], i, fields + i);
         for (uint32_t i = 0; !s && i < count; i++) {
@@ -140,8 +162,8 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
             if (!s)
                 s = ud_expression_field(bound[i], fields + original + i);
             if (!s) {
-                fields[original + i].name = name.data;
-                fields[original + i].name_length = name.length;
+                s=ud_field_derive(c->memory,fields+original+i,(ud_string){scope,32},name,derived+i);
+                if(!s)fields[original+i]=derived[i];
             }
         }
         if (!s)
@@ -149,6 +171,8 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
         for (uint32_t i = 0; bound && i < count; i++)
             ud_expression_destroy(bound[i]);
         ud_free(bound);
+        if(derived)for(uint32_t i=0;i<count;i++)ud_field_clear(derived+i);
+        ud_free(derived);
         ud_free(fields);
     } else if (!s && kind == JOIN) {
         uint32_t a = ud_batch_columns(in[0]), b = ud_batch_columns(in[1]);
@@ -163,19 +187,10 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
             ud_batch_field(in[0], (uint32_t)lk, &x);
             ud_batch_field(in[1], (uint32_t)rk, &y);
             y.nullable = x.nullable;
-            if (!ud_field_equal(&x, &y, 0))
+            if (!ud_field_matches(&x, &y, 0))
                 s = UD_SCHEMA;
         }
-        ud_field *fields = !s ? ud_alloc(c->memory, (a + b) * sizeof(*fields)) : NULL;
-        if (!s && !fields)
-            s = UD_RESOURCE;
-        for (uint32_t i = 0; !s && i < a; i++)
-            s = ud_batch_field(in[0], i, fields + i);
-        for (uint32_t i = 0; !s && i < b; i++)
-            s = ud_batch_field(in[1], i, fields + a + i);
-        if (!s)
-            s = ud_batch_create(c->memory, fields, a + b, 0, out);
-        ud_free(fields);
+        if (!s) s=ud_compute_join_schema(c->memory,in[0],in[1],out);
     } else if (!s && kind == AGGREGATE) {
         ud_string commands;
         s = ud_json_string(ud_member(config, "commands"), &commands);
@@ -197,17 +212,12 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
         ud_accumulator_destroy(acc);
         ud_plan_destroy(plan);
         ud_free(fields);
-    } else if (!s)
+    } else if (!s && kind==UNION_ALL)
+        s=ud_compute_union_schema(c->memory,in[0],in[1],out);
+    else if (!s)
         s = clone_schema(c->memory, in[0], out);
     if (!s && (kind == SPLIT || kind == MULTICAST))
         s = clone_schema(c->memory, in[0], out + 1);
-    if (!s && kind == UNION_ALL) {
-        if (in[0]->columns != in[1]->columns)
-            s = UD_SCHEMA;
-        for (uint32_t i = 0; !s && i < in[0]->columns; i++)
-            if (!ud_field_equal(&in[0]->column[i].field, &in[1]->column[i].field, 1))
-                s = UD_SCHEMA;
-    }
     if (!s && kind == SPLIT) {
         ud_expression *expr = NULL;
         s = bind_expr(c, ud_member(config, "condition"), in[0], &expr);
@@ -482,11 +492,18 @@ static ud_status transformed(builtin *b, const ud_batch *in) {
     int kind = b->kind;
     ud_status s = UD_OK;
     ud_batch *output[2] = {0};
-    if (kind == PASS || kind == MULTICAST || kind == UNION_ALL) {
+    if (kind == PASS || kind == MULTICAST) {
         s = b->context.emit(b->context.emit_user, 0, (ud_batch *)in);
         if (!s && kind == MULTICAST)
             s = b->context.emit(b->context.emit_user, 1, (ud_batch *)in);
         return s;
+    }
+    if (kind == UNION_ALL) {
+        uint32_t *indices=ud_alloc(b->context.memory,b->columns*sizeof(*indices));
+        if(!indices)return UD_RESOURCE;
+        for(uint32_t j=0;j<b->columns;j++)indices[j]=j;
+        s=ud_batch_project(b->context.memory,in,indices,b->fields,b->columns,output);ud_free(indices);
+        if(!s)s=b->context.emit(b->context.emit_user,0,output[0]);ud_batch_destroy(output[0]);return s;
     }
     if (kind == CAST) {
         uint64_t rounding = 0;

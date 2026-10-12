@@ -42,7 +42,7 @@ static ud_status probe(void *user, const ud_component_context *c, ud_string conf
     if (ud_execution_variable(c->execution, str("parentOnly"), &value) != UD_SCHEMA)
         return UD_CORRUPT;
     value = (ud_value){.type = UD_INT64, .integer = 100};
-    if (ud_execution_set_variable(c->execution, str("value"), &value) != UD_AUTH)
+    if (ud_execution_set_variable(c->execution, str("value"), &value, NULL) != UD_AUTH)
         return UD_CORRUPT;
     f->child_calls++;
     return f->mode == 1 ? UD_IO : f->mode == 2 ? UD_COMMIT_UNKNOWN : UD_OK;

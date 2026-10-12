@@ -12,6 +12,8 @@ enum {
 };
 /* Signed two's-complement coefficient, independent of compiler __int128 support. */
 typedef struct ud_decimal128 { uint64_t low; int64_t high; } ud_decimal128;
+/* Stable logical column identity, never derived from row values or addresses. */
+typedef struct ud_column_id { uint64_t high, low; } ud_column_id;
 enum {
     UD_ROUND_EXACT = 0, UD_ROUND_ZERO = 1, UD_ROUND_HALF_EVEN = 2,
     UD_ROUND_HALF_AWAY = 3, UD_ROUND_FLOOR = 4, UD_ROUND_CEILING = 5
@@ -26,7 +28,22 @@ typedef struct ud_field {
     uint32_t timezone_length;
     const struct ud_field *children;
     uint32_t child_count;
+    ud_column_id identity;
+    const ud_column_id *lineage; /* Canonical sorted distinct origin identities. */
+    uint32_t lineage_count;
 } ud_field;
+enum { UD_FIELD_VALUE_TYPE = 0, UD_FIELD_PORT = 1, UD_FIELD_LAYOUT = 2 };
+/* VALUE_TYPE ignores root display name, identity, lineage and nullability;
+ * UTC Timestamp annotations do not change its value domain; recursive child
+ * names remain part of a value shape. PORT includes all bound
+ * metadata. LAYOUT includes names/nullability/types, ignoring identities. */
+UD_API int32_t ud_field_matches(const ud_field *, const ud_field *, int32_t mode);
+UD_API int32_t ud_column_id_compare(ud_column_id, ud_column_id);
+/* Deterministic SHA-256-derived 128-bit identity in a logical namespace. Both
+ * arguments are UTF8 with explicit lengths, nonempty, without embedded NUL. */
+UD_API ud_status ud_column_id_make(ud_context *, ud_string name_space, ud_string symbol, ud_column_id *);
+UD_API ud_status ud_column_id_parse(ud_string canonical_hex, ud_column_id *);
+UD_API void ud_column_id_format(ud_column_id, char output[33]);
 typedef struct ud_value {
     ud_type type;
     int32_t is_null;
@@ -52,6 +69,12 @@ UD_API ud_status ud_decimal_rescale(ud_decimal128, int32_t from_scale, int32_t p
                                     int32_t to_scale, int32_t rounding, ud_decimal128 *);
 UD_API ud_status ud_decimal_add(ud_decimal128, ud_decimal128, int32_t precision, ud_decimal128 *);
 UD_API int32_t ud_decimal_compare(ud_decimal128, ud_decimal128);
+enum { UD_NUMERIC_ADD = 0, UD_NUMERIC_SUBTRACT = 1, UD_NUMERIC_MULTIPLY = 2 };
+/* Exact native numeric kernels shared by expressions, functions and aggregation.
+ * No cross-type coercion. Decimal multiplication infers summed scale (must fit
+ * -38..38) and precision capped at 38. Overflow is diagnosed, never wrapped. */
+UD_API ud_status ud_numeric_result_field(int32_t operation, const ud_field *, const ud_field *, ud_field *);
+UD_API ud_status ud_value_numeric(int32_t operation, const ud_value *, const ud_value *, const ud_field *result, ud_value *);
 /* Total order for values whose bound schemas match (including Decimal scale).
  * NULL first; NaN after all numeric values, all NaNs equal, +/-0 equal. */
 UD_API int32_t ud_value_compare(const ud_value *, const ud_value *);
@@ -75,9 +98,16 @@ UD_API void ud_batch_destroy(ud_batch *batch);
  * concurrent sealing/mutation is forbidden. */
 UD_API ud_status ud_batch_seal(ud_batch *);
 UD_API ud_status ud_batch_retain(ud_batch *);
+/* Immutable zero-copy projection/relabel. Input must be sealed in this context;
+ * each target field has the same value shape and permits the input nullability.
+ * Output retains input buffers and owns canonical target metadata. Duplicate
+ * source indices are allowed; output names/identities must be distinct. */
+UD_API ud_status ud_batch_project(ud_context *, const ud_batch *, const uint32_t *source_columns,
+                                  const ud_field *target_fields, uint32_t columns, ud_batch **);
 UD_API uint32_t ud_batch_rows(const ud_batch *batch);
 UD_API uint32_t ud_batch_columns(const ud_batch *batch);
-/* Field metadata is borrowed until the next append / batch destruction. */
+/* Canonical immutable field metadata borrows the retained schema tree and stays
+ * valid until batch destruction, including across mutable appends. */
 UD_API ud_status ud_batch_field(const ud_batch *batch, uint32_t column, ud_field *out);
 /* Canonical versioned wire data. Caller releases serialized data with ud_free.
  * Deserialization borrows input only for the duration of the call and rejects trailing bytes. */

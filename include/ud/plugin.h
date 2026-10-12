@@ -6,7 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define UD_PLUGIN_ABI 3u
+#define UD_PLUGIN_ABI 4u
 enum {
     UD_PLUGIN_SOURCE = 1,
     UD_PLUGIN_SINK = 2,
@@ -66,8 +66,8 @@ typedef struct ud_plugin_api {
                          const char *argument, uint32_t argument_length, ud_batch **output);
     void (*destroy)(void *instance);
     void (*shutdown)(void);
-    const ud_connector_api *connector; /* Optional; ABI 3 table, no network dependency in core. */
-    /* Optional component table in the current complete ABI3 layout. Table and callback user data
+    const ud_connector_api *connector; /* Optional; ABI 4 table, no network dependency in core. */
+    /* Optional component table in the current complete ABI4 layout. Table and callback user data
      * belong to the library; registration holds a module reference until registry destruction. */
     const struct ud_component_plugin_api *components;
 } ud_plugin_api;

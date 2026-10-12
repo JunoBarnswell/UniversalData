@@ -83,6 +83,11 @@ static ud_status append_object(ud_batch *batch,const ud_json *object,int32_t rou
     for(uint32_t j=0;j<batch->columns;j++) ud_clear_value(values+j);
     ud_free(values);ud_free(fields);return s;
 }
+ud_status ud_json_value_decode(ud_context *ctx,const ud_field *field,const ud_json *json,int32_t rounding,ud_value *out) {
+    if(!ctx || !field || !out || rounding<UD_ROUND_EXACT || rounding>UD_ROUND_CEILING)return UD_INVALID;
+    memset(out,0,sizeof(*out));ud_status s=parse_value(ctx,field,json,rounding,out,0);
+    if(s)ud_clear_value(out);return s;
+}
 ud_status ud_batch_from_json(ud_context *ctx,const ud_field *fields,uint32_t columns,
                              const char *text,uint32_t length,int32_t rounding,ud_batch **out) {
     if(!out) return UD_INVALID;
@@ -157,6 +162,10 @@ ud_status ud_batch_to_json(const ud_batch *batch,char **out,uint32_t *length) {
     if(!s) { *length=(uint32_t)bytes.size;s=ud_bytes_put(&bytes,"\0",1); }
     if(!s) { *out=(char *)bytes.data;bytes.data=NULL; } else *length=0;
     ud_bytes_clear(&bytes);return s;
+}
+ud_status ud_json_value_encode(ud_bytes *bytes,const ud_field *field,const ud_value *value) {
+    if(!bytes || !field || !value || field->type!=value->type)return UD_INVALID;
+    return emit_value(bytes,field,value,0);
 }
 struct ud_json_reader {
     ud_context *ctx;
@@ -254,7 +263,7 @@ ud_status ud_json_writer_open(ud_context *ctx,const char *path,const ud_field *f
 ud_status ud_json_writer_append(ud_json_writer *writer,const ud_batch *batch) {
     if(!writer || !batch || writer->failed || batch->columns!=writer->schema->columns) return UD_INVALID;
     for(uint32_t j=0;j<batch->columns;j++)
-        if(!ud_field_equal(&batch->column[j].field,&writer->schema->column[j].field,1)) return UD_SCHEMA;
+        if(!ud_field_matches(&batch->column[j].field,&writer->schema->column[j].field,1)) return UD_SCHEMA;
     ud_bytes line={0};line.ctx=writer->ctx;line.limit=(size_t)writer->max_record_bytes+1;ud_status s=UD_OK;
     for(uint32_t row=0;!s && row<batch->rows;row++) {
         if(ud_is_cancelled(writer->ctx)) { s=UD_CANCELLED;break; }

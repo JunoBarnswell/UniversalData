@@ -40,8 +40,8 @@ public sealed class Execution : IDisposable
             var document=Pin(packageJson);
             var options=new Native.ExecutionOptions
             {
-                Size=(uint)Marshal.SizeOf<Native.ExecutionOptions>(),Abi=3,
-                Context=new Native.ContextOptions { Size=(uint)Marshal.SizeOf<Native.ContextOptions>(),Abi=3,Limit=memoryLimit },
+                Size=(uint)Marshal.SizeOf<Native.ExecutionOptions>(),Abi=4,
+                Context=new Native.ContextOptions { Size=(uint)Marshal.SizeOf<Native.ContextOptions>(),Abi=4,Limit=memoryLimit },
                 Capacity=edgeCapacity,MaxRows=maxBatchRows,Depth=32,Timeout=timeoutMilliseconds,
                 Parameters=Pin(parametersJson),Tenant=Pin(tenant),ExecutionId=Pin(executionId),StateDirectory=Pin(stateDirectory??""),Resume=resume?1:0,
                 Authorize=grant is null?IntPtr.Zero:Marshal.GetFunctionPointerForDelegate(grant),Resolve=resolver is null?IntPtr.Zero:Marshal.GetFunctionPointerForDelegate(resolver)
@@ -60,7 +60,7 @@ public sealed class Execution : IDisposable
     public void Cancel() { try { if(!execution.IsClosed)Native.ud_execution_cancel(execution); }catch(ObjectDisposedException) { } }
     public ExecutionMetrics Metrics
     {
-        get { Open();var m=new Native.ExecutionMetricsValue { Size=(uint)Marshal.SizeOf<Native.ExecutionMetricsValue>(),Abi=3 };Check(Native.ud_execution_get_metrics(execution,ref m));return new((ExecutionState)m.State,(StatusCode)m.Result,m.Input,m.Output,m.Rejected,m.Batches,m.Queued,m.HighWater,m.Memory,m.Completed,m.Spill); }
+        get { Open();var m=new Native.ExecutionMetricsValue { Size=(uint)Marshal.SizeOf<Native.ExecutionMetricsValue>(),Abi=4 };Check(Native.ud_execution_get_metrics(execution,ref m));return new((ExecutionState)m.State,(StatusCode)m.Result,m.Input,m.Output,m.Rejected,m.Batches,m.Queued,m.HighWater,m.Memory,m.Completed,m.Spill); }
     }
     public void Dispose() { Control();Cancel();lock(controller) { if(disposed)return;disposed=true;execution.Dispose(); } }
 }

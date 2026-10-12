@@ -88,7 +88,7 @@ ud_status ud_profile_add(ud_profile *p, const ud_batch *batch) {
         s = ud_batch_field(p->schema, i, &expected);
         if (!s)
             s = ud_batch_field(batch, i, &actual);
-        if (!s && !ud_field_equal(&expected, &actual, 1))
+        if (!s && !ud_field_matches(&expected, &actual, 1))
             s = UD_SCHEMA;
     }
     if (!s && rows > p->maximum - p->rows)

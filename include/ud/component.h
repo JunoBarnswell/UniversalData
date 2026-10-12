@@ -35,6 +35,7 @@ typedef struct ud_component_context {
     void *emit_user;
     ud_expression_resolver resolve;
     void *resolve_user;
+    ud_status (*resolve_field)(void *, ud_string, ud_field *);
 } ud_component_context;
 /* Task promises its effects may safely be replayed after an interrupted invoke.
  * This is a host/plugin contract, not a claim inferred by the runtime. */

@@ -12,11 +12,15 @@ UD_API ud_status ud_compute_slice(ud_context *, const ud_batch *, uint64_t offse
 /* Same key type required; NULL never joins NULL. Names must be unique across inputs. */
 UD_API ud_status ud_compute_inner_join(ud_context *, const ud_batch *left, uint32_t left_key,
                                      const ud_batch *right, uint32_t right_key, ud_batch **);
+/* Canonical output metadata used by both binding and execution. Join outputs
+ * acquire distinct identities and preserve each input's origin set. */
+UD_API ud_status ud_compute_join_schema(ud_context *, const ud_batch *, const ud_batch *, ud_batch **);
+UD_API ud_status ud_compute_union_schema(ud_context *, const ud_batch *, const ud_batch *, ud_batch **);
 
 typedef struct ud_plan ud_plan;
 typedef struct ud_accumulator ud_accumulator;
-#define UD_SCHEMA_HEADER "ud-schema 3\n"
-#define UD_PLAN_HEADER "ud-plan 3\n"
+#define UD_SCHEMA_HEADER "ud-schema 4\n"
+#define UD_PLAN_HEADER "ud-plan 4\n"
 enum { UD_MAP_TRIM_ASCII=1, UD_MAP_UPPER_ASCII=2, UD_MAP_LOWER_ASCII=4, UD_MAP_DEFAULT=8 };
 typedef struct ud_mapping {
     uint32_t struct_size, version;

@@ -6,7 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define UD_PACKAGE_VERSION 3u
+#define UD_PACKAGE_VERSION 4u
 typedef struct ud_package ud_package;
 enum {
     UD_EXEC_EVENT_STATE = 1,
@@ -65,7 +65,8 @@ UD_API ud_status ud_execution_destroy(ud_execution *);
 /* Host component callbacks read/write current lexical variables; parameters
  * are read-only. Not callable concurrently from other threads. */
 UD_API ud_status ud_execution_variable(const ud_execution *, ud_string, ud_value *);
-UD_API ud_status ud_execution_set_variable(ud_execution *, ud_string, const ud_value *);
+UD_API ud_status ud_execution_set_variable(ud_execution *, ud_string, const ud_value *, const ud_field *provenance);
+UD_API ud_status ud_execution_variable_field(const ud_execution *, ud_string, ud_field *);
 #ifdef __cplusplus
 }
 #endif

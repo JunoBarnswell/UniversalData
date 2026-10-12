@@ -475,7 +475,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
         s = request(c, &p, connection, url, &ca, headers, &status);
     if (status && p.status_variable.length && !ud_is_cancelled(c->memory)) {
         ud_value value = {.type = UD_INT64, .integer = status};
-        ud_status saved = ud_execution_set_variable(c->execution, p.status_variable, &value);
+        ud_status saved = ud_execution_set_variable(c->execution, p.status_variable, &value, NULL);
         if (!s)
             s = saved;
     }

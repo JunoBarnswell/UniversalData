@@ -343,7 +343,7 @@ ud_status ud_csv_writer_append(ud_csv_writer *w, const ud_batch *b) {
         ud_field x, y;
         ud_batch_field(b, i, &x);
         ud_batch_field(w->schema, i, &y);
-        if (!ud_field_equal(&x, &y, 1))
+        if (!ud_field_matches(&x, &y, 1))
             return UD_SCHEMA;
     }
     for (uint32_t r = 0; !s && r < b->rows; r++) {

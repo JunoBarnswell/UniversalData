@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
         CHECK(ud_plugin_create(plugin, "", 0, &unsupported) == UD_UNSUPPORTED && !unsupported);
         OK(ud_plugin_register_components(plugin, registry));
         static const char definition[] =
-            "{\"version\":3,\"id\":\"pure\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":0}"
+            "{\"version\":4,\"id\":\"pure\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":0}"
             "},\"connections\":[{\"id\":\"target\",\"driver\":\"file\",\"resource\":\"/fixture/"
             "no-file\"}],\"controlFlow\":{\"tasks\":[{\"id\":\"custom\",\"kind\":\"sample.custom\","
             "\"config\":{\"connection\":\"target\",\"variable\":\"n\",\"expression\":{\"literal\":"

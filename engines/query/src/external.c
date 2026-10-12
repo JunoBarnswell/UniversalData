@@ -135,10 +135,9 @@ ud_status ud_query_aggregate_ndjson(ud_context *ctx,ud_string input,ud_string ou
     ud_free(source);ud_free(target);return cleanup(&state,s);
 }
 static ud_status join_bucket(external_state *state,const char *left,const ud_field *lf,uint32_t ln,uint32_t lk,
-                              const char *right,const ud_field *rf,uint32_t rn,uint32_t rk,ud_json_writer *writer) {
-    ud_json_reader *left_reader=NULL;ud_status s=open_reader(state,left,lf,ln,&left_reader);ud_field *fields=ud_alloc(state->ctx,(ln+rn)*sizeof(*fields));
-    ud_value *values=ud_alloc(state->ctx,(ln+rn)*sizeof(*values));if(!fields || !values) s=UD_RESOURCE;
-    if(!s) { memcpy(fields,lf,ln*sizeof(*fields));memcpy(fields+ln,rf,rn*sizeof(*fields)); }
+                              const char *right,const ud_field *rf,uint32_t rn,uint32_t rk,const ud_field *fields,ud_json_writer *writer) {
+    ud_json_reader *left_reader=NULL;ud_status s=open_reader(state,left,lf,ln,&left_reader);
+    ud_value *values=ud_alloc(state->ctx,(ln+rn)*sizeof(*values));if(!values) s=UD_RESOURCE;
     while(!s) {
         ud_batch *l=NULL;s=ud_json_reader_next(left_reader,&l);if(s==UD_END) { s=UD_OK;break; }if(s) break;
         ud_json_reader *right_reader=NULL;s=open_reader(state,right,rf,rn,&right_reader);ud_batch *output=NULL;
@@ -164,26 +163,26 @@ static ud_status join_bucket(external_state *state,const char *left,const ud_fie
         if(!s && output && output->rows) s=append(state,writer,output);
         ud_batch_destroy(output);ud_json_reader_close(right_reader);ud_batch_destroy(l);
     }
-    ud_json_reader_close(left_reader);ud_free(fields);ud_free(values);return s;
+    ud_json_reader_close(left_reader);ud_free(values);return s;
 }
 ud_status ud_query_join_ndjson(ud_context *ctx,ud_string left,const ud_batch *left_schema,uint32_t lk,
                                ud_string right,const ud_batch *right_schema,uint32_t rk,ud_string output,const ud_external_options *options) {
     if(!ctx || !left_schema || !right_schema || lk>=left_schema->columns || rk>=right_schema->columns || left_schema->columns>65536-right_schema->columns) return UD_INVALID;
     ud_field a=left_schema->column[lk].field,b=right_schema->column[rk].field;b.nullable=a.nullable;
-    if(!ud_field_equal(&a,&b,0)) return UD_SCHEMA;
+    if(!ud_field_matches(&a,&b,0)) return UD_SCHEMA;
     external_state state;ud_status s=initialize(ctx,options,&state);if(s) return cleanup(&state,s);
     char *lp=NULL,*rp=NULL,*target=NULL,*staged=NULL;
     s=path_copy(ctx,left,&lp);if(!s) s=path_copy(ctx,right,&rp);ud_field *lf=NULL,*rf=NULL,*joined=NULL;ud_batch *schema=NULL;ud_json_writer *writer=NULL;
     if(!s) s=fields_of(ctx,left_schema,&lf);if(!s) s=fields_of(ctx,right_schema,&rf);
     uint32_t ln=left_schema->columns,rn=right_schema->columns;
-    if(!s) { joined=ud_alloc(ctx,(ln+rn)*sizeof(*joined));if(!joined) s=UD_RESOURCE;else { memcpy(joined,lf,ln*sizeof(*joined));memcpy(joined+ln,rf,rn*sizeof(*joined)); } }
-    if(!s) s=ud_batch_create(ctx,joined,ln+rn,0,&schema); /* Reject ambiguous field names before reading. */
+    if(!s) s=ud_compute_join_schema(ctx,left_schema,right_schema,&schema);
+    if(!s) s=fields_of(ctx,schema,&joined);
     if(!s) s=destination(&state,output,&target,&staged);
     if(!s) s=ud_json_writer_open(ctx,staged,joined,ln+rn,state.options.max_record_bytes,&writer);
     bucket l[16]={{0}},r[16]={{0}};
     if(!s) s=partition(&state,lp,lf,ln,&lk,1,NULL,0,1,l);
     if(!s) s=partition(&state,rp,rf,rn,&rk,1,NULL,0,1,r);
-    for(uint32_t j=0;!s && j<16;j++) if(l[j].path && r[j].path) s=join_bucket(&state,l[j].path,lf,ln,lk,r[j].path,rf,rn,rk,writer);
+    for(uint32_t j=0;!s && j<16;j++) if(l[j].path && r[j].path) s=join_bucket(&state,l[j].path,lf,ln,lk,r[j].path,rf,rn,rk,joined,writer);
     ud_status close=ud_json_writer_close(writer);if(!s) s=close;
     if(!s && ud_is_cancelled(ctx)) s=UD_CANCELLED;if(!s) s=ud_publish(ctx,staged,target);
     ud_batch_destroy(schema);ud_free(joined);ud_free(lf);ud_free(rf);ud_free(lp);ud_free(rp);ud_free(target);return cleanup(&state,s);

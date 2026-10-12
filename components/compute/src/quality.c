@@ -111,7 +111,7 @@ ud_status ud_quality_create(ud_context *ctx,const ud_field *fields,uint32_t colu
                 ud_field reference,field=fields[input->columns[k]];
                 s=ud_batch_field(input->reference,indices[k],&reference);
                 if(!s) reference.nullable=field.nullable;
-                if(!s && !ud_field_equal(&field,&reference,0)) s=UD_SCHEMA;
+                if(!s && !ud_field_matches(&field,&reference,0)) s=UD_SCHEMA;
             }
             if(!s) s=copy_reference(ctx,input->reference,&r->reference);
             uint32_t rows = ud_batch_rows(r->reference);
@@ -227,7 +227,7 @@ ud_status ud_quality_apply(ud_quality *q,const ud_batch *input,ud_batch **out) {
     if(!out) return UD_INVALID;
     *out=NULL;
     if(!q || q->failed || q->finished || !input || input->columns!=q->schema->columns) return UD_INVALID;
-    for(uint32_t j=0;j<input->columns;j++) if(!ud_field_equal(&input->column[j].field,&q->schema->column[j].field,1)) return UD_SCHEMA;
+    for(uint32_t j=0;j<input->columns;j++) if(!ud_field_matches(&input->column[j].field,&q->schema->column[j].field,1)) return UD_SCHEMA;
     ud_field *fields=ud_alloc(q->ctx,input->columns*sizeof(*fields));
     ud_value *values=ud_alloc(q->ctx,input->columns*sizeof(*values));
     ud_quality_violation *violations=ud_alloc(q->ctx,(size_t)input->rows*sizeof(*violations)+1);

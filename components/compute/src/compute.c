@@ -242,7 +242,7 @@ ud_status ud_plan_create(ud_context *ctx, const char *schema, uint32_t sn, const
     size_t schema_header = sizeof(UD_SCHEMA_HEADER) - 1, plan_header = sizeof(UD_PLAN_HEADER) - 1;
     if (sn < schema_header || memcmp(schema, UD_SCHEMA_HEADER, schema_header) ||
         cn < plan_header || memcmp(commands, UD_PLAN_HEADER, plan_header))
-        return ud_fail(ctx, UD_INCOMPATIBLE, "schema / plan document requires explicit version 3 header");
+        return ud_fail(ctx, UD_INCOMPATIBLE, "schema / plan document requires explicit version 4 header");
     ud_plan *p = ud_alloc(ctx, sizeof(*p));
     if (!p)
         return UD_RESOURCE;
@@ -253,6 +253,16 @@ ud_status ud_plan_create(ud_context *ctx, const char *schema, uint32_t sn, const
     ud_status code = UD_RESOURCE;
     if (s && c && p->schema_text && p->commands) {
         code = parse_schema(p, s + schema_header);
+        if(!code) {
+            ud_batch *owner=NULL;code=ud_batch_create(ctx,p->fields,p->n,0,&owner);
+            if(!code) {
+                for(uint32_t j=0;j<p->n;j++) {
+                    ud_free((void *)p->fields[j].name);ud_free((void *)p->fields[j].timezone);
+                    ud_batch_field(owner,j,p->fields+j);
+                }
+                p->schema_owner=owner;
+            }
+        }
         if (!code)
             code = parse_commands(p, c + plan_header);
     }
@@ -347,7 +357,7 @@ ud_status ud_plan_check_batch(const ud_plan *p, const ud_batch *b) {
     for (uint32_t i = 0; i < p->n; i++) {
         ud_field f;
         ud_batch_field(b, i, &f);
-        if (!ud_field_equal(&f, p->fields + i, 1))
+        if (!ud_field_matches(&f, p->fields + i, 1))
             return ud_fail(p->ctx, UD_SCHEMA, "input schema mismatch at column %u", i);
     }
     return UD_OK;
@@ -557,19 +567,7 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b) {
                 ud_clear_value(v);
                 UD_TRY(own_value(p->ctx, v, &input));
             } else if (def->kind == 1) {
-                if (v->type == UD_DECIMAL128) {
-                    UD_TRY(ud_decimal_add(v->decimal, input.decimal, v->precision, &v->decimal));
-                } else if (v->type == UD_INT64) {
-                    if ((input.integer > 0 && v->integer > INT64_MAX - input.integer) ||
-                        (input.integer < 0 && v->integer < INT64_MIN - input.integer))
-                        return ud_fail(p->ctx, UD_OVERFLOW, "SUM int64 overflow");
-                    v->integer += input.integer;
-                } else {
-                    double sum = v->real + input.real;
-                    if (!isfinite(sum) && isfinite(v->real) && isfinite(input.real))
-                        return UD_OVERFLOW;
-                    v->real = sum;
-                }
+                UD_TRY(ud_value_numeric(UD_NUMERIC_ADD,v,&input,p->fields+def->column,v));
             } else {
                 int cmp = ud_value_compare(&input, v);
                 if ((def->kind == 2 && cmp < 0) || (def->kind == 3 && cmp > 0)) {
@@ -643,7 +641,7 @@ ud_status ud_accumulator_restore(ud_accumulator *a, const ud_batch *b) {
     for (uint32_t i = 0; !s && i < n; i++) {
         ud_field f;
         ud_batch_field(b, i, &f);
-        if (!ud_field_equal(&f, fields + i, 1))
+        if (!ud_field_matches(&f, fields + i, 1))
             s = UD_CORRUPT;
     }
     ud_free(fields);

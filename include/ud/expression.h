@@ -8,11 +8,13 @@ typedef struct ud_expression ud_expression;
 /* Returns a borrowed scalar. Called during binding and evaluation. Missing
  * names return SCHEMA; callback is serial on the caller's execution thread. */
 typedef ud_status (*ud_expression_resolver)(void *, ud_string name, ud_value *);
+typedef ud_status (*ud_expression_field_resolver)(void *, ud_string name, ud_field *);
 typedef struct ud_expression_options {
     uint32_t struct_size, abi_version;
     const ud_batch *schema; /* NULL prohibits column expressions. */
     ud_expression_resolver resolve;
     void *user;
+    ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
 } ud_expression_options;
 /* Strict JSON AST: {literal: value, type: bool|int64|float64|utf8}, {ref:name},
  * {column:name}, {op:add|sub|mul|eq|ne|lt|le|gt|ge|and|or|not|isnull,args:[...]}.

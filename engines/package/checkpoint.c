@@ -132,16 +132,6 @@ static ud_status append(checkpoint_journal *j, uint64_t kind, ud_string key, ud_
         j->failed = 1;
     return s;
 }
-static ud_status put_json_value(ud_bytes *b, const ud_value *v) {
-    if (v->is_null)
-        return ud_bytes_put(b, "null", 4);
-    if (v->type == UD_UTF8)
-        return ud_json_quote(b, v->text, v->text_length);
-    char text[128];
-    uint32_t n;
-    UD_TRY(ud_value_format(v, text, sizeof(text), &n));
-    return ud_bytes_put(b, text, n - 1);
-}
 static ud_status snapshot(ud_execution *e, ud_bytes *bytes) {
     UD_TRY(ud_bytes_put(bytes, "{\"scopes\":[", 11));
     uint32_t depth = 0;
@@ -156,9 +146,17 @@ static ud_status snapshot(ud_execution *e, ud_bytes *bytes) {
             UD_TRY(ud_bytes_put(bytes, "{\"name\":", 8));
             UD_TRY(ud_json_quote(bytes, v->name.data, v->name.length));
             char type[48];
-            int n = snprintf(type, sizeof(type), ",\"type\":%d,\"value\":", v->value.type);
+            int n = snprintf(type, sizeof(type), ",\"type\":%d,\"schema\":", v->value.type);
             UD_TRY(ud_bytes_put(bytes, type, (size_t)n));
-            UD_TRY(put_json_value(bytes, &v->value));
+            char *schema = NULL;
+            uint32_t schema_length = 0;
+            UD_TRY(ud_schema_to_json(v->box, &schema, &schema_length));
+            UD_TRY(ud_bytes_put(bytes, schema, schema_length));
+            ud_free(schema);
+            UD_TRY(ud_bytes_put(bytes, ",\"value\":", 9));
+            ud_field field;
+            UD_TRY(ud_batch_field(v->box, 0, &field));
+            UD_TRY(ud_json_value_encode(bytes, &field, &v->value));
             UD_TRY(ud_bytes_put(bytes, "}", 1));
         }
         UD_TRY(ud_bytes_put(bytes, "]", 1));
@@ -200,11 +198,26 @@ static ud_status restore(ud_execution *e, const ud_json *payload) {
                 v = v->next;
             if (!v || type != (uint64_t)v->value.type)
                 return UD_CORRUPT;
-            ud_value value, copy = {0};
-            UD_TRY(ud_scalar_value(ud_member(record, "value"), (ud_type)type, &value));
-            UD_TRY(ud_copy_value(e->ctx, &value, &copy, 0));
-            ud_clear_value(&v->value);
-            v->value = copy;
+            ud_field expected, restored;
+            UD_TRY(ud_batch_field(v->box, 0, &expected));
+            char *schema_json = NULL;
+            uint32_t schema_length = 0;
+            UD_TRY(ud_json_serialize(ud_member(record, "schema"), &schema_json, &schema_length));
+            ud_batch *schema = NULL;
+            ud_status status = ud_schema_from_json(e->ctx, schema_json, schema_length,
+                                                   (ud_string){0}, &schema);
+            ud_free(schema_json);
+            if (status) return UD_CORRUPT;
+            status = ud_batch_field(schema, 0, &restored);
+            int same = !status && ud_field_matches(&expected, &restored, UD_FIELD_PORT);
+            ud_batch_destroy(schema);
+            if (!same) return UD_CORRUPT;
+            ud_value decoded = {0};
+            status = ud_json_value_decode(e->ctx, &expected, ud_member(record, "value"),
+                                          UD_ROUND_EXACT, &decoded);
+            if (!status) status = ud_execution_set_variable(e, name, &decoded, &expected);
+            ud_clear_value(&decoded);
+            if (status) return status;
         }
         scope = scope->parent;
     }

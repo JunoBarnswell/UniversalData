@@ -392,7 +392,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
         s = launch(c->execution, argv, cwd, deadline, &code);
     if (p.exit_variable.length && code != -1 && !ud_is_cancelled(c->memory)) {
         ud_value value = {.type = UD_INT64, .integer = code};
-        ud_status saved = ud_execution_set_variable(c->execution, p.exit_variable, &value);
+        ud_status saved = ud_execution_set_variable(c->execution, p.exit_variable, &value, NULL);
         if (!s)
             s = saved;
     }

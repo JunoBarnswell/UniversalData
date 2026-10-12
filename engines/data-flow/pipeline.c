@@ -213,7 +213,7 @@ static ud_status emit(void *user, uint32_t port, ud_batch *b) {
     if (b->columns != schema->columns)
         return UD_SCHEMA;
     for (uint32_t j = 0; j < b->columns; j++)
-        if (!ud_field_equal(&b->column[j].field, &schema->column[j].field, 1))
+        if (!ud_field_matches(&b->column[j].field, &schema->column[j].field, 1))
             return UD_SCHEMA;
     return UD_OK;
 }
@@ -273,7 +273,8 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                                             route,
                                             targets + index,
                                             ud_resolve_value,
-                                            e};
+                                            e,
+                                            ud_resolve_field};
         UD_TRY(ud_bound_config(e, ud_member(ud_json_at(defs, index), "config"), &n->configuration));
         UD_TRY(ud_json_serialize(n->configuration, &n->json, &n->json_length));
         n->schemas = ud_alloc(e->ctx, (n->descriptor.outputs + 1) * sizeof(*n->schemas));

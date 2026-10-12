@@ -270,11 +270,11 @@ static ud_status task_invoke(void *user, const ud_component_context *c, ud_strin
     }
     if (!s && passed.length) {
         ud_value v = {.type = UD_BOOL, .integer = !failures};
-        s = ud_execution_set_variable(c->execution, passed, &v);
+        s = ud_execution_set_variable(c->execution, passed, &v, NULL);
     }
     if (!s && failed.length) {
         ud_value v = {.type = UD_INT64, .integer = failures};
-        s = ud_execution_set_variable(c->execution, failed, &v);
+        s = ud_execution_set_variable(c->execution, failed, &v, NULL);
     }
     if (!s && failures)
         s = UD_QUALITY;

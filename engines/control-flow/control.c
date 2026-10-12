@@ -33,7 +33,7 @@ static ud_status assignment(ud_execution *e, const ud_json *v, int perform) {
         ud_value value;
         s = ud_expression_evaluate(expr, NULL, 0, &value);
         if (!s)
-            s = ud_execution_set_variable(e, name, &value);
+            s = ud_execution_set_variable(e, name, &value, &target->box->column[0].field);
     }
     ud_expression_destroy(expr);
     return s;
@@ -59,7 +59,7 @@ ud_status ud_control_validate(ud_execution *e, const ud_json *flow, uint32_t dep
         (constraints && ud_json_kind(constraints) != UD_JSON_ARRAY))
         return UD_SCHEMA;
     ud_scope scope = {0};
-    ud_status s = ud_scope_enter(e, ud_member(flow, "variables"), &scope);
+    ud_status s = ud_scope_enter(e, (ud_string){"flow", 4}, ud_member(flow, "variables"), &scope);
     uint32_t count = ud_json_size(tasks);
     uint32_t *indegree = ud_alloc(e->ctx, (count + 1) * sizeof(*indegree));
     uint8_t *done = ud_alloc(e->ctx, count + 1);
@@ -80,8 +80,10 @@ ud_status ud_control_validate(ud_execution *e, const ud_json *flow, uint32_t dep
         if (!s && ud_json_kind(config) != UD_JSON_OBJECT)
             s = UD_SCHEMA;
         ud_scope local = {0};
+        ud_string task_identity = {0};
+        if (!s) s = ud_json_string(ud_member(task, "id"), &task_identity);
         if (!s)
-            s = ud_scope_enter(e, ud_member(task, "variables"), &local);
+            s = ud_scope_enter(e, task_identity, ud_member(task, "variables"), &local);
         if (!s &&
             (ud_named(kind, "sequence") || ud_named(kind, "for") || ud_named(kind, "foreach"))) {
             if (ud_named(kind, "for")) {
@@ -114,9 +116,14 @@ ud_status ud_control_validate(ud_execution *e, const ud_json *flow, uint32_t dep
                     s = ud_variable_writable(e, name, &target);
                 if (!s && ud_json_kind(ud_member(config, "items")) != UD_JSON_ARRAY)
                     s = UD_SCHEMA;
+                ud_field field = {0};
+                if (!s) s = ud_execution_variable_field(e, name, &field);
                 for (uint32_t j = 0; !s && j < ud_json_size(ud_member(config, "items")); j++) {
-                    ud_value item;
-                    s = ud_scalar_value(ud_json_at(ud_member(config, "items"), j), v.type, &item);
+                    ud_value item = {0};
+                    s = ud_json_value_decode(e->ctx, &target_field,
+                                             ud_json_at(ud_member(config, "items"), j),
+                                             UD_ROUND_EXACT, &item);
+                    ud_clear_value(&item);
                 }
             } else if (ud_json_size(config))
                 s = UD_SCHEMA;
@@ -157,7 +164,8 @@ ud_status ud_control_validate(ud_execution *e, const ud_json *flow, uint32_t dep
                                                 .execution = e,
                                                 .max_batch_rows = e->options.max_batch_rows,
                                                 .resolve = ud_resolve_value,
-                                                .resolve_user = e};
+                                                .resolve_user = e,
+                                                .resolve_field = ud_resolve_field};
                 if (!s)
                     s = d.configure(d.user, &context, (ud_string){text, n}, NULL, NULL);
                 ud_free(text);
@@ -247,7 +255,9 @@ static ud_status perform_task(ud_execution *e, const ud_json *task) {
     UD_TRY(ud_json_string(ud_member(task, "kind"), &kind));
     const ud_json *config = ud_member(task, "config");
     ud_scope scope = {0};
-    ud_status s = ud_scope_enter(e, ud_member(task, "variables"), &scope);
+    ud_string task_identity = {0};
+    ud_status s = ud_json_string(ud_member(task, "id"), &task_identity);
+    if (!s) s = ud_scope_enter(e, task_identity, ud_member(task, "variables"), &scope);
     int entered = 0;
     if (!s) {
         e->depth++;
@@ -283,18 +293,16 @@ static ud_status perform_task(ud_execution *e, const ud_json *task) {
     } else if (!s && ud_named(kind, "foreach")) {
         ud_string name;
         ud_json_string(ud_member(config, "variable"), &name);
-        ud_value old;
-        ud_execution_variable(e, name, &old);
+        ud_field field = {0};
+        s = ud_execution_variable_field(e, name, &field);
         const ud_json *items = ud_member(config, "items");
         for (uint32_t i = 0; !s && i < ud_json_size(items); i++) {
-            ud_value value;
+            ud_value value = {0};
             s = ud_execution_check(e);
-            if (!s)
-                s = ud_scalar_value(ud_json_at(items, i), old.type, &value);
-            if (!s)
-                s = ud_execution_set_variable(e, name, &value);
-            if (!s)
-                s = execute_iteration(e, ud_member(task, "children"), i);
+            if (!s) s = ud_json_value_decode(e->ctx, &field, ud_json_at(items, i), UD_ROUND_EXACT, &value);
+            if (!s) s = ud_execution_set_variable(e, name, &value, &field);
+            ud_clear_value(&value);
+            if (!s) s = execute_iteration(e, ud_member(task, "children"), i);
         }
     } else if (!s && ud_named(kind, "dataFlow")) {
         ud_string name;
@@ -323,7 +331,8 @@ static ud_status perform_task(ud_execution *e, const ud_json *task) {
                                     .task_id = e->task_id,
                                     .max_batch_rows = e->options.max_batch_rows,
                                     .resolve = ud_resolve_value,
-                                    .resolve_user = e};
+                                    .resolve_user = e,
+                                                .resolve_field = ud_resolve_field};
         if (!s)
             s = d.invoke(d.user, &ctx, (ud_string){json, n});
         if (s == UD_END || s < UD_OK || s > UD_FENCED)
@@ -338,7 +347,7 @@ static ud_status perform_task(ud_execution *e, const ud_json *task) {
 }
 ud_status ud_control_execute(ud_execution *e, const ud_json *flow) {
     ud_scope scope = {0};
-    ud_status s = ud_scope_enter(e, ud_member(flow, "variables"), &scope);
+    ud_status s = ud_scope_enter(e, (ud_string){"flow", 4}, ud_member(flow, "variables"), &scope);
     const ud_json *tasks = ud_member(flow, "tasks"), *constraints = ud_member(flow, "constraints");
     uint32_t count = ud_json_size(tasks);
     int32_t *states = ud_alloc(e->ctx, (count + 1) * sizeof(*states));

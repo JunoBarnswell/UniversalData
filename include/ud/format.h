@@ -4,11 +4,14 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Versioned schema JSON: {"version":3,"fields":[...]}. Each field has name,
+/* Versioned schema JSON: {"version":4,"fields":[...]}. Each field has name,
  * type and nullable; Decimal also precision/scale, Timestamp timezone, and
- * nested types children. No unknown members or implicit metadata defaults.
+ * nested types children. Optional namespace binds omitted column identities;
+ * bound fields emit identity (32 lowercase hex) and canonical lineage array.
+ * No unknown members or implicit type/temporal metadata defaults.
  * The returned empty batch owns all field metadata. */
-UD_API ud_status ud_schema_from_json(ud_context *, const char *, uint32_t length, ud_batch **schema);
+UD_API ud_status ud_schema_from_json(ud_context *, const char *, uint32_t length,
+                                     ud_string default_namespace, ud_batch **schema);
 UD_API ud_status ud_schema_to_json(const ud_batch *, char **, uint32_t *length);
 UD_API ud_status ud_batch_from_json_schema(ud_context *, const char *schema_json, uint32_t schema_length,
                                            const char *data_json, uint32_t data_length,

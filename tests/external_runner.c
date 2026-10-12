@@ -21,8 +21,8 @@ int main(int argc,char **argv) {
         if(!s) s=ud_query_aggregate_ndjson(ctx,str(argv[2]),str(argv[3]),plan,&options);
     } else {
         s=ud_read_file(ctx,argv[6],schema);if(!s) s=ud_read_file(ctx,argv[7],schema+1);
-        if(!s) s=ud_schema_from_json(ctx,(const char *)schema[0].data,(uint32_t)schema[0].size,&left);
-        if(!s) s=ud_schema_from_json(ctx,(const char *)schema[1].data,(uint32_t)schema[1].size,&right);
+        if(!s) s=ud_schema_from_json(ctx,(const char *)schema[0].data,(uint32_t)schema[0].size,(ud_string){0},&left);
+        if(!s) s=ud_schema_from_json(ctx,(const char *)schema[1].data,(uint32_t)schema[1].size,(ud_string){0},&right);
         if(!s) s=ud_query_join_ndjson(ctx,str(argv[2]),left,0,str(argv[5]),right,0,str(argv[3]),&options);
     }
     ud_plan_destroy(plan);ud_batch_destroy(left);ud_batch_destroy(right);ud_bytes_clear(schema);ud_bytes_clear(schema+1);

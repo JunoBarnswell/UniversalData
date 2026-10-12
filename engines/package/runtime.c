@@ -52,16 +52,18 @@ ud_status ud_execution_bind_roots(ud_execution *e) {
     if (!s) {
         const ud_json *project = ud_member(e->package->document, "project");
         if (project) {
-            s = ud_scope_enter(e, ud_member(project, "variables"), &e->project_scope);
+            s = ud_scope_enter(e, (ud_string){"project", 7}, ud_member(project, "variables"), &e->project_scope);
             e->project_scope.parameters = ud_member(project, "parameters");
+            if (!s) s = ud_scope_bind_parameters(e, &e->project_scope);
         }
     }
     if (!s)
-        s = ud_scope_enter(e, ud_member(e->package->document, "variables"), &e->globals);
+        s = ud_scope_enter(e, (ud_string){"package", 7}, ud_member(e->package->document, "variables"), &e->globals);
     if (!s) {
         e->globals.parameters = ud_member(e->package->document, "parameters");
         e->globals.provided = e->parameters;
-        s = ud_parameters_check(e->globals.parameters, e->parameters, 1);
+        s = ud_parameters_check(e->ctx, e->globals.parameters, e->parameters, 1);
+        if (!s) s = ud_scope_bind_parameters(e, &e->globals);
     }
     return s;
 }

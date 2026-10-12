@@ -62,6 +62,8 @@ Phase 0's executor removal is retained. Phase 1 implements canonical field ident
 
 The authoritative catalog remains `docs/acceptance/completion-goal.json` G00–G68 and `docs/product/component-catalog.md`. SQL Server/ODBC, MySQL, SFTP, Kafka, RabbitMQ, cloud objects, Excel and Parquet/Arrow require real relevant capability evidence. Mock protocol responses or compilation do not complete a connector. Microsoft-specific optional compatibility boundaries remain explicit.
 
+Source hygiene is part of the user's completion contract: remove migrated implementations, unused/unreferenced helpers, unregistered component prototypes, dead configuration branches and obsolete examples as the corresponding module is rewritten. Every retained unit needs an actual caller, registered capability or intentional public-SDK consumer in the product architecture. Delete duplicate algorithms rather than leaving dormant copies. Historical evidence remains documentation and must not resurrect old build/runtime targets.
+
 ## Reasoning checks before implementation
 
 Trace: two equal Decimal/UTC/NaN keys with different source identities bind to the same value semantics, travel through different input ports, match only after Hash plus Compare, produce new Join output metadata and drain under the same budget. A copied output retains its origins without duplicating an identity in one output schema. Wire spill/reload changes neither key equality nor origin identity.

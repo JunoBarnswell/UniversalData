@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 namespace UniversalData;
-/// <summary>Immutable native Package definition; ABI 3. No managed planning.</summary>
+/// <summary>Immutable native Package definition; ABI 4. No managed planning.</summary>
 public sealed class Package : IDisposable
 {
     private readonly ContextHandle context;

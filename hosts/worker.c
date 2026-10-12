@@ -5,7 +5,7 @@
 #include <io.h>
 #include <fcntl.h>
 #endif
-/* Protocol 3: LE u32 byte length + one Package JSON document. Each frame owns a
+/* Protocol 4: LE u32 byte length + one Package JSON document. Each frame owns a
  * native Execution. No credentials/authorization are inferred from input. A
  * privileged embedding host must provide its policy through the SDK instead.
  * Reply is LE u32 length + JSON {version,state,result}. */
@@ -53,7 +53,7 @@ int main(void) {
         if (!s)
             s = clean;
         char reply[128];
-        int bytes = snprintf(reply, sizeof(reply), "{\"version\":3,\"state\":%d,\"result\":%d}",
+        int bytes = snprintf(reply, sizeof(reply), "{\"version\":4,\"state\":%d,\"result\":%d}",
                              m.state, s);
         uint32_t length = (uint32_t)bytes;
         for (int i = 0; i < 4; i++)

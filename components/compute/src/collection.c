@@ -1,4 +1,47 @@
 #include "../internal.h"
+ud_status ud_compute_join_schema(ud_context *ctx, const ud_batch *left, const ud_batch *right, ud_batch **out) {
+    if (!out) return UD_INVALID;*out=NULL;
+    if (!ctx || !left || !right || left->columns > 65536-right->columns) return UD_INVALID;
+    uint32_t count=left->columns+right->columns;
+    ud_field *fields=ud_alloc(ctx,count*sizeof(*fields));if(!fields)return UD_RESOURCE;
+    ud_status s=UD_OK;
+    for(uint32_t j=0;!s && j<count;j++) {
+        const ud_field *source=j<left->columns?&left->column[j].field:&right->column[j-left->columns].field;
+        char id[33],scope[48];ud_column_id_format(source->identity,id);
+        snprintf(scope,sizeof(scope),"join.%s.%s",j<left->columns?"left":"right",id);
+        s=ud_field_derive(ctx,source,(ud_string){scope,(uint32_t)strlen(scope)},(ud_string){source->name,source->name_length},fields+j);
+    }
+    if(!s)s=ud_batch_create(ctx,fields,count,0,out);
+    for(uint32_t j=0;j<count;j++)ud_field_clear(fields+j);ud_free(fields);return s;
+}
+static ud_status union_field(ud_context *ctx,const ud_field *left,const ud_field *right,
+                             ud_string scope,ud_field *out,uint32_t depth) {
+    if(depth>32 || !ud_field_matches(left,right,UD_FIELD_VALUE_TYPE) || left->name_length!=right->name_length ||
+        memcmp(left->name,right->name,left->name_length))return UD_SCHEMA;
+    ud_field parents[2]={*left,*right},spec=*left;ud_column_id *origins=NULL;uint32_t count=0;
+    UD_TRY(ud_lineage_merge(ctx,parents,2,&origins,&count));
+    spec.lineage=origins;spec.lineage_count=count;spec.nullable=left->nullable || right->nullable;
+    ud_status s=ud_field_derive(ctx,&spec,scope,(ud_string){left->name,left->name_length},out);ud_free(origins);
+    char nested[33];if(!s)ud_column_id_format(out->identity,nested);
+    for(uint32_t j=0;!s && j<left->child_count;j++) {
+        ud_field child={0};s=union_field(ctx,left->children+j,right->children+j,(ud_string){nested,32},&child,depth+1);
+        if(!s){ud_field_clear((ud_field *)out->children+j);((ud_field *)out->children)[j]=child;}else ud_field_clear(&child);
+    }
+    return s;
+}
+ud_status ud_compute_union_schema(ud_context *ctx,const ud_batch *left,const ud_batch *right,ud_batch **out) {
+    if(!out)return UD_INVALID;*out=NULL;
+    if(!ctx || !left || !right || left->columns!=right->columns)return UD_SCHEMA;
+    ud_field *fields=ud_alloc(ctx,left->columns*sizeof(*fields));if(!fields)return UD_RESOURCE;
+    ud_status s=UD_OK;
+    for(uint32_t j=0;!s && j<left->columns;j++) {
+        char a[33],b[33],scope[80];ud_column_id_format(left->column[j].field.identity,a);ud_column_id_format(right->column[j].field.identity,b);
+        snprintf(scope,sizeof(scope),"union.%s.%s",a,b);
+        s=union_field(ctx,&left->column[j].field,&right->column[j].field,(ud_string){scope,(uint32_t)strlen(scope)},fields+j,0);
+    }
+    if(!s)s=ud_batch_create(ctx,fields,left->columns,0,out);
+    for(uint32_t j=0;j<left->columns;j++)ud_field_clear(fields+j);ud_free(fields);return s;
+}
 static ud_status fields_of(ud_context *c, const ud_batch *b, ud_field **out) {
     uint32_t n = ud_batch_columns(b);
     *out = ud_alloc(c, n * sizeof(**out));
@@ -114,7 +157,7 @@ ud_status ud_compute_inner_join(ud_context *c, const ud_batch *left, uint32_t lk
     ud_batch_field(left, lk, &a);
     ud_batch_field(right, rk, &b);
     b.nullable = a.nullable;
-    if (!ud_field_equal(&a, &b, 0))
+    if (!ud_field_matches(&a, &b, 0))
         return UD_SCHEMA;
     uint32_t ln = ud_batch_columns(left), rn = ud_batch_columns(right), n = ln + rn;
     if (n < ln || n > 65536)
@@ -126,16 +169,17 @@ ud_status ud_compute_inner_join(ud_context *c, const ud_batch *left, uint32_t lk
         ud_free(v);
         return UD_RESOURCE;
     }
-    for (uint32_t i = 0; i < ln; i++)
-        ud_batch_field(left, i, f + i);
-    for (uint32_t i = 0; i < rn; i++)
-        ud_batch_field(right, i, f + ln + i);
+    ud_batch *schema=NULL;
+    ud_status metadata=ud_compute_join_schema(c,left,right,&schema);
+    if(metadata){ud_free(f);ud_free(v);return metadata;}
+    for (uint32_t i = 0; i < n; i++) ud_batch_field(schema,i,f+i);
     uint64_t matches = 0;
     ud_status s = UD_OK;
     uint32_t right_rows = ud_batch_rows(right), bucket_count = 16;
     if ((uint64_t)right_rows + 1 > SIZE_MAX / sizeof(uint64_t)) {
         ud_free(f);
         ud_free(v);
+        ud_batch_destroy(schema);
         return UD_RESOURCE;
     }
     while (bucket_count < right_rows && bucket_count < 65536)
@@ -226,6 +270,7 @@ ud_status ud_compute_inner_join(ud_context *c, const ud_batch *left, uint32_t lk
     ud_free(buckets);
     ud_free(next);
     ud_free(hashes);
+    ud_batch_destroy(schema);
     if (s && *out) {
         ud_batch_destroy(*out);
         *out = NULL;

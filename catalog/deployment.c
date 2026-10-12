@@ -71,7 +71,7 @@ static ud_status validate_references(ud_catalog *c, const ud_json *project, cons
         UD_TRY(ud_json_string(ud_member(env, "projectId"), &environment_project));
         if (!ud_same(project_id, environment_project))
             return UD_SCHEMA;
-        UD_TRY(ud_parameters_check(ud_member(project, "parameters"),
+        UD_TRY(ud_parameters_check(c->ctx, ud_member(project, "parameters"),
                                    ud_member(env, "projectParameters"), 0));
     }
     const ud_json *parameters = ud_member(env, "packageParameters");
@@ -95,7 +95,7 @@ static ud_status validate_references(ud_catalog *c, const ud_json *project, cons
         ud_json *package = NULL;
         ud_status s = get_document(c, &key, &package);
         if (!s)
-            s = ud_parameters_check(ud_member(package, "parameters"),
+            s = ud_parameters_check(c->ctx, ud_member(package, "parameters"),
                                     ud_json_find(parameters, key.id.data, key.id.length), 0);
         if (!s && ud_member(package, "project"))
             s = UD_SCHEMA; /* Never bind twice. */

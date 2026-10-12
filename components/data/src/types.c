@@ -379,8 +379,12 @@ ud_status ud_batch_cast(ud_context *ctx, const ud_batch *input, const ud_field *
                          uint32_t columns, int32_t rounding, ud_batch **out) {
     if (!out) return UD_INVALID;
     *out = NULL;
-    if (!input || columns != input->columns || rounding < UD_ROUND_EXACT || rounding > UD_ROUND_CEILING) return UD_INVALID;
-    UD_TRY(ud_batch_create(ctx, target, columns, input->rows, out));
+    if (!ctx || !input || !target || columns != input->columns || rounding < UD_ROUND_EXACT || rounding > UD_ROUND_CEILING) return UD_INVALID;
+    ud_field *fields=ud_alloc(ctx,columns*sizeof(*fields));if(!fields)return UD_RESOURCE;
+    ud_status bound=UD_OK;
+    for(uint32_t j=0;!bound && j<columns;j++)bound=ud_field_cast_metadata(ctx,&input->column[j].field,target+j,fields+j);
+    if(!bound)bound=ud_batch_create(ctx,fields,columns,input->rows,out);
+    for(uint32_t j=0;j<columns;j++)ud_field_clear(fields+j);ud_free(fields);if(bound)return bound;
     ud_value *values = ud_alloc(ctx, columns * sizeof(*values));
     ud_status s = values ? UD_OK : UD_RESOURCE;
     for (uint32_t r = 0; !s && r < input->rows; r++) {

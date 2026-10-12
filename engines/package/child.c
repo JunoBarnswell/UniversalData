@@ -23,8 +23,9 @@ static ud_status mapped_parameters(ud_execution *e, const ud_json *mapping, ud_j
             s = ud_json_quote(&b, key, n);
         if (!s)
             s = ud_bytes_put(&b, ":", 1);
-        if (!s)
-            s = ud_scalar_json(&b, &value);
+        ud_field field = {0};
+        if (!s) s = ud_expression_field(expr, &field);
+        if (!s) s = ud_scalar_json(&b, &field, &value);
         ud_expression_destroy(expr);
     }
     if (!s)

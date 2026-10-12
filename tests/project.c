@@ -69,8 +69,8 @@ static int execute(ud_package *p, const char *params, const char *root, int oute
             CHECK(v.type == UD_INT64 && v.integer == values[i]);
         }
         ud_value v = {.type = UD_INT64, .integer = 1};
-        CHECK(ud_execution_set_variable(e, str("outer"), &v) == UD_AUTH);
-        CHECK(ud_execution_set_variable(e, str("shadow"), &v) == UD_AUTH);
+        CHECK(ud_execution_set_variable(e, str("outer"), &v, NULL) == UD_AUTH);
+        CHECK(ud_execution_set_variable(e, str("shadow"), &v, NULL) == UD_AUTH);
         ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
         OK(ud_execution_get_metrics(e, &m));
         CHECK(m.input_rows == 5 && m.output_rows == 5);
@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
     binding.package_parameters = str("{\"shadow\":false}");
     CHECK(ud_project_bind(project, package, &binding, &bound, &params, &n) == UD_SCHEMA);
     binding.package_parameters = str("{}");
-    binding.environment = str("{\"version\":3,\"id\":\"env\",\"projectId\":\"wrong\"}");
+    binding.environment = str("{\"version\":4,\"id\":\"env\",\"projectId\":\"wrong\"}");
     CHECK(ud_project_bind(project, package, &binding, &bound, &params, &n) == UD_SCHEMA);
     char *invalid = load(argv[1], "readonly.json");
     CHECK(invalid);
@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
     ud_catalog_key deploy = {sizeof(deploy), UD_ABI_VERSION, UD_CATALOG_DEPLOYMENT, str("broken"),
                              1};
     CHECK(ud_catalog_put(catalog, &deploy,
-                         str("{\"version\":3,\"id\":\"broken\",\"project\":{\"id\":\"absent\","
+                         str("{\"version\":4,\"id\":\"broken\",\"project\":{\"id\":\"absent\","
                              "\"revision\":1}}")) == UD_SCHEMA);
     ud_catalog_close(catalog);
     catalog = NULL;

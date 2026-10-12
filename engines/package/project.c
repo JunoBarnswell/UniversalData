@@ -58,9 +58,9 @@ ud_status ud_project_create(ud_context *c, ud_string input, ud_project **out) {
     if (!s)
         s = ud_json_string(ud_member(p->document, "id"), &p->id);
     if (!s)
-        s = ud_parameters_check(ud_member(p->document, "parameters"), NULL, 0);
+        s = ud_parameters_check(p->ctx, ud_member(p->document, "parameters"), NULL, 0);
     if (!s)
-        s = ud_parameters_check(ud_member(p->document, "variables"), NULL, 1);
+        s = ud_parameters_check(p->ctx, ud_member(p->document, "variables"), NULL, 1);
     const ud_json *connections = ud_member(p->document, "connections");
     if (!s)
         s = ud_connection_definitions_check(connections);
@@ -133,20 +133,28 @@ static ud_status merge(ud_context *ctx, const ud_json *first, const ud_json *sec
     return s;
 }
 static ud_status bound_definitions(ud_bytes *b, const ud_json *defs, const ud_json *values) {
+    static const char *metadata[] = {"type", "nullable", "precision", "scale", "timezone", "children"};
     UD_TRY(ud_bytes_put(b, "{", 1));
     for (uint32_t i = 0; i < ud_json_size(defs); i++) {
         const char *key;
         uint32_t n;
         UD_TRY(ud_json_key(defs, i, &key, &n));
         const ud_json *def = ud_json_at(defs, i), *value = ud_json_find(values, key, n);
-        if (!value)
-            value = ud_member(def, "default");
-        if (i)
-            UD_TRY(ud_bytes_put(b, ",", 1));
+        if (!value) value = ud_member(def, "default");
+        if (i) UD_TRY(ud_bytes_put(b, ",", 1));
         UD_TRY(ud_json_quote(b, key, n));
-        UD_TRY(ud_bytes_put(b, ":{\"type\":", 9));
-        UD_TRY(json_put(b, ud_member(def, "type")));
-        UD_TRY(ud_bytes_put(b, ",\"default\":", 11));
+        UD_TRY(ud_bytes_put(b, ":{", 2));
+        int field = 0;
+        for (uint32_t j = 0; j < sizeof(metadata) / sizeof(metadata[0]); j++) {
+            const ud_json *property = ud_member(def, metadata[j]);
+            if (!property) continue;
+            if (field++) UD_TRY(ud_bytes_put(b, ",", 1));
+            UD_TRY(ud_json_quote(b, metadata[j], (uint32_t)strlen(metadata[j])));
+            UD_TRY(ud_bytes_put(b, ":", 1));
+            UD_TRY(json_put(b, property));
+        }
+        if (field++) UD_TRY(ud_bytes_put(b, ",", 1));
+        UD_TRY(ud_bytes_put(b, "\"default\":", 10));
         UD_TRY(json_put(b, value));
         UD_TRY(ud_bytes_put(b, "}", 1));
     }
@@ -208,11 +216,11 @@ ud_status ud_project_bind(const ud_project *p, const ud_package *package,
         }
     }
     if (!s)
-        s = ud_parameters_check(ud_member(p->document, "parameters"),
+        s = ud_parameters_check(p->ctx, ud_member(p->document, "parameters"),
                                 ud_member(env, "projectParameters"), 0);
     if (!s)
         s = ud_parameters_check(
-            ud_member(package->document, "parameters"),
+            p->ctx, ud_member(package->document, "parameters"),
             ud_json_find(ud_member(env, "packageParameters"), package->id.data, package->id.length),
             0);
     if (!s)
@@ -223,9 +231,9 @@ ud_status ud_project_bind(const ud_project *p, const ud_package *package,
             ud_json_find(ud_member(env, "packageParameters"), package->id.data, package->id.length),
             explicit_package, &package_values);
     if (!s)
-        s = ud_parameters_check(ud_member(p->document, "parameters"), project_values, 1);
+        s = ud_parameters_check(p->ctx, ud_member(p->document, "parameters"), project_values, 1);
     if (!s)
-        s = ud_parameters_check(ud_member(package->document, "parameters"), package_values, 1);
+        s = ud_parameters_check(p->ctx, ud_member(package->document, "parameters"), package_values, 1);
     ud_bytes b = {.ctx = p->ctx};
     if (!s)
         s = ud_bytes_put(&b, "{", 1);

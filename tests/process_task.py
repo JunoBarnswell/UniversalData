@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(prefix="ud-process-task-") as temporary:
         folder.mkdir()
         marker = folder / "marker.json"
         config = {"connection": "program", "arguments": ["-c", script], "workingDirectory": "cwd", "timeoutMs": 3000, "exitCodeVariable": "exit", **(extra or {})}
-        doc = {"version": 3, "id": "process", "variables": {"exit": {"type": "int64", "default": -1}}, "connections": [{"id": "program", "driver": "process", "resource": sys.executable}, {"id": "cwd", "driver": "file", "resource": str(folder)}], "controlFlow": {"tasks": [{"id": "launch", "kind": "process.execute", "config": config}], "constraints": []}, "dataFlows": []}
+        doc = {"version": 4, "id": "process", "variables": {"exit": {"type": "int64", "default": -1}}, "connections": [{"id": "program", "driver": "process", "resource": sys.executable}, {"id": "cwd", "driver": "file", "resource": str(folder)}], "controlFlow": {"tasks": [{"id": "launch", "kind": "process.execute", "config": config}], "constraints": []}, "dataFlows": []}
         return folder, marker, doc
     def run(folder, marker, doc, mode=0, status=0, code=0, checkpoint=False, resume=0, exit=0):
         package = folder / "package.json"
