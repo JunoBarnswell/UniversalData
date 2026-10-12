@@ -1,16 +1,28 @@
 #include "../package/internal.h"
 #include "ud/engine.h"
 ud_status ud_pipeline_field_namespace(const ud_component_context *c, char output[33]) {
-    ud_bytes bytes={.ctx=c->memory};
-    ud_string package={0},project={0};
-    ud_status s=ud_json_string(ud_member(c->activation->package->document,"id"),&package);
-    const ud_json *p=ud_member(c->activation->package->document,"project");
-    if(!s && p)s=ud_json_string(ud_member(p,"id"),&project);
-    ud_string parts[]={c->execution->options.tenant,project,package,c->pipeline_id,c->component_id};
-    for(uint32_t j=0;!s && j<5;j++)s=ud_put_string(&bytes,parts[j].data,parts[j].length);
-    if(!s){uint8_t hash[32];ud_hash(bytes.data,bytes.size,hash);ud_column_id id={0};
-        for(uint32_t j=0;j<8;j++){id.high=(id.high<<8)|hash[j];id.low=(id.low<<8)|hash[j+8];}ud_column_id_format(id,output);}
-    ud_bytes_clear(&bytes);return s;
+    ud_bytes bytes = {.ctx = c->memory};
+    ud_string package = {0}, project = {0};
+    ud_status s = ud_json_string(ud_member(c->activation->package->document, "id"), &package);
+    const ud_json *p = ud_member(c->activation->package->document, "project");
+    if (!s && p)
+        s = ud_json_string(ud_member(p, "id"), &project);
+    ud_string parts[] = {c->execution->options.tenant, project, package, c->pipeline_id,
+                         c->component_id};
+    for (uint32_t j = 0; !s && j < 5; j++)
+        s = ud_put_string(&bytes, parts[j].data, parts[j].length);
+    if (!s) {
+        uint8_t hash[32];
+        ud_hash(bytes.data, bytes.size, hash);
+        ud_column_id id = {0};
+        for (uint32_t j = 0; j < 8; j++) {
+            id.high = (id.high << 8) | hash[j];
+            id.low = (id.low << 8) | hash[j + 8];
+        }
+        ud_column_id_format(id, output);
+    }
+    ud_bytes_clear(&bytes);
+    return s;
 }
 typedef struct edge {
     uint32_t from, to, output, input, count;
@@ -95,12 +107,13 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
         UD_TRY(ud_json_string(ud_member(def, "id"), &n->id));
         if (index_of(p, n->id) != (int)i)
             return UD_SCHEMA;
-        ud_string component={0};
+        ud_string component = {0};
         UD_TRY(ud_json_string(ud_member(def, "component"), &component));
         n->descriptor = (ud_component_descriptor){.struct_size = sizeof(n->descriptor),
                                                   .abi_version = UD_ABI_VERSION};
         UD_TRY(ud_component_lookup(e, component, &n->descriptor));
-        if(e->parallel && !(n->descriptor.capabilities & UD_COMPONENT_THREAD_SAFE))return UD_UNSUPPORTED;
+        if (e->parallel && !(n->descriptor.capabilities & UD_COMPONENT_THREAD_SAFE))
+            return UD_UNSUPPORTED;
         if (e->execution->options.state_directory.length &&
             !(n->descriptor.capabilities & UD_COMPONENT_REPLAY_SAFE))
             return UD_UNSUPPORTED;
@@ -129,7 +142,7 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
         const ud_json *def = ud_json_at(paths, i);
         static const char *ek[] = {"from", "output", "to", "input"};
         s = ud_json_keys(def, ek, 4);
-        ud_string from={0}, to={0};
+        ud_string from = {0}, to = {0};
         uint64_t output = 0, input = 0;
         if (!s)
             s = ud_json_string(ud_member(def, "from"), &from);
@@ -294,7 +307,8 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
         n->schemas = ud_alloc(e->execution->ctx, (n->descriptor.outputs + 1) * sizeof(*n->schemas));
         if (!n->schemas)
             return UD_RESOURCE;
-        const ud_batch **inputs = ud_alloc(e->execution->ctx, (n->descriptor.inputs + 1) * sizeof(*inputs));
+        const ud_batch **inputs =
+            ud_alloc(e->execution->ctx, (n->descriptor.inputs + 1) * sizeof(*inputs));
         if (!inputs)
             return UD_RESOURCE;
         for (uint32_t j = 0; j < n->descriptor.inputs; j++) {
@@ -336,10 +350,12 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
     ud_activation *e = p->execution;
     UD_TRY(configure_plan(p, definition, targets));
     for (uint32_t i = 0; i < p->paths; i++)
-        UD_TRY(ud_queue_create(e->execution->ctx, e->execution->options.edge_capacity, &p->edges[i].queue));
+        UD_TRY(ud_queue_create(e->execution->ctx, e->execution->options.edge_capacity,
+                               &p->edges[i].queue));
     for (uint32_t i = 0; i < p->count; i++) {
         node *n = p->nodes + p->order[i];
-        const ud_batch **inputs = ud_alloc(e->execution->ctx, (n->descriptor.inputs + 1) * sizeof(*inputs));
+        const ud_batch **inputs =
+            ud_alloc(e->execution->ctx, (n->descriptor.inputs + 1) * sizeof(*inputs));
         if (!inputs)
             return UD_RESOURCE;
         for (uint32_t j = 0; j < n->descriptor.inputs; j++) {
@@ -365,8 +381,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
             return UD_OK;
     ud_component_event event = {sizeof(event), UD_ABI_VERSION, UD_COMPONENT_POLL, 0, NULL};
     ud_batch *input = NULL;
-    int selected =
-        n->pending || n->descriptor.category == UD_COMPONENT_SOURCE || n->ended == n->descriptor.inputs;
+    int selected = n->pending || n->descriptor.category == UD_COMPONENT_SOURCE ||
+                   n->ended == n->descriptor.inputs;
     if (!selected)
         for (uint32_t i = 0; i < n->descriptor.inputs; i++) {
             uint32_t port = (n->next_port + i) % n->descriptor.inputs;
@@ -404,7 +420,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     n->emit_allowed = 0;
     int was_pending = n->pending;
     n->pending = s == UD_MORE;
-    if (s == UD_MORE) s = UD_OK;
+    if (s == UD_MORE)
+        s = UD_OK;
     uint32_t emitted = 0;
     for (uint32_t j = 0; j < n->descriptor.outputs; j++)
         emitted += n->emitted[j];

@@ -36,96 +36,148 @@ static void release_array(struct ArrowArray *a) {
 static ud_status metadata_integer(ud_bytes *bytes, int32_t value) {
     return ud_bytes_put(bytes, &value, sizeof(value)); /* Arrow C metadata native int32. */
 }
-static ud_status metadata_pair(ud_bytes *bytes, const char *key, const char *value, uint32_t length) {
+static ud_status metadata_pair(ud_bytes *bytes, const char *key, const char *value,
+                               uint32_t length) {
     UD_TRY(metadata_integer(bytes, (int32_t)strlen(key)));
     UD_TRY(ud_bytes_put(bytes, key, strlen(key)));
     UD_TRY(metadata_integer(bytes, (int32_t)length));
     return ud_bytes_put(bytes, value, length);
 }
 static ud_status export_metadata(ud_context *ctx, const ud_field *field, const char **out) {
-    *out=NULL;ud_bytes metadata={.ctx=ctx},lineage={.ctx=ctx};char id[33];
-    ud_status s=metadata_integer(&metadata,2);ud_column_id_format(field->identity,id);
-    if(!s)s=metadata_pair(&metadata,"ud.column_id",id,32);
-    for(uint32_t j=0;!s && j<field->lineage_count;j++) {
-        if(j)s=ud_bytes_put(&lineage,",",1);ud_column_id_format(field->lineage[j],id);
-        if(!s)s=ud_bytes_put(&lineage,id,32);
+    *out = NULL;
+    ud_bytes metadata = {.ctx = ctx}, lineage = {.ctx = ctx};
+    char id[33];
+    ud_status s = metadata_integer(&metadata, 2);
+    ud_column_id_format(field->identity, id);
+    if (!s)
+        s = metadata_pair(&metadata, "ud.column_id", id, 32);
+    for (uint32_t j = 0; !s && j < field->lineage_count; j++) {
+        if (j)
+            s = ud_bytes_put(&lineage, ",", 1);
+        ud_column_id_format(field->lineage[j], id);
+        if (!s)
+            s = ud_bytes_put(&lineage, id, 32);
     }
-    if(!s)s=metadata_pair(&metadata,"ud.lineage",(const char *)lineage.data,(uint32_t)lineage.size);
-    if(!s){*out=(const char *)metadata.data;metadata.data=NULL;}
-    ud_bytes_clear(&metadata);ud_bytes_clear(&lineage);return s;
+    if (!s)
+        s = metadata_pair(&metadata, "ud.lineage", (const char *)lineage.data,
+                          (uint32_t)lineage.size);
+    if (!s) {
+        *out = (const char *)metadata.data;
+        metadata.data = NULL;
+    }
+    ud_bytes_clear(&metadata);
+    ud_bytes_clear(&lineage);
+    return s;
 }
-static ud_status export_column(ud_context *ctx, const ud_column *c, const ud_field *field, uint32_t rows,
-                                struct ArrowArray *a, struct ArrowSchema *s) {
-    a->release = release_array; s->release = release_schema;
-    UD_TRY(export_metadata(ctx,field,&s->metadata));
-    a->length = rows; s->flags = field->nullable ? 2 : 0;
+static ud_status export_column(ud_context *ctx, const ud_column *c, const ud_field *field,
+                               uint32_t rows, struct ArrowArray *a, struct ArrowSchema *s) {
+    a->release = release_array;
+    s->release = release_schema;
+    UD_TRY(export_metadata(ctx, field, &s->metadata));
+    a->length = rows;
+    s->flags = field->nullable ? 2 : 0;
     s->name = ud_strdup_n(ctx, field->name, field->name_length);
-    const char *format = field->type == UD_BOOL ? "b" : field->type == UD_INT64 ? "l"
-        : field->type == UD_FLOAT64 ? "g" : field->type == UD_UTF8 ? "u"
-        : field->type == UD_BINARY ? "z" : field->type == UD_DATE32 ? "tdD"
-        : field->type == UD_TIME64 ? "ttu" : field->type == UD_STRUCT ? "+s"
-        : field->type == UD_LIST ? "+l" : field->type == UD_MAP ? "+m" : NULL;
+    const char *format = field->type == UD_BOOL      ? "b"
+                         : field->type == UD_INT64   ? "l"
+                         : field->type == UD_FLOAT64 ? "g"
+                         : field->type == UD_UTF8    ? "u"
+                         : field->type == UD_BINARY  ? "z"
+                         : field->type == UD_DATE32  ? "tdD"
+                         : field->type == UD_TIME64  ? "ttu"
+                         : field->type == UD_STRUCT  ? "+s"
+                         : field->type == UD_LIST    ? "+l"
+                         : field->type == UD_MAP     ? "+m"
+                                                     : NULL;
     char decimal[32];
     if (field->type == UD_DECIMAL128) {
-        snprintf(decimal, sizeof(decimal), "d:%d,%d", field->precision, field->scale); format = decimal;
+        snprintf(decimal, sizeof(decimal), "d:%d,%d", field->precision, field->scale);
+        format = decimal;
     }
     if (field->type == UD_TIMESTAMP) {
-        if (field->timezone_length > SIZE_MAX - 5) return UD_OVERFLOW;
+        if (field->timezone_length > SIZE_MAX - 5)
+            return UD_OVERFLOW;
         char *timestamp = ud_alloc(ctx, (size_t)field->timezone_length + 5);
-        if (!timestamp) return UD_RESOURCE;
-        memcpy(timestamp, "tsu:", 4); memcpy(timestamp + 4, field->timezone, field->timezone_length);
+        if (!timestamp)
+            return UD_RESOURCE;
+        memcpy(timestamp, "tsu:", 4);
+        memcpy(timestamp + 4, field->timezone, field->timezone_length);
         s->format = timestamp;
-    } else if (format) s->format = ud_strdup_n(ctx, format, strlen(format));
-    else return UD_UNSUPPORTED;
-    if (!s->name || !s->format) return UD_RESOURCE;
+    } else if (format)
+        s->format = ud_strdup_n(ctx, format, strlen(format));
+    else
+        return UD_UNSUPPORTED;
+    if (!s->name || !s->format)
+        return UD_RESOURCE;
     a->n_buffers = field->type == UD_STRUCT ? 1 : field->type >= UD_LIST ? 2 : c->offsets ? 3 : 2;
     a->buffers = ud_alloc(ctx, (size_t)a->n_buffers * sizeof(void *));
-    if (!a->buffers) return UD_RESOURCE;
+    if (!a->buffers)
+        return UD_RESOURCE;
     size_t sizes[3] = {((size_t)rows + 7) / 8,
-        c->offsets ? ((size_t)rows + 1) * sizeof(int32_t)
-        : field->type == UD_BOOL ? ((size_t)rows + 7) / 8
-        : field->type == UD_DATE32 ? (size_t)rows * 4
-        : field->type == UD_DECIMAL128 ? (size_t)rows * 16 : (size_t)rows * 8, c->string_bytes};
-    const void *src[3] = {c->validity, c->offsets ? (const void *)c->offsets : c->values, c->strings};
+                       c->offsets                     ? ((size_t)rows + 1) * sizeof(int32_t)
+                       : field->type == UD_BOOL       ? ((size_t)rows + 7) / 8
+                       : field->type == UD_DATE32     ? (size_t)rows * 4
+                       : field->type == UD_DECIMAL128 ? (size_t)rows * 16
+                                                      : (size_t)rows * 8,
+                       c->string_bytes};
+    const void *src[3] = {c->validity, c->offsets ? (const void *)c->offsets : c->values,
+                          c->strings};
     for (int j = 0; j < a->n_buffers; j++) {
         void *buffer = ud_alloc(ctx, sizes[j] + 1);
-        if (!buffer) return UD_RESOURCE;
-        if (sizes[j]) memcpy(buffer, src[j], sizes[j]);
+        if (!buffer)
+            return UD_RESOURCE;
+        if (sizes[j])
+            memcpy(buffer, src[j], sizes[j]);
         a->buffers[j] = buffer;
     }
-    for (uint32_t r = 0; r < rows; r++) if (!(c->validity[r / 8] & (1u << (r % 8)))) a->null_count++;
+    for (uint32_t r = 0; r < rows; r++)
+        if (!(c->validity[r / 8] & (1u << (r % 8))))
+            a->null_count++;
     if (c->nested) {
         a->n_children = s->n_children = field->child_count;
         a->children = ud_alloc(ctx, field->child_count * sizeof(*a->children));
         s->children = ud_alloc(ctx, field->child_count * sizeof(*s->children));
-        if (!a->children || !s->children) return UD_RESOURCE;
+        if (!a->children || !s->children)
+            return UD_RESOURCE;
         for (uint32_t j = 0; j < field->child_count; j++) {
             a->children[j] = ud_alloc(ctx, sizeof(struct ArrowArray));
             s->children[j] = ud_alloc(ctx, sizeof(struct ArrowSchema));
-            if (!a->children[j] || !s->children[j]) return UD_RESOURCE;
-            UD_TRY(export_column(ctx, c->nested->column + j, field->children + j, c->nested->rows, a->children[j], s->children[j]));
+            if (!a->children[j] || !s->children[j])
+                return UD_RESOURCE;
+            UD_TRY(export_column(ctx, c->nested->column + j, field->children + j, c->nested->rows,
+                                 a->children[j], s->children[j]));
         }
     }
     return UD_OK;
 }
 ud_status ud_batch_export_arrow(const ud_batch *b, struct ArrowArray *a, struct ArrowSchema *s) {
-    if (!b || !a || !s) return UD_INVALID;
-    memset(a, 0, sizeof(*a)); memset(s, 0, sizeof(*s));
-    a->release = release_array; s->release = release_schema;
-    a->length = b->rows; a->n_buffers = 1;
+    if (!b || !a || !s)
+        return UD_INVALID;
+    memset(a, 0, sizeof(*a));
+    memset(s, 0, sizeof(*s));
+    a->release = release_array;
+    s->release = release_schema;
+    a->length = b->rows;
+    a->n_buffers = 1;
     a->buffers = ud_alloc(b->ctx, sizeof(void *));
     s->format = ud_strdup_n(b->ctx, "+s", 2);
     a->n_children = s->n_children = b->columns;
     a->children = ud_alloc(b->ctx, b->columns * sizeof(*a->children));
     s->children = ud_alloc(b->ctx, b->columns * sizeof(*s->children));
-    ud_status code = !a->buffers || !s->format || !a->children || !s->children ? UD_RESOURCE : UD_OK;
+    ud_status code =
+        !a->buffers || !s->format || !a->children || !s->children ? UD_RESOURCE : UD_OK;
     for (uint32_t j = 0; !code && j < b->columns; j++) {
         a->children[j] = ud_alloc(b->ctx, sizeof(struct ArrowArray));
         s->children[j] = ud_alloc(b->ctx, sizeof(struct ArrowSchema));
-        if (!a->children[j] || !s->children[j]) code = UD_RESOURCE;
-        else code = export_column(b->ctx, b->column + j, &b->column[j].field, b->rows, a->children[j], s->children[j]);
+        if (!a->children[j] || !s->children[j])
+            code = UD_RESOURCE;
+        else
+            code = export_column(b->ctx, b->column + j, &b->column[j].field, b->rows,
+                                 a->children[j], s->children[j]);
     }
-    if (code) { release_array(a); release_schema(s); }
+    if (code) {
+        release_array(a);
+        release_schema(s);
+    }
     return code;
 }
 typedef struct {
@@ -188,145 +240,244 @@ ud_status ud_batch_export_stream(const ud_batch *b, struct ArrowArrayStream *s) 
     return UD_OK;
 }
 static void clear_field_tree(ud_field *f) {
-    for (uint32_t j = 0; j < f->child_count; j++) clear_field_tree((ud_field *)f->children + j);
-    ud_free((void *)f->children); f->children = NULL; f->child_count = 0;
-    ud_free((void *)f->lineage); f->lineage=NULL;f->lineage_count=0;
+    for (uint32_t j = 0; j < f->child_count; j++)
+        clear_field_tree((ud_field *)f->children + j);
+    ud_free((void *)f->children);
+    f->children = NULL;
+    f->child_count = 0;
+    ud_free((void *)f->lineage);
+    f->lineage = NULL;
+    f->lineage_count = 0;
 }
-static ud_status import_metadata(ud_context *ctx,const char *data,ud_field *field) {
-    if(!data)return UD_OK;
+static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *field) {
+    if (!data)
+        return UD_OK;
     /* Producer must supply a valid Arrow metadata buffer. Lengths and total
      * traversal are bounded; the C interface carries no enclosing byte length. */
-    int32_t pairs;memcpy(&pairs,data,4);if(pairs<0 || pairs>64)return UD_SCHEMA;
-    uint32_t at=4;int id_seen=0,lineage_seen=0;
-    for(int32_t j=0;j<pairs;j++) {
-        int32_t key_length,value_length;
-        if(at>1048576-4)return UD_SCHEMA;memcpy(&key_length,data+at,4);at+=4;
-        if(key_length<0 || key_length>256 || (uint32_t)key_length>1048576-at)return UD_SCHEMA;
-        const char *key=data+at;at+=(uint32_t)key_length;
-        if(at>1048576-4)return UD_SCHEMA;memcpy(&value_length,data+at,4);at+=4;
-        if(value_length<0 || (uint32_t)value_length>1048576-at)return UD_SCHEMA;
-        const char *value=data+at;at+=(uint32_t)value_length;
-        if(key_length==12 && !memcmp(key,"ud.column_id",12)) {
-            if(id_seen++)return UD_SCHEMA;
-            UD_TRY(ud_column_id_parse((ud_string){value,(uint32_t)value_length},&field->identity));
-        } else if(key_length==10 && !memcmp(key,"ud.lineage",10)) {
-            if(lineage_seen++)return UD_SCHEMA;
-            if(!value_length)continue;
-            if(((uint32_t)value_length+1)%33)return UD_SCHEMA;
-            uint32_t count=((uint32_t)value_length+1)/33;
-            if(count>4096)return UD_SCHEMA;
-            ud_column_id *ids=ud_alloc(ctx,count*sizeof(*ids));if(!ids)return UD_RESOURCE;
-            field->lineage=ids;field->lineage_count=count;
-            for(uint32_t k=0;k<count;k++) {
-                if(k && value[k*33-1]!=',')return UD_SCHEMA;
-                UD_TRY(ud_column_id_parse((ud_string){value+k*33,32},ids+k));
-                if(k && ud_column_id_compare(ids[k-1],ids[k])>=0)return UD_SCHEMA;
+    int32_t pairs;
+    memcpy(&pairs, data, 4);
+    if (pairs < 0 || pairs > 64)
+        return UD_SCHEMA;
+    uint32_t at = 4;
+    int id_seen = 0, lineage_seen = 0;
+    for (int32_t j = 0; j < pairs; j++) {
+        int32_t key_length, value_length;
+        if (at > 1048576 - 4)
+            return UD_SCHEMA;
+        memcpy(&key_length, data + at, 4);
+        at += 4;
+        if (key_length < 0 || key_length > 256 || (uint32_t)key_length > 1048576 - at)
+            return UD_SCHEMA;
+        const char *key = data + at;
+        at += (uint32_t)key_length;
+        if (at > 1048576 - 4)
+            return UD_SCHEMA;
+        memcpy(&value_length, data + at, 4);
+        at += 4;
+        if (value_length < 0 || (uint32_t)value_length > 1048576 - at)
+            return UD_SCHEMA;
+        const char *value = data + at;
+        at += (uint32_t)value_length;
+        if (key_length == 12 && !memcmp(key, "ud.column_id", 12)) {
+            if (id_seen++)
+                return UD_SCHEMA;
+            UD_TRY(
+                ud_column_id_parse((ud_string){value, (uint32_t)value_length}, &field->identity));
+        } else if (key_length == 10 && !memcmp(key, "ud.lineage", 10)) {
+            if (lineage_seen++)
+                return UD_SCHEMA;
+            if (!value_length)
+                continue;
+            if (((uint32_t)value_length + 1) % 33)
+                return UD_SCHEMA;
+            uint32_t count = ((uint32_t)value_length + 1) / 33;
+            if (count > 4096)
+                return UD_SCHEMA;
+            ud_column_id *ids = ud_alloc(ctx, count * sizeof(*ids));
+            if (!ids)
+                return UD_RESOURCE;
+            field->lineage = ids;
+            field->lineage_count = count;
+            for (uint32_t k = 0; k < count; k++) {
+                if (k && value[k * 33 - 1] != ',')
+                    return UD_SCHEMA;
+                UD_TRY(ud_column_id_parse((ud_string){value + k * 33, 32}, ids + k));
+                if (k && ud_column_id_compare(ids[k - 1], ids[k]) >= 0)
+                    return UD_SCHEMA;
             }
         }
     }
-    return id_seen==lineage_seen?UD_OK:UD_SCHEMA;
+    return id_seen == lineage_seen ? UD_OK : UD_SCHEMA;
 }
-static ud_status import_field(ud_context *ctx, const struct ArrowSchema *s, ud_field *f, uint32_t depth) {
-    if (depth > 32 || !s || !s->format || !s->name || s->dictionary || s->n_children < 0 || s->n_children > 65536)
+static ud_status import_field(ud_context *ctx, const struct ArrowSchema *s, ud_field *f,
+                              uint32_t depth) {
+    if (depth > 32 || !s || !s->format || !s->name || s->dictionary || s->n_children < 0 ||
+        s->n_children > 65536)
         return UD_SCHEMA;
-    f->name = s->name; f->name_length = (uint32_t)strlen(s->name); f->nullable = !!(s->flags & 2);
-    UD_TRY(import_metadata(ctx,s->metadata,f));
-    f->type = !strcmp(s->format, "b") ? UD_BOOL : !strcmp(s->format, "l") ? UD_INT64
-        : !strcmp(s->format, "g") ? UD_FLOAT64 : !strcmp(s->format, "u") ? UD_UTF8
-        : !strcmp(s->format, "z") ? UD_BINARY : !strcmp(s->format, "tdD") ? UD_DATE32
-        : !strcmp(s->format, "ttu") ? UD_TIME64 : !strncmp(s->format, "tsu:", 4) ? UD_TIMESTAMP
-        : !strncmp(s->format, "d:", 2) ? UD_DECIMAL128 : !strcmp(s->format, "+s") ? UD_STRUCT
-        : !strcmp(s->format, "+l") ? UD_LIST : !strcmp(s->format, "+m") ? UD_MAP : 0;
-    if (!f->type) return UD_UNSUPPORTED;
+    f->name = s->name;
+    f->name_length = (uint32_t)strlen(s->name);
+    f->nullable = !!(s->flags & 2);
+    UD_TRY(import_metadata(ctx, s->metadata, f));
+    f->type = !strcmp(s->format, "b")          ? UD_BOOL
+              : !strcmp(s->format, "l")        ? UD_INT64
+              : !strcmp(s->format, "g")        ? UD_FLOAT64
+              : !strcmp(s->format, "u")        ? UD_UTF8
+              : !strcmp(s->format, "z")        ? UD_BINARY
+              : !strcmp(s->format, "tdD")      ? UD_DATE32
+              : !strcmp(s->format, "ttu")      ? UD_TIME64
+              : !strncmp(s->format, "tsu:", 4) ? UD_TIMESTAMP
+              : !strncmp(s->format, "d:", 2)   ? UD_DECIMAL128
+              : !strcmp(s->format, "+s")       ? UD_STRUCT
+              : !strcmp(s->format, "+l")       ? UD_LIST
+              : !strcmp(s->format, "+m")       ? UD_MAP
+                                               : 0;
+    if (!f->type)
+        return UD_UNSUPPORTED;
     if (f->type == UD_DECIMAL128) {
-        const char *comma = strchr(s->format + 2, ','); ud_value precision, scale;
-        if (!comma) return UD_SCHEMA;
+        const char *comma = strchr(s->format + 2, ',');
+        ud_value precision, scale;
+        if (!comma)
+            return UD_SCHEMA;
         const char *bits = strchr(comma + 1, ',');
-        if (bits && strcmp(bits + 1,"128")) return UD_UNSUPPORTED;
-        UD_TRY(ud_value_parse(ctx, UD_INT64, s->format + 2, (uint32_t)(comma - s->format - 2), &precision));
-        UD_TRY(ud_value_parse(ctx, UD_INT64, comma + 1, bits ? (uint32_t)(bits-comma-1) : (uint32_t)strlen(comma + 1), &scale));
-        if (precision.integer < 1 || precision.integer > 38 || scale.integer < -38 || scale.integer > 38) return UD_SCHEMA;
-        f->precision = (int32_t)precision.integer; f->scale = (int32_t)scale.integer;
+        if (bits && strcmp(bits + 1, "128"))
+            return UD_UNSUPPORTED;
+        UD_TRY(ud_value_parse(ctx, UD_INT64, s->format + 2, (uint32_t)(comma - s->format - 2),
+                              &precision));
+        UD_TRY(ud_value_parse(ctx, UD_INT64, comma + 1,
+                              bits ? (uint32_t)(bits - comma - 1) : (uint32_t)strlen(comma + 1),
+                              &scale));
+        if (precision.integer < 1 || precision.integer > 38 || scale.integer < -38 ||
+            scale.integer > 38)
+            return UD_SCHEMA;
+        f->precision = (int32_t)precision.integer;
+        f->scale = (int32_t)scale.integer;
     } else if (f->type == UD_TIMESTAMP) {
-        f->timezone = s->format + 4; f->timezone_length = (uint32_t)strlen(f->timezone);
+        f->timezone = s->format + 4;
+        f->timezone_length = (uint32_t)strlen(f->timezone);
     }
-    if (f->type < UD_STRUCT) return s->n_children ? UD_SCHEMA : UD_OK;
-    if (!s->n_children || !s->children || (f->type >= UD_LIST && s->n_children != 1)) return UD_SCHEMA;
+    if (f->type < UD_STRUCT)
+        return s->n_children ? UD_SCHEMA : UD_OK;
+    if (!s->n_children || !s->children || (f->type >= UD_LIST && s->n_children != 1))
+        return UD_SCHEMA;
     ud_field *children = ud_alloc(ctx, (size_t)s->n_children * sizeof(*children));
-    if (!children) return UD_RESOURCE;
-    f->children = children; f->child_count = (uint32_t)s->n_children;
-    for (uint32_t j = 0; j < f->child_count; j++) UD_TRY(import_field(ctx, s->children[j], children + j, depth + 1));
+    if (!children)
+        return UD_RESOURCE;
+    f->children = children;
+    f->child_count = (uint32_t)s->n_children;
+    for (uint32_t j = 0; j < f->child_count; j++)
+        UD_TRY(import_field(ctx, s->children[j], children + j, depth + 1));
     return UD_OK;
 }
 static void clear_import_value(ud_value *v) {
-    for (uint32_t j = 0; j < v->child_count; j++) clear_import_value((ud_value *)v->children + j);
-    ud_free((void *)v->children); v->children = NULL; v->child_count = 0;
+    for (uint32_t j = 0; j < v->child_count; j++)
+        clear_import_value((ud_value *)v->children + j);
+    ud_free((void *)v->children);
+    v->children = NULL;
+    v->child_count = 0;
 }
 static ud_status import_value(ud_context *ctx, const ud_field *f, const struct ArrowArray *a,
                               int64_t index, ud_value *v, uint32_t depth) {
     if (depth > 32 || !a || a->dictionary || a->offset < 0 || index < 0 || index >= a->length ||
-        a->offset > INT64_MAX - index || !a->buffers || a->n_children != f->child_count) return UD_CORRUPT;
+        a->offset > INT64_MAX - index || !a->buffers || a->n_children != f->child_count)
+        return UD_CORRUPT;
     int64_t k = a->offset + index;
-    v->type = f->type; v->precision = f->precision; v->scale = f->scale;
-    int buffers = f->type == UD_STRUCT ? 1 : f->type >= UD_LIST ? 2 :
-        f->type == UD_UTF8 || f->type == UD_BINARY ? 3 : 2;
-    if (a->n_buffers != buffers) return UD_SCHEMA;
+    v->type = f->type;
+    v->precision = f->precision;
+    v->scale = f->scale;
+    int buffers = f->type == UD_STRUCT                         ? 1
+                  : f->type >= UD_LIST                         ? 2
+                  : f->type == UD_UTF8 || f->type == UD_BINARY ? 3
+                                                               : 2;
+    if (a->n_buffers != buffers)
+        return UD_SCHEMA;
     v->is_null = a->buffers[0] ? !(((const uint8_t *)a->buffers[0])[k / 8] & (1u << (k % 8))) : 0;
-    if (v->is_null) return UD_OK;
-    if (f->type != UD_STRUCT && !a->buffers[1]) return UD_CORRUPT;
-    if (f->type == UD_BOOL) v->integer = !!(((const uint8_t *)a->buffers[1])[k / 8] & (1u << (k % 8)));
-    else if (f->type == UD_FLOAT64) v->real = ((const double *)a->buffers[1])[k];
-    else if (f->type == UD_DATE32) v->integer = ((const int32_t *)a->buffers[1])[k];
-    else if (f->type == UD_DECIMAL128) memcpy(&v->decimal, (const char *)a->buffers[1] + k * 16, 16);
+    if (v->is_null)
+        return UD_OK;
+    if (f->type != UD_STRUCT && !a->buffers[1])
+        return UD_CORRUPT;
+    if (f->type == UD_BOOL)
+        v->integer = !!(((const uint8_t *)a->buffers[1])[k / 8] & (1u << (k % 8)));
+    else if (f->type == UD_FLOAT64)
+        v->real = ((const double *)a->buffers[1])[k];
+    else if (f->type == UD_DATE32)
+        v->integer = ((const int32_t *)a->buffers[1])[k];
+    else if (f->type == UD_DECIMAL128)
+        memcpy(&v->decimal, (const char *)a->buffers[1] + k * 16, 16);
     else if (f->type == UD_UTF8 || f->type == UD_BINARY) {
         const int32_t *offsets = a->buffers[1];
-        if (k == INT64_MAX || offsets[k] < 0 || offsets[k + 1] < offsets[k] || (!a->buffers[2] && offsets[k + 1])) return UD_CORRUPT;
+        if (k == INT64_MAX || offsets[k] < 0 || offsets[k + 1] < offsets[k] ||
+            (!a->buffers[2] && offsets[k + 1]))
+            return UD_CORRUPT;
         v->text = a->buffers[2] ? (const char *)a->buffers[2] + offsets[k] : "";
         v->text_length = (uint32_t)(offsets[k + 1] - offsets[k]);
     } else if (f->type >= UD_STRUCT) {
-        if (!a->children) return UD_CORRUPT;
-        uint32_t count = f->child_count; int64_t start = k;
+        if (!a->children)
+            return UD_CORRUPT;
+        uint32_t count = f->child_count;
+        int64_t start = k;
         if (f->type >= UD_LIST) {
             const int32_t *offsets = a->buffers[1];
-            if (k == INT64_MAX || offsets[k] < 0 || offsets[k + 1] < offsets[k]) return UD_CORRUPT;
-            start = offsets[k]; count = (uint32_t)(offsets[k + 1] - offsets[k]);
+            if (k == INT64_MAX || offsets[k] < 0 || offsets[k + 1] < offsets[k])
+                return UD_CORRUPT;
+            start = offsets[k];
+            count = (uint32_t)(offsets[k + 1] - offsets[k]);
         }
-        if ((size_t)count > SIZE_MAX / sizeof(ud_value)) return UD_OVERFLOW;
+        if ((size_t)count > SIZE_MAX / sizeof(ud_value))
+            return UD_OVERFLOW;
         ud_value *children = count ? ud_alloc(ctx, (size_t)count * sizeof(*children)) : NULL;
-        if (count && !children) return UD_RESOURCE;
-        v->children = children; v->child_count = count;
+        if (count && !children)
+            return UD_RESOURCE;
+        v->children = children;
+        v->child_count = count;
         for (uint32_t j = 0; j < count; j++) {
             uint32_t field = f->type == UD_STRUCT ? j : 0;
             UD_TRY(import_value(ctx, f->children + field, a->children[field],
                                 f->type == UD_STRUCT ? start : start + j, children + j, depth + 1));
         }
-    } else v->integer = ((const int64_t *)a->buffers[1])[k];
+    } else
+        v->integer = ((const int64_t *)a->buffers[1])[k];
     return UD_OK;
 }
 ud_status ud_batch_import_arrow(ud_context *ctx, const struct ArrowArray *a,
                                 const struct ArrowSchema *s, ud_batch **out) {
-    if (!out) return UD_INVALID;
+    if (!out)
+        return UD_INVALID;
     *out = NULL;
     if (!a || !s || !a->release || !s->release || !s->format || strcmp(s->format, "+s") ||
         a->dictionary || s->dictionary || a->length < 0 || a->length > INT32_MAX || a->offset < 0 ||
         a->offset > INT64_MAX - a->length || a->n_children != s->n_children || a->n_children <= 0 ||
-        a->n_children > 65536 || !a->children || !s->children || a->null_count != 0 || a->n_buffers != 1)
+        a->n_children > 65536 || !a->children || !s->children || a->null_count != 0 ||
+        a->n_buffers != 1)
         return ud_fail(ctx, UD_UNSUPPORTED, "Arrow root must be a non-null struct batch");
     uint32_t n = (uint32_t)a->n_children;
     ud_field *fields = ud_alloc(ctx, n * sizeof(*fields));
     ud_value *values = ud_alloc(ctx, n * sizeof(*values));
-    if (!fields || !values) { ud_free(fields); ud_free(values); return UD_RESOURCE; }
+    if (!fields || !values) {
+        ud_free(fields);
+        ud_free(values);
+        return UD_RESOURCE;
+    }
     ud_status code = UD_OK;
-    for (uint32_t j = 0; !code && j < n; j++) code = import_field(ctx, s->children[j], fields + j, 0);
-    if (!code) code = ud_batch_create(ctx, fields, n, (uint32_t)a->length, out);
+    for (uint32_t j = 0; !code && j < n; j++)
+        code = import_field(ctx, s->children[j], fields + j, 0);
+    if (!code)
+        code = ud_batch_create(ctx, fields, n, (uint32_t)a->length, out);
     for (uint32_t r = 0; !code && r < (uint32_t)a->length; r++) {
         memset(values, 0, n * sizeof(*values));
-        for (uint32_t j = 0; !code && j < n; j++) code = import_value(ctx, fields + j, a->children[j], a->offset + r, values + j, 0);
-        if (!code) code = ud_batch_append(*out, values, n);
-        for (uint32_t j = 0; j < n; j++) clear_import_value(values + j);
+        for (uint32_t j = 0; !code && j < n; j++)
+            code = import_value(ctx, fields + j, a->children[j], a->offset + r, values + j, 0);
+        if (!code)
+            code = ud_batch_append(*out, values, n);
+        for (uint32_t j = 0; j < n; j++)
+            clear_import_value(values + j);
     }
-    for (uint32_t j = 0; j < n; j++) clear_field_tree(fields + j);
-    ud_free(fields); ud_free(values);
-    if (code) { ud_batch_destroy(*out); *out = NULL; }
+    for (uint32_t j = 0; j < n; j++)
+        clear_field_tree(fields + j);
+    ud_free(fields);
+    ud_free(values);
+    if (code) {
+        ud_batch_destroy(*out);
+        *out = NULL;
+    }
     return code;
 }

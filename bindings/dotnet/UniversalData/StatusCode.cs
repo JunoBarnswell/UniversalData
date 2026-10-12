@@ -1,4 +1,5 @@
 namespace UniversalData;
+
 public enum StatusCode
 {
     Ok = 0, End = 1, Invalid = 2, Io = 3, Resource = 4, Schema = 5,

@@ -30,7 +30,7 @@ typedef ud_status (*ud_component_emit)(void *, uint32_t output, ud_batch *);
 typedef struct ud_component_context {
     uint32_t struct_size, abi_version;
     ud_context *memory;
-    ud_execution *execution; /* Borrowed; cannot start/wait/destroy in callbacks. */
+    ud_execution *execution;   /* Borrowed; cannot start/wait/destroy in callbacks. */
     ud_activation *activation; /* Isolated lexical/deadline frame. */
     ud_string task_id, pipeline_id, component_id;
     uint32_t max_batch_rows;

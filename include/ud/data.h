@@ -6,17 +6,35 @@ extern "C" {
 #endif
 typedef int32_t ud_type;
 enum {
-    UD_BOOL = 1, UD_INT64 = 2, UD_FLOAT64 = 3, UD_UTF8 = 4,
-    UD_DECIMAL128 = 5, UD_DATE32 = 6, UD_TIME64 = 7, UD_TIMESTAMP = 8, UD_BINARY = 9,
-    UD_STRUCT = 10, UD_LIST = 11, UD_MAP = 12
+    UD_BOOL = 1,
+    UD_INT64 = 2,
+    UD_FLOAT64 = 3,
+    UD_UTF8 = 4,
+    UD_DECIMAL128 = 5,
+    UD_DATE32 = 6,
+    UD_TIME64 = 7,
+    UD_TIMESTAMP = 8,
+    UD_BINARY = 9,
+    UD_STRUCT = 10,
+    UD_LIST = 11,
+    UD_MAP = 12
 };
 /* Signed two's-complement coefficient, independent of compiler __int128 support. */
-typedef struct ud_decimal128 { uint64_t low; int64_t high; } ud_decimal128;
+typedef struct ud_decimal128 {
+    uint64_t low;
+    int64_t high;
+} ud_decimal128;
 /* Stable logical column identity, never derived from row values or addresses. */
-typedef struct ud_column_id { uint64_t high, low; } ud_column_id;
+typedef struct ud_column_id {
+    uint64_t high, low;
+} ud_column_id;
 enum {
-    UD_ROUND_EXACT = 0, UD_ROUND_ZERO = 1, UD_ROUND_HALF_EVEN = 2,
-    UD_ROUND_HALF_AWAY = 3, UD_ROUND_FLOOR = 4, UD_ROUND_CEILING = 5
+    UD_ROUND_EXACT = 0,
+    UD_ROUND_ZERO = 1,
+    UD_ROUND_HALF_EVEN = 2,
+    UD_ROUND_HALF_AWAY = 3,
+    UD_ROUND_FLOOR = 4,
+    UD_ROUND_CEILING = 5
 };
 typedef struct ud_field {
     const char *name;
@@ -24,7 +42,7 @@ typedef struct ud_field {
     ud_type type;
     int32_t nullable;
     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
-    const char *timezone; /* Timestamp only: required explicit UTC / IANA metadata. */
+    const char *timezone;     /* Timestamp only: required explicit UTC / IANA metadata. */
     uint32_t timezone_length;
     const struct ud_field *children;
     uint32_t child_count;
@@ -41,7 +59,8 @@ UD_API int32_t ud_field_matches(const ud_field *, const ud_field *, int32_t mode
 UD_API int32_t ud_column_id_compare(ud_column_id, ud_column_id);
 /* Deterministic SHA-256-derived 128-bit identity in a logical namespace. Both
  * arguments are UTF8 with explicit lengths, nonempty, without embedded NUL. */
-UD_API ud_status ud_column_id_make(ud_context *, ud_string name_space, ud_string symbol, ud_column_id *);
+UD_API ud_status ud_column_id_make(ud_context *, ud_string name_space, ud_string symbol,
+                                   ud_column_id *);
 UD_API ud_status ud_column_id_parse(ud_string canonical_hex, ud_column_id *);
 UD_API void ud_column_id_format(ud_column_id, char output[33]);
 typedef struct ud_value {
@@ -73,8 +92,10 @@ enum { UD_NUMERIC_ADD = 0, UD_NUMERIC_SUBTRACT = 1, UD_NUMERIC_MULTIPLY = 2 };
 /* Exact native numeric kernels shared by expressions, functions and aggregation.
  * No cross-type coercion. Decimal multiplication infers summed scale (must fit
  * -38..38) and precision capped at 38. Overflow is diagnosed, never wrapped. */
-UD_API ud_status ud_numeric_result_field(int32_t operation, const ud_field *, const ud_field *, ud_field *);
-UD_API ud_status ud_value_numeric(int32_t operation, const ud_value *, const ud_value *, const ud_field *result, ud_value *);
+UD_API ud_status ud_numeric_result_field(int32_t operation, const ud_field *, const ud_field *,
+                                         ud_field *);
+UD_API ud_status ud_value_numeric(int32_t operation, const ud_value *, const ud_value *,
+                                  const ud_field *result, ud_value *);
 /* Total order for values whose bound schemas match (including Decimal scale).
  * NULL first; NaN after all numeric values, all NaNs equal, +/-0 equal. */
 UD_API int32_t ud_value_compare(const ud_value *, const ud_value *);

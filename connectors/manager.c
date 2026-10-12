@@ -16,8 +16,9 @@ ud_status ud_connection_lease_authorize(ud_connection_lease *l, int32_t action) 
     ud_activation *e = l->execution;
     UD_TRY(ud_activation_check(e));
     return e->execution->options.authorize && e->execution->options.tenant.length &&
-                   e->execution->options.authorize(e->execution->options.authorize_user, e->execution->options.tenant, l->resource,
-                                        action) == UD_OK
+                   e->execution->options.authorize(e->execution->options.authorize_user,
+                                                   e->execution->options.tenant, l->resource,
+                                                   action) == UD_OK
                ? UD_OK
                : UD_AUTH;
 }
@@ -96,8 +97,9 @@ static ud_status acquire(ud_activation *e, ud_string id, uint64_t caps, int endp
 #endif
     } else if (!s) {
         if (!e->execution->options.authorize ||
-            e->execution->options.authorize(e->execution->options.authorize_user, e->execution->options.tenant, l->driver,
-                                 UD_ACCESS_OPEN) != UD_OK)
+            e->execution->options.authorize(e->execution->options.authorize_user,
+                                            e->execution->options.tenant, l->driver,
+                                            UD_ACCESS_OPEN) != UD_OK)
             s = UD_AUTH;
         char *path = !s ? ud_strdup_n(e->execution->ctx, l->driver.data, l->driver.length) : NULL;
         if (!s && !path)
@@ -108,10 +110,14 @@ static ud_status acquire(ud_activation *e, ud_string id, uint64_t caps, int endp
         ud_string credential = {0};
         if (!s)
             s = ud_json_string(ud_member(l->definition, "credentialReference"), &credential);
-        ud_connection_options options = {sizeof(options),      UD_ABI_VERSION,
-                                         e->execution->options.tenant,    l->resource,
-                                         credential,           e->execution->options.authorize_user,
-                                         e->execution->options.authorize, e->execution->options.resolve_user,
+        ud_connection_options options = {sizeof(options),
+                                         UD_ABI_VERSION,
+                                         e->execution->options.tenant,
+                                         l->resource,
+                                         credential,
+                                         e->execution->options.authorize_user,
+                                         e->execution->options.authorize,
+                                         e->execution->options.resolve_user,
                                          e->execution->options.resolve};
         if (!s)
             s = ud_connection_open(l->plugin, &options, &l->connection);
@@ -128,7 +134,7 @@ static ud_status acquire(ud_activation *e, ud_string id, uint64_t caps, int endp
     return UD_OK;
 }
 ud_status ud_activation_acquire_connection(ud_activation *e, ud_string id, uint64_t caps,
-                                          ud_connection_lease **out) {
+                                           ud_connection_lease **out) {
     return acquire(e, id, caps, 0, out);
 }
 ud_status ud_acquire_file_connection(ud_activation *e, ud_string id, ud_connection_lease **out) {
@@ -163,8 +169,9 @@ ud_status ud_http_connection_credentials(ud_connection_lease *l, ud_string *out)
     ud_activation *e = l->execution;
     if (!e->execution->options.resolve)
         return UD_AUTH;
-    ud_status s = e->execution->options.resolve(e->execution->options.resolve_user, e->execution->ctx, e->execution->options.tenant,
-                                     l->resource, reference, out);
+    ud_status s =
+        e->execution->options.resolve(e->execution->options.resolve_user, e->execution->ctx,
+                                      e->execution->options.tenant, l->resource, reference, out);
     if (s || !out->data || !out->length || out->length > 32768) {
         ud_free((void *)out->data);
         *out = (ud_string){0};

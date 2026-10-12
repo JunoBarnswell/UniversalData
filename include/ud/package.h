@@ -20,7 +20,7 @@ typedef struct ud_execution_event {
     int32_t state;
     ud_status result;
     uint64_t timestamp_ms;
-    int32_t kind; /* State changes or durability boundary; no data/secret values. */
+    int32_t kind;      /* State changes or durability boundary; no data/secret values. */
     uint64_t sequence; /* Serialized within the root Execution. */
     const ud_activation *activation; /* Borrowed during observer only. */
 } ud_execution_event;

@@ -50,8 +50,8 @@ static ud_status build_entry(ud_registry *r, const ud_component_descriptor *d, e
     if (!valid(d->id) || !valid(d->name) || !valid(d->version) || !valid(d->configuration_schema) ||
         d->inputs > 64 || d->outputs > 64 || d->category < UD_COMPONENT_TASK ||
         d->category > UD_COMPONENT_FUNCTION ||
-        (d->category > UD_COMPONENT_DESTINATION && d->category < UD_COMPONENT_FUNCTION) || d->synchronous_input < -1 ||
-        d->error_output < -1 ||
+        (d->category > UD_COMPONENT_DESTINATION && d->category < UD_COMPONENT_FUNCTION) ||
+        d->synchronous_input < -1 || d->error_output < -1 ||
         (d->synchronous_input >= 0 && (uint32_t)d->synchronous_input >= d->inputs) ||
         (d->error_output >= 0 && (uint32_t)d->error_output >= d->outputs))
         return UD_INVALID;
@@ -174,12 +174,14 @@ ud_status ud_registry_acquire(ud_registry *r) {
         return UD_INVALID;
     unsigned old = atomic_load(&r->leases);
     do {
-        if (old == UINT32_MAX) return UD_RESOURCE;
+        if (old == UINT32_MAX)
+            return UD_RESOURCE;
     } while (!atomic_compare_exchange_weak(&r->leases, &old, old + 1));
     return UD_OK;
 }
 void ud_registry_release(ud_registry *r) {
-    if (r) atomic_fetch_sub(&r->leases, 1);
+    if (r)
+        atomic_fetch_sub(&r->leases, 1);
 }
 ud_status ud_registry_destroy(ud_registry *r) {
     if (!r)

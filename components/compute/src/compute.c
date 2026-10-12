@@ -37,13 +37,15 @@ ud_status ud_plan_check_batch(const ud_plan *p, const ud_batch *b) {
 }
 static ud_status own_value(ud_context *ctx, ud_value *target, const ud_value *source) {
     ud_status s = ud_copy_value(ctx, source, target, 0);
-    if (s) ud_clear_value(target);
+    if (s)
+        ud_clear_value(target);
     return s;
 }
 static void clear_values(ud_value *v, uint32_t n) {
     if (!v)
         return;
-    for (uint32_t i = 0; i < n; i++) ud_clear_value(v + i);
+    for (uint32_t i = 0; i < n; i++)
+        ud_clear_value(v + i);
     ud_free(v);
 }
 static ud_status index_group(ud_accumulator *a, group *g) {
@@ -125,7 +127,11 @@ ud_status ud_accumulator_create(const ud_plan *p, ud_accumulator **out) {
         return UD_RESOURCE;
     (*out)->plan = p;
     ud_status retained = ud_plan_retain((ud_plan *)p);
-    if (retained) { ud_free(*out); *out = NULL; return retained; }
+    if (retained) {
+        ud_free(*out);
+        *out = NULL;
+        return retained;
+    }
     if (!p->key_n) {
         group *g;
         ud_status s = new_group(*out, NULL, 0, UD_VALUE_HASH_SEED, &g);
@@ -151,12 +157,14 @@ void ud_accumulator_destroy(ud_accumulator *a) {
     ud_plan_destroy((ud_plan *)a->plan);
     ud_free(a);
 }
-static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, uint32_t end, int filtered) {
+static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, uint32_t end,
+                          int filtered) {
     const ud_plan *p = a->plan;
     UD_TRY(ud_plan_check_batch(p, b));
     for (uint32_t r = begin; r < end; r++) {
         int accept = 1;
-        if (filtered) UD_TRY(ud_plan_accept(p, b, r, &accept));
+        if (filtered)
+            UD_TRY(ud_plan_accept(p, b, r, &accept));
         if (!accept)
             continue;
         uint64_t hash = UD_VALUE_HASH_SEED;
@@ -198,7 +206,7 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, 
                 ud_clear_value(v);
                 UD_TRY(own_value(p->ctx, v, &input));
             } else if (def->kind == 1) {
-                UD_TRY(ud_value_numeric(UD_NUMERIC_ADD,v,&input,p->fields+def->column,v));
+                UD_TRY(ud_value_numeric(UD_NUMERIC_ADD, v, &input, p->fields + def->column, v));
             } else {
                 int cmp = ud_value_compare(&input, v);
                 if ((def->kind == 2 && cmp < 0) || (def->kind == 3 && cmp > 0)) {
@@ -221,16 +229,20 @@ ud_status ud_accumulator_add(ud_accumulator *a, const ud_batch *b) {
     return s;
 }
 ud_status ud_accumulator_add_accepted(ud_accumulator *a, const ud_batch *b, uint32_t row) {
-    if (!a || a->failed || !b || row >= b->rows) return UD_INVALID;
+    if (!a || a->failed || !b || row >= b->rows)
+        return UD_INVALID;
     ud_status s = add_rows(a, b, row, row + 1, 0);
-    if (s) a->failed = 1;
+    if (s)
+        a->failed = 1;
     return s;
 }
 static ud_status output_fields(const ud_plan *p, ud_field **out, uint32_t *n) {
     *n = p->output_schema->columns;
     *out = ud_alloc(p->ctx, *n * sizeof(**out));
-    if (!*out) return UD_RESOURCE;
-    for (uint32_t i = 0; i < *n; i++) (*out)[i] = p->output_schema->column[i].field;
+    if (!*out)
+        return UD_RESOURCE;
+    for (uint32_t i = 0; i < *n; i++)
+        (*out)[i] = p->output_schema->column[i].field;
     return UD_OK;
 }
 ud_status ud_accumulator_snapshot(const ud_accumulator *a, ud_batch **out) {

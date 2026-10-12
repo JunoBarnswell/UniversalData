@@ -100,7 +100,8 @@ ud_status ud_expression_json(ud_activation *, const ud_json *, const ud_batch *,
 ud_status ud_bound_config(ud_activation *, const ud_json *, ud_json **);
 ud_status ud_scalar_json(ud_bytes *, const ud_field *, const ud_value *);
 ud_status ud_scope_bind_parameters(ud_activation *, ud_scope *);
-ud_status ud_definition_box(ud_context *, ud_string name_space, ud_string name, const ud_json *, const ud_json *, int required, ud_batch **);
+ud_status ud_definition_box(ud_context *, ud_string name_space, ud_string name, const ud_json *,
+                            const ud_json *, int required, ud_batch **);
 ud_status ud_resolve_field(void *, ud_string, ud_field *);
 ud_status ud_activation_bind_roots(ud_activation *);
 ud_status ud_activation_validate_definition(ud_activation *, uint32_t depth);
@@ -109,7 +110,8 @@ ud_status ud_child_package(ud_activation *, const ud_json *, int execute, uint32
 ud_status ud_parameters_check(ud_context *, const ud_json *, const ud_json *, int require_values);
 ud_status ud_variable_assign(ud_context *, ud_variable *, const ud_value *, const ud_field *);
 ud_status ud_variable_writable(ud_activation *, ud_string, ud_variable **);
-ud_status ud_connection_definition(ud_activation *, ud_string, const ud_json **, int *project_scope);
+ud_status ud_connection_definition(ud_activation *, ud_string, const ud_json **,
+                                   int *project_scope);
 ud_status ud_connection_definitions_check(const ud_json *);
 typedef struct ud_connection_lease ud_connection_lease;
 ud_status ud_acquire_file_connection(ud_activation *, ud_string, ud_connection_lease **);

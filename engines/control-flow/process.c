@@ -39,8 +39,8 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
     uint64_t total_arguments = 0;
     for (uint32_t i = 0; !s && i < ud_json_size(p->arguments); i++) {
         const ud_json *arg = ud_json_at(p->arguments, i);
-        const char *value=NULL;
-        uint32_t n=0;
+        const char *value = NULL;
+        uint32_t n = 0;
         if (ud_json_kind(arg) != UD_JSON_STRING)
             s = UD_SCHEMA;
         if (!s)
@@ -75,7 +75,7 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
             int owner;
             s = ud_connection_definition(c->activation, ids[i], &def, &owner);
             const ud_json *driver = ud_member(def, "driver");
-            ud_string value={0};
+            ud_string value = {0};
             if (!s && ud_json_kind(driver) == UD_JSON_STRING) {
                 s = ud_json_string(driver, &value);
                 if (!s && !ud_named(value, i ? "file" : "process"))
@@ -232,7 +232,8 @@ static ud_status quoted(ud_bytes *b, const wchar_t *arg) {
 }
 static ud_status launch(ud_activation *e, char **argv, const char *cwd, uint64_t deadline,
                         int64_t *code) {
-    wchar_t *program = wide(e->execution->ctx, argv[0]), *directory = cwd ? wide(e->execution->ctx, cwd) : NULL;
+    wchar_t *program = wide(e->execution->ctx, argv[0]),
+            *directory = cwd ? wide(e->execution->ctx, cwd) : NULL;
     ud_status s = program && (!cwd || directory) ? UD_OK : UD_RESOURCE;
     ud_bytes command = {.ctx = e->execution->ctx};
     for (int i = 0; !s && argv[i]; i++) {
@@ -375,7 +376,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     }
     for (uint32_t i = 0; !s && i < count; i++) {
         const char *arg;
-        uint32_t n=0;
+        uint32_t n = 0;
         s = ud_json_text(ud_json_at(p.arguments, i), &arg, &n);
         if (!s) {
             argv[i + 1] = ud_strdup_n(c->memory, arg, n);

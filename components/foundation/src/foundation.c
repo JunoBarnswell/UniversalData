@@ -32,10 +32,11 @@ const char *ud_version(void) {
     return "1.0.0";
 }
 const char *ud_status_name(ud_status s) {
-    static const char *names[] = {"ok",           "end",   "invalid",    "io",        "resource",
-                                  "schema",       "parse", "overflow",   "cancelled", "corrupt",
-                                  "incompatible", "busy",  "unsupported", "auth", "quality", "transient",
-                                  "commit_unknown", "fenced", "timeout", "more"};
+    static const char *names[] = {
+        "ok",          "end",      "invalid",   "io",        "resource",       "schema",
+        "parse",       "overflow", "cancelled", "corrupt",   "incompatible",   "busy",
+        "unsupported", "auth",     "quality",   "transient", "commit_unknown", "fenced",
+        "timeout",     "more"};
     return s >= 0 && s < 20 ? names[s] : "unknown";
 }
 const char *ud_error(const ud_context *ctx) {
@@ -59,14 +60,20 @@ ud_status ud_context_create(const ud_context_options *options, ud_context **out)
         (options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION ||
          (!!options->allocate != !!options->deallocate)))
         return UD_INCOMPATIBLE;
-    ud_context_options effective={0};
-    if(options) effective=*options;
-    if(!effective.memory_limit) effective.memory_limit=UINT64_C(268435456);
-    if(!effective.allocate) { effective.allocate=default_alloc;effective.deallocate=default_free; }
-    ud_context *c = effective.allocate(effective.allocator_user,sizeof(*c));
+    ud_context_options effective = {0};
+    if (options)
+        effective = *options;
+    if (!effective.memory_limit)
+        effective.memory_limit = UINT64_C(268435456);
+    if (!effective.allocate) {
+        effective.allocate = default_alloc;
+        effective.deallocate = default_free;
+    }
+    ud_context *c = effective.allocate(effective.allocator_user, sizeof(*c));
     if (!c)
         return UD_RESOURCE;
-    memset(c,0,sizeof(*c));c->options=effective;
+    memset(c, 0, sizeof(*c));
+    c->options = effective;
     atomic_init(&c->used, 0);
     atomic_init(&c->cancelled, 0);
     *out = c;
@@ -77,8 +84,9 @@ ud_status ud_context_destroy(ud_context *c) {
         return UD_OK;
     if (atomic_load(&c->used))
         return ud_fail(c, UD_BUSY, "context has live allocations");
-    void *user=c->options.allocator_user;ud_deallocate_fn deallocate=c->options.deallocate;
-    deallocate(user,c);
+    void *user = c->options.allocator_user;
+    ud_deallocate_fn deallocate = c->options.deallocate;
+    deallocate(user, c);
     return UD_OK;
 }
 uint64_t ud_memory_used(const ud_context *c) {
@@ -176,7 +184,8 @@ ud_status ud_bytes_put(ud_bytes *b, const void *p, size_t n) {
     if (n > SIZE_MAX - b->size)
         return UD_OVERFLOW;
     size_t need = b->size + n;
-    if(b->limit && need>b->limit) return ud_fail(b->ctx,UD_RESOURCE,"buffer byte limit exceeded");
+    if (b->limit && need > b->limit)
+        return ud_fail(b->ctx, UD_RESOURCE, "buffer byte limit exceeded");
     if (need > b->capacity) {
         size_t cap = b->capacity ? b->capacity : 256;
         while (cap < need) {

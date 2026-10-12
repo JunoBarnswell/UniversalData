@@ -7,7 +7,7 @@ struct ud_project {
 };
 static ud_status json_put(ud_bytes *out, const ud_json *v) {
     char *json = NULL;
-    uint32_t n=0;
+    uint32_t n = 0;
     UD_TRY(ud_json_serialize(v, &json, &n));
     ud_status s = ud_bytes_put(out, json, n);
     ud_free(json);
@@ -24,7 +24,7 @@ static ud_status read_object(ud_context *c, ud_string input, ud_json **out) {
     return s;
 }
 static ud_status version(const ud_json *v) {
-    uint64_t n=0;
+    uint64_t n = 0;
     UD_TRY(ud_json_uint(ud_member(v, "version"), &n));
     return n == UD_CONFIG_VERSION ? UD_OK : UD_INCOMPATIBLE;
 }
@@ -32,7 +32,7 @@ static const ud_json *reference(const ud_project *p, ud_string id) {
     const ud_json *refs = ud_member(p->document, "packages");
     for (uint32_t i = 0; i < ud_json_size(refs); i++) {
         const ud_json *ref = ud_json_at(refs, i);
-        ud_string name={0};
+        ud_string name = {0};
         if (!ud_json_string(ud_member(ref, "id"), &name) && ud_same(id, name))
             return ref;
     }
@@ -69,8 +69,8 @@ ud_status ud_project_create(ud_context *c, ud_string input, ud_project **out) {
         s = UD_SCHEMA;
     for (uint32_t i = 0; !s && i < ud_json_size(refs); i++) {
         const ud_json *ref = ud_json_at(refs, i);
-        ud_string id={0};
-        uint64_t revision=0;
+        ud_string id = {0};
+        uint64_t revision = 0;
         static const char *rk[] = {"id", "revision"};
         s = ud_json_keys(ref, rk, 2);
         if (!s)
@@ -109,7 +109,7 @@ static ud_status merge(ud_context *ctx, const ud_json *first, const ud_json *sec
         const ud_json *doc = pass ? second : first;
         for (uint32_t i = 0; !s && i < ud_json_size(doc); i++) {
             const char *key;
-            uint32_t n=0;
+            uint32_t n = 0;
             s = ud_json_key(doc, i, &key, &n);
             if (!s && !pass && ud_json_find(second, key, n))
                 continue;
@@ -133,27 +133,33 @@ static ud_status merge(ud_context *ctx, const ud_json *first, const ud_json *sec
     return s;
 }
 static ud_status bound_definitions(ud_bytes *b, const ud_json *defs, const ud_json *values) {
-    static const char *metadata[] = {"type", "nullable", "precision", "scale", "timezone", "children"};
+    static const char *metadata[] = {"type",  "nullable", "precision",
+                                     "scale", "timezone", "children"};
     UD_TRY(ud_bytes_put(b, "{", 1));
     for (uint32_t i = 0; i < ud_json_size(defs); i++) {
         const char *key;
-        uint32_t n=0;
+        uint32_t n = 0;
         UD_TRY(ud_json_key(defs, i, &key, &n));
         const ud_json *def = ud_json_at(defs, i), *value = ud_json_find(values, key, n);
-        if (!value) value = ud_member(def, "default");
-        if (i) UD_TRY(ud_bytes_put(b, ",", 1));
+        if (!value)
+            value = ud_member(def, "default");
+        if (i)
+            UD_TRY(ud_bytes_put(b, ",", 1));
         UD_TRY(ud_json_quote(b, key, n));
         UD_TRY(ud_bytes_put(b, ":{", 2));
         int field = 0;
         for (uint32_t j = 0; j < sizeof(metadata) / sizeof(metadata[0]); j++) {
             const ud_json *property = ud_member(def, metadata[j]);
-            if (!property) continue;
-            if (field++) UD_TRY(ud_bytes_put(b, ",", 1));
+            if (!property)
+                continue;
+            if (field++)
+                UD_TRY(ud_bytes_put(b, ",", 1));
             UD_TRY(ud_json_quote(b, metadata[j], (uint32_t)strlen(metadata[j])));
             UD_TRY(ud_bytes_put(b, ":", 1));
             UD_TRY(json_put(b, property));
         }
-        if (field++) UD_TRY(ud_bytes_put(b, ",", 1));
+        if (field++)
+            UD_TRY(ud_bytes_put(b, ",", 1));
         UD_TRY(ud_bytes_put(b, "\"default\":", 10));
         UD_TRY(json_put(b, value));
         UD_TRY(ud_bytes_put(b, "}", 1));
@@ -177,7 +183,7 @@ ud_status ud_project_bind(const ud_project *p, const ud_package *package,
     if (ud_member(package->document, "project"))
         return UD_SCHEMA;
     const ud_json *ref = reference(p, package->id);
-    uint64_t revision=0;
+    uint64_t revision = 0;
     if (!ref)
         return UD_SCHEMA;
     UD_TRY(ud_json_uint(ud_member(ref, "revision"), &revision));
@@ -196,7 +202,7 @@ ud_status ud_project_bind(const ud_project *p, const ud_package *package,
             s = ud_json_keys(env, ek, 5);
         if (!s)
             s = version(env);
-        ud_string id={0};
+        ud_string id = {0};
         if (!s)
             s = ud_json_string(ud_member(env, "id"), &id);
         if (!s)
@@ -208,7 +214,7 @@ ud_status ud_project_bind(const ud_project *p, const ud_package *package,
             s = UD_SCHEMA;
         for (uint32_t i = 0; !s && i < ud_json_size(values); i++) {
             const char *key;
-            uint32_t n=0;
+            uint32_t n = 0;
             s = ud_json_key(values, i, &key, &n);
             if (!s && (!reference(p, (ud_string){key, n}) ||
                        ud_json_kind(ud_json_at(values, i)) != UD_JSON_OBJECT))
@@ -233,13 +239,14 @@ ud_status ud_project_bind(const ud_project *p, const ud_package *package,
     if (!s)
         s = ud_parameters_check(p->ctx, ud_member(p->document, "parameters"), project_values, 1);
     if (!s)
-        s = ud_parameters_check(p->ctx, ud_member(package->document, "parameters"), package_values, 1);
+        s = ud_parameters_check(p->ctx, ud_member(package->document, "parameters"), package_values,
+                                1);
     ud_bytes b = {.ctx = p->ctx};
     if (!s)
         s = ud_bytes_put(&b, "{", 1);
     for (uint32_t i = 0; !s && i < ud_json_size(package->document); i++) {
         const char *key;
-        uint32_t n=0;
+        uint32_t n = 0;
         s = ud_json_key(package->document, i, &key, &n);
         if (!s && i)
             s = ud_bytes_put(&b, ",", 1);

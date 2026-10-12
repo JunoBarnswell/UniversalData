@@ -52,10 +52,12 @@ static ud_status eval(const ud_expression *e, const expression_node *n, const ud
     }
     if (n->kind == REFERENCE) {
         UD_TRY(e->resolve(e->user, n->name, out));
-        if (out->type != n->type) return UD_SCHEMA;
+        if (out->type != n->type)
+            return UD_SCHEMA;
         return n->type == UD_DECIMAL128 && !out->is_null &&
                        (out->precision != n->field.precision || out->scale != n->field.scale)
-                   ? UD_SCHEMA : UD_OK;
+                   ? UD_SCHEMA
+                   : UD_OK;
     }
     if (n->kind == COLUMN)
         return ud_batch_get(b, row, n->column, out);
@@ -64,16 +66,21 @@ static ud_status eval(const ud_expression *e, const expression_node *n, const ud
         for (uint32_t i = 0; i < n->argument_count; i++)
             UD_TRY(eval(e, n->args[i], b, row, arguments + i));
         expression_node *state = (expression_node *)n;
-        if (state->value_owned) ud_clear_value(&state->value);
+        if (state->value_owned)
+            ud_clear_value(&state->value);
         state->value_owned = 0;
         memset(&state->value, 0, sizeof(state->value));
         ud_status s = n->function.function_evaluate(n->function.user, e->ctx, arguments,
                                                     n->argument_count, &n->field, &state->value);
-        if (!s && state->value.type != n->field.type) s = UD_SCHEMA;
+        if (!s && state->value.type != n->field.type)
+            s = UD_SCHEMA;
         if (!s && !state->value.is_null && n->field.type == UD_DECIMAL128 &&
             (state->value.precision != n->field.precision || state->value.scale != n->field.scale))
             s = UD_SCHEMA;
-        if (s) { ud_clear_value(&state->value); return s; }
+        if (s) {
+            ud_clear_value(&state->value);
+            return s;
+        }
         state->value_owned = 1;
         *out = state->value;
         return UD_OK;
@@ -116,51 +123,93 @@ static ud_status eval(const ud_expression *e, const expression_node *n, const ud
 static void node_free(expression_node *n) {
     if (!n)
         return;
-    for (uint32_t i = 0; i < 16; i++) node_free(n->args[i]);
-    if (n->value_owned) ud_clear_value(&n->value);
+    for (uint32_t i = 0; i < 16; i++)
+        node_free(n->args[i]);
+    if (n->value_owned)
+        ud_clear_value(&n->value);
     ud_free(n->lineage_owned);
     ud_batch_destroy(n->literal_owner);
-    if (n->field_owned) ud_field_clear(&n->field);
+    if (n->field_owned)
+        ud_field_clear(&n->field);
     ud_free(n);
 }
 static void literal_origins(ud_field *field) {
-    ud_free((void *)field->lineage);field->lineage=NULL;field->lineage_count=0;
-    field->identity=(ud_column_id){0};
-    for(uint32_t j=0;j<field->child_count;j++)literal_origins((ud_field *)field->children+j);
+    ud_free((void *)field->lineage);
+    field->lineage = NULL;
+    field->lineage_count = 0;
+    field->identity = (ud_column_id){0};
+    for (uint32_t j = 0; j < field->child_count; j++)
+        literal_origins((ud_field *)field->children + j);
 }
-static ud_status bind_literal(ud_expression *e,expression_node *n,const ud_json *json,const ud_json *literal) {
-    static const char *keys[]={"literal","type","precision","scale","timezone","children"};
-    for(uint32_t j=0;j<ud_json_size(json);j++) {
-        const char *key=NULL;uint32_t length=0;UD_TRY(ud_json_key(json,j,&key,&length));int known=0;
-        for(uint32_t k=0;k<6;k++)if(length==strlen(keys[k]) && !memcmp(key,keys[k],length))known=1;
-        if(!known)return UD_SCHEMA;
+static ud_status bind_literal(ud_expression *e, expression_node *n, const ud_json *json,
+                              const ud_json *literal) {
+    static const char *keys[] = {"literal", "type", "precision", "scale", "timezone", "children"};
+    for (uint32_t j = 0; j < ud_json_size(json); j++) {
+        const char *key = NULL;
+        uint32_t length = 0;
+        UD_TRY(ud_json_key(json, j, &key, &length));
+        int known = 0;
+        for (uint32_t k = 0; k < 6; k++)
+            if (length == strlen(keys[k]) && !memcmp(key, keys[k], length))
+                known = 1;
+        if (!known)
+            return UD_SCHEMA;
     }
-    ud_bytes schema={.ctx=e->ctx},rows={.ctx=e->ctx};
-    const char *prefix="{\"version\":4,\"fields\":[{\"name\":\"literal\",\"nullable\":true";
-    ud_status s=ud_bytes_put(&schema,prefix,strlen(prefix));
-    for(uint32_t j=1;!s && j<6;j++) {
-        const ud_json *value=member(json,keys[j]);if(!value)continue;
-        char *text=NULL;uint32_t length=0;s=ud_json_serialize(value,&text,&length);
-        if(!s)s=ud_bytes_put(&schema,",",1);
-        if(!s)s=ud_json_quote(&schema,keys[j],(uint32_t)strlen(keys[j]));
-        if(!s)s=ud_bytes_put(&schema,":",1);
-        if(!s)s=ud_bytes_put(&schema,text,length);
+    ud_bytes schema = {.ctx = e->ctx}, rows = {.ctx = e->ctx};
+    const char *prefix = "{\"version\":4,\"fields\":[{\"name\":\"literal\",\"nullable\":true";
+    ud_status s = ud_bytes_put(&schema, prefix, strlen(prefix));
+    for (uint32_t j = 1; !s && j < 6; j++) {
+        const ud_json *value = member(json, keys[j]);
+        if (!value)
+            continue;
+        char *text = NULL;
+        uint32_t length = 0;
+        s = ud_json_serialize(value, &text, &length);
+        if (!s)
+            s = ud_bytes_put(&schema, ",", 1);
+        if (!s)
+            s = ud_json_quote(&schema, keys[j], (uint32_t)strlen(keys[j]));
+        if (!s)
+            s = ud_bytes_put(&schema, ":", 1);
+        if (!s)
+            s = ud_bytes_put(&schema, text, length);
         ud_free(text);
     }
-    if(!s)s=ud_bytes_put(&schema,"}]}",3);
-    char *value=NULL;uint32_t length=0;
-    if(!s)s=ud_json_serialize(literal,&value,&length);
-    if(!s)s=ud_bytes_put(&rows,"[{\"literal\":",12);
-    if(!s)s=ud_bytes_put(&rows,value,length);
-    if(!s)s=ud_bytes_put(&rows,"}]",2);
-    if(!s)s=ud_batch_from_json_schema(e->ctx,(const char *)schema.data,(uint32_t)schema.size,
-                                     (const char *)rows.data,(uint32_t)rows.size,UD_ROUND_EXACT,&n->literal_owner);
-    ud_free(value);ud_bytes_clear(&schema);ud_bytes_clear(&rows);
-    if(!s)s=ud_batch_seal(n->literal_owner);
-    ud_field field={0};
-    if(!s)s=ud_batch_field(n->literal_owner,0,&field);
-    if(!s){s=ud_field_copy(e->ctx,&field,(ud_column_id){0},&n->field);n->field_owned=!s;}
-    if(!s){literal_origins(&n->field);n->type=n->field.type;n->kind=LITERAL;n->constant=1;s=ud_batch_get(n->literal_owner,0,0,&n->value);}
+    if (!s)
+        s = ud_bytes_put(&schema, "}]}", 3);
+    char *value = NULL;
+    uint32_t length = 0;
+    if (!s)
+        s = ud_json_serialize(literal, &value, &length);
+    if (!s)
+        s = ud_bytes_put(&rows, "[{\"literal\":", 12);
+    if (!s)
+        s = ud_bytes_put(&rows, value, length);
+    if (!s)
+        s = ud_bytes_put(&rows, "}]", 2);
+    if (!s)
+        s = ud_batch_from_json_schema(e->ctx, (const char *)schema.data, (uint32_t)schema.size,
+                                      (const char *)rows.data, (uint32_t)rows.size, UD_ROUND_EXACT,
+                                      &n->literal_owner);
+    ud_free(value);
+    ud_bytes_clear(&schema);
+    ud_bytes_clear(&rows);
+    if (!s)
+        s = ud_batch_seal(n->literal_owner);
+    ud_field field = {0};
+    if (!s)
+        s = ud_batch_field(n->literal_owner, 0, &field);
+    if (!s) {
+        s = ud_field_copy(e->ctx, &field, (ud_column_id){0}, &n->field);
+        n->field_owned = !s;
+    }
+    if (!s) {
+        literal_origins(&n->field);
+        n->type = n->field.type;
+        n->kind = LITERAL;
+        n->constant = 1;
+        s = ud_batch_get(n->literal_owner, 0, 0, &n->value);
+    }
     return s;
 }
 static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
@@ -178,7 +227,7 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
     if ((!!literal + !!ref + !!col + !!op + !!function) != 1)
         return UD_SCHEMA;
     if (literal) {
-        return bind_literal(e,n,json,literal);
+        return bind_literal(e, n, json, literal);
     }
     if (ref || col) {
         if (ud_json_size(json) != 1)
@@ -198,9 +247,11 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
                 UD_TRY(e->resolve_field(e->user, n->name, &borrowed));
                 UD_TRY(ud_field_copy(e->ctx, &borrowed, (ud_column_id){0}, &n->field));
                 n->field_owned = 1;
-                if (n->field.type != n->type) return UD_SCHEMA;
+                if (n->field.type != n->type)
+                    return UD_SCHEMA;
             } else {
-                if (n->type < UD_BOOL || n->type > UD_UTF8) return UD_UNSUPPORTED;
+                if (n->type < UD_BOOL || n->type > UD_UTF8)
+                    return UD_UNSUPPORTED;
                 n->field.type = n->type;
                 n->field.nullable = 1;
             }
@@ -237,7 +288,8 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
         UD_TRY(ud_registry_find(e->registry, id, &n->function));
         uint64_t required = UD_FUNCTION_PURE | e->function_capabilities;
         if (n->function.category != UD_COMPONENT_FUNCTION ||
-            (n->function.capabilities & required) != required) return UD_AUTH;
+            (n->function.capabilities & required) != required)
+            return UD_AUTH;
         const ud_json *arguments = member(json, "args");
         n->argument_count = ud_json_size(arguments);
         if (ud_json_kind(arguments) != UD_JSON_ARRAY ||
@@ -255,9 +307,11 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
         UD_TRY(ud_field_copy(e->ctx, &result, (ud_column_id){0}, &n->field));
         n->field_owned = 1;
         ud_free((void *)n->field.lineage);
-        n->field.lineage = NULL; n->field.lineage_count = 0;
+        n->field.lineage = NULL;
+        n->field.lineage_count = 0;
         ud_column_id *origins = NULL;
-        UD_TRY(ud_lineage_merge(e->ctx, fields, n->argument_count, &origins, &n->field.lineage_count));
+        UD_TRY(
+            ud_lineage_merge(e->ctx, fields, n->argument_count, &origins, &n->field.lineage_count));
         n->field.lineage = origins;
         n->field.identity = (ud_column_id){0};
         n->type = n->field.type;
@@ -288,8 +342,8 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
         UD_TRY(bind(e, ud_json_at(args, i), depth + 1, n->args + i));
     ud_type a = n->args[0]->type, b = count == 2 ? n->args[1]->type : a;
     if (n->op <= MUL) {
-        UD_TRY(ud_numeric_result_field(n->op,&n->args[0]->field,&n->args[1]->field,&n->field));
-        n->type=n->field.type;
+        UD_TRY(ud_numeric_result_field(n->op, &n->args[0]->field, &n->args[1]->field, &n->field));
+        n->type = n->field.type;
     } else {
         if (n->op != ISNULL && a != b)
             return UD_SCHEMA;
@@ -305,7 +359,8 @@ static ud_status bind(ud_expression *e, const ud_json *json, uint32_t depth,
         n->field = (ud_field){.type = UD_BOOL, .nullable = 1};
     }
     ud_field dependencies[2] = {n->args[0]->field, count == 2 ? n->args[1]->field : (ud_field){0}};
-    UD_TRY(ud_lineage_merge(e->ctx, dependencies, count, &n->lineage_owned, &n->field.lineage_count));
+    UD_TRY(
+        ud_lineage_merge(e->ctx, dependencies, count, &n->lineage_owned, &n->field.lineage_count));
     n->field.lineage = n->lineage_owned;
     n->field.identity = (ud_column_id){0};
     if (n->args[0]->constant && (count == 1 || n->args[1]->constant)) {
@@ -336,10 +391,15 @@ ud_status ud_expression_create(ud_context *ctx, ud_string json, const ud_express
     if (!e->registry) {
         s = ud_registry_create(ctx, &e->registry);
         e->registry_owned = !s;
-        if (!s) s = ud_expression_register_functions(e->registry);
+        if (!s)
+            s = ud_expression_register_functions(e->registry);
     }
-    if (!s) { s = ud_registry_acquire(e->registry); e->registry_leased = !s; }
-    if (!s) s = ud_json_parse(ctx, json.data, json.length, &e->document, NULL);
+    if (!s) {
+        s = ud_registry_acquire(e->registry);
+        e->registry_leased = !s;
+    }
+    if (!s)
+        s = ud_json_parse(ctx, json.data, json.length, &e->document, NULL);
     if (!s && o->schema) {
         uint32_t count = ud_batch_columns(o->schema);
         ud_field *fields = ud_alloc(ctx, count * sizeof(*fields));
@@ -397,9 +457,11 @@ ud_status ud_expression_evaluate_batch(const ud_expression *e, const ud_batch *b
     if (!e || !b)
         return UD_INVALID;
     ud_field f = {0};
-    ud_status s = ud_field_derive(e->ctx, &e->root->field, (ud_string){"expression-result",17}, name, &f);
+    ud_status s =
+        ud_field_derive(e->ctx, &e->root->field, (ud_string){"expression-result", 17}, name, &f);
     f.nullable = 1;
-    if (!s) s = ud_batch_create(e->ctx, &f, 1, ud_batch_rows(b), out);
+    if (!s)
+        s = ud_batch_create(e->ctx, &f, 1, ud_batch_rows(b), out);
     ud_field_clear(&f);
     for (uint32_t i = 0; !s && i < ud_batch_rows(b); i++) {
         ud_value v;
@@ -419,7 +481,9 @@ void ud_expression_destroy(ud_expression *e) {
     node_free(e->root);
     ud_batch_destroy(e->schema);
     ud_json_destroy(e->document);
-    if (e->registry_leased) ud_registry_release(e->registry);
-    if (e->registry_owned) ud_registry_destroy(e->registry);
+    if (e->registry_leased)
+        ud_registry_release(e->registry);
+    if (e->registry_owned)
+        ud_registry_destroy(e->registry);
     ud_free(e);
 }

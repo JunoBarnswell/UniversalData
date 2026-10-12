@@ -9,10 +9,10 @@ static ud_status mapped_parameters(ud_activation *e, const ud_json *mapping, ud_
     ud_status s = ud_bytes_put(&b, "{", 1);
     for (uint32_t i = 0; !s && i < ud_json_size(mapping); i++) {
         const char *key;
-        uint32_t n=0;
+        uint32_t n = 0;
         s = ud_json_key(mapping, i, &key, &n);
         ud_expression *expr = NULL;
-        ud_value value={0};
+        ud_value value = {0};
         if (!s)
             s = ud_expression_json(e, ud_json_at(mapping, i), NULL, &expr);
         if (!s)
@@ -24,8 +24,10 @@ static ud_status mapped_parameters(ud_activation *e, const ud_json *mapping, ud_
         if (!s)
             s = ud_bytes_put(&b, ":", 1);
         ud_field field = {0};
-        if (!s) s = ud_expression_field(expr, &field);
-        if (!s) s = ud_scalar_json(&b, &field, &value);
+        if (!s)
+            s = ud_expression_field(expr, &field);
+        if (!s)
+            s = ud_scalar_json(&b, &field, &value);
         ud_expression_destroy(expr);
     }
     if (!s)
@@ -49,7 +51,7 @@ ud_status ud_child_package(ud_activation *e, const ud_json *config, int execute,
     ud_package *package = NULL;
     ud_status s = mapped_parameters(e, ud_member(config, "parameters"), &parameters);
     char *text = NULL;
-    uint32_t n=0;
+    uint32_t n = 0;
     if (!s)
         s = ud_json_serialize(definition, &text, &n);
     if (!s)
@@ -70,24 +72,32 @@ ud_status ud_child_package(ud_activation *e, const ud_json *config, int execute,
     atomic_init(&child.cancelled, 0);
     size_t size = (size_t)e->task_id.length + package->id.length + 64;
     char *identity = ud_alloc(e->execution->ctx, size);
-    if (!identity) s = UD_RESOURCE;
+    if (!identity)
+        s = UD_RESOURCE;
     if (!s) {
         int count = snprintf(identity, size, "%.*spackage:%u:%.*s;", (int)e->task_id.length,
                              e->task_id.data ? e->task_id.data : "", package->id.length,
                              (int)package->id.length, package->id.data);
-        if (count < 0 || (size_t)count >= size) s = UD_OVERFLOW;
-        else child.task_id = (ud_string){identity, (uint32_t)count};
+        if (count < 0 || (size_t)count >= size)
+            s = UD_OVERFLOW;
+        else
+            child.task_id = (ud_string){identity, (uint32_t)count};
     }
-    if (!s) s = ud_activation_bind_roots(&child);
-    if (!s) s = ud_activation_validate_definition(&child, depth);
+    if (!s)
+        s = ud_activation_bind_roots(&child);
+    if (!s)
+        s = ud_activation_validate_definition(&child, depth);
     if (!s && execute) {
         ud_activation_notify(&child, UD_EXEC_RUNNING, UD_OK);
         s = ud_activation_run_definition(&child);
-        if (s == UD_BUSY) s = UD_TRANSIENT;
-        if (!s) ud_activation_notify(&child, UD_EXEC_DRAINING, UD_OK);
+        if (s == UD_BUSY)
+            s = UD_TRANSIENT;
+        if (!s)
+            ud_activation_notify(&child, UD_EXEC_DRAINING, UD_OK);
         ud_execution_state state = s == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
-                                 : s == UD_CANCELLED ? UD_EXEC_CANCELLED
-                                 : s ? UD_EXEC_FAILED : UD_EXEC_SUCCEEDED;
+                                   : s == UD_CANCELLED    ? UD_EXEC_CANCELLED
+                                   : s                    ? UD_EXEC_FAILED
+                                                          : UD_EXEC_SUCCEEDED;
         ud_activation_notify(&child, state, s);
     }
     ud_scope_leave(&child, &child.globals);

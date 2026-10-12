@@ -16,7 +16,7 @@ typedef struct ud_expression_options {
     ud_expression_resolver resolve;
     void *user;
     ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
-    ud_registry *registry; /* Optional pure functions; leased for expression lifetime. */
+    ud_registry *registry;          /* Optional pure functions; leased for expression lifetime. */
     uint64_t function_capabilities; /* Additional required function capabilities. */
 } ud_expression_options;
 /* Strict JSON AST: {literal: value, type: bool|int64|float64|utf8}, {ref:name},

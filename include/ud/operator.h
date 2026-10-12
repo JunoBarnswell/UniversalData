@@ -6,17 +6,23 @@
 extern "C" {
 #endif
 typedef struct ud_operator ud_operator;
-enum { UD_OPERATOR_SORT = 1, UD_OPERATOR_AGGREGATE, UD_OPERATOR_INNER_JOIN, UD_OPERATOR_LOOKUP,
-       UD_OPERATOR_WINDOW };
+enum {
+    UD_OPERATOR_SORT = 1,
+    UD_OPERATOR_AGGREGATE,
+    UD_OPERATOR_INNER_JOIN,
+    UD_OPERATOR_LOOKUP,
+    UD_OPERATOR_WINDOW
+};
 enum { UD_WINDOW_ROW_NUMBER = 1, UD_WINDOW_RUNNING_SUM };
 typedef struct ud_operator_options {
     uint32_t struct_size, abi_version;
     int32_t kind;
     uint32_t max_batch_rows;
-    const uint32_t *keys; uint32_t key_count;
+    const uint32_t *keys;
+    uint32_t key_count;
     uint32_t right_key;
     int32_t descending;
-    ud_plan *aggregation; /* Retained immutable plan, AGGREGATE only. */
+    ud_plan *aggregation;       /* Retained immutable plan, AGGREGATE only. */
     ud_buffer_manager *buffers; /* Borrowed until operator destruction. */
     ud_status (*check)(void *);
     void *user;
@@ -26,7 +32,7 @@ typedef struct ud_operator_options {
 } ud_operator_options;
 /* Pure binding copies schemas. Separate instances may share Buffer Manager. */
 UD_API ud_status ud_operator_create(ud_context *, const ud_operator_options *,
-                                     const ud_batch *const *, ud_operator **);
+                                    const ud_batch *const *, ud_operator **);
 UD_API ud_status ud_operator_schema(const ud_operator *, ud_batch **);
 /* push borrows sealed input; success owns retained/spilled blocks. End is once
  * per port. pull returns owned bounded batches, END only after all inputs end.

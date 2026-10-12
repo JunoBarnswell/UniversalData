@@ -66,3 +66,22 @@ __pycache__/
 
 # debug information files
 *.dwo
+
+# Local CMake and IDE state
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Testing/
+cmake-build-*/
+ipch/
+
+# Python and coverage caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+*.gcda
+*.gcno
+*.py[cod]
