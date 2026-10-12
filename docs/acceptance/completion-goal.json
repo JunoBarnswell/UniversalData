@@ -334,17 +334,25 @@
       "phase": 2,
       "name": "Execute Process Task",
       "priority": "P0",
-      "code": "Planned",
-      "verification": "NotRun",
+      "code": "Implemented",
+      "verification": "Verified",
       "acceptance": "默认禁用、显式宿主授权；退出码/超时/取消/资源清理；不承诺权限沙箱",
       "implementation": [
-        "engines/control-flow",
-        "engines/data-flow/builtins.c",
-        "components/contracts"
+        "engines/control-flow/process.c",
+        "connectors/manager.c",
+        "include/ud/connector.h",
+        "tests/process_task.c",
+        "tests/process_task.py"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-process/evidence.json",
+          "type": "executed-linux-auth-exit-timeout-cancel-cleanup-recovery"
+        }
+      ],
+      "progress": "Linux native process.execute Task verified under current scope: explicit EXECUTE authorization/default deny, direct args/cwd, exit-versus-exec-failure, local/Package timeout, live child/group cancel cleanup and conservative interrupted recovery. Windows not tested by user instruction."
     },
     {
       "id": "G17",

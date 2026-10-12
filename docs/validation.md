@@ -33,3 +33,5 @@ Project/Environment/Deployment 新门禁：当前源代码 native 24/24、ASan/U
 运行历史新门禁：当前源代码 native 26/26、ASan/UBSan + leak detection 的 Package/Catalog/Project/Child/History 8/8；三语言真实子 Package/Project/类型与 Wire 一致性重新通过。历史测试覆盖原生成功/失败/取消/RecoveryRequired、Ready/终态快照、租户、BUSY、重开、参数指纹/部署版本和敏感正文不落盘。证据：docs/acceptance/evidence/ssis-history。Windows 和远程 CI 按用户指令不作门禁。
 
 File System 新门禁：native 27/27、ASan/UBSan + leak detection 的 Package/Catalog/Project/Child/History/FileSystem 9/9；C/.NET8/Java17 同文件复制、子 Package、10,003 行管道和类型/Wire 一致性通过（任务数 7）。路径/覆盖/临时文件保护、移动/删除/建目录、中途取消/撤权、FIFO/符号链接拒绝和真实效应后终止/CommitUnknown 已实际验证。证据：docs/acceptance/evidence/ssis-filesystem。
+
+Execute Process 新门禁：当前 native 28/28、ASan/UBSan + leak detection 的 Package/相关模块 10/10；真实进程授权拒绝、argv/cwd、退出策略/exec 失败、任务和 Package timeout、运行中取消/子进程组清理、效应后真实终止/Unknown、完成后 resume 实际通过。三语言文件/子 Package/数据回归通过，未把它冒充托管端正向进程授权测试。证据：docs/acceptance/evidence/ssis-process。

@@ -15,7 +15,8 @@ enum {
     UD_CONNECT_CDC = 32,
     UD_CONNECT_SNAPSHOT = 64,
     UD_CONNECT_RECEIPTS = 128,
-    UD_CONNECT_EXECUTE_SQL = 256
+    UD_CONNECT_EXECUTE_SQL = 256,
+    UD_CONNECT_EXECUTE_PROCESS = 512
 };
 enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3 };
 enum {
@@ -24,7 +25,8 @@ enum {
     UD_ACCESS_READ = 3,
     UD_ACCESS_WRITE = 4,
     UD_ACCESS_RECEIPT = 5,
-    UD_ACCESS_DELETE = 8 /* 6/7 reserved by the quarantine contract. */
+    UD_ACCESS_DELETE = 8, /* 6/7 reserved by the quarantine contract. */
+    UD_ACCESS_EXECUTE = 9
 };
 /* Only UD_OK is an authorization grant. Missing callback is a denial. The host
  * controls the credential scope; this callback never implements an identity provider. */

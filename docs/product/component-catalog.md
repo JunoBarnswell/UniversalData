@@ -30,3 +30,5 @@ Registry --> LogProvider
 本表保留目标分类，不能用分类整行代替逐项验收；实时状态以 [69 项清单](../acceptance/completion-goal.json) 为准。Execute Package 的规范模型与真实证据见 [子 Package 契约](../architecture/execute-package.md)。
 
 FileSystem 的四种明确文件操作及权限/恢复边界已交付，见 [File System Task](../architecture/filesystem-task.md)；其他 Host tasks 仍按分项清单推进。
+
+ExecuteProcess 已交付受授权的原生 Task，Linux 退出/期限/取消/资源清理与崩溃门禁通过；见 [进程任务契约](../architecture/process-task.md)。不承诺权限沙箱。

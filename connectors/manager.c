@@ -42,7 +42,7 @@ ud_status ud_connection_definition(ud_execution *e, ud_string id, const ud_json 
     *out = def;
     return def ? UD_OK : UD_SCHEMA;
 }
-static ud_status acquire(ud_execution *e, ud_string id, uint64_t caps, int file_only,
+static ud_status acquire(ud_execution *e, ud_string id, uint64_t caps, int endpoint_kind,
                          ud_connection_lease **out) {
     if (!out)
         return UD_INVALID;
@@ -71,10 +71,15 @@ static ud_status acquire(ud_execution *e, ud_string id, uint64_t caps, int file_
         s = ud_json_string(ud_member(l->definition, "resource"), &l->resource);
     if (!s)
         s = ud_connection_lease_authorize(l, UD_ACCESS_OPEN);
-    if (!s && file_only && !ud_named(l->driver, "file"))
+    if (!s && ((endpoint_kind == 1 && !ud_named(l->driver, "file")) ||
+               (endpoint_kind == 2 && !ud_named(l->driver, "process"))))
         s = UD_UNSUPPORTED;
-    if (!s && ud_named(l->driver, "file")) {
-        l->capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND;
+    if (!s && (ud_named(l->driver, "file") || ud_named(l->driver, "process"))) {
+        int process = ud_named(l->driver, "process");
+        l->capabilities =
+            process ? UD_CONNECT_EXECUTE_PROCESS : UD_CONNECT_READ | UD_CONNECT_APPEND;
+        if (process && ud_member(l->definition, "credentialReference"))
+            s = UD_SCHEMA;
 #ifdef _WIN32
         if (l->resource.length < 3 || l->resource.data[1] != ':')
             s = UD_INVALID;
@@ -121,6 +126,17 @@ ud_status ud_execution_acquire_connection(ud_execution *e, ud_string id, uint64_
 }
 ud_status ud_acquire_file_connection(ud_execution *e, ud_string id, ud_connection_lease **out) {
     return acquire(e, id, 0, 1, out);
+}
+ud_status ud_acquire_process_connection(ud_execution *e, ud_string id, ud_connection_lease **out) {
+    return acquire(e, id, UD_CONNECT_EXECUTE_PROCESS, 2, out);
+}
+ud_status ud_process_connection_path(ud_connection_lease *l, ud_string *out) {
+    if (!l || !out)
+        return UD_INVALID;
+    if (!ud_named(l->driver, "process"))
+        return UD_UNSUPPORTED;
+    *out = l->resource;
+    return UD_OK;
 }
 ud_status ud_connection_lease_path(const ud_connection_lease *l, ud_string *out) {
     if (!l || !out)

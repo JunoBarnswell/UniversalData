@@ -1,0 +1,37 @@
+{
+  "milestone": "native-execute-process-task",
+  "date": "2026-10-12",
+  "baseCommit": "bc2cf6d9e7642b27ae834ce6a931791be43bd5a0",
+  "sourceManifest": "docs/acceptance/evidence/ssis-process/source-manifest.json",
+  "sourceManifestSha256": "030abd386c1ec95cf2c8602354452cf9c9ea77a3628e6942bf00aebeb4ae4f31",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-process/native-ctest.txt",
+      "sha256": "2d78eaa9f4e723bb57d57791a9ee48ce294f385f0305e8edf6785ec9bc49790d",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 28,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-process/asan-package-process.txt",
+      "sha256": "93dcac7d00a0298fad8923d4f01dadbf119823f7a20dc93cefe5c539d49f9f2c",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R 'catalog|package|project|filesystem|process' --output-on-failure",
+      "exitCode": 0,
+      "passed": 10,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-process/language-regression.txt",
+      "sha256": "f18a3abba9c857a192984660d49df142df9873382376cc2f163dd889335d57ba",
+      "command": "tests/package_language_parity.py with ABI3 native/JNI, .NET8 and Java17; File System/child/data regression (not managed positive process authorization)",
+      "exitCode": 0
+    }
+  ],
+  "limitations": [
+    "Trusted-program authorization, not a permissions/memory/CPU sandbox; detached processes outside cleanup contract",
+    "No implicit stdout/stderr capture or logging; environment defaults inherited",
+    "Interrupted invocations conservatively RecoveryRequired, no automatic replay",
+    "Windows implementation guarded but untested; tests/remote CI status waived by user"
+  ]
+}
