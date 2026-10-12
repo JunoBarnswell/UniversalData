@@ -27,6 +27,7 @@ void ud_hash(const void *, size_t, uint8_t out[32]);
 size_t ud_allocation_bytes(const void *);
 ud_status ud_flush(ud_context *, FILE *);
 ud_status ud_publish(ud_context *, const char *from, const char *to);
+ud_status ud_replace_file(ud_context *, const char *from, const char *to);
 ud_status ud_sync_parent(ud_context *, const char *path);
 ud_status ud_lock(ud_context *, const char *, void **);
 void ud_unlock(void *);
@@ -58,4 +59,5 @@ void ud_bytes_clear(ud_bytes *);
 ud_status ud_json_quote(ud_bytes *, const char *, uint32_t);
 ud_status ud_read_file(ud_context *, const char *, ud_bytes *);
 ud_status ud_write_file(ud_context *, const char *, const void *, size_t);
+ud_status ud_append_file(ud_context *, const char *, const void *, size_t);
 #endif

@@ -10,7 +10,7 @@ public final class Consumer {
             Execution execution=definition.execution("fixture",(tenant,resource,action)->Path.of(resource).isAbsolute()&&Path.of(resource).normalize().startsWith(root),Files.readString(Path.of(args[1])),args[2])) {
             execution.start();while(!execution.await(100)) { }
             Execution.Metrics m=execution.metrics();
-            System.out.printf("{\"state\":%d,\"result\":%d,\"inputRows\":%d,\"outputRows\":%d,\"rejectedRows\":%d,\"completedTasks\":%d}%n",m.state().ordinal(),m.result().number(),m.inputRows(),m.outputRows(),m.rejectedRows(),m.completedTasks());
+            System.out.printf("{\"state\":%d,\"result\":%d,\"inputRows\":%d,\"outputRows\":%d,\"rejectedRows\":%d,\"executedTasks\":%d,\"durableTasks\":%d,\"recoveryTasks\":%d,\"resumedTasks\":%d,\"pipelineTrees\":%d,\"treeHighWater\":%d,\"workerHighWater\":%d}%n",m.state().ordinal(),m.result().number(),m.inputRows(),m.outputRows(),m.rejectedRows(),m.executedTasks(),m.durableTasks(),m.recoveryTasks(),m.resumedTasks(),m.pipelineTrees(),m.treeHighWater(),m.workerHighWater());
         }
     }
 }

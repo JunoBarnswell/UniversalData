@@ -6,7 +6,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define UD_PLUGIN_ABI 4u
 enum { UD_PLUGIN_CONNECTOR = 1, UD_PLUGIN_COMPONENTS = 2 };
 enum { UD_CAP_READ = 1, UD_CAP_WRITE = 2, UD_CAP_SQL = 8, UD_CAP_TRANSACTION = 32 };
 typedef struct ud_host_api {

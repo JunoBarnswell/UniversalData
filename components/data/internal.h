@@ -29,6 +29,8 @@ struct ud_batch {
     ud_schema_owner *schema;
     struct ud_batch *data_owner; /* Sealed projection retains original buffers. */
 };
+typedef ud_status (*ud_storage_visit)(void *, const void *allocation, uint64_t bytes);
+ud_status ud_batch_visit_storage(const ud_batch *, ud_storage_visit, void *);
 ud_status ud_schema_owner_create(ud_context *, const ud_field *, uint32_t, ud_string,
                                  ud_schema_owner **);
 ud_status ud_schema_owner_retain(ud_schema_owner *);

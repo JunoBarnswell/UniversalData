@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
                                  .invoke = effect};
     OK(ud_registry_register(registry, &d));
     const char *package =
-        "{\"version\":4,\"id\":\"history-package\",\"parameters\":{\"secret\":{\"type\":\"utf8\"}},"
+        "{\"version\":5,\"id\":\"history-package\",\"parameters\":{\"secret\":{\"type\":\"utf8\"}},"
         "\"project\":{\"id\":\"project\"},\"deployment\":{\"id\":\"deployment\",\"revision\":1,"
         "\"project\":{\"id\":\"project\",\"revision\":1},\"package\":{\"id\":\"history-package\","
         "\"revision\":2},\"environment\":{\"id\":\"environment\",\"revision\":3}},"
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
         ud_json *doc = NULL;
         OK(ud_json_parse(ctx, text, n, &doc, NULL));
         CHECK(number(doc, "state", states[i]) && number(doc, "result", results[i]) &&
-              number(doc, "completedTasks", i == 0 ? 1 : 0));
+              number(doc, "executedTasks", i == 0 ? 1 : 0));
         CHECK(ud_json_find(doc, "parametersHash", 14));
         ud_json_destroy(doc);
         ud_free(text);

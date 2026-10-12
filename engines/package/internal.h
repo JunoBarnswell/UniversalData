@@ -7,6 +7,7 @@
 #include "../../components/contracts/registry_internal.h"
 #include "../../components/foundation/thread.h"
 #include "ud/buffer.h"
+#include "../../components/execution/executor.h"
 #include <stdatomic.h>
 #ifdef _WIN32
 #include <windows.h>
@@ -47,6 +48,10 @@ struct ud_activation {
     uint32_t depth;
     atomic_int cancelled;
     int parallel;
+    struct ud_activation *scope_authority;
+    int stepping;
+    uint32_t task_facts;
+    atomic_uint_fast64_t input_rows, output_rows, rejected_rows;
 };
 struct ud_execution {
     ud_context *ctx;
@@ -59,8 +64,10 @@ struct ud_execution {
     ud_activation root;
     atomic_int state, result;
     atomic_uint_fast64_t input_rows, output_rows, rejected_rows, batches, queued, high_water,
-        completed_tasks, spill_bytes;
-    atomic_uint workers;
+        executed_tasks, durable_tasks, recovery_tasks, resumed_tasks, spill_bytes;
+    atomic_uint_fast64_t pipeline_trees;
+    atomic_uint tree_active, tree_high_water;
+    ud_executor *executor;
     ud_mutex events_lock, journal_lock, serial_tasks_lock;
     uint64_t event_sequence;
     ud_buffer_manager *buffers;
@@ -93,6 +100,10 @@ ud_status ud_builtin_register(ud_registry *);
 ud_status ud_component_lookup(ud_activation *, ud_string, ud_component_descriptor *);
 void ud_activation_notify_kind(ud_activation *, int32_t kind, ud_execution_state, ud_status);
 void ud_activation_notify(ud_activation *, ud_execution_state, ud_status);
+enum { UD_TASK_EXECUTED = 1, UD_TASK_DURABLE = 2, UD_TASK_UNCERTAIN = 4, UD_TASK_RESUMED = 8 };
+void ud_task_fact(ud_activation *, uint32_t);
+void ud_task_rows(ud_activation *, uint64_t input, uint64_t output, uint64_t rejected);
+uint32_t ud_execution_concurrency(const ud_activation *);
 ud_status ud_scope_enter(ud_activation *, ud_string name, const ud_json *, ud_scope *);
 void ud_scope_leave(ud_activation *, ud_scope *);
 ud_status ud_resolve_value(void *, ud_string, ud_value *);

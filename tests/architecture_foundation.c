@@ -10,6 +10,11 @@ static ud_status expression(ud_context *c, const char *json, const ud_batch *sch
     return ud_expression_create(c, (ud_string){json, (uint32_t)strlen(json)}, &o, out);
 }
 static ud_status task(void *u,const ud_component_context *c,ud_string config) { (void)u;(void)c;(void)config;return UD_OK; }
+typedef struct owner { int calls, fail, references, releases; } owner;
+static ud_status retain_owner(void *u) {
+    owner *o=u;if(++o->calls==o->fail)return UD_RESOURCE;o->references++;return UD_OK;
+}
+static void release_owner(void *u) { owner *o=u;o->references--;o->releases++; }
 int main(void) {
     ud_context *c = NULL;
     OK(ud_context_create(NULL, &c));
@@ -72,7 +77,20 @@ int main(void) {
     ud_component_descriptor got = {.struct_size = sizeof(got), .abi_version = UD_ABI_VERSION};
     OK(ud_registry_find(r, (ud_string){"driver", 6}, &got));
     CHECK(got.category == UD_COMPONENT_TASK);
+    ud_component_descriptor invalid=d;invalid.category=6;
+    CHECK(ud_registry_register(r,&invalid)==UD_SCHEMA);
+    invalid=d;invalid.inputs=1;CHECK(ud_registry_register(r,&invalid)==UD_SCHEMA);
+    invalid=d;invalid.min_arguments=1;CHECK(ud_registry_register(r,&invalid)==UD_SCHEMA);
+    ud_component_descriptor batch[]={d,d};batch[0].id=(ud_string){"task-a",6};
+    batch[1].id=(ud_string){"task-b",6};owner o={.fail=2};
+    CHECK(ud_registry_register_owned(r,batch,2,&o,retain_owner,release_owner)==UD_RESOURCE);
+    CHECK(ud_registry_count(r)==1 && o.references==0 && o.releases==1);
+    o.fail=0;OK(ud_registry_register_owned(r,batch,2,&o,retain_owner,release_owner));
+    CHECK(ud_registry_count(r)==3 && o.references==2);
+    got.struct_size=sizeof(got);got.abi_version=UD_ABI_VERSION;OK(ud_registry_get(r,2,&got));
+    CHECK(got.id.length==6 && !memcmp(got.id.data,"task-b",6));
     OK(ud_registry_destroy(r));
+    CHECK(!o.references && o.releases==3);
     ud_batch_destroy(b);
     CHECK(ud_memory_used(c) == 0);
     OK(ud_context_destroy(c));

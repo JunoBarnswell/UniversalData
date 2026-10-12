@@ -62,7 +62,7 @@ int main(void) {
     ud_batch_destroy(converted);
     /* Typed plan owns its schema and nested aggregate keys after producer destruction. */
     ud_plan *plan=NULL;
-    const char *commands="{\"version\":4,\"group\":[\"person\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"}]}";
+    const char *commands="{\"version\":5,\"group\":[\"person\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"}]}";
     OK(ud_plan_create_fields(ctx,UD_PLAN_VERSION,fields,3,(ud_string){commands,(uint32_t)strlen(commands)},NULL,&plan));
     ud_accumulator *acc=NULL;OK(ud_accumulator_create(plan,&acc));OK(ud_accumulator_add(acc,b));
     ud_batch_destroy(b);b=NULL;

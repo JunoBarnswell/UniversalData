@@ -1,0 +1,109 @@
+name: package-sdk-ci
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package-and-bindings:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Product authority\n        run: python scripts/product_model.py check\n      - name: Prepare pinned SQLite
+        shell: pwsh
+        run: |
+          $platform = if ($IsWindows) { 'windows' } else { 'linux' }
+          python scripts/fetch_deps.py --platform $platform --output build/deps
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build current Package SDK and native tests
+        shell: pwsh
+        run: |
+          $sqlite = (Resolve-Path build/deps/sqlite/sqlite-amalgamation-3490100).Path
+          cmake -S . -B build/full -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$sqlite" -DCMAKE_BUILD_TYPE=Debug
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build/full --config Debug --parallel 2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ctest --test-dir build/full -C Debug --output-on-failure
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --install build/full --config Debug --prefix build/install
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build thin language packages and execute the same Package
+        shell: pwsh
+        run: |
+          dotnet build examples/dotnet/Consumer.csproj --nologo --verbosity:minimal
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet build examples/dotnet-data/DataConsumer.csproj --nologo --verbosity:minimal
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet pack bindings/dotnet/UniversalData/UniversalData.csproj --no-restore --output build/packages
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          mvn -B -q -f bindings/java/pom.xml package
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force build/java | Out-Null
+          javac -encoding UTF-8 -cp bindings/java/target/universal-data-@UD_SDK_VERSION@.jar -d build/java examples/java/Consumer.java examples/java/DataConsumer.java
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $cli = if ($IsWindows) { 'build/full/hosts/Debug/ud_cli.exe' } else { 'build/full/hosts/ud_cli' }
+          $data = if ($IsWindows) { 'build/full/tests/Debug/typed_data_runner.exe' } else { 'build/full/tests/typed_data_runner' }
+          $native = if ($IsWindows) { 'build/install/bin' } else { 'build/install/lib' }
+          $dotnet = (Get-Command dotnet).Source
+          $java = (Get-Command java).Source
+          python tests/package_language_parity.py $cli $data $dotnet examples/dotnet/bin/Debug/net8.0/Consumer.dll examples/dotnet-data/bin/Debug/net8.0/DataConsumer.dll $java build/java bindings/java/target/universal-data-@UD_SDK_VERSION@.jar $native
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Public contracts and removed legacy exports
+        run: python scripts/static_check.py
+      - name: Windows Release distributable and independent consumers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./packaging/package.ps1 -BuildDirectory build/full -Output build/delivery
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ctest --test-dir build/full -C Release --output-on-failure
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $work = Join-Path $env:RUNNER_TEMP ('ud-bundle-' + [guid]::NewGuid().ToString('N'))
+          python tests/installed_sdk.py --bundle build/delivery/UniversalData-@UD_SDK_VERSION@-win-x64.zip --work $work --evidence build/delivery/consumers.json
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: package-sdk-win-x64
+          path: build/delivery
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'Windows'
+        with:
+          name: package-sdk-${{ matrix.os }}
+          path: |
+            build/install
+            build/packages
+            bindings/java/target/*.jar
+  minimal-components:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake --preset core-only
+      - run: cmake --build --preset core-only --parallel 2
+      - run: ctest --preset core-only
+      - run: cmake --install build/core --prefix "$PWD/build/sdk"
+      - run: cmake -S examples/c -B build/consumer -DCMAKE_PREFIX_PATH="$PWD/build/sdk"
+      - run: cmake --build build/consumer && build/consumer/consumer
+  memory-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build/asan -DUD_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
+      - run: cmake --build build/asan --parallel 2
+      - run: ctest --test-dir build/asan --output-on-failure

@@ -1,13 +1,15 @@
 # 当前组件清单与 SSIS 映射
 
-版本族 4。当前范围为统一架构和原生核心组件；协议及高级扩展不作为本轮核心验收前置条件。设计、实现和执行证据分别记录，最终平台结果见 `../acceptance/ssis-status.json`。
+<!-- Generated from metadata/product.json. -->
+
+SDK 1.1.0，唯一 ABI/协议 5。本轮范围：统一架构与原生核心。验收事实见 metadata/product.json；Linux 按用户决定免测。
 
 | SSIS 职责 | 实际入口/ID | 实现与边界 |
 |---|---|---|
 | Package / Project / Environment | `ud_package`、`ud_execution`、Catalog deployment | 不可变定义；一个根 Execution；子包使用独立 Activation |
 | Sequence / For / Foreach | `sequence`、`for`、`foreach` | 原生容器、作用域、显式上限 |
-| Precedence / Event Handlers | success/failure/completion + AST + AND/OR；before/after/failure | 有限并发、任务 deadline、顺序事件；失败处理不清除原始失败 |
-| Data Flow Task / Execute Package | `dataFlow`、`executePackage` | 同一资源预算、连接、Journal、Registry |
+| Precedence / Event Handlers | success/failure/completion + AST + AND/OR；before/after/failure | 共享 Executor 的有界任务调度；deadline、有序事件；错误处理不清除原始失败 |
+| Data Flow Task / Execute Package | `dataFlow`、`executePackage` | 独立 Control Flow / Data Flow，共用根资源预算；异步边界形成可并行 Execution Tree；每组件独立 Activation |
 | Execute SQL / File System / Execute Process | `sql.execute`、`file.system`、`process.execute` | 授权先于 I/O；Windows/POSIX 原生进程管理 |
 | Data Profiling / HTTP / Native Custom Task | `data.profile`、`profile.statistics`、`http.request`、第三方 Task descriptors | HTTP 依赖可选 libcurl，关闭时 Unsupported；插件必须当前完整 ABI |
 | Flat File / JSON / Database Source | `file.csv.source`、`file.ndjson.source`、`sql.source` | 唯一 typed schema；SQL 恢复需要持久 snapshot，缺少即拒绝 |
@@ -20,11 +22,11 @@
 | Window | `window` | Row Number/Running Sum，分区及排序；BI Dataset/Query planner/并行分区待实现 |
 | Row Count / Audit | `rowCount`、`audit` | Activation 变量及根有序事件；并发任务不得写共享祖先变量 |
 | Error Output / Data Quality | `quality` 普通端口 0、错误端口 1 | NotNull/Unique/PrimaryKey/Range/Regex/RowCount；错误行携带 rule、source row、code；目标负责持久化 |
-| Connection Manager | file/process/http definitions；SQLite/PostgreSQL physical driver | SQLite 本轮实际验收；PostgreSQL 源码接入当前契约但本轮无数据库验收 |
+| Connection Manager | file/process/http definitions；SQLite/PostgreSQL physical driver | file/process/http definitions；SQLite/PostgreSQL typed driver；SQLite 纳入 Windows 验收，PostgreSQL 数据库行为未验收 |
 | Expression Function | `abs`、`length`、`trim`、`upper_ascii`、`lower_ascii`、`concat`、`coalesce`、`substring` | 8 个 native pure descriptors；length/substring 按 UTF8 code point；coalesce 参数显式求值 |
-| Buffer Manager | `ud_buffer_manager` / `ud_operator` | 逻辑 resident/spill 配额、wire/hash、writer fence、失败/取消清理；实际分配由 context 限额控制 |
-| Transaction / Checkpoint / Catalog | Journal 4、目标 receipt、immutable artifacts/history | 支持已声明可重放链；跨任意目标分布式事务不提供 |
+| Buffer Manager | `ud_buffer_manager` / `ud_operator` | 按真实 allocation capacity 去重计量；驻留只 retain；spill 使用唯一 wire；显式 View 和 working quota；失败文件由管理器持有并重试清理 |
+| Transaction / Checkpoint / Catalog | Journal 4、目标 receipt、immutable artifacts/history | 当前版本索引式分段 Journal、原子快照/manifest、目标 receipt、不可变 artifacts/history；不提供跨任意目标的分布式事务 |
 
-未实现扩展：Merge/Merge Join、Pivot/Unpivot、完整 Cache Transform、Pipeline ForeignKey reference input、SCD、Fuzzy、Term、CDC、并行分区、BI planner、ODBC/SQL Server、MySQL、HTTP Source/Destination、SFTP、Kafka、RabbitMQ、Cloud、Excel、Parquet。Arrow C Data Interface 和统一内存数据模型已实现，不等同于 Parquet driver。
+未完成扩展：Merge/Merge Join、Pivot/Unpivot、完整 Cache Transform、Pipeline ForeignKey reference input、SCD、Fuzzy、Term、CDC、并行分区、BI planner、ODBC/SQL Server、MySQL、HTTP Source/Destination、SFTP、Kafka、RabbitMQ、Cloud、Excel、Parquet。
 
-ODBC/DuckDB 旧 generic operation 原型已删除；今后必须通过当前连接/组件契约重新实现。未实现能力没有占位注册。Microsoft `.dtsx`/COM/SSISDB/MSDTC 的专属兼容不承诺。
+Arrow C Data Interface 与原生内存数据模型不等同于 Parquet driver。Microsoft .dtsx/COM/SSISDB/MSDTC 专属兼容不承诺；没有占位注册或旧 generic operation 路径。

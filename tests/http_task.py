@@ -88,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
         if https:
             connections.append({"id": "ca", "driver": "file", "resource": str(ca)})
             cfg["caConnection"] = "ca"
-        doc = {"version": 4, "id": "http", "variables": {"status": {"type": "int64", "default": -1}},
+        doc = {"version": 5, "id": "http", "variables": {"status": {"type": "int64", "default": -1}},
                "connections": connections,
                "controlFlow": {"tasks": [{"id": "request", "kind": "http.request", "config": cfg}], "constraints": []},
                "dataFlows": []}
@@ -222,7 +222,7 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
                 actual = json.loads(result.stdout)
                 assert actual["result"] == (0 if mode == "permit" else 13), (name, actual)
                 assert actual["state"] == (5 if mode == "permit" else 6)
-                assert actual["completedTasks"] == (1 if mode == "permit" else 0)
+                assert actual["executedTasks"] == (1 if mode == "permit" else 0)
                 assert actual["resolutions"] == (1 if mode == "permit" else 0)
                 assert actual["networkGrants"] > 0
                 assert counts[name] == (1 if mode == "permit" else 0)

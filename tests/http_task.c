@@ -53,7 +53,7 @@ static void observe(void *user, const ud_execution_event *event) {
     if (f->mode == 4 && f->execution && event->kind == UD_EXEC_EVENT_BEFORE_CHECKPOINT &&
         event->task_id.length) {
         ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
-        if (!ud_execution_get_metrics(f->execution, &m) && m.completed_tasks == 1)
+        if (!ud_execution_get_metrics(f->execution, &m) && m.executed_tasks == 1)
             _exit(91);
     }
 }

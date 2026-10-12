@@ -11,7 +11,8 @@ typedef struct run {
 } run;
 typedef struct cursor {
     block *next;
-    ud_batch *batch;
+    const ud_batch *batch;
+    ud_buffer_view *view;
     uint32_t row;
 } cursor;
 struct ud_operator {
@@ -96,7 +97,8 @@ static ud_status clear_run(run *r) {
 }
 static ud_status advance(ud_operator *o, cursor *c) {
     while (!c->batch || c->row >= c->batch->rows) {
-        ud_batch_destroy(c->batch);
+        ud_buffer_view_release(c->view);
+        c->view = NULL;
         c->batch = NULL;
         c->row = 0;
         if (!c->next)
@@ -104,7 +106,8 @@ static ud_status advance(ud_operator *o, cursor *c) {
         block *b = c->next;
         c->next = b->next;
         UD_TRY(check(o));
-        UD_TRY(ud_buffer_read(b->buffer, &c->batch));
+        UD_TRY(ud_buffer_read(b->buffer, &c->view));
+        c->batch = ud_buffer_view_batch(c->view);
         UD_TRY(compatible(o->inputs[0], c->batch));
     }
     return UD_OK;
@@ -187,7 +190,7 @@ static ud_status prepare_merge(ud_operator *o) {
                 ud_batch_destroy(batch);
             }
             for (uint32_t i = 0; i < count; i++)
-                ud_batch_destroy(streams[i].batch);
+                ud_buffer_view_release(streams[i].view); streams[i].view = NULL;
         }
         if (s) {
             /* Retain every block for the common destructor, including failed
@@ -448,19 +451,20 @@ static ud_status join_pull(ud_operator *o, ud_batch **out) {
         if (s)
             break;
         if (!o->left.batch || o->left.row >= o->left.batch->rows) {
-            ud_batch_destroy(o->left.batch);
+            ud_buffer_view_release(o->left.view); o->left.view = NULL;
             o->left.batch = NULL;
             if (!o->left_block)
                 break;
             block *b = o->left_block;
             o->left_block = b->next;
-            s = ud_buffer_read(b->buffer, &o->left.batch);
+            s = ud_buffer_read(b->buffer, &o->left.view);
+            o->left.batch = ud_buffer_view_batch(o->left.view);
             o->left.row = 0;
             if (!s)
                 s = compatible(o->inputs[0], o->left.batch);
             o->right.next = o->right_start;
             o->right.row = 0;
-            ud_batch_destroy(o->right.batch);
+            ud_buffer_view_release(o->right.view); o->right.view = NULL;
             o->right.batch = NULL;
         }
         if (s)
@@ -474,14 +478,15 @@ static ud_status join_pull(ud_operator *o, ud_batch **out) {
             continue;
         }
         while (!s && (!o->right.batch || o->right.row >= o->right.batch->rows)) {
-            ud_batch_destroy(o->right.batch);
+            ud_buffer_view_release(o->right.view); o->right.view = NULL;
             o->right.batch = NULL;
             o->right.row = 0;
             if (!o->right.next)
                 break;
             block *b = o->right.next;
             o->right.next = b->next;
-            s = ud_buffer_read(b->buffer, &o->right.batch);
+            s = ud_buffer_read(b->buffer, &o->right.view);
+            o->right.batch = ud_buffer_view_batch(o->right.view);
             if (!s)
                 s = compatible(o->inputs[1], o->right.batch);
         }
@@ -508,7 +513,7 @@ static ud_status join_pull(ud_operator *o, ud_batch **out) {
         if (!s && o->options.kind == UD_OPERATOR_LOOKUP) {
             o->left.row++;
             o->right.next = o->right_start;
-            ud_batch_destroy(o->right.batch);
+            ud_buffer_view_release(o->right.view); o->right.view = NULL;
             o->right.batch = NULL;
             o->right.row = 0;
         }
@@ -725,12 +730,12 @@ ud_status ud_operator_destroy(ud_operator *o) {
     UD_TRY(ud_operator_destroy(o->group_sort));
     o->group_sort = NULL;
     for (uint32_t i = 0; i < 8; i++) {
-        ud_batch_destroy(o->merge[i].batch);
+        ud_buffer_view_release(o->merge[i].view); o->merge[i].view = NULL;
         o->merge[i].batch = NULL;
     }
-    ud_batch_destroy(o->left.batch);
+    ud_buffer_view_release(o->left.view); o->left.view = NULL;
     o->left.batch = NULL;
-    ud_batch_destroy(o->right.batch);
+    ud_buffer_view_release(o->right.view); o->right.view = NULL;
     o->right.batch = NULL;
     for (uint32_t i = 0; i < 2; i++)
         while (o->runs[i]) {

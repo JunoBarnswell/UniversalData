@@ -231,6 +231,20 @@ ud_status ud_sync_parent(ud_context *c, const char *path) {
     return failed ? ud_fail(c, UD_IO, "publication directory sync failed") : UD_OK;
 #endif
 }
+ud_status ud_replace_file(ud_context *c, const char *from, const char *to) {
+#ifdef _WIN32
+    wchar_t *source = wide(from), *target = wide(to);
+    BOOL ok = source && target && MoveFileExW(source, target,
+                        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+    free(source);
+    free(target);
+    return ok ? UD_OK : ud_fail(c, UD_IO, "atomic replacement failed: %s", to);
+#else
+    if (rename(from, to))
+        return ud_fail(c, UD_IO, "atomic replacement failed: %s", to);
+    return ud_sync_parent(c, to);
+#endif
+}
 ud_status ud_publish(ud_context *c, const char *from, const char *to) {
 #ifdef _WIN32
     wchar_t *a = wide(from), *b = wide(to);

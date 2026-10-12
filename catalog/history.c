@@ -28,7 +28,7 @@ ud_status ud_catalog_record_execution(ud_catalog *c, const ud_execution *e, uint
     hex_digest(e->package->fingerprint, definition);
     hex_digest(e->parameters_fingerprint, parameter_hash);
     ud_bytes b = {.ctx = c->ctx};
-    ud_status s = ud_bytes_put(&b, "{\"version\":4", 12);
+    ud_status s = ud_bytes_put(&b, "{\"version\":5", 12);
     if (!s)
         s = quoted_member(&b, "id", e->options.execution_id);
     if (!s)
@@ -54,12 +54,17 @@ ud_status ud_catalog_record_execution(ud_catalog *c, const ud_execution *e, uint
         snprintf(values, sizeof(values),
                  ",\"state\":%d,\"result\":%d,\"inputRows\":%llu,\"outputRows\":%llu,"
                  "\"rejectedRows\":%llu,\"batches\":%llu,\"queuedBatches\":%llu,\"queueHighWater\":"
-                 "%llu,\"memoryUsed\":%llu,\"completedTasks\":%llu,\"spillBytes\":%llu}",
+                 "%llu,\"memoryUsed\":%llu,\"executedTasks\":%llu,\"durableTasks\":%llu,"
+                 "\"recoveryTasks\":%llu,\"resumedTasks\":%llu,\"spillBytes\":%llu,"
+                 "\"pipelineTrees\":%llu,\"treeHighWater\":%llu,\"workerHighWater\":%llu}",
                  m.state, m.result, (unsigned long long)m.input_rows,
                  (unsigned long long)m.output_rows, (unsigned long long)m.rejected_rows,
                  (unsigned long long)m.batches, (unsigned long long)m.queued_batches,
                  (unsigned long long)m.queue_high_water, (unsigned long long)m.memory_used,
-                 (unsigned long long)m.completed_tasks, (unsigned long long)m.spill_bytes);
+                 (unsigned long long)m.executed_tasks, (unsigned long long)m.durable_tasks,
+                 (unsigned long long)m.recovery_tasks, (unsigned long long)m.resumed_tasks,
+                 (unsigned long long)m.spill_bytes, (unsigned long long)m.pipeline_trees,
+                 (unsigned long long)m.tree_high_water, (unsigned long long)m.worker_high_water);
     if (!s && (count < 0 || (size_t)count >= sizeof(values)))
         s = UD_OVERFLOW;
     if (!s)

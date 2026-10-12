@@ -1,6 +1,6 @@
 # UniversalData
 
-纯 C17、可嵌入的数据集成 SDK，采用 SSIS 风格的 Package / Control Flow / Data Flow 分层。当前 `1.0.0` 是破坏性重构开发版本，ABI、Package、Schema、Plan、Wire、Plugin 和 Worker 协议为 4；不能加载 0.x 对象、包或检查点。
+纯 C17、可嵌入的数据集成 SDK，采用 SSIS 风格的 Package / Control Flow / Data Flow 分层。当前 `1.1.0` 是破坏性重构开发版本，ABI、Package、Schema、Plan、Wire、Plugin 和 Worker 协议为 5；仅接受当前完整布局；ABI 4 及更早的对象、包和检查点需要重新生成。
 
 ```mermaid
 flowchart LR
@@ -68,13 +68,13 @@ CLI：`ud_cli execute package.json '{}' tenant execution-id /authorized/root`。
 唯一 facade target 为 `ud_data`，文件名为 `ud_data.dll`。在启用 JNI、hosts 和所需连接器的构建目录配置完成后运行：
 
 ```powershell
-./packaging/package.ps1 -BuildDirectory build/abi4-windows
-ctest --test-dir build/abi4-windows -C Release --parallel 4 --output-on-failure
+./packaging/package.ps1 -BuildDirectory build/windows
+ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure
 $consumerWork = Join-Path $env:TEMP ('ud-sdk-consumer-' + [guid]::NewGuid().ToString('N'))
-python tests/installed_sdk.py --bundle artifacts/UniversalData-1.0.0-win-x64.zip --work $consumerWork --evidence artifacts/consumers.json
+python tests/installed_sdk.py --bundle artifacts/UniversalData-1.1.0-win-x64.zip --work $consumerWork --evidence artifacts/consumers.json
 ```
 
-脚本重新构建 Release，然后生成 `artifacts/1.0.0/win-x64/sdk`、带 Windows DLL 的 NuGet、Java JAR/POM、逐文件 SHA256 清单及 `artifacts/UniversalData-1.0.0-win-x64.zip`。已存在的同版本交付不会自动覆盖。长日志写入临时目录。独立消费测试只使用 ZIP 解压后的头文件、CMake exports、DLL、连接器和语言包，C# 执行时不添加 SDK 的加载路径。
+脚本重新构建 Release，然后生成 `artifacts/1.1.0/win-x64/sdk`、带 Windows DLL 的 NuGet、Java JAR/POM、逐文件 SHA256 清单及 `artifacts/UniversalData-1.1.0-win-x64.zip`。已存在的同版本交付不会自动覆盖。长日志写入临时目录。独立消费测试只使用 ZIP 解压后的头文件、CMake exports、DLL、连接器和语言包，C# 执行时不添加 SDK 的加载路径。
 
 原生 Windows 消费需要 x64 Microsoft Visual C++ Runtime；C# 需要 .NET 8，Java 需要 JDK 17。Linux 使用同一核心源码和算子；本轮没有生成或验收 Linux 二进制，Windows 打包不要求它存在。
 

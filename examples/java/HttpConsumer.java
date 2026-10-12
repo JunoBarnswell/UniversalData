@@ -25,7 +25,7 @@ public final class HttpConsumer {
             try { execution.start();while(!execution.await(100)) { } }
             catch(UniversalDataException error) { status=error.status(); }
             Execution.Metrics m=execution.metrics();
-            System.out.printf("{\"result\":%d,\"state\":%d,\"completedTasks\":%d,\"resolutions\":%d,\"networkGrants\":%d}%n",status,m.state().ordinal(),m.completedTasks(),resolutions[0],networkGrants[0]);
+            System.out.printf("{\"result\":%d,\"state\":%d,\"executedTasks\":%d,\"resolutions\":%d,\"networkGrants\":%d}%n",status,m.state().ordinal(),m.executedTasks(),resolutions[0],networkGrants[0]);
         }
     }
 }

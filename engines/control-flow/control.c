@@ -1,7 +1,4 @@
 #include "../package/internal.h"
-#ifdef _WIN32
-#include <process.h>
-#endif
 static int task_index(const ud_json *tasks, ud_string id) {
     for (uint32_t i = 0; i < ud_json_size(tasks); i++) {
         ud_string other = {0};
@@ -423,13 +420,6 @@ typedef struct task_run {
     ud_activation activation;
     const ud_json *definition;
     ud_status result;
-    atomic_int done;
-    int threaded;
-#ifdef _WIN32
-    HANDLE thread;
-#else
-    pthread_t thread;
-#endif
 } task_run;
 static ud_status task_result(task_run *run) {
     ud_activation *a = &run->activation;
@@ -441,31 +431,22 @@ static ud_status task_result(task_run *run) {
         ud_activation_notify(a, UD_EXEC_RUNNING, UD_OK);
         s = perform_task(a, run->definition);
         if (!s) {
-            atomic_fetch_add(&a->execution->completed_tasks, 1);
+            ud_task_fact(a, UD_TASK_EXECUTED);
             s = ud_checkpoint_task_done(a);
+            if (!s && a->execution->journal)
+                ud_task_fact(a, UD_TASK_DURABLE);
         }
     }
+    if (completed)
+        ud_task_fact(a, UD_TASK_RESUMED);
+    if (s == UD_COMMIT_UNKNOWN)
+        ud_task_fact(a, UD_TASK_UNCERTAIN);
     int state = s == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
                 : s == UD_CANCELLED    ? UD_EXEC_CANCELLED
                 : s                    ? UD_EXEC_FAILED
                                        : UD_EXEC_SUCCEEDED;
     ud_activation_notify(a, state, s);
     return s;
-}
-#ifdef _WIN32
-static unsigned __stdcall task_thread(void *user) {
-#else
-static void *task_thread(void *user) {
-#endif
-    task_run *run = user;
-    run->result = task_result(run);
-    atomic_fetch_sub(&run->activation.execution->workers, 1);
-    atomic_store_explicit(&run->done, 1, memory_order_release);
-#ifdef _WIN32
-    return 0;
-#else
-    return NULL;
-#endif
 }
 static int parallel_task(ud_activation *e, const ud_json *task) {
     ud_string kind = {0};
@@ -535,7 +516,6 @@ static ud_status init_task(ud_activation *parent, const ud_json *definition, tas
     a->depth = parent->depth;
     a->parallel = parent->parallel;
     atomic_init(&a->cancelled, 0);
-    atomic_init(&run->done, 0);
     run->definition = definition;
     ud_string id = {0};
     UD_TRY(ud_json_string(ud_member(definition, "id"), &id));
@@ -558,114 +538,81 @@ static ud_status init_task(ud_activation *parent, const ud_json *definition, tas
     }
     return UD_OK;
 }
+typedef struct task_wave {
+    task_run *runs;
+    uint32_t *indices;
+} task_wave;
+static ud_status execute_task(void *user, uint32_t index) {
+    task_wave *wave = user;
+    task_run *run = wave->runs + wave->indices[index];
+    run->result = task_result(run);
+    return UD_OK; /* A task failure selects failure constraints; the group still joins. */
+}
 ud_status ud_control_execute(ud_activation *e, const ud_json *flow) {
     ud_scope scope = {0};
-    ud_status s = ud_scope_enter(e, (ud_string){"flow", 4}, ud_member(flow, "variables"), &scope);
+    ud_status status = ud_scope_enter(e, (ud_string){"flow", 4}, ud_member(flow, "variables"), &scope);
     const ud_json *tasks = ud_member(flow, "tasks"), *constraints = ud_member(flow, "constraints");
     uint32_t count = ud_json_size(tasks), complete = 0;
-    int32_t *states = ud_alloc(e->execution->ctx, (count + 1) * sizeof(*states));
-    task_run *runs = ud_alloc(e->execution->ctx, (count + 1) * sizeof(*runs));
-    if (!states || !runs)
-        s = UD_RESOURCE;
-    for (uint32_t i = 0; !s && i < count; i++)
+    int32_t *states = ud_alloc(e->execution->ctx, (size_t)(count + 1) * sizeof(*states));
+    task_run *runs = ud_alloc(e->execution->ctx, (size_t)(count + 1) * sizeof(*runs));
+    uint32_t *indices = ud_alloc(e->execution->ctx, (size_t)(count + 1) * sizeof(*indices));
+    if (!states || !runs || !indices)
+        status = UD_RESOURCE;
+    for (uint32_t i = 0; !status && i < count; i++)
         states[i] = UD_EXEC_READY;
+    uint32_t concurrency = ud_execution_concurrency(e);
+    if (!concurrency && !status)
+        status = UD_SCHEMA;
     ud_status failure = UD_OK;
-    uint32_t cap = e->execution->options.max_concurrency;
-    uint64_t policy = 0;
-    if (ud_member(ud_member(e->package->document, "policy"), "maxConcurrency")) {
-        s = ud_json_uint(ud_member(ud_member(e->package->document, "policy"), "maxConcurrency"),
-                         &policy);
-        if (!s && policy < cap)
-            cap = (uint32_t)policy;
-    }
-    while (!s && complete < count) {
-        uint32_t asynchronous = 0;
+    while (!status && complete < count) {
+        uint32_t scheduled = 0;
         int progress = 0;
-        for (uint32_t i = 0; !s && i < count; i++) {
+        for (uint32_t i = 0; !status && i < count; i++) {
             if (states[i] != UD_EXEC_READY)
                 continue;
-            s = ud_activation_check(e);
-            if (s)
+            status = ud_activation_check(e);
+            if (status)
                 break;
             int runnable = 0, pass = 0;
-            s = ready(e, tasks, constraints, states, i, &runnable, &pass);
-            if (s || !runnable)
+            status = ready(e, tasks, constraints, states, i, &runnable, &pass);
+            if (status || !runnable)
                 continue;
             const ud_json *task = ud_json_at(tasks, i);
             int safe = parallel_task(e, task);
-            if (asynchronous && !safe)
+            if (scheduled && !safe)
                 continue;
-            s = init_task(e, task, runs + i);
-            if (s)
+            status = init_task(e, task, runs + i);
+            if (status)
                 break;
-            task_run *run = runs + i;
             if (!pass) {
                 states[i] = UD_EXEC_SKIPPED;
-                ud_activation_notify(&run->activation, states[i], UD_OK);
-                ud_free((void *)run->activation.task_id.data);
-                run->activation.task_id = (ud_string){0};
+                ud_activation_notify(&runs[i].activation, states[i], UD_OK);
+                ud_free((void *)runs[i].activation.task_id.data);
+                runs[i].activation.task_id = (ud_string){0};
                 complete++;
                 progress = 1;
                 continue;
             }
             states[i] = UD_EXEC_RUNNING;
-            unsigned workers = atomic_load(&e->execution->workers);
-            int slot = 0;
-            if (safe && cap > 1) {
-                while (workers < cap) {
-                    if (atomic_compare_exchange_weak(&e->execution->workers, &workers,
-                                                     workers + 1)) {
-                        slot = 1;
-                        break;
-                    }
-                }
-            }
-            run->activation.parallel = e->parallel || slot || asynchronous;
-            if (slot) {
-                run->threaded = 1;
-#ifdef _WIN32
-                run->thread = (HANDLE)_beginthreadex(NULL, 0, task_thread, run, 0, NULL);
-                int failed = !run->thread;
-#else
-                int failed = pthread_create(&run->thread, NULL, task_thread, run) != 0;
-#endif
-                if (failed) {
-                    atomic_fetch_sub(&e->execution->workers, 1);
-                    run->threaded = 0;
-                    run->result = UD_RESOURCE;
-                    atomic_store(&run->done, 1);
-                } else
-                    asynchronous++;
-            } else {
-                run->result = task_result(run);
-                atomic_store(&run->done, 1);
-            }
+            indices[scheduled++] = i;
             progress = 1;
-            /* Running records are joined as a wave before activating their
-             * successors, so completion never depends on a timing race. */
-            if (!slot && !safe)
+            if (!safe || concurrency == 1)
                 break;
         }
-        for (uint32_t i = 0; i < count; i++) {
-            if (states[i] != UD_EXEC_RUNNING)
-                continue;
+        if (!status && scheduled) {
+            for (uint32_t index = 0; index < scheduled; index++)
+                runs[indices[index]].activation.parallel = e->parallel ||
+                                                          (scheduled > 1 && concurrency > 1);
+            task_wave wave = {runs, indices};
+            status = ud_executor_run(e->execution->executor, scheduled, concurrency, execute_task, &wave);
+        }
+        for (uint32_t index = 0; index < scheduled; index++) {
+            uint32_t i = indices[index];
             task_run *run = runs + i;
-            if (run->threaded) {
-#ifdef _WIN32
-                if (WaitForSingleObject(run->thread, INFINITE) != WAIT_OBJECT_0)
-                    run->result = UD_IO;
-                CloseHandle(run->thread);
-#else
-                if (pthread_join(run->thread, NULL))
-                    run->result = UD_IO;
-#endif
-                run->threaded = 0;
-            }
-            ud_status result = run->result;
+            ud_status result = status ? status : run->result;
             states[i] = result == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
-                        : result == UD_CANCELLED    ? UD_EXEC_CANCELLED
-                        : result                    ? UD_EXEC_FAILED
-                                                    : UD_EXEC_SUCCEEDED;
+                        : result == UD_CANCELLED ? UD_EXEC_CANCELLED
+                        : result ? UD_EXEC_FAILED : UD_EXEC_SUCCEEDED;
             if (result == UD_COMMIT_UNKNOWN) {
                 failure = result;
                 ud_cancel(e->execution->ctx);
@@ -675,11 +622,12 @@ ud_status ud_control_execute(ud_activation *e, const ud_json *flow) {
             run->activation.task_id = (ud_string){0};
             complete++;
         }
-        if (!s && !progress)
-            s = UD_CORRUPT;
+        if (!status && !progress)
+            status = UD_CORRUPT;
     }
+    ud_free(indices);
     ud_free(states);
     ud_free(runs);
     ud_scope_leave(e, &scope);
-    return failure == UD_COMMIT_UNKNOWN ? failure : s ? s : failure;
+    return failure == UD_COMMIT_UNKNOWN ? failure : status ? status : failure;
 }

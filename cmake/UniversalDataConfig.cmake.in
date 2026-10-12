@@ -1,7 +1,7 @@
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
 set(UniversalData_installed_components "@UD_SELECTED@")
-if("Runtime" IN_LIST UniversalData_installed_components)
+if("Runtime" IN_LIST UniversalData_installed_components OR "Plugins" IN_LIST UniversalData_installed_components)
   find_dependency(Threads)
   if(@UD_WITH_HTTP@)
     find_dependency(CURL 7.85)

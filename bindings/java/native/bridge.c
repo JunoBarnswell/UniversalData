@@ -473,11 +473,17 @@ JNIEXPORT jlongArray JNICALL Java_org_universaldata_Execution_nativeMetrics(JNIE
                  (jlong)m.queued_batches,
                  (jlong)m.queue_high_water,
                  (jlong)m.memory_used,
-                 (jlong)m.completed_tasks,
-                 (jlong)m.spill_bytes};
-    jlongArray result = (*e)->NewLongArray(e, 11);
+                 (jlong)m.executed_tasks,
+                 (jlong)m.durable_tasks,
+                 (jlong)m.recovery_tasks,
+                 (jlong)m.resumed_tasks,
+                 (jlong)m.spill_bytes,
+                 (jlong)m.pipeline_trees,
+                 (jlong)m.tree_high_water,
+                 (jlong)m.worker_high_water};
+    jlongArray result = (*e)->NewLongArray(e, 17);
     if (result)
-        (*e)->SetLongArrayRegion(e, result, 0, 11, v);
+        (*e)->SetLongArrayRegion(e, result, 0, 17, v);
     return result;
 }
 JNIEXPORT void JNICALL Java_org_universaldata_Execution_nativeClose(JNIEnv *e, jclass cls,

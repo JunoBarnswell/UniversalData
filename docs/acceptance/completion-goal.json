@@ -1,12 +1,7 @@
 {
-  "goalVersion": 3,
-  "sourceAttachment": "UniversalData_SSIS_Architecture_Codex_Prompt.md",
-  "sourceSha256": "56b4eb3689cdd910df93ae143b96ff819b9bac86c12e8a67b2cddcc265723f56",
-  "baselineCommit": "ed3237a9852ac29831d85d93c03fc8b173cdbf6f",
-  "workingBranch": "codex/ssis-package-runtime",
-  "draftPullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/3",
-  "deadline": null,
-  "completionRule": "Current core scope must pass Windows gates. The full 69-item expansion backlog is tracked separately and is not claimed complete.",
+  "generatedFrom": "metadata/product.json",
+  "goalVersion": 5,
+  "completionRule": "Current core/infrastructure gates are required; extensions retain their actual status.",
   "automaticMergeOrReleaseAuthorized": false,
   "items": [
     {
@@ -15,7 +10,7 @@
       "name": "产品/架构/SSIS 证据及破坏性矩阵",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "设计文件无矛盾；真实源码职责和官方证据可追溯；所有权/迁移标准明确",
       "implementation": [
         "docs/product",
@@ -25,15 +20,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
-          "reference": "docs/architecture/ssis-reference-matrix.md",
-          "type": "design-review"
-        }
-      ],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G01",
@@ -41,8 +29,8 @@
       "name": "唯一执行器和主版本切换",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
-      "acceptance": "仅 Package/Execution 启停；无 Job/Dag/Run/桥接导出；全部消费端 ABI 3",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "仅 Package/Execution 启停；无 Job/Dag/Run/桥接导出；全部消费端 current ABI",
       "implementation": [
         "include/ud/package.h",
         "engines/package",
@@ -50,15 +38,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
-          "reference": "docs/validation.md",
-          "type": "executed-development-milestone"
-        }
-      ],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G02",
@@ -66,7 +47,7 @@
       "name": "统一 Schema 和列 identity/lineage",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "重命名/派生/Join/Arrow/Wire 保持或明确生成列 identity 和来源；ETL/Query 使用相同字段规范",
       "implementation": [
         "components/data",
@@ -76,7 +57,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G03",
@@ -84,7 +65,7 @@
       "name": "sealed Batch/Buffer 所有权",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "扇出无悬空引用；修改 sealed Buffer 拒绝；同步共享、异步独立；配额/销毁/Arrow 释放正确",
       "implementation": [
         "components/data/src/columnar.c",
@@ -92,15 +73,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
-          "reference": "docs/validation.md",
-          "type": "executed-development-milestone"
-        }
-      ],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G04",
@@ -108,7 +82,7 @@
       "name": "统一类型/转换/NULL/Compare/Hash",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "Decimal/UTC/NUL/嵌套/NaN/NULL 在表达式、ETL、Query、spill 中一致；同值 hash 相同",
       "implementation": [
         "components/data",
@@ -117,7 +91,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -126,7 +100,7 @@
       "name": "统一表达式 AST/Binder/函数 Registry",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "参数/变量/列、类型推断、常量折叠、向量评估、函数目录与权限上下文；Control/Derived/Split 共用语义",
       "implementation": [
         "components/expression",
@@ -136,7 +110,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G06",
@@ -144,7 +118,7 @@
       "name": "唯一状态/错误/诊断模型",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "状态迁移合法；END 不冒充成功；CommitUnknown/取消/失败分类一致；终态结果可并发安全读取",
       "implementation": [
         "components/execution/src/state.c",
@@ -152,15 +126,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
-          "reference": "docs/validation.md",
-          "type": "executed-development-milestone"
-        }
-      ],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G07",
@@ -168,7 +135,7 @@
       "name": "统一组件/插件 Registry",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "Task/Source/Transform/Destination/Connection/Enumerator/LogProvider 均走同一版本化注册和卸载租用规则",
       "implementation": [
         "components/contracts",
@@ -178,7 +145,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -187,7 +154,7 @@
       "name": "Project/Package/Environment 与作用域",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "Project→Package→Container→Task 遮蔽和只读参数规则；共享连接/环境绑定；一个 JSON 产品模型",
       "implementation": [
         "include/ud/project.h",
@@ -198,13 +165,7 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "reference": "docs/acceptance/evidence/ssis-project/evidence.json",
-          "type": "executed-scope-environment-binding"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -213,7 +174,7 @@
       "name": "Package 定义/绑定/运行生命周期",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "定义严格版本化；未知成员/依赖/端口/能力提前拒绝；一个执行资源上下文",
       "implementation": [
         "engines/package/model.c",
@@ -222,15 +183,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
-          "reference": "docs/validation.md",
-          "type": "executed-development-milestone"
-        }
-      ],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G10",
@@ -238,7 +192,7 @@
       "name": "Sequence/For/Foreach 控制流",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "嵌套/局部作用域、循环变量/边界/上限、退出/取消/错误传播均实际验证",
       "implementation": [
         "engines/control-flow/control.c"
@@ -247,7 +201,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G11",
@@ -255,7 +209,7 @@
       "name": "Success/Failure/Completion + expression + AND/OR",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "不同约束组合、Skipped 前驱、失败分支、循环体按明确控制语义执行",
       "implementation": [
         "engines/control-flow/control.c"
@@ -264,7 +218,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G12",
@@ -272,7 +226,7 @@
       "name": "受限并发/任务超时/事件处理器",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "任务预算与 Pipeline 预算共享；超时取消；处理器不抹除原错误；多个事件的防重入",
       "implementation": [
         "engines/control-flow",
@@ -282,7 +236,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G13",
@@ -290,7 +244,7 @@
       "name": "DataFlow Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "通过正式 Pipeline 接口承载独立数据流，不调用旧 executor",
       "implementation": [
         "engines/control-flow/control.c",
@@ -298,15 +252,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
-          "reference": "docs/validation.md",
-          "type": "executed-development-milestone"
-        }
-      ],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G14",
@@ -314,7 +261,7 @@
       "name": "Execute SQL Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "SQL Task 与 Source/Sink 使用同一 Manager；参数化、失败分类和恢复副作用清晰",
       "implementation": [
         "engines/control-flow",
@@ -323,15 +270,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
-          "reference": "docs/validation.md",
-          "type": "executed-development-milestone"
-        }
-      ],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G15",
@@ -339,7 +279,7 @@
       "name": "File System Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "明确操作范围/权限策略；路径/覆盖/失败/原子性与取消实际验证",
       "implementation": [
         "engines/control-flow/filesystem.c",
@@ -350,13 +290,7 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "reference": "docs/acceptance/evidence/ssis-filesystem/evidence.json",
-          "type": "executed-operation-auth-atomicity-cancellation-recovery"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -365,7 +299,7 @@
       "name": "Execute Process Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "默认禁用、显式宿主授权；退出码/超时/取消/资源清理；不承诺权限沙箱",
       "implementation": [
         "engines/control-flow/process.c",
@@ -376,13 +310,7 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "reference": "docs/acceptance/evidence/ssis-process/evidence.json",
-          "type": "executed-linux-auth-exit-timeout-cancel-cleanup-recovery"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -391,7 +319,7 @@
       "name": "Execute Package Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "真正子 Package 的参数/作用域/错误/取消/资源传递；非另一运行时或 Sequence 别名",
       "implementation": [
         "engines/package/child.c",
@@ -402,13 +330,7 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "reference": "docs/acceptance/evidence/ssis-child-package/evidence.json",
-          "type": "executed-child-isolation-propagation-recovery"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -417,7 +339,7 @@
       "name": "HTTP Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "NotRun optional dependency/system integration",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "同一连接和宿主授权；TLS/超时/取消/HTTP 失败/重试边界",
       "implementation": [
         "engines/control-flow/http.c",
@@ -427,13 +349,7 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "reference": "docs/acceptance/evidence/ssis-http/evidence.json",
-          "type": "executed-http-tls-authorization-retry-recovery-installed-consumers"
-        }
-      ],
-      "progress": "Current optional native implementation; dependency/system acceptance not in current Windows core gate.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": false
     },
     {
@@ -442,7 +358,7 @@
       "name": "Check/Data Profiling Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "实际统计和规则结果、失败和资源预算；不以空检查伪装完成",
       "implementation": [
         "include/ud/profile.h",
@@ -451,13 +367,7 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "reference": "docs/acceptance/evidence/ssis-profile/evidence.json",
-          "type": "executed-real-profiling-rules-budget-recovery-language-parity"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -466,7 +376,7 @@
       "name": "Native Custom Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "公开版本化回调/生命周期/默认授权/不能访问私有结构，插件卸载和错误传播",
       "implementation": [
         "include/ud/component.h",
@@ -478,13 +388,7 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "reference": "docs/acceptance/evidence/ssis-custom-task/evidence.json",
-          "type": "executed-public-sdk-shared-module-registration-ownership-authorization-recovery"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -493,7 +397,7 @@
       "name": "组件 metadata/设计时与运行时生命周期",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "端口/外部列/配置 schema/权限/错误输出/资源和版本 metadata 可检索；Configure 无副作用，失败反序 Dispose",
       "implementation": [
         "include/ud/component.h",
@@ -502,7 +406,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -511,7 +415,7 @@
       "name": "多输入/输出 Path/End/backpressure",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "多 Source/Join/Union/Multicast/Error Output 同一 scheduler；公平轮询；队列上界和每端口 End 契约",
       "implementation": [
         "engines/data-flow/pipeline.c"
@@ -520,7 +424,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G23",
@@ -528,7 +432,7 @@
       "name": "Execution Trees/Buffer Pool/资源调度",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "同步/异步树和两级并发共享预算；CPU/队列/内存/Spill 上限，所有取消路径释放资源",
       "implementation": [
         "engines/data-flow",
@@ -538,7 +442,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G24",
@@ -546,7 +450,7 @@
       "name": "阻塞 Sort/Aggregate/Join 的 Pipeline spill",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "不只是内存算子或外部文件 API；管道状态、分区、偏斜、稳定排序和恢复受统一预算",
       "implementation": [
         "engines/data-flow/builtins.c",
@@ -555,7 +459,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -564,7 +468,7 @@
       "name": "逻辑 Connection Manager 与物理 Driver",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "定义/作用域/凭据引用/授权/租用/能力/释放统一；Source/Sink/SQL Task 无全局密钥旁路",
       "implementation": [
         "connectors/manager.c",
@@ -574,7 +478,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G26",
@@ -582,7 +486,7 @@
       "name": "CSV Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "严格 CSV、Schema/null marker/UTF8/跨行、源位置、目标发布，全部经 Manager",
       "implementation": [
         "components/data/src/csv.c",
@@ -592,7 +496,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G27",
@@ -600,7 +504,7 @@
       "name": "JSON/NDJSON Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "严格 JSON、递归 Schema/UTC/Decimal、输入错误、分页/恢复/原子文件提交",
       "implementation": [
         "components/data/src/json.c",
@@ -608,15 +512,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
-          "reference": "docs/validation.md",
-          "type": "executed-development-milestone"
-        }
-      ],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G28",
@@ -624,7 +521,7 @@
       "name": "SQLite Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "有界游标、能力/权限、Append/Upsert/Delete、schema/事务/receipt 和 Pipeline 恢复",
       "implementation": [
         "plugins/sqlite.c",
@@ -634,7 +531,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G29",
@@ -642,7 +539,7 @@
       "name": "PostgreSQL Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "NotRun optional dependency/system integration",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "真实 PostgreSQL 的类型、游标、权限、事务/回执、增量/恢复，含 Package 路径",
       "implementation": [
         "plugins/postgresql.c",
@@ -652,7 +549,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Current optional native implementation; dependency/system acceptance not in current Windows core gate."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G30",
@@ -660,7 +557,7 @@
       "name": "Data Conversion",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "统一显式转换、精度/舍入/NULL/非法值和错误输出",
       "implementation": [
         "engines/data-flow",
@@ -671,7 +568,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G31",
@@ -679,7 +576,7 @@
       "name": "Derived Column",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "统一 AST/函数、保留原列、精度/NULL/lineage 和错误输出",
       "implementation": [
         "engines/data-flow",
@@ -690,7 +587,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G32",
@@ -698,7 +595,7 @@
       "name": "Copy Column",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "identity/lineage 规则、Buffer 共享正确",
       "implementation": [
         "engines/data-flow",
@@ -709,7 +606,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G33",
@@ -717,7 +614,7 @@
       "name": "Character Map",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "字符策略明确、Unicode/ASCII 边界和配置校验",
       "implementation": [
         "engines/data-flow",
@@ -728,7 +625,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G34",
@@ -736,7 +633,7 @@
       "name": "Conditional Split",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "多条件、默认输出、三值逻辑、命中规则和生命周期",
       "implementation": [
         "engines/data-flow",
@@ -747,7 +644,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G35",
@@ -755,7 +652,7 @@
       "name": "Multicast",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "同 Buffer 引用多输出，无深复制语义差异，背压/取消/释放",
       "implementation": [
         "engines/data-flow",
@@ -766,7 +663,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G36",
@@ -774,7 +671,7 @@
       "name": "Union All",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "多输入同 Schema、End 顺序、公平轮询、不重复或丢行",
       "implementation": [
         "engines/data-flow",
@@ -785,7 +682,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G37",
@@ -793,7 +690,7 @@
       "name": "Merge/Merge Join",
       "priority": "P0",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "有序输入契约、重复键/NULL、偏斜和 End/背压",
       "implementation": [
         "engines/data-flow",
@@ -804,7 +701,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G38",
@@ -812,7 +709,7 @@
       "name": "Aggregate",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "统一 NULL/Decimal/分组，async/spill 和状态恢复",
       "implementation": [
         "engines/data-flow",
@@ -823,7 +720,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G39",
@@ -831,7 +728,7 @@
       "name": "Sort",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "统一 Compare、稳定顺序、NULL/NaN、async/spill 和状态恢复",
       "implementation": [
         "engines/data-flow",
@@ -842,7 +739,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G40",
@@ -850,7 +747,7 @@
       "name": "Lookup/Cache Transform",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "缓存/缺失/重复键策略和一致类型、配额/错误输出",
       "implementation": [
         "engines/data-flow",
@@ -861,7 +758,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Implemented core subset is listed in product/component-catalog.md; remaining extension is Planned."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
     },
     {
       "id": "G41",
@@ -869,7 +766,7 @@
       "name": "Pivot/Unpivot",
       "priority": "P0",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "Schema/重复/聚合/NULL/资源契约和组合行为",
       "implementation": [
         "engines/data-flow",
@@ -880,7 +777,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G42",
@@ -888,7 +785,7 @@
       "name": "Error Output/Reject/Quarantine",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "质量错误在同一 Pipeline Path 和提交链路；隔离失败不推进状态",
       "implementation": [
         "engines/data-flow",
@@ -899,7 +796,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
     },
     {
       "id": "G43",
@@ -907,7 +804,7 @@
       "name": "Null/Unique/Range/Regex/Reference",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "统一规则状态与跨批次验证；失败分类；正常/错误输出",
       "implementation": [
         "engines/data-flow",
@@ -918,7 +815,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
     },
     {
       "id": "G44",
@@ -926,7 +823,7 @@
       "name": "Row Count/Audit",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "可核对输入/输出/拒绝/隔离和提交计数，不记录秘密",
       "implementation": [
         "engines/data-flow",
@@ -937,7 +834,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G45",
@@ -945,7 +842,7 @@
       "name": "统一任务/批次 Checkpoint Journal",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "一个版本化、校验、独占、原子发布日志；任务/循环/变量/源位置/算子/目标回执记录",
       "implementation": [
         "engines/package/checkpoint.c"
@@ -954,13 +851,7 @@
         "G25"
       ],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/ssis-recovery/evidence.json",
-          "scope": "Supported deterministic file-source recovery; general SQL-source snapshots and arbitrary side effects explicitly excluded"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -969,7 +860,7 @@
       "name": "CommitUnknown/事务和故障恢复",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "真实进程终止：提交前/后/日志前/后；不推进未确认源；回执核实；无伪成功/重复写/资源泄漏",
       "implementation": [
         "engines/package",
@@ -980,13 +871,7 @@
         "G45"
       ],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/ssis-recovery/evidence.json",
-          "scope": "Supported deterministic file-source recovery; general SQL-source snapshots and arbitrary side effects explicitly excluded"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -995,7 +880,7 @@
       "name": "Catalog/Deployment/Environment/Version",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "可嵌入可选持久实现或 repository ABI；版本、环境、参数、发布、运行历史分离，非 Web 服务",
       "implementation": [
         "catalog",
@@ -1003,21 +888,7 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "reference": "docs/acceptance/evidence/ssis-catalog/evidence.json",
-          "type": "verified-supported-subset"
-        },
-        {
-          "reference": "docs/acceptance/evidence/ssis-project/evidence.json",
-          "type": "verified-supported-subset"
-        },
-        {
-          "reference": "docs/acceptance/evidence/ssis-history/evidence.json",
-          "type": "verified-supported-subset"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -1026,7 +897,7 @@
       "name": "结构化 Events/Logs/Trace/Metrics/Lineage/Audit",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "Package/Execution/Task/Pipeline/Component ID 完整；行数/重试/spill/等待/峰值；秘密不进入日志",
       "implementation": [
         "engines/package",
@@ -1036,17 +907,7 @@
         "G02"
       ],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "reference": "docs/acceptance/evidence/ssis-catalog/evidence.json",
-          "type": "verified-supported-subset"
-        },
-        {
-          "reference": "docs/acceptance/evidence/ssis-history/evidence.json",
-          "type": "verified-supported-subset"
-        }
-      ],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。",
       "requiredThisDelivery": true
     },
     {
@@ -1055,7 +916,7 @@
       "name": "薄 C/.NET/Java Package/Execution 绑定",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "仅 ABI 投影；无旧类/业务引擎；生命周期/编码/回调/错误/取消/并发一致",
       "implementation": [
         "bindings",
@@ -1064,15 +925,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        {
-          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
-          "reference": "docs/validation.md",
-          "type": "executed-development-milestone"
-        }
-      ],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G50",
@@ -1080,7 +934,7 @@
       "name": "独立 C/Native/NuGet/Maven 安装消费",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "安装后的同 ABI native/Java/.NET 组件与同 Package 实际运行；不能把纯托管包当双平台 native 发布",
       "implementation": [
         "packaging",
@@ -1091,7 +945,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G51",
@@ -1099,7 +953,7 @@
       "name": "Windows 原生与 ABI 门禁；Linux 保留实现并免测",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "Linux 本地真实编译/测试/安装/插件/线程和跨语言消费证据；Windows 测试及远程 CI 状态按用户指令不作门禁，不声明其通过",
       "implementation": [
         ".github/workflows/ci.yml",
@@ -1108,7 +962,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial.",
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
       "requiredThisDelivery": true
     },
     {
@@ -1117,7 +971,7 @@
       "name": "内存安全/线程竞态/资源故障门禁",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "ASan/UBSan、引用/卸载/跨线程取消、内存/磁盘/超时/拒绝访问，无伪成功",
       "implementation": [
         "tests",
@@ -1128,7 +982,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
     },
     {
       "id": "G53",
@@ -1136,7 +990,7 @@
       "name": "九项附件核心集成验收",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Verified current core subset on Windows; see gates.json",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "附件 §10 九项全部有当前代码、实际用例和日志；不能用旧用例通过替代新模型",
       "implementation": [
         "tests",
@@ -1146,7 +1000,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "Core code and real native/ASan/installed language acceptance passed. Whole-item extension scope is separate where code=Partial."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
     },
     {
       "id": "G54",
@@ -1154,7 +1008,7 @@
       "name": "Slowly Changing Dimension",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "版本化 SCD 配置、键/属性/生效期和目标事务；Type 范围明确",
       "implementation": [
         "components/compute",
@@ -1166,7 +1020,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G55",
@@ -1174,7 +1028,7 @@
       "name": "Fuzzy Lookup/Fuzzy Grouping",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "公开独立算法/相似度/阈值/Unicode、确定性和资源边界，不复制微软专有实现",
       "implementation": [
         "components/compute",
@@ -1186,7 +1040,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G56",
@@ -1194,7 +1048,7 @@
       "name": "Term Extraction/Lookup",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "可组合文本算子、编码/词法/配置/资源/结果验收",
       "implementation": [
         "components/compute",
@@ -1206,7 +1060,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G57",
@@ -1214,7 +1068,7 @@
       "name": "CDC",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "PostgreSQL slot/快照/事务/LSN/ack/Schema 变化/故障重放与权限；目标确认后才推进",
       "implementation": [
         "components/compute",
@@ -1226,7 +1080,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G58",
@@ -1234,7 +1088,7 @@
       "name": "并行分区/Window/BI Dataset/Query",
       "priority": "P1/P2",
       "code": "Partial",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "共用 Compute/Expression/Planner/资源；新 API 不建立第二套语义或运行时",
       "implementation": [
         "components/compute",
@@ -1246,7 +1100,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Implemented core subset is listed in product/component-catalog.md; remaining extension is Planned."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
     },
     {
       "id": "G59",
@@ -1254,7 +1108,7 @@
       "name": "ODBC/SQL Server",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "真实驱动/DSN、类型/事务/失败/权限/Package 消费；SQLite ODBC 驱动不代表 SQL Server 已验收",
       "implementation": [
         "plugins",
@@ -1267,7 +1121,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G60",
@@ -1275,7 +1129,7 @@
       "name": "MySQL",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "真实驱动、schema/NULL/Decimal/UTC、事务/游标/恢复和 Package 消费",
       "implementation": [
         "plugins",
@@ -1288,7 +1142,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G61",
@@ -1296,7 +1150,7 @@
       "name": "HTTP 集成",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "Source/Destination/task 的连接、分页、TLS/权限/限流/取消/幂等语义",
       "implementation": [
         "plugins",
@@ -1309,7 +1163,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G62",
@@ -1317,7 +1171,7 @@
       "name": "SFTP",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "连接/凭据引用、主机身份校验、原子交付/恢复/取消",
       "implementation": [
         "plugins",
@@ -1330,7 +1184,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G63",
@@ -1338,7 +1192,7 @@
       "name": "Kafka",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "有界输入/分区/offset/事务、ack/重放/背压和授权",
       "implementation": [
         "plugins",
@@ -1351,7 +1205,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G64",
@@ -1359,7 +1213,7 @@
       "name": "RabbitMQ",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "确认/重投递/背压/失败与资源释放",
       "implementation": [
         "plugins",
@@ -1372,7 +1226,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G65",
@@ -1380,7 +1234,7 @@
       "name": "Cloud Object Storage",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "对象版本/分页/条件发布/重试/权限/提交不确定性",
       "implementation": [
         "plugins",
@@ -1393,7 +1247,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G66",
@@ -1401,7 +1255,7 @@
       "name": "Excel",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "格式/Schema/编码/类型/NULL/边界和资源限制；支持范围明确",
       "implementation": [
         "plugins",
@@ -1414,7 +1268,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Deferred extension by current user scope; no placeholder implementation."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
     },
     {
       "id": "G67",
@@ -1422,7 +1276,7 @@
       "name": "Parquet/Arrow",
       "priority": "P1/P2",
       "code": "Partial",
-      "verification": "Planned / extension not in current delivery",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "批次/类型/Schema/所有权、平台相关库和 Pipeline 往返",
       "implementation": [
         "plugins",
@@ -1435,7 +1289,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Implemented core subset is listed in product/component-catalog.md; remaining extension is Planned."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
     },
     {
       "id": "G68",
@@ -1443,7 +1297,7 @@
       "name": "Microsoft 专属扩展和兼容边界",
       "priority": "Optional-contract",
       "code": "Documented boundary",
-      "verification": "Not applicable",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
       "acceptance": "定义 WMI/SMO/SSAS/Agent/OLEDB/dtsx 插件类别与范围；无未验证兼容声明。不强制复制 Windows 专属实现。",
       "implementation": [
         "docs/product/component-catalog.md",
@@ -1453,23 +1307,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "Microsoft proprietary artifacts are not a compatibility target."
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Documented boundary。"
     }
-  ],
-  "scopeChanges": [
-    {
-      "date": "2026-10-12",
-      "source": "explicit user instruction",
-      "instruction": "无需关注ci的状态，Windows 无需测试",
-      "effect": "Windows verification and remote CI status are not acceptance gates for this goal. Linux local behavioral, memory, transaction, recovery and C/.NET/Java evidence remain mandatory. No Windows verification claim."
-    }
-  ],
-  "implementationCadence": "User requires all Phase 0–7 source implementation before centralized compilation and key acceptance. During implementation only architecture reasoning/source review; prompt module commits to draft PR; final verification NotRun until the centralized gates. Historical development evidence does not establish final-source acceptance.",
-  "platformDecision": "Windows compile and key acceptance; Linux implementation required, exempt from testing in this delivery",
-  "scopeDecision": "Unified architecture and core components first; protocol and advanced extensions retain truthful states",
-  "verificationTiming": "Centralized gates after coherent Phase 0-7 core source implementation",
-  "sourceFingerprint": "f32934d5377821e07d1571635061be5b510a033fa0c16dffddfa56390371c0a7",
-  "currentCoreDelivery": "Verified Windows",
-  "fullExpansionDelivery": "Incomplete: Planned/Partial extensions",
-  "linuxVerification": "Exempt by current user decision"
+  ]
 }

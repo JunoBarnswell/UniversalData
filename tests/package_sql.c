@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
     ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
     OK(ud_execution_get_metrics(e, &m));
     CHECK(m.state == UD_EXEC_SUCCEEDED && m.input_rows == 31 && m.output_rows == 31 &&
-          m.completed_tasks == 4);
+          m.executed_tasks == 4);
     OK(ud_execution_destroy(e));
     return 0;
 }

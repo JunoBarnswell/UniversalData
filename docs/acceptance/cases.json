@@ -613,5 +613,7 @@
       "status": "NotRun",
       "blocker": null
     }
-  ]
+  ],
+  "historical": true,
+  "supersededBy": "metadata/product.json; this former SDK 0.2.0 planning record is not current evidence"
 }

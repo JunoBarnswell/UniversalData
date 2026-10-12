@@ -154,14 +154,14 @@ ud_status ud_package_check(const ud_package *p) {
         }
         const ud_json *buffers = ud_member(policy, "buffers");
         if (buffers) {
-            static const char *bk[] = {"connection", "residentBytes", "spillBytes", "maxBlocks"};
-            UD_TRY(ud_json_keys(buffers, bk, 4));
-            const char *limits[] = {"residentBytes", "spillBytes", "maxBlocks"};
-            for (uint32_t i = 0; i < 3; i++)
+            static const char *bk[] = {"connection", "residentBytes", "workingBytes", "spillBytes", "maxBlocks"};
+            UD_TRY(ud_json_keys(buffers, bk, 5));
+            const char *limits[] = {"residentBytes", "workingBytes", "spillBytes", "maxBlocks"};
+            for (uint32_t i = 0; i < 4; i++)
                 if (ud_member(buffers, limits[i])) {
                     uint64_t value;
                     UD_TRY(ud_json_uint(ud_member(buffers, limits[i]), &value));
-                    if (!value || (i == 2 && value > 1000000))
+                    if (!value || (i == 3 && value > 1000000))
                         return UD_SCHEMA;
                 }
         }
@@ -243,7 +243,7 @@ ud_status ud_definition_box(ud_context *ctx, ud_string name_space, ud_string nam
     if (!value && required)
         return UD_SCHEMA;
     ud_bytes schema = {.ctx = ctx};
-    const char *prefix = "{\"version\":4,\"fields\":[{\"name\":";
+    const char *prefix = "{\"version\":5,\"fields\":[{\"name\":";
     ud_status s = ud_bytes_put(&schema, prefix, strlen(prefix));
     if (!s)
         s = ud_json_quote(&schema, name.data, name.length);
@@ -460,15 +460,18 @@ ud_status ud_execution_variable_field(const ud_execution *e, ud_string name, ud_
 ud_status ud_variable_writable(ud_activation *e, ud_string name, ud_variable **out) {
     if (!e || !out)
         return UD_INVALID;
+    if (e->stepping)
+        return UD_AUTH; /* Pipeline scopes are immutable during concurrent steps. */
     *out = find_slot(e, name, 0);
     if (!*out)
         return UD_SCHEMA;
     if ((*out)->readonly)
         return UD_AUTH;
-    if (e->parallel)
+    const ud_activation *authority = e->scope_authority ? e->scope_authority : e;
+    if (authority->parallel)
         for (ud_scope *scope = e->scope; scope; scope = scope->parent)
             for (ud_variable *v = scope->values; v; v = v->next)
-                if (v == *out && scope->owner != e)
+                if (v == *out && scope->owner != authority)
                     return UD_AUTH;
     return UD_OK;
 }

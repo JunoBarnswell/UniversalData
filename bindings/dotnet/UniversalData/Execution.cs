@@ -13,7 +13,7 @@ public delegate bool PackageAuthorizer(string tenant, string resource, Connectio
 
 public delegate string PackageCredentialResolver(string tenant, string resource, string reference);
 
-public sealed record ExecutionMetrics(ExecutionState State, StatusCode Result, ulong InputRows, ulong OutputRows, ulong RejectedRows, ulong Batches, ulong QueuedBatches, ulong QueueHighWater, ulong MemoryUsed, ulong CompletedTasks, ulong SpillBytes);
+public sealed record ExecutionMetrics(ExecutionState State, StatusCode Result, ulong InputRows, ulong OutputRows, ulong RejectedRows, ulong Batches, ulong QueuedBatches, ulong QueueHighWater, ulong MemoryUsed, ulong ExecutedTasks, ulong DurableTasks, ulong RecoveryTasks, ulong ResumedTasks, ulong SpillBytes, ulong PipelineTrees, ulong TreeHighWater, ulong WorkerHighWater);
 
 /// <summary>Thin projection of the only native Package execution lifecycle.</summary>
 public sealed class Execution : IDisposable
@@ -52,8 +52,8 @@ public sealed class Execution : IDisposable
             var options = new Native.ExecutionOptions
             {
                 Size = (uint)Marshal.SizeOf<Native.ExecutionOptions>(),
-                Abi = 4,
-                Context = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = 4, Limit = memoryLimit },
+                Abi = ProductVersion.Abi,
+                Context = new Native.ContextOptions { Size = (uint)Marshal.SizeOf<Native.ContextOptions>(), Abi = ProductVersion.Abi, Limit = memoryLimit },
                 Capacity = edgeCapacity,
                 MaxRows = maxBatchRows,
                 Depth = 32,
@@ -96,7 +96,7 @@ public sealed class Execution : IDisposable
 
     public ExecutionMetrics Metrics
     {
-        get { Open(); var m = new Native.ExecutionMetricsValue { Size = (uint)Marshal.SizeOf<Native.ExecutionMetricsValue>(), Abi = 4 }; Check(Native.ud_execution_get_metrics(execution, ref m)); return new((ExecutionState)m.State, (StatusCode)m.Result, m.Input, m.Output, m.Rejected, m.Batches, m.Queued, m.HighWater, m.Memory, m.Completed, m.Spill); }
+        get { Open(); var m = new Native.ExecutionMetricsValue { Size = (uint)Marshal.SizeOf<Native.ExecutionMetricsValue>(), Abi = ProductVersion.Abi }; Check(Native.ud_execution_get_metrics(execution, ref m)); return new((ExecutionState)m.State, (StatusCode)m.Result, m.Input, m.Output, m.Rejected, m.Batches, m.Queued, m.HighWater, m.Memory, m.Executed, m.Durable, m.Recovery, m.Resumed, m.Spill, m.Trees, m.TreeHighWater, m.WorkerHighWater); }
     }
 
     public void Dispose()
@@ -135,7 +135,7 @@ internal static partial class Native
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct ExecutionMetricsValue
-    { internal uint Size, Abi; internal int State, Result; internal ulong Input, Output, Rejected, Batches, Queued, HighWater, Memory, Completed, Spill; }
+    { internal uint Size, Abi; internal int State, Result; internal ulong Input, Output, Rejected, Batches, Queued, HighWater, Memory, Executed, Durable, Recovery, Resumed, Spill, Trees, TreeHighWater, WorkerHighWater; }
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_create_json(StringValue json, ref ExecutionOptions options, out IntPtr execution);
 

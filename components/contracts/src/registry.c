@@ -1,92 +1,135 @@
 #include "../registry_internal.h"
 #include "../../foundation/internal.h"
+#include "../../foundation/thread.h"
 #include <stdatomic.h>
-typedef struct entry {
+
+typedef struct registry_entry {
     ud_component_descriptor descriptor;
     void *owner;
     ud_component_owner_release release;
-    struct entry *next;
-} entry;
+    uint64_t hash;
+} registry_entry;
 struct ud_registry {
     ud_context *ctx;
-    entry *head, *tail;
-    uint32_t count;
+    registry_entry **entries, **index;
+    uint32_t count, capacity;
     atomic_uint leases;
+    ud_mutex mutex;
 };
-static int same(ud_string a, ud_string b) {
-    return a.length == b.length && !memcmp(a.data, b.data, a.length);
+static uint64_t identifier_hash(ud_string id) {
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (uint32_t i = 0; i < id.length; i++)
+        hash = (hash ^ (uint8_t)id.data[i]) * UINT64_C(1099511628211);
+    return hash;
 }
-static int valid(ud_string s) {
-    return s.data && s.length && s.length <= 65536 && !memchr(s.data, 0, s.length) &&
-           ud_utf8_valid(s.data, s.length);
+static int valid_string(ud_string text) {
+    return text.data && text.length && text.length <= 65536 &&
+           !memchr(text.data, 0, text.length) && ud_utf8_valid(text.data, text.length);
 }
-static void clear(entry *e) {
-    ud_free((void *)e->descriptor.id.data);
-    ud_free((void *)e->descriptor.name.data);
-    ud_free((void *)e->descriptor.version.data);
-    ud_free((void *)e->descriptor.configuration_schema.data);
-    if (e->release)
-        e->release(e->owner);
-    ud_free(e);
+static registry_entry *lookup(const ud_registry *r, ud_string id, uint64_t hash) {
+    if (!r->capacity)
+        return NULL;
+    uint32_t slot = (uint32_t)hash & (r->capacity - 1);
+    for (uint32_t i = 0; i < r->capacity; i++) {
+        registry_entry *entry = r->index[slot];
+        if (!entry)
+            return NULL;
+        if (entry->hash == hash && entry->descriptor.id.length == id.length &&
+            !memcmp(entry->descriptor.id.data, id.data, id.length))
+            return entry;
+        slot = (slot + 1) & (r->capacity - 1);
+    }
+    return NULL;
 }
-ud_status ud_registry_create(ud_context *c, ud_registry **out) {
-    if (!c || !out)
-        return UD_INVALID;
-    *out = ud_alloc(c, sizeof(**out));
-    if (!*out)
-        return UD_RESOURCE;
-    (*out)->ctx = c;
-    atomic_init(&(*out)->leases, 0);
-    return UD_OK;
+static void insert(registry_entry **index, uint32_t capacity, registry_entry *entry) {
+    uint32_t slot = (uint32_t)entry->hash & (capacity - 1);
+    while (index[slot])
+        slot = (slot + 1) & (capacity - 1);
+    index[slot] = entry;
 }
-static ud_status build_entry(ud_registry *r, const ud_component_descriptor *d, entry **out) {
-    *out = NULL;
-    if (!r || !d)
-        return UD_INVALID;
-    if (atomic_load(&r->leases))
-        return UD_BUSY;
+static void destroy_entry(registry_entry *entry) {
+    if (!entry)
+        return;
+    ud_free((void *)entry->descriptor.id.data);
+    ud_free((void *)entry->descriptor.name.data);
+    ud_free((void *)entry->descriptor.version.data);
+    ud_free((void *)entry->descriptor.configuration_schema.data);
+    if (entry->release)
+        entry->release(entry->owner);
+    ud_free(entry);
+}
+static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor *d) {
     if (d->struct_size != sizeof(*d) || d->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    if (!valid(d->id) || !valid(d->name) || !valid(d->version) || !valid(d->configuration_schema) ||
-        d->inputs > 64 || d->outputs > 64 || d->category < UD_COMPONENT_TASK ||
-        d->category > UD_COMPONENT_FUNCTION ||
-        (d->category > UD_COMPONENT_DESTINATION && d->category < UD_COMPONENT_FUNCTION) ||
+    if (!valid_string(d->id) || !valid_string(d->name) || !valid_string(d->version) ||
+        !valid_string(d->configuration_schema) || d->inputs > 64 || d->outputs > 64 ||
+        d->category < UD_COMPONENT_TASK || d->category > UD_COMPONENT_FUNCTION ||
         d->synchronous_input < -1 || d->error_output < -1 ||
         (d->synchronous_input >= 0 && (uint32_t)d->synchronous_input >= d->inputs) ||
         (d->error_output >= 0 && (uint32_t)d->error_output >= d->outputs))
-        return UD_INVALID;
-    if (d->category == UD_COMPONENT_TASK && !d->invoke)
-        return UD_INVALID;
-    if (d->category == UD_COMPONENT_FUNCTION &&
-        (!(d->capabilities & UD_FUNCTION_PURE) || !d->function_bind || !d->function_evaluate ||
-         d->min_arguments > d->max_arguments || d->max_arguments > 16 || d->inputs || d->outputs))
-        return UD_INVALID;
-    if (d->category >= UD_COMPONENT_SOURCE && d->category <= UD_COMPONENT_DESTINATION &&
-        (!d->configure || !d->prepare || !d->step || !d->finish || !d->dispose ||
+        return UD_SCHEMA;
+    int function = d->category == UD_COMPONENT_FUNCTION;
+    int task = d->category == UD_COMPONENT_TASK;
+    if (!function && (d->function_bind || d->function_evaluate ||
+                      d->min_arguments || d->max_arguments ||
+                      (d->capabilities & (UD_FUNCTION_PURE | UD_FUNCTION_DETERMINISTIC))))
+        return UD_SCHEMA;
+    if (task && (!d->invoke || d->inputs || d->outputs || d->synchronous_input != -1 ||
+                 d->error_output != -1 || d->prepare || d->step || d->finish || d->dispose))
+        return UD_SCHEMA;
+    if (function && (!(d->capabilities & UD_FUNCTION_PURE) || !d->function_bind ||
+                     !d->function_evaluate || d->min_arguments > d->max_arguments ||
+                     d->max_arguments > 16 || d->inputs || d->outputs ||
+                     d->synchronous_input != -1 || d->error_output != -1 || d->invoke ||
+                     d->configure || d->prepare || d->step || d->finish || d->dispose))
+        return UD_SCHEMA;
+    if (!function && !task &&
+        (!d->configure || !d->prepare || !d->step || !d->finish || !d->dispose || d->invoke ||
          (d->category == UD_COMPONENT_SOURCE && (d->inputs || !d->outputs)) ||
          (d->category == UD_COMPONENT_DESTINATION && !d->inputs) ||
          (d->category == UD_COMPONENT_TRANSFORM && (!d->inputs || !d->outputs))))
-        return UD_INVALID;
-    for (entry *e = r->head; e; e = e->next)
-        if (same(e->descriptor.id, d->id))
-            return UD_SCHEMA;
-    entry *e = ud_alloc(r->ctx, sizeof(*e));
-    if (!e)
+        return UD_SCHEMA;
+    ud_json *schema = NULL;
+    ud_status status = ud_json_parse(r->ctx, d->configuration_schema.data,
+                                    d->configuration_schema.length, &schema, NULL);
+    if (!status && ud_json_kind(schema) != UD_JSON_OBJECT)
+        status = UD_SCHEMA;
+    ud_json_destroy(schema);
+    return status;
+}
+static ud_status create_entry(ud_registry *r, const ud_component_descriptor *d,
+                              registry_entry **out) {
+    *out = NULL;
+    UD_TRY(descriptor_check(r, d));
+    registry_entry *entry = ud_alloc(r->ctx, sizeof(*entry));
+    if (!entry)
         return UD_RESOURCE;
-    e->descriptor = *d;
-    ud_string *dst[] = {&e->descriptor.id, &e->descriptor.name, &e->descriptor.version,
-                        &e->descriptor.configuration_schema};
-    ud_string src[] = {d->id, d->name, d->version, d->configuration_schema};
-    for (int i = 0; i < 4; i++)
-        dst[i]->data = NULL;
-    for (int i = 0; i < 4; i++) {
-        dst[i]->data = ud_strdup_n(r->ctx, src[i].data, src[i].length);
-        if (!dst[i]->data) {
-            clear(e);
+    entry->descriptor = *d;
+    entry->hash = identifier_hash(d->id);
+    ud_string *targets[] = {&entry->descriptor.id, &entry->descriptor.name,
+                            &entry->descriptor.version, &entry->descriptor.configuration_schema};
+    ud_string sources[] = {d->id, d->name, d->version, d->configuration_schema};
+    for (uint32_t i = 0; i < 4; i++)
+        targets[i]->data = NULL;
+    for (uint32_t i = 0; i < 4; i++) {
+        targets[i]->data = ud_strdup_n(r->ctx, sources[i].data, sources[i].length);
+        if (!targets[i]->data) {
+            destroy_entry(entry);
             return UD_RESOURCE;
         }
     }
-    *out = e;
+    *out = entry;
+    return UD_OK;
+}
+ud_status ud_registry_create(ud_context *ctx, ud_registry **out) {
+    if (!ctx || !out)
+        return UD_INVALID;
+    *out = ud_alloc(ctx, sizeof(**out));
+    if (!*out)
+        return UD_RESOURCE;
+    (*out)->ctx = ctx;
+    atomic_init(&(*out)->leases, 0);
+    ud_mutex_init(&(*out)->mutex);
     return UD_OK;
 }
 ud_status ud_registry_register_owned(ud_registry *r, const ud_component_descriptor *descriptors,
@@ -94,90 +137,110 @@ ud_status ud_registry_register_owned(ud_registry *r, const ud_component_descript
                                      ud_component_owner_release release) {
     if (!r || !descriptors || !count || count > 4096 || !!retain != !!release || (retain && !owner))
         return UD_INVALID;
-    if (atomic_load(&r->leases))
-        return UD_BUSY;
-    if (count > UINT32_MAX - r->count)
-        return UD_RESOURCE;
-    entry *head = NULL, *tail = NULL;
-    ud_status s = UD_OK;
-    for (uint32_t i = 0; !s && i < count; i++) {
-        entry *e = NULL;
-        s = build_entry(r, descriptors + i, &e);
-        if (s)
-            break;
-        for (entry *earlier = head; earlier; earlier = earlier->next)
-            if (same(earlier->descriptor.id, e->descriptor.id)) {
-                s = UD_SCHEMA;
-                break;
-            }
-        if (!s && retain)
-            s = retain(owner);
-        if (s) {
-            clear(e);
-            break;
-        }
-        e->owner = owner;
-        e->release = release;
-        if (tail)
-            tail->next = e;
+    ud_mutex_lock(&r->mutex);
+    ud_status status = atomic_load(&r->leases) ? UD_BUSY : UD_OK;
+    if (!status && count > UINT32_MAX - r->count)
+        status = UD_RESOURCE;
+    uint32_t total = !status ? r->count + count : 0, capacity = r->capacity ? r->capacity : 16;
+    while (!status && total > capacity / 2) {
+        if (capacity > UINT32_MAX / 2)
+            status = UD_RESOURCE;
         else
-            head = e;
-        tail = e;
+            capacity *= 2;
     }
-    if (s) {
-        while (head) {
-            entry *next = head->next;
-            clear(head);
-            head = next;
+    registry_entry **entries = NULL, **index = NULL;
+    if (!status) {
+        entries = ud_alloc(r->ctx, (size_t)total * sizeof(*entries));
+        index = ud_alloc(r->ctx, (size_t)capacity * sizeof(*index));
+        if (!entries || !index)
+            status = UD_RESOURCE;
+    }
+    if (!status)
+        for (uint32_t i = 0; i < r->count; i++) {
+            entries[i] = r->entries[i];
+            insert(index, capacity, entries[i]);
         }
-        return s;
+    uint32_t created = 0;
+    for (uint32_t i = 0; !status && i < count; i++) {
+        registry_entry *entry = NULL;
+        status = create_entry(r, descriptors + i, &entry);
+        if (!status) {
+            ud_registry pending = {.index = index, .capacity = capacity};
+            if (lookup(&pending, entry->descriptor.id, entry->hash))
+                status = UD_SCHEMA;
+        }
+        if (!status && retain)
+            status = retain(owner);
+        if (status) {
+            destroy_entry(entry);
+            break;
+        }
+        entry->owner = owner;
+        entry->release = release;
+        entries[r->count + created++] = entry;
+        insert(index, capacity, entry);
     }
-    if (r->tail)
-        r->tail->next = head;
-    else
-        r->head = head;
-    r->tail = tail;
-    r->count += count;
-    return UD_OK;
+    if (!status) {
+        ud_free(r->entries);
+        ud_free(r->index);
+        r->entries = entries;
+        r->index = index;
+        r->count = total;
+        r->capacity = capacity;
+    } else {
+        for (uint32_t i = 0; i < created; i++)
+            destroy_entry(entries[r->count + i]);
+        ud_free(entries);
+        ud_free(index);
+    }
+    ud_mutex_unlock(&r->mutex);
+    return status;
 }
 ud_status ud_registry_register(ud_registry *r, const ud_component_descriptor *descriptor) {
     return ud_registry_register_owned(r, descriptor, 1, NULL, NULL, NULL);
 }
 uint32_t ud_registry_count(const ud_registry *r) {
-    return r ? r->count : 0;
+    if (!r)
+        return 0;
+    ud_mutex_lock((ud_mutex *)&r->mutex);
+    uint32_t count = r->count;
+    ud_mutex_unlock((ud_mutex *)&r->mutex);
+    return count;
 }
 ud_status ud_registry_get(const ud_registry *r, uint32_t index, ud_component_descriptor *out) {
-    if (!r || !out || index >= r->count)
+    if (!r || !out)
         return UD_INVALID;
     if (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    entry *e = r->head;
-    while (index--)
-        e = e->next;
-    *out = e->descriptor;
-    return UD_OK;
+    ud_mutex_lock((ud_mutex *)&r->mutex);
+    ud_status status = index < r->count ? UD_OK : UD_INVALID;
+    if (!status)
+        *out = r->entries[index]->descriptor;
+    ud_mutex_unlock((ud_mutex *)&r->mutex);
+    return status;
 }
 ud_status ud_registry_find(const ud_registry *r, ud_string id, ud_component_descriptor *out) {
-    if (!r || !out || !valid(id))
+    if (!r || !out || !valid_string(id))
         return UD_INVALID;
     if (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    for (entry *e = r->head; e; e = e->next)
-        if (same(e->descriptor.id, id)) {
-            *out = e->descriptor;
-            return UD_OK;
-        }
-    return UD_UNSUPPORTED;
+    ud_mutex_lock((ud_mutex *)&r->mutex);
+    registry_entry *entry = lookup(r, id, identifier_hash(id));
+    if (entry)
+        *out = entry->descriptor;
+    ud_mutex_unlock((ud_mutex *)&r->mutex);
+    return entry ? UD_OK : UD_UNSUPPORTED;
 }
 ud_status ud_registry_acquire(ud_registry *r) {
     if (!r)
         return UD_INVALID;
-    unsigned old = atomic_load(&r->leases);
-    do {
-        if (old == UINT32_MAX)
-            return UD_RESOURCE;
-    } while (!atomic_compare_exchange_weak(&r->leases, &old, old + 1));
-    return UD_OK;
+    ud_mutex_lock(&r->mutex);
+    unsigned leases = atomic_load(&r->leases);
+    ud_status status = leases == UINT32_MAX ? UD_RESOURCE : UD_OK;
+    if (!status)
+        atomic_fetch_add(&r->leases, 1);
+    ud_mutex_unlock(&r->mutex);
+    return status;
 }
 void ud_registry_release(ud_registry *r) {
     if (r)
@@ -186,14 +249,17 @@ void ud_registry_release(ud_registry *r) {
 ud_status ud_registry_destroy(ud_registry *r) {
     if (!r)
         return UD_OK;
-    if (atomic_load(&r->leases))
+    ud_mutex_lock(&r->mutex);
+    if (atomic_load(&r->leases)) {
+        ud_mutex_unlock(&r->mutex);
         return UD_BUSY;
-    entry *e = r->head;
-    while (e) {
-        entry *next = e->next;
-        clear(e);
-        e = next;
     }
+    for (uint32_t i = 0; i < r->count; i++)
+        destroy_entry(r->entries[i]);
+    ud_free(r->entries);
+    ud_free(r->index);
+    ud_mutex_unlock(&r->mutex);
+    ud_mutex_destroy(&r->mutex);
     ud_free(r);
     return UD_OK;
 }

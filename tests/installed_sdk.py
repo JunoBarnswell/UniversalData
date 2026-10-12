@@ -70,7 +70,7 @@ with zipfile.ZipFile(bundle) as archive:
     archive.extractall(unpacked)
 manifest = json.loads((unpacked / "manifest.json").read_text(encoding="utf-8"))
 version = manifest["sdkVersion"]
-assert manifest["schemaVersion"] == 1 and manifest["abiVersion"] == 4 and manifest["configuration"] == "Release"
+assert manifest["schemaVersion"] == 1 and manifest["abiVersion"] == json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]["abiVersion"] and manifest["configuration"] == "Release"
 assert manifest["runtimeIdentifier"] == ("win-x64" if os.name == "nt" else "linux-x64")
 fingerprint = subprocess.check_output([sys.executable, str(ROOT / "scripts/release_guard.py"), "--fingerprint"],
                                       env=environment, text=True).strip()
@@ -99,13 +99,13 @@ class ContextOptions(ctypes.Structure):
 
 facade.ud_context_create.argtypes = [ctypes.POINTER(ContextOptions), ctypes.POINTER(ctypes.c_void_p)]
 facade.ud_context_destroy.argtypes = [ctypes.c_void_p]
-options = ContextOptions(ctypes.sizeof(ContextOptions), 3, 0, None, None, None)
+options = ContextOptions(ctypes.sizeof(ContextOptions), manifest["abiVersion"] - 1, 0, None, None, None)
 context = ctypes.c_void_p()
 assert facade.ud_context_create(ctypes.byref(options), ctypes.byref(context)) == 10 and not context.value
-options.abi = 4
+options.abi = manifest["abiVersion"]
 assert facade.ud_context_create(ctypes.byref(options), ctypes.byref(context)) == 0 and context.value
 assert facade.ud_context_destroy(context) == 0
-print(f"ZIP integrity: {len(listed)} files; native version {version}; ABI 4 accepted, ABI 3 rejected", flush=True)
+print(f"ZIP integrity: {len(listed)} files; native version {version}; current ABI accepted, previous ABI rejected", flush=True)
 
 # These real consumers use public installed headers and the dynamic Data target.
 c_source = work / "c-source"
@@ -189,7 +189,7 @@ run("bundle-language-parity",
      c_output / ("consumer_package" + executable), c_output / ("consumer_data" + executable),
      arguments.dotnet, *dotnet_outputs, arguments.java, java_client / "target/classes", installed_jar, native,
      "--managed-native-local"])
-record = {"exitCode": 0, "sdkVersion": version, "abiVersion": 4, "configuration": "Release",
+record = {"exitCode": 0, "sdkVersion": version, "abiVersion": manifest["abiVersion"], "configuration": "Release",
           "sourceFingerprint": fingerprint, "archive": str(bundle), "archiveSha256": digest(bundle),
           "verifiedFiles": len(listed), "unpackedDirectory": str(unpacked), "logs": str(work),
           "nativeLibrary": {"path": str(library), "sha256": digest(library)},

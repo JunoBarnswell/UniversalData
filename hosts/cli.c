@@ -66,10 +66,15 @@ int main(int argc, char **argv) {
         ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
         ud_execution_get_metrics(e, &m);
         printf("{\"state\":%d,\"result\":%d,\"inputRows\":%llu,\"outputRows\":%llu,"
-               "\"completedTasks\":%llu,\"spillBytes\":%llu}\n",
+               "\"executedTasks\":%llu,\"durableTasks\":%llu,\"recoveryTasks\":%llu,"
+               "\"resumedTasks\":%llu,\"spillBytes\":%llu,\"pipelineTrees\":%llu,"
+               "\"treeHighWater\":%llu,\"workerHighWater\":%llu}\n",
                m.state, m.result, (unsigned long long)m.input_rows,
-               (unsigned long long)m.output_rows, (unsigned long long)m.completed_tasks,
-               (unsigned long long)m.spill_bytes);
+               (unsigned long long)m.output_rows, (unsigned long long)m.executed_tasks,
+               (unsigned long long)m.durable_tasks, (unsigned long long)m.recovery_tasks,
+               (unsigned long long)m.resumed_tasks, (unsigned long long)m.spill_bytes,
+               (unsigned long long)m.pipeline_trees, (unsigned long long)m.tree_high_water,
+               (unsigned long long)m.worker_high_water);
     }
     if (s)
         fprintf(stderr, "%s\n", ud_status_name(s));

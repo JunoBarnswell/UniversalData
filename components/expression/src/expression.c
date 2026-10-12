@@ -156,7 +156,8 @@ static ud_status bind_literal(ud_expression *e, expression_node *n, const ud_jso
             return UD_SCHEMA;
     }
     ud_bytes schema = {.ctx = e->ctx}, rows = {.ctx = e->ctx};
-    const char *prefix = "{\"version\":4,\"fields\":[{\"name\":\"literal\",\"nullable\":true";
+    const char *prefix = "{\"version\":" UD_PROTOCOL_VERSION_TEXT
+                         ",\"fields\":[{\"name\":\"literal\",\"nullable\":true";
     ud_status s = ud_bytes_put(&schema, prefix, strlen(prefix));
     for (uint32_t j = 1; !s && j < 6; j++) {
         const ud_json *value = member(json, keys[j]);

@@ -24,7 +24,7 @@ static int buffers_and_operators(const char *directory) {
     ud_batch *schema = NULL; OK(ud_batch_create(ctx, &field, 1, 0, &schema));
     ud_status permission = UD_OK;
     ud_buffer_options buffers = {.struct_size=sizeof(buffers), .abi_version=UD_ABI_VERSION,
-        .max_blocks=2048, .resident_limit=1, .spill_limit=10000000,
+        .max_blocks=2048, .resident_limit=1, .working_limit=1000000, .spill_limit=10000000,
         .directory=text(directory), .check=grant, .user=&permission};
     ud_buffer_manager *manager = NULL; OK(ud_buffer_manager_create(ctx, &buffers, &manager));
     uint32_t key = 0;
@@ -77,7 +77,7 @@ static int buffers_and_operators(const char *directory) {
     for(uint32_t i=0;i<3;i++){ud_value value;OK(ud_batch_get(batch,i,1,&value));CHECK(value.integer==sums[i]);}
     ud_batch_destroy(batch);batch=NULL;CHECK(ud_operator_pull(op,&batch)==UD_END);OK(ud_operator_destroy(op));
     ud_plan *plan=NULL;
-    const char *definition="{\"version\":4,\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
+    const char *definition="{\"version\":5,\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
     OK(ud_plan_create_fields(ctx,UD_PLAN_VERSION,&field,1,text(definition),NULL,&plan));
     spec.kind=UD_OPERATOR_AGGREGATE;spec.aggregation=plan;
     OK(ud_operator_create(ctx,&spec,inputs,&op));ud_plan_destroy(plan);
@@ -93,12 +93,24 @@ static int buffers_and_operators(const char *directory) {
     OK(ud_batch_append(batch,&value,1));OK(ud_batch_seal(batch));
     ud_buffer_block *block=NULL,*extra=NULL;OK(ud_buffer_store(manager,batch,&block));
     CHECK(ud_buffer_store(manager,batch,&extra)==UD_RESOURCE && !extra);
-    ud_batch *read=NULL;permission=UD_AUTH;CHECK(ud_buffer_read(block,&read)==UD_AUTH && !read);permission=UD_OK;
+    ud_buffer_view *read=NULL;permission=UD_AUTH;CHECK(ud_buffer_read(block,&read)==UD_AUTH && !read);permission=UD_OK;
+    OK(ud_buffer_read(block,&read));CHECK(ud_buffer_release(block)==UD_BUSY);
+    ud_value restored;OK(ud_batch_get(ud_buffer_view_batch(read),0,0,&restored));CHECK(restored.integer==7);
+    OK(ud_buffer_manager_metrics(manager,&metrics));uint64_t working=metrics.working_bytes;
+    CHECK(working>0 && metrics.views==1 && metrics.working_high_water>=working);
+    ud_buffer_view *other=NULL;OK(ud_buffer_read(block,&other));
+    OK(ud_buffer_manager_metrics(manager,&metrics));CHECK(metrics.views==2 && metrics.working_bytes>working);
+    ud_buffer_view_release(other);ud_buffer_view_release(read);read=NULL;
+    OK(ud_buffer_manager_metrics(manager,&metrics));CHECK(!metrics.views && !metrics.working_bytes);
     char path[4096];snprintf(path,sizeof(path),"%s/ud-buffer-%020llu.udw",directory,1ULL);
     FILE *file=fopen(path,"r+b");CHECK(file && !fseek(file,-1,SEEK_END));int ch=fgetc(file);
     CHECK(ch!=EOF && !fseek(file,-1,SEEK_END) && fputc(ch^1,file)!=EOF && !fclose(file));
     CHECK(ud_buffer_read(block,&read)==UD_CORRUPT && !read);
-    ud_cancel(ctx);OK(ud_buffer_release(block));OK(ud_buffer_manager_destroy(manager));
+    OK(ud_buffer_release(block));OK(ud_buffer_manager_destroy(manager));
+    buffers.working_limit=1;OK(ud_buffer_manager_create(ctx,&buffers,&manager));
+    block=NULL;CHECK(ud_buffer_store(manager,batch,&block)==UD_RESOURCE && !block);
+    OK(ud_buffer_manager_metrics(manager,&metrics));CHECK(!metrics.working_bytes && !metrics.blocks);
+    ud_cancel(ctx);OK(ud_buffer_manager_destroy(manager));
     ud_batch_destroy(batch);ud_batch_destroy(schema);CHECK(ud_memory_used(ctx)==0);OK(ud_context_destroy(ctx));
     return 0;
 }
@@ -140,7 +152,7 @@ static int activations(void) {
         .context={.struct_size=sizeof(o.context),.abi_version=UD_ABI_VERSION,.memory_limit=16000000},
         .edge_capacity=1,.max_batch_rows=3,.max_depth=16,.registry=registry,
         .tenant={"fixture",7},.max_concurrency=3,.observe=observe,.observe_user=&f};
-    const char *package="{\"version\":4,\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
+    const char *package="{\"version\":5,\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
         "{\"id\":\"deadline\",\"kind\":\"test.delay\",\"timeoutMs\":1000,\"config\":{}},"
         "{\"id\":\"sibling\",\"kind\":\"test.delay\",\"config\":{}}],\"constraints\":[]},\"dataFlows\":[]}";
     ud_execution *execution=NULL;OK(ud_execution_create_json(text(package),&o,&execution));
@@ -148,11 +160,11 @@ static int activations(void) {
     CHECK(ud_execution_execute(execution)==UD_TIMEOUT);
     CHECK(atomic_load(&f.high)==2 && atomic_load(&f.complete)==1 && !atomic_load(&f.active));
     ud_execution_metrics m={.struct_size=sizeof(m),.abi_version=UD_ABI_VERSION};
-    OK(ud_execution_get_metrics(execution,&m));CHECK(m.result==UD_TIMEOUT && m.completed_tasks==1);
+    OK(ud_execution_get_metrics(execution,&m));CHECK(m.result==UD_TIMEOUT && m.executed_tasks==1);
     OK(ud_execution_destroy(execution));
     /* Sequential sibling tasks may write their shared lexical parent. */
     o.max_concurrency=1;f.sequence=0;
-    package="{\"version\":4,\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":0}},"
+    package="{\"version\":5,\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":0}},"
         "\"eventHandlers\":{\"after\":{\"tasks\":[{\"id\":\"after\",\"kind\":\"set\",\"config\":{\"name\":\"n\",\"value\":{\"literal\":3,\"type\":\"int64\"}}}],\"constraints\":[]}},"
         "\"controlFlow\":{\"tasks\":[{\"id\":\"a\",\"kind\":\"set\",\"config\":{\"name\":\"n\",\"value\":{\"literal\":1,\"type\":\"int64\"}}},"
         "{\"id\":\"b\",\"kind\":\"set\",\"config\":{\"name\":\"n\",\"value\":{\"literal\":2,\"type\":\"int64\"}}}],\"constraints\":[]},\"dataFlows\":[]}";

@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Versioned schema JSON: {"version":4,"fields":[...]}. Each field has name,
+/* Versioned schema JSON: {"version":5,"fields":[...]}. Each field has name,
  * type and nullable; Decimal also precision/scale, Timestamp timezone, and
  * nested types children. Optional namespace binds omitted column identities;
  * bound fields emit identity (32 lowercase hex) and canonical lineage array.

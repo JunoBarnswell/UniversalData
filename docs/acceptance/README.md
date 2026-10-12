@@ -1,19 +1,13 @@
-# SDK 0.2.0 验收基线
+# 当前核心验收
 
-基线来源：用户在会话中给出的 A–H 实施方案。工作区未提供原始附件及原始 166 条用例，本基线不得作为其覆盖证明。
+metadata/product.json 是版本、组件范围、候选源码、门禁和产物的唯一事实来源。product_model.py 生成 progress.json、ssis-status.json、completion-goal.json、gates.json、组件清单及语言版本文件。人工编辑生成文件会被门禁拒绝。
 
-只开发 SDK 及嵌入组件。PostgreSQL / SQLite 是数据库基线；不开发 Web 管理平台、不自动公开发布语言包。
+按用户约定，整批源码与调用方迁移完成后集中编译和关键验收。Windows 执行构建、内存、并发、事务恢复及独立 SDK 消费；Linux 保留相同核心实现和 POSIX 平台实现，本轮免测。扩展保持真实 Planned/Partial。
 
-用户最新授权（2026-10-12）：在已明确告知各阶段尚未全部完成、未编译及运行验收后，用户要求立即提交、推送、创建新 PR 并合并当前源码。这替代此前「完成需求验证后合并」的条件。源码集成按此授权及仓库分支规则执行；所有 NotRun / Blocked 状态和发行门禁保持真实，合并不表示需求验收通过或发行完成。
+基线 main 的合并、当前分支的实现、当前验收、当前产物分别记录。历史 ABI 4 的通过记录仅作历史证据，不能作为 ABI 5 的通过证明。当前源码未正式提交或合并时，mergeEvidence 为空。
 
-开发顺序：全部阶段代码完成后统一构建及运行验收；开发阶段仅运行静态契约检查。新用例在执行前保持 `NotRun`，代码存在不代表阶段完成。
+门禁覆盖 Registry 所有权和合法类别、resident 无 codec、嵌套/投影去重、working quota/lease/fault cleanup、实际 Execution Tree 并发/容量/取消、分段 Journal 索引/快照/缺段/损坏/崩溃恢复、逻辑与持久 task facts、统一产品事实，以及安装后 C/NuGet/Maven/JNI 的同一 Package 和 typed wire。
 
-`requirements.json` 为需求和实现追踪，`cases.json` 为重建的验收用例。需求需要公共接口、实现、用例、UAT、证据及门禁。阶段只有实际执行链路和证据齐全才可标为 Complete。旧版本文档里的验证描述是历史记录，未重新取得可核验日志前不计入 0.2.0 证据。
+GitHub Actions 运行 38270005891 的四个 job 均在启动前被账户账单/额度问题拒绝，实际步骤为 0；这是外部 Blocked，不能作为代码编译失败或通过记录。
 
-状态：Planned / InProgress / Implemented / Passed / Failed / Blocked；Passed 必须引用证据文件及其 SHA-256。Blocked 必须包含实际阻塞原因，不计为 Passed。
-
-安装包需要通过独立消费验收之后才可称为发行包。静态检查不证明编译成功、事务正确性、内存安全、性能或跨语言一致性。
-
-GitHub Actions 的可用性单独记录。它被阻塞时不记为通过；如有其他真实执行环境提供全部 Windows/Linux 等必需证据，发布门禁不额外要求在 GitHub 执行同一套验证。目前没有 Windows 执行证据，Windows 门禁仍然 Blocked。
-
-已观察到的仓库状态：PR #1 已合并，远端不存在 `codex/initial-sdk`。本次以相同基础提交 d86e18e 开始新分支 `codex/sdk-0.2.0`；对已合并 PR 不追加会误导审查的完成声明。
+requirements.json、cases.json 和 evidence 下的旧资料显式标为历史规划/证据；当前 69 项目标、核心门禁与扩展状态以产品模型为准。

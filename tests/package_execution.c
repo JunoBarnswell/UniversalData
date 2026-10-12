@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
     OK(ud_execution_get_metrics(e, &m));
     CHECK(m.state == UD_EXEC_SUCCEEDED && m.result == UD_OK && m.input_rows == 31 &&
-          m.output_rows == 31 && m.completed_tasks == 6 && m.queue_high_water <= 5);
+          m.output_rows == 31 && m.executed_tasks == 6 && m.queue_high_water <= 5);
     ud_value iterations;
     OK(ud_execution_variable(e, (ud_string){"n", 1}, &iterations));
     CHECK(iterations.integer == 3);

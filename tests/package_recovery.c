@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
             ud_value v;
             OK(ud_execution_variable(e, (ud_string){"n", 1}, &v));
             CHECK(v.integer == 4);
-            CHECK(m.input_rows == 31 && m.output_rows == 62 && m.completed_tasks == 6);
+            CHECK(m.input_rows == 31 && m.output_rows == 62 && m.executed_tasks == 6);
         }
         OK(ud_execution_destroy(e));
     }

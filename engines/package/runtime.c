@@ -36,6 +36,54 @@ void ud_activation_notify_kind(ud_activation *e, int32_t kind, ud_execution_stat
 void ud_activation_notify(ud_activation *e, ud_execution_state state, ud_status result) {
     ud_activation_notify_kind(e, UD_EXEC_EVENT_STATE, state, result);
 }
+void ud_task_rows(ud_activation *activation, uint64_t input, uint64_t output, uint64_t rejected) {
+    ud_activation *owner = activation->scope_authority ? activation->scope_authority : activation;
+    atomic_fetch_add(&owner->input_rows, input);
+    atomic_fetch_add(&owner->output_rows, output);
+    atomic_fetch_add(&owner->rejected_rows, rejected);
+    atomic_fetch_add(&activation->execution->input_rows, input);
+    atomic_fetch_add(&activation->execution->output_rows, output);
+    atomic_fetch_add(&activation->execution->rejected_rows, rejected);
+}
+void ud_task_fact(ud_activation *activation, uint32_t fact) {
+    ud_execution *execution = activation->execution;
+    if (activation->task_facts & fact)
+        return;
+    activation->task_facts |= fact;
+    int kind = 0;
+    if (fact == UD_TASK_EXECUTED) {
+        atomic_fetch_add(&execution->executed_tasks, 1);
+        kind = UD_EXEC_EVENT_TASK_EXECUTED;
+    } else if (fact == UD_TASK_DURABLE) {
+        atomic_fetch_add(&execution->durable_tasks, 1);
+        if (activation->task_facts & UD_TASK_UNCERTAIN) {
+            activation->task_facts &= ~UD_TASK_UNCERTAIN;
+            atomic_fetch_sub(&execution->recovery_tasks, 1);
+        }
+        kind = UD_EXEC_EVENT_TASK_CONFIRMED;
+    } else if (fact == UD_TASK_UNCERTAIN) {
+        atomic_fetch_add(&execution->recovery_tasks, 1);
+        kind = UD_EXEC_EVENT_TASK_UNCERTAIN;
+    } else if (fact == UD_TASK_RESUMED)
+        atomic_fetch_add(&execution->resumed_tasks, 1);
+    if (kind)
+        ud_activation_notify_kind(activation, kind,
+                                  fact == UD_TASK_UNCERTAIN ? UD_EXEC_RECOVERY_REQUIRED
+                                                          : UD_EXEC_RUNNING,
+                                  fact == UD_TASK_UNCERTAIN ? UD_COMMIT_UNKNOWN : UD_OK);
+}
+uint32_t ud_execution_concurrency(const ud_activation *activation) {
+    uint32_t concurrency = activation->execution->options.max_concurrency;
+    const ud_json *policy = ud_member(activation->package->document, "policy");
+    if (ud_member(policy, "maxConcurrency")) {
+        uint64_t requested = 0;
+        if (ud_json_uint(ud_member(policy, "maxConcurrency"), &requested))
+            return 0;
+        if (requested < concurrency)
+            concurrency = (uint32_t)requested;
+    }
+    return concurrency;
+}
 ud_status ud_activation_check(const ud_activation *e) {
     if (!e)
         return UD_INVALID;
@@ -118,7 +166,6 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     e->root.execution = e;
     e->root.definition = &e->root;
     atomic_init(&e->root.cancelled, 0);
-    atomic_init(&e->workers, 0);
     ud_mutex_init(&e->events_lock);
     ud_mutex_init(&e->journal_lock);
     ud_mutex_init(&e->serial_tasks_lock);
@@ -137,9 +184,17 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     atomic_init(&e->batches, 0);
     atomic_init(&e->queued, 0);
     atomic_init(&e->high_water, 0);
-    atomic_init(&e->completed_tasks, 0);
+    atomic_init(&e->executed_tasks, 0);
+    atomic_init(&e->durable_tasks, 0);
+    atomic_init(&e->recovery_tasks, 0);
+    atomic_init(&e->resumed_tasks, 0);
+    atomic_init(&e->pipeline_trees, 0);
+    atomic_init(&e->tree_active, 0);
+    atomic_init(&e->tree_high_water, 0);
     atomic_init(&e->spill_bytes, 0);
-    ud_status s = copy_string(ctx, options->tenant, &e->options.tenant);
+    ud_status s = ud_executor_create(ctx, e->options.max_concurrency, &e->executor);
+    if (!s)
+        s = copy_string(ctx, options->tenant, &e->options.tenant);
     if (!s)
         s = copy_string(ctx, options->execution_id, &e->options.execution_id);
     if (!s)
@@ -198,7 +253,6 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         s = ud_activation_validate_definition(&e->root, 0);
     if (s) {
         atomic_store(&e->state, UD_EXEC_FAILED);
-        atomic_store(&e->workers, 0);
         atomic_store(&e->result, s);
         ud_status closed = ud_execution_destroy(e);
         return closed ? closed : s;
@@ -236,7 +290,7 @@ ud_status ud_activation_run_definition(ud_activation *e) {
     return s == UD_BUSY ? UD_TRANSIENT : s;
 }
 static ud_status execute(ud_execution *e) {
-    atomic_store(&e->workers, 1);
+    ud_executor_enter(e->executor);
     uint64_t now = ud_now_ms();
     if (e->options.timeout_ms)
         e->root.deadline =
@@ -263,7 +317,7 @@ static ud_status execute(ud_execution *e) {
                     : s == UD_CANCELLED    ? UD_EXEC_CANCELLED
                     : s                    ? UD_EXEC_FAILED
                                            : UD_EXEC_SUCCEEDED;
-    atomic_store(&e->workers, 0);
+    ud_executor_leave(e->executor);
     atomic_store(&e->result, s);
     atomic_store(&e->state, state);
     ud_activation_notify(&e->root, state, s);
@@ -339,7 +393,13 @@ ud_status ud_execution_get_metrics(const ud_execution *e, ud_execution_metrics *
     m->queued_batches = atomic_load(&e->queued);
     m->queue_high_water = atomic_load(&e->high_water);
     m->memory_used = ud_memory_used(e->ctx);
-    m->completed_tasks = atomic_load(&e->completed_tasks);
+    m->executed_tasks = atomic_load(&e->executed_tasks);
+    m->durable_tasks = atomic_load(&e->durable_tasks);
+    m->recovery_tasks = atomic_load(&e->recovery_tasks);
+    m->resumed_tasks = atomic_load(&e->resumed_tasks);
+    m->pipeline_trees = atomic_load(&e->pipeline_trees);
+    m->tree_high_water = atomic_load(&e->tree_high_water);
+    m->worker_high_water = ud_executor_high_water(e->executor);
     m->spill_bytes = atomic_load(&e->spill_bytes);
     return UD_OK;
 }
@@ -383,6 +443,10 @@ ud_status ud_execution_destroy(ud_execution *e) {
         ud_package_destroy(e->package);
         e->package = NULL;
         e->root.package = NULL;
+        cleanup = ud_executor_destroy(e->executor);
+        if (cleanup)
+            return cleanup;
+        e->executor = NULL;
         ud_free((void *)e->options.tenant.data);
         e->options.tenant = (ud_string){0};
         ud_free((void *)e->options.execution_id.data);

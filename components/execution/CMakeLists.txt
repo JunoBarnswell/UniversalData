@@ -1,5 +1,5 @@
 find_package(Threads REQUIRED)
-set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/state.c ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime.c ${CMAKE_CURRENT_SOURCE_DIR}/src/buffer.c)
+set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/executor.c ${CMAKE_CURRENT_SOURCE_DIR}/src/journal.c ${CMAKE_CURRENT_SOURCE_DIR}/src/state.c ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime.c ${CMAKE_CURRENT_SOURCE_DIR}/src/buffer.c)
 ud_component(ud_runtime Runtime ${src})
 target_link_libraries(ud_runtime PUBLIC ud_columnar Threads::Threads)
 set(UD_ALL_SOURCES ${UD_ALL_SOURCES} ${src} PARENT_SCOPE)
