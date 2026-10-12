@@ -144,6 +144,25 @@ ud_status ud_control_validate(ud_execution *e, const ud_json *flow, uint32_t dep
             s = ud_component_lookup(e, kind, &d);
             if (!s && d.category != UD_COMPONENT_TASK)
                 s = UD_SCHEMA;
+            if (!s && d.configure) {
+                ud_json *bound = NULL;
+                char *text = NULL;
+                uint32_t n;
+                s = ud_bound_config(e, config, &bound);
+                if (!s)
+                    s = ud_json_serialize(bound, &text, &n);
+                ud_component_context context = {.struct_size = sizeof(context),
+                                                .abi_version = UD_ABI_VERSION,
+                                                .memory = e->ctx,
+                                                .execution = e,
+                                                .max_batch_rows = e->options.max_batch_rows,
+                                                .resolve = ud_resolve_value,
+                                                .resolve_user = e};
+                if (!s)
+                    s = d.configure(d.user, &context, (ud_string){text, n}, NULL, NULL);
+                ud_free(text);
+                ud_json_destroy(bound);
+            }
         }
         if (local.parent)
             ud_scope_leave(e, &local);

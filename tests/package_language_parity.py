@@ -21,14 +21,19 @@ with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
  child={'version':3,'id':'parity-child','parameters':p['parameters'],'project':p['project'],'connections':p['connections'],
  'controlFlow':{'tasks':[{'id':'flow','kind':'dataFlow','config':{'pipeline':'p'}}],'constraints':[]},'dataFlows':p['dataFlows']}
  p['controlFlow']['tasks'][-1]={'id':'flow','kind':'executePackage','config':{'package':child,'parameters':{'a':{'ref':'a'},'b':{'ref':'b'}}}}
- p['dataFlows']=[];p['connections']=[]
+ p['dataFlows']=[]
+ p['parameters']=dict(p['parameters'],working={'type':'utf8'})
+ p['connections']=[{'id':'original','driver':'file','resource':str(source)},{'id':'working','driver':'file','resource':{'$parameter':'working'}}]
+ p['controlFlow']['tasks'].insert(0,{'id':'copy','kind':'file.system','config':{'operation':'copy','source':'original','target':'working'}})
+ p['controlFlow']['constraints'].append({'from':'copy','to':'loop','on':'success'})
  definition=r/'package.json';definition.write_text(json.dumps(p));metrics=[]
  for index in range(3):
-  params={'a':str(r/f'{index}-a.ndjson'),'b':str(r/f'{index}-b.ndjson')};values=r/f'{index}.params.json';values.write_text(json.dumps(params))
+  params={'a':str(r/f'{index}-a.ndjson'),'b':str(r/f'{index}-b.ndjson'),'working':str(r/f'{index}-source.ndjson')};values=r/f'{index}.params.json';values.write_text(json.dumps(params))
   if index==0: command=[cli,'execute',str(definition),json.dumps(params),'fixture','same-id',str(r)]
   elif index==1: command=[dotnet,package_dll,str(definition),str(values),'same-id',str(r)]
   else: command=[java,'-Djava.library.path='+native,'-cp',classes+os.pathsep+jar,'Consumer',str(definition),str(values),'same-id',str(r)]
-  result=subprocess.run(command,env=env,capture_output=True,text=True,check=True,timeout=120);m=json.loads(result.stdout);assert m['state']==5 and m['result']==0 and m['inputRows']==10003 and m['outputRows']==10003 and m['completedTasks']==6;metrics.append(m)
+  result=subprocess.run(command,env=env,capture_output=True,text=True,check=True,timeout=120);m=json.loads(result.stdout);assert m['state']==5 and m['result']==0 and m['inputRows']==10003 and m['outputRows']==10003 and m['completedTasks']==7;metrics.append(m)
+  assert (r/f'{index}-source.ndjson').read_bytes()==source.read_bytes()
   for port in ['a','b']:
    actual=(r/f'{index}-{port}.ndjson').read_bytes()
    if index: assert actual==(r/f'0-{port}.ndjson').read_bytes()
@@ -45,4 +50,4 @@ with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
  for suffix in ['data.json','wire']:
   expected=(r/f'0.{suffix}').read_bytes();assert all((r/f'{i}.{suffix}').read_bytes()==expected for i in [1,2])
  actual=json.loads((r/'0.data.json').read_text());assert actual[0]['at']=='2024-02-29T00:00:00.000000Z' and actual[0]['profile']['missing'] is None
- print('C/.NET8/Java17 ABI 3: same Package/Project outer parameters/shared connection/scopes/real child Package mapping/control loops/precedence/10003-row derive+split outputs and result metrics; Decimal/UTC/UTF8/nested/wire parity passed')
+ print('C/.NET8/Java17 ABI 3: same Package/Project outer parameters/shared connection/scopes/File System copy/real child Package mapping/control loops/precedence/10003-row derive+split outputs and result metrics; Decimal/UTC/UTF8/nested/wire parity passed')

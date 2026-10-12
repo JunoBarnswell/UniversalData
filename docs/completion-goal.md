@@ -53,7 +53,7 @@ main 已重新 fetch，当前分支没有落后；已有基础批次和 ABI 3 �
 | G12 | 2 | 受限并发/任务超时/事件处理器 | Planned | NotRun |
 | G13 | 2 | DataFlow Task | Implemented | Verified |
 | G14 | 2 | Execute SQL Task | Implemented | Verified |
-| G15 | 2 | File System Task | Planned | NotRun |
+| G15 | 2 | File System Task | Implemented | Verified |
 | G16 | 2 | Execute Process Task | Planned | NotRun |
 | G17 | 2 | Execute Package Task | Implemented | Verified |
 | G18 | 2 | HTTP Task | Planned | NotRun |
@@ -115,3 +115,5 @@ Execute Package Task 已从草稿容器别名改为真正子 Package：参数映
 范围修订（2026-10-12）：Windows 测试及远程 CI 状态按用户明确指令不作本轮完成门禁；其余实现及本地验收范围不变。这是显式免测，不是测试通过。
 
 运行历史模块：原生 Ready/终态快照与事件持久化、取消后的元数据读取、租户边界、参数正文不落盘已通过。当前 native 26/26、内存专项 8/8、三语言子 Package 一致性通过；完整 G47/G48 仍有缺项。
+
+File System Task 已实现并验证四种受限操作、逻辑连接/删除授权、纯配置预校验、路径/覆盖/原子发布/取消/未知恢复。最新 native 27/27、内存专项 9/9、三语言同文件复制与子 Package 通过；完整目标其他缺项继续保留。

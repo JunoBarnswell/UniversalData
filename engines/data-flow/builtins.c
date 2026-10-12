@@ -752,5 +752,6 @@ ud_status ud_builtin_register(ud_registry *registry) {
                                     .synchronous_input = -1,
                                     .error_output = -1,
                                     .invoke = sql_task};
-    return ud_registry_register(registry, &task);
+    UD_TRY(ud_registry_register(registry, &task));
+    return ud_filesystem_register(registry);
 }

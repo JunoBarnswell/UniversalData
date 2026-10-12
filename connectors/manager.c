@@ -42,8 +42,8 @@ ud_status ud_connection_definition(ud_execution *e, ud_string id, const ud_json 
     *out = def;
     return def ? UD_OK : UD_SCHEMA;
 }
-ud_status ud_execution_acquire_connection(ud_execution *e, ud_string id, uint64_t caps,
-                                          ud_connection_lease **out) {
+static ud_status acquire(ud_execution *e, ud_string id, uint64_t caps, int file_only,
+                         ud_connection_lease **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
@@ -71,6 +71,8 @@ ud_status ud_execution_acquire_connection(ud_execution *e, ud_string id, uint64_
         s = ud_json_string(ud_member(l->definition, "resource"), &l->resource);
     if (!s)
         s = ud_connection_lease_authorize(l, UD_ACCESS_OPEN);
+    if (!s && file_only && !ud_named(l->driver, "file"))
+        s = UD_UNSUPPORTED;
     if (!s && ud_named(l->driver, "file")) {
         l->capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND;
 #ifdef _WIN32
@@ -112,6 +114,13 @@ ud_status ud_execution_acquire_connection(ud_execution *e, ud_string id, uint64_
     }
     *out = l;
     return UD_OK;
+}
+ud_status ud_execution_acquire_connection(ud_execution *e, ud_string id, uint64_t caps,
+                                          ud_connection_lease **out) {
+    return acquire(e, id, caps, 0, out);
+}
+ud_status ud_acquire_file_connection(ud_execution *e, ud_string id, ud_connection_lease **out) {
+    return acquire(e, id, 0, 1, out);
 }
 ud_status ud_connection_lease_path(const ud_connection_lease *l, ud_string *out) {
     if (!l || !out)

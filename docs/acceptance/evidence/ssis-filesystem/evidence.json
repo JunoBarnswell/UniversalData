@@ -1,0 +1,37 @@
+{
+  "milestone": "native-filesystem-task",
+  "date": "2026-10-12",
+  "baseCommit": "0db3b49d5894b8781efbc70bf4133de5d493e8b8",
+  "sourceManifest": "docs/acceptance/evidence/ssis-filesystem/source-manifest.json",
+  "sourceManifestSha256": "9f5764f0853eb43af89810a3a029d0cec5370e29328df34523927628fa6553e3",
+  "checks": [
+    {
+      "path": "docs/acceptance/evidence/ssis-filesystem/native-ctest.txt",
+      "sha256": "43263cf238256b8ea5fc43f93d0129d31febe06619806e9c169c2dcb661ba1cc",
+      "command": "ctest --test-dir build/abi3 --output-on-failure",
+      "exitCode": 0,
+      "passed": 27,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-filesystem/asan-package-filesystem.txt",
+      "sha256": "2005552eaa9785bdc39e3625799d8b1f275051cfd1c3cc07faf94a9167a1dacc",
+      "command": "ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build/asan3 -R 'catalog|package|project|filesystem' --output-on-failure",
+      "exitCode": 0,
+      "passed": 9,
+      "failed": 0
+    },
+    {
+      "path": "docs/acceptance/evidence/ssis-filesystem/language-parity.txt",
+      "sha256": "f18a3abba9c857a192984660d49df142df9873382376cc2f163dd889335d57ba",
+      "command": "tests/package_language_parity.py with ABI3 native/JNI, .NET8 and Java17; File System copy, real child Package and datatype/wire parity",
+      "exitCode": 0
+    }
+  ],
+  "limitations": [
+    "Regular file copy/move/delete and single-level mkdir only; no overwrite/recursive/cross-device copy fallback",
+    "Interrupted invoke is non-replayable and conservatively RecoveryRequired; no global exactly-once claim",
+    "Host controls directory trust/OS permissions; no filesystem namespace sandbox",
+    "Windows tests and remote CI status waived by explicit user instruction, not claimed passed"
+  ]
+}

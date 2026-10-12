@@ -31,6 +31,10 @@ ud_status ud_lock(ud_context *, const char *, void **);
 void ud_unlock(void *);
 ud_status ud_remove_file(ud_context *, const char *);
 ud_status ud_reserve_file(ud_context *, const char *);
+ud_status ud_path_kind(ud_context *, const char *, int *); /* 0 absent, 1 file, 2 dir, 3 other */
+ud_status ud_path_no_symlinks(ud_context *, const char *);
+ud_status ud_open_regular(ud_context *, const char *, FILE **);
+ud_status ud_move_noreplace(ud_context *, const char *, const char *);
 ud_status ud_distinct_directories(ud_context *, const char *, const char *);
 uint64_t ud_now_ms(void);
 void ud_sleep_ms(uint32_t);

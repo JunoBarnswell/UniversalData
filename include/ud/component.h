@@ -48,7 +48,8 @@ typedef struct ud_component_descriptor {
     uint64_t capabilities;
     void *user;
     /* Configure must not perform external I/O. Output schemas are owned empty
-     * batches allocated from context memory. Inputs borrow upstream schemas. */
+     * batches allocated from context memory. Inputs borrow upstream schemas.
+     * Task configure is optional pure validation and receives NULL schemas. */
     ud_status (*configure)(void *, const ud_component_context *, ud_string config,
                            const ud_batch *const *, ud_batch **output_schemas);
     /* Prepare acquires resources. On failure clean its partial instance itself. */

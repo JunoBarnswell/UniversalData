@@ -28,3 +28,5 @@ Registry --> LogProvider
 所有描述公开 id、name、category、version、config schema、ports、error port、connection requirements、permissions、budget、lineage。同类别未知组件在绑定时 Unsupported；插件可以注册多个类别，生命周期仅由公共 Runtime 执行。P1/P2 分期不在注册表中提供无行为占位。轨迹 Source→Transform→Destination 与 Source→ErrorOutput→Quarantine 共用同一 Path/Scheduler/提交，失败 Dispose/释放租用。代码归属 components/contracts、engines/data-flow、connectors、plugins。
 
 本表保留目标分类，不能用分类整行代替逐项验收；实时状态以 [69 项清单](../acceptance/completion-goal.json) 为准。Execute Package 的规范模型与真实证据见 [子 Package 契约](../architecture/execute-package.md)。
+
+FileSystem 的四种明确文件操作及权限/恢复边界已交付，见 [File System Task](../architecture/filesystem-task.md)；其他 Host tasks 仍按分项清单推进。

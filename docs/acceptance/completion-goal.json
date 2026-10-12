@@ -309,17 +309,25 @@
       "phase": 2,
       "name": "File System Task",
       "priority": "P0",
-      "code": "Planned",
-      "verification": "NotRun",
+      "code": "Implemented",
+      "verification": "Verified",
       "acceptance": "明确操作范围/权限策略；路径/覆盖/失败/原子性与取消实际验证",
       "implementation": [
-        "engines/control-flow",
-        "engines/data-flow/builtins.c",
-        "components/contracts"
+        "engines/control-flow/filesystem.c",
+        "connectors/manager.c",
+        "components/foundation/src/platform.c",
+        "tests/filesystem_task.c",
+        "tests/filesystem_task.py"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-filesystem/evidence.json",
+          "type": "executed-operation-auth-atomicity-cancellation-recovery"
+        }
+      ],
+      "progress": "Bounded native file.system Task verified: regular copy/no-replace move/delete/single mkdir, one manager, deletion authorization, pure prevalidation, path/ownership/atomicity/cancel and conservative interrupted recovery."
     },
     {
       "id": "G16",

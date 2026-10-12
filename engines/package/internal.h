@@ -84,6 +84,9 @@ ud_status ud_parameters_check(const ud_json *, const ud_json *, int require_valu
 ud_status ud_variable_writable(ud_execution *, ud_string, ud_variable **);
 ud_status ud_connection_definition(ud_execution *, ud_string, const ud_json **, int *project_scope);
 ud_status ud_connection_definitions_check(const ud_json *);
+typedef struct ud_connection_lease ud_connection_lease;
+ud_status ud_acquire_file_connection(ud_execution *, ud_string, ud_connection_lease **);
+ud_status ud_filesystem_register(ud_registry *);
 ud_status ud_checkpoint_open(ud_execution *);
 ud_status ud_checkpoint_task_begin(ud_execution *, ud_string kind, int *completed);
 ud_status ud_checkpoint_task_done(ud_execution *);

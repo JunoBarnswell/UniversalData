@@ -23,7 +23,8 @@ enum {
     UD_ACCESS_DISCOVER = 2,
     UD_ACCESS_READ = 3,
     UD_ACCESS_WRITE = 4,
-    UD_ACCESS_RECEIPT = 5
+    UD_ACCESS_RECEIPT = 5,
+    UD_ACCESS_DELETE = 8 /* 6/7 reserved by the quarantine contract. */
 };
 /* Only UD_OK is an authorization grant. Missing callback is a denial. The host
  * controls the credential scope; this callback never implements an identity provider. */

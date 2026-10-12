@@ -31,3 +31,5 @@ Project/Environment/Deployment 新门禁：当前源代码 native 24/24、ASan/U
 用户范围修订（2026-10-12）：“无需关注ci的状态，Windows 无需测试”。因此本轮完成门禁以 Linux 本地实际验证为准；以上历史 Windows/远程 CI 观察不再阻塞本轮目标，且不代表 Windows 通过。
 
 运行历史新门禁：当前源代码 native 26/26、ASan/UBSan + leak detection 的 Package/Catalog/Project/Child/History 8/8；三语言真实子 Package/Project/类型与 Wire 一致性重新通过。历史测试覆盖原生成功/失败/取消/RecoveryRequired、Ready/终态快照、租户、BUSY、重开、参数指纹/部署版本和敏感正文不落盘。证据：docs/acceptance/evidence/ssis-history。Windows 和远程 CI 按用户指令不作门禁。
+
+File System 新门禁：native 27/27、ASan/UBSan + leak detection 的 Package/Catalog/Project/Child/History/FileSystem 9/9；C/.NET8/Java17 同文件复制、子 Package、10,003 行管道和类型/Wire 一致性通过（任务数 7）。路径/覆盖/临时文件保护、移动/删除/建目录、中途取消/撤权、FIFO/符号链接拒绝和真实效应后终止/CommitUnknown 已实际验证。证据：docs/acceptance/evidence/ssis-filesystem。
