@@ -35,14 +35,14 @@ static ud_status probe(void *user, const ud_component_context *c, ud_string conf
     ud_value value;
     if (named(c->component_id, "unused"))
         return UD_CORRUPT;
-    if (ud_execution_variable(c->execution, str("value"), &value) != UD_OK || value.integer != 7)
+    if (ud_activation_variable(c->activation, str("value"), &value) != UD_OK || value.integer != 7)
         return UD_CORRUPT;
-    if (ud_execution_variable(c->execution, str("same"), &value) != UD_OK || value.integer != 999)
+    if (ud_activation_variable(c->activation, str("same"), &value) != UD_OK || value.integer != 999)
         return UD_CORRUPT;
-    if (ud_execution_variable(c->execution, str("parentOnly"), &value) != UD_SCHEMA)
+    if (ud_activation_variable(c->activation, str("parentOnly"), &value) != UD_SCHEMA)
         return UD_CORRUPT;
     value = (ud_value){.type = UD_INT64, .integer = 100};
-    if (ud_execution_set_variable(c->execution, str("value"), &value, NULL) != UD_AUTH)
+    if (ud_activation_set_variable(c->activation, str("value"), &value, NULL) != UD_AUTH)
         return UD_CORRUPT;
     f->child_calls++;
     return f->mode == 1 ? UD_IO : f->mode == 2 ? UD_COMMIT_UNKNOWN : UD_OK;
@@ -53,9 +53,9 @@ static ud_status root_probe(void *user, const ud_component_context *c, ud_string
     ud_value value;
     if (c->execution != f->execution || c->memory != f->memory)
         return UD_CORRUPT;
-    if (ud_execution_variable(c->execution, str("same"), &value) != UD_OK || value.integer != 10)
+    if (ud_activation_variable(c->activation, str("same"), &value) != UD_OK || value.integer != 10)
         return UD_CORRUPT;
-    if (ud_execution_variable(c->execution, str("value"), &value) != UD_SCHEMA)
+    if (ud_activation_variable(c->activation, str("value"), &value) != UD_SCHEMA)
         return UD_CORRUPT;
     f->root_calls++;
     return UD_OK;

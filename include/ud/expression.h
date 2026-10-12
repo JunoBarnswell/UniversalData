@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 typedef struct ud_expression ud_expression;
+typedef struct ud_registry ud_registry;
 /* Returns a borrowed scalar. Called during binding and evaluation. Missing
  * names return SCHEMA; callback is serial on the caller's execution thread. */
 typedef ud_status (*ud_expression_resolver)(void *, ud_string name, ud_value *);
@@ -15,9 +16,12 @@ typedef struct ud_expression_options {
     ud_expression_resolver resolve;
     void *user;
     ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
+    ud_registry *registry; /* Optional pure functions; leased for expression lifetime. */
+    uint64_t function_capabilities; /* Additional required function capabilities. */
 } ud_expression_options;
 /* Strict JSON AST: {literal: value, type: bool|int64|float64|utf8}, {ref:name},
- * {column:name}, {op:add|sub|mul|eq|ne|lt|le|gt|ge|and|or|not|isnull,args:[...]}.
+ * {column:name}, {op:add|sub|mul|eq|ne|lt|le|gt|ge|and|or|not|isnull,args:[...]},
+ * {function:id,args:[...]}. Functions are pure native Registry descriptors.
  * No implicit type coercion. Typed NULL has the explicit type. AST depth <= 64,
  * nodes <= 4096. Constants fold once, including overflow diagnostics. Float64
  * nonfinite literals use the exact typed JSON strings from ud/format.h. Column
@@ -34,6 +38,8 @@ UD_API ud_status ud_expression_evaluate(const ud_expression *, const ud_batch *,
 UD_API ud_status ud_expression_evaluate_batch(const ud_expression *, const ud_batch *,
                                               ud_string output_name, ud_batch **);
 UD_API void ud_expression_destroy(ud_expression *);
+/* Registers the native pure scalar catalog atomically in the same Registry. */
+UD_API ud_status ud_expression_register_functions(ud_registry *);
 #ifdef __cplusplus
 }
 #endif

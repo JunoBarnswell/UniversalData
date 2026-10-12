@@ -13,333 +13,6 @@ struct ud_accumulator {
     uint32_t groups, bucket_count;
     int failed;
 };
-static char *token(char **cursor) {
-    char *p = *cursor;
-    while (*p == ' ' || *p == '\t' || *p == '\r')
-        p++;
-    if (!*p) {
-        *cursor = p;
-        return NULL;
-    }
-    char *start = p;
-    while (*p && *p != ' ' && *p != '\t' && *p != '\r')
-        p++;
-    if (*p)
-        *p++ = 0;
-    *cursor = p;
-    return start;
-}
-static int identifier(const char *s) {
-    if (!s || !(isalpha((unsigned char)*s) || *s == '_'))
-        return 0;
-    for (s++; *s; s++)
-        if (!(isalnum((unsigned char)*s) || *s == '_'))
-            return 0;
-    return 1;
-}
-static int field_index(const ud_plan *p, const char *name) {
-    for (uint32_t i = 0; i < p->n; i++)
-        if (!strcmp(p->fields[i].name, name))
-            return (int)i;
-    return -1;
-}
-static ud_status grow(ud_context *c, void **ptr, uint32_t count, size_t width) {
-    if (count == UINT32_MAX || (size_t)(count + 1) > SIZE_MAX / width)
-        return UD_RESOURCE;
-    void *v = ud_alloc(c, (size_t)(count + 1) * width);
-    if (!v)
-        return UD_RESOURCE;
-    if (count)
-        memcpy(v, *ptr, (size_t)count * width);
-    ud_free(*ptr);
-    *ptr = v;
-    return UD_OK;
-}
-static ud_status parse_schema(ud_plan *p, char *text) {
-    for (char *line = text; line && *line;) {
-        char *end = strchr(line, '\n');
-        if (end)
-            *end++ = 0;
-        char *cursor = line, *name = token(&cursor), *type = token(&cursor),
-             *nullable = token(&cursor);
-        if (!name) {
-            line = end;
-            continue;
-        }
-        if (!identifier(name) || !type || !nullable || token(&cursor) ||
-            field_index(p, name) >= 0 || p->n == 65536)
-            return UD_SCHEMA;
-        ud_type t = !strcmp(type, "bool")      ? UD_BOOL
-                    : !strcmp(type, "int64")   ? UD_INT64
-                    : !strcmp(type, "float64") ? UD_FLOAT64
-                    : !strcmp(type, "utf8")    ? UD_UTF8
-                    : !strcmp(type, "date32")  ? UD_DATE32
-                    : !strcmp(type, "time64")  ? UD_TIME64
-                    : !strcmp(type, "binary")  ? UD_BINARY
-                    : !strncmp(type, "decimal(", 8) ? UD_DECIMAL128
-                    : !strncmp(type, "timestamp(", 10) ? UD_TIMESTAMP
-                                               : 0;
-        if (!t || (strcmp(nullable, "nullable") && strcmp(nullable, "required")))
-            return UD_SCHEMA;
-        UD_TRY(grow(p->ctx, (void **)&p->fields, p->n, sizeof(*p->fields)));
-        ud_field *f = p->fields + p->n;
-        f->name = ud_strdup_n(p->ctx, name, strlen(name));
-        if (!f->name)
-            return UD_RESOURCE;
-        f->name_length = (uint32_t)strlen(name);
-        f->type = t;
-        f->nullable = !strcmp(nullable, "nullable");
-        p->n++;
-        if (t == UD_DECIMAL128) {
-            int pos = 0;
-            if (sscanf(type, "decimal(%d,%d)%n", &f->precision, &f->scale, &pos) != 2 ||
-                type[pos] || f->precision < 1 || f->precision > 38 || f->scale < -38 || f->scale > 38)
-                return UD_SCHEMA;
-        } else if (t == UD_TIMESTAMP) {
-            size_t len = strlen(type);
-            if (len < 12 || type[len - 1] != ')') return UD_SCHEMA;
-            f->timezone_length = (uint32_t)(len - 11);
-            f->timezone = ud_strdup_n(p->ctx, type + 10, f->timezone_length);
-            if (!f->timezone) return UD_RESOURCE;
-        }
-        line = end;
-    }
-    return p->n ? UD_OK : UD_SCHEMA;
-}
-static ud_status parse_commands(ud_plan *p, char *text) {
-    for (char *line = text; line && *line;) {
-        char *end = strchr(line, '\n');
-        if (end)
-            *end++ = 0;
-        char *cursor = line, *cmd = token(&cursor);
-        if (!cmd) {
-            line = end;
-            continue;
-        }
-        if (!strcmp(cmd, "project") || !strcmp(cmd, "group")) {
-            uint32_t **list = !strcmp(cmd, "project") ? &p->projection : &p->keys;
-            uint32_t *n = !strcmp(cmd, "project") ? &p->project_n : &p->key_n;
-            if (*n)
-                return UD_INVALID;
-            char *name;
-            while ((name = token(&cursor))) {
-                int index = field_index(p, name);
-                if (index < 0)
-                    return UD_SCHEMA;
-                for (uint32_t i = 0; i < *n; i++)
-                    if ((*list)[i] == (uint32_t)index)
-                        return UD_SCHEMA;
-                UD_TRY(grow(p->ctx, (void **)list, *n, sizeof(uint32_t)));
-                (*list)[(*n)++] = (uint32_t)index;
-            }
-            if (!*n)
-                return UD_SCHEMA;
-        } else if (!strcmp(cmd, "filter")) {
-            char *name = token(&cursor), *op = token(&cursor);
-            if (!name || !op)
-                return UD_PARSE;
-            int col = field_index(p, name);
-            if (col < 0)
-                return UD_SCHEMA;
-            const char *ops[] = {"eq", "ne", "lt", "le", "gt", "ge", "isnull", "notnull"};
-            int kind = -1;
-            for (int i = 0; i < 8; i++)
-                if (!strcmp(op, ops[i]))
-                    kind = i;
-            if (kind < 0)
-                return UD_PARSE;
-            while (*cursor == ' ' || *cursor == '\t')
-                cursor++;
-            size_t len = strlen(cursor);
-            if (len && cursor[len - 1] == '\r')
-                cursor[--len] = 0;
-            ud_predicate pred = {.column = (uint32_t)col, .op = kind};
-            pred.value.type = p->fields[col].type;
-            if (kind < 6) {
-                if (!len)
-                    return UD_PARSE;
-                if (!strcmp(cursor, "\\N"))
-                    pred.value.is_null = 1;
-                else
-                    UD_TRY(ud_value_parse_field(p->ctx, p->fields + col, cursor, (uint32_t)len,
-                                                UD_ROUND_EXACT, &pred.value));
-            } else if (len)
-                return UD_PARSE;
-            UD_TRY(grow(p->ctx, (void **)&p->predicates, p->predicate_n, sizeof(pred)));
-            if ((pred.value.type == UD_UTF8 || pred.value.type == UD_BINARY) && !pred.value.is_null && kind < 6) {
-                pred.value.text = ud_strdup_n(p->ctx, cursor, len);
-                if (!pred.value.text)
-                    return UD_RESOURCE;
-            }
-            p->predicates[p->predicate_n++] = pred;
-        } else {
-            int kind = !strcmp(cmd, "count") ? 0
-                       : !strcmp(cmd, "sum") ? 1
-                       : !strcmp(cmd, "min") ? 2
-                       : !strcmp(cmd, "max") ? 3
-                                             : -1;
-            char *name = token(&cursor), *alias = token(&cursor);
-            if (kind < 0 || !name || !identifier(alias) || token(&cursor))
-                return UD_PARSE;
-            int index = field_index(p, name);
-            if (kind == 0 && !strcmp(name, "*"))
-                index = -1;
-            else if (index < 0)
-                return UD_SCHEMA;
-            if (kind == 1 && p->fields[index].type != UD_INT64 &&
-                p->fields[index].type != UD_FLOAT64 && p->fields[index].type != UD_DECIMAL128)
-                return UD_UNSUPPORTED;
-            for (uint32_t i = 0; i < p->agg_n; i++)
-                if (!strcmp(p->aggs[i].name, alias))
-                    return UD_SCHEMA;
-            UD_TRY(grow(p->ctx, (void **)&p->aggs, p->agg_n, sizeof(*p->aggs)));
-            ud_aggregate_def *a = p->aggs + p->agg_n;
-            a->column = index < 0 ? UINT32_MAX : (uint32_t)index;
-            a->kind = kind;
-            a->name = ud_strdup_n(p->ctx, alias, strlen(alias));
-            if (!a->name)
-                return UD_RESOURCE;
-            p->agg_n++;
-        }
-        line = end;
-    }
-    if (p->key_n && !p->agg_n)
-        return UD_INVALID;
-    if (p->agg_n) {
-        for (uint32_t k = 0; k < p->key_n; k++)
-            for (uint32_t i = 0; i < p->agg_n; i++)
-                if (!strcmp(p->fields[p->keys[k]].name, p->aggs[i].name))
-                    return UD_SCHEMA;
-        if (p->project_n) {
-            for (uint32_t k = 0; k < p->key_n; k++) {
-                int found = 0;
-                for (uint32_t i = 0; i < p->project_n; i++)
-                    found |= p->projection[i] == p->keys[k];
-                if (!found)
-                    return UD_SCHEMA;
-            }
-            for (uint32_t k = 0; k < p->agg_n; k++)
-                if (p->aggs[k].column != UINT32_MAX) {
-                    int found = 0;
-                    for (uint32_t i = 0; i < p->project_n; i++)
-                        found |= p->projection[i] == p->aggs[k].column;
-                    if (!found)
-                        return UD_SCHEMA;
-                }
-        }
-    }
-    return UD_OK;
-}
-ud_status ud_plan_create(ud_context *ctx, const char *schema, uint32_t sn, const char *commands,
-                         uint32_t cn, ud_plan **out) {
-    if (!out)
-        return UD_INVALID;
-    *out = NULL;
-    if (!ctx || !schema || (!commands && cn) || memchr(schema, 0, sn) ||
-        (cn && memchr(commands, 0, cn)) || !ud_utf8_valid(schema, sn) ||
-        !ud_utf8_valid(commands, cn))
-        return UD_INVALID;
-    size_t schema_header = sizeof(UD_SCHEMA_HEADER) - 1, plan_header = sizeof(UD_PLAN_HEADER) - 1;
-    if (sn < schema_header || memcmp(schema, UD_SCHEMA_HEADER, schema_header) ||
-        cn < plan_header || memcmp(commands, UD_PLAN_HEADER, plan_header))
-        return ud_fail(ctx, UD_INCOMPATIBLE, "schema / plan document requires explicit version 4 header");
-    ud_plan *p = ud_alloc(ctx, sizeof(*p));
-    if (!p)
-        return UD_RESOURCE;
-    p->ctx = ctx;
-    p->schema_text = ud_strdup_n(ctx, schema, sn);
-    p->commands = ud_strdup_n(ctx, commands ? commands : "", cn);
-    char *s = ud_strdup_n(ctx, schema, sn), *c = ud_strdup_n(ctx, commands ? commands : "", cn);
-    ud_status code = UD_RESOURCE;
-    if (s && c && p->schema_text && p->commands) {
-        code = parse_schema(p, s + schema_header);
-        if(!code) {
-            ud_batch *owner=NULL;code=ud_batch_create(ctx,p->fields,p->n,0,&owner);
-            if(!code) {
-                for(uint32_t j=0;j<p->n;j++) {
-                    ud_free((void *)p->fields[j].name);ud_free((void *)p->fields[j].timezone);
-                    ud_batch_field(owner,j,p->fields+j);
-                }
-                p->schema_owner=owner;
-            }
-        }
-        if (!code)
-            code = parse_commands(p, c + plan_header);
-    }
-    ud_free(s);
-    ud_free(c);
-    if (!code) {
-        ud_bytes bytes = {.ctx = ctx};
-        code = ud_put_string(&bytes, schema, sn);
-        if (!code)
-            code = ud_put_string(&bytes, commands, cn);
-        if (!code)
-            ud_hash(bytes.data, bytes.size, p->fingerprint);
-        ud_bytes_clear(&bytes);
-    }
-    if (code) {
-        ud_plan_destroy(p);
-        return ud_fail(ctx, code, "invalid schema or plan commands (%s)", ud_status_name(code));
-    }
-    *out = p;
-    return UD_OK;
-}
-void ud_plan_destroy(ud_plan *p) {
-    if (!p)
-        return;
-    for (uint32_t i = 0; !p->schema_owner && i < p->n; i++) {
-        ud_free((void *)p->fields[i].name);
-        ud_free((void *)p->fields[i].timezone);
-    }
-    for (uint32_t i = 0; i < p->predicate_n; i++)
-        if ((p->predicates[i].value.type == UD_UTF8 || p->predicates[i].value.type == UD_BINARY))
-            ud_free((void *)p->predicates[i].value.text);
-    for (uint32_t i = 0; i < p->agg_n; i++)
-        ud_free(p->aggs[i].name);
-    ud_free(p->fields);
-    ud_free(p->projection);
-    ud_free(p->keys);
-    ud_free(p->predicates);
-    ud_free(p->aggs);
-    ud_free(p->schema_text);
-    ud_free(p->commands);
-    ud_batch_destroy(p->schema_owner);
-    ud_free(p);
-}
-ud_status ud_plan_create_fields(ud_context *ctx, uint32_t version, const ud_field *fields,
-                                 uint32_t columns, const char *commands, uint32_t length,
-                                 ud_plan **out) {
-    if (!out) return UD_INVALID;
-    *out = NULL;
-    if (version != UD_PLAN_VERSION) return UD_INCOMPATIBLE;
-    if (!ctx || (!commands && length) || (length && memchr(commands, 0, length)) ||
-        !ud_utf8_valid(commands, length)) return UD_INVALID;
-    ud_plan *p = ud_alloc(ctx, sizeof(*p));
-    if (!p) return UD_RESOURCE;
-    p->ctx = ctx;
-    ud_status s = ud_batch_create(ctx, fields, columns, 0, &p->schema_owner);
-    if (!s) {
-        p->fields = ud_alloc(ctx, columns * sizeof(*p->fields));
-        if (!p->fields) s = UD_RESOURCE;
-        else {
-            p->n = columns;
-            for (uint32_t j = 0; j < columns; j++) ud_batch_field(p->schema_owner, j, p->fields + j);
-        }
-    }
-    p->commands = ud_strdup_n(ctx, commands ? commands : "", length);
-    char *copy = ud_strdup_n(ctx, commands ? commands : "", length);
-    if (!s && (!p->commands || !copy)) s = UD_RESOURCE;
-    if (!s) s = parse_commands(p, copy);
-    ud_free(copy);
-    ud_bytes wire = {.ctx=ctx};
-    if (!s) s = ud_put_u64(&wire, UD_PLAN_VERSION);
-    if (!s) s = ud_encode_batch(&wire, p->schema_owner);
-    if (!s) s = ud_put_string(&wire, commands, length);
-    if (!s) ud_hash(wire.data, wire.size, p->fingerprint);
-    ud_bytes_clear(&wire);
-    if (s) { ud_plan_destroy(p); return s; }
-    *out = p; return UD_OK;
-}
 ud_status ud_plan_schema(const ud_plan *p, const ud_field **f, uint32_t *n) {
     if (!p || !f || !n)
         return UD_INVALID;
@@ -360,51 +33,6 @@ ud_status ud_plan_check_batch(const ud_plan *p, const ud_batch *b) {
         if (!ud_field_matches(&f, p->fields + i, 1))
             return ud_fail(p->ctx, UD_SCHEMA, "input schema mismatch at column %u", i);
     }
-    return UD_OK;
-}
-ud_status ud_plan_accept(const ud_plan *p, const ud_batch *b, uint32_t row, int *accept) {
-    if (ud_is_cancelled(p->ctx))
-        return UD_CANCELLED;
-    int result = 1;
-    for (uint32_t i = 0; i < p->predicate_n; i++) {
-        const ud_predicate *pred = p->predicates + i;
-        ud_value v;
-        UD_TRY(ud_batch_get(b, row, pred->column, &v));
-        int t;
-        if (pred->op == 6)
-            t = v.is_null;
-        else if (pred->op == 7)
-            t = !v.is_null;
-        else if (v.is_null || pred->value.is_null)
-            t = -1;
-        else {
-            int cmp = ud_value_compare(&v, &pred->value);
-            switch (pred->op) {
-            case 0:
-                t = cmp == 0;
-                break;
-            case 1:
-                t = cmp != 0;
-                break;
-            case 2:
-                t = cmp < 0;
-                break;
-            case 3:
-                t = cmp <= 0;
-                break;
-            case 4:
-                t = cmp > 0;
-                break;
-            default:
-                t = cmp >= 0;
-                break;
-            }
-        }
-        result = ud_truth_and(result, t);
-        if (!result)
-            break;
-    }
-    *accept = result == 1;
     return UD_OK;
 }
 static ud_status own_value(ud_context *ctx, ud_value *target, const ud_value *source) {
@@ -496,6 +124,8 @@ ud_status ud_accumulator_create(const ud_plan *p, ud_accumulator **out) {
     if (!*out)
         return UD_RESOURCE;
     (*out)->plan = p;
+    ud_status retained = ud_plan_retain((ud_plan *)p);
+    if (retained) { ud_free(*out); *out = NULL; return retained; }
     if (!p->key_n) {
         group *g;
         ud_status s = new_group(*out, NULL, 0, UD_VALUE_HASH_SEED, &g);
@@ -518,14 +148,15 @@ void ud_accumulator_destroy(ud_accumulator *a) {
         g = next;
     }
     ud_free(a->buckets);
+    ud_plan_destroy((ud_plan *)a->plan);
     ud_free(a);
 }
-static ud_status add_rows(ud_accumulator *a, const ud_batch *b) {
+static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, uint32_t end, int filtered) {
     const ud_plan *p = a->plan;
     UD_TRY(ud_plan_check_batch(p, b));
-    for (uint32_t r = 0; r < ud_batch_rows(b); r++) {
-        int accept;
-        UD_TRY(ud_plan_accept(p, b, r, &accept));
+    for (uint32_t r = begin; r < end; r++) {
+        int accept = 1;
+        if (filtered) UD_TRY(ud_plan_accept(p, b, r, &accept));
         if (!accept)
             continue;
         uint64_t hash = UD_VALUE_HASH_SEED;
@@ -584,32 +215,22 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b) {
 ud_status ud_accumulator_add(ud_accumulator *a, const ud_batch *b) {
     if (!a || a->failed)
         return UD_INVALID;
-    ud_status s = add_rows(a, b);
+    ud_status s = add_rows(a, b, 0, ud_batch_rows(b), 1);
     if (s)
         a->failed = 1;
     return s;
 }
+ud_status ud_accumulator_add_accepted(ud_accumulator *a, const ud_batch *b, uint32_t row) {
+    if (!a || a->failed || !b || row >= b->rows) return UD_INVALID;
+    ud_status s = add_rows(a, b, row, row + 1, 0);
+    if (s) a->failed = 1;
+    return s;
+}
 static ud_status output_fields(const ud_plan *p, ud_field **out, uint32_t *n) {
-    *n = p->key_n + p->agg_n;
-    *out = ud_alloc(p->ctx, *n * sizeof(ud_field));
-    if (!*out)
-        return UD_RESOURCE;
-    for (uint32_t i = 0; i < p->key_n; i++)
-        (*out)[i] = p->fields[p->keys[i]];
-    for (uint32_t i = 0; i < p->agg_n; i++) {
-        const ud_aggregate_def *a = p->aggs + i;
-        (*out)[p->key_n + i] =
-            (ud_field){a->name, (uint32_t)strlen(a->name),
-                       a->kind == 0 ? UD_INT64 : p->fields[a->column].type, a->kind != 0};
-        if (a->kind != 0) {
-            (*out)[p->key_n + i].precision = p->fields[a->column].precision;
-            (*out)[p->key_n + i].scale = p->fields[a->column].scale;
-            (*out)[p->key_n + i].timezone = p->fields[a->column].timezone;
-            (*out)[p->key_n + i].timezone_length = p->fields[a->column].timezone_length;
-            (*out)[p->key_n + i].children = p->fields[a->column].children;
-            (*out)[p->key_n + i].child_count = p->fields[a->column].child_count;
-        }
-    }
+    *n = p->output_schema->columns;
+    *out = ud_alloc(p->ctx, *n * sizeof(**out));
+    if (!*out) return UD_RESOURCE;
+    for (uint32_t i = 0; i < *n; i++) (*out)[i] = p->output_schema->column[i].field;
     return UD_OK;
 }
 ud_status ud_accumulator_snapshot(const ud_accumulator *a, ud_batch **out) {

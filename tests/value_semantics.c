@@ -1,4 +1,4 @@
-#include "ud/query.h"
+#include "ud/compute.h"
 #include "ud/format.h"
 #include "ud/expression.h"
 #include "ud/quality.h"
@@ -184,15 +184,14 @@ static int float_operators(ud_context *ctx) {
         CHECK(v.integer == pairs[j][1]);
     }
     ud_batch_destroy(joined);
-    const char *commands = "group key\ncount * cnt\nmin key lo\nmax key hi\n";
+    const char *commands = "{\"version\":4,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"cnt\"},{\"function\":\"min\",\"column\":\"key\",\"name\":\"lo\"},{\"function\":\"max\",\"column\":\"key\",\"name\":\"hi\"}]}";
     ud_field left_fields[2];
     OK(ud_batch_field(input, 0, left_fields));
     OK(ud_batch_field(input, 1, left_fields + 1));
     ud_plan *plan = NULL;
-    OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, left_fields, 2, commands,
-                             (uint32_t)strlen(commands), &plan));
+    OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, left_fields, 2, (ud_string){commands,(uint32_t)strlen(commands)},NULL, &plan));
     ud_batch *groups = NULL, *twice = NULL;
-    OK(ud_query_execute(plan, input, &groups));
+    OK(ud_compute_apply(plan, input, &groups));
     CHECK(ud_batch_rows(groups) == 6);
     ud_accumulator *acc = NULL;
     OK(ud_accumulator_create(plan, &acc));
@@ -221,8 +220,7 @@ static int float_operators(ud_context *ctx) {
         OK(ud_batch_get(groups, 1, j, duplicate + j));
     OK(ud_batch_append(corrupt, duplicate, 4));
     OK(ud_batch_append(corrupt, duplicate, 4));
-    OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, left_fields, 2, commands,
-                             (uint32_t)strlen(commands), &plan));
+    OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, left_fields, 2, (ud_string){commands,(uint32_t)strlen(commands)},NULL, &plan));
     OK(ud_accumulator_create(plan, &acc));
     CHECK(ud_accumulator_restore(acc, corrupt) == UD_CORRUPT);
     CHECK(ud_accumulator_add(acc, input) == UD_INVALID);
@@ -240,13 +238,13 @@ static int float_operators(ud_context *ctx) {
                             .column_count = 1};
     ud_quality *q = NULL;
     ud_batch *part = NULL, *accepted = NULL;
-    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, UD_QUALITY_REJECT, NULL, NULL, &q));
+    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, UD_QUALITY_REJECT, &q));
     OK(ud_compute_slice(ctx, input, 0, 4, &part));
-    OK(ud_quality_apply(q, part, &accepted));
+    OK(ud_quality_apply(q, part, &accepted, NULL, NULL, NULL));
     CHECK(ud_batch_rows(accepted) == 2);
     ud_batch_destroy(accepted);
     ud_batch_destroy(part);
-    OK(ud_quality_apply(q, input, &accepted));
+    OK(ud_quality_apply(q, input, &accepted, NULL, NULL, NULL));
     CHECK(ud_batch_rows(accepted) == 4);
     ud_quality_metrics metrics;
     ud_quality_get_metrics(q, &metrics);
@@ -257,17 +255,17 @@ static int float_operators(ud_context *ctx) {
     rule.kind = UD_RULE_FOREIGN_KEY;
     rule.reference = right;
     rule.reference_columns = &key;
-    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, UD_QUALITY_REJECT, NULL, NULL, &q));
+    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, UD_QUALITY_REJECT, &q));
     ud_batch_destroy(right);
-    OK(ud_quality_apply(q, input, &accepted));
+    OK(ud_quality_apply(q, input, &accepted, NULL, NULL, NULL));
     CHECK(ud_batch_rows(accepted) == 6);
     ud_batch_destroy(accepted);
     ud_quality_destroy(q);
     rule.kind = UD_RULE_RANGE;
     rule.minimum = (ud_value){.type = UD_FLOAT64, .real = -INFINITY};
     rule.maximum = (ud_value){.type = UD_FLOAT64, .real = INFINITY};
-    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, UD_QUALITY_REJECT, NULL, NULL, &q));
-    OK(ud_quality_apply(q, input, &accepted));
+    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, UD_QUALITY_REJECT, &q));
+    OK(ud_quality_apply(q, input, &accepted, NULL, NULL, NULL));
     CHECK(ud_batch_rows(accepted) == 6);
     ud_batch_destroy(accepted);
     ud_quality_destroy(q);
@@ -399,9 +397,8 @@ static int allocation_failures(void) {
             field.name_length = 3;
             ud_plan *plan = NULL;
             ud_quality *q = NULL;
-            const char *commands = "group key\ncount * cnt\n";
-            OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1, commands,
-                                     (uint32_t)strlen(commands), &plan));
+            const char *commands = "{\"version\":4,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"cnt\"}]}";
+            OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1, (ud_string){commands,(uint32_t)strlen(commands)},NULL, &plan));
             uint32_t column = 0;
             ud_quality_rule rule = {.struct_size = sizeof(rule),
                                     .version = UD_CONFIG_VERSION,
@@ -410,11 +407,11 @@ static int allocation_failures(void) {
                                     .kind = UD_RULE_UNIQUE,
                                     .columns = &column,
                                     .column_count = 1};
-            OK(ud_quality_create(ctx, &field, 1, &rule, 1, UD_QUALITY_REJECT, NULL, NULL, &q));
+            OK(ud_quality_create(ctx, &field, 1, &rule, 1, UD_QUALITY_REJECT, &q));
             fault.fail = fault.calls + offset;
             ud_status status = operation == 0 ? ud_compute_inner_join(ctx, left, 0, right, 0, &out)
                                : operation == 1 ? ud_compute_apply(plan, left, &out)
-                                                : ud_quality_apply(q, left, &out);
+                                                : ud_quality_apply(q, left, &out, NULL, NULL, NULL);
             CHECK(status == UD_OK || status == UD_RESOURCE);
             fault.fail = 0;
             if (status) {
@@ -424,7 +421,7 @@ static int allocation_failures(void) {
                     ud_quality_metrics metrics;
                     ud_quality_get_metrics(q, &metrics);
                     CHECK(!metrics.processed && !metrics.accepted && !metrics.rejected);
-                    CHECK(ud_quality_apply(q, left, &out) == UD_INVALID && !out);
+                    CHECK(ud_quality_apply(q, left, &out, NULL, NULL, NULL) == UD_INVALID && !out);
                 }
             } else {
                 successes[operation]++;

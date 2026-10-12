@@ -63,7 +63,7 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
         s = UD_SCHEMA;
     if (!s && p->status_variable.length) {
         ud_variable *v = NULL;
-        s = ud_variable_writable(c->execution, p->status_variable, &v);
+        s = ud_variable_writable(c->activation, p->status_variable, &v);
         if (!s && v->value.type != UD_INT64)
             s = UD_SCHEMA;
     }
@@ -72,7 +72,7 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
         if (ids[i].length) {
             const ud_json *def = NULL;
             int owner;
-            s = ud_connection_definition(c->execution, ids[i], &def, &owner);
+            s = ud_connection_definition(c->activation, ids[i], &def, &owner);
             const ud_json *driver = ud_member(def, "driver");
             ud_string value;
             if (!s && ud_json_kind(driver) == UD_JSON_STRING) {
@@ -122,7 +122,7 @@ static void ensure_initialized(void) {
 }
 #endif
 typedef struct transfer {
-    ud_execution *execution;
+    ud_activation *execution;
     ud_connection_lease *connection;
     uint64_t deadline, maximum, received, headers;
     ud_status status;
@@ -267,7 +267,7 @@ static ud_status credentials(ud_context *ctx, ud_string text, struct curl_slist 
     ud_json_destroy(doc);
     return s;
 }
-static ud_status load_ca(ud_execution *e, ud_string id, ud_bytes *bytes) {
+static ud_status load_ca(ud_activation *e, ud_string id, ud_bytes *bytes) {
     if (!id.length)
         return UD_OK;
     ud_connection_lease *lease = NULL;
@@ -277,14 +277,14 @@ static ud_status load_ca(ud_execution *e, ud_string id, ud_bytes *bytes) {
         s = ud_connection_lease_authorize(lease, UD_ACCESS_READ);
     if (!s)
         s = ud_connection_lease_path(lease, &path);
-    char *filename = !s ? ud_strdup_n(e->ctx, path.data, path.length) : NULL;
+    char *filename = !s ? ud_strdup_n(e->execution->ctx, path.data, path.length) : NULL;
     if (!s && !filename)
         s = UD_RESOURCE;
     if (!s)
-        s = ud_path_no_symlinks(e->ctx, filename);
+        s = ud_path_no_symlinks(e->execution->ctx, filename);
     FILE *file = NULL;
     if (!s)
-        s = ud_open_regular(e->ctx, filename, &file);
+        s = ud_open_regular(e->execution->ctx, filename, &file);
     uint8_t buffer[4096];
     while (!s && file) {
         s = ud_connection_lease_authorize(lease, UD_ACCESS_READ);
@@ -350,7 +350,7 @@ static ud_status request(const ud_component_context *c, const http_config *p,
         return UD_RESOURCE;
     ud_status s = UD_OK;
     uint64_t now = ud_now_ms();
-    transfer t = {.execution = c->execution,
+    transfer t = {.execution = c->activation,
                   .connection = connection,
                   .maximum = p->maximum,
                   .deadline = p->timeout > UINT64_MAX - now ? UINT64_MAX : now + p->timeout};
@@ -430,7 +430,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     struct curl_slist *headers = NULL;
     char *url = NULL;
     if (!s)
-        s = ud_acquire_http_connection(c->execution, p.connection, &connection);
+        s = ud_acquire_http_connection(c->activation, p.connection, &connection);
     if (!s)
         s = ud_connection_lease_authorize(connection, UD_ACCESS_NETWORK);
     if (!s)
@@ -469,13 +469,13 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     }
     ud_bytes_clear(&content);
     if (!s)
-        s = load_ca(c->execution, p.ca, &ca);
+        s = load_ca(c->activation, p.ca, &ca);
     long status = 0;
     if (!s)
         s = request(c, &p, connection, url, &ca, headers, &status);
     if (status && p.status_variable.length && !ud_is_cancelled(c->memory)) {
         ud_value value = {.type = UD_INT64, .integer = status};
-        ud_status saved = ud_execution_set_variable(c->execution, p.status_variable, &value, NULL);
+        ud_status saved = ud_activation_set_variable(c->activation, p.status_variable, &value, NULL);
         if (!s)
             s = saved;
     }

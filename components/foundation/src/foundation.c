@@ -8,8 +8,11 @@ struct ud_context {
     ud_context_options options;
     atomic_uint_fast64_t used;
     atomic_int cancelled;
-    char error[1024];
 };
+/* Diagnostics belong to the calling thread. Shared Context allocation/cancel
+ * operations must not race while writing an unrelated task's error string. */
+static _Thread_local const ud_context *diagnostic_context;
+static _Thread_local char diagnostic_text[1024];
 typedef union allocation {
     long double alignment;
     struct {
@@ -32,17 +35,18 @@ const char *ud_status_name(ud_status s) {
     static const char *names[] = {"ok",           "end",   "invalid",    "io",        "resource",
                                   "schema",       "parse", "overflow",   "cancelled", "corrupt",
                                   "incompatible", "busy",  "unsupported", "auth", "quality", "transient",
-                                  "commit_unknown", "fenced"};
-    return s >= 0 && s < 18 ? names[s] : "unknown";
+                                  "commit_unknown", "fenced", "timeout", "more"};
+    return s >= 0 && s < 20 ? names[s] : "unknown";
 }
 const char *ud_error(const ud_context *ctx) {
-    return ctx ? ctx->error : "no context";
+    return !ctx ? "no context" : diagnostic_context == ctx ? diagnostic_text : "";
 }
 ud_status ud_fail(ud_context *ctx, ud_status code, const char *format, ...) {
     if (ctx) {
         va_list args;
         va_start(args, format);
-        vsnprintf(ctx->error, sizeof(ctx->error), format, args);
+        diagnostic_context = ctx;
+        vsnprintf(diagnostic_text, sizeof(diagnostic_text), format, args);
         va_end(args);
     }
     return code;
@@ -52,7 +56,7 @@ ud_status ud_context_create(const ud_context_options *options, ud_context **out)
         return UD_INVALID;
     *out = NULL;
     if (options &&
-        (options->struct_size < sizeof(*options) || options->abi_version != UD_ABI_VERSION ||
+        (options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION ||
          (!!options->allocate != !!options->deallocate)))
         return UD_INCOMPATIBLE;
     ud_context_options effective={0};
@@ -102,6 +106,9 @@ void *ud_alloc(ud_context *c, size_t n) {
     void *p = a + 1;
     memset(p, 0, n);
     return p;
+}
+size_t ud_allocation_bytes(const void *ptr) {
+    return ptr ? ((const allocation *)ptr - 1)->h.bytes : 0;
 }
 void ud_free(void *p) {
     if (!p)

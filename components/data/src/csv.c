@@ -122,7 +122,7 @@ ud_status ud_csv_open(ud_context *c, const char *path, const ud_field *f, uint32
     if (!out)
         return UD_INVALID;
     *out = NULL;
-    if (!path || !f || !n || (o && (o->struct_size < sizeof(*o) || o->abi_version != UD_ABI_VERSION)))
+    if (!path || !f || !n || (o && (o->struct_size != sizeof(*o) || o->abi_version != UD_ABI_VERSION)))
         return UD_INVALID;
     for (uint32_t i = 0; i < n; i++)
         if (f[i].type == UD_BINARY || f[i].type >= UD_STRUCT)

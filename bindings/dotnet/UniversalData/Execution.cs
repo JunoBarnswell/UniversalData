@@ -14,7 +14,7 @@ public sealed class Execution : IDisposable
     private readonly object controller=new();
     private bool disposed;
     public Execution(string packageJson,string tenant,PackageAuthorizer? authorize,string parametersJson="{}",string executionId="",PackageCredentialResolver? resolve=null,
-        uint edgeCapacity=2,uint maxBatchRows=4096,ulong memoryLimit=268435456,ulong timeoutMilliseconds=0,string? stateDirectory=null,bool resume=false)
+        uint edgeCapacity=2,uint maxBatchRows=4096,ulong memoryLimit=268435456,ulong timeoutMilliseconds=0,string? stateDirectory=null,bool resume=false,uint maxConcurrency=1)
     {
         Native.Authorizer? grant=authorize is null?null:(_,scope,resource,action)=>
         {
@@ -43,7 +43,7 @@ public sealed class Execution : IDisposable
                 Size=(uint)Marshal.SizeOf<Native.ExecutionOptions>(),Abi=4,
                 Context=new Native.ContextOptions { Size=(uint)Marshal.SizeOf<Native.ContextOptions>(),Abi=4,Limit=memoryLimit },
                 Capacity=edgeCapacity,MaxRows=maxBatchRows,Depth=32,Timeout=timeoutMilliseconds,
-                Parameters=Pin(parametersJson),Tenant=Pin(tenant),ExecutionId=Pin(executionId),StateDirectory=Pin(stateDirectory??""),Resume=resume?1:0,
+                Parameters=Pin(parametersJson),Tenant=Pin(tenant),ExecutionId=Pin(executionId),StateDirectory=Pin(stateDirectory??""),Resume=resume?1:0,MaxConcurrency=maxConcurrency,
                 Authorize=grant is null?IntPtr.Zero:Marshal.GetFunctionPointerForDelegate(grant),Resolve=resolver is null?IntPtr.Zero:Marshal.GetFunctionPointerForDelegate(resolver)
             };
             Check(Native.ud_execution_create_json(document,ref options,out var pointer));execution=new ExecutionHandle(pointer,grant,resolver);
@@ -82,7 +82,7 @@ internal static partial class Native
     [StructLayout(LayoutKind.Sequential)] internal struct ExecutionOptions
     {
         internal uint Size,Abi;internal ContextOptions Context;internal uint Capacity,MaxRows,Depth;internal ulong Timeout;
-        internal StringValue Parameters,Tenant,ExecutionId;internal IntPtr Registry,Authorize,AuthorizeUser,Resolve,ResolveUser,Observe,ObserveUser;internal StringValue StateDirectory;internal int Resume;
+        internal StringValue Parameters,Tenant,ExecutionId;internal IntPtr Registry,Authorize,AuthorizeUser,Resolve,ResolveUser,Observe,ObserveUser;internal StringValue StateDirectory;internal int Resume;internal uint MaxConcurrency;
     }
     [StructLayout(LayoutKind.Sequential)] internal struct ExecutionMetricsValue
     { internal uint Size,Abi;internal int State,Result;internal ulong Input,Output,Rejected,Batches,Queued,HighWater,Memory,Completed,Spill; }

@@ -19,7 +19,7 @@ static ud_status grant(ud_catalog *c, int action) {
 static ud_status key_check(const ud_catalog_key *key) {
     if (!key)
         return UD_INVALID;
-    if (key->struct_size < sizeof(*key) || key->abi_version != UD_ABI_VERSION)
+    if (key->struct_size != sizeof(*key) || key->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     return kind_valid(key->kind) && string_valid(key->id, 1) && key->id.length <= 255 &&
                    key->revision
@@ -158,7 +158,7 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
     *out = NULL;
     if (!ctx || !o)
         return UD_INVALID;
-    if (o->struct_size < sizeof(*o) || o->abi_version != UD_ABI_VERSION)
+    if (o->struct_size != sizeof(*o) || o->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     if (!string_valid(o->directory, 1) || !string_valid(o->tenant, 1) ||
         o->directory.length > 32767 || o->tenant.length > 255 || o->create_directory < 0 ||
@@ -353,7 +353,7 @@ ud_status ud_catalog_record_event(ud_catalog *c, const ud_execution_event *event
                                   uint64_t sequence) {
     if (!c || !event || !sequence)
         return UD_INVALID;
-    if (event->struct_size < sizeof(*event) || event->abi_version != UD_ABI_VERSION)
+    if (event->struct_size != sizeof(*event) || event->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     if (!string_valid(event->execution_id, 1) || !string_valid(event->package_id, 1))
         return UD_INVALID;

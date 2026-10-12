@@ -24,6 +24,7 @@ void ud_list_free(char **, uint32_t);
 ud_status ud_file_identity(ud_context *, const char *, uint64_t *device, uint64_t *file);
 ud_status ud_file_hash(ud_context *, const char *, uint8_t out[32]);
 void ud_hash(const void *, size_t, uint8_t out[32]);
+size_t ud_allocation_bytes(const void *);
 ud_status ud_flush(ud_context *, FILE *);
 ud_status ud_publish(ud_context *, const char *from, const char *to);
 ud_status ud_sync_parent(ud_context *, const char *path);

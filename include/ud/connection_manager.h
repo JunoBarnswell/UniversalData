@@ -8,7 +8,7 @@ typedef struct ud_connection_lease ud_connection_lease;
 /* Uses Package connection definitions, current lexical bindings, authorization
  * and host credential resolver. File/process/HTTP endpoints and SQL drivers share this
  * logical model. Each lease owns a compatible physical connection/cursor. */
-UD_API ud_status ud_execution_acquire_connection(ud_execution *, ud_string id,
+UD_API ud_status ud_activation_acquire_connection(ud_activation *, ud_string id,
                                                  uint64_t capabilities, ud_connection_lease **);
 UD_API ud_status ud_connection_lease_authorize(ud_connection_lease *, int32_t action);
 UD_API ud_status ud_connection_lease_path(const ud_connection_lease *, ud_string *);

@@ -64,7 +64,7 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
         s = ud_json_string(ud_member(*out, "exitCodeVariable"), &p->exit_variable);
         ud_variable *v = NULL;
         if (!s)
-            s = ud_variable_writable(c->execution, p->exit_variable, &v);
+            s = ud_variable_writable(c->activation, p->exit_variable, &v);
         if (!s && v->value.type != UD_INT64)
             s = UD_SCHEMA;
     }
@@ -73,7 +73,7 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
         if (ids[i].length) {
             const ud_json *def = NULL;
             int owner;
-            s = ud_connection_definition(c->execution, ids[i], &def, &owner);
+            s = ud_connection_definition(c->activation, ids[i], &def, &owner);
             const ud_json *driver = ud_member(def, "driver");
             ud_string value;
             if (!s && ud_json_kind(driver) == UD_JSON_STRING) {
@@ -95,8 +95,8 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     ud_json_destroy(doc);
     return s;
 }
-static ud_status interrupted(ud_execution *e, uint64_t deadline) {
-    ud_status s = ud_execution_check(e);
+static ud_status interrupted(ud_activation *e, uint64_t deadline) {
+    ud_status s = ud_activation_check(e);
     if (!s && ud_now_ms() >= deadline)
         s = UD_TRANSIENT;
     return s;
@@ -107,7 +107,7 @@ static void child_fail(int fd) {
     (void)write(fd, &error, sizeof(error));
     _exit(127);
 }
-static ud_status launch(ud_execution *e, char **argv, const char *cwd, uint64_t deadline,
+static ud_status launch(ud_activation *e, char **argv, const char *cwd, uint64_t deadline,
                         int64_t *code) {
     long maximum = sysconf(_SC_OPEN_MAX);
     if (maximum < 0)
@@ -230,13 +230,13 @@ static ud_status quoted(ud_bytes *b, const wchar_t *arg) {
     }
     return wide_put(b, L'"');
 }
-static ud_status launch(ud_execution *e, char **argv, const char *cwd, uint64_t deadline,
+static ud_status launch(ud_activation *e, char **argv, const char *cwd, uint64_t deadline,
                         int64_t *code) {
-    wchar_t *program = wide(e->ctx, argv[0]), *directory = cwd ? wide(e->ctx, cwd) : NULL;
+    wchar_t *program = wide(e->execution->ctx, argv[0]), *directory = cwd ? wide(e->execution->ctx, cwd) : NULL;
     ud_status s = program && (!cwd || directory) ? UD_OK : UD_RESOURCE;
-    ud_bytes command = {.ctx = e->ctx};
+    ud_bytes command = {.ctx = e->execution->ctx};
     for (int i = 0; !s && argv[i]; i++) {
-        wchar_t *arg = wide(e->ctx, argv[i]);
+        wchar_t *arg = wide(e->execution->ctx, argv[i]);
         if (!arg) {
             s = UD_RESOURCE;
             break;
@@ -267,7 +267,7 @@ static ud_status launch(ud_execution *e, char **argv, const char *cwd, uint64_t 
     }
     if (!s) {
         InitializeProcThreadAttributeList(NULL, 1, 0, &size);
-        attributes = ud_alloc(e->ctx, size);
+        attributes = ud_alloc(e->execution->ctx, size);
         if (!attributes)
             s = UD_RESOURCE;
         else if (!InitializeProcThreadAttributeList(attributes, 1, 0, &size))
@@ -345,13 +345,13 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     ud_connection_lease *program = NULL, *directory = NULL;
     ud_string path = {0}, cwd_path = {0};
     if (!s)
-        s = ud_acquire_process_connection(c->execution, p.connection, &program);
+        s = ud_acquire_process_connection(c->activation, p.connection, &program);
     if (!s)
         s = ud_connection_lease_authorize(program, UD_ACCESS_EXECUTE);
     if (!s)
         s = ud_process_connection_path(program, &path);
     if (!s && p.cwd.length)
-        s = ud_acquire_file_connection(c->execution, p.cwd, &directory);
+        s = ud_acquire_file_connection(c->activation, p.cwd, &directory);
     if (!s && directory)
         s = ud_connection_lease_authorize(directory, UD_ACCESS_READ);
     if (!s && directory)
@@ -387,12 +387,12 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
              deadline = p.timeout > UINT64_MAX - now ? UINT64_MAX : now + p.timeout;
     int64_t code = -1;
     if (!s)
-        s = ud_execution_check(c->execution);
+        s = ud_activation_check(c->activation);
     if (!s)
-        s = launch(c->execution, argv, cwd, deadline, &code);
+        s = launch(c->activation, argv, cwd, deadline, &code);
     if (p.exit_variable.length && code != -1 && !ud_is_cancelled(c->memory)) {
         ud_value value = {.type = UD_INT64, .integer = code};
-        ud_status saved = ud_execution_set_variable(c->execution, p.exit_variable, &value, NULL);
+        ud_status saved = ud_activation_set_variable(c->activation, p.exit_variable, &value, NULL);
         if (!s)
             s = saved;
     }

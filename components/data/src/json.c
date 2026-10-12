@@ -185,7 +185,7 @@ ud_status ud_json_reader_open(ud_context *ctx,const char *path,const ud_field *f
     if(!out) return UD_INVALID;
     *out=NULL;
     if(!ctx || !path || !options) return UD_INVALID;
-    if(options->struct_size<sizeof(*options) || options->version!=UD_CONFIG_VERSION) return UD_INCOMPATIBLE;
+    if(options->struct_size!=sizeof(*options) || options->version!=UD_CONFIG_VERSION) return UD_INCOMPATIBLE;
     if(!options->batch_size || options->batch_size>1000000 || !options->max_record_bytes ||
        options->rounding<UD_ROUND_EXACT || options->rounding>UD_ROUND_CEILING) return UD_INVALID;
     ud_json_reader *r=ud_alloc(ctx,sizeof(*r));if(!r) return UD_RESOURCE;

@@ -342,7 +342,7 @@ static ud_status execution_destroy(JNIEnv *e, java_execution *j) {
 JNIEXPORT jlong JNICALL Java_org_universaldata_Execution_nativeOpen(
     JNIEnv *e, jclass cls, jbyteArray document, jbyteArray tenant, jobject authorizer,
     jbyteArray parameters, jbyteArray identity, jobject resolver, jint capacity, jint rows,
-    jlong limit, jlong timeout, jbyteArray state, jboolean resume) {
+    jlong limit, jlong timeout, jbyteArray state, jboolean resume, jint max_concurrency) {
     (void)cls;
     if (limit < 0 || timeout < 0 || capacity <= 0 || rows <= 0) {
         fail(e, UD_INVALID, "Invalid execution options");
@@ -411,7 +411,8 @@ JNIEXPORT jlong JNICALL Java_org_universaldata_Execution_nativeOpen(
                                         .resolve = resolve_credential,
                                         .resolve_user = j,
                                         .state_directory = {dir, sn},
-                                        .resume = resume ? 1 : 0};
+                                        .resume = resume ? 1 : 0,
+                                        .max_concurrency = (uint32_t)max_concurrency};
         s = ud_execution_create_json((ud_string){doc, dn}, &options, &j->execution);
     }
     ud_free(doc);

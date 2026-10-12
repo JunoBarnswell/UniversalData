@@ -19,7 +19,6 @@ struct ud_quality {
     ud_batch *schema;
     quality_rule *rules; uint32_t count;
     int32_t policy; int failed, finished;
-    ud_quarantine_fn quarantine; void *user;
     ud_quality_metrics metrics;
 };
 static ud_status key_hash(const ud_batch *batch, uint32_t row, const uint32_t *columns,
@@ -61,18 +60,17 @@ void ud_quality_destroy(ud_quality *q) {
 }
 ud_status ud_quality_create(ud_context *ctx,const ud_field *fields,uint32_t columns,
                              const ud_quality_rule *rules,uint32_t count,int32_t policy,
-                             ud_quarantine_fn quarantine,void *user,ud_quality **out) {
+                             ud_quality **out) {
     if(!out) return UD_INVALID;
     *out=NULL;
-    if(!ctx || !rules || !count || count>65536 || policy<0 || policy>2 ||
-        (policy==UD_QUALITY_QUARANTINE && !quarantine)) return UD_INVALID;
+    if(!ctx || !rules || !count || count>65536 || policy<0 || policy>1) return UD_INVALID;
     ud_quality *q=ud_alloc(ctx,sizeof(*q));if(!q) return UD_RESOURCE;
-    q->ctx=ctx;q->policy=policy;q->quarantine=quarantine;q->user=user;
+    q->ctx=ctx;q->policy=policy;
     ud_status s=ud_batch_create(ctx,fields,columns,0,&q->schema);
     if(!s) { q->rules=ud_alloc(ctx,count*sizeof(*q->rules));if(!q->rules) s=UD_RESOURCE; }
     for(uint32_t j=0;!s && j<count;j++) {
         const ud_quality_rule *input=rules+j;quality_rule *r=q->rules+j;
-        if(input->struct_size<sizeof(*input) || input->version!=UD_CONFIG_VERSION) { s=UD_INCOMPATIBLE;break; }
+        if(input->struct_size!=sizeof(*input) || input->version!=UD_CONFIG_VERSION) { s=UD_INCOMPATIBLE;break; }
         if(!input->id || !input->id_length || memchr(input->id,0,input->id_length) ||
             !ud_utf8_valid(input->id,input->id_length) || input->kind<UD_RULE_NOT_NULL || input->kind>UD_RULE_ROW_COUNT ||
             (input->kind!=UD_RULE_ROW_COUNT && (!input->columns || !input->column_count || input->column_count>columns)) ||
@@ -223,9 +221,11 @@ static ud_status record_keys(ud_quality *q,const ud_batch *input,uint32_t row) {
     }
     return UD_OK;
 }
-ud_status ud_quality_apply(ud_quality *q,const ud_batch *input,ud_batch **out) {
-    if(!out) return UD_INVALID;
+ud_status ud_quality_apply(ud_quality *q,const ud_batch *input,ud_batch **out,
+                              ud_batch **rejected_out,ud_quality_violation **violations_out,uint32_t *count_out) {
+    if(!out || (!!rejected_out!=!!violations_out) || (!!rejected_out!=!!count_out)) return UD_INVALID;
     *out=NULL;
+    if(rejected_out){*rejected_out=NULL;*violations_out=NULL;*count_out=0;}
     if(!q || q->failed || q->finished || !input || input->columns!=q->schema->columns) return UD_INVALID;
     for(uint32_t j=0;j<input->columns;j++) if(!ud_field_matches(&input->column[j].field,&q->schema->column[j].field,1)) return UD_SCHEMA;
     ud_field *fields=ud_alloc(q->ctx,input->columns*sizeof(*fields));
@@ -236,7 +236,7 @@ ud_status ud_quality_apply(ud_quality *q,const ud_batch *input,ud_batch **out) {
     if(!s) {
         for(uint32_t j=0;j<input->columns;j++) fields[j]=q->schema->column[j].field;
         s=ud_batch_create(q->ctx,fields,input->columns,input->rows,out);
-        if(!s && q->policy==UD_QUALITY_QUARANTINE) s=ud_batch_create(q->ctx,fields,input->columns,input->rows,&bad);
+        if(!s && rejected_out) s=ud_batch_create(q->ctx,fields,input->columns,input->rows,&bad);
     }
     uint32_t rejected=0;
     for(uint32_t row=0;!s && row<input->rows;row++) {
@@ -258,12 +258,11 @@ ud_status ud_quality_apply(ud_quality *q,const ud_batch *input,ud_batch **out) {
             if(bad) s=ud_batch_append(bad,values,input->columns);
         }
     }
-    if(!s && rejected && q->policy==UD_QUALITY_QUARANTINE) s=q->quarantine(q->user,bad,violations,rejected);
     if(!s && (q->metrics.processed>UINT64_MAX-input->rows || q->metrics.accepted>UINT64_MAX-ud_batch_rows(*out) ||
-        q->metrics.rejected>UINT64_MAX-rejected || q->metrics.quarantined>UINT64_MAX-rejected)) s=UD_OVERFLOW;
+        q->metrics.rejected>UINT64_MAX-rejected)) s=UD_OVERFLOW;
     if(!s) {
         q->metrics.processed+=input->rows;q->metrics.accepted+=ud_batch_rows(*out);q->metrics.rejected+=rejected;
-        if(q->policy==UD_QUALITY_QUARANTINE) q->metrics.quarantined+=rejected;
+        if(rejected_out){*rejected_out=bad;bad=NULL;*violations_out=violations;violations=NULL;*count_out=rejected;}
     }
     ud_batch_destroy(bad);ud_free(fields);ud_free(values);ud_free(violations);
     if(s) { q->failed=1;ud_batch_destroy(*out);*out=NULL; }

@@ -41,12 +41,14 @@ enum {
     UD_QUALITY = 14,
     UD_TRANSIENT = 15,
     UD_COMMIT_UNKNOWN = 16,
-    UD_FENCED = 17
+    UD_FENCED = 17,
+    UD_TIMEOUT = 18,
+    UD_MORE = 19 /* Component has bounded pending output; scheduler polls it. */
 };
 typedef struct ud_context ud_context;
 UD_API const char *ud_version(void);
 UD_API const char *ud_status_name(ud_status status);
-/* Borrowed, valid until the next failing operation on ctx. */
+/* Calling-thread diagnostic; borrowed until its next failing operation. */
 UD_API const char *ud_error(const ud_context *ctx);
 #ifdef __cplusplus
 }

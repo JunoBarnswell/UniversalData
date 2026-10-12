@@ -20,7 +20,7 @@ public final class HttpConsumer {
                     throw new IllegalStateException("Denied credential scope");
                 resolutions[0]++;
                 return "{\"headers\":{\"Authorization\":\"Bearer fixture-token\"}}";
-            },2,4096,268435456L,0,null,false)) {
+            },2,4096,268435456L,0,null,false,1)) {
             int status=0;
             try { execution.start();while(!execution.await(100)) { } }
             catch(UniversalDataException error) { status=error.status(); }

@@ -196,7 +196,7 @@ ud_status ud_catalog_bind_package(ud_catalog *c, const ud_catalog_binding *o, ud
     *length = 0;
     if (!c || !o)
         return UD_INVALID;
-    if (o->struct_size < sizeof(*o) || o->abi_version != UD_ABI_VERSION)
+    if (o->struct_size != sizeof(*o) || o->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     if (!o->package_id.data || !o->package_id.length ||
         memchr(o->package_id.data, 0, o->package_id.length) ||

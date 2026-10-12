@@ -1,5 +1,6 @@
 #include "../registry_internal.h"
 #include "../../foundation/internal.h"
+#include <stdatomic.h>
 typedef struct entry {
     ud_component_descriptor descriptor;
     void *owner;
@@ -9,7 +10,8 @@ typedef struct entry {
 struct ud_registry {
     ud_context *ctx;
     entry *head, *tail;
-    uint32_t count, leases;
+    uint32_t count;
+    atomic_uint leases;
 };
 static int same(ud_string a, ud_string b) {
     return a.length == b.length && !memcmp(a.data, b.data, a.length);
@@ -34,24 +36,29 @@ ud_status ud_registry_create(ud_context *c, ud_registry **out) {
     if (!*out)
         return UD_RESOURCE;
     (*out)->ctx = c;
+    atomic_init(&(*out)->leases, 0);
     return UD_OK;
 }
 static ud_status build_entry(ud_registry *r, const ud_component_descriptor *d, entry **out) {
     *out = NULL;
     if (!r || !d)
         return UD_INVALID;
-    if (r->leases)
+    if (atomic_load(&r->leases))
         return UD_BUSY;
-    if (d->struct_size < sizeof(*d) || d->abi_version != UD_ABI_VERSION)
+    if (d->struct_size != sizeof(*d) || d->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     if (!valid(d->id) || !valid(d->name) || !valid(d->version) || !valid(d->configuration_schema) ||
         d->inputs > 64 || d->outputs > 64 || d->category < UD_COMPONENT_TASK ||
-        d->category > UD_COMPONENT_LOG_PROVIDER || d->synchronous_input < -1 ||
+        d->category > UD_COMPONENT_FUNCTION || d->synchronous_input < -1 ||
         d->error_output < -1 ||
         (d->synchronous_input >= 0 && (uint32_t)d->synchronous_input >= d->inputs) ||
         (d->error_output >= 0 && (uint32_t)d->error_output >= d->outputs))
         return UD_INVALID;
     if (d->category == UD_COMPONENT_TASK && !d->invoke)
+        return UD_INVALID;
+    if (d->category == UD_COMPONENT_FUNCTION &&
+        (!(d->capabilities & UD_FUNCTION_PURE) || !d->function_bind || !d->function_evaluate ||
+         d->min_arguments > d->max_arguments || d->max_arguments > 16 || d->inputs || d->outputs))
         return UD_INVALID;
     if (d->category >= UD_COMPONENT_SOURCE && d->category <= UD_COMPONENT_DESTINATION &&
         (!d->configure || !d->prepare || !d->step || !d->finish || !d->dispose ||
@@ -86,7 +93,7 @@ ud_status ud_registry_register_owned(ud_registry *r, const ud_component_descript
                                      ud_component_owner_release release) {
     if (!r || !descriptors || !count || count > 4096 || !!retain != !!release || (retain && !owner))
         return UD_INVALID;
-    if (r->leases)
+    if (atomic_load(&r->leases))
         return UD_BUSY;
     if (count > UINT32_MAX - r->count)
         return UD_RESOURCE;
@@ -141,7 +148,7 @@ uint32_t ud_registry_count(const ud_registry *r) {
 ud_status ud_registry_get(const ud_registry *r, uint32_t index, ud_component_descriptor *out) {
     if (!r || !out || index >= r->count)
         return UD_INVALID;
-    if (out->struct_size < sizeof(*out) || out->abi_version != UD_ABI_VERSION)
+    if (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     entry *e = r->head;
     while (index--)
@@ -152,7 +159,7 @@ ud_status ud_registry_get(const ud_registry *r, uint32_t index, ud_component_des
 ud_status ud_registry_find(const ud_registry *r, ud_string id, ud_component_descriptor *out) {
     if (!r || !out || !valid(id))
         return UD_INVALID;
-    if (out->struct_size < sizeof(*out) || out->abi_version != UD_ABI_VERSION)
+    if (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     for (entry *e = r->head; e; e = e->next)
         if (same(e->descriptor.id, id)) {
@@ -164,19 +171,19 @@ ud_status ud_registry_find(const ud_registry *r, ud_string id, ud_component_desc
 ud_status ud_registry_acquire(ud_registry *r) {
     if (!r)
         return UD_INVALID;
-    if (r->leases == UINT32_MAX)
-        return UD_RESOURCE;
-    r->leases++;
+    unsigned old = atomic_load(&r->leases);
+    do {
+        if (old == UINT32_MAX) return UD_RESOURCE;
+    } while (!atomic_compare_exchange_weak(&r->leases, &old, old + 1));
     return UD_OK;
 }
 void ud_registry_release(ud_registry *r) {
-    if (r && r->leases)
-        r->leases--;
+    if (r) atomic_fetch_sub(&r->leases, 1);
 }
 ud_status ud_registry_destroy(ud_registry *r) {
     if (!r)
         return UD_OK;
-    if (r->leases)
+    if (atomic_load(&r->leases))
         return UD_BUSY;
     entry *e = r->head;
     while (e) {

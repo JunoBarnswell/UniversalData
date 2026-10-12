@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix='ud-value-pipeline-') as folder:
                 dict(id='join', component='join', config=dict(leftKey=0, rightKey=0)), sink('joined')],
                 paths=[edge('source','join'), edge('right','join',port=1), edge('join','joined')]),
             dict(id='group', components=[source_component(),
-                dict(id='aggregate', component='aggregate', config=dict(commands='group key\ncount * cnt\n')), sink('groups')],
+                dict(id='aggregate', component='aggregate', config=dict(plan={'version':4,'group':['key'],'aggregates':[{'function':'count','column':'*','name':'cnt'}]})), sink('groups')],
                 paths=[edge('source','aggregate'), edge('aggregate','groups')])]
         for language in range(languages):
             package = dict(version=4, id='semantics-'+metadata['type'], parameters={}, variables={},

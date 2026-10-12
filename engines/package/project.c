@@ -170,7 +170,7 @@ ud_status ud_project_bind(const ud_project *p, const ud_package *package,
     *length = 0;
     if (!p || !package || !o)
         return UD_INVALID;
-    if (o->struct_size < sizeof(*o) || o->abi_version != UD_ABI_VERSION)
+    if (o->struct_size != sizeof(*o) || o->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     if (!o->environment.data && o->environment.length)
         return UD_INVALID;

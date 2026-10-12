@@ -147,7 +147,7 @@ ud_status ud_plugin_register_components(ud_plugin *p, ud_registry *registry) {
         return UD_UNSUPPORTED;
     if (!(p->api.roles & UD_PLUGIN_COMPONENTS))
         return UD_SCHEMA;
-    if (components->struct_size < sizeof(*components) || components->abi_version != UD_ABI_VERSION)
+    if (components->struct_size != sizeof(*components) || components->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     return ud_registry_register_owned(registry, components->descriptors, components->count, p,
                                       retain_module, release_module);
@@ -282,7 +282,7 @@ ud_status ud_connection_open(ud_plugin *p, const ud_connection_options *options,
     if (!out)
         return UD_INVALID;
     *out = NULL;
-    if (!p || !options || options->struct_size < sizeof(*options) ||
+    if (!p || !options || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     if (!valid_string(options->tenant, 1) || !valid_string(options->resource, 1) ||
@@ -295,7 +295,7 @@ ud_status ud_connection_open(ud_plugin *p, const ud_connection_options *options,
     const ud_connector_api *api = p->api.connector;
     if (!api)
         return UD_UNSUPPORTED;
-    if (api->struct_size < sizeof(*api) || api->abi_version != UD_PLUGIN_ABI || !api->test ||
+    if (api->struct_size != sizeof(*api) || api->abi_version != UD_PLUGIN_ABI || !api->test ||
         !api->discover || !api->cancel)
         return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_READ) &&
@@ -357,7 +357,7 @@ ud_status ud_connection_discover(ud_connection *c, ud_string table, ud_batch **o
 }
 ud_status ud_connection_read_open(ud_connection *c, const ud_read_options *options,
                                   const ud_batch *schema) {
-    if (!c || !options || options->struct_size < sizeof(*options) ||
+    if (!c || !options || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     if (!schema || !valid_string(options->sql, 1) || !options->batch_size ||
@@ -405,7 +405,7 @@ ud_status ud_connection_read_close(ud_connection *c) {
 }
 ud_status ud_connection_write(ud_connection *c, const ud_write_options *options,
                               const ud_batch *batch) {
-    if (!c || !options || options->struct_size < sizeof(*options) ||
+    if (!c || !options || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     if (!batch || c->cursor || !valid_string(options->table, 1) || !valid_string(options->job, 1) ||
@@ -441,7 +441,7 @@ ud_status ud_connection_digest(ud_connection *c, const ud_write_options *options
                                const ud_batch *batch, uint8_t out[32]) {
     if (!c || !options || !batch || !out)
         return UD_INVALID;
-    if (options->struct_size < sizeof(*options) || options->abi_version != UD_ABI_VERSION)
+    if (options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
     if (!valid_string(options->table, 1) || !valid_string(options->job, 1) ||
         !valid_string(options->batch_id, 1) || !valid_string(options->source_position, 0) ||

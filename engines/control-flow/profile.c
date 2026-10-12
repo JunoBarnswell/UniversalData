@@ -62,7 +62,7 @@ static ud_status read_statistics(const ud_component_context *c, ud_string text,
             if (ud_same(p->names[i], p->names[j]))
                 return UD_SCHEMA;
         ud_variable *target = NULL;
-        UD_TRY(ud_variable_writable(c->execution, p->names[i], &target));
+        UD_TRY(ud_variable_writable(c->activation, p->names[i], &target));
         if (target->value.type != type)
             return UD_SCHEMA;
     }
@@ -88,7 +88,7 @@ static ud_status stat_configure(void *user, const ud_component_context *c, ud_st
     return s;
 }
 static ud_status check_execution(void *user) {
-    return ud_execution_check(user);
+    return ud_activation_check(user);
 }
 static ud_status stat_prepare(void *user, const ud_component_context *c, ud_string text,
                               const ud_batch *const *inputs, const ud_batch *const *outputs,
@@ -104,7 +104,7 @@ static ud_status stat_prepare(void *user, const ud_component_context *c, ud_stri
     ud_status s = read_statistics(c, text, inputs[0], p, &maximum);
     if (!s)
         s = ud_profile_create(c->memory, inputs[0], p->statistics, p->count, maximum,
-                              check_execution, c->execution, &p->profile);
+                              check_execution, c->activation, &p->profile);
     if (s) {
         clear_statistics(p);
         ud_free(p);
@@ -114,7 +114,7 @@ static ud_status stat_prepare(void *user, const ud_component_context *c, ud_stri
 }
 static ud_status stat_step(void *instance, const ud_component_event *event) {
     profile_sink *p = instance;
-    UD_TRY(ud_execution_check(p->context.execution));
+    UD_TRY(ud_activation_check(p->context.activation));
     return event->kind == UD_COMPONENT_DATA   ? ud_profile_add(p->profile, event->batch)
            : event->kind == UD_COMPONENT_POLL ? UD_END
                                               : UD_OK;
@@ -128,14 +128,14 @@ static ud_status stat_finish(void *instance) {
         ud_value value;
         s = ud_profile_get(p->profile, i, &value);
         if (!s)
-            s = ud_variable_writable(p->context.execution, p->names[i], targets + i);
+            s = ud_variable_writable(p->context.activation, p->names[i], targets + i);
         if (!s && targets[i]->value.type != value.type)
             s = UD_SCHEMA;
         if (!s)
             s = ud_copy_value(p->context.memory, &value, values + i, 0);
     }
     if (!s)
-        s = ud_execution_check(p->context.execution);
+        s = ud_activation_check(p->context.activation);
     if (!s)
         for (uint32_t i = 0; i < p->count; i++) {
             ud_clear_value(&targets[i]->value);
@@ -165,7 +165,7 @@ static ud_status read_task(const ud_component_context *c, ud_string text, ud_jso
     UD_TRY(ud_json_keys(*out, keys, 4));
     ud_string id;
     UD_TRY(ud_json_string(ud_member(*out, "pipeline"), &id));
-    const ud_json *flows = ud_member(c->execution->package->document, "dataFlows");
+    const ud_json *flows = ud_member(c->activation->package->document, "dataFlows");
     for (uint32_t i = 0; i < ud_json_size(flows); i++) {
         const ud_json *flow = ud_json_at(flows, i);
         ud_string name;
@@ -182,7 +182,7 @@ static ud_status read_task(const ud_component_context *c, ud_string text, ud_jso
         ud_string component;
         UD_TRY(ud_json_string(ud_member(node, "component"), &component));
         ud_component_descriptor d = {.struct_size = sizeof(d), .abi_version = UD_ABI_VERSION};
-        UD_TRY(ud_component_lookup(c->execution, component, &d));
+        UD_TRY(ud_component_lookup(c->activation, component, &d));
         if (d.category == UD_COMPONENT_DESTINATION) {
             if (!ud_named(component, "profile.statistics"))
                 return UD_SCHEMA;
@@ -209,7 +209,7 @@ static ud_status read_task(const ud_component_context *c, ud_string text, ud_jso
                 return UD_SCHEMA;
         }
         ud_expression *expr = NULL;
-        ud_status s = ud_expression_json(c->execution, ud_member(def, "expression"), NULL, &expr);
+        ud_status s = ud_expression_json(c->activation, ud_member(def, "expression"), NULL, &expr);
         if (!s && ud_expression_type(expr) != UD_BOOL)
             s = UD_SCHEMA;
         ud_expression_destroy(expr);
@@ -221,7 +221,7 @@ static ud_status read_task(const ud_component_context *c, ud_string text, ud_jso
         if (ud_member(*out, names[i])) {
             UD_TRY(ud_json_string(ud_member(*out, names[i]), variables[i]));
             ud_variable *v;
-            UD_TRY(ud_variable_writable(c->execution, *variables[i], &v));
+            UD_TRY(ud_variable_writable(c->activation, *variables[i], &v));
             if (v->value.type != (i ? UD_INT64 : UD_BOOL))
                 return UD_SCHEMA;
             for (uint32_t j = 0; j < ud_json_size(statistics); j++) {
@@ -231,7 +231,7 @@ static ud_status read_task(const ud_component_context *c, ud_string text, ud_jso
                     return UD_SCHEMA;
             }
         }
-    return ud_pipeline_bind_validate(c->execution, *pipeline);
+    return ud_pipeline_bind_validate(c->activation, *pipeline);
 }
 static ud_status task_configure(void *user, const ud_component_context *c, ud_string text,
                                 const ud_batch *const *in, ud_batch **out) {
@@ -252,14 +252,14 @@ static ud_status task_invoke(void *user, const ud_component_context *c, ud_strin
     ud_string passed, failed;
     ud_status s = read_task(c, text, &doc, &pipeline, &passed, &failed);
     if (!s)
-        s = ud_pipeline_execute(c->execution, pipeline);
+        s = ud_pipeline_execute(c->activation, pipeline);
     uint32_t failures = 0;
     const ud_json *checks = ud_member(doc, "checks");
     for (uint32_t i = 0; !s && i < ud_json_size(checks); i++) {
         ud_expression *expr = NULL;
-        s = ud_execution_check(c->execution);
+        s = ud_activation_check(c->activation);
         if (!s)
-            s = ud_expression_json(c->execution, ud_member(ud_json_at(checks, i), "expression"),
+            s = ud_expression_json(c->activation, ud_member(ud_json_at(checks, i), "expression"),
                                    NULL, &expr);
         ud_value value = {0};
         if (!s)
@@ -270,11 +270,11 @@ static ud_status task_invoke(void *user, const ud_component_context *c, ud_strin
     }
     if (!s && passed.length) {
         ud_value v = {.type = UD_BOOL, .integer = !failures};
-        s = ud_execution_set_variable(c->execution, passed, &v, NULL);
+        s = ud_activation_set_variable(c->activation, passed, &v, NULL);
     }
     if (!s && failed.length) {
         ud_value v = {.type = UD_INT64, .integer = failures};
-        s = ud_execution_set_variable(c->execution, failed, &v, NULL);
+        s = ud_activation_set_variable(c->activation, failed, &v, NULL);
     }
     if (!s && failures)
         s = UD_QUALITY;

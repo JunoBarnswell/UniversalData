@@ -2,10 +2,10 @@
 /* A nested definition frame on the existing Execution/context/journal. It has
  * no separate scheduler, thread, registry, deadline, transaction or recovery
  * store. Only immutable definitions/parameters and lexical roots are swapped. */
-static ud_status mapped_parameters(ud_execution *e, const ud_json *mapping, ud_json **out) {
+static ud_status mapped_parameters(ud_activation *e, const ud_json *mapping, ud_json **out) {
     if (mapping && ud_json_kind(mapping) != UD_JSON_OBJECT)
         return UD_SCHEMA;
-    ud_bytes b = {.ctx = e->ctx};
+    ud_bytes b = {.ctx = e->execution->ctx};
     ud_status s = ud_bytes_put(&b, "{", 1);
     for (uint32_t i = 0; !s && i < ud_json_size(mapping); i++) {
         const char *key;
@@ -33,12 +33,12 @@ static ud_status mapped_parameters(ud_execution *e, const ud_json *mapping, ud_j
     if (!s && b.size > UINT32_MAX)
         s = UD_OVERFLOW;
     if (!s)
-        s = ud_json_parse(e->ctx, (char *)b.data, (uint32_t)b.size, out, NULL);
+        s = ud_json_parse(e->execution->ctx, (char *)b.data, (uint32_t)b.size, out, NULL);
     ud_bytes_clear(&b);
     return s;
 }
-ud_status ud_child_package(ud_execution *e, const ud_json *config, int execute, uint32_t depth) {
-    if (depth >= e->options.max_depth)
+ud_status ud_child_package(ud_activation *e, const ud_json *config, int execute, uint32_t depth) {
+    if (depth >= e->execution->options.max_depth)
         return UD_RESOURCE;
     static const char *keys[] = {"package", "parameters"};
     UD_TRY(ud_json_keys(config, keys, 2));
@@ -53,66 +53,45 @@ ud_status ud_child_package(ud_execution *e, const ud_json *config, int execute, 
     if (!s)
         s = ud_json_serialize(definition, &text, &n);
     if (!s)
-        s = ud_package_create(e->ctx, (ud_string){text, n}, &package);
+        s = ud_package_create(e->execution->ctx, (ud_string){text, n}, &package);
     ud_free(text);
     if (s) {
         ud_json_destroy(parameters);
         return s;
     }
-    ud_package *parent_package = e->package;
-    ud_json *parent_parameters = e->parameters;
-    ud_scope *parent_scope = e->scope, globals = e->globals, project = e->project_scope;
-    ud_string parent_task = e->task_id;
-    char *identity = NULL;
-    e->package = package;
-    e->parameters = parameters;
-    e->scope = NULL;
-    memset(&e->globals, 0, sizeof(e->globals));
-    memset(&e->project_scope, 0, sizeof(e->project_scope));
-    s = ud_execution_bind_roots(e);
-    if (!s && !execute)
-        s = ud_execution_validate_definition(e, depth);
-    if (!s && execute) {
-        size_t size = (size_t)parent_task.length + package->id.length + 64;
-        identity = ud_alloc(e->ctx, size);
-        if (!identity)
-            s = UD_RESOURCE;
-        else {
-            int count = snprintf(identity, size, "%.*spackage:%u:%.*s;", (int)parent_task.length,
-                                 parent_task.data ? parent_task.data : "", package->id.length,
-                                 (int)package->id.length, package->id.data);
-            if (count < 0 || (size_t)count >= size || (unsigned)count > UINT32_MAX)
-                s = UD_OVERFLOW;
-            else
-                e->task_id = (ud_string){identity, (uint32_t)count};
-        }
-        if (!s) {
-            ud_execution_notify(e, UD_EXEC_VALIDATING, UD_OK);
-            s = ud_execution_validate_definition(e, depth);
-        }
-        if (!s) {
-            ud_execution_notify(e, UD_EXEC_READY, UD_OK);
-            ud_execution_notify(e, UD_EXEC_RUNNING, UD_OK);
-            s = ud_execution_run_definition(e);
-        }
-        if (s == UD_BUSY)
-            s = UD_TRANSIENT;
-        if (!s)
-            ud_execution_notify(e, UD_EXEC_DRAINING, UD_OK);
-        int state = s == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
-                    : s == UD_CANCELLED    ? UD_EXEC_CANCELLED
-                    : s                    ? UD_EXEC_FAILED
-                                           : UD_EXEC_SUCCEEDED;
-        ud_execution_notify(e, state, s);
+    ud_activation child = {0};
+    child.execution = e->execution;
+    child.parent = e;
+    child.definition = &child;
+    child.package = package;
+    child.parameters = parameters;
+    child.depth = depth;
+    child.parallel = e->parallel;
+    atomic_init(&child.cancelled, 0);
+    size_t size = (size_t)e->task_id.length + package->id.length + 64;
+    char *identity = ud_alloc(e->execution->ctx, size);
+    if (!identity) s = UD_RESOURCE;
+    if (!s) {
+        int count = snprintf(identity, size, "%.*spackage:%u:%.*s;", (int)e->task_id.length,
+                             e->task_id.data ? e->task_id.data : "", package->id.length,
+                             (int)package->id.length, package->id.data);
+        if (count < 0 || (size_t)count >= size) s = UD_OVERFLOW;
+        else child.task_id = (ud_string){identity, (uint32_t)count};
     }
-    ud_scope_leave(e, &e->globals);
-    ud_scope_leave(e, &e->project_scope);
-    e->package = parent_package;
-    e->parameters = parent_parameters;
-    e->scope = parent_scope;
-    e->globals = globals;
-    e->project_scope = project;
-    e->task_id = parent_task;
+    if (!s) s = ud_activation_bind_roots(&child);
+    if (!s) s = ud_activation_validate_definition(&child, depth);
+    if (!s && execute) {
+        ud_activation_notify(&child, UD_EXEC_RUNNING, UD_OK);
+        s = ud_activation_run_definition(&child);
+        if (s == UD_BUSY) s = UD_TRANSIENT;
+        if (!s) ud_activation_notify(&child, UD_EXEC_DRAINING, UD_OK);
+        ud_execution_state state = s == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
+                                 : s == UD_CANCELLED ? UD_EXEC_CANCELLED
+                                 : s ? UD_EXEC_FAILED : UD_EXEC_SUCCEEDED;
+        ud_activation_notify(&child, state, s);
+    }
+    ud_scope_leave(&child, &child.globals);
+    ud_scope_leave(&child, &child.project_scope);
     ud_free(identity);
     ud_json_destroy(parameters);
     ud_package_destroy(package);

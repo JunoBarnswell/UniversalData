@@ -1,4 +1,5 @@
 #include "../internal.h"
+#include "ud/operator.h"
 ud_status ud_compute_join_schema(ud_context *ctx, const ud_batch *left, const ud_batch *right, ud_batch **out) {
     if (!out) return UD_INVALID;*out=NULL;
     if (!ctx || !left || !right || left->columns > 65536-right->columns) return UD_INVALID;
@@ -148,132 +149,50 @@ ud_status ud_compute_sort(ud_context *c, const ud_batch *b, uint32_t key, int32_
     }
     return s;
 }
-ud_status ud_compute_inner_join(ud_context *c, const ud_batch *left, uint32_t lk,
-                                const ud_batch *right, uint32_t rk, ud_batch **out) {
-    if (!left || !right || !out || lk >= ud_batch_columns(left) || rk >= ud_batch_columns(right))
-        return UD_INVALID;
-    *out = NULL;
-    ud_field a, b;
-    ud_batch_field(left, lk, &a);
-    ud_batch_field(right, rk, &b);
-    b.nullable = a.nullable;
-    if (!ud_field_matches(&a, &b, 0))
-        return UD_SCHEMA;
-    uint32_t ln = ud_batch_columns(left), rn = ud_batch_columns(right), n = ln + rn;
-    if (n < ln || n > 65536)
-        return UD_RESOURCE;
-    ud_field *f = ud_alloc(c, n * sizeof(*f));
-    ud_value *v = ud_alloc(c, n * sizeof(*v));
-    if (!f || !v) {
-        ud_free(f);
-        ud_free(v);
-        return UD_RESOURCE;
-    }
+ud_status ud_compute_inner_join(ud_context *ctx,const ud_batch *left,uint32_t lk,
+                                    const ud_batch *right,uint32_t rk,ud_batch **out) {
+    if(!out)return UD_INVALID;*out=NULL;
+    if(!ctx || !left || !right)return UD_INVALID;
+    const ud_batch *schemas[]={left,right};
+    ud_buffer_manager *buffers=NULL;ud_operator *operator=NULL;
+    ud_buffer_options budget={.struct_size=sizeof(budget),.abi_version=UD_ABI_VERSION,
+        .max_blocks=16384,.resident_limit=UINT64_C(67108864)};
+    ud_status s=ud_buffer_manager_create(ctx,&budget,&buffers);
+    ud_operator_options options={.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,
+        .kind=UD_OPERATOR_INNER_JOIN,.max_batch_rows=4096,.keys=&lk,.key_count=1,.right_key=rk,.buffers=buffers};
+    if(!s)s=ud_operator_create(ctx,&options,schemas,&operator);
     ud_batch *schema=NULL;
-    ud_status metadata=ud_compute_join_schema(c,left,right,&schema);
-    if(metadata){ud_free(f);ud_free(v);return metadata;}
-    for (uint32_t i = 0; i < n; i++) ud_batch_field(schema,i,f+i);
-    uint64_t matches = 0;
-    ud_status s = UD_OK;
-    uint32_t right_rows = ud_batch_rows(right), bucket_count = 16;
-    if ((uint64_t)right_rows + 1 > SIZE_MAX / sizeof(uint64_t)) {
-        ud_free(f);
-        ud_free(v);
-        ud_batch_destroy(schema);
-        return UD_RESOURCE;
-    }
-    while (bucket_count < right_rows && bucket_count < 65536)
-        bucket_count *= 2;
-    uint32_t *buckets = ud_alloc(c, (size_t)bucket_count * sizeof(*buckets));
-    uint32_t *next = ud_alloc(c, ((size_t)right_rows + 1) * sizeof(*next));
-    uint64_t *hashes = ud_alloc(c, ((size_t)right_rows + 1) * sizeof(*hashes));
-    if (!buckets || !next || !hashes)
-        s = UD_RESOURCE;
-    for (uint32_t i = 0; !s && i < bucket_count; i++)
-        buckets[i] = UINT32_MAX;
-    /* Reverse insertion preserves right input order within each key bucket. */
-    for (uint32_t r = right_rows; !s && r-- > 0;) {
-        if (ud_is_cancelled(c)) {
-            s = UD_CANCELLED;
-            break;
+    if(!s)s=ud_operator_schema(operator,&schema);
+    for(uint32_t port=0;!s && port<2;port++) {
+        const ud_batch *input=schemas[port];
+        for(uint32_t row=0;!s && row<input->rows;row+=4096) {
+            ud_batch *batch=NULL;s=ud_compute_slice(ctx,input,row,4096,&batch);
+            if(!s)s=ud_batch_seal(batch);
+            if(!s)s=ud_operator_push(operator,port,batch);
+            ud_batch_destroy(batch);
         }
-        ud_value key;
-        s = ud_batch_get(right, r, rk, &key);
-        if (s || key.is_null)
-            continue;
-        hashes[r] = ud_value_hash(&key, UD_VALUE_HASH_SEED);
-        uint32_t slot = (uint32_t)(hashes[r] & (bucket_count - 1));
-        next[r] = buckets[slot];
-        buckets[slot] = r;
+        if(!s)s=ud_operator_finish_input(operator,port);
     }
-    for (uint32_t l = 0; !s && l < ud_batch_rows(left); l++) {
-        if (ud_is_cancelled(c)) {
-            s = UD_CANCELLED;
-            break;
-        }
-        ud_value x;
-        ud_batch_get(left, l, lk, &x);
-        if (x.is_null)
-            continue;
-        uint64_t hash = ud_value_hash(&x, UD_VALUE_HASH_SEED);
-        for (uint32_t r = buckets[hash & (bucket_count - 1)]; r != UINT32_MAX; r = next[r]) {
-            if (ud_is_cancelled(c)) {
-                s = UD_CANCELLED;
-                break;
-            }
-            if (hashes[r] != hash)
-                continue;
-            ud_value y;
-            ud_batch_get(right, r, rk, &y);
-            if (!ud_value_compare(&x, &y))
-                matches++;
-            if (matches > INT32_MAX) {
-                s = UD_RESOURCE;
-                break;
-            }
-        }
-        if (s)
-            break;
+    ud_batch **parts=NULL;uint32_t count=0;uint64_t rows=0;
+    while(!s) {
+        ud_batch *batch=NULL;s=ud_operator_pull(operator,&batch);
+        if(s==UD_END){s=UD_OK;break;}
+        if(s)break;
+        if(rows>INT32_MAX-batch->rows){ud_batch_destroy(batch);s=UD_RESOURCE;break;}
+        ud_batch **next=ud_alloc(ctx,(size_t)(count+1)*sizeof(*next));
+        if(!next){ud_batch_destroy(batch);s=UD_RESOURCE;break;}
+        if(count)memcpy(next,parts,count*sizeof(*next));ud_free(parts);parts=next;
+        parts[count++]=batch;rows+=batch->rows;
     }
-    if (!s)
-        s = ud_batch_create(c, f, n, (uint32_t)matches, out);
-    for (uint32_t l = 0; !s && l < ud_batch_rows(left); l++) {
-        if (ud_is_cancelled(c)) {
-            s = UD_CANCELLED;
-            break;
-        }
-        ud_value x;
-        ud_batch_get(left, l, lk, &x);
-        if (x.is_null)
-            continue;
-        uint64_t hash = ud_value_hash(&x, UD_VALUE_HASH_SEED);
-        for (uint32_t r = buckets[hash & (bucket_count - 1)]; !s && r != UINT32_MAX; r = next[r]) {
-            if (ud_is_cancelled(c)) {
-                s = UD_CANCELLED;
-                break;
-            }
-            if (hashes[r] != hash)
-                continue;
-            ud_value y;
-            ud_batch_get(right, r, rk, &y);
-            if (ud_value_compare(&x, &y))
-                continue;
-            for (uint32_t i = 0; i < ln; i++)
-                ud_batch_get(left, l, i, v + i);
-            for (uint32_t i = 0; i < rn; i++)
-                ud_batch_get(right, r, i, v + ln + i);
-            s = ud_batch_append(*out, v, n);
-        }
-    }
-    ud_free(f);
-    ud_free(v);
-    ud_free(buckets);
-    ud_free(next);
-    ud_free(hashes);
-    ud_batch_destroy(schema);
-    if (s && *out) {
-        ud_batch_destroy(*out);
-        *out = NULL;
-    }
-    return s;
+    ud_field *fields=NULL;ud_value *values=NULL;
+    if(!s)s=fields_of(ctx,schema,&fields);
+    if(!s)s=ud_batch_create(ctx,fields,schema->columns,(uint32_t)rows,out);
+    if(!s){values=ud_alloc(ctx,schema->columns*sizeof(*values));if(!values)s=UD_RESOURCE;}
+    for(uint32_t i=0;!s && i<count;i++)
+        for(uint32_t row=0;!s && row<parts[i]->rows;row++)s=append_row(*out,parts[i],row,values);
+    for(uint32_t i=0;i<count;i++)ud_batch_destroy(parts[i]);
+    ud_free(parts);ud_free(fields);ud_free(values);ud_batch_destroy(schema);
+    ud_status cleanup=ud_operator_destroy(operator);if(!s && cleanup)s=cleanup;
+    cleanup=ud_buffer_manager_destroy(buffers);if(!s && cleanup)s=cleanup;
+    if(s){ud_batch_destroy(*out);*out=NULL;}return s;
 }

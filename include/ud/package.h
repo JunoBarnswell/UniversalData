@@ -21,6 +21,8 @@ typedef struct ud_execution_event {
     ud_status result;
     uint64_t timestamp_ms;
     int32_t kind; /* State changes or durability boundary; no data/secret values. */
+    uint64_t sequence; /* Serialized within the root Execution. */
+    const ud_activation *activation; /* Borrowed during observer only. */
 } ud_execution_event;
 typedef void (*ud_execution_observer)(void *, const ud_execution_event *);
 typedef struct ud_execution_options {
@@ -38,6 +40,7 @@ typedef struct ud_execution_options {
     void *observe_user;
     ud_string state_directory; /* Optional authorized durable journal; absolute path. */
     int32_t resume;
+    uint32_t max_concurrency; /* 0 selects 1; upper bound on native task workers. */
 } ud_execution_options;
 typedef struct ud_execution_metrics {
     uint32_t struct_size, abi_version;
@@ -47,7 +50,7 @@ typedef struct ud_execution_metrics {
         memory_used, completed_tasks, spill_bytes;
 } ud_execution_metrics;
 /* Package owns an immutable parsed document. Serializer returns owned ud_free
- * text. Version 3 only; old Job/DAG formats are incompatible. */
+ * text. Version 4 only; old Job/DAG formats are incompatible. */
 UD_API ud_status ud_package_create(ud_context *, ud_string document, ud_package **);
 UD_API ud_status ud_package_serialize(const ud_package *, char **, uint32_t *);
 UD_API void ud_package_destroy(ud_package *);
@@ -62,10 +65,9 @@ UD_API ud_status ud_execution_get_metrics(const ud_execution *, ud_execution_met
 /* One controller; Running/Draining return BUSY. Context allocation leaks are
  * reported at teardown. cancel/metrics are safe concurrently with execution. */
 UD_API ud_status ud_execution_destroy(ud_execution *);
-/* Host component callbacks read/write current lexical variables; parameters
- * are read-only. Not callable concurrently from other threads. */
+/* Root parameter/variable inspection. Running/Draining return BUSY; callbacks
+ * inspect their event/component Activation instead. Parameters are read-only. */
 UD_API ud_status ud_execution_variable(const ud_execution *, ud_string, ud_value *);
-UD_API ud_status ud_execution_set_variable(ud_execution *, ud_string, const ud_value *, const ud_field *provenance);
 UD_API ud_status ud_execution_variable_field(const ud_execution *, ud_string, ud_field *);
 #ifdef __cplusplus
 }

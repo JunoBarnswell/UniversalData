@@ -74,7 +74,7 @@ static ud_status cache(checkpoint_journal *j, uint64_t kind, ud_string key, ud_s
     p->payload = document;
     return UD_OK;
 }
-static ud_status append(checkpoint_journal *j, uint64_t kind, ud_string key, ud_string payload) {
+static ud_status append(checkpoint_journal *j, ud_activation *activation, uint64_t kind, ud_string key, ud_string payload) {
     ud_execution *e = j->execution;
     if (j->failed)
         return UD_COMMIT_UNKNOWN;
@@ -111,7 +111,7 @@ static ud_status append(checkpoint_journal *j, uint64_t kind, ud_string key, ud_
             snprintf(temporary, n + 6, "%s.part", path);
     }
     if (!s) {
-        ud_execution_notify_kind(e, UD_EXEC_EVENT_BEFORE_CHECKPOINT, UD_EXEC_RUNNING, UD_OK);
+        ud_activation_notify_kind(activation, UD_EXEC_EVENT_BEFORE_CHECKPOINT, UD_EXEC_RUNNING, UD_OK);
         s = ud_write_file(e->ctx, temporary, bytes.data, bytes.size);
     }
     if (!s)
@@ -122,7 +122,7 @@ static ud_status append(checkpoint_journal *j, uint64_t kind, ud_string key, ud_
         s = cache(j, kind, key, payload);
     }
     if (!s)
-        ud_execution_notify_kind(e, UD_EXEC_EVENT_AFTER_CHECKPOINT, UD_EXEC_RUNNING, UD_OK);
+        ud_activation_notify_kind(activation, UD_EXEC_EVENT_AFTER_CHECKPOINT, UD_EXEC_RUNNING, UD_OK);
     if (temporary)
         (void)ud_remove_file(e->ctx, temporary);
     ud_free(path);
@@ -132,10 +132,10 @@ static ud_status append(checkpoint_journal *j, uint64_t kind, ud_string key, ud_
         j->failed = 1;
     return s;
 }
-static ud_status snapshot(ud_execution *e, ud_bytes *bytes) {
+static ud_status snapshot(ud_activation *e, ud_bytes *bytes) {
     UD_TRY(ud_bytes_put(bytes, "{\"scopes\":[", 11));
     uint32_t depth = 0;
-    for (ud_scope *scope = e->scope; scope; scope = scope->parent, depth++) {
+    for (ud_scope *scope = e->scope; scope && (!e->parallel || scope->owner == e); scope = scope->parent, depth++) {
         if (depth)
             UD_TRY(ud_bytes_put(bytes, ",", 1));
         UD_TRY(ud_bytes_put(bytes, "[", 1));
@@ -165,13 +165,13 @@ static ud_status snapshot(ud_execution *e, ud_bytes *bytes) {
     int n = snprintf(
         metrics, sizeof(metrics),
         "],\"invocation\":%llu,\"input\":%llu,\"output\":%llu,\"rejected\":%llu,\"tasks\":%llu}",
-        (unsigned long long)e->invocation, (unsigned long long)atomic_load(&e->input_rows),
-        (unsigned long long)atomic_load(&e->output_rows),
-        (unsigned long long)atomic_load(&e->rejected_rows),
-        (unsigned long long)atomic_load(&e->completed_tasks));
+        (unsigned long long)e->invocation, (unsigned long long)atomic_load(&e->execution->input_rows),
+        (unsigned long long)atomic_load(&e->execution->output_rows),
+        (unsigned long long)atomic_load(&e->execution->rejected_rows),
+        (unsigned long long)atomic_load(&e->execution->completed_tasks));
     return ud_bytes_put(bytes, metrics, (size_t)n);
 }
-static ud_status restore(ud_execution *e, const ud_json *payload) {
+static ud_status restore(ud_activation *e, const ud_json *payload) {
     const ud_json *scopes = ud_member(payload, "scopes");
     if (ud_json_kind(scopes) != UD_JSON_ARRAY)
         return UD_CORRUPT;
@@ -204,7 +204,7 @@ static ud_status restore(ud_execution *e, const ud_json *payload) {
             uint32_t schema_length = 0;
             UD_TRY(ud_json_serialize(ud_member(record, "schema"), &schema_json, &schema_length));
             ud_batch *schema = NULL;
-            ud_status status = ud_schema_from_json(e->ctx, schema_json, schema_length,
+            ud_status status = ud_schema_from_json(e->execution->ctx, schema_json, schema_length,
                                                    (ud_string){0}, &schema);
             ud_free(schema_json);
             if (status) return UD_CORRUPT;
@@ -213,30 +213,30 @@ static ud_status restore(ud_execution *e, const ud_json *payload) {
             ud_batch_destroy(schema);
             if (!same) return UD_CORRUPT;
             ud_value decoded = {0};
-            status = ud_json_value_decode(e->ctx, &expected, ud_member(record, "value"),
+            status = ud_json_value_decode(e->execution->ctx, &expected, ud_member(record, "value"),
                                           UD_ROUND_EXACT, &decoded);
-            if (!status) status = ud_execution_set_variable(e, name, &decoded, &expected);
+            if (!status) status = ud_activation_set_variable(e, name, &decoded, &expected);
             ud_clear_value(&decoded);
             if (status) return status;
         }
         scope = scope->parent;
     }
-    if (scope)
+    if (scope && (!e->parallel || scope->owner == e))
         return UD_CORRUPT;
     uint64_t value;
     UD_TRY(ud_json_uint(ud_member(payload, "invocation"), &value));
     e->invocation = value;
     UD_TRY(ud_json_uint(ud_member(payload, "input"), &value));
-    atomic_store(&e->input_rows, value);
+    if (!e->parallel || value > atomic_load(&e->execution->input_rows)) atomic_store(&e->execution->input_rows, value);
     UD_TRY(ud_json_uint(ud_member(payload, "output"), &value));
-    atomic_store(&e->output_rows, value);
+    if (!e->parallel || value > atomic_load(&e->execution->output_rows)) atomic_store(&e->execution->output_rows, value);
     UD_TRY(ud_json_uint(ud_member(payload, "rejected"), &value));
-    atomic_store(&e->rejected_rows, value);
+    if (!e->parallel || value > atomic_load(&e->execution->rejected_rows)) atomic_store(&e->execution->rejected_rows, value);
     UD_TRY(ud_json_uint(ud_member(payload, "tasks"), &value));
-    atomic_store(&e->completed_tasks, value);
+    if (!e->parallel || value > atomic_load(&e->execution->completed_tasks)) atomic_store(&e->execution->completed_tasks, value);
     return UD_OK;
 }
-static ud_status file_record(checkpoint_journal *j, uint64_t kind, const char *path) {
+static ud_status file_record(checkpoint_journal *j, ud_activation *activation, uint64_t kind, const char *path) {
     ud_execution *e = j->execution;
     UD_TRY(grant(e, path, UD_ACCESS_READ));
     uint8_t digest[32];
@@ -252,7 +252,7 @@ static ud_status file_record(checkpoint_journal *j, uint64_t kind, const char *p
     }
     char payload[68];
     snprintf(payload, sizeof(payload), "\"%s\"", encoded);
-    return append(j, kind, key, (ud_string){payload, 66});
+    return append(j, activation, kind, key, (ud_string){payload, 66});
 }
 ud_status ud_checkpoint_open(ud_execution *e) {
     if (!e->options.state_directory.length)
@@ -394,12 +394,12 @@ ud_status ud_checkpoint_open(ud_execution *e) {
                     return s;
             }
     } else
-        s = append(j, RECORD_HEADER, e->options.execution_id, (ud_string){payload, 66});
+        s = append(j, &e->root, RECORD_HEADER, e->options.execution_id, (ud_string){payload, 66});
     return s;
 }
-ud_status ud_checkpoint_task_begin(ud_execution *e, ud_string kind, int *completed) {
+static ud_status ud_checkpoint_task_begin_record(ud_activation *e, ud_string kind, int *completed) {
     *completed = 0;
-    checkpoint_journal *j = e->journal;
+    checkpoint_journal *j = e->execution->journal;
     if (!j)
         return UD_OK;
     checkpoint_entry *done = find(j, RECORD_TASK_DONE, e->task_id);
@@ -420,33 +420,33 @@ ud_status ud_checkpoint_task_begin(ud_execution *e, ud_string kind, int *complet
         }
         return replay ? UD_OK : UD_COMMIT_UNKNOWN;
     }
-    ud_bytes value = {.ctx = e->ctx};
+    ud_bytes value = {.ctx = e->execution->ctx};
     ud_status s = snapshot(e, &value);
     if (!s)
-        s = append(j, RECORD_TASK_BEGIN, e->task_id,
+        s = append(j, e, RECORD_TASK_BEGIN, e->task_id,
                    (ud_string){(char *)value.data, (uint32_t)value.size});
     ud_bytes_clear(&value);
     return s;
 }
-ud_status ud_checkpoint_task_done(ud_execution *e) {
-    checkpoint_journal *j = e->journal;
+static ud_status ud_checkpoint_task_done_record(ud_activation *e) {
+    checkpoint_journal *j = e->execution->journal;
     if (!j)
         return UD_OK;
-    ud_bytes value = {.ctx = e->ctx};
+    ud_bytes value = {.ctx = e->execution->ctx};
     ud_status s = snapshot(e, &value);
     if (!s)
-        s = append(j, RECORD_TASK_DONE, e->task_id,
+        s = append(j, e, RECORD_TASK_DONE, e->task_id,
                    (ud_string){(char *)value.data, (uint32_t)value.size});
     ud_bytes_clear(&value);
     return s ? UD_COMMIT_UNKNOWN : UD_OK;
 }
-ud_status ud_checkpoint_source(ud_execution *e, const char *path) {
-    return e->journal ? file_record(e->journal, RECORD_SOURCE, path) : UD_OK;
+static ud_status ud_checkpoint_source_record(ud_activation *e, const char *path) {
+    return e->execution->journal ? file_record(e->execution->journal, e, RECORD_SOURCE, path) : UD_OK;
 }
-ud_status ud_checkpoint_stage(ud_execution *e, const char *target, const char *temporary,
+static ud_status ud_checkpoint_stage_record(ud_activation *e, const char *target, const char *temporary,
                               int *replaying) {
     *replaying = 0;
-    checkpoint_journal *j = e->journal;
+    checkpoint_journal *j = e->execution->journal;
     if (!j)
         return UD_OK;
     ud_string key = {target, (uint32_t)strlen(target)};
@@ -464,23 +464,23 @@ ud_status ud_checkpoint_stage(ud_execution *e, const char *target, const char *t
         return UD_BUSY;
     if (errno != ENOENT)
         return UD_IO;
-    ud_bytes payload = {.ctx = e->ctx};
+    ud_bytes payload = {.ctx = e->execution->ctx};
     ud_status s = ud_json_quote(&payload, temporary, (uint32_t)strlen(temporary));
     if (!s)
-        s = append(j, RECORD_STAGE, key, (ud_string){(char *)payload.data, (uint32_t)payload.size});
+        s = append(j, e, RECORD_STAGE, key, (ud_string){(char *)payload.data, (uint32_t)payload.size});
     ud_bytes_clear(&payload);
     return s;
 }
-ud_status ud_checkpoint_file_done(ud_execution *e, const char *path) {
-    return e->journal ? file_record(e->journal, RECORD_FILE_DONE, path) : UD_OK;
+static ud_status ud_checkpoint_file_done_record(ud_activation *e, const char *path) {
+    return e->execution->journal ? file_record(e->execution->journal, e, RECORD_FILE_DONE, path) : UD_OK;
 }
-int ud_checkpoint_batch_seen(ud_execution *e, ud_string identity) {
-    checkpoint_journal *j = e->journal;
+static int ud_checkpoint_batch_seen_record(ud_activation *e, ud_string identity) {
+    checkpoint_journal *j = e->execution->journal;
     return j && find(j, RECORD_BATCH_INTENT, identity) != NULL;
 }
-ud_status ud_checkpoint_batch(ud_execution *e, ud_string identity, const uint8_t digest[32],
+static ud_status ud_checkpoint_batch_record(ud_activation *e, ud_string identity, const uint8_t digest[32],
                               int committed) {
-    checkpoint_journal *j = e->journal;
+    checkpoint_journal *j = e->execution->journal;
     if (!j)
         return UD_OK;
     uint64_t kind = committed ? RECORD_BATCH_DONE : RECORD_BATCH_INTENT;
@@ -493,7 +493,7 @@ ud_status ud_checkpoint_batch(ud_execution *e, ud_string identity, const uint8_t
         UD_TRY(ud_json_string(entry->payload, &hash));
         return ud_named(hash, encoded) ? UD_OK : UD_CORRUPT;
     }
-    return append(j, kind, identity, (ud_string){payload, 66});
+    return append(j, e, kind, identity, (ud_string){payload, 66});
 }
 void ud_checkpoint_close(ud_execution *e) {
     checkpoint_journal *j = e->journal;
@@ -511,4 +511,53 @@ void ud_checkpoint_close(ud_execution *e) {
     ud_free(j->directory);
     ud_free(j);
     e->journal = NULL;
+}
+
+ud_status ud_checkpoint_task_begin(ud_activation *e, ud_string kind, int *completed) {
+    ud_mutex_lock(&e->execution->journal_lock);
+    ud_status result = ud_checkpoint_task_begin_record(e, kind, completed);
+    ud_mutex_unlock(&e->execution->journal_lock);
+    return result;
+}
+
+ud_status ud_checkpoint_task_done(ud_activation *e) {
+    ud_mutex_lock(&e->execution->journal_lock);
+    ud_status result = ud_checkpoint_task_done_record(e);
+    ud_mutex_unlock(&e->execution->journal_lock);
+    return result;
+}
+
+ud_status ud_checkpoint_source(ud_activation *e, const char *path) {
+    ud_mutex_lock(&e->execution->journal_lock);
+    ud_status result = ud_checkpoint_source_record(e, path);
+    ud_mutex_unlock(&e->execution->journal_lock);
+    return result;
+}
+
+ud_status ud_checkpoint_stage(ud_activation *e, const char *target, const char *temporary, int *replaying) {
+    ud_mutex_lock(&e->execution->journal_lock);
+    ud_status result = ud_checkpoint_stage_record(e, target, temporary, replaying);
+    ud_mutex_unlock(&e->execution->journal_lock);
+    return result;
+}
+
+ud_status ud_checkpoint_file_done(ud_activation *e, const char *path) {
+    ud_mutex_lock(&e->execution->journal_lock);
+    ud_status result = ud_checkpoint_file_done_record(e, path);
+    ud_mutex_unlock(&e->execution->journal_lock);
+    return result;
+}
+
+int ud_checkpoint_batch_seen(ud_activation *e, ud_string identity) {
+    ud_mutex_lock(&e->execution->journal_lock);
+    int result = ud_checkpoint_batch_seen_record(e, identity);
+    ud_mutex_unlock(&e->execution->journal_lock);
+    return result;
+}
+
+ud_status ud_checkpoint_batch(ud_activation *e, ud_string identity, const uint8_t digest[32], int committed) {
+    ud_mutex_lock(&e->execution->journal_lock);
+    ud_status result = ud_checkpoint_batch_record(e, identity, digest, committed);
+    ud_mutex_unlock(&e->execution->journal_lock);
+    return result;
 }

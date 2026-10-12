@@ -15,7 +15,7 @@ ud_status ud_compute_map(ud_context *ctx,const ud_batch *input,const ud_mapping 
     if(!ctx || !input || !mapping || !columns || columns>65536 || rounding<UD_ROUND_EXACT || rounding>UD_ROUND_CEILING) return UD_INVALID;
     for(uint32_t j=0;j<columns;j++) {
         const ud_mapping *m=mapping+j;
-        if(m->struct_size<sizeof(*m) || m->version!=UD_CONFIG_VERSION) return UD_INCOMPATIBLE;
+        if(m->struct_size!=sizeof(*m) || m->version!=UD_CONFIG_VERSION) return UD_INCOMPATIBLE;
         if(m->source_column < -1 || (m->source_column>=0 && (uint32_t)m->source_column>=input->columns) ||
             (m->flags&~15u) || ((m->flags&UD_MAP_UPPER_ASCII) && (m->flags&UD_MAP_LOWER_ASCII))) return UD_INVALID;
     }

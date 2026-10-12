@@ -50,7 +50,7 @@ static ud_status parse(const ud_component_context *c, ud_string config, task_con
         s = text(ud_json_find(p->doc, "variable", 8), &p->variable);
     ud_value v;
     if (!s)
-        s = ud_execution_variable(c->execution, p->variable, &v);
+        s = ud_activation_variable(c->activation, p->variable, &v);
     if (!s && v.type != UD_INT64)
         s = UD_SCHEMA;
     const ud_json *marker = ud_json_find(p->doc, "appendMarker", 12);
@@ -121,7 +121,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string con
     ud_status s = parse(c, config, &p);
     ud_connection_lease *lease = NULL;
     if (!s)
-        s = ud_execution_acquire_connection(c->execution, p.connection, 0, &lease);
+        s = ud_activation_acquire_connection(c->activation, p.connection, 0, &lease);
     if (!s)
         s = ud_connection_lease_authorize(lease, UD_ACCESS_WRITE);
     uint64_t end = now() + p.hold;
@@ -138,7 +138,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string con
     if (!s)
         s = ud_expression_evaluate(p.expression, NULL, 0, &value);
     if (!s)
-        s = ud_execution_set_variable(c->execution, p.variable, &value, NULL);
+        s = ud_activation_set_variable(c->activation, p.variable, &value, NULL);
     if (!s && p.marker) {
         ud_string path;
         s = ud_connection_lease_path(lease, &path);

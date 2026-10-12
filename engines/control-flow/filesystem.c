@@ -34,7 +34,7 @@ static ud_status config_read(const ud_component_context *c, ud_string text, ud_j
         if (ids[i].length) {
             const ud_json *def = NULL;
             int owner;
-            s = ud_connection_definition(c->execution, ids[i], &def, &owner);
+            s = ud_connection_definition(c->activation, ids[i], &def, &owner);
             const ud_json *driver = ud_member(def, "driver");
             ud_string value;
             if (!s && ud_json_kind(driver) == UD_JSON_STRING) {
@@ -83,15 +83,15 @@ static ud_status copy_file(const ud_component_context *c, ud_connection_lease *s
     if (!temporary)
         return UD_RESOURCE;
     snprintf(temporary, n, "%s.ud-task.part", to);
-    ud_execution *e = c->execution;
-    ud_status s = e->options.authorize &&
-                          e->options.authorize(e->options.authorize_user, e->options.tenant,
+    ud_activation *e = c->activation;
+    ud_status s = e->execution->options.authorize &&
+                          e->execution->options.authorize(e->execution->options.authorize_user, e->execution->options.tenant,
                                                (ud_string){temporary, (uint32_t)strlen(temporary)},
                                                UD_ACCESS_WRITE) == UD_OK
                       ? UD_OK
                       : UD_AUTH;
     if (!s)
-        s = ud_execution_check(e);
+        s = ud_activation_check(e);
     FILE *input = NULL, *output = NULL;
     int owned = 0;
     uint8_t *buffer = NULL;
@@ -114,7 +114,7 @@ static ud_status copy_file(const ud_component_context *c, ud_connection_lease *s
         if (!s)
             s = ud_connection_lease_authorize(target, UD_ACCESS_WRITE);
         if (!s)
-            s = ud_execution_check(e);
+            s = ud_activation_check(e);
         if (s)
             break;
         size_t count = fread(buffer, 1, 65536, input);
@@ -133,7 +133,7 @@ static ud_status copy_file(const ud_component_context *c, ud_connection_lease *s
     if (output && fclose(output) && !s)
         s = UD_IO;
     if (!s)
-        s = ud_execution_check(e);
+        s = ud_activation_check(e);
     if (!s)
         s = ud_connection_lease_authorize(target, UD_ACCESS_WRITE);
     if (!s) {
@@ -159,9 +159,9 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     ud_connection_lease *source = NULL, *target = NULL;
     char *from = NULL, *to = NULL;
     if (!s && source_id.length)
-        s = ud_acquire_file_connection(c->execution, source_id, &source);
+        s = ud_acquire_file_connection(c->activation, source_id, &source);
     if (!s && target_id.length)
-        s = ud_acquire_file_connection(c->execution, target_id, &target);
+        s = ud_acquire_file_connection(c->activation, target_id, &target);
     if (!s && source)
         s = ud_connection_lease_authorize(source, op == 3 ? UD_ACCESS_DELETE : UD_ACCESS_READ);
     if (!s && op == 2)
@@ -188,7 +188,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     if (!s && op == 4 && target_kind && target_kind != 2)
         s = UD_SCHEMA;
     if (!s)
-        s = ud_execution_check(c->execution);
+        s = ud_activation_check(c->activation);
     if (!s && op == 1)
         s = copy_file(c, source, target, from, to);
     else if (!s && op == 2)

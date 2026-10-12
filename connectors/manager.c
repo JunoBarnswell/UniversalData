@@ -3,7 +3,7 @@
 #include "../engines/package/internal.h"
 #include <sys/stat.h>
 struct ud_connection_lease {
-    ud_execution *execution;
+    ud_activation *execution;
     ud_json *definition;
     ud_string id, resource, driver;
     ud_plugin *plugin;
@@ -13,15 +13,15 @@ struct ud_connection_lease {
 ud_status ud_connection_lease_authorize(ud_connection_lease *l, int32_t action) {
     if (!l)
         return UD_INVALID;
-    ud_execution *e = l->execution;
-    UD_TRY(ud_execution_check(e));
-    return e->options.authorize && e->options.tenant.length &&
-                   e->options.authorize(e->options.authorize_user, e->options.tenant, l->resource,
+    ud_activation *e = l->execution;
+    UD_TRY(ud_activation_check(e));
+    return e->execution->options.authorize && e->execution->options.tenant.length &&
+                   e->execution->options.authorize(e->execution->options.authorize_user, e->execution->options.tenant, l->resource,
                                         action) == UD_OK
                ? UD_OK
                : UD_AUTH;
 }
-ud_status ud_connection_definition(ud_execution *e, ud_string id, const ud_json **out,
+ud_status ud_connection_definition(ud_activation *e, ud_string id, const ud_json **out,
                                    int *project_scope) {
     const ud_json *defs = ud_member(e->package->document, "connections"), *def = NULL;
     *out = NULL;
@@ -42,7 +42,7 @@ ud_status ud_connection_definition(ud_execution *e, ud_string id, const ud_json 
     *out = def;
     return def ? UD_OK : UD_SCHEMA;
 }
-static ud_status acquire(ud_execution *e, ud_string id, uint64_t caps, int endpoint_kind,
+static ud_status acquire(ud_activation *e, ud_string id, uint64_t caps, int endpoint_kind,
                          ud_connection_lease **out) {
     if (!out)
         return UD_INVALID;
@@ -52,14 +52,14 @@ static ud_status acquire(ud_execution *e, ud_string id, uint64_t caps, int endpo
     const ud_json *def = NULL;
     int project_definition = 0;
     UD_TRY(ud_connection_definition(e, id, &def, &project_definition));
-    ud_connection_lease *l = ud_alloc(e->ctx, sizeof(*l));
+    ud_connection_lease *l = ud_alloc(e->execution->ctx, sizeof(*l));
     if (!l)
         return UD_RESOURCE;
     l->execution = e;
     l->id = id;
     ud_scope *saved_scope = e->scope;
     if (project_definition)
-        e->scope = &e->project_scope;
+        e->scope = &e->definition->project_scope;
     ud_status s = ud_bound_config(e, def, &l->definition);
     e->scope = saved_scope;
     static const char *keys[] = {"id", "driver", "resource", "credentialReference"};
@@ -95,24 +95,24 @@ static ud_status acquire(ud_execution *e, ud_string id, uint64_t caps, int endpo
             s = UD_INVALID;
 #endif
     } else if (!s) {
-        if (!e->options.authorize ||
-            e->options.authorize(e->options.authorize_user, e->options.tenant, l->driver,
+        if (!e->execution->options.authorize ||
+            e->execution->options.authorize(e->execution->options.authorize_user, e->execution->options.tenant, l->driver,
                                  UD_ACCESS_OPEN) != UD_OK)
             s = UD_AUTH;
-        char *path = !s ? ud_strdup_n(e->ctx, l->driver.data, l->driver.length) : NULL;
+        char *path = !s ? ud_strdup_n(e->execution->ctx, l->driver.data, l->driver.length) : NULL;
         if (!s && !path)
             s = UD_RESOURCE;
         if (!s)
-            s = ud_plugin_load(e->ctx, path, 0, &l->plugin);
+            s = ud_plugin_load(e->execution->ctx, path, 0, &l->plugin);
         ud_free(path);
         ud_string credential = {0};
         if (!s)
             s = ud_json_string(ud_member(l->definition, "credentialReference"), &credential);
         ud_connection_options options = {sizeof(options),      UD_ABI_VERSION,
-                                         e->options.tenant,    l->resource,
-                                         credential,           e->options.authorize_user,
-                                         e->options.authorize, e->options.resolve_user,
-                                         e->options.resolve};
+                                         e->execution->options.tenant,    l->resource,
+                                         credential,           e->execution->options.authorize_user,
+                                         e->execution->options.authorize, e->execution->options.resolve_user,
+                                         e->execution->options.resolve};
         if (!s)
             s = ud_connection_open(l->plugin, &options, &l->connection);
         if (!s)
@@ -127,17 +127,17 @@ static ud_status acquire(ud_execution *e, ud_string id, uint64_t caps, int endpo
     *out = l;
     return UD_OK;
 }
-ud_status ud_execution_acquire_connection(ud_execution *e, ud_string id, uint64_t caps,
+ud_status ud_activation_acquire_connection(ud_activation *e, ud_string id, uint64_t caps,
                                           ud_connection_lease **out) {
     return acquire(e, id, caps, 0, out);
 }
-ud_status ud_acquire_file_connection(ud_execution *e, ud_string id, ud_connection_lease **out) {
+ud_status ud_acquire_file_connection(ud_activation *e, ud_string id, ud_connection_lease **out) {
     return acquire(e, id, 0, 1, out);
 }
-ud_status ud_acquire_process_connection(ud_execution *e, ud_string id, ud_connection_lease **out) {
+ud_status ud_acquire_process_connection(ud_activation *e, ud_string id, ud_connection_lease **out) {
     return acquire(e, id, UD_CONNECT_EXECUTE_PROCESS, 2, out);
 }
-ud_status ud_acquire_http_connection(ud_execution *e, ud_string id, ud_connection_lease **out) {
+ud_status ud_acquire_http_connection(ud_activation *e, ud_string id, ud_connection_lease **out) {
     return acquire(e, id, UD_CONNECT_HTTP, 3, out);
 }
 ud_status ud_http_connection_resource(ud_connection_lease *l, ud_string *out) {
@@ -160,10 +160,10 @@ ud_status ud_http_connection_credentials(ud_connection_lease *l, ud_string *out)
         return UD_OK;
     ud_string reference;
     UD_TRY(ud_json_string(ref, &reference));
-    ud_execution *e = l->execution;
-    if (!e->options.resolve)
+    ud_activation *e = l->execution;
+    if (!e->execution->options.resolve)
         return UD_AUTH;
-    ud_status s = e->options.resolve(e->options.resolve_user, e->ctx, e->options.tenant,
+    ud_status s = e->execution->options.resolve(e->execution->options.resolve_user, e->execution->ctx, e->execution->options.tenant,
                                      l->resource, reference, out);
     if (s || !out->data || !out->length || out->length > 32768) {
         ud_free((void *)out->data);

@@ -144,13 +144,25 @@ ud_status ud_package_check(const ud_package *p) {
     }
     const ud_json *policy = ud_member(p->document, "policy");
     if (policy) {
-        static const char *allowed[] = {"maxConcurrency"};
-        UD_TRY(ud_json_keys(policy, allowed, 1));
+        static const char *allowed[] = {"maxConcurrency", "buffers"};
+        UD_TRY(ud_json_keys(policy, allowed, 2));
         if (ud_member(policy, "maxConcurrency")) {
             uint64_t concurrency;
             UD_TRY(ud_json_uint(ud_member(policy, "maxConcurrency"), &concurrency));
-            if (concurrency != 1)
-                return UD_UNSUPPORTED;
+            if (!concurrency || concurrency > 64)
+                return UD_SCHEMA;
+        }
+        const ud_json *buffers = ud_member(policy, "buffers");
+        if (buffers) {
+            static const char *bk[] = {"connection", "residentBytes", "spillBytes", "maxBlocks"};
+            UD_TRY(ud_json_keys(buffers, bk, 4));
+            const char *limits[] = {"residentBytes", "spillBytes", "maxBlocks"};
+            for (uint32_t i = 0; i < 3; i++)
+                if (ud_member(buffers, limits[i])) {
+                    uint64_t value;
+                    UD_TRY(ud_json_uint(ud_member(buffers, limits[i]), &value));
+                    if (!value || (i == 2 && value > 1000000)) return UD_SCHEMA;
+                }
         }
     }
     const ud_json *connections = ud_member(p->document, "connections");
@@ -293,9 +305,9 @@ static void slots_free(ud_variable *slot) {
         slot = next;
     }
 }
-static ud_status slots_bind(ud_execution *e, ud_scope *scope, const ud_json *defs,
+static ud_status slots_bind(ud_activation *e, ud_scope *scope, const ud_json *defs,
                            const ud_json *provided, int readonly, ud_variable **out) {
-    UD_TRY(ud_parameters_check(e->ctx, defs, provided, 1));
+    UD_TRY(ud_parameters_check(e->execution->ctx, defs, provided, 1));
     char identity[33];
     ud_column_id_format(scope->identity, identity);
     ud_variable *slots = NULL;
@@ -305,11 +317,11 @@ static ud_status slots_bind(ud_execution *e, ud_scope *scope, const ud_json *def
         uint32_t length;
         s = ud_json_key(defs, i, &key, &length);
         ud_variable *slot = NULL;
-        if (!s) { slot = ud_alloc(e->ctx, sizeof(*slot)); if (!slot) s = UD_RESOURCE; }
+        if (!s) { slot = ud_alloc(e->execution->ctx, sizeof(*slot)); if (!slot) s = UD_RESOURCE; }
         if (!s) {
             slot->next = slots; slots = slot;
             slot->name = (ud_string){key, length}; slot->readonly = readonly;
-            s = ud_definition_box(e->ctx, (ud_string){identity, 32}, slot->name,
+            s = ud_definition_box(e->execution->ctx, (ud_string){identity, 32}, slot->name,
                                    ud_json_at(defs, i), ud_json_find(provided, key, length),
                                    1, &slot->box);
         }
@@ -318,42 +330,43 @@ static ud_status slots_bind(ud_execution *e, ud_scope *scope, const ud_json *def
     if (s) slots_free(slots); else *out = slots;
     return s;
 }
-ud_status ud_scope_enter(ud_execution *e, ud_string name, const ud_json *defs, ud_scope *scope) {
+ud_status ud_scope_enter(ud_activation *e, ud_string name, const ud_json *defs, ud_scope *scope) {
     scope->parent = e->scope;
     scope->values = scope->parameter_values = NULL;
     scope->parameters = scope->provided = NULL;
+    scope->owner = e;
     e->scope = scope;
-    ud_bytes root = {.ctx = e->ctx};
+    ud_bytes root = {.ctx = e->execution->ctx};
     ud_status s = UD_OK;
     char parent[33];
     if (scope->parent) {
         ud_column_id_format(scope->parent->identity, parent);
-        s = ud_column_id_make(e->ctx, (ud_string){parent, 32}, name, &scope->identity);
+        s = ud_column_id_make(e->execution->ctx, (ud_string){parent, 32}, name, &scope->identity);
     } else {
         s = ud_bytes_put(&root, "[", 1);
-        if (!s) s = ud_json_quote(&root, e->options.tenant.data, e->options.tenant.length);
+        if (!s) s = ud_json_quote(&root, e->execution->options.tenant.data, e->execution->options.tenant.length);
         if (!s) s = ud_bytes_put(&root, ",", 1);
         if (!s) s = ud_json_quote(&root, e->package->id.data, e->package->id.length);
         if (!s) s = ud_bytes_put(&root, "]", 1);
         if (!s && root.size > UINT32_MAX) s = UD_OVERFLOW;
-        if (!s) s = ud_column_id_make(e->ctx, (ud_string){(const char *)root.data, (uint32_t)root.size},
+        if (!s) s = ud_column_id_make(e->execution->ctx, (ud_string){(const char *)root.data, (uint32_t)root.size},
                                       name, &scope->identity);
     }
     ud_bytes_clear(&root);
     if (!s) s = slots_bind(e, scope, defs, NULL, 0, &scope->values);
     return s;
 }
-ud_status ud_scope_bind_parameters(ud_execution *e, ud_scope *scope) {
+ud_status ud_scope_bind_parameters(ud_activation *e, ud_scope *scope) {
     if (!e || !scope || scope->parameter_values) return UD_INVALID;
     return slots_bind(e, scope, scope->parameters, scope->provided, 1, &scope->parameter_values);
 }
-void ud_scope_leave(ud_execution *e, ud_scope *scope) {
+void ud_scope_leave(ud_activation *e, ud_scope *scope) {
     slots_free(scope->values);
     slots_free(scope->parameter_values);
     e->scope = scope->parent;
     scope->values = scope->parameter_values = NULL;
 }
-static ud_variable *find_slot(const ud_execution *e, ud_string name, int parameters_only) {
+static ud_variable *find_slot(const ud_activation *e, ud_string name, int parameters_only) {
     for (ud_scope *scope = e->scope; scope; scope = scope->parent) {
         if (!parameters_only)
             for (ud_variable *v = scope->values; v; v = v->next)
@@ -363,24 +376,46 @@ static ud_variable *find_slot(const ud_execution *e, ud_string name, int paramet
     }
     return NULL;
 }
-ud_status ud_execution_variable(const ud_execution *e, ud_string name, ud_value *out) {
+ud_status ud_activation_variable(const ud_activation *e, ud_string name, ud_value *out) {
     if (!e || !out) return UD_INVALID;
     ud_variable *slot = find_slot(e, name, 0);
     if (!slot) return UD_SCHEMA;
     *out = slot->value;
     return UD_OK;
 }
-ud_status ud_execution_variable_field(const ud_execution *e, ud_string name, ud_field *out) {
+ud_status ud_activation_variable_field(const ud_activation *e, ud_string name, ud_field *out) {
     if (!e || !out) return UD_INVALID;
     ud_variable *slot = find_slot(e, name, 0);
     return slot ? ud_batch_field(slot->box, 0, out) : UD_SCHEMA;
 }
-ud_status ud_variable_writable(ud_execution *e, ud_string name, ud_variable **out) {
+ud_status ud_execution_variable(const ud_execution *e, ud_string name, ud_value *out) {
+    if (!e || !out) return UD_INVALID;
+    int state = atomic_load(&e->state);
+    if (state == UD_EXEC_RUNNING || state == UD_EXEC_DRAINING) return UD_BUSY;
+    ud_variable *slot = find_slot(&e->root, name, 0);
+    if (!slot) return UD_SCHEMA;
+    *out = slot->value;
+    return UD_OK;
+}
+ud_status ud_execution_variable_field(const ud_execution *e, ud_string name, ud_field *out) {
+    if (!e || !out) return UD_INVALID;
+    int state = atomic_load(&e->state);
+    if (state == UD_EXEC_RUNNING || state == UD_EXEC_DRAINING) return UD_BUSY;
+    ud_variable *slot = find_slot(&e->root, name, 0);
+    return slot ? ud_batch_field(slot->box, 0, out) : UD_SCHEMA;
+}
+ud_status ud_variable_writable(ud_activation *e, ud_string name, ud_variable **out) {
     if (!e || !out) return UD_INVALID;
     *out = find_slot(e, name, 0);
-    return !*out ? UD_SCHEMA : (*out)->readonly ? UD_AUTH : UD_OK;
+    if (!*out) return UD_SCHEMA;
+    if ((*out)->readonly) return UD_AUTH;
+    if (e->parallel)
+        for (ud_scope *scope = e->scope; scope; scope = scope->parent)
+            for (ud_variable *v = scope->values; v; v = v->next)
+                if (v == *out && scope->owner != e) return UD_AUTH;
+    return UD_OK;
 }
-ud_status ud_execution_set_variable(ud_execution *e, ud_string name, const ud_value *value,
+ud_status ud_activation_set_variable(ud_activation *e, ud_string name, const ud_value *value,
                                     const ud_field *provenance) {
     if (!e || !value) return UD_INVALID;
     ud_variable *slot = NULL;
@@ -389,10 +424,10 @@ ud_status ud_execution_set_variable(ud_execution *e, ud_string name, const ud_va
     UD_TRY(ud_batch_field(slot->box, 0, &declared));
     if (value->type != declared.type ||
         (provenance && !ud_field_matches(provenance, &declared, UD_FIELD_VALUE_TYPE))) return UD_SCHEMA;
-    ud_status s = provenance ? ud_field_cast_metadata(e->ctx, provenance, &declared, &target)
-                             : ud_field_copy(e->ctx, &declared, (ud_column_id){0}, &target);
+    ud_status s = provenance ? ud_field_cast_metadata(e->execution->ctx, provenance, &declared, &target)
+                             : ud_field_copy(e->execution->ctx, &declared, (ud_column_id){0}, &target);
     ud_batch *box = NULL;
-    if (!s) s = ud_batch_create(e->ctx, &target, 1, 1, &box);
+    if (!s) s = ud_batch_create(e->execution->ctx, &target, 1, 1, &box);
     ud_field_clear(&target);
     if (!s) s = ud_batch_append(box, value, 1);
     if (!s) s = ud_batch_seal(box);
@@ -403,26 +438,26 @@ ud_status ud_execution_set_variable(ud_execution *e, ud_string name, const ud_va
     return s;
 }
 ud_status ud_resolve_value(void *user, ud_string name, ud_value *out) {
-    return ud_execution_variable(user, name, out);
+    return ud_activation_variable(user, name, out);
 }
 ud_status ud_resolve_field(void *user, ud_string name, ud_field *out) {
-    return ud_execution_variable_field(user, name, out);
+    return ud_activation_variable_field(user, name, out);
 }
-ud_status ud_expression_json(ud_execution *e, const ud_json *value, const ud_batch *schema,
+ud_status ud_expression_json(ud_activation *e, const ud_json *value, const ud_batch *schema,
                              ud_expression **out) {
     char *json = NULL;
     uint32_t length;
     UD_TRY(ud_json_serialize(value, &json, &length));
     ud_expression_options options = {sizeof(options), UD_ABI_VERSION, schema, ud_resolve_value, e,
-                                      ud_resolve_field};
-    ud_status s = ud_expression_create(e->ctx, (ud_string){json, length}, &options, out);
+                                      ud_resolve_field, e->execution->registry, 0};
+    ud_status s = ud_expression_create(e->execution->ctx, (ud_string){json, length}, &options, out);
     ud_free(json);
     return s;
 }
 ud_status ud_scalar_json(ud_bytes *bytes, const ud_field *field, const ud_value *value) {
     return ud_json_value_encode(bytes, field, value);
 }
-static ud_status bound_put(ud_execution *e, ud_bytes *b, const ud_json *v) {
+static ud_status bound_put(ud_activation *e, ud_bytes *b, const ud_json *v) {
     const ud_json *p = ud_member(v, "$parameter"), *var = ud_member(v, "$variable");
     if (p || var) {
         if (ud_json_size(v) != 1 || (p && var))
@@ -459,13 +494,13 @@ static ud_status bound_put(ud_execution *e, ud_bytes *b, const ud_json *v) {
     }
     return ud_bytes_put(b, kind == UD_JSON_OBJECT ? "}" : "]", 1);
 }
-ud_status ud_bound_config(ud_execution *e, const ud_json *v, ud_json **out) {
-    ud_bytes b = {.ctx = e->ctx};
+ud_status ud_bound_config(ud_activation *e, const ud_json *v, ud_json **out) {
+    ud_bytes b = {.ctx = e->execution->ctx};
     ud_status s = bound_put(e, &b, v);
     if (!s && b.size > UINT32_MAX)
         s = UD_OVERFLOW;
     if (!s)
-        s = ud_json_parse(e->ctx, (const char *)b.data, (uint32_t)b.size, out, NULL);
+        s = ud_json_parse(e->execution->ctx, (const char *)b.data, (uint32_t)b.size, out, NULL);
     ud_bytes_clear(&b);
     return s;
 }

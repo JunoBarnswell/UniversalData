@@ -48,7 +48,7 @@ ud_status ud_profile_create(ud_context *ctx, const ud_batch *schema,
         s = ud_batch_create(ctx, fields, columns, 0, &p->schema);
     for (uint32_t i = 0; !s && i < count; i++) {
         const ud_profile_statistic *stat = statistics + i;
-        if (stat->struct_size < sizeof(*stat) || stat->abi_version != UD_ABI_VERSION)
+        if (stat->struct_size != sizeof(*stat) || stat->abi_version != UD_ABI_VERSION)
             s = UD_INCOMPATIBLE;
         else if (stat->kind < UD_PROFILE_ROWS || stat->kind > UD_PROFILE_MAXIMUM ||
                  (stat->kind != UD_PROFILE_ROWS && stat->column >= columns))

@@ -1,6 +1,7 @@
 #ifndef UD_COMPONENT_H
 #define UD_COMPONENT_H
 #include "expression.h"
+#include "activation.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -13,7 +14,8 @@ enum {
     UD_COMPONENT_DESTINATION,
     UD_COMPONENT_CONNECTION,
     UD_COMPONENT_ENUMERATOR,
-    UD_COMPONENT_LOG_PROVIDER
+    UD_COMPONENT_LOG_PROVIDER,
+    UD_COMPONENT_FUNCTION
 };
 enum { UD_COMPONENT_DATA = 1, UD_COMPONENT_INPUT_END, UD_COMPONENT_POLL };
 typedef struct ud_component_event {
@@ -29,6 +31,7 @@ typedef struct ud_component_context {
     uint32_t struct_size, abi_version;
     ud_context *memory;
     ud_execution *execution; /* Borrowed; cannot start/wait/destroy in callbacks. */
+    ud_activation *activation; /* Isolated lexical/deadline frame. */
     ud_string task_id, pipeline_id, component_id;
     uint32_t max_batch_rows;
     ud_component_emit emit;
@@ -40,6 +43,9 @@ typedef struct ud_component_context {
 /* Task promises its effects may safely be replayed after an interrupted invoke.
  * This is a host/plugin contract, not a claim inferred by the runtime. */
 #define UD_COMPONENT_REPLAY_SAFE UINT64_C(0x8000000000000000)
+#define UD_COMPONENT_THREAD_SAFE UINT64_C(0x4000000000000000)
+#define UD_FUNCTION_PURE UINT64_C(0x2000000000000000)
+#define UD_FUNCTION_DETERMINISTIC UINT64_C(0x1000000000000000)
 typedef struct ud_component_descriptor {
     uint32_t struct_size, abi_version;
     ud_string id, name, version, configuration_schema;
@@ -56,11 +62,19 @@ typedef struct ud_component_descriptor {
     /* Prepare acquires resources. On failure clean its partial instance itself. */
     ud_status (*prepare)(void *, const ud_component_context *, ud_string config,
                          const ud_batch *const *, const ud_batch *const *, void **);
+    /* MORE schedules POLL before another input. It is never a Task result or
+     * a success/commit indication. Emission limits still apply. */
     ud_status (*step)(void *, const ud_component_event *);
     /* finish may commit only after all inputs end and output drains; no emits. */
     ud_status (*finish)(void *);
     void (*dispose)(void *, ud_status outcome);
     ud_status (*invoke)(void *, const ud_component_context *, ud_string config); /* Task only. */
+    uint32_t min_arguments, max_arguments; /* FUNCTION only, <= 16. */
+    /* Pure binding borrows argument metadata; evaluator returns owned pointer
+     * payloads allocated in memory. Expression releases them with ud_free. */
+    ud_status (*function_bind)(void *, const ud_field *, uint32_t, ud_field *);
+    ud_status (*function_evaluate)(void *, ud_context *, const ud_value *, uint32_t,
+                                   const ud_field *, ud_value *);
 } ud_component_descriptor;
 UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
 /* Copies descriptor metadata, retains callback user by contract (host lifetime).

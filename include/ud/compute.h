@@ -1,6 +1,7 @@
 #ifndef UD_COMPUTE_H
 #define UD_COMPUTE_H
 #include "data.h"
+#include "expression.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,8 +20,6 @@ UD_API ud_status ud_compute_union_schema(ud_context *, const ud_batch *, const u
 
 typedef struct ud_plan ud_plan;
 typedef struct ud_accumulator ud_accumulator;
-#define UD_SCHEMA_HEADER "ud-schema 4\n"
-#define UD_PLAN_HEADER "ud-plan 4\n"
 enum { UD_MAP_TRIM_ASCII=1, UD_MAP_UPPER_ASCII=2, UD_MAP_LOWER_ASCII=4, UD_MAP_DEFAULT=8 };
 typedef struct ud_mapping {
     uint32_t struct_size, version;
@@ -33,12 +32,14 @@ typedef struct ud_mapping {
  * normalization affects ASCII only; UTF8 code points are retained. */
 UD_API ud_status ud_compute_map(ud_context *, const ud_batch *, const ud_mapping *,
                                 uint32_t columns, int32_t rounding, ud_batch **);
-/* Schema/plan command grammar is specified in docs/api.md. Strings are copied. */
-UD_API ud_status ud_plan_create(ud_context *, const char *schema, uint32_t schema_length,
-                                const char *commands, uint32_t commands_length, ud_plan **);
-/* Typed C construction covers recursive fields. Version must be UD_PLAN_VERSION. */
+/* Canonical JSON plan: version, optional filter AST, projection/group arrays of
+ * field names, aggregates [{function:count|sum|min|max,column:name|"*",name:alias}].
+ * The same Expression binder evaluates the filter; no text predicate language.
+ * Typed fields cover recursive schemas. Registry/resolvers borrow the supplied
+ * binding options; the expression retains the Registry module lease. */
 UD_API ud_status ud_plan_create_fields(ud_context *, uint32_t version, const ud_field *,
-                                       uint32_t columns, const char *commands, uint32_t length,
+                                       uint32_t columns, ud_string definition,
+                                       const ud_expression_options *bindings,
                                        ud_plan **);
 UD_API void ud_plan_destroy(ud_plan *);
 UD_API ud_status ud_plan_schema(const ud_plan *, const ud_field **, uint32_t *);

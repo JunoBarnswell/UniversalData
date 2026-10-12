@@ -45,7 +45,7 @@ static void observe(void *u, const ud_execution_event *event) {
     if (f->mode == 1 && event->kind == UD_EXEC_EVENT_AFTER_CHECKPOINT && event->task_id.data &&
         strstr(event->task_id.data, "increment")) {
         ud_value n;
-        if (!ud_execution_variable(f->execution, (ud_string){"n", 1}, &n) && n.integer == 2)
+        if (!ud_activation_variable(event->activation, (ud_string){"n", 1}, &n) && n.integer == 2)
             _exit(91);
     }
     if (f->mode == 2 && event->kind == UD_EXEC_EVENT_TARGET_COMMITTED &&
