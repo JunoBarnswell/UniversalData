@@ -1,0 +1,55 @@
+{
+  "baseline": "ed3237a9852ac29831d85d93c03fc8b173cdbf6f",
+  "targetVersion": "1.0.0",
+  "abi": 3,
+  "phases": {
+    "0": {
+      "design": "Implemented",
+      "code": "Planned",
+      "validation": "Planned"
+    },
+    "1": {
+      "design": "Implemented",
+      "code": "Planned",
+      "validation": "Planned"
+    },
+    "2": {
+      "design": "Implemented",
+      "code": "Planned",
+      "validation": "Planned"
+    },
+    "3": {
+      "design": "Implemented",
+      "code": "Planned",
+      "validation": "Planned"
+    },
+    "4": {
+      "design": "Implemented",
+      "code": "Planned",
+      "validation": "Planned"
+    },
+    "5": {
+      "design": "Implemented",
+      "code": "Planned",
+      "validation": "Planned"
+    },
+    "6": {
+      "design": "Implemented",
+      "code": "Planned",
+      "validation": "Planned"
+    },
+    "7": {
+      "design": "Implemented",
+      "code": "Planned",
+      "validation": "Planned"
+    }
+  },
+  "gates": {
+    "windows": "Blocked: Linux executor; remote CI status must be observed",
+    "linux": "Planned",
+    "ownership-sanitizers": "Planned",
+    "package-control-pipeline": "Planned",
+    "c-dotnet-java": "Planned",
+    "recovery-commit-unknown": "Planned"
+  }
+}
