@@ -16,7 +16,7 @@ static ud_status failure(sqlite_state *p, int code) {
                           code == SQLITE_BUSY || code == SQLITE_LOCKED ? UD_BUSY :
                           code == SQLITE_READONLY || code == SQLITE_AUTH || code == SQLITE_PERM ? UD_AUTH :
                           code == SQLITE_INTERRUPT ? UD_CANCELLED : UD_IO,
-                          sqlite3_errmsg(p->db));
+                          "SQLite operation failed (diagnostic values redacted)");
 }
 static ud_status initialize(const ud_host_api *h, const char *config, uint32_t n, void **out) {
     *out = NULL;
@@ -426,10 +426,15 @@ static ud_status connector_write(void *state,ud_string tenant,const ud_write_opt
         return h->report(h->context,UD_COMMIT_UNKNOWN,"rollback failed; query the receipt before any replay");
     return s;
 }
+static ud_status connector_execute_sql(void *state,ud_string statement) {
+    sqlite_state *p=state;char *sql=plugin_string(&p->host,statement.data,statement.length);
+    if(!sql) return UD_RESOURCE;int rc=sqlite3_exec(p->db,sql,NULL,NULL,NULL);p->host.deallocate(sql);
+    return rc==SQLITE_OK?UD_OK:failure(p,rc);
+}
 static const ud_connector_api connector={sizeof(connector),UD_PLUGIN_ABI,
-    UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS,
+    UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_EXECUTE_SQL,
     connector_test,connector_discover,connector_read_open,connector_read_next,connector_read_close,
-    connector_write,connector_receipt,connector_cancel};
+    connector_write,connector_receipt,connector_cancel,connector_execute_sql};
 
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size < sizeof(*out))

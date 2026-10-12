@@ -347,3 +347,10 @@ ud_status ud_connection_close(ud_connection *c) {
     UD_TRY(ud_plugin_instance_destroy(c->instance));
     ud_free((void *)c->options.tenant.data); ud_free((void *)c->options.resource.data); ud_free(c); return UD_OK;
 }
+
+ud_status ud_connection_execute_sql(ud_connection *c,ud_string statement) {
+    if(!c || !valid_string(statement,1) || c->cursor) return UD_INVALID;
+    if(!(c->api->capabilities & UD_CONNECT_EXECUTE_SQL) || !c->api->execute_sql) return UD_UNSUPPORTED;
+    UD_TRY(connection_enter(c,UD_ACCESS_WRITE));
+    ud_status s=c->api->execute_sql(c->instance->state,statement);connection_leave(c);return s;
+}

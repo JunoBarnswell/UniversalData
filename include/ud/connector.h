@@ -9,7 +9,7 @@ typedef struct ud_connection ud_connection;
 enum {
     UD_CONNECT_READ = 1, UD_CONNECT_APPEND = 2, UD_CONNECT_UPSERT = 4,
     UD_CONNECT_DELETE = 8, UD_CONNECT_OVERWRITE = 16, UD_CONNECT_CDC = 32,
-    UD_CONNECT_SNAPSHOT = 64, UD_CONNECT_RECEIPTS = 128
+    UD_CONNECT_SNAPSHOT = 64, UD_CONNECT_RECEIPTS = 128, UD_CONNECT_EXECUTE_SQL = 256
 };
 enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3 };
 enum { UD_ACCESS_OPEN = 1, UD_ACCESS_DISCOVER = 2, UD_ACCESS_READ = 3,
@@ -58,9 +58,11 @@ typedef struct ud_connector_api {
     ud_status (*write)(void *, ud_string tenant, const ud_write_options *, const ud_batch *, const uint8_t digest[32]);
     ud_status (*receipt)(void *, ud_string tenant, ud_string job, ud_string batch_id, ud_commit_receipt *);
     void (*cancel)(void *);
+    ud_status (*execute_sql)(void *, ud_string);
 } ud_connector_api;
 UD_API ud_status ud_connection_open(ud_plugin *, const ud_connection_options *, ud_connection **);
 UD_API uint64_t ud_connection_capabilities(const ud_connection *);
+UD_API ud_status ud_connection_execute_sql(ud_connection *, ud_string);
 UD_API ud_status ud_connection_test(ud_connection *);
 UD_API ud_status ud_connection_discover(ud_connection *, ud_string table, ud_batch **);
 UD_API ud_status ud_connection_read_open(ud_connection *, const ud_read_options *, const ud_batch *schema);

@@ -15,18 +15,18 @@
     },
     "2": {
       "design": "Implemented",
-      "code": "Planned",
-      "validation": "Planned"
+      "code": "Implemented Package loader/runtime, lexical scalar scopes, Sequence/For/Foreach, expression precedence, failure handler, native tasks",
+      "validation": "Verified package_execution + package_failure_boundaries on Linux"
     },
     "3": {
       "design": "Implemented",
-      "code": "Planned",
-      "validation": "Planned"
+      "code": "Implemented multi-port lifecycle, physical execution trees, shared sealed Buffers, bounded queues, fanout, acquire/dispose; old entrypoints removal pending",
+      "validation": "Verified derive/split/file flow, cancellation/authorization/parse failure; blocking/spill and plugin integration pending"
     },
     "4": {
       "design": "Implemented",
-      "code": "Planned",
-      "validation": "Planned"
+      "code": "Implemented file/SQL connection leases, SQLite/PostgreSQL Execute SQL capability, file/SQL source/destination and compute components",
+      "validation": "file flow Verified; SQL and blocking components Planned"
     },
     "5": {
       "design": "Implemented",
@@ -51,5 +51,10 @@
     "package-control-pipeline": "Planned",
     "c-dotnet-java": "Planned",
     "recovery-commit-unknown": "Planned"
-  }
+  },
+  "limitations": [
+    "Durable journal/resume explicitly rejects UD_UNSUPPORTED until Phase 5 implementation; no silent fresh-run fallback",
+    "Draft migration still has old public entrypoints; delete with binding/host migration before completion",
+    "State/Package version 3 model currently in ABI 2 build; atomic ABI 3 switch is pending"
+  ]
 }
