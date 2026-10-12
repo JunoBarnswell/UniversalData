@@ -1,4 +1,5 @@
 #include "../registry_internal.h"
+#include "ud/json.h"
 #include "../../foundation/internal.h"
 #include "../../foundation/thread.h"
 #include <stdatomic.h>

@@ -457,7 +457,7 @@ ud_status ud_transforms_register(ud_registry *registry) {
             .abi_version = UD_ABI_VERSION,
             .id = {names[i], (uint32_t)strlen(names[i])},
             .name = {names[i], (uint32_t)strlen(names[i])},
-            .version = {"1.0.0", 5},
+            .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION)-1},
             .configuration_schema = {schemas[i], (uint32_t)strlen(schemas[i])},
             .category = UD_COMPONENT_TRANSFORM,
             .inputs = 1,

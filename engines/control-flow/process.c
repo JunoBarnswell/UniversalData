@@ -426,7 +426,7 @@ ud_status ud_process_register(ud_registry *registry) {
                                  .abi_version = UD_ABI_VERSION,
                                  .id = {"process.execute", 15},
                                  .name = {"Execute Process", 15},
-                                 .version = {"1.0.0", 5},
+                                 .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION)-1},
                                  .configuration_schema = {schema, sizeof(schema) - 1},
                                  .category = UD_COMPONENT_TASK,
                                  .synchronous_input = -1,

@@ -358,7 +358,7 @@ ud_status ud_catalog_record_event(ud_catalog *c, const ud_execution_event *event
     if (!string_valid(event->execution_id, 1) || !string_valid(event->package_id, 1))
         return UD_INVALID;
     if (event->state < UD_EXEC_CREATED || event->state > UD_EXEC_RECOVERY_REQUIRED ||
-        event->kind < UD_EXEC_EVENT_STATE || event->kind > UD_EXEC_EVENT_TARGET_COMMITTED)
+        event->kind < UD_EXEC_EVENT_STATE || event->kind > UD_EXEC_EVENT_TASK_UNCERTAIN)
         return UD_INVALID;
     ud_bytes json = {.ctx = c->ctx};
     ud_status s = ud_bytes_put(&json, "{\"version\":5", 12);

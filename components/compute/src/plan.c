@@ -56,8 +56,10 @@ static ud_status bind(ud_plan *p, const ud_expression_options *bindings) {
             return UD_SCHEMA;
     }
     ud_string version;
+    if (ud_json_kind(member(p->definition, "version")) != UD_JSON_NUMBER)
+        return UD_SCHEMA;
     UD_TRY(ud_json_text(member(p->definition, "version"), &version.data, &version.length));
-    if (!named(version, "4"))
+    if (!named(version, UD_PROTOCOL_VERSION_TEXT))
         return UD_INCOMPATIBLE;
     UD_TRY(list(p, member(p->definition, "projection"), &p->projection, &p->project_n));
     UD_TRY(list(p, member(p->definition, "group"), &p->keys, &p->key_n));

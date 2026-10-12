@@ -35,7 +35,7 @@ typedef struct ud_plugin_api {
                             void **instance);
     void (*destroy)(void *instance);
     void (*shutdown)(void);
-    const ud_connector_api *connector; /* Optional; ABI 4 table, no network dependency in core. */
+    const ud_connector_api *connector; /* Optional current complete table. */
     /* Optional component table in the current complete ABI4 layout. Table and callback user data
      * belong to the library; registration holds a module reference until registry destruction. */
     const struct ud_component_plugin_api *components;

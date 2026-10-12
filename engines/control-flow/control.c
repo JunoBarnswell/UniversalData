@@ -516,6 +516,9 @@ static ud_status init_task(ud_activation *parent, const ud_json *definition, tas
     a->depth = parent->depth;
     a->parallel = parent->parallel;
     atomic_init(&a->cancelled, 0);
+    atomic_init(&a->input_rows, 0);
+    atomic_init(&a->output_rows, 0);
+    atomic_init(&a->rejected_rows, 0);
     run->definition = definition;
     ud_string id = {0};
     UD_TRY(ud_json_string(ud_member(definition, "id"), &id));

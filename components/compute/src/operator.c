@@ -189,8 +189,10 @@ static ud_status prepare_merge(ud_operator *o) {
                     s = store(o, merged, batch);
                 ud_batch_destroy(batch);
             }
-            for (uint32_t i = 0; i < count; i++)
-                ud_buffer_view_release(streams[i].view); streams[i].view = NULL;
+            for (uint32_t i = 0; i < count; i++) {
+                ud_buffer_view_release(streams[i].view);
+                streams[i].view = NULL;
+            }
         }
         if (s) {
             /* Retain every block for the common destructor, including failed

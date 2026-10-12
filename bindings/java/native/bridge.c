@@ -3,6 +3,11 @@
 #include "ud/format.h"
 #include <stdlib.h>
 #include <string.h>
+JNIEXPORT jint JNICALL Java_org_universaldata_ProductVersion_nativeAbi(JNIEnv *e, jclass cls) {
+    (void)e;
+    (void)cls;
+    return UD_ABI_VERSION;
+}
 static jstring utf8(JNIEnv *e, const char *text) {
     size_t n = strlen(text);
     if (n > INT32_MAX)

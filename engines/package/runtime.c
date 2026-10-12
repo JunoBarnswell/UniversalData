@@ -166,6 +166,9 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     e->root.execution = e;
     e->root.definition = &e->root;
     atomic_init(&e->root.cancelled, 0);
+    atomic_init(&e->root.input_rows, 0);
+    atomic_init(&e->root.output_rows, 0);
+    atomic_init(&e->root.rejected_rows, 0);
     ud_mutex_init(&e->events_lock);
     ud_mutex_init(&e->journal_lock);
     ud_mutex_init(&e->serial_tasks_lock);

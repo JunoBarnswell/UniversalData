@@ -12,6 +12,9 @@ def read_model():
     model = json.loads(MODEL.read_text(encoding="utf-8"))
     if model["modelVersion"] != 1 or len(model["goals"]) != 69:
         raise ValueError("Unsupported product model or changed goal inventory.")
+    if (model["product"]["abiVersion"] != model["product"]["protocolVersion"]
+            or not 0 < model["product"]["abiVersion"] <= 4294967295):
+        raise ValueError("ABI and all protocol epochs must be one positive uint32 version.")
     for key in ("goals", "gates", "remediations"):
         identifiers = [item["id"] for item in model[key]]
         if len(identifiers) != len(set(identifiers)):
@@ -46,7 +49,7 @@ def projections(model):
     goals = {"generatedFrom": marker, "goalVersion": protocol,
              "completionRule": "Current core/infrastructure gates are required; extensions retain their actual status.",
              "automaticMergeOrReleaseAuthorized": False, "items": model["goals"]}
-    gates = {"generatedFrom": marker, "version": 5, "sdkVersion": version, "abi": abi,
+    gates = {"generatedFrom": marker, "version": protocol, "sdkVersion": version, "abi": abi,
              "sourceFingerprint": model["candidate"]["sourceFingerprint"],
              "linux": model["scope"]["linux"], "gates": model["gates"],
              "delivery": model["artifacts"]}
@@ -73,14 +76,16 @@ def projections(model):
         "bindings/dotnet/UniversalData/ProductVersion.cs":
             "// Generated from metadata/product.json.\nnamespace UniversalData;\n"
             "internal static class ProductVersion\n{\n    internal const uint Abi = " + str(abi) +
-            ";\n    internal const uint Protocol = " + str(protocol) +
-            ';\n    internal const string Sdk = "' + version + '";\n}\n',
+            ";\n}\n",
         "bindings/java/src/main/java/org/universaldata/ProductVersion.java":
             "// Generated from metadata/product.json.\npackage org.universaldata;\n"
             "public final class ProductVersion {\n    private ProductVersion() {}\n"
             "    public static final int ABI = " + str(abi) + ";\n"
             "    public static final int PROTOCOL = " + str(protocol) + ";\n"
-            '    public static final String SDK = "' + version + '";\n}\n',
+            '    public static final String SDK = "' + version + '";\n'
+            '    static void requireNative() {\n        System.loadLibrary("ud_java");\n'
+            '        if (nativeAbi() != ABI) throw new UniversalDataException(10, "Native ABI differs from SDK");\n    }\n'
+            '    private static native int nativeAbi();\n}\n',
         "docs/acceptance/progress.json": encoded(progress),
         "docs/acceptance/ssis-status.json": encoded(status),
         "docs/acceptance/completion-goal.json": encoded(goals),

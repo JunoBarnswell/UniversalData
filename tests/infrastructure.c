@@ -44,7 +44,9 @@ static int ownership(void) {
         if(!s)CHECK(before.resident_bytes==after.resident_bytes && !after.wire_encodes &&
                     !after.spill_bytes && after.blocks==2 && before.resident_bytes>1024);
         uint32_t column=0;
-        if(!s)s=ud_batch_project(batch,&column,1,&projection);
+        ud_field target;
+        if(!s)s=ud_batch_field(batch,0,&target);
+        if(!s)s=ud_batch_project(ctx,batch,&column,&target,1,&projection);
         if(!s)s=ud_buffer_store(manager,projection,&third);
         if(!s)s=ud_buffer_manager_metrics(manager,&after);
         if(!s)CHECK(after.resident_bytes>before.resident_bytes &&
@@ -181,7 +183,7 @@ static int trees(void) {
         OK(ud_registry_register(registry,&source));OK(ud_registry_register(registry,&sink));
         ud_execution_options o={.struct_size=sizeof(o),.abi_version=UD_ABI_VERSION,
             .context={.struct_size=sizeof(o.context),.abi_version=UD_ABI_VERSION,.memory_limit=8388608},
-            .registry=registry,.max_concurrency=mode?2:1,.edge_capacity=1};
+            .registry=registry,.max_concurrency=mode?2:1,.edge_capacity=1,.max_batch_rows=64,.max_depth=32};
         ud_execution *execution=NULL;OK(ud_execution_create_json(text(tree_document),&o,&execution));
         CHECK(ud_registry_register(registry,&source)==UD_BUSY);
         ud_status s=ud_execution_execute(execution);
@@ -226,7 +228,7 @@ static int journal(const char *directory,int mode) {
         CHECK(ud_journal_find(store,7,text(key)));
     }
     ud_journal_get_metrics(store,&after);
-    CHECK(after.entries==(mode==0?16384:16385) && after.probes-before.probes<16384*8);
+    CHECK(after.entries==(mode==0?16384u:16385u) && after.probes-before.probes<16384u*8u);
     if(mode==0) {
         CHECK(after.snapshots>0 && after.segment_files<=1);
         ud_journal_record last={3,text("done"),{0},text("{\"complete\":true}")};
@@ -285,7 +287,8 @@ static int facts(const char *directory) {
             .context={.struct_size=sizeof(o.context),.abi_version=UD_ABI_VERSION,.memory_limit=4194304},
             .registry=registry,.tenant={"test",4},.execution_id={"facts",5},
             .authorize=authorize,.authorize_user=&fixture,.state_directory=text(directory),
-            .resume=run!=0,.observe=run==0?observe:NULL,.observe_user=&fixture};
+            .resume=run!=0,.observe=run==0?observe:NULL,.observe_user=&fixture,
+            .edge_capacity=1,.max_batch_rows=64,.max_depth=32};
         ud_execution *e=NULL;OK(ud_execution_create_json(text(document),&o,&e));
         fixture.execution=e;
         CHECK(ud_execution_execute(e)==(run==0?UD_COMMIT_UNKNOWN:UD_OK));
