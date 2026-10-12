@@ -26,7 +26,7 @@ static void default_free(void *user, void *p) {
     free(p);
 }
 const char *ud_version(void) {
-    return "0.2.0";
+    return "1.0.0";
 }
 const char *ud_status_name(ud_status s) {
     static const char *names[] = {"ok",           "end",   "invalid",    "io",        "resource",

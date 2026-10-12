@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
 project(UniversalDataConsumer C)
-find_package(UniversalData 0.1 CONFIG REQUIRED COMPONENTS Foundation Columnar)
+find_package(UniversalData 1.0 CONFIG REQUIRED COMPONENTS Foundation Columnar)
 add_executable(consumer main.c)
 target_link_libraries(consumer PRIVATE UniversalData::Columnar UniversalData::Foundation)

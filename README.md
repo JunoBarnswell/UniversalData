@@ -1,52 +1,36 @@
 # UniversalData
 
-组件优先的 C17 通用数据处理 SDK，MIT 许可。ETL、Query、插件与语言绑定可组合；调度、授权和审计按嵌入式 SDK 组件规划，不开发 Web 管理平台。
+纯 C17、可嵌入的数据集成 SDK，采用 SSIS 风格的 Package / Control Flow / Data Flow 分层。当前 `1.0.0` 是破坏性重构开发版本，ABI、Package、Schema、Plan、Wire、Plugin 和 Worker 协议为 3；不能加载 0.x 对象、包或检查点。
 
-当前实现：独立 CMake 组件、配额分配器、Arrow 列式交换、严格 CSV、原生结构化计划、过滤/投影/聚合、目录增量与崩溃恢复、连接/排序/分页、外存归并排序、动态插件、可选 SQLite/ODBC/DuckDB/Parquet、.NET 8、Java 17、CLI 与独立 Worker。
-
-基础聚合使用受配额约束的内存状态；0.2.0 新增的外存 NDJSON 聚合/Join 尚未运行验收。分布式流处理仍待实现。Worker 是进程故障隔离，不是操作系统权限沙箱。尚未验证的能力与环境见 [交付记录](docs/validation.md)。
-
-`codex/sdk-0.2.0` 正在实施 [24 域验收基线](docs/acceptance/README.md)。新增扩展类型、连接器及质量代码只执行了静态检查；全部阶段代码完成后才统一编译、运行验收和打包。[实施记录](docs/acceptance/progress.md) 区分开发进度及运行证据。
-
-新增 C 接口：Decimal128、日期/微秒时间/UTC 时间点、Binary、Struct/List/Map、递归 Arrow/版本化序列化、映射/默认值/转换、质量规则，以及带凭据解析和授权回调的 PostgreSQL/SQLite 游标与事务批次凭据。已写入严格 JSON/NDJSON、外存 Join/聚合、DAG JSON/C 契约及参数绑定、独立 Run/后台线程/有界队列与文件节点、持久隔离存储、内置正则，以及 .NET/Java 类型化 Batch、Dag 和 Run 包装。统一 DAG 持久恢复、数据库节点、CDC、企业组件、完整语言绑定及全阶段验收仍待完成；新增代码尚未编译或运行。
-
-## 构建与测试
-
-依赖 CMake 3.24+、C17 编译器。Presets 需要 CMake 3.25+；JNI 需要 JDK 17，语言包需要 .NET 8 SDK / Maven。
-
-```powershell
-# Windows，默认构建不下载第三方依赖。
-cmake --preset windows
-cmake --build --preset windows
-ctest --preset windows
-dotnet build bindings/dotnet/UniversalData/UniversalData.csproj --nologo --verbosity:minimal
-mvn -q -f bindings/java/pom.xml package
+```mermaid
+flowchart LR
+Definition[Package Definition] --> Runtime[唯一 Package Execution]
+Runtime --> Control[Tasks / Containers / Precedence]
+Control --> Flow[DataFlow Task / Pipeline]
+Flow --> Registry[组件 / 端口 / 路径 / sealed Batch]
+Registry --> Connections[Connection Managers / Physical Drivers]
+Registry --> Compute[共享 Expression / Compute]
 ```
+
+当前代码提供：不可变 Package、原生绑定与标量作用域、Sequence/For/Foreach、表达式优先约束、失败控制流、后台执行/取消/指标、多端口 Pipeline、有界队列、共享不可变 Batch、CSV/NDJSON/SQL 源、Derived Column、Conditional Split、Multicast、Union All、Cast、Sort/Join/Aggregate、文件及 SQL 目标、Connection Manager 和统一组件描述注册。组件与恢复的实际完成/验证状态见 [实施状态](docs/acceptance/ssis-status.json)，不能把源代码目录或旧 SDK 验收记录当作新架构验收。
+
+SDK 仅保留 `ud_package` / `ud_execution` 执行链路。旧 CSV Job、DAG、Run 及其 .NET/Java 类已删除，没有兼容桥接。Query 复用数据与 Compute 内核；C# P/Invoke 和 Java JNI 只投影 native ABI。
+
+## 构建
+
+需要 CMake 3.25+、C17 编译器、Ninja；JNI 需要 JDK 17，语言包需要 .NET 8 和 Maven。
 
 ```sh
 cmake --preset linux
-cmake --build --preset linux
+cmake --build --preset linux --parallel 4
 ctest --preset linux
-# 最小消费者只需要 Foundation / Columnar。
-cmake --preset core-only
-cmake --build --preset core-only
-cmake --install build/core --prefix /absolute/sdk
-cmake -S examples/c -B build/consumer -DCMAKE_PREFIX_PATH=/absolute/sdk
-cmake --build build/consumer
+# 可选 SQLite/PostgreSQL/ODBC/DuckDB 必须显式提供依赖，默认不下载。
+dotnet build examples/dotnet/Consumer.csproj
+mvn -f bindings/java/pom.xml package
 ```
 
-外部插件只链接 `UniversalData::Contracts`。DuckDB、SQLite、ODBC 默认关闭；显式启用而依赖缺失会配置失败，不静默降级。支持版本及依赖来源见 [兼容性](docs/compatibility.md)。
+最小消费者只需 Foundation/Columnar；Package 静态组件自动选择 Expression/Compute/Runtime/Plugins。Windows 需支持 C17 的 MSVC；实际 Windows 验证状态独立记录。
 
-## CSV 恢复链路
+CLI：`ud_cli execute package.json '{}' tenant execution-id /authorized/root`。默认拒绝文件/数据库访问；SDK 宿主通过授权和凭据解析回调授予权限。Worker 为独立进程，不是权限沙箱。Java JAR 和托管 NuGet 包配合单独安装的同 ABI 原生库使用。
 
-生产方先写临时文件，再原子改名为 `.csv`。输入目录与状态目录使用不同的绝对路径，状态目录的父目录须已存在。
-
-```powershell
-build/windows/hosts/Debug/ud_cli.exe once D:/data/input D:/data/state examples/etl/schema.ud examples/etl/plan.ud
-```
-
-`watch` 持续发现新文件；SDK 可从其他线程取消。读取结果必须通过 `ud_snapshot_latest` / SDK 的快照方法选择已提交代次，不能直接选择最新 CSV 文件。
-
-独立消费示例： [C](examples/c)、[.NET](examples/dotnet)、[Java](examples/java)、[插件](examples/plugins)。
-
-文档： [架构](docs/architecture.md)、[公共 API](docs/api.md)、[检查点与 Worker 协议](docs/protocols.md)、[兼容性与发行](docs/compatibility.md)。
+设计与边界：[产品](docs/product/product-model.md)、[架构](docs/architecture/target-architecture.md)、[SSIS 公开文档映射](docs/architecture/ssis-reference-matrix.md)、[破坏性变更](docs/breaking-changes.md)、[公共 ABI](docs/architecture/public-c-abi.md)、[路线图](docs/roadmap.md)。不声称 `.dtsx`/COM/SSISDB/SQL Agent 兼容；不提供默认 Web 管理平台或跨任意目标的全局 exactly-once。

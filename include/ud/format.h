@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Versioned schema JSON: {"version":2,"fields":[...]}. Each field has name,
+/* Versioned schema JSON: {"version":3,"fields":[...]}. Each field has name,
  * type and nullable; Decimal also precision/scale, Timestamp timezone, and
  * nested types children. No unknown members or implicit metadata defaults.
  * The returned empty batch owns all field metadata. */

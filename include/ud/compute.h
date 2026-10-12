@@ -15,8 +15,8 @@ UD_API ud_status ud_compute_inner_join(ud_context *, const ud_batch *left, uint3
 
 typedef struct ud_plan ud_plan;
 typedef struct ud_accumulator ud_accumulator;
-#define UD_SCHEMA_HEADER "ud-schema 2\n"
-#define UD_PLAN_HEADER "ud-plan 2\n"
+#define UD_SCHEMA_HEADER "ud-schema 3\n"
+#define UD_PLAN_HEADER "ud-plan 3\n"
 enum { UD_MAP_TRIM_ASCII=1, UD_MAP_UPPER_ASCII=2, UD_MAP_LOWER_ASCII=4, UD_MAP_DEFAULT=8 };
 typedef struct ud_mapping {
     uint32_t struct_size, version;

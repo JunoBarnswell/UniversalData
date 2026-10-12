@@ -6,10 +6,16 @@ extern "C" {
 #endif
 typedef struct ud_registry ud_registry;
 typedef struct ud_execution ud_execution;
-enum { UD_COMPONENT_TASK=1, UD_COMPONENT_SOURCE, UD_COMPONENT_TRANSFORM,
-       UD_COMPONENT_DESTINATION, UD_COMPONENT_CONNECTION, UD_COMPONENT_ENUMERATOR,
-       UD_COMPONENT_LOG_PROVIDER };
-enum { UD_COMPONENT_DATA=1, UD_COMPONENT_INPUT_END, UD_COMPONENT_POLL };
+enum {
+    UD_COMPONENT_TASK = 1,
+    UD_COMPONENT_SOURCE,
+    UD_COMPONENT_TRANSFORM,
+    UD_COMPONENT_DESTINATION,
+    UD_COMPONENT_CONNECTION,
+    UD_COMPONENT_ENUMERATOR,
+    UD_COMPONENT_LOG_PROVIDER
+};
+enum { UD_COMPONENT_DATA = 1, UD_COMPONENT_INPUT_END, UD_COMPONENT_POLL };
 typedef struct ud_component_event {
     uint32_t struct_size, abi_version;
     int32_t kind;

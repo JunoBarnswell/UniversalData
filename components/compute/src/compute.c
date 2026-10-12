@@ -240,7 +240,7 @@ ud_status ud_plan_create(ud_context *ctx, const char *schema, uint32_t sn, const
     size_t schema_header = sizeof(UD_SCHEMA_HEADER) - 1, plan_header = sizeof(UD_PLAN_HEADER) - 1;
     if (sn < schema_header || memcmp(schema, UD_SCHEMA_HEADER, schema_header) ||
         cn < plan_header || memcmp(commands, UD_PLAN_HEADER, plan_header))
-        return ud_fail(ctx, UD_INCOMPATIBLE, "schema / plan document requires explicit version 2 header");
+        return ud_fail(ctx, UD_INCOMPATIBLE, "schema / plan document requires explicit version 3 header");
     ud_plan *p = ud_alloc(ctx, sizeof(*p));
     if (!p)
         return UD_RESOURCE;

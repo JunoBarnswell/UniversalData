@@ -58,7 +58,7 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
     *out = (ud_plugin_api){sizeof(*out),
                            UD_PLUGIN_ABI,
                            "org.universaldata.function.abs",
-                           "0.2.0",
+                           "1.0.0",
                            UD_PLUGIN_FUNCTION,
                            UD_CAP_SCALAR,
                            initialize,

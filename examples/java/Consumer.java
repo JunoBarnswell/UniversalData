@@ -1,10 +1,16 @@
-import org.universaldata.CsvJob;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import org.universaldata.Execution;
+import org.universaldata.Package;
 public final class Consumer {
-    public static void main(String[] args) {
-        if (args.length != 2) throw new IllegalArgumentException("input-directory state-directory required");
-        String schema = "ud-schema 2\nteam utf8 required\namount int64 nullable\n";
-        String commands = "ud-plan 2\nfilter amount ge 0\nproject team amount\ngroup team\nsum amount total\ncount * rows\n";
-        try (var job = new CsvJob(Path.of(args[0]), Path.of(args[1]), schema, commands)) { job.poll(); System.out.println(job.latestSnapshot()); }
+    public static void main(String[] args) throws Exception {
+        if(args.length!=4)throw new IllegalArgumentException("package.json parameters.json execution-id authorized-root");
+        Path root=Path.of(args[3]).toAbsolutePath().normalize();
+        try(Package definition=new Package(Files.readString(Path.of(args[0])));
+            Execution execution=definition.execution("fixture",(tenant,resource,action)->Path.of(resource).isAbsolute()&&Path.of(resource).normalize().startsWith(root),Files.readString(Path.of(args[1])),args[2])) {
+            execution.start();while(!execution.await(100)) { }
+            Execution.Metrics m=execution.metrics();
+            System.out.printf("{\"state\":%d,\"result\":%d,\"inputRows\":%d,\"outputRows\":%d,\"rejectedRows\":%d,\"completedTasks\":%d}%n",m.state().ordinal(),m.result().number(),m.inputRows(),m.outputRows(),m.rejectedRows(),m.completedTasks());
+        }
     }
 }

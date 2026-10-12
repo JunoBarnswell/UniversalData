@@ -45,10 +45,10 @@ with tempfile.TemporaryDirectory(prefix='ud-external-') as folder:
     left_rows.append({'lk': None, 'left_id': 999, 'tags': []});right_rows.append({'rk': None, 'right_id': 999, 'amount': '2.50'})
     write_rows(left, left_rows);write_rows(right, right_rows)
     schemas = [
-        {'version': 2, 'fields': [{'name': 'lk', 'type': 'int64', 'nullable': True},
+        {'version': 3, 'fields': [{'name': 'lk', 'type': 'int64', 'nullable': True},
             {'name': 'left_id', 'type': 'int64', 'nullable': False},
             {'name': 'tags', 'type': 'list', 'nullable': False, 'children': [{'name': 'item', 'type': 'utf8', 'nullable': True}]}]},
-        {'version': 2, 'fields': [{'name': 'rk', 'type': 'int64', 'nullable': True},
+        {'version': 3, 'fields': [{'name': 'rk', 'type': 'int64', 'nullable': True},
             {'name': 'right_id', 'type': 'int64', 'nullable': False},
             {'name': 'amount', 'type': 'decimal128', 'precision': 38, 'scale': 2, 'nullable': False}]}]
     paths = [root / 'left-schema.json', root / 'right-schema.json']

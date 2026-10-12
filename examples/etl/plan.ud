@@ -1,4 +1,4 @@
-ud-plan 2
+ud-plan 3
 filter amount ge 0
 project team amount
 group team

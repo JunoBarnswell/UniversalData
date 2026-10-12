@@ -1,5 +1,0 @@
-find_package(Threads REQUIRED)
-set(src ${CMAKE_CURRENT_SOURCE_DIR}/src/etl.c ${CMAKE_CURRENT_SOURCE_DIR}/src/quarantine.c ${CMAKE_CURRENT_SOURCE_DIR}/src/dag.c ${CMAKE_CURRENT_SOURCE_DIR}/src/run.c)
-ud_component(ud_etl ETL ${src})
-target_link_libraries(ud_etl PUBLIC ud_compute ud_runtime Threads::Threads)
-set(UD_ALL_SOURCES ${UD_ALL_SOURCES} ${src} PARENT_SCOPE)

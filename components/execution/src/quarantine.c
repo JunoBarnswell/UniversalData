@@ -1,5 +1,5 @@
 #include "ud/quarantine.h"
-#include "../../../components/data/internal.h"
+#include "../../data/internal.h"
 #include <errno.h>
 struct ud_quarantine_store {
     ud_context *ctx;

@@ -10,7 +10,7 @@
     },
     "1": {
       "design": "Implemented",
-      "code": "Implemented (state, sealed Buffer, expression AST, Registry, shared collection kernels); ABI switch/lineage pending",
+      "code": "Implemented sealed Buffer/state/AST/Registry/shared collection kernels and ABI 3; column lineage/function extensions Planned",
       "validation": "Verified architecture_foundation 1/1 and affected kernel tests 4/4 on Linux"
     },
     "2": {
@@ -20,13 +20,13 @@
     },
     "3": {
       "design": "Implemented",
-      "code": "Implemented multi-port lifecycle, physical execution trees, shared sealed Buffers, bounded queues, fanout, acquire/dispose; old entrypoints removal pending",
+      "code": "Implemented multi-port native Pipeline and removed old CSV/DAG executors and public lifecycles; blocking spill integration Planned",
       "validation": "Verified derive/split/file flow, cancellation/authorization/parse failure; blocking/spill and plugin integration pending"
     },
     "4": {
       "design": "Implemented",
       "code": "Implemented file/SQL connection leases, SQLite/PostgreSQL Execute SQL capability, file/SQL source/destination and compute components",
-      "validation": "file flow Verified; SQL and blocking components Planned"
+      "validation": "Verified file flow and SQL task/source/destination with SQLite, transactional receipts, derive/split and file branch"
     },
     "5": {
       "design": "Implemented",
@@ -35,8 +35,8 @@
     },
     "6": {
       "design": "Implemented",
-      "code": "Planned",
-      "validation": "Planned"
+      "code": "Implemented Package/Execution C ABI 3, thin .NET PInvoke/Java JNI, same-definition examples, Package-only CLI/Worker, version switch and old API removal",
+      "validation": "Verified native CTest 21/21, ASan/UBSan 21/21, core 5/5, C/.NET/Java 10003-row Package + datatype/wire parity, independent NuGet consumer; Windows Blocked"
     },
     "7": {
       "design": "Implemented",
@@ -45,16 +45,17 @@
     }
   },
   "gates": {
-    "windows": "Blocked: Linux executor; remote CI status must be observed",
-    "linux": "Planned",
-    "ownership-sanitizers": "Planned",
-    "package-control-pipeline": "Planned",
-    "c-dotnet-java": "Planned",
+    "windows": "Blocked: Windows executor absent; actual GitHub annotation account billing/spending limit; jobs have zero steps",
+    "linux": "Verified 21/21 CTest (ABI 3 + JNI + SQLite)",
+    "ownership-sanitizers": "Verified 21/21 ASan/UBSan + leak detection",
+    "package-control-pipeline": "Verified nested loop + precedence + derive/split and SQL integration",
+    "c-dotnet-java": "Verified same Package/parameters/control/native results, typed data + wire 3, independent NuGet consumer",
     "recovery-commit-unknown": "Planned"
   },
   "limitations": [
-    "Durable journal/resume explicitly rejects UD_UNSUPPORTED until Phase 5 implementation; no silent fresh-run fallback",
-    "Draft migration still has old public entrypoints; delete with binding/host migration before completion",
-    "State/Package version 3 model currently in ABI 2 build; atomic ABI 3 switch is pending"
+    "Durable journal/resume explicitly rejects UD_UNSUPPORTED until Phase 5; no silent fresh-run fallback",
+    "Pipeline blocking operators currently quota-bounded in memory; full spill integration remains Planned",
+    "Complete SSIS component catalog, all expression/lineage capabilities and Project/Catalog are not yet complete",
+    "No Windows native package or remote CI execution evidence; no public package release"
   ]
 }

@@ -1,7 +1,7 @@
 import json,pathlib,subprocess,sys,tempfile
 with tempfile.TemporaryDirectory(prefix='ud-package-') as folder:
  r=pathlib.Path(folder);source=r/'source.ndjson';source.write_text(''.join(json.dumps({'x':i})+'\n' for i in range(31)))
- schema={'version':2,'fields':[{'name':'x','type':'int64','nullable':False}]}
+ schema={'version':3,'fields':[{'name':'x','type':'int64','nullable':False}]}
  lit=lambda v:{'literal':v,'type':'int64'}
  body={'tasks':[{'id':'increment','kind':'set','config':{'name':'i','value':{'op':'add','args':[{'ref':'i'},lit(1)]}}}], 'constraints':[]}
  flow={'id':'p','components':[{'id':'source','component':'file.ndjson.source','config':{'connection':'input','schema':schema,'batchSize':7}},

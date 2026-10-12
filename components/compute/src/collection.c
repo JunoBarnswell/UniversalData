@@ -15,7 +15,7 @@ static ud_status append_row(ud_batch *out, const ud_batch *in, uint32_t row, ud_
     return ud_batch_append(out, v, n);
 }
 ud_status ud_compute_slice(ud_context *c, const ud_batch *b, uint64_t offset, uint64_t limit,
-                         ud_batch **out) {
+                           ud_batch **out) {
     if (!b || !out)
         return UD_INVALID;
     *out = NULL;
@@ -45,7 +45,7 @@ ud_status ud_compute_slice(ud_context *c, const ud_batch *b, uint64_t offset, ui
     return s;
 }
 ud_status ud_compute_sort(ud_context *c, const ud_batch *b, uint32_t key, int32_t descending,
-                        ud_batch **out) {
+                          ud_batch **out) {
     if (!b || !out || key >= ud_batch_columns(b) || (descending != 0 && descending != 1))
         return UD_INVALID;
     *out = NULL;
@@ -106,7 +106,7 @@ ud_status ud_compute_sort(ud_context *c, const ud_batch *b, uint32_t key, int32_
     return s;
 }
 ud_status ud_compute_inner_join(ud_context *c, const ud_batch *left, uint32_t lk,
-                              const ud_batch *right, uint32_t rk, ud_batch **out) {
+                                const ud_batch *right, uint32_t rk, ud_batch **out) {
     if (!left || !right || !out || lk >= ud_batch_columns(left) || rk >= ud_batch_columns(right))
         return UD_INVALID;
     *out = NULL;

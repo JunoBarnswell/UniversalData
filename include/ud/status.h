@@ -16,11 +16,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define UD_ABI_VERSION 2u
-#define UD_CONFIG_VERSION 2u
-#define UD_PLAN_VERSION 2u
-#define UD_CHECKPOINT_VERSION 2u
-#define UD_WORKER_VERSION 2u
+#define UD_ABI_VERSION 3u
+#define UD_CONFIG_VERSION 3u
+#define UD_PLAN_VERSION 3u
+#define UD_CHECKPOINT_VERSION 3u
+#define UD_WORKER_VERSION 3u
 typedef int32_t ud_status;
 enum {
     UD_OK = 0,

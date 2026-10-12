@@ -36,15 +36,16 @@ typedef struct ud_execution_metrics {
     uint32_t struct_size, abi_version;
     int32_t state;
     ud_status result;
-    uint64_t input_rows, output_rows, rejected_rows, batches, queued_batches,
-             queue_high_water, memory_used, completed_tasks, spill_bytes;
+    uint64_t input_rows, output_rows, rejected_rows, batches, queued_batches, queue_high_water,
+        memory_used, completed_tasks, spill_bytes;
 } ud_execution_metrics;
 /* Package owns an immutable parsed document. Serializer returns owned ud_free
  * text. Version 3 only; old Job/DAG formats are incompatible. */
 UD_API ud_status ud_package_create(ud_context *, ud_string document, ud_package **);
 UD_API ud_status ud_package_serialize(const ud_package *, char **, uint32_t *);
 UD_API void ud_package_destroy(ud_package *);
-UD_API ud_status ud_execution_create(const ud_package *, const ud_execution_options *, ud_execution **);
+UD_API ud_status ud_execution_create(const ud_package *, const ud_execution_options *,
+                                     ud_execution **);
 UD_API ud_status ud_execution_create_json(ud_string, const ud_execution_options *, ud_execution **);
 UD_API ud_status ud_execution_execute(ud_execution *);
 UD_API ud_status ud_execution_start(ud_execution *);

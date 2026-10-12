@@ -20,7 +20,8 @@ int32_t ud_value_compare(const ud_value *a, const ud_value *b) {
                  : (a->text_length > b->text_length) - (a->text_length < b->text_length);
     }
     if (a->type == UD_FLOAT64) {
-        if (isnan(a->real) || isnan(b->real)) return isnan(a->real) ? (isnan(b->real) ? 0 : 1) : -1;
+        if (isnan(a->real) || isnan(b->real))
+            return isnan(a->real) ? (isnan(b->real) ? 0 : 1) : -1;
         return (a->real > b->real) - (a->real < b->real);
     }
     if (a->type == UD_DECIMAL128)
@@ -29,7 +30,8 @@ int32_t ud_value_compare(const ud_value *a, const ud_value *b) {
         uint32_t count = a->child_count < b->child_count ? a->child_count : b->child_count;
         for (uint32_t j = 0; j < count; j++) {
             int cmp = ud_value_compare(a->children + j, b->children + j);
-            if (cmp) return cmp;
+            if (cmp)
+                return cmp;
         }
         return (a->child_count > b->child_count) - (a->child_count < b->child_count);
     }

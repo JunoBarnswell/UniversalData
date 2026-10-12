@@ -1,6 +1,6 @@
 # 现有架构问题及破坏性处置矩阵
 
-基线 ed3237a；实际读源码后决策。此矩阵是切换目标，不声称已删除。
+基线 ed3237a；实际读源码后决策。已删除旧 Job/Dag/Run 执行器、公开头、语言类及旧 CLI/Worker 调用；剩余迁移/扩展状态见 ssis-status.json。
 
 ```mermaid
 flowchart LR

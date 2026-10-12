@@ -5,7 +5,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define UD_PLUGIN_ABI 2u
+#define UD_PLUGIN_ABI 3u
 enum {
     UD_PLUGIN_SOURCE = 1,
     UD_PLUGIN_SINK = 2,
@@ -61,7 +61,7 @@ typedef struct ud_plugin_api {
                          const char *argument, uint32_t argument_length, ud_batch **output);
     void (*destroy)(void *instance);
     void (*shutdown)(void);
-    const ud_connector_api *connector; /* Optional; ABI 2 table, no network dependency in core. */
+    const ud_connector_api *connector; /* Optional; ABI 3 table, no network dependency in core. */
 } ud_plugin_api;
 typedef ud_status (*ud_plugin_entry_fn)(uint32_t requested_abi, ud_plugin_api *);
 #if defined(_WIN32)

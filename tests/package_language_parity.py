@@ -1,0 +1,43 @@
+"""ABI-3 C/.NET/Java Package execution and datatype/wire parity.
+Args: native CLI, C data runner, dotnet, package.dll, data.dll, java, classes, jar, native lib dir.
+"""
+import json,os,pathlib,subprocess,sys,tempfile
+cli,data,dotnet,package_dll,data_dll,java,classes,jar,native=map(lambda x:str(pathlib.Path(x).resolve()),sys.argv[1:])
+env=dict(os.environ);env['LD_LIBRARY_PATH']=native+os.pathsep+env.get('LD_LIBRARY_PATH','');env['PATH']=native+os.pathsep+env.get('PATH','')
+with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
+ r=pathlib.Path(folder);source=r/'in.ndjson';source.write_text(''.join(json.dumps({'x':i})+'\n' for i in range(10003)))
+ lit=lambda v:{'literal':v,'type':'int64'}
+ p={'version':3,'id':'parity','parameters':{'a':{'type':'utf8'},'b':{'type':'utf8'}},'variables':{'i':{'type':'int64','default':0},'n':{'type':'int64','default':0}},
+ 'connections':[{'id':'source','driver':'file','resource':str(source)},{'id':'a','driver':'file','resource':{'$parameter':'a'}},{'id':'b','driver':'file','resource':{'$parameter':'b'}}],
+ 'controlFlow':{'tasks':[{'id':'loop','kind':'for','config':{'initialize':{'name':'i','value':lit(0)},'condition':{'op':'lt','args':[{'ref':'i'},lit(3)]},'increment':{'name':'i','value':{'op':'add','args':[{'ref':'i'},lit(1)]}},'maxIterations':3},
+ 'children':{'tasks':[{'id':'count','kind':'set','config':{'name':'n','value':{'op':'add','args':[{'ref':'n'},lit(1)]}}}],'constraints':[]}},
+ {'id':'flow','kind':'dataFlow','config':{'pipeline':'p'}}],'constraints':[{'from':'loop','to':'flow','on':'success','expression':{'op':'eq','args':[{'ref':'n'},lit(3)]}}]},
+ 'dataFlows':[{'id':'p','components':[{'id':'source','component':'file.ndjson.source','config':{'connection':'source','schema':{'version':3,'fields':[{'name':'x','type':'int64','nullable':False}]},'batchSize':19}},
+ {'id':'derive','component':'derive','config':{'columns':[{'name':'twice','expression':{'op':'mul','args':[{'column':'x'},lit(2)]}}]}},
+ {'id':'split','component':'split','config':{'condition':{'op':'lt','args':[{'column':'x'},lit(5000)]}}},
+ {'id':'a','component':'file.ndjson.destination','config':{'connection':'a'}},{'id':'b','component':'file.ndjson.destination','config':{'connection':'b'}}],
+ 'paths':[{'from':a,'output':port,'to':b,'input':0} for a,port,b in [('source',0,'derive'),('derive',0,'split'),('split',0,'a'),('split',1,'b')]]}]}
+ definition=r/'package.json';definition.write_text(json.dumps(p));metrics=[]
+ for index in range(3):
+  params={'a':str(r/f'{index}-a.ndjson'),'b':str(r/f'{index}-b.ndjson')};values=r/f'{index}.params.json';values.write_text(json.dumps(params))
+  if index==0: command=[cli,'execute',str(definition),json.dumps(params),'fixture','same-id',str(r)]
+  elif index==1: command=[dotnet,package_dll,str(definition),str(values),'same-id',str(r)]
+  else: command=[java,'-Djava.library.path='+native,'-cp',classes+os.pathsep+jar,'Consumer',str(definition),str(values),'same-id',str(r)]
+  result=subprocess.run(command,env=env,capture_output=True,text=True,check=True,timeout=120);m=json.loads(result.stdout);assert m['state']==5 and m['result']==0 and m['inputRows']==10003 and m['outputRows']==10003 and m['completedTasks']==5;metrics.append(m)
+  for port in ['a','b']:
+   actual=(r/f'{index}-{port}.ndjson').read_bytes()
+   if index: assert actual==(r/f'0-{port}.ndjson').read_bytes()
+   rows=[json.loads(x) for x in actual.decode().splitlines()];expected=range(5000) if port=='a' else range(5000,10003);assert rows==[{'x':i,'twice':i*2} for i in expected]
+ for key in ['state','result','inputRows','outputRows','completedTasks']: assert len({m[key] for m in metrics})==1
+ schema={'version':3,'fields':[{'name':'id','type':'int64','nullable':False},{'name':'amount','type':'decimal128','precision':38,'scale':2,'nullable':False},
+ {'name':'at','type':'timestamp','timezone':'Asia/Shanghai','nullable':False},{'name':'raw','type':'binary','nullable':False},
+ {'name':'profile','type':'struct','nullable':False,'children':[{'name':'name','type':'utf8','nullable':False},{'name':'missing','type':'int64','nullable':True}]},
+ {'name':'tags','type':'list','nullable':False,'children':[{'name':'item','type':'utf8','nullable':True}]}]}
+ rows=[{'id':9223372036854775807,'amount':'123456789012345678901234567890123456.78','at':'2024-02-29T08:00:00+08:00','raw':'AP9B','profile':{'name':'中文\0'},'tags':['',None,'中文']}]
+ sc=r/'schema.json';sc.write_text(json.dumps(schema));rs=r/'rows.json';rs.write_text(json.dumps(rows,ensure_ascii=False))
+ for index,cmd in enumerate([[data],[dotnet,data_dll],[java,'-cp',classes+os.pathsep+jar,'DataConsumer']]):
+  subprocess.run(cmd+[str(sc),str(rs),str(r/f'{index}.data.json'),str(r/f'{index}.wire')],env=env,check=True,timeout=30)
+ for suffix in ['data.json','wire']:
+  expected=(r/f'0.{suffix}').read_bytes();assert all((r/f'{i}.{suffix}').read_bytes()==expected for i in [1,2])
+ actual=json.loads((r/'0.data.json').read_text());assert actual[0]['at']=='2024-02-29T00:00:00.000000Z' and actual[0]['profile']['missing'] is None
+ print('C/.NET8/Java17 ABI 3: same Package/parameters/control loops/precedence/10003-row derive+split outputs and result metrics; Decimal/UTC/UTF8/nested/wire parity passed')

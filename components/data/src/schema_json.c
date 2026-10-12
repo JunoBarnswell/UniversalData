@@ -86,7 +86,7 @@ ud_status ud_schema_to_json(const ud_batch *schema,char **out,uint32_t *length) 
     if(!schema || !out || !length) return UD_INVALID;
     *out=NULL;*length=0;ud_field *fields=ud_alloc(schema->ctx,schema->columns*sizeof(*fields));if(!fields) return UD_RESOURCE;
     for(uint32_t j=0;j<schema->columns;j++) fields[j]=schema->column[j].field;
-    ud_bytes bytes={0};bytes.ctx=schema->ctx;ud_status s=ud_bytes_put(&bytes,"{\"version\":2,\"fields\":",22);
+    ud_bytes bytes={0};bytes.ctx=schema->ctx;ud_status s=ud_bytes_put(&bytes,"{\"version\":3,\"fields\":",22);
     if(!s) s=emit_fields(&bytes,fields,schema->columns);if(!s) s=ud_bytes_put(&bytes,"}",1);
     if(!s && bytes.size>UINT32_MAX) s=UD_OVERFLOW;
     if(!s) { *length=(uint32_t)bytes.size;s=ud_bytes_put(&bytes,"\0",1); }
