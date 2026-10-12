@@ -3,24 +3,24 @@
   "sdkVersion": "1.0.0",
   "abiVersion": 4,
   "configuration": "Release",
-  "sourceFingerprint": "f0f0fccef75224c993a21809955bc22ac5d7aaaca37d077624dbc1532857100b",
+  "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
   "archive": "D:\\Code\\UniversalData\\artifacts\\UniversalData-1.0.0-win-x64.zip",
-  "archiveSha256": "18461411e880a19ddc917243ede322bde760d677a998624acd04839b63f67f56",
+  "archiveSha256": "07177d34bc9164aa11885b391ae5916560e4192e7c74f3ee1c8b2797739cfc97",
   "verifiedFiles": 47,
-  "unpackedDirectory": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle",
-  "logs": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers",
+  "unpackedDirectory": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle",
+  "logs": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers",
   "nativeLibrary": {
-    "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\sdk\\bin\\ud_data.dll",
-    "sha256": "63d4560d95077ddbcb445cb324f539c272506fda222caa10d7bd83f3a9723803"
+    "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\sdk\\bin\\ud_data.dll",
+    "sha256": "cccf006677307ac81fa3686bd1a502e39c82583ed0e329ac83d090a974a812c3"
   },
   "nuget": {
-    "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\packages\\UniversalData.1.0.0.nupkg",
-    "sha256": "af333ec52ebd6198751ecf6aad7a9801a2a4c42d5cfd5dc24f91791f901617d8",
+    "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\packages\\UniversalData.1.0.0.nupkg",
+    "sha256": "aaaced066b94ab617223cf7dc629137dca94e64b3a5930855736258bfaa5c014",
     "nativeFromPackage": true,
     "sdkLoaderPath": false
   },
   "maven": {
-    "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\packages\\universal-data-1.0.0.jar",
+    "path": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\packages\\universal-data-1.0.0.jar",
     "sha256": "d82e4a3c97927b5dd561bc8fb185d1212ed9db8b6d85e7ee4f86f5a5185a5c39",
     "nativeFromBundle": true
   },
@@ -38,10 +38,10 @@
       "command": [
         "C:\\Program Files\\CMake\\bin\\cmake.EXE",
         "-S",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\c-source",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\c-source",
         "-B",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\c-build",
-        "-DCMAKE_PREFIX_PATH=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\sdk",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\c-build",
+        "-DCMAKE_PREFIX_PATH=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\sdk",
         "-DCMAKE_BUILD_TYPE=Release"
       ],
       "exitCode": 0
@@ -51,7 +51,7 @@
       "command": [
         "C:\\Program Files\\CMake\\bin\\cmake.EXE",
         "--build",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\c-build",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\c-build",
         "--config",
         "Release",
         "--parallel",
@@ -64,7 +64,7 @@
       "command": [
         "C:\\Users\\kuo13\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
         "D:\\Code\\UniversalData\\tests\\core_runtime.py",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\c-build\\Release\\consumer_resources.exe"
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\c-build\\Release\\consumer_resources.exe"
       ],
       "exitCode": 0
     },
@@ -73,7 +73,7 @@
       "command": [
         "C:\\Users\\kuo13\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
         "D:\\Code\\UniversalData\\tests\\core_pipeline.py",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\sdk\\bin\\ud_cli.exe"
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\sdk\\bin\\ud_cli.exe"
       ],
       "exitCode": 0
     },
@@ -82,8 +82,8 @@
       "command": [
         "C:\\Users\\kuo13\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
         "D:\\Code\\UniversalData\\tests\\package_sql.py",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\c-build\\Release\\consumer_sql.exe",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\sdk\\lib\\UniversalData\\plugins\\ud_connector_sqlite.dll"
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\c-build\\Release\\consumer_sql.exe",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\sdk\\lib\\UniversalData\\plugins\\ud_connector_sqlite.dll"
       ],
       "exitCode": 0
     },
@@ -92,11 +92,11 @@
       "command": [
         "C:\\Program Files\\dotnet\\dotnet.EXE",
         "restore",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\dotnet-package\\Consumer.csproj",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\dotnet-package\\Consumer.csproj",
         "--source",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\packages",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\packages",
         "--packages",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\nuget-cache",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\nuget-cache",
         "--nologo",
         "--verbosity:minimal"
       ],
@@ -107,7 +107,7 @@
       "command": [
         "C:\\Program Files\\dotnet\\dotnet.EXE",
         "build",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\dotnet-package\\Consumer.csproj",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\dotnet-package\\Consumer.csproj",
         "--configuration",
         "Release",
         "--no-restore",
@@ -121,11 +121,11 @@
       "command": [
         "C:\\Program Files\\dotnet\\dotnet.EXE",
         "restore",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\dotnet-data\\DataConsumer.csproj",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\dotnet-data\\DataConsumer.csproj",
         "--source",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\packages",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\packages",
         "--packages",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\nuget-cache",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\nuget-cache",
         "--nologo",
         "--verbosity:minimal"
       ],
@@ -136,7 +136,7 @@
       "command": [
         "C:\\Program Files\\dotnet\\dotnet.EXE",
         "build",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\dotnet-data\\DataConsumer.csproj",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\dotnet-data\\DataConsumer.csproj",
         "--configuration",
         "Release",
         "--no-restore",
@@ -152,11 +152,11 @@
         "-B",
         "-q",
         "-f",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\packages\\universal-data-1.0.0.pom",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\packages\\universal-data-1.0.0.pom",
         "install:install-file",
-        "-Dfile=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\packages\\universal-data-1.0.0.jar",
-        "-DpomFile=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\packages\\universal-data-1.0.0.pom",
-        "-DlocalRepositoryPath=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\maven-repository"
+        "-Dfile=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\packages\\universal-data-1.0.0.jar",
+        "-DpomFile=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\packages\\universal-data-1.0.0.pom",
+        "-DlocalRepositoryPath=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\maven-repository"
       ],
       "exitCode": 0
     },
@@ -167,8 +167,8 @@
         "-B",
         "-q",
         "-f",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\java-consumer\\pom.xml",
-        "-Dmaven.repo.local=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\java-cache",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\java-consumer\\pom.xml",
+        "-Dmaven.repo.local=C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\java-cache",
         "package"
       ],
       "exitCode": 0
@@ -178,15 +178,15 @@
       "command": [
         "C:\\Users\\kuo13\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
         "D:\\Code\\UniversalData\\tests\\package_language_parity.py",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\c-build\\Release\\consumer_package.exe",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\c-build\\Release\\consumer_data.exe",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\c-build\\Release\\consumer_package.exe",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\c-build\\Release\\consumer_data.exe",
         "C:\\Program Files\\dotnet\\dotnet.EXE",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\dotnet-package\\bin\\Release\\net8.0\\Consumer.dll",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\dotnet-data\\bin\\Release\\net8.0\\DataConsumer.dll",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\dotnet-package\\bin\\Release\\net8.0\\Consumer.dll",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\dotnet-data\\bin\\Release\\net8.0\\DataConsumer.dll",
         "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.19.10-hotspot\\bin\\java.EXE",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\java-consumer\\target\\classes",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\maven-repository\\org\\universaldata\\universal-data\\1.0.0\\universal-data-1.0.0.jar",
-        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\bundle-consumers\\bundle\\sdk\\bin",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\java-consumer\\target\\classes",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\maven-repository\\org\\universaldata\\universal-data\\1.0.0\\universal-data-1.0.0.jar",
+        "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-bundle-consumers\\bundle\\sdk\\bin",
         "--managed-native-local"
       ],
       "exitCode": 0

@@ -1,31 +1,31 @@
 {
-  "version": 3,
+  "version": 4,
   "sdkVersion": "1.0.0",
   "abi": 4,
   "date": "2026-10-12",
   "scope": "current core delivery; extensions excluded by user decision",
-  "sourceFingerprint": "f32934d5377821e07d1571635061be5b510a033fa0c16dffddfa56390371c0a7",
+  "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
   "linux": "Exempt by current user decision",
   "gates": [
     {
       "id": "windows-msvc",
       "status": "Passed",
-      "command": "cmake configure/build Debug + SQLite + JNI",
+      "command": "packaging/package.ps1 -BuildDirectory build/abi4-windows; Release C17/JNI/SQLite",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/build.json",
-          "sha256": "7a8d2a79db56b5d9a63fdd45c482fcf8834328aab98adc22196fd29df72c0835"
+          "path": "docs/acceptance/evidence/ssis-core-windows/release-build.json",
+          "sha256": "0e21ab4aab7341d5176b13bbf848d406c533f61aaf059627e3439b164e37a504"
         }
       ]
     },
     {
       "id": "windows-native",
       "status": "Passed",
-      "command": "ctest --test-dir build/abi4-windows -C Debug --parallel 4 --output-on-failure",
+      "command": "ctest --test-dir build/abi4-windows -C Release --parallel 4 --output-on-failure",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/native-tests.txt",
-          "sha256": "f61974971460cca4d07233eadc51f8d1cbeddcf964c4ddc7eed24494fa2d358b"
+          "path": "docs/acceptance/evidence/ssis-core-windows/release-tests.txt",
+          "sha256": "0569d08454ceff624f80c99ffed897d1b076d95dc3b3374bd6987fdc19da23c5"
         }
       ],
       "passed": 31,
@@ -38,11 +38,11 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/ssis-core-windows/asan-build.json",
-          "sha256": "9ee41b07ef417a580a54f037980df83d2a0185f6746fb8386606e80829db5cd8"
+          "sha256": "c4c763bdb04ff125523a05f7dc194439628561a0febbc05733baf57a4ad1f6bd"
         },
         {
           "path": "docs/acceptance/evidence/ssis-core-windows/asan-tests.txt",
-          "sha256": "67397b0f3f762babc98930b73388bbd1a5d2b1037dbb5d8a412ef996f1f2b9f8"
+          "sha256": "00fbe04913a9c7636f49e8871f53e1b8ba44fdf007c307d8b50f4d39a6beb029"
         }
       ],
       "passed": 31,
@@ -55,12 +55,16 @@
       "command": "sqlite_receipts_upsert/package_sql_integration/package_durable_recovery/child_package_execution/project_environment_deployment",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/native-tests.txt",
-          "sha256": "f61974971460cca4d07233eadc51f8d1cbeddcf964c4ddc7eed24494fa2d358b"
+          "path": "docs/acceptance/evidence/ssis-core-windows/release-tests.txt",
+          "sha256": "0569d08454ceff624f80c99ffed897d1b076d95dc3b3374bd6987fdc19da23c5"
         },
         {
           "path": "docs/acceptance/evidence/ssis-core-windows/asan-tests.txt",
-          "sha256": "67397b0f3f762babc98930b73388bbd1a5d2b1037dbb5d8a412ef996f1f2b9f8"
+          "sha256": "00fbe04913a9c7636f49e8871f53e1b8ba44fdf007c307d8b50f4d39a6beb029"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-consumers.json",
+          "sha256": "6cbdd6d285b6bca88883090f13ae10c4dba2c8eef1895f6fcede9383beb5ecbd"
         }
       ]
     },
@@ -70,64 +74,76 @@
       "command": "shared_value_semantics/core_runtime_resources/core_pipeline_components/package_failure_boundaries/process_task_execution",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/native-tests.txt",
-          "sha256": "f61974971460cca4d07233eadc51f8d1cbeddcf964c4ddc7eed24494fa2d358b"
+          "path": "docs/acceptance/evidence/ssis-core-windows/release-tests.txt",
+          "sha256": "0569d08454ceff624f80c99ffed897d1b076d95dc3b3374bd6987fdc19da23c5"
         },
         {
           "path": "docs/acceptance/evidence/ssis-core-windows/asan-tests.txt",
-          "sha256": "67397b0f3f762babc98930b73388bbd1a5d2b1037dbb5d8a412ef996f1f2b9f8"
+          "sha256": "00fbe04913a9c7636f49e8871f53e1b8ba44fdf007c307d8b50f4d39a6beb029"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-consumers.json",
+          "sha256": "6cbdd6d285b6bca88883090f13ae10c4dba2c8eef1895f6fcede9383beb5ecbd"
         }
       ]
     },
     {
       "id": "language-parity",
       "status": "Passed",
-      "command": "python tests/package_language_parity.py with installed native + nupkg + independent Maven/JNI consumer",
+      "command": "tests/installed_sdk.py: actual ZIP, dynamic C Data target, native NuGet without SDK PATH, Maven/JNI from bundle",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/installed-language-parity.txt",
-          "sha256": "4334e6a14a9785b1d92372d4638817273cb441cfb40d01d536733c254095651b"
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-consumers.json",
+          "sha256": "6cbdd6d285b6bca88883090f13ae10c4dba2c8eef1895f6fcede9383beb5ecbd"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-language-parity.txt",
+          "sha256": "6e9e6b896d1114be6abc79a57b5edf4a350cfe2f3122f144c700d260dd8b8e7d"
         }
       ]
     },
     {
       "id": "installed-c",
       "status": "Passed",
-      "command": "cmake -S examples/c -B external c-consumer -DCMAKE_PREFIX_PATH=installed SDK; build and execute",
+      "command": "ZIP-extracted SDK -> external CMake UniversalData::Data -> Package/resource/SQLite/Pipeline and datatype/wire execution",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/installed-consumers.json",
-          "sha256": "4b4808a88989b47ec4c1206033f5126c8b41f559956eca4c9d3d94360960d1b6"
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-consumers.json",
+          "sha256": "6cbdd6d285b6bca88883090f13ae10c4dba2c8eef1895f6fcede9383beb5ecbd"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-language-parity.txt",
+          "sha256": "6e9e6b896d1114be6abc79a57b5edf4a350cfe2f3122f144c700d260dd8b8e7d"
         }
       ]
     },
     {
       "id": "installed-nuget",
       "status": "Passed",
-      "command": "dotnet pack; build external clients --source local nupkg; execute same Package/typed data",
+      "command": "ZIP-extracted native-containing nupkg -> fresh external cache/clients; Package and typed data without SDK loader PATH",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/installed-consumers.json",
-          "sha256": "4b4808a88989b47ec4c1206033f5126c8b41f559956eca4c9d3d94360960d1b6"
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-consumers.json",
+          "sha256": "6cbdd6d285b6bca88883090f13ae10c4dba2c8eef1895f6fcede9383beb5ecbd"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/installed-language-parity.txt",
-          "sha256": "4334e6a14a9785b1d92372d4638817273cb441cfb40d01d536733c254095651b"
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-language-parity.txt",
+          "sha256": "6e9e6b896d1114be6abc79a57b5edf4a350cfe2f3122f144c700d260dd8b8e7d"
         }
       ]
     },
     {
       "id": "installed-maven",
       "status": "Passed",
-      "command": "Maven install-file to external repository; external Maven client package; execute with installed JNI",
+      "command": "ZIP-extracted JAR/POM -> fresh external Maven repository/client -> JNI/native from same bundle",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/installed-consumers.json",
-          "sha256": "4b4808a88989b47ec4c1206033f5126c8b41f559956eca4c9d3d94360960d1b6"
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-consumers.json",
+          "sha256": "6cbdd6d285b6bca88883090f13ae10c4dba2c8eef1895f6fcede9383beb5ecbd"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-core-windows/installed-language-parity.txt",
-          "sha256": "4334e6a14a9785b1d92372d4638817273cb441cfb40d01d536733c254095651b"
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-language-parity.txt",
+          "sha256": "6e9e6b896d1114be6abc79a57b5edf4a350cfe2f3122f144c700d260dd8b8e7d"
         }
       ]
     },
@@ -138,7 +154,43 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/ssis-core-windows/contracts.txt",
-          "sha256": "95c57a318302381e389655762d3a32efdf44d59be1b8d30b52b2c385c6d36be7"
+          "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+        }
+      ]
+    },
+    {
+      "id": "windows-release",
+      "status": "Passed",
+      "command": "packaging/package.ps1; ctest -C Release",
+      "passed": 31,
+      "total": 31,
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/release-build.json",
+          "sha256": "0e21ab4aab7341d5176b13bbf848d406c533f61aaf059627e3439b164e37a504"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/release-tests.txt",
+          "sha256": "0569d08454ceff624f80c99ffed897d1b076d95dc3b3374bd6987fdc19da23c5"
+        }
+      ]
+    },
+    {
+      "id": "distributable-bundle",
+      "status": "Passed",
+      "command": "python tests/installed_sdk.py --bundle artifacts/UniversalData-1.0.0-win-x64.zip --work external-fresh-directory --evidence bundle-consumers.json",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-consumers.json",
+          "sha256": "6cbdd6d285b6bca88883090f13ae10c4dba2c8eef1895f6fcede9383beb5ecbd"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/bundle-language-parity.txt",
+          "sha256": "6e9e6b896d1114be6abc79a57b5edf4a350cfe2f3122f144c700d260dd8b8e7d"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-core-windows/artifact-guard.json",
+          "sha256": "97a4cb979217af99761a08debca07443e12243ce7fdf536494a6edf503763665"
         }
       ]
     }
@@ -149,5 +201,15 @@
     "PostgreSQL system integration",
     "optional HTTP TLS/network integration",
     "deferred protocol/advanced component backlog"
-  ]
+  ],
+  "delivery": {
+    "archive": "artifacts/UniversalData-1.0.0-win-x64.zip",
+    "sha256": "07177d34bc9164aa11885b391ae5916560e4192e7c74f3ee1c8b2797739cfc97",
+    "manifest": "artifacts/1.0.0/win-x64/manifest.json",
+    "nativeLibrary": "artifacts/1.0.0/win-x64/sdk/bin/ud_data.dll",
+    "configuration": "Release",
+    "abiVersion": 4,
+    "verifiedFiles": 47,
+    "linuxBinary": "Not built; current delivery exempts Linux execution"
+  }
 }

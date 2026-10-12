@@ -1,6 +1,6 @@
 {
   "scope": "current Phase 0-7 core",
-  "state": "Verified Windows",
+  "state": "Verified Windows Release distributable",
   "native": {
     "passed": 31,
     "total": 31
@@ -9,9 +9,23 @@
     "passed": 31,
     "total": 31
   },
-  "sourceFingerprint": "f32934d5377821e07d1571635061be5b510a033fa0c16dffddfa56390371c0a7",
+  "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
   "extensions": "Incomplete, explicit Planned/Partial states",
   "linux": "Exempt by current user decision",
   "published": false,
-  "merged": false
+  "merged": false,
+  "release": {
+    "passed": 31,
+    "total": 31
+  },
+  "artifacts": {
+    "archive": "artifacts/UniversalData-1.0.0-win-x64.zip",
+    "sha256": "07177d34bc9164aa11885b391ae5916560e4192e7c74f3ee1c8b2797739cfc97",
+    "manifest": "artifacts/1.0.0/win-x64/manifest.json",
+    "nativeLibrary": "artifacts/1.0.0/win-x64/sdk/bin/ud_data.dll",
+    "configuration": "Release",
+    "abiVersion": 4,
+    "verifiedFiles": 47,
+    "linuxBinary": "Not built; current delivery exempts Linux execution"
+  }
 }

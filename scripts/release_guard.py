@@ -11,11 +11,12 @@ REQUIRED={'windows-msvc','windows-native','windows-asan','sqlite-transactions-re
           'installed-nuget','installed-maven','source-contracts',
           'windows-release','distributable-bundle'}
 def source_hash():
-    files=[ROOT/'CMakeLists.txt',ROOT/'CMakePresets.json',ROOT/'VERSION',ROOT/'.github/workflows/ci.yml']
+    files=[ROOT/name for name in ('CMakeLists.txt','CMakePresets.json','VERSION','.github/workflows/ci.yml',
+                                 'Directory.Build.props','Directory.Build.targets','UniversalData.sln')]
     for folder in ('include','components','engines','connectors','catalog','plugins','hosts','bindings','cmake','tests','examples','scripts','packaging'):
         files.extend(p for p in (ROOT/folder).rglob('*') if p.is_file()
                      and not set(p.relative_to(ROOT).parts)&{'bin','obj','target','build','__pycache__'}
-                     and p.suffix in {'.c','.h','.cs','.java','.py','.ps1','.cmake','.json','.xml','.csproj','.txt'})
+                     and p.suffix in {'.c','.h','.cs','.java','.py','.ps1','.cmake','.json','.xml','.csproj','.vcxproj','.filters','.txt'})
     digest=hashlib.sha256()
     for path in sorted(set(files)):
         digest.update(path.relative_to(ROOT).as_posix().encode());digest.update(b'\0')

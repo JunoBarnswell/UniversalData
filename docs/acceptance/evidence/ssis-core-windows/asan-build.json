@@ -1,8 +1,9 @@
 {
   "command": "cmake --build build/abi4-asan-msvc --config Debug --parallel 4 -- /nologo /verbosity:quiet",
   "exitCode": 0,
-  "sourceFingerprint": "f32934d5377821e07d1571635061be5b510a033fa0c16dffddfa56390371c0a7",
+  "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
   "warnings": 0,
   "generatorInstance": "D:/Program Files/Microsoft Visual Studio/18/Enterprise",
-  "addressSanitizer": true
+  "addressSanitizer": true,
+  "logs": "C:\\Users\\kuo13\\AppData\\Local\\Temp\\UniversalData-ssis-20261012\\final-asan-build.log"
 }
