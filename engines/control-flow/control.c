@@ -134,9 +134,12 @@ ud_status ud_control_validate(ud_execution *e, const ud_json *flow, uint32_t dep
                 s = ud_pipeline_bind_validate(e, pipeline(e, name));
         } else if (!s && ud_named(kind, "set"))
             s = assignment(e, config, 0);
-        else if (!s && ud_named(kind, "executePackage"))
-            s = ud_control_validate(e, ud_member(task, "children"), depth + 1);
-        else if (!s) {
+        else if (!s && ud_named(kind, "executePackage")) {
+            if (ud_member(task, "children"))
+                s = UD_SCHEMA;
+            if (!s)
+                s = ud_child_package(e, config, 0, depth + 1);
+        } else if (!s) {
             ud_component_descriptor d = {.struct_size = sizeof(d), .abi_version = UD_ABI_VERSION};
             s = ud_component_lookup(e, kind, &d);
             if (!s && d.category != UD_COMPONENT_TASK)
@@ -234,8 +237,10 @@ static ud_status perform_task(ud_execution *e, const ud_json *task) {
         if (e->depth > e->options.max_depth)
             s = UD_RESOURCE;
     }
-    if (!s && (ud_named(kind, "sequence") || ud_named(kind, "executePackage")))
+    if (!s && ud_named(kind, "sequence"))
         s = ud_control_execute(e, ud_member(task, "children"));
+    else if (!s && ud_named(kind, "executePackage"))
+        s = ud_child_package(e, config, 1, e->depth);
     else if (!s && ud_named(kind, "for")) {
         s = assignment(e, ud_member(config, "initialize"), 1);
         uint64_t max = 0;

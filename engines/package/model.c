@@ -366,7 +366,7 @@ ud_status ud_expression_json(ud_execution *e, const ud_json *value, const ud_bat
     ud_free(json);
     return s;
 }
-static ud_status value_json(ud_bytes *b, const ud_value *v) {
+ud_status ud_scalar_json(ud_bytes *b, const ud_value *v) {
     if (v->is_null)
         return ud_bytes_put(b, "null", 4);
     if (v->type == UD_UTF8)
@@ -398,7 +398,7 @@ static ud_status bound_put(ud_execution *e, ud_bytes *b, const ud_json *v) {
         }
         ud_value value;
         UD_TRY(ud_execution_variable(e, name, &value));
-        return value_json(b, &value);
+        return ud_scalar_json(b, &value);
     }
     int kind = ud_json_kind(v);
     if (kind != UD_JSON_OBJECT && kind != UD_JSON_ARRAY) {

@@ -25,3 +25,5 @@ GitHub 观察：[运行 38197069720](https://github.com/JunoBarnswell/UniversalD
 Catalog 基础新门禁：native 23/23、ASan/UBSan + leak detection 的 Package/Catalog 5/5。测试覆盖不可变版本、租户隔离、重启、授权撤回、结构校验、校验损坏/重命名和已有 staging 文件保护。证据见 docs/acceptance/evidence/ssis-catalog；部署/环境语义及完整历史仍未完成。
 
 Project/Environment/Deployment 新门禁：当前源代码 native 24/24、ASan/UBSan + leak detection 的 Package/Catalog/Project 6/6，以及 C/.NET8/Java17 同 Package 的 Project 参数/共享连接/遮蔽、10,003 行输出和类型/Wire 一致性通过。明确固定修订绑定与回退、重复 checkpoint resume；完整激活/历史/观测不在本模块完成范围。证据见 docs/acceptance/evidence/ssis-project。
+
+真正 Execute Package 新门禁：当前 native 25/25、ASan/UBSan + leak detection 的 Package/Catalog/Project/Child 7/7；C/.NET8/Java17 通过真实子 Package 的参数映射执行 10,003 行管道并得到一致结果（完成任务数 6）。专门测试真实子 checkpoint 终止恢复、子/孙调用、同一资源上下文、隔离、取消/CommitUnknown、深度和旧别名拒绝。证据见 docs/acceptance/evidence/ssis-child-package。

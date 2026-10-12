@@ -47,6 +47,40 @@ ud_status ud_component_lookup(ud_execution *e, ud_string id, ud_component_descri
         s = ud_registry_find(e->external, id, out);
     return s;
 }
+ud_status ud_execution_bind_roots(ud_execution *e) {
+    ud_status s = UD_OK;
+    if (!s) {
+        const ud_json *project = ud_member(e->package->document, "project");
+        if (project) {
+            s = ud_scope_enter(e, ud_member(project, "variables"), &e->project_scope);
+            e->project_scope.parameters = ud_member(project, "parameters");
+        }
+    }
+    if (!s)
+        s = ud_scope_enter(e, ud_member(e->package->document, "variables"), &e->globals);
+    if (!s) {
+        e->globals.parameters = ud_member(e->package->document, "parameters");
+        e->globals.provided = e->parameters;
+        s = ud_parameters_check(e->globals.parameters, e->parameters, 1);
+    }
+    return s;
+}
+ud_status ud_execution_validate_definition(ud_execution *e, uint32_t depth) {
+    const ud_json *flows = ud_member(e->package->document, "dataFlows");
+    for (uint32_t i = 0; i < ud_json_size(flows); i++)
+        UD_TRY(ud_pipeline_validate(e, ud_json_at(flows, i)));
+    UD_TRY(ud_control_validate(e, ud_member(e->package->document, "controlFlow"), depth));
+    const ud_json *handlers = ud_member(e->package->document, "eventHandlers");
+    for (uint32_t i = 0; i < ud_json_size(handlers); i++) {
+        const char *key;
+        uint32_t n;
+        UD_TRY(ud_json_key(handlers, i, &key, &n));
+        if (n != 7 || memcmp(key, "failure", 7))
+            return UD_UNSUPPORTED;
+        UD_TRY(ud_control_validate(e, ud_json_at(handlers, i), depth));
+    }
+    return UD_OK;
+}
 ud_status ud_execution_create_json(ud_string json, const ud_execution_options *options,
                                    ud_execution **out) {
     if (!out)
@@ -99,20 +133,8 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         s = ud_json_parse(ctx, options->parameters.data ? options->parameters.data : "{}",
                           options->parameters.data ? options->parameters.length : 2, &e->parameters,
                           NULL);
-    if (!s) {
-        const ud_json *project = ud_member(e->package->document, "project");
-        if (project) {
-            s = ud_scope_enter(e, ud_member(project, "variables"), &e->project_scope);
-            e->project_scope.parameters = ud_member(project, "parameters");
-        }
-    }
     if (!s)
-        s = ud_scope_enter(e, ud_member(e->package->document, "variables"), &e->globals);
-    if (!s) {
-        e->globals.parameters = ud_member(e->package->document, "parameters");
-        e->globals.provided = e->parameters;
-        s = ud_parameters_check(e->globals.parameters, e->parameters, 1);
-    }
+        s = ud_execution_bind_roots(e);
     if (!s)
         s = ud_registry_create(ctx, &e->registry);
     if (!s)
@@ -130,23 +152,8 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
                 s = UD_SCHEMA;
         }
     }
-    const ud_json *flows = e->package ? ud_member(e->package->document, "dataFlows") : NULL;
-    for (uint32_t i = 0; !s && i < ud_json_size(flows); i++)
-        s = ud_pipeline_validate(e, ud_json_at(flows, i));
     if (!s)
-        s = ud_control_validate(e, ud_member(e->package->document, "controlFlow"), 0);
-    if (!s) {
-        const ud_json *handlers = ud_member(e->package->document, "eventHandlers");
-        for (uint32_t i = 0; !s && i < ud_json_size(handlers); i++) {
-            const char *key;
-            uint32_t n;
-            s = ud_json_key(handlers, i, &key, &n);
-            if (!s && !(n == 7 && !memcmp(key, "failure", 7)))
-                s = UD_UNSUPPORTED;
-            if (!s)
-                s = ud_control_validate(e, ud_json_at(handlers, i), 0);
-        }
-    }
+        s = ud_execution_validate_definition(e, 0);
     if (s) {
         atomic_store(&e->state, UD_EXEC_FAILED);
         atomic_store(&e->result, s);
@@ -169,6 +176,18 @@ ud_status ud_execution_create(const ud_package *p, const ud_execution_options *o
     ud_free(json);
     return s;
 }
+ud_status ud_execution_run_definition(ud_execution *e) {
+    ud_status s = ud_execution_check(e);
+    if (!s)
+        s = ud_control_execute(e, ud_member(e->package->document, "controlFlow"));
+    if (s && s != UD_CANCELLED && s != UD_COMMIT_UNKNOWN) {
+        const ud_json *handler =
+            ud_member(ud_member(e->package->document, "eventHandlers"), "failure");
+        if (handler)
+            (void)ud_control_execute(e, handler);
+    }
+    return s == UD_BUSY ? UD_TRANSIENT : s;
+}
 static ud_status execute(ud_execution *e) {
     uint64_t now = ud_now_ms();
     if (e->options.timeout_ms)
@@ -176,21 +195,12 @@ static ud_status execute(ud_execution *e) {
             e->options.timeout_ms > UINT64_MAX - now ? UINT64_MAX : now + e->options.timeout_ms;
     ud_execution_notify(e, UD_EXEC_RUNNING, UD_OK);
     ud_status s = ud_execution_check(e);
-    int journal_ready = 0;
-    if (!s) {
-        s = ud_checkpoint_open(e);
-        journal_ready = !s;
-    }
     if (!s)
-        s = ud_control_execute(e, ud_member(e->package->document, "controlFlow"));
-    if (journal_ready && s && s != UD_CANCELLED && s != UD_COMMIT_UNKNOWN) {
-        const ud_json *handler =
-            ud_member(ud_member(e->package->document, "eventHandlers"), "failure");
-        if (handler)
-            (void)ud_control_execute(e, handler); /* Never overwrite original failure. */
-    }
+        s = ud_checkpoint_open(e);
+    if (!s)
+        s = ud_execution_run_definition(e);
     if (s == UD_BUSY)
-        s = UD_TRANSIENT; /* BUSY is reserved for a nonterminal wait. */
+        s = UD_TRANSIENT; /* Terminal lock contention must not look like wait. */
     if (!s) {
         atomic_store(&e->state, UD_EXEC_DRAINING);
         ud_execution_notify(e, UD_EXEC_DRAINING, UD_OK);

@@ -343,17 +343,25 @@
       "phase": 2,
       "name": "Execute Package Task",
       "priority": "P0",
-      "code": "Planned",
-      "verification": "NotRun",
+      "code": "Implemented",
+      "verification": "Verified",
       "acceptance": "真正子 Package 的参数/作用域/错误/取消/资源传递；非另一运行时或 Sequence 别名",
       "implementation": [
-        "engines/control-flow",
-        "engines/data-flow/builtins.c",
-        "components/contracts"
+        "engines/package/child.c",
+        "engines/package/runtime.c",
+        "engines/control-flow/control.c",
+        "tests/child_package.c",
+        "tests/child_package.py"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-child-package/evidence.json",
+          "type": "executed-child-isolation-propagation-recovery"
+        }
+      ],
+      "progress": "Canonical inline child Package, explicit native expression parameter mapping, isolated roots/connections and same Execution/context/registry/Journal verified, including nested child, cancellation/CommitUnknown and real checkpoint termination/resume."
     },
     {
       "id": "G18",

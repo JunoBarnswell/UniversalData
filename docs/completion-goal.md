@@ -55,7 +55,7 @@ Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任�
 | G14 | 2 | Execute SQL Task | Implemented | Verified |
 | G15 | 2 | File System Task | Planned | NotRun |
 | G16 | 2 | Execute Process Task | Planned | NotRun |
-| G17 | 2 | Execute Package Task | Planned | NotRun |
+| G17 | 2 | Execute Package Task | Implemented | Verified |
 | G18 | 2 | HTTP Task | Planned | NotRun |
 | G19 | 2 | Check/Data Profiling Task | Planned | NotRun |
 | G20 | 2 | Native Custom Task | Implemented | NotRun |
@@ -109,3 +109,5 @@ Windows/远程 CI 当前受执行器/账户支付或额度阻塞；未运行任�
 | G68 | 7 | Microsoft 专属扩展和兼容边界 | Planned | NotRun |
 
 最新模块：原生 Project/Environment 绑定、四层作用域及共享连接已通过；Catalog 固定部署修订的选择、版本切换和回退已验证。G47 的激活路由/保留/完整历史和 G48 的完整观测仍保留待办。证据：acceptance/evidence/ssis-project。
+
+Execute Package Task 已从草稿容器别名改为真正子 Package：参数映射、作用域隔离、同一 Execution/资源上下文、子/孙 Package、错误/取消/CommitUnknown 和真实终止恢复已验证。证据：acceptance/evidence/ssis-child-package。

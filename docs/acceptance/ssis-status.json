@@ -15,8 +15,8 @@
     },
     "2": {
       "design": "Implemented",
-      "code": "Implemented Package loader/runtime, lexical scalar scopes, Sequence/For/Foreach, expression precedence, failure handler, native tasks; native Project/Environment binder, four-level scope and shared connections implemented",
-      "validation": "Verified native 24/24 and Package/Catalog/Project ASan 6/6; Project scope/environment/deployment test and C/.NET/Java Project semantics parity"
+      "code": "Implemented Package loader/runtime, lexical scalar scopes, Sequence/For/Foreach, expression precedence, failure handler, native tasks; native Project/Environment binder, four-level scope and shared connections implemented; real Execute Package frame with explicit mappings/isolated roots on the same Execution/context",
+      "validation": "Verified native 25/25 and Package/Catalog/Project/Child ASan 7/7; native child/grandchild, scope isolation, error/cancel/CommitUnknown and actual checkpoint termination/resume; C/.NET/Java real child parity"
     },
     "3": {
       "design": "Implemented",

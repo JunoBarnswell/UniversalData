@@ -1,5 +1,5 @@
 find_package(Threads REQUIRED)
-set(src ${CMAKE_CURRENT_SOURCE_DIR}/project.c ${CMAKE_CURRENT_SOURCE_DIR}/model.c ${CMAKE_CURRENT_SOURCE_DIR}/runtime.c ${CMAKE_CURRENT_SOURCE_DIR}/checkpoint.c
+set(src ${CMAKE_CURRENT_SOURCE_DIR}/child.c ${CMAKE_CURRENT_SOURCE_DIR}/project.c ${CMAKE_CURRENT_SOURCE_DIR}/model.c ${CMAKE_CURRENT_SOURCE_DIR}/runtime.c ${CMAKE_CURRENT_SOURCE_DIR}/checkpoint.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/control.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/builtins.c ${PROJECT_SOURCE_DIR}/connectors/manager.c ${PROJECT_SOURCE_DIR}/catalog/catalog.c ${PROJECT_SOURCE_DIR}/catalog/deployment.c)
 ud_component(ud_package Package ${src})

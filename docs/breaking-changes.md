@@ -10,3 +10,5 @@
 - Quarantine 文件存储保留为 Runtime 持久化原语，非执行器。历史 0.2.0 文档放入 docs/history；其验证不能满足新 Package 验收。
 
 实现/验证分别记录在 docs/acceptance/ssis-status.json。数据库 schema 未自动迁移；旧 SDK 已产生的数据与检查点不被本重构修改。
+
+草稿 ABI 3 的 `executePackage` Task 配置现为 `{package: <规范 Package>, parameters: {name: <表达式 AST>}}`。之前以 `children` 表示 Sequence 别名的草稿配置会返回 SCHEMA；这不是正式发布格式迁移，也不保留适配路径。
