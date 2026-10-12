@@ -63,7 +63,7 @@ static void dispose(void *state,ud_status outcome) {
         if (e->kind==QUERY) ud_connection_lease_read_close(e->lease);
         ud_connection_lease_release(e->lease);
     }
-    ud_batch_destroy(e->schema);ud_batch_destroy(e->page);
+    ud_batch_destroy(e->schema);ud_batch_destroy(e->page);ud_clear_value(&e->list);
     ud_list_free(e->files,e->file_count);ud_json_destroy(e->config);ud_free(e);
 }
 static ud_status prepare(void *user,const ud_component_context *c,ud_string text,
@@ -76,7 +76,11 @@ static ud_status prepare(void *user,const ud_component_context *c,ud_string text
     (void)out;
     if (!status && e->kind==VARIABLE) {
         ud_string name;status=ud_json_string(ud_member(e->config,"fromVariable"),&name);
-        if (!status) status=ud_activation_variable(c->activation,name,&e->list);
+        ud_value list={0};
+        if (!status) status=ud_activation_variable(c->activation,name,&list);
+        /* Loop children may replace the source variable. Own a snapshot,
+         * including nested values, until this enumerator is disposed. */
+        if (!status) status=ud_copy_value(c->memory,&list,&e->list,0);
     }
     ud_string id={0};
     if (!status && e->kind>=FILES) status=ud_json_string(ud_member(e->config,"connection"),&id);

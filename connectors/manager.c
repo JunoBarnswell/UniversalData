@@ -166,6 +166,17 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
             }
             at = &s->next;
         }
+        /* Capacity bounds physical sessions, including idle sessions for other
+         * resources. Reclaim the oldest idle entry before rejecting a lease. */
+        while (!chosen && matching < limit && m->count >= m->capacity) {
+            session **oldest = NULL;
+            for (session **entry = &m->sessions; *entry; entry = &(*entry)->next)
+                if (!(*entry)->active && (!oldest || (*entry)->idle_since < (*oldest)->idle_since))
+                    oldest = entry;
+            if (!oldest) break; /* Active leases are never evicted. */
+            session *s = *oldest;
+            *oldest = s->next; m->count--; s->next = retired; retired = s;
+        }
         if (!chosen && matching < limit && m->count < m->capacity) {
             chosen = ud_alloc(e->ctx,sizeof(*chosen));
             if (!chosen) status = UD_RESOURCE;

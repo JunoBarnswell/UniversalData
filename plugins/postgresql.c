@@ -28,22 +28,21 @@ static void set_control(void *state,void *user,ud_status (*check)(void *)) {
     postgres_state *p=state; p->control_user=user; p->check=check;
     p->control_status=UD_OK; atomic_store(&p->cancelled,0);
 }
-/* One bounded cursor/session, socket readiness with cancellation/deadline checks.
- * No separate SQL executor or buffered full-result fallback is introduced. */
-static PGresult *query(postgres_state *p,const char *sql,int n,const Oid *types,
-                       const char *const *values,const int *lengths,const int *formats,int result_format) {
+/* PQgetResult may block even on a nonblocking connection. Every result,
+ * including single-row cursor results, must pass this readiness check. */
+static int wait_result(postgres_state *p) {
     p->control_status=control(p);
-    if (p->control_status || p->broken) return NULL;
-    if (!PQsendQueryParams(p->db,sql,n,types,values,lengths,formats,result_format)) return NULL;
+    if (p->control_status) { p->broken=1;return 0; }
+    if (p->broken) return 0;
     int flushing=PQflush(p->db);
-    if (flushing<0) { p->broken=1;return NULL; }
+    if (flushing<0) { p->broken=1;return 0; }
     uint32_t cleanup_waits=0;
     while (flushing || PQisBusy(p->db)) {
-        if (p->cleaning && ++cleanup_waits>200) { p->control_status=UD_TIMEOUT;p->broken=1;return NULL; }
+        if (p->cleaning && ++cleanup_waits>200) { p->control_status=UD_TIMEOUT;p->broken=1;return 0; }
         p->control_status=control(p);
-        if (p->control_status) { p->broken=1;return NULL; }
+        if (p->control_status) { p->broken=1;return 0; }
         int socket=PQsocket(p->db);
-        if (socket<0) { p->broken=1;return NULL; }
+        if (socket<0) { p->broken=1;return 0; }
 #ifdef _WIN32
         fd_set reads,writes;FD_ZERO(&reads);FD_ZERO(&writes);
         FD_SET((SOCKET)socket,&reads);if (flushing) FD_SET((SOCKET)socket,&writes);
@@ -53,13 +52,24 @@ static PGresult *query(postgres_state *p,const char *sql,int n,const Oid *types,
         struct pollfd fd={socket,(short)(POLLIN|(flushing ? POLLOUT : 0)),0};
         int ready=poll(&fd,1,25);
 #endif
-        if (ready<0 || (ready && !PQconsumeInput(p->db))) { p->broken=1;return NULL; }
+        if (ready<0 || (ready && !PQconsumeInput(p->db))) { p->broken=1;return 0; }
         if (ready && flushing) flushing=PQflush(p->db);
-        if (flushing<0) { p->broken=1;return NULL; }
+        if (flushing<0) { p->broken=1;return 0; }
     }
+    return 1;
+}
+/* One bounded cursor/session, socket readiness with cancellation/deadline checks.
+ * No separate SQL executor or buffered full-result fallback is introduced. */
+static PGresult *query(postgres_state *p,const char *sql,int n,const Oid *types,
+                       const char *const *values,const int *lengths,const int *formats,int result_format) {
+    p->control_status=control(p);
+    if (p->control_status || p->broken) return NULL;
+    if (!PQsendQueryParams(p->db,sql,n,types,values,lengths,formats,result_format)) return NULL;
+    if (!wait_result(p)) return NULL;
     /* A completed query drains its protocol; interrupted sessions are retired. */
     PGresult *result=PQgetResult(p->db), *extra;
-    while ((extra=PQgetResult(p->db))!=NULL) { PQclear(result); result=extra; }
+    while (wait_result(p) && (extra=PQgetResult(p->db))!=NULL) { PQclear(result); result=extra; }
+    if (p->control_status || p->broken) { PQclear(result);return NULL; }
     return result;
 }
 static ud_status pg_failure(postgres_state *p,const PGresult *result) {
@@ -242,21 +252,26 @@ static ud_status next_read(void *state,ud_batch **out) {
     postgres_state *p=state;ud_host_api *h=&p->host;*out=NULL;
     if(!p->reading || !p->schema) return UD_INVALID;
     if(p->finished) return UD_END;
-    if(atomic_load(&p->cancelled) || h->cancelled(h->context)) return UD_CANCELLED;
-    ud_field *fields=NULL;ud_status s=plugin_fields(h,p->schema,&fields);
+    ud_status s=control(p);
+    if (s) return s;
+    ud_field *fields=NULL;s=plugin_fields(h,p->schema,&fields);
     if(!s) s=h->batch_create(h->context,fields,h->columns(p->schema),p->batch_size,out);
     h->deallocate(fields);if(s) return s;
     char sql[96];snprintf(sql,sizeof(sql),"FETCH FORWARD %u FROM ud_sdk_cursor",p->batch_size);
     if(!PQsendQueryParams(p->db,sql,0,NULL,NULL,NULL,NULL,0)) s=pg_failure(p,NULL);
     else if(!PQsetSingleRowMode(p->db)) s=UD_INCOMPATIBLE;
     PGresult *r;
-    while((r=PQgetResult(p->db))!=NULL) {
+    while(!s) {
+        if (!wait_result(p)) { s=pg_failure(p,NULL);break; }
+        r=PQgetResult(p->db);
+        if (!r) break;
         ExecStatusType result=PQresultStatus(r);
-        if(!s && (atomic_load(&p->cancelled) || h->cancelled(h->context))) s=UD_CANCELLED;
         if(!s && result==PGRES_SINGLE_TUPLE) s=parse_row(p,r,*out);
         else if(!s && result!=PGRES_TUPLES_OK) s=pg_failure(p,r);
         PQclear(r);
     }
+    /* A partial/failed cursor response must never re-enter the session pool. */
+    if (s) p->broken=1;
     if(s) return s;
     uint32_t rows=h->rows(*out);
     if(rows<p->batch_size) p->finished=1;

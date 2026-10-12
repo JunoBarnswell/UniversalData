@@ -27,6 +27,29 @@ with tempfile.TemporaryDirectory(prefix='ud-four-connections-') as directory:
  q=copy.deepcopy(p);q['variables']['item']={'type':'int64','default':0};q['variables']['items']={'type':'list','children':[{'name':'item','type':'int64','nullable':False}],'default':[1,2,3]}
  add={'id':'sum','kind':'set','config':{'name':'total','value':{'op':'add','args':[{'ref':'total'},{'ref':'item'}]}}}
  q['controlFlow']['tasks']=[{'id':'variable','kind':'foreach','config':{'variable':'item','enumerator':'core.variable','fromVariable':'items'},'children':{'tasks':[add],'constraints':[]}}];run(q,total=6)
+ # Replacing the source list must not change or invalidate the enumerator's snapshot.
+ q['variables']['replacement']=copy.deepcopy(q['variables']['items']);q['variables']['replacement']['default']=[40,50]
+ replace={'id':'replace','kind':'set','config':{'name':'items','value':{'ref':'replacement'}}}
+ q['controlFlow']['tasks'][0]['children']={'tasks':[replace,copy.deepcopy(add)],'constraints':[{'from':'replace','to':'sum','on':'success'}]}
+ run(q,total=6)
+ # Exercise owned text/nested values, not only the list's child array.
+ q['variables']['items']={'type':'list','children':[{'name':'item','type':'utf8','nullable':False}],'default':['INSERT INTO data VALUES(10)','INSERT INTO data VALUES(11)','INSERT INTO data VALUES(12)']}
+ q['variables']['replacement']=copy.deepcopy(q['variables']['items']);q['variables']['replacement']['default']=['SELECT 1']
+ q['variables']['item']={'type':'utf8','default':''}
+ q['controlFlow']['tasks'][0]['children']={'tasks':[replace,{'id':'execute','kind':'sql.execute','config':{'connection':'db','statement':{'$variable':'item'}}}],
+   'constraints':[{'from':'replace','to':'execute','on':'success'}]}
+ run(q);assert connection.execute('SELECT id FROM data WHERE id>=10 ORDER BY id').fetchall()==[(10,),(11,),(12,)]
+ connection.execute('DELETE FROM data WHERE id>=10');connection.commit()
+ # A full pool may retire idle sessions for other resources; active leases remain pinned.
+ q=copy.deepcopy(p);q['policy']['connections']={'maxSessions':1}
+ q['connections'].append(dict(q['connections'][0],id='other',resource='other'))
+ q['controlFlow']={'tasks':[{'id':str(i),'kind':'sql.execute','config':{'connection':id,'statement':'SELECT 1'}} for i,id in enumerate(['db','other','db','db'])],
+   'constraints':[{'from':str(i),'to':str(i+1),'on':'success'} for i in range(3)]}
+ result=run(q);assert result['connections']['sessions']==1 and result['connections']['activeLeases']==0 and result['connections']['poolHits']==1
+ q['variables']['id']={'type':'int64','default':0}
+ q['controlFlow']={'tasks':[{'id':'pinned','kind':'foreach','config':{'variable':'id','enumerator':'core.query','connection':'db','query':'SELECT id FROM data ORDER BY id'},
+   'children':{'tasks':[{'id':'other','kind':'sql.execute','config':{'connection':'other','statement':'SELECT 1'}}],'constraints':[]}}],'constraints':[]}
+ result=run(q,15);assert result['connections']['activeLeases']==0 and result['connections']['sessions']==1
  q=copy.deepcopy(p);q['variables']['id']={'type':'int64','default':0};add['config']['value']['args'][1]={'ref':'id'}
  q['controlFlow']['tasks']=[{'id':'query','kind':'foreach','config':{'variable':'id','enumerator':'core.query','connection':'db','query':'SELECT id FROM data ORDER BY id'},'children':{'tasks':[add],'constraints':[]}}];run(q,total=3)
  q=copy.deepcopy(p);q['variables']['name']={'type':'utf8','default':''};counter={'id':'count','kind':'set','config':{'name':'total','value':{'op':'add','args':[{'ref':'total'},{'literal':1,'type':'int64'}]}}}
