@@ -57,7 +57,7 @@ main 已重新 fetch，当前分支没有落后；已有基础批次和 ABI 3 �
 | G16 | 2 | Execute Process Task | Implemented | Verified |
 | G17 | 2 | Execute Package Task | Implemented | Verified |
 | G18 | 2 | HTTP Task | Implemented | Verified |
-| G19 | 2 | Check/Data Profiling Task | Planned | NotRun |
+| G19 | 2 | Check/Data Profiling Task | Implemented | Verified |
 | G20 | 2 | Native Custom Task | Implemented | NotRun |
 | G21 | 3 | 组件 metadata/设计时与运行时生命周期 | Planned | NotRun |
 | G22 | 3 | 多输入/输出 Path/End/backpressure | Implemented | NotRun |
@@ -121,3 +121,5 @@ File System Task 已实现并验证四种受限操作、逻辑连接/删除授�
 Execute Process Task 的 Linux 实际行为门禁通过：宿主执行授权、argv/cwd、退出/启动失败、任务/Package 期限、真实运行中取消及子进程组清理、效应后崩溃 Unknown 和完成后 resume。最新 native 28/28、内存专项 10/10；权限沙箱不在契约内，Windows 免测且不宣称验证。
 
 HTTP Task 已实现同一逻辑连接/宿主授权/resolver、TLS 校验、方法/状态策略、有界响应及 GET/HEAD 重试、任务与 Package 期限/取消、授权撤销和真实效应崩溃 Unknown。原生 29/29、内存专项 11/11、安装后的静态/共享 C 与 NuGet/.NET/Maven/Java HTTPS 消费端通过；G61 HTTP Source/Destination 继续待办。
+
+Check/Data Profiling Task 已通过实际 File/SQLite 统计、NULL/极值/表达式规则与失败分支、资源预算、授权/取消/期限和真实扫描崩溃恢复。原生 31/31、内存专项 13/13、三语言实际统计规则及子 Package 回归通过。高级统计/键关系等扩展不计入本 Task 的基本统计契约。

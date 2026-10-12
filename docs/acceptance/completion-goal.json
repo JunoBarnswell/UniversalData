@@ -408,17 +408,23 @@
       "phase": 2,
       "name": "Check/Data Profiling Task",
       "priority": "P0",
-      "code": "Planned",
-      "verification": "NotRun",
+      "code": "Implemented",
+      "verification": "Verified",
       "acceptance": "实际统计和规则结果、失败和资源预算；不以空检查伪装完成",
       "implementation": [
-        "engines/control-flow",
-        "engines/data-flow/builtins.c",
-        "components/contracts"
+        "include/ud/profile.h",
+        "components/compute/src/profile.c",
+        "engines/control-flow/profile.c"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-profile/evidence.json",
+          "type": "executed-real-profiling-rules-budget-recovery-language-parity"
+        }
+      ],
+      "progress": "Real streaming row/null counts and scalar extrema through the existing Pipeline and shared Compute/Columnar semantics. Named shared-expression checks, all failures/NULL policy and failure precedence, authorized File/SQLite reads, row/memory/deadline/cancel limits, pure binding rejection and actual scan/crash/source-mismatch/resume verified. C/.NET/Java execute identical profiling checks before the child Pipeline. Advanced distributions/keys remain separate extensions."
     },
     {
       "id": "G20",

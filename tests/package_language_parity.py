@@ -25,14 +25,19 @@ with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
  p['parameters']=dict(p['parameters'],working={'type':'utf8'})
  p['connections']=[{'id':'original','driver':'file','resource':str(source)},{'id':'working','driver':'file','resource':{'$parameter':'working'}}]
  p['controlFlow']['tasks'].insert(0,{'id':'copy','kind':'file.system','config':{'operation':'copy','source':'original','target':'working'}})
- p['controlFlow']['constraints'].append({'from':'copy','to':'loop','on':'success'})
+ p['variables'].update({name:{'type':'int64','default':0} for name in ['profileRows','profileNulls','profileMin','profileMax']})
+ p['dataFlows']=[{'id':'profile-flow','components':[{'id':'source','component':'file.ndjson.source','config':{'connection':'original','schema':{'version':3,'fields':[{'name':'x','type':'int64','nullable':False}]},'batchSize':17}},
+ {'id':'statistics','component':'profile.statistics','config':{'statistics':[{'kind':'rows','variable':'profileRows'},{'kind':'nulls','column':0,'variable':'profileNulls'},{'kind':'min','column':0,'variable':'profileMin'},{'kind':'max','column':0,'variable':'profileMax'}]}}],
+ 'paths':[{'from':'source','output':0,'to':'statistics','input':0}]}]
+ p['controlFlow']['tasks'].insert(1,{'id':'profile','kind':'data.profile','config':{'pipeline':'profile-flow','checks':[{'id':name,'expression':{'op':'eq','args':[{'ref':name},lit(value)]}} for name,value in [('profileRows',10003),('profileNulls',0),('profileMin',0),('profileMax',10002)]]}})
+ p['controlFlow']['constraints'].extend([{'from':'copy','to':'profile','on':'success'},{'from':'profile','to':'loop','on':'success'}])
  definition=r/'package.json';definition.write_text(json.dumps(p));metrics=[]
  for index in range(3):
   params={'a':str(r/f'{index}-a.ndjson'),'b':str(r/f'{index}-b.ndjson'),'working':str(r/f'{index}-source.ndjson')};values=r/f'{index}.params.json';values.write_text(json.dumps(params))
   if index==0: command=[cli,'execute',str(definition),json.dumps(params),'fixture','same-id',str(r)]
   elif index==1: command=[dotnet,package_dll,str(definition),str(values),'same-id',str(r)]
   else: command=[java,'-Djava.library.path='+native,'-cp',classes+os.pathsep+jar,'Consumer',str(definition),str(values),'same-id',str(r)]
-  result=subprocess.run(command,env=env,capture_output=True,text=True,check=True,timeout=120);m=json.loads(result.stdout);assert m['state']==5 and m['result']==0 and m['inputRows']==10003 and m['outputRows']==10003 and m['completedTasks']==7;metrics.append(m)
+  result=subprocess.run(command,env=env,capture_output=True,text=True,check=True,timeout=120);m=json.loads(result.stdout);assert m['state']==5 and m['result']==0 and m['inputRows']==20006 and m['outputRows']==20006 and m['completedTasks']==8;metrics.append(m)
   assert (r/f'{index}-source.ndjson').read_bytes()==source.read_bytes()
   for port in ['a','b']:
    actual=(r/f'{index}-{port}.ndjson').read_bytes()
@@ -50,4 +55,4 @@ with tempfile.TemporaryDirectory(prefix='ud-abi3-language-') as folder:
  for suffix in ['data.json','wire']:
   expected=(r/f'0.{suffix}').read_bytes();assert all((r/f'{i}.{suffix}').read_bytes()==expected for i in [1,2])
  actual=json.loads((r/'0.data.json').read_text());assert actual[0]['at']=='2024-02-29T00:00:00.000000Z' and actual[0]['profile']['missing'] is None
- print('C/.NET8/Java17 ABI 3: same Package/Project outer parameters/shared connection/scopes/File System copy/real child Package mapping/control loops/precedence/10003-row derive+split outputs and result metrics; Decimal/UTC/UTF8/nested/wire parity passed')
+ print('C/.NET8/Java17 ABI 3: same Package/Project outer parameters/shared connection/scopes/File System copy/Data Profiling checks/real child Package mapping/control loops/precedence/10003-row derive+split outputs and result metrics; Decimal/UTC/UTF8/nested/wire parity passed')

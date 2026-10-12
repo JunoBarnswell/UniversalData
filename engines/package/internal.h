@@ -89,6 +89,7 @@ ud_status ud_acquire_file_connection(ud_execution *, ud_string, ud_connection_le
 ud_status ud_filesystem_register(ud_registry *);
 ud_status ud_process_register(ud_registry *);
 ud_status ud_http_register(ud_registry *);
+ud_status ud_profile_register(ud_registry *);
 ud_status ud_acquire_http_connection(ud_execution *, ud_string, ud_connection_lease **);
 ud_status ud_http_connection_resource(ud_connection_lease *, ud_string *);
 ud_status ud_http_connection_credentials(ud_connection_lease *, ud_string *);

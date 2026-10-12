@@ -34,3 +34,5 @@ FileSystem 的四种明确文件操作及权限/恢复边界已交付，见 [Fil
 ExecuteProcess 已交付受授权的原生 Task，Linux 退出/期限/取消/资源清理与崩溃门禁通过；见 [进程任务契约](../architecture/process-task.md)。不承诺权限沙箱。
 
 HTTP Task 已交付同一 Connection Manager/授权/resolver 契约，并验证 TLS、限额、期限/取消、有限 GET/HEAD 重试及 Unknown 恢复，见 [HTTP Task](../architecture/http-task.md)。G61 HTTP Source/Destination 集成继续独立推进。
+
+Check/Data Profiling 已交付共享 Compute 流式统计及原生 Pipeline Task，验证真实 File/SQLite 行、NULL/极值/规则失败、资源预算、崩溃恢复和三语言一致性，见 [Profiling 契约](../architecture/profile-task.md)。不将该 Task 的基本统计等同于完整质量/关联键/高级分布组件。

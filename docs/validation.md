@@ -45,3 +45,11 @@ Execute Process 新门禁：当前 native 28/28、ASan/UBSan + leak detection �
 安装后的 UniversalData::Package 静态消费者与 UniversalData::Data 共享消费者均执行同一完整 HTTP 行为套件。NuGet 包含 Linux ABI3 原生库，通过独立本地 feed/新缓存安装；Java 使用 Maven 1.0.0 JAR 和 ABI3 JNI。两者实际调用 HTTPS Task，检查明确 NETWORK 授权、resolver 凭据送达、网络拒绝及 resolver 抛异常的默认拒绝。Maven package 是构建检查（项目无单元测试），验证来自真实消费者，不将零测试算作通过。修复了 Linux-only NativeArtifacts 打包因不存在 Windows 路径失败的问题，未制造或测试 Windows 文件。
 
 已有三语言 FileSystem/真实子 Package/10003 行 Pipeline 和 Decimal/UTC/UTF8/nested/wire 一致性回归通过。全部证据和当前源哈希见 `docs/acceptance/evidence/ssis-http/evidence.json`。HTTP Task 响应仅有界消费并丢弃，不冒充 G61 Source/Destination；libcurl/TLS 内部分配不计入 SDK quota；无端到端 exactly-once。Windows 测试及远程 CI 状态按用户指令免作门禁。
+
+## Check/Data Profiling（2026-10-12）
+
+`data.profile` 复用已有 Pipeline、Source/Transform、连接和恢复服务；唯一 `profile.statistics` Destination 调用新的共享 Compute profiler，流式 row/null count 和 bool/int64/float64/UTF8 extrema 不保留输入 Batch，全部预算在共同 Execution 中。Task 的非空 bool 检查使用现有表达式；false/NULL 均失败，完整 scan 后保留统计和失败数供 Failure 分支使用。绑定时拒绝未知/重复字段、类型/只读变量、非法列、空规则和其他写入 Destination。
+
+当前源码原生 **31/31**、ASan/UBSan+leak 专项 **13/13** 通过。实际 File/SQLite 的多批读取验证行数、空值数、极值、空输入、全空值、Float/UTF8、多个失败与 Failure precedence。权限拒绝/撤销、读取后取消/Package deadline、row/memory 配额、生命周期 cleanup 均实际执行。进程在扫描中和统计产出后/TaskDone 前 `_exit(91)`，恢复重算并得到相同结果；已完成任务 resume 跳过并恢复变量，源数据变化拒绝恢复。持久 SQL Source snapshot 仍明确 Unsupported。
+
+C/.NET8/Java17 同一 Package 增加 Profiling Task：10003 行实际 row/null/min/max 四个规则通过后再执行原有真实子 Package derive/split。两条 Pipeline 的总指标 input/output 20006、completedTasks 8；发布行仍为 10003，三语言输出和指标相同。Decimal/UTC/UTF8/nested/wire 既有回归通过。证据和源码哈希在 `docs/acceptance/evidence/ssis-profile/evidence.json`。高级分布/键关系和更广类型变量不冒充已实现；Windows/远程 CI 状态仍按用户指令免作门禁。
