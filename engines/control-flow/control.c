@@ -326,6 +326,8 @@ static ud_status perform_task(ud_execution *e, const ud_json *task) {
                                     .resolve_user = e};
         if (!s)
             s = d.invoke(d.user, &ctx, (ud_string){json, n});
+        if (s == UD_END || s < UD_OK || s > UD_FENCED)
+            s = UD_INVALID; /* Iteration sentinels are not Task outcomes. */
         ud_free(json);
         ud_json_destroy(bound);
     }

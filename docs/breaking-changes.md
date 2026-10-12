@@ -12,3 +12,5 @@
 实现/验证分别记录在 docs/acceptance/ssis-status.json。数据库 schema 未自动迁移；旧 SDK 已产生的数据与检查点不被本重构修改。
 
 草稿 ABI 3 的 `executePackage` Task 配置现为 `{package: <规范 Package>, parameters: {name: <表达式 AST>}}`。之前以 `children` 表示 Sequence 别名的草稿配置会返回 SCHEMA；这不是正式发布格式迁移，也不保留适配路径。
+
+按用户指令只保留当前完整 ABI 3。插件 API 表现包含原生组件表；旧版本、旧结构布局或裁剪前缀返回 Incompatible，不提供降级/兼容加载路径。插件与消费端必须使用当前公共头文件重编。旧 ABI 示例、legacy 插件及其兼容测试路径已删除；版本/布局拒绝测试继续作为负向门禁。

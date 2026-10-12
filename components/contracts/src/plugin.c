@@ -10,7 +10,7 @@ struct ud_plugin {
     void *library;
     ud_plugin_api api;
     ud_host_api host;
-    uint32_t live, active;
+    uint32_t live, active, registrations;
 };
 struct ud_plugin_instance {
     ud_plugin *plugin;
@@ -83,9 +83,12 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
     p->api.struct_size = sizeof(p->api);
     p->api.abi_version = UD_PLUGIN_ABI;
     ud_status s = entry(UD_PLUGIN_ABI, &p->api);
-    if (!s && (p->api.struct_size < sizeof(p->api) || p->api.abi_version != UD_PLUGIN_ABI ||
-               !p->api.id || !p->api.version || !p->api.initialize || !p->api.execute ||
-               !p->api.destroy || !p->api.shutdown))
+    int component_only = p->api.roles == UD_PLUGIN_COMPONENTS && p->api.components &&
+                         !p->api.initialize && !p->api.execute && !p->api.destroy;
+    if (!s && (p->api.struct_size != sizeof(p->api) || p->api.abi_version != UD_PLUGIN_ABI ||
+               !p->api.id || !p->api.version ||
+               (!component_only &&
+                (!p->api.initialize || !p->api.execute || !p->api.destroy || !p->api.shutdown))))
         s = UD_INCOMPATIBLE;
     if (!s && (p->api.capabilities & caps) != caps)
         s = UD_UNSUPPORTED;
@@ -118,15 +121,43 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
     return UD_OK;
 }
 ud_status ud_plugin_info(const ud_plugin *p, ud_plugin_api *out) {
-    if (!p || !out || out->struct_size < sizeof(*out))
+    if (!p || !out)
         return UD_INVALID;
+    if (out->struct_size != sizeof(*out) || out->abi_version != UD_PLUGIN_ABI)
+        return UD_INCOMPATIBLE;
     *out = p->api;
     return UD_OK;
+}
+static ud_status retain_module(void *owner) {
+    ud_plugin *p = owner;
+    if (p->registrations == UINT32_MAX)
+        return UD_RESOURCE;
+    p->registrations++;
+    return UD_OK;
+}
+static void release_module(void *owner) {
+    ud_plugin *p = owner;
+    p->registrations--;
+}
+ud_status ud_plugin_register_components(ud_plugin *p, ud_registry *registry) {
+    if (!p || !registry)
+        return UD_INVALID;
+    const ud_component_plugin_api *components = p->api.components;
+    if (!components)
+        return UD_UNSUPPORTED;
+    if (!(p->api.roles & UD_PLUGIN_COMPONENTS))
+        return UD_SCHEMA;
+    if (components->struct_size < sizeof(*components) || components->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    return ud_registry_register_owned(registry, components->descriptors, components->count, p,
+                                      retain_module, release_module);
 }
 ud_status ud_plugin_create(ud_plugin *p, const char *config, uint32_t n, ud_plugin_instance **out) {
     if (!p || !out || (!config && n) || p->active)
         return UD_INVALID;
     *out = NULL;
+    if (!p->api.initialize)
+        return UD_UNSUPPORTED; /* Component-only tables need no dummy factory. */
     ud_plugin_instance *instance = ud_alloc(p->ctx, sizeof(*instance));
     if (!instance)
         return UD_RESOURCE;
@@ -201,10 +232,11 @@ ud_status ud_plugin_instance_destroy(ud_plugin_instance *i) {
 ud_status ud_plugin_unload(ud_plugin *p) {
     if (!p)
         return UD_OK;
-    if (p->live || p->active)
+    if (p->live || p->active || p->registrations)
         return ud_fail(p->ctx, UD_BUSY, "plugin has live instances or callbacks");
     p->active++;
-    p->api.shutdown();
+    if (p->api.shutdown)
+        p->api.shutdown();
     close_library(p->library);
     ud_free(p);
     return UD_OK;

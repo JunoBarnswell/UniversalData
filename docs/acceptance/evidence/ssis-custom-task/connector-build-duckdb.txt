@@ -1,0 +1,176 @@
+-- Found CURL: /usr/lib/x86_64-linux-gnu/libcurl.so (found suitable version "8.14.1", minimum required is "7.85")
+-- Configuring done (0.4s)
+-- Generating done (0.1s)
+-- Build files have been written to: /workspace/UniversalData/build/full
+[1/25] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/digest.c.o
+[2/25] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/json.c.o
+/workspace/UniversalData/components/foundation/src/json.c: In function ‘add_member’:
+/workspace/UniversalData/components/foundation/src/json.c:82:52: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   82 |         if(capacity<v->capacity || (size_t)capacity>SIZE_MAX/sizeof(*v->members)) return UD_OVERFLOW;
+      |                                                    ^
+[3/25] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/platform.c.o
+/workspace/UniversalData/components/foundation/src/platform.c: In function ‘add_name’:
+/workspace/UniversalData/components/foundation/src/platform.c:109:46: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  109 |     if (*n == UINT32_MAX || (size_t)(*n + 1) > SIZE_MAX / sizeof(char *))
+      |                                              ^
+[4/25] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/foundation.c.o
+[5/25] Building C object components/data/CMakeFiles/ud_columnar.dir/src/semantics.c.o
+[6/25] Linking C static library components/foundation/libud_foundation.a
+[7/25] Building C object components/data/CMakeFiles/ud_columnar.dir/src/arrow.c.o
+/workspace/UniversalData/components/data/src/arrow.c: In function ‘export_column’:
+/workspace/UniversalData/components/data/src/arrow.c:50:38: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   50 |         if (c->field.timezone_length > SIZE_MAX - 5) return UD_OVERFLOW;
+      |                                      ^
+/workspace/UniversalData/components/data/src/arrow.c: In function ‘import_value’:
+/workspace/UniversalData/components/data/src/arrow.c:235:27: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  235 |         if ((size_t)count > SIZE_MAX / sizeof(ud_value)) return UD_OVERFLOW;
+      |                           ^
+[8/25] Building C object components/data/CMakeFiles/ud_columnar.dir/src/wire.c.o
+[9/25] Building C object components/data/CMakeFiles/ud_columnar.dir/src/csv.c.o
+[10/25] Building C object components/data/CMakeFiles/ud_columnar.dir/src/columnar.c.o
+/workspace/UniversalData/components/data/src/columnar.c: In function ‘create_depth’:
+/workspace/UniversalData/components/data/src/columnar.c:11:25: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   11 |         (size_t)columns > SIZE_MAX / sizeof(ud_column) || (size_t)capacity > SIZE_MAX / sizeof(void *) - 1)
+      |                         ^
+/workspace/UniversalData/components/data/src/columnar.c:11:76: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   11 |         (size_t)columns > SIZE_MAX / sizeof(ud_column) || (size_t)capacity > SIZE_MAX / sizeof(void *) - 1)
+      |                                                                            ^
+/workspace/UniversalData/components/data/src/columnar.c: In function ‘append_core’:
+/workspace/UniversalData/components/data/src/columnar.c:287:31: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  287 |             if ((size_t)count > SIZE_MAX / sizeof(ud_value)) s = UD_RESOURCE;
+      |                               ^
+/workspace/UniversalData/components/data/src/columnar.c: In function ‘ud_copy_value’:
+/workspace/UniversalData/components/data/src/columnar.c:368:56: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  368 |             if (!v->children || (size_t)v->child_count > SIZE_MAX / sizeof(ud_value)) return UD_INVALID;
+      |                                                        ^
+[11/25] Building C object components/data/CMakeFiles/ud_columnar.dir/src/json.c.o
+/workspace/UniversalData/components/data/src/json.c: In function ‘parse_value’:
+/workspace/UniversalData/components/data/src/json.c:49:34: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   49 |         if(count && (size_t)count>SIZE_MAX/sizeof(ud_value)) return UD_OVERFLOW;
+      |                                  ^
+/workspace/UniversalData/components/data/src/json.c: In function ‘ud_json_writer_append’:
+/workspace/UniversalData/components/data/src/json.c:255:13: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  255 |             if(j) s=ud_bytes_put(&line,",",1);ud_field *f=&batch->column[j].field;ud_value value;
+      |             ^~
+/workspace/UniversalData/components/data/src/json.c:255:47: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  255 |             if(j) s=ud_bytes_put(&line,",",1);ud_field *f=&batch->column[j].field;ud_value value;
+      |                                               ^~~~~~~~
+/workspace/UniversalData/components/data/src/json.c:256:13: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  256 |             if(!s) s=ud_json_quote(&line,f->name,f->name_length);if(!s) s=ud_bytes_put(&line,":",1);
+      |             ^~
+/workspace/UniversalData/components/data/src/json.c:256:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  256 |             if(!s) s=ud_json_quote(&line,f->name,f->name_length);if(!s) s=ud_bytes_put(&line,":",1);
+      |                                                                  ^~
+/workspace/UniversalData/components/data/src/json.c:257:13: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  257 |             if(!s) s=ud_batch_get(batch,row,j,&value);if(!s) s=emit_value(&line,f,&value,0);
+      |             ^~
+/workspace/UniversalData/components/data/src/json.c:257:55: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  257 |             if(!s) s=ud_batch_get(batch,row,j,&value);if(!s) s=emit_value(&line,f,&value,0);
+      |                                                       ^~
+/workspace/UniversalData/components/data/src/json.c:265:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  265 |     if(s) writer->failed=s;ud_bytes_clear(&line);return s;
+      |     ^~
+/workspace/UniversalData/components/data/src/json.c:265:28: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  265 |     if(s) writer->failed=s;ud_bytes_clear(&line);return s;
+      |                            ^~~~~~~~~~~~~~
+[12/25] Building C object components/data/CMakeFiles/ud_columnar.dir/src/schema_json.c.o
+/workspace/UniversalData/components/data/src/schema_json.c: In function ‘integer’:
+/workspace/UniversalData/components/data/src/schema_json.c:24:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   24 |     if(value.integer<INT32_MIN || value.integer>INT32_MAX) return UD_OVERFLOW;*out=(int32_t)value.integer;return UD_OK;
+      |     ^~
+/workspace/UniversalData/components/data/src/schema_json.c:24:79: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   24 |     if(value.integer<INT32_MIN || value.integer>INT32_MAX) return UD_OVERFLOW;*out=(int32_t)value.integer;return UD_OK;
+      |                                                                               ^
+/workspace/UniversalData/components/data/src/schema_json.c: In function ‘ud_schema_from_json’:
+/workspace/UniversalData/components/data/src/schema_json.c:63:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   63 |     if(!s) s=integer(ctx,member(doc,"version"),&version);if(!s && version!=UD_CONFIG_VERSION) s=UD_INCOMPATIBLE;
+      |     ^~
+/workspace/UniversalData/components/data/src/schema_json.c:63:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   63 |     if(!s) s=integer(ctx,member(doc,"version"),&version);if(!s && version!=UD_CONFIG_VERSION) s=UD_INCOMPATIBLE;
+      |                                                          ^~
+/workspace/UniversalData/components/data/src/schema_json.c: In function ‘ud_schema_to_json’:
+/workspace/UniversalData/components/data/src/schema_json.c:90:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   90 |     if(!s) s=emit_fields(&bytes,fields,schema->columns);if(!s) s=ud_bytes_put(&bytes,"}",1);
+      |     ^~
+/workspace/UniversalData/components/data/src/schema_json.c:90:57: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   90 |     if(!s) s=emit_fields(&bytes,fields,schema->columns);if(!s) s=ud_bytes_put(&bytes,"}",1);
+      |                                                         ^~
+[13/25] Building C object components/data/CMakeFiles/ud_columnar.dir/src/types.c.o
+/workspace/UniversalData/components/data/src/types.c: In function ‘ud_value_format’:
+/workspace/UniversalData/components/data/src/types.c:236:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  236 |         if(count<0 || count>=(int)sizeof(text)) return UD_OVERFLOW;n=(uint32_t)count;
+      |         ^~
+/workspace/UniversalData/components/data/src/types.c:236:68: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  236 |         if(count<0 || count>=(int)sizeof(text)) return UD_OVERFLOW;n=(uint32_t)count;
+      |                                                                    ^
+/workspace/UniversalData/components/data/src/types.c: In function ‘integer_to_float’:
+/workspace/UniversalData/components/data/src/types.c:291:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  291 |     if(up) whole++;*out=ldexp((double)whole,(int)shift);if(negative) *out=-*out;return UD_OK;
+      |     ^~
+/workspace/UniversalData/components/data/src/types.c:291:20: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  291 |     if(up) whole++;*out=ldexp((double)whole,(int)shift);if(negative) *out=-*out;return UD_OK;
+      |                    ^
+[14/25] Building C object components/contracts/CMakeFiles/ud_plugins.dir/src/plugin.c.o
+[15/25] Building C object components/contracts/CMakeFiles/ud_plugins.dir/src/registry.c.o
+[16/25] Linking C static library components/data/libud_columnar.a
+[17/25] Linking C static library components/contracts/libud_plugins.a
+[18/25] Building C object plugins/CMakeFiles/ud_connector_odbc.dir/odbc.c.o
+In file included from /workspace/UniversalData/plugins/odbc.c:1:
+/workspace/UniversalData/plugins/common.h: In function ‘plugin_identifier’:
+/workspace/UniversalData/plugins/common.h:28:51: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   28 |     if (!name.data || !name.length || name.length > (SIZE_MAX - 3) / 2 || memchr(name.data, 0, name.length)) return NULL;
+      |                                                   ^
+[19/25] Building C object tests/CMakeFiles/test_duckdb.dir/duckdb.c.o
+[20/25] Linking C shared module plugins/ud_connector_odbc.so
+[21/25] Building C object plugins/CMakeFiles/ud_backend_duckdb.dir/duckdb.c.o
+In file included from /workspace/UniversalData/plugins/duckdb.c:1:
+/workspace/UniversalData/plugins/common.h: In function ‘plugin_identifier’:
+/workspace/UniversalData/plugins/common.h:28:51: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   28 |     if (!name.data || !name.length || name.length > (SIZE_MAX - 3) / 2 || memchr(name.data, 0, name.length)) return NULL;
+      |                                                   ^
+/workspace/UniversalData/plugins/duckdb.c: In function ‘query’:
+/workspace/UniversalData/plugins/duckdb.c:97:9: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+   97 |         fields[i] = (ud_field){name, (uint32_t)strlen(name), t, 1};
+      |         ^~~~~~
+In file included from /workspace/UniversalData/include/ud/csv.h:3,
+                 from /workspace/UniversalData/include/ud/plugin.h:3,
+                 from /workspace/UniversalData/plugins/common.h:3:
+/workspace/UniversalData/include/ud/data.h:24:13: note: ‘precision’ declared here
+   24 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+[22/25] Building C object plugins/CMakeFiles/ud_connector_postgresql.dir/postgresql.c.o
+In file included from /workspace/UniversalData/plugins/connector_common.h:3,
+                 from /workspace/UniversalData/plugins/postgresql.c:1:
+/workspace/UniversalData/plugins/common.h: In function ‘plugin_identifier’:
+/workspace/UniversalData/plugins/common.h:28:51: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   28 |     if (!name.data || !name.length || name.length > (SIZE_MAX - 3) / 2 || memchr(name.data, 0, name.length)) return NULL;
+      |                                                   ^
+/workspace/UniversalData/plugins/postgresql.c: In function ‘open_read’:
+/workspace/UniversalData/plugins/postgresql.c:109:41: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  109 |     if(p->reading || options->sql.length>SIZE_MAX-64) return UD_INVALID;
+      |                                         ^
+/workspace/UniversalData/plugins/postgresql.c: In function ‘write_batch’:
+/workspace/UniversalData/plugins/postgresql.c:321:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  321 |     for(int j=0;j<4;j++) h->deallocate(identity[j]);h->deallocate(sql);
+      |     ^~~
+/workspace/UniversalData/plugins/postgresql.c:321:53: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  321 |     for(int j=0;j<4;j++) h->deallocate(identity[j]);h->deallocate(sql);
+      |                                                     ^
+/workspace/UniversalData/plugins/postgresql.c: In function ‘execute_sql’:
+/workspace/UniversalData/plugins/postgresql.c:338:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  338 |     if(!sql) return UD_RESOURCE;ud_status s=command(p,sql);p->host.deallocate(sql);return s;
+      |     ^~
+/workspace/UniversalData/plugins/postgresql.c:338:33: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  338 |     if(!sql) return UD_RESOURCE;ud_status s=command(p,sql);p->host.deallocate(sql);return s;
+      |                                 ^~~~~~~~~
+[23/25] Linking C executable tests/test_duckdb
+[24/25] Linking C shared module plugins/ud_connector_postgresql.so
+[25/25] Linking C shared module plugins/ud_backend_duckdb.so
+Internal ctest changing into directory: /workspace/UniversalData/build/full
+Test project /workspace/UniversalData/build/full
+    Start 17: duckdb_parquet
+1/1 Test #17: duckdb_parquet ...................   Passed    0.10 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.10 sec

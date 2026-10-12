@@ -53,3 +53,15 @@ Execute Process 新门禁：当前 native 28/28、ASan/UBSan + leak detection �
 当前源码原生 **31/31**、ASan/UBSan+leak 专项 **13/13** 通过。实际 File/SQLite 的多批读取验证行数、空值数、极值、空输入、全空值、Float/UTF8、多个失败与 Failure precedence。权限拒绝/撤销、读取后取消/Package deadline、row/memory 配额、生命周期 cleanup 均实际执行。进程在扫描中和统计产出后/TaskDone 前 `_exit(91)`，恢复重算并得到相同结果；已完成任务 resume 跳过并恢复变量，源数据变化拒绝恢复。持久 SQL Source snapshot 仍明确 Unsupported。
 
 C/.NET8/Java17 同一 Package 增加 Profiling Task：10003 行实际 row/null/min/max 四个规则通过后再执行原有真实子 Package derive/split。两条 Pipeline 的总指标 input/output 20006、completedTasks 8；发布行仍为 10003，三语言输出和指标相同。Decimal/UTC/UTF8/nested/wire 既有回归通过。证据和源码哈希在 `docs/acceptance/evidence/ssis-profile/evidence.json`。高级分布/键关系和更广类型变量不冒充已实现；Windows/远程 CI 状态仍按用户指令免作门禁。
+
+## Native Custom Task 与单一 ABI（2026-10-12）
+
+公开 component/plugin ABI 表接入同一 loader/registry/Control Flow。新增批量 owned 注册先验证/复制所有 metadata，再保留 owner；无效第二描述符完整回滚。注册回调持有真实 module reference；registry 有 Execution 租用则不能变更/销毁，module 在 registry/实例存活时不能卸载。组件专属库无需通用空 factory，ud_plugin_create 明确 Unsupported。使用安装 SDK 的外部项目实际编译 Task 模块，只有公共 include/ud 头及共享库依赖。
+
+按用户“旧 ABI 可以下线删除，只保留唯一版本”的指令，删除旧结构前缀/布局 fallback、legacy fixture/target 和当前构建中的 legacy 生成库。loader、所有自带 plugin entry 和 info 仅接受当前完整 ABI 3 布局。旧 version/layout 的负向拒绝仍验证。Sdk 1.0.0/ABI 3 尚为开发契约；旧插件必须按当前头文件重编。
+
+当前 Linux 原生 **32/32**、ASan/UBSan+leak 专项 **15/15** 通过：实际 DLL、原子回滚、组件专属库、模块/registry/Execution/通用实例各生命周期 Busy、共享表达式/作用域、资源默认拒绝/WRITE 拒绝、只读/配置错误、IO/Busy 及非法 Task END 返回、运行中取消/deadline、授权的真实文件效应后 `_exit(91)`/Unknown 不重放、完成后 resume。C/.NET/Java Profiling/子 Package/Pipeline/类型回归通过。自定义 Task 的模块注册生命周期主要由 C 宿主验收；未宣称新增托管 registry API。
+
+数据库插件按当前 ABI 重新构建：SQLite 的交易/receipt/Pipeline 随原生套件通过；PostgreSQL 实际本地连接、默认拒绝、bounded SELECT/END/close 通过；DuckDB SQL/Parquet roundtrip 通过。ODBC 通过 SQLite ODBC 驱动的实际连接和一批 typed read/close 验证，但仍缺少 ud_connector_api 表和完整 Connection Manager/游标/receipt 门禁；G59 不计为完成。旧 build/full 的 ETL 缓存组件配置已替换为当前 Package/Expression 列表，未保留旧入口。证据：`docs/acceptance/evidence/ssis-custom-task/evidence.json`。
+
+Native 插件是可信宿主代码，不是沙箱；回调自己释放 per-invoke 资源，并遵循不得控制借用 Execution 生命周期的契约。G43 全类别扩展和线程竞态门禁仍待办；Windows/远程 CI 状态按用户免作门禁。

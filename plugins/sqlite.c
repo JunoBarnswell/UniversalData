@@ -437,7 +437,7 @@ static const ud_connector_api connector={sizeof(connector),UD_PLUGIN_ABI,
     connector_write,connector_receipt,connector_cancel,connector_execute_sql};
 
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
-    if (version != UD_PLUGIN_ABI || !out || out->struct_size < sizeof(*out))
+    if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
         return UD_INCOMPATIBLE;
     *out = (ud_plugin_api){sizeof(*out),
                            UD_PLUGIN_ABI,
@@ -449,6 +449,6 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
                            execute,
                            destroy,
                            plugin_shutdown,
-                           &connector};
+                           &connector, NULL};
     return UD_OK;
 }

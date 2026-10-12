@@ -66,6 +66,16 @@ UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
  * Duplicate IDs reject. Built-in IDs cannot be shadowed. Registry mutations and
  * destruction return BUSY while any Execution holds a lease. */
 UD_API ud_status ud_registry_register(ud_registry *, const ud_component_descriptor *);
+typedef ud_status (*ud_component_owner_retain)(void *);
+typedef void (*ud_component_owner_release)(void *);
+/* Atomic metadata registration. Each entry retains its callback owner until
+ * registry destruction; retain/release must be paired, or both NULL. Only an
+ * OK retain acquires a reference. Ownership
+ * callbacks must not mutate the registry or control executions. Host serializes
+ * registration/destruction; it is not concurrent with registry lifetime changes. */
+UD_API ud_status ud_registry_register_owned(ud_registry *, const ud_component_descriptor *,
+                                            uint32_t count, void *owner, ud_component_owner_retain,
+                                            ud_component_owner_release);
 UD_API uint32_t ud_registry_count(const ud_registry *);
 UD_API ud_status ud_registry_get(const ud_registry *, uint32_t, ud_component_descriptor *);
 UD_API ud_status ud_registry_find(const ud_registry *, ud_string id, ud_component_descriptor *);

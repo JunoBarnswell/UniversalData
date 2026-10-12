@@ -1,0 +1,55 @@
+-- Install configuration: "Debug"
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/libud_foundation.a
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/libud_columnar.a
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/libud_expression.a
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/libud_compute.a
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/libud_runtime.a
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/libud_plugins.a
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/libud_query.a
+-- Installing: /workspace/UniversalData/build/install-custom/lib/libud_package.a
+-- Installing: /workspace/UniversalData/build/install-custom/lib/libud_data.so.1.0.0
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/libud_data.so.3
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/libud_data.so
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/UniversalData/plugins/ud_format_csv.so
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/UniversalData/plugins/ud_function_abs.so
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/UniversalData/plugins/ud_connector_sqlite.so
+-- Installing: /workspace/UniversalData/build/install-custom/bin/ud_cli
+-- Installing: /workspace/UniversalData/build/install-custom/bin/ud_worker
+-- Installing: /workspace/UniversalData/build/install-custom/lib/libud_java.so
+-- Set non-toolchain portion of runtime path of "/workspace/UniversalData/build/install-custom/lib/libud_java.so" to ""
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/compute.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/connector.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/csv.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/data.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/engine.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/format.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/json.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/memory.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/plugin.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/quality.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/quarantine.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/query.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/regex.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/status.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/component.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/expression.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/catalog.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/profile.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/project.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/connection_manager.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/package.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/include/ud/execution.h
+-- Up-to-date: /workspace/UniversalData/build/install-custom/share/UniversalData/LICENSE
+-- Up-to-date: /workspace/UniversalData/build/install-custom/share/UniversalData/NOTICE
+-- Up-to-date: /workspace/UniversalData/build/install-custom/share/UniversalData/licenses
+-- Up-to-date: /workspace/UniversalData/build/install-custom/share/UniversalData/licenses/Apache-2.0.txt
+-- Up-to-date: /workspace/UniversalData/build/install-custom/share/UniversalData/licenses/DuckDB-MIT.txt
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/cmake/UniversalData/UniversalDataTargets.cmake
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/cmake/UniversalData/UniversalDataTargets-debug.cmake
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/cmake/UniversalData/UniversalDataConfig.cmake
+-- Up-to-date: /workspace/UniversalData/build/install-custom/lib/cmake/UniversalData/UniversalDataConfigVersion.cmake
+[ 25%] Linking C shared module external_custom_task.so
+[ 75%] Built target external_abs
+[100%] Built target external_custom_task
+Native Custom Task: actual shared library/public headers, atomic descriptor rollback, current ABI3 only, old version/layout rejected, module/registry/execution/instance unload guards, native expression/scopes, default/write denial, errors, live cancellation/deadline, real effect/crash/Unknown and completed resume passed

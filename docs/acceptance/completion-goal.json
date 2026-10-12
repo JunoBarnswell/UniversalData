@@ -432,16 +432,25 @@
       "name": "Native Custom Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "NotRun",
+      "verification": "Verified",
       "acceptance": "公开版本化回调/生命周期/默认授权/不能访问私有结构，插件卸载和错误传播",
       "implementation": [
-        "engines/control-flow",
-        "engines/data-flow/builtins.c",
-        "components/contracts"
+        "include/ud/component.h",
+        "include/ud/plugin.h",
+        "components/contracts/src/registry.c",
+        "components/contracts/src/plugin.c",
+        "examples/plugins/custom_task.c",
+        "engines/control-flow/control.c"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-custom-task/evidence.json",
+          "type": "executed-public-sdk-shared-module-registration-ownership-authorization-recovery"
+        }
+      ],
+      "progress": "Current complete ABI3 only: old version/layout rejected and legacy fallback/module removed per user. Real installed-header DLL Tasks, atomic descriptor/owner rollback, component-only factory absence, registry/module/Execution/instance unload guards, shared native expressions/variables, resource default deny, callback status/error/cancel/deadline, actual file effect/crash Unknown and completed resume verified. Broader G43 plugin categories and language registry exposure remain separate."
     },
     {
       "id": "G21",
@@ -828,7 +837,8 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native component table and atomic registry ownership now hold loaded modules safely across Execution leases; actual public-SDK Task shared libraries verified. Full Source/Transform/Destination/Enumerator/LogProvider extension acceptance and language registry surfaces remain pending."
     },
     {
       "id": "G44",

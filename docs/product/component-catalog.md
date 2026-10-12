@@ -36,3 +36,5 @@ ExecuteProcess 已交付受授权的原生 Task，Linux 退出/期限/取消/资
 HTTP Task 已交付同一 Connection Manager/授权/resolver 契约，并验证 TLS、限额、期限/取消、有限 GET/HEAD 重试及 Unknown 恢复，见 [HTTP Task](../architecture/http-task.md)。G61 HTTP Source/Destination 集成继续独立推进。
 
 Check/Data Profiling 已交付共享 Compute 流式统计及原生 Pipeline Task，验证真实 File/SQLite 行、NULL/极值/规则失败、资源预算、崩溃恢复和三语言一致性，见 [Profiling 契约](../architecture/profile-task.md)。不将该 Task 的基本统计等同于完整质量/关联键/高级分布组件。
+
+Native Custom Task 通过公开 ABI 的实际模块运行，原子注册及模块引用阻止使用中的回调被卸载；仅接受当前完整 ABI 3，不保留旧布局兼容。见 [Native Custom Task](../architecture/native-custom-task.md)。

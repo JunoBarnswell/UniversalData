@@ -14,4 +14,6 @@ ABI --> Native[同一 Package / Execution]
 
 .NET SafeHandle/IDisposable 和 Java AutoCloseable 仅封装 ABI、UTF8 长度、错误映射、取消/等待。JSON 在 native 绑定，语言层不重写计划/数据转换。native library、JNI、plugin 必须 ABI 同版本。旧 ud_job/ud_dag/ud_run 导出删除，旧版本明确 Incompatible。
 
+插件只接受当前完整 ABI 3 API 表布局和版本；不支持旧前缀/旧布局。可选组件表由同一插件 loader 注册，registry 持有模块所有权直到销毁；其间卸载 Busy。详见 [Native Custom Task](native-custom-task.md)。
+
 轨迹：create Package→bind/create Execution→release user definition reference→start→wait→metrics→destroy→所有 allocations=0。错误 create 输出 NULL、清理全部已分配对象；超时 wait 返回 BUSY，不能误记 Success。归属 include/ud、bindings/dotnet、bindings/java；layout/ownership/invalid-version tests 必需。

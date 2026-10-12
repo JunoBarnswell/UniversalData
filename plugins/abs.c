@@ -53,7 +53,7 @@ static void destroy(void *p) {
     }
 }
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
-    if (version != UD_PLUGIN_ABI || !out || out->struct_size < sizeof(*out))
+    if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
         return UD_INCOMPATIBLE;
     *out = (ud_plugin_api){sizeof(*out),
                            UD_PLUGIN_ABI,
@@ -65,6 +65,6 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
                            execute,
                            destroy,
                            plugin_shutdown,
-                           NULL};
+                           NULL, NULL};
     return UD_OK;
 }

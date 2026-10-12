@@ -2,6 +2,8 @@
 #include "../../foundation/internal.h"
 typedef struct entry {
     ud_component_descriptor descriptor;
+    void *owner;
+    ud_component_owner_release release;
     struct entry *next;
 } entry;
 struct ud_registry {
@@ -21,6 +23,8 @@ static void clear(entry *e) {
     ud_free((void *)e->descriptor.name.data);
     ud_free((void *)e->descriptor.version.data);
     ud_free((void *)e->descriptor.configuration_schema.data);
+    if (e->release)
+        e->release(e->owner);
     ud_free(e);
 }
 ud_status ud_registry_create(ud_context *c, ud_registry **out) {
@@ -32,7 +36,8 @@ ud_status ud_registry_create(ud_context *c, ud_registry **out) {
     (*out)->ctx = c;
     return UD_OK;
 }
-ud_status ud_registry_register(ud_registry *r, const ud_component_descriptor *d) {
+static ud_status build_entry(ud_registry *r, const ud_component_descriptor *d, entry **out) {
+    *out = NULL;
     if (!r || !d)
         return UD_INVALID;
     if (r->leases)
@@ -73,13 +78,62 @@ ud_status ud_registry_register(ud_registry *r, const ud_component_descriptor *d)
             return UD_RESOURCE;
         }
     }
-    if (r->tail)
-        r->tail->next = e;
-    else
-        r->head = e;
-    r->tail = e;
-    r->count++;
+    *out = e;
     return UD_OK;
+}
+ud_status ud_registry_register_owned(ud_registry *r, const ud_component_descriptor *descriptors,
+                                     uint32_t count, void *owner, ud_component_owner_retain retain,
+                                     ud_component_owner_release release) {
+    if (!r || !descriptors || !count || count > 4096 || !!retain != !!release || (retain && !owner))
+        return UD_INVALID;
+    if (r->leases)
+        return UD_BUSY;
+    if (count > UINT32_MAX - r->count)
+        return UD_RESOURCE;
+    entry *head = NULL, *tail = NULL;
+    ud_status s = UD_OK;
+    for (uint32_t i = 0; !s && i < count; i++) {
+        entry *e = NULL;
+        s = build_entry(r, descriptors + i, &e);
+        if (s)
+            break;
+        for (entry *earlier = head; earlier; earlier = earlier->next)
+            if (same(earlier->descriptor.id, e->descriptor.id)) {
+                s = UD_SCHEMA;
+                break;
+            }
+        if (!s && retain)
+            s = retain(owner);
+        if (s) {
+            clear(e);
+            break;
+        }
+        e->owner = owner;
+        e->release = release;
+        if (tail)
+            tail->next = e;
+        else
+            head = e;
+        tail = e;
+    }
+    if (s) {
+        while (head) {
+            entry *next = head->next;
+            clear(head);
+            head = next;
+        }
+        return s;
+    }
+    if (r->tail)
+        r->tail->next = head;
+    else
+        r->head = head;
+    r->tail = tail;
+    r->count += count;
+    return UD_OK;
+}
+ud_status ud_registry_register(ud_registry *r, const ud_component_descriptor *descriptor) {
+    return ud_registry_register_owned(r, descriptor, 1, NULL, NULL, NULL);
 }
 uint32_t ud_registry_count(const ud_registry *r) {
     return r ? r->count : 0;
