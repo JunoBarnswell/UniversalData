@@ -1,0 +1,121 @@
+{
+  "platform": "Linux",
+  "rows": 1000000,
+  "results": [
+    {
+      "workers": 1,
+      "rows": 1000000,
+      "seconds": 1.8312386779998633,
+      "rowsPerSecond": 546078.4615428894,
+      "cpuSeconds": 1.8254609999999998,
+      "peakRssBytes": 11440128,
+      "outputSha256": "499abcf3852d58e7c0eebc40a7b10293bcb1763087cc758eff5dbf9aef734ce2",
+      "metrics": {
+        "state": 5,
+        "result": 0,
+        "inputRows": 1000000,
+        "outputRows": 1000000,
+        "executedTasks": 1,
+        "durableTasks": 0,
+        "recoveryTasks": 0,
+        "resumedTasks": 0,
+        "spillBytes": 80015232,
+        "pipelineTrees": 3,
+        "treeHighWater": 1,
+        "workerHighWater": 1
+      }
+    },
+    {
+      "workers": 2,
+      "rows": 1000000,
+      "seconds": 2.0720382290001,
+      "rowsPerSecond": 482616.57820983755,
+      "cpuSeconds": 2.8662210000000004,
+      "peakRssBytes": 13869056,
+      "outputSha256": "499abcf3852d58e7c0eebc40a7b10293bcb1763087cc758eff5dbf9aef734ce2",
+      "metrics": {
+        "state": 5,
+        "result": 0,
+        "inputRows": 1000000,
+        "outputRows": 1000000,
+        "executedTasks": 1,
+        "durableTasks": 0,
+        "recoveryTasks": 0,
+        "resumedTasks": 0,
+        "spillBytes": 135753824,
+        "pipelineTrees": 3,
+        "treeHighWater": 2,
+        "workerHighWater": 2
+      }
+    },
+    {
+      "workers": 4,
+      "rows": 1000000,
+      "seconds": 2.2694058459992448,
+      "rowsPerSecond": 440643.9693292007,
+      "cpuSeconds": 3.011077,
+      "peakRssBytes": 15454208,
+      "outputSha256": "499abcf3852d58e7c0eebc40a7b10293bcb1763087cc758eff5dbf9aef734ce2",
+      "metrics": {
+        "state": 5,
+        "result": 0,
+        "inputRows": 1000000,
+        "outputRows": 1000000,
+        "executedTasks": 1,
+        "durableTasks": 0,
+        "recoveryTasks": 0,
+        "resumedTasks": 0,
+        "spillBytes": 127401440,
+        "pipelineTrees": 3,
+        "treeHighWater": 2,
+        "workerHighWater": 4
+      }
+    },
+    {
+      "workers": 8,
+      "rows": 1000000,
+      "seconds": 2.6144701849998455,
+      "rowsPerSecond": 382486.67196029203,
+      "cpuSeconds": 3.563745999999999,
+      "peakRssBytes": 17502208,
+      "outputSha256": "499abcf3852d58e7c0eebc40a7b10293bcb1763087cc758eff5dbf9aef734ce2",
+      "metrics": {
+        "state": 5,
+        "result": 0,
+        "inputRows": 1000000,
+        "outputRows": 1000000,
+        "executedTasks": 1,
+        "durableTasks": 0,
+        "recoveryTasks": 0,
+        "resumedTasks": 0,
+        "spillBytes": 137326304,
+        "pipelineTrees": 3,
+        "treeHighWater": 2,
+        "workerHighWater": 8
+      }
+    },
+    {
+      "workers": 16,
+      "rows": 1000000,
+      "seconds": 2.8325639730001058,
+      "rowsPerSecond": 353037.0397745515,
+      "cpuSeconds": 3.950803,
+      "peakRssBytes": 24309760,
+      "outputSha256": "499abcf3852d58e7c0eebc40a7b10293bcb1763087cc758eff5dbf9aef734ce2",
+      "metrics": {
+        "state": 5,
+        "result": 0,
+        "inputRows": 1000000,
+        "outputRows": 1000000,
+        "executedTasks": 1,
+        "durableTasks": 0,
+        "recoveryTasks": 0,
+        "resumedTasks": 0,
+        "spillBytes": 138858048,
+        "pipelineTrees": 3,
+        "treeHighWater": 2,
+        "workerHighWater": 10
+      }
+    }
+  ]
+}

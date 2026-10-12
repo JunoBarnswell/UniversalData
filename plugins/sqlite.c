@@ -11,8 +11,24 @@ typedef struct {
     uint32_t cursor_batch_size;
     int cursor_finished;
     atomic_int cancelled;
+    void *control_user;
+    ud_status (*check)(void *);
+    int transaction, cleaning;
 } sqlite_state;
+static ud_status control(sqlite_state *p) {
+    if (p->cleaning) return UD_OK;
+    if (p->check) { ud_status status = p->check(p->control_user); if (status) return status; }
+    return atomic_load(&p->cancelled) || p->host.cancelled(p->host.context) ? UD_CANCELLED : UD_OK;
+}
+static int progress(void *user) { return control(user) != UD_OK; }
+static void set_control(void *state, void *user, ud_status (*check)(void *)) {
+    sqlite_state *p = state;
+    p->control_user = user; p->check = check; atomic_store(&p->cancelled,0);
+    sqlite3_progress_handler(p->db,1000,progress,p);
+}
 static ud_status failure(sqlite_state *p, int code) {
+    ud_status interrupted = control(p);
+    if (interrupted) return interrupted;
     return p->host.report(p->host.context,
                           code == SQLITE_BUSY || code == SQLITE_LOCKED ? UD_BUSY :
                           code == SQLITE_READONLY || code == SQLITE_AUTH || code == SQLITE_PERM ? UD_AUTH :
@@ -25,6 +41,7 @@ static ud_status initialize(const ud_host_api *h, const char *config, uint32_t n
     if (!p)
         return UD_RESOURCE;
     p->host = *h;
+    p->control_user=h->control_user;p->check=h->check_io;
     p->cursor_batch_size = 4096;
     atomic_init(&p->cancelled,0);
     char *path = plugin_string(h, config, n);
@@ -34,7 +51,7 @@ static ud_status initialize(const ud_host_api *h, const char *config, uint32_t n
         return UD_INVALID;
     }
     int rc = sqlite3_open_v2(
-        path, &p->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX, NULL);
+        path, &p->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL);
     h->deallocate(path);
     if (rc != SQLITE_OK) {
         ud_status s = failure(p, rc);
@@ -45,6 +62,7 @@ static ud_status initialize(const ud_host_api *h, const char *config, uint32_t n
     *out = p;
     return UD_OK;
 }
+static int statement_authorize(void *,int,const char *,const char *,const char *,const char *);
 static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char *sql, uint32_t n,
                             ud_batch **out) {
     ud_host_api *h = &p->host;
@@ -52,7 +70,9 @@ static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char 
         return UD_INVALID;
     if (!p->read) {
         const char *tail = NULL;
+        sqlite3_set_authorizer(p->db,statement_authorize,p);
         int rc = sqlite3_prepare_v2(p->db, sql, (int)n, &p->read, &tail);
+        sqlite3_set_authorizer(p->db,NULL,NULL);
         if (rc != SQLITE_OK)
             return failure(p, rc);
         while (tail < sql + n && (*tail == ' ' || *tail == '\n' || *tail == '\r' || *tail == '\t'))
@@ -268,7 +288,8 @@ static ud_status validate_target(sqlite_state *p,ud_string table,const ud_batch 
         const char *declared=(const char *)sqlite3_column_text(stmt,1);
         int length=sqlite3_column_bytes(stmt,1);char upper[128];
         if(!declared || length<0 || length>=(int)sizeof(upper)) { s=UD_UNSUPPORTED;break; }
-        for(int j=0;j<length;j++) upper[j]=(char)toupper((unsigned char)declared[j]);upper[length]=0;
+        for(int j=0;j<length;j++) upper[j]=(char)toupper((unsigned char)declared[j]);
+        upper[length]=0;
         int affinity=strstr(upper,"INT") ? 1 : strstr(upper,"CHAR") || strstr(upper,"CLOB") || strstr(upper,"TEXT") ? 2 :
             !length || strstr(upper,"BLOB") ? 3 : strstr(upper,"REAL") || strstr(upper,"FLOA") || strstr(upper,"DOUB") ? 4 : 5;
         for(uint32_t j=0;j<columns;j++) {
@@ -290,7 +311,8 @@ static ud_status connector_write(void *state,ud_string tenant,const ud_write_opt
     atomic_store(&p->cancelled,0);
     char *sql=NULL;ud_status s=connector_write_sql(h,options,batch,0,&sql);
     if(s) return s;
-    int rc=sqlite3_exec(p->db,"BEGIN IMMEDIATE",NULL,NULL,NULL);
+    int own = !p->transaction;
+    int rc=own ? sqlite3_exec(p->db,"BEGIN IMMEDIATE",NULL,NULL,NULL) : SQLITE_OK;
     if(rc!=SQLITE_OK) { h->deallocate(sql);return rc==SQLITE_BUSY || rc==SQLITE_LOCKED ? UD_TRANSIENT : failure(p,rc); }
     rc=sqlite3_exec(p->db,"CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT NULL,batch_id TEXT NOT NULL,digest BLOB NOT NULL CHECK(length(digest)=32),source_position TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))",NULL,NULL,NULL);
     if(rc!=SQLITE_OK) s=failure(p,rc);
@@ -331,25 +353,138 @@ static ud_status connector_write(void *state,ud_string tenant,const ud_write_opt
     }
     sqlite3_finalize(stmt);h->deallocate(sql);
     if(!s && (h->cancelled(h->context) || atomic_load(&p->cancelled))) s=UD_CANCELLED;
-    if(!s) {
+    if(!s && own) {
         rc=sqlite3_exec(p->db,"COMMIT",NULL,NULL,NULL);
         if(rc!=SQLITE_OK) {
             sqlite3_exec(p->db,"ROLLBACK",NULL,NULL,NULL);
             return h->report(h->context,UD_COMMIT_UNKNOWN,"commit returned an error; query the receipt before advancing source position");
         }
-    } else if(sqlite3_exec(p->db,"ROLLBACK",NULL,NULL,NULL)!=SQLITE_OK && !sqlite3_get_autocommit(p->db))
+    } else if(s && own && sqlite3_exec(p->db,"ROLLBACK",NULL,NULL,NULL)!=SQLITE_OK && !sqlite3_get_autocommit(p->db))
         return h->report(h->context,UD_COMMIT_UNKNOWN,"rollback failed; query the receipt before any replay");
     return s;
 }
+static int statement_authorize(void *user,int action,const char *a,const char *b,const char *db,const char *trigger) {
+    (void)user;(void)a;(void)db;(void)trigger;
+    /* Persistent data is allowed; lease-local session mutation cannot enter
+     * the reusable pool. Driver metadata uses the separate typed contract. */
+    return action==SQLITE_TRANSACTION || action==SQLITE_SAVEPOINT ||
+        action==SQLITE_ATTACH || action==SQLITE_DETACH ||
+        (action==SQLITE_PRAGMA && b) || action==SQLITE_CREATE_TEMP_TABLE ||
+        action==SQLITE_CREATE_TEMP_INDEX || action==SQLITE_CREATE_TEMP_TRIGGER ||
+        action==SQLITE_CREATE_TEMP_VIEW ? SQLITE_DENY : SQLITE_OK;
+}
 static ud_status connector_execute_sql(void *state,ud_string statement) {
     sqlite_state *p=state;char *sql=plugin_string(&p->host,statement.data,statement.length);
-    if(!sql) return UD_RESOURCE;int rc=sqlite3_exec(p->db,sql,NULL,NULL,NULL);p->host.deallocate(sql);
-    return rc==SQLITE_OK?UD_OK:failure(p,rc);
+    if (!sql) return UD_RESOURCE;
+    int own=!p->transaction;
+    ud_status status=control(p);
+    int rc=SQLITE_OK;
+    if (!status && own) {
+        rc=sqlite3_exec(p->db,"BEGIN IMMEDIATE",NULL,NULL,NULL);
+        if (rc!=SQLITE_OK) status=failure(p,rc);
+    }
+    if (!status) {
+        sqlite3_set_authorizer(p->db,statement_authorize,p);
+        rc=sqlite3_exec(p->db,sql,NULL,NULL,NULL);
+        sqlite3_set_authorizer(p->db,NULL,NULL);
+        if (rc!=SQLITE_OK) status=failure(p,rc);
+        if (!status) status=control(p);
+    }
+    p->host.deallocate(sql);
+    if (own) {
+        if (!status) {
+            rc=sqlite3_exec(p->db,"COMMIT",NULL,NULL,NULL);
+            if (rc!=SQLITE_OK) status=UD_COMMIT_UNKNOWN;
+        }
+        if (status && !sqlite3_get_autocommit(p->db)) {
+            p->cleaning=1;rc=sqlite3_exec(p->db,"ROLLBACK",NULL,NULL,NULL);p->cleaning=0;
+            if (rc!=SQLITE_OK) status=UD_COMMIT_UNKNOWN;
+        }
+    }
+    return status;
+}
+static ud_status begin_transaction(void *state,int32_t isolation) {
+    sqlite_state *p=state;
+    if (p->transaction || isolation != UD_ISOLATION_SERIALIZABLE) return UD_UNSUPPORTED;
+    ud_status checked=control(p); if (checked) return checked;
+    int rc=sqlite3_exec(p->db,"BEGIN IMMEDIATE",NULL,NULL,NULL);
+    if (rc != SQLITE_OK) return failure(p,rc);
+    p->transaction=1; return UD_OK;
+}
+static ud_status commit_transaction(void *state) {
+    sqlite_state *p=state;
+    if (!p->transaction) return UD_INVALID;
+    ud_status checked=control(p); if (checked) return checked;
+    int rc=sqlite3_exec(p->db,"COMMIT",NULL,NULL,NULL);
+    if (rc != SQLITE_OK) return UD_COMMIT_UNKNOWN;
+    p->transaction=0; return UD_OK;
+}
+static ud_status rollback_transaction(void *state) {
+    sqlite_state *p=state;
+    if (!p->transaction) return UD_INVALID;
+    p->cleaning=1;
+    int rc=sqlite3_exec(p->db,"ROLLBACK",NULL,NULL,NULL);
+    p->cleaning=0;
+    if (rc != SQLITE_OK) return UD_COMMIT_UNKNOWN;
+    p->transaction=0; return UD_OK;
+}
+static ud_status metadata(void *state,const ud_metadata_options *o,ud_batch **out) {
+    sqlite_state *p=state; ud_host_api *h=&p->host;
+    if (o->offset > INT64_MAX) return UD_INVALID;
+    const char *queries[]={NULL,
+        "SELECT name,'','catalog',seq,0,0,'',0 FROM pragma_database_list ORDER BY seq LIMIT ?2 OFFSET ?3",
+        "SELECT name,'','schema',seq,0,0,'',0 FROM pragma_database_list ORDER BY seq LIMIT ?2 OFFSET ?3",
+        "SELECT name,'main',type,0,0,0,'',0 FROM sqlite_schema WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT ?2 OFFSET ?3",
+        "SELECT name,?1,type,cid,NOT [notnull],pk,'',0 FROM pragma_table_info(?1) ORDER BY cid LIMIT ?2 OFFSET ?3",
+        "SELECT name,?1,type,cid,0,pk,'',1 FROM pragma_table_info(?1) WHERE pk>0 ORDER BY pk LIMIT ?2 OFFSET ?3",
+        "SELECT [from],?1,'foreign_key',seq,1,id,[table] || '.' || [to],0 FROM pragma_foreign_key_list(?1) ORDER BY id,seq LIMIT ?2 OFFSET ?3",
+        "SELECT name,?1,'index',seq,0,0,origin,[unique] FROM pragma_index_list(?1) ORDER BY seq LIMIT ?2 OFFSET ?3"};
+    if (o->kind < UD_METADATA_CATALOGS || o->kind > UD_METADATA_INDEXES) return UD_INVALID;
+    sqlite3_stmt *q=NULL;
+    int rc=sqlite3_prepare_v2(p->db,queries[o->kind],-1,&q,NULL);
+    if (rc!=SQLITE_OK) return failure(p,rc);
+    sqlite3_bind_text64(q,1,o->parent.data ? o->parent.data : "",o->parent.length,SQLITE_TRANSIENT,SQLITE_UTF8);
+    sqlite3_bind_int64(q,2,o->limit); sqlite3_bind_int64(q,3,(sqlite3_int64)o->offset);
+    ud_field fields[]={
+        {.name="name",.name_length=4,.type=UD_UTF8,.nullable=1},
+        {.name="parent",.name_length=6,.type=UD_UTF8,.nullable=1},
+        {.name="declared_type",.name_length=13,.type=UD_UTF8,.nullable=1},
+        {.name="ordinal",.name_length=7,.type=UD_INT64},
+        {.name="nullable",.name_length=8,.type=UD_BOOL},
+        {.name="key_order",.name_length=9,.type=UD_INT64},
+        {.name="reference",.name_length=9,.type=UD_UTF8,.nullable=1},
+        {.name="unique",.name_length=6,.type=UD_BOOL}};
+    ud_status status=h->batch_create(h->context,fields,8,o->limit,out);
+    while (!status && (rc=sqlite3_step(q))==SQLITE_ROW) {
+        status=control(p);
+        ud_value v[8]={{0}};
+        for (uint32_t i=0;i<8;i++) {
+            v[i].type=fields[i].type;
+            v[i].is_null=fields[i].nullable && sqlite3_column_type(q,(int)i)==SQLITE_NULL;
+            if (fields[i].type==UD_UTF8) {
+                v[i].text=(const char *)sqlite3_column_text(q,(int)i);
+                v[i].text_length=(uint32_t)sqlite3_column_bytes(q,(int)i);
+            } else v[i].integer=sqlite3_column_int64(q,(int)i);
+        }
+        if (!status) status=h->append(*out,v,8);
+    }
+    if (!status && rc!=SQLITE_DONE) status=failure(p,rc);
+    sqlite3_finalize(q); return status;
+}
+static ud_status reset_session(void *state) {
+    sqlite_state *p=state;
+    if (p->read || p->transaction || !sqlite3_get_autocommit(p->db) || sqlite3_next_stmt(p->db,NULL))
+        return UD_CORRUPT;
+    p->cleaning=1;
+    ud_status status=connector_test(p);
+    p->cleaning=0;
+    return status;
 }
 static const ud_connector_api connector={sizeof(connector),UD_PLUGIN_ABI,
-    UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_EXECUTE_SQL,
+    UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_EXECUTE_SQL|UD_CONNECT_TRANSACTION|UD_CONNECT_METADATA|UD_CONNECT_POOL,
     connector_test,connector_discover,connector_read_open,connector_read_next,connector_read_close,
-    connector_write,connector_receipt,connector_cancel,connector_execute_sql};
+    connector_write,connector_receipt,connector_cancel,connector_execute_sql,
+    begin_transaction,commit_transaction,rollback_transaction,metadata,set_control,reset_session};
 
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
@@ -359,7 +494,7 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
                            "org.universaldata.connector.sqlite",
                            "1.0.0",
                            UD_PLUGIN_CONNECTOR,
-                           UD_CAP_READ | UD_CAP_WRITE | UD_CAP_TRANSACTION,
+                           UD_CAP_READ | UD_CAP_WRITE | UD_CAP_TRANSACTION | UD_CAP_THREAD_SAFE,
                            initialize,
                            destroy,
                            plugin_shutdown,

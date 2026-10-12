@@ -17,8 +17,21 @@ enum {
     UD_CONNECT_RECEIPTS = 128,
     UD_CONNECT_EXECUTE_SQL = 256,
     UD_CONNECT_EXECUTE_PROCESS = 512,
-    UD_CONNECT_HTTP = 1024
+    UD_CONNECT_HTTP = 1024,
+    UD_CONNECT_TRANSACTION = 2048,
+    UD_CONNECT_METADATA = 4096,
+    UD_CONNECT_POOL = 8192
 };
+enum { UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE };
+enum { UD_METADATA_CATALOGS = 1, UD_METADATA_SCHEMAS, UD_METADATA_TABLES,
+       UD_METADATA_COLUMNS, UD_METADATA_PRIMARY_KEYS, UD_METADATA_FOREIGN_KEYS, UD_METADATA_INDEXES };
+typedef struct ud_metadata_options {
+    uint32_t struct_size, abi_version;
+    int32_t kind;
+    ud_string parent;
+    uint64_t offset;
+    uint32_t limit;
+} ud_metadata_options;
 enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3 };
 enum {
     UD_ACCESS_OPEN = 1,
@@ -45,6 +58,7 @@ typedef struct ud_connection_options {
     ud_authorize_fn authorize;
     void *resolve_user;
     ud_credential_resolver_fn resolve;
+    ud_status (*check)(void *authorize_user); /* Factory deadline/cancellation control. */
 } ud_connection_options;
 typedef struct ud_read_options {
     uint32_t struct_size, abi_version, batch_size;
@@ -78,10 +92,24 @@ typedef struct ud_connector_api {
                          ud_commit_receipt *);
     void (*cancel)(void *);
     ud_status (*execute_sql)(void *, ud_string);
+    ud_status (*begin)(void *, int32_t isolation);
+    ud_status (*commit)(void *);
+    ud_status (*rollback)(void *);
+    ud_status (*metadata)(void *, const ud_metadata_options *, ud_batch **);
+    /* Driver must call check during lengthy I/O; cancellation is concurrent.
+     * Passing NULL detaches the Activation on return to the idle pool. */
+    void (*set_control)(void *, void *user, ud_status (*check)(void *));
+    /* POOL requires a clean-session proof. No cursor, transaction or mutable
+     * per-session SQL state may cross leases. Failure retires the session. */
+    ud_status (*reset_session)(void *);
 } ud_connector_api;
 UD_API ud_status ud_connection_open(ud_plugin *, const ud_connection_options *, ud_connection **);
 UD_API uint64_t ud_connection_capabilities(const ud_connection *);
 UD_API ud_status ud_connection_execute_sql(ud_connection *, ud_string);
+UD_API ud_status ud_connection_begin(ud_connection *, int32_t isolation);
+UD_API ud_status ud_connection_commit(ud_connection *);
+UD_API ud_status ud_connection_rollback(ud_connection *);
+UD_API ud_status ud_connection_metadata(ud_connection *, const ud_metadata_options *, ud_batch **);
 UD_API ud_status ud_connection_test(ud_connection *);
 UD_API ud_status ud_connection_discover(ud_connection *, ud_string table, ud_batch **);
 UD_API ud_status ud_connection_read_open(ud_connection *, const ud_read_options *,

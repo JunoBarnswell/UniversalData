@@ -5,9 +5,11 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 import ast
+from product_model import generate
 
 root = pathlib.Path(__file__).resolve().parents[1]
 errors = []
+errors.extend("Product projection differs: " + name for name in generate(True))
 for path in root.rglob("*"):
     if not path.is_file() or any(p in {".git", "build", "bin", "obj", "target", "artifacts", "_deps", "work", "output"} for p in path.relative_to(root).parts):
         continue

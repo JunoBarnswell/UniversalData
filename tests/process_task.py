@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(prefix="ud-process-task-") as temporary:
         folder.mkdir()
         marker = folder / "marker.json"
         config = {"connection": "program", "arguments": ["-c", script], "workingDirectory": "cwd", "timeoutMs": 3000, "exitCodeVariable": "exit", **(extra or {})}
-        doc = {"version": 4, "id": "process", "variables": {"exit": {"type": "int64", "default": -1}}, "connections": [{"id": "program", "driver": "process", "resource": sys.executable}, {"id": "cwd", "driver": "file", "resource": str(folder)}], "controlFlow": {"tasks": [{"id": "launch", "kind": "process.execute", "config": config}], "constraints": []}, "dataFlows": []}
+        doc = {"version": 6, "id": "process", "variables": {"exit": {"type": "int64", "default": -1}}, "connections": [{"id": "program", "driver": "process", "resource": sys.executable}, {"id": "cwd", "driver": "file", "resource": str(folder)}], "controlFlow": {"tasks": [{"id": "launch", "kind": "process.execute", "config": config}], "constraints": []}, "dataFlows": []}
         return folder, marker, doc
     def run(folder, marker, doc, mode=0, status=0, code=0, checkpoint=False, resume=0, exit=0):
         package = folder / "package.json"
@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix="ud-process-task-") as temporary:
     run(folder, marker, doc, status=3, code=-1 if os.name=="nt" else 127)
     if True:
         script = "import subprocess,sys,os,pathlib,json,time;child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)']);pathlib.Path('marker.json').write_text(json.dumps({'pid':os.getpid(),'child':child.pid}));time.sleep(30)"
-        for name, mode, status, code in [("timeout", 0, 18, -1 if os.name=="nt" else -9), ("cancel", 3, 8, -1), ("package-deadline", 5, 18, -1)]:
+        for name, mode, status, code in [("timeout", 0, 18, -1 if os.name=="nt" else -9), ("cancel", 3, 8, -1), ("package-deadline", 5, 18, -1 if os.name=="nt" else -9)]:
             folder, marker, doc = fixture(name, script, {"timeoutMs": 2000 if mode == 0 else 5000})
             run(folder, marker, doc, mode=mode, status=status, code=code)
             pids = json.loads(marker.read_text())

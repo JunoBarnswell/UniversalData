@@ -2,6 +2,7 @@
 #define UD_STATUS_H
 #include <stddef.h>
 #include <stdint.h>
+#include "version.h"
 #if defined(_WIN32) && !defined(UD_STATIC)
 #ifdef UD_BUILD_SHARED
 #define UD_API __declspec(dllexport)
@@ -16,12 +17,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define UD_ABI_VERSION 4u
-#define UD_CONFIG_VERSION 4u
-#define UD_PLAN_VERSION 4u
-#define UD_CHECKPOINT_VERSION 4u
-#define UD_WORKER_VERSION 4u
-#define UD_WIRE_VERSION 4u
 typedef int32_t ud_status;
 enum {
     UD_OK = 0,

@@ -1,31 +1,70 @@
 {
-  "scope": "current Phase 0-7 core",
-  "state": "Verified Windows Release distributable",
-  "native": {
-    "passed": 31,
-    "total": 31
+  "generatedFrom": "metadata/product.json",
+  "sdkVersion": "1.2.0",
+  "abi": 6,
+  "scope": {
+    "name": "ETL four engines R0–R7 P0/P1",
+    "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
+    "extensions": "Tracked independently; Planned/Partial remain incomplete",
+    "windows": "Exempt — explicit current user instruction"
   },
-  "asan": {
-    "passed": 31,
-    "total": 31
+  "baseline": {
+    "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "merged": true
   },
-  "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
-  "extensions": "Incomplete, explicit Planned/Partial states",
-  "linux": "Exempt by current user decision",
-  "published": false,
-  "merged": false,
-  "release": {
-    "passed": 31,
-    "total": 31
+  "candidate": {
+    "branch": "codex/ssis-infrastructure-convergence",
+    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
+    "sourceCommit": null,
+    "sourceFingerprint": null,
+    "mergeEvidence": null
   },
-  "artifacts": {
-    "archive": "artifacts/UniversalData-1.0.0-win-x64.zip",
-    "sha256": "07177d34bc9164aa11885b391ae5916560e4192e7c74f3ee1c8b2797739cfc97",
-    "manifest": "artifacts/1.0.0/win-x64/manifest.json",
-    "nativeLibrary": "artifacts/1.0.0/win-x64/sdk/bin/ud_data.dll",
-    "configuration": "Release",
-    "abiVersion": 4,
-    "verifiedFiles": 47,
-    "linuxBinary": "Not built; current delivery exempts Linux execution"
-  }
+  "remoteCI": {
+    "state": "Blocked",
+    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38270005891",
+    "sourceCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "startedSteps": 0,
+    "reason": "GitHub account payment/spending-limit restriction; no code steps ran"
+  },
+  "artifacts": null,
+  "requiredGates": 18,
+  "passedGates": 0,
+  "remediations": [
+    {
+      "id": "R01",
+      "state": "Implemented",
+      "name": "Registry and native module lifecycle",
+      "verification": "Pending"
+    },
+    {
+      "id": "R02",
+      "state": "Implemented",
+      "name": "Physical Block Store ownership",
+      "verification": "Pending"
+    },
+    {
+      "id": "R03",
+      "state": "Implemented",
+      "name": "Shared executor and physical Execution Trees",
+      "verification": "Pending"
+    },
+    {
+      "id": "R04",
+      "state": "Implemented",
+      "name": "Indexed segmented Journal and snapshots",
+      "verification": "Pending"
+    },
+    {
+      "id": "R05",
+      "state": "Implemented",
+      "name": "Task facts, durability metrics and events",
+      "verification": "Pending"
+    },
+    {
+      "id": "R06",
+      "state": "Implemented",
+      "name": "Single version and acceptance model",
+      "verification": "Pending"
+    }
+  ]
 }

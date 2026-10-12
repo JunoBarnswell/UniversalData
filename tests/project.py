@@ -12,14 +12,14 @@ with tempfile.TemporaryDirectory(prefix="ud-project-") as folder:
     literal = lambda x: {"literal": x, "type": "int64"}
     ref = lambda x: {"ref": x}
     assign = lambda target, value: {"id": target, "kind": "set", "config": {"name": target, "value": value}}
-    project = {"version": 4, "id": "project", "parameters": {"outer": scalar(5), "same": scalar(100), "input": {"type": "utf8", "default": str(root / "source.ndjson")}}, "variables": {"counter": scalar(1), "shadow": scalar(99), "mask": scalar(111)}, "packages": [{"id": "p", "revision": 1}], "connections": [{"id": "source", "driver": "file", "resource": {"$parameter": "input"}}]}
-    package = {"version": 4, "id": "p", "parameters": {"shadow": scalar(7), "same": scalar(11), "input": {"type": "utf8", "default": str(root / "wrong-source")}, "output": {"type": "utf8", "default": str(root / "direct.ndjson")}}, "variables": {name: scalar(0) for name in ["outerResult", "scopeResult", "containerResult", "maskResult", "countResult", "sameResult"]}, "connections": [{"id": "output", "driver": "file", "resource": {"$parameter": "output"}}]}
+    project = {"version": 6, "id": "project", "parameters": {"outer": scalar(5), "same": scalar(100), "input": {"type": "utf8", "default": str(root / "source.ndjson")}}, "variables": {"counter": scalar(1), "shadow": scalar(99), "mask": scalar(111)}, "packages": [{"id": "p", "revision": 1}], "connections": [{"id": "source", "driver": "file", "resource": {"$parameter": "input"}}]}
+    package = {"version": 6, "id": "p", "parameters": {"shadow": scalar(7), "same": scalar(11), "input": {"type": "utf8", "default": str(root / "wrong-source")}, "output": {"type": "utf8", "default": str(root / "direct.ndjson")}}, "variables": {name: scalar(0) for name in ["outerResult", "scopeResult", "containerResult", "maskResult", "countResult", "sameResult"]}, "connections": [{"id": "output", "driver": "file", "resource": {"$parameter": "output"}}]}
     package["variables"]["mask"] = scalar(222)
     tasks = [assign("outerResult", ref("outer")), assign("maskResult", ref("mask")), assign("sameResult", ref("same")), assign("counter", {"op": "add", "args": [ref("counter"), literal(1)]}), assign("countResult", ref("counter")), {"id": "scope", "kind": "sequence", "config": {}, "variables": {"mask": scalar(333)}, "children": {"tasks": [assign("containerResult", ref("mask")), {**assign("scopeResult", ref("mask")), "variables": {"mask": scalar(444)}}], "constraints": []}}, {"id": "flow", "kind": "dataFlow", "config": {"pipeline": "flow"}}]
     package["controlFlow"] = {"tasks": tasks, "constraints": [{"from": "counter", "to": "countResult", "on": "success"}]}
-    package["dataFlows"] = [{"id": "flow", "components": [{"id": "source", "component": "file.ndjson.source", "config": {"connection": "source", "schema": {"version": 4, "fields": [{"name": "x", "type": "int64", "nullable": False}]} }}, {"id": "output", "component": "file.ndjson.destination", "config": {"connection": "output"}}], "paths": [{"from": "source", "output": 0, "to": "output", "input": 0}]}]
-    environment = {"version": 4, "id": "environment", "projectId": "project", "projectParameters": {"outer": 10}, "packageParameters": {"p": {"output": str(root / "direct.ndjson")}}}
-    deployment = {"version": 4, "id": "deployment", "project": {"id": "project", "revision": 1}, "environment": {"id": "environment", "revision": 1}}
+    package["dataFlows"] = [{"id": "flow", "components": [{"id": "source", "component": "file.ndjson.source", "config": {"connection": "source", "schema": {"version": 6, "fields": [{"name": "x", "type": "int64", "nullable": False}]} }}, {"id": "output", "component": "file.ndjson.destination", "config": {"connection": "output"}}], "paths": [{"from": "source", "output": 0, "to": "output", "input": 0}]}]
+    environment = {"version": 6, "id": "environment", "projectId": "project", "projectParameters": {"outer": 10}, "packageParameters": {"p": {"output": str(root / "direct.ndjson")}}}
+    deployment = {"version": 6, "id": "deployment", "project": {"id": "project", "revision": 1}, "environment": {"id": "environment", "revision": 1}}
     package2 = copy.deepcopy(package)
     package2["controlFlow"]["tasks"][0]["config"]["value"] = {"op": "add", "args": [ref("outer"), literal(100)]}
     project2 = copy.deepcopy(project)
@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix="ud-project-") as folder:
     catalog_env1["packageParameters"]["p"]["output"] = str(root / "v1.ndjson")
     deploy2 = copy.deepcopy(deployment)
     deploy2["project"]["revision"] = deploy2["environment"]["revision"] = 2
-    readonly = {"version": 4, "id": "readonly", "parameters": {"shadow": scalar(7)}, "project": {"id": "project", "variables": {"shadow": scalar(99)}}, "controlFlow": {"tasks": [assign("shadow", literal(1))], "constraints": []}, "dataFlows": []}
+    readonly = {"version": 6, "id": "readonly", "parameters": {"shadow": scalar(7)}, "project": {"id": "project", "variables": {"shadow": scalar(99)}}, "controlFlow": {"tasks": [assign("shadow", literal(1))], "constraints": []}, "dataFlows": []}
     documents = {"project.json": project, "project-v2.json": project2, "package.json": package, "package-v2.json": package2, "environment.json": catalog_env1, "environment-v2.json": env2, "deployment.json": deployment, "deployment-v2.json": deploy2, "readonly.json": readonly}
     def normalize_paths(value):
         if isinstance(value,dict):return {k:normalize_paths(v) for k,v in value.items()}

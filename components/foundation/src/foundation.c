@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <locale.h>
 #include <float.h>
+#include "../domain.h"
 struct ud_context {
     ud_context_options options;
     atomic_uint_fast64_t used;
@@ -13,11 +14,18 @@ struct ud_context {
  * operations must not race while writing an unrelated task's error string. */
 static _Thread_local const ud_context *diagnostic_context;
 static _Thread_local char diagnostic_text[1024];
+struct ud_memory_domain {
+    ud_context *ctx;
+    uint64_t limit;
+    atomic_uint_fast64_t used, peak;
+};
+static _Thread_local ud_memory_domain *allocation_domain;
 typedef union allocation {
     long double alignment;
     struct {
         ud_context *ctx;
         size_t bytes;
+        ud_memory_domain *domain;
     } h;
 } allocation;
 static void *default_alloc(void *user, size_t n) {
@@ -29,7 +37,7 @@ static void default_free(void *user, void *p) {
     free(p);
 }
 const char *ud_version(void) {
-    return "1.0.0";
+    return UD_SDK_VERSION;
 }
 const char *ud_status_name(ud_status s) {
     static const char *names[] = {
@@ -96,21 +104,40 @@ void *ud_alloc(ud_context *c, size_t n) {
     if (!c || n > SIZE_MAX - sizeof(allocation))
         return NULL;
     size_t total = n + sizeof(allocation);
+    ud_memory_domain *domain = allocation_domain && allocation_domain->ctx == c
+                                   ? allocation_domain : NULL;
+    if (domain) {
+        uint64_t owned = atomic_load(&domain->used);
+        do {
+            if (owned > domain->limit || total > domain->limit - owned) {
+                ud_fail(c, UD_RESOURCE, "allocation domain quota exceeded");
+                return NULL;
+            }
+        } while (!atomic_compare_exchange_weak(&domain->used, &owned, owned + total));
+        uint64_t peak = atomic_load(&domain->peak);
+        while (peak < owned + total &&
+               !atomic_compare_exchange_weak(&domain->peak, &peak, owned + total)) {}
+    }
     uint64_t old = atomic_load(&c->used);
     do {
         if (old > c->options.memory_limit || total > c->options.memory_limit - old) {
             ud_fail(c, UD_RESOURCE, "memory quota exceeded: requested %zu bytes", total);
+            if (domain)
+                atomic_fetch_sub(&domain->used, total);
             return NULL;
         }
     } while (!atomic_compare_exchange_weak(&c->used, &old, old + total));
     allocation *a = c->options.allocate(c->options.allocator_user, total);
     if (!a) {
         atomic_fetch_sub(&c->used, total);
+        if (domain)
+            atomic_fetch_sub(&domain->used, total);
         ud_fail(c, UD_RESOURCE, "allocator rejected %zu bytes", total);
         return NULL;
     }
     a->h.ctx = c;
     a->h.bytes = total;
+    a->h.domain = domain;
     void *p = a + 1;
     memset(p, 0, n);
     return p;
@@ -124,8 +151,44 @@ void ud_free(void *p) {
     allocation *a = ((allocation *)p) - 1;
     ud_context *c = a->h.ctx;
     size_t n = a->h.bytes;
+    ud_memory_domain *domain = a->h.domain;
     c->options.deallocate(c->options.allocator_user, a);
     atomic_fetch_sub(&c->used, n);
+    if (domain)
+        atomic_fetch_sub(&domain->used, n);
+}
+ud_status ud_memory_domain_create(ud_context *ctx, uint64_t limit, ud_memory_domain **out) {
+    if (!ctx || !limit || !out)
+        return UD_INVALID;
+    *out = ud_alloc(ctx, sizeof(**out));
+    if (!*out)
+        return UD_RESOURCE;
+    (*out)->ctx = ctx;
+    (*out)->limit = limit;
+    atomic_init(&(*out)->used, 0);
+    atomic_init(&(*out)->peak, 0);
+    return UD_OK;
+}
+void ud_memory_domain_enter(ud_memory_domain *domain, ud_memory_scope *scope) {
+    scope->previous = allocation_domain;
+    allocation_domain = domain;
+}
+void ud_memory_domain_leave(const ud_memory_scope *scope) {
+    allocation_domain = scope->previous;
+}
+uint64_t ud_memory_domain_used(const ud_memory_domain *domain) {
+    return domain ? atomic_load(&domain->used) : 0;
+}
+uint64_t ud_memory_domain_peak(const ud_memory_domain *domain) {
+    return domain ? atomic_load(&domain->peak) : 0;
+}
+ud_status ud_memory_domain_destroy(ud_memory_domain *domain) {
+    if (!domain)
+        return UD_OK;
+    if (atomic_load(&domain->used))
+        return UD_BUSY;
+    ud_free(domain);
+    return UD_OK;
 }
 void ud_cancel(ud_context *c) {
     if (c)
@@ -270,6 +333,15 @@ ud_status ud_read_file(ud_context *c, const char *path, ud_bytes *b) {
     if (fclose(f) && !s)
         s = UD_IO;
     return s ? ud_fail(c, s, "read failed: %s", path) : UD_OK;
+}
+ud_status ud_append_file(ud_context *c, const char *path, const void *p, size_t n) {
+    FILE *file = ud_fopen(path, "ab");
+    if (!file)
+        return UD_IO;
+    ud_status result = fwrite(p, 1, n, file) == n ? ud_flush(c, file) : UD_IO;
+    if (fclose(file) && !result)
+        result = UD_IO;
+    return result;
 }
 ud_status ud_write_file(ud_context *c, const char *path, const void *p, size_t n) {
     FILE *f = ud_fopen(path, "wb");

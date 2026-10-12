@@ -1,0 +1,25 @@
+Internal ctest changing into directory: /workspace/UniversalData/build/four-engines-linux
+Test project /workspace/UniversalData/build/four-engines-linux
+    Start 15: four_engine_scheduling_operators
+1/2 Test #15: four_engine_scheduling_operators ......   Passed    0.01 sec
+    Start 25: four_engine_connections_enumerators
+2/2 Test #25: four_engine_connections_enumerators ...***Failed    0.06 sec
+Traceback (most recent call last):
+  File "/workspace/UniversalData/tests/four_engine_connections.py", line 29, in <module>
+    q['controlFlow']['tasks']=[{'id':'variable','kind':'foreach','config':{'variable':'item','enumerator':'core.variable','fromVariable':'items'},'children':{'tasks':[add],'constraints':[]}}];run(q,total=6)
+                                                                                                                                                                                                ^^^^^^^^^^^^^^
+  File "/workspace/UniversalData/tests/four_engine_connections.py", line 13, in run
+    assert result.returncode==0,result.stdout+result.stderr
+           ^^^^^^^^^^^^^^^^^^^^
+AssertionError: actual=5 expected=0
+/workspace/UniversalData/tests/four_engine_connections.c:21: status==atoi(argv[3])
+
+
+
+50% tests passed, 1 tests failed out of 2
+
+Total Test time (real) =   0.08 sec
+
+The following tests FAILED:
+	 25 - four_engine_connections_enumerators (Failed)
+Errors while running CTest

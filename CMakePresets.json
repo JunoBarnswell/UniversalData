@@ -29,7 +29,7 @@
       "name": "windows",
       "generator": "Visual Studio 18 2026",
       "architecture": "x64",
-      "binaryDir": "${sourceDir}/build/abi4-windows",
+      "binaryDir": "${sourceDir}/build/windows",
       "cacheVariables": { "UD_BUILD_JNI": "ON" }
     },
     {

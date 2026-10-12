@@ -12,7 +12,9 @@ $repository = (Resolve-Path -LiteralPath "$PSScriptRoot/..").Path
 $build = (Resolve-Path -LiteralPath $BuildDirectory).Path
 $outputDirectory = [IO.Path]::GetFullPath($Output)
 $logDirectoryPath = [IO.Path]::GetFullPath($LogDirectory)
-$version = (Get-Content -LiteralPath (Join-Path $repository 'VERSION') -Raw).Trim()
+$product = (Get-Content -LiteralPath (Join-Path $repository 'metadata/product.json') -Raw | ConvertFrom-Json).product
+$version = $product.sdkVersion
+$abi = [uint32]$product.abiVersion
 $cachePath = Join-Path $build 'CMakeCache.txt'
 if (!(Test-Path -LiteralPath $cachePath -PathType Leaf)) { throw 'Configure the native build before packaging.' }
 $cache = @{}
@@ -53,6 +55,7 @@ $maven = (Get-Command mvn -ErrorAction Stop).Source
 $python = (Get-Command python -ErrorAction Stop).Source
 Push-Location -LiteralPath $repository
 try {
+    Invoke-PackageTool $python @('scripts/product_model.py','check') 'product-model.log'
     $buildArguments = @('--build',$build,'--config',$Configuration,'--parallel','4')
     if ($IsWindows) { $buildArguments += @('--','/nologo','/verbosity:quiet') }
     Invoke-PackageTool $cmake $buildArguments 'native-build.log'
@@ -68,8 +71,8 @@ try {
         $hostFile = if ($IsWindows) { "$hostName.exe" } else { $hostName }
         if (!(Test-Path -LiteralPath (Join-Path $sdk "bin/$hostFile") -PathType Leaf)) { throw "Missing installed host: $hostFile" }
     }
-    $header = Get-Content -LiteralPath (Join-Path $sdk 'include/ud/status.h') -Raw
-    if ($header -notmatch '#define UD_ABI_VERSION 4u') { throw 'The installed SDK does not declare the current ABI 4.' }
+    $header = Get-Content -LiteralPath (Join-Path $sdk 'include/ud/version.h') -Raw
+    if ($header -notmatch "#define UD_ABI_VERSION $($abi)u") { throw 'The installed SDK ABI differs from the product model.' }
     $capabilities = [ordered]@{ sqlite = ($cache['UD_WITH_SQLITE'] -eq 'ON'); postgresql = ($cache['UD_WITH_POSTGRESQL'] -eq 'ON'); httpTask = ($cache['UD_WITH_HTTP'] -eq 'ON') }
     foreach ($driver in @('sqlite','postgresql')) {
         if ($capabilities[$driver]) {
@@ -91,7 +94,7 @@ try {
         [ordered]@{ path = [IO.Path]::GetRelativePath($stage,$_.FullName).Replace('\','/'); bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     })
     $manifest = [ordered]@{
-        schemaVersion = 1; sdkVersion = $version; abiVersion = 4; runtimeIdentifier = $RuntimeIdentifier
+        schemaVersion = 1; sdkVersion = $version; abiVersion = $abi; runtimeIdentifier = $RuntimeIdentifier
         configuration = $Configuration; sourceFingerprint = $fingerprint; capabilities = $capabilities
         files = $files
     }

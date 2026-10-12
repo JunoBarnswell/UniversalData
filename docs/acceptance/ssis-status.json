@@ -1,91 +1,2178 @@
 {
-  "sdkVersion": "1.0.0",
-  "abi": 4,
-  "workingBranch": "codex/ssis-package-runtime",
-  "baseCommit": "c36a6c5",
-  "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
-  "delivery": "Verified Windows Release distributable and current core; extension backlog incomplete",
-  "platforms": {
-    "windows": "Verified: Release zero warnings; native 31/31; ASan 31/31; actual ZIP dynamic C/SQLite/resources/Pipeline, native NuGet without SDK PATH, Maven/JNI parity",
-    "linux": "Implemented same core operators and POSIX infrastructure; exempt from testing this delivery"
+  "generatedFrom": "metadata/product.json",
+  "sdkVersion": "1.2.0",
+  "abi": 6,
+  "scope": {
+    "name": "ETL four engines R0–R7 P0/P1",
+    "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
+    "extensions": "Tracked independently; Planned/Partial remain incomplete",
+    "windows": "Exempt — explicit current user instruction"
   },
-  "phases": {
-    "0": {
-      "scope": "Product/architecture/SSIS/deletion matrix",
-      "design": "Implemented",
-      "code": "Implemented for current core scope",
-      "validation": "Verified product/architecture documents and source contracts",
-      "extensions": "See current component catalog"
-    },
-    "1": {
-      "scope": "Unified data/AST/functions/Registry/Compute/buffers",
-      "design": "Implemented",
-      "code": "Implemented for current core scope",
-      "validation": "Verified unified types/AST/Registry/Compute/buffers through native and ASan suites",
-      "extensions": "See current component catalog"
-    },
-    "2": {
-      "scope": "Package/Activation/control/scopes/events/concurrency",
-      "design": "Implemented",
-      "code": "Implemented for current core scope",
-      "validation": "Verified control/scopes/Activation/concurrency/events/timeouts and child execution",
-      "extensions": "See current component catalog"
-    },
-    "3": {
-      "scope": "Pipeline/ports/End/backpressure/shared operators",
-      "design": "Implemented",
-      "code": "Implemented for current core scope",
-      "validation": "Verified multiport Pipeline/backpressure/shared operators/spill and error destinations",
-      "extensions": "See current component catalog"
-    },
-    "4": {
-      "scope": "Manager/core native sources/transforms/destinations/quality",
-      "design": "Implemented",
-      "code": "Implemented for current core scope",
-      "validation": "Verified current file/SQLite core components; optional drivers retain explicit unverified state",
-      "extensions": "See current component catalog"
-    },
-    "5": {
-      "scope": "Journal/receipts/Catalog/deployment/history",
-      "design": "Implemented",
-      "code": "Implemented for current core scope",
-      "validation": "Verified journal/receipt/crash recovery, Catalog/Project/deployment/history",
-      "extensions": "See current component catalog"
-    },
-    "6": {
-      "scope": "Complete ABI4/bindings/hosts/installed consumers",
-      "design": "Implemented",
-      "code": "Implemented for current core scope",
-      "validation": "Verified actual Release ZIP, dynamic C facade, native NuGet and Maven/JNI consumers",
-      "extensions": "See current component catalog"
-    },
-    "7": {
-      "scope": "Core Lookup/Window/error/row count/audit integration; expansion backlog tracked",
-      "design": "Implemented",
-      "code": "Implemented for current core scope",
-      "validation": "Verified current core operators/components; extensions remain Planned/Partial",
-      "extensions": "Planned/Partial"
-    }
+  "baseline": {
+    "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "merged": true
   },
+  "candidate": {
+    "branch": "codex/ssis-infrastructure-convergence",
+    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
+    "sourceCommit": null,
+    "sourceFingerprint": null,
+    "mergeEvidence": null
+  },
+  "remoteCI": {
+    "state": "Blocked",
+    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38270005891",
+    "sourceCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "startedSteps": 0,
+    "reason": "GitHub account payment/spending-limit restriction; no code steps ran"
+  },
+  "artifacts": null,
   "components": "docs/product/component-catalog.md",
-  "breakingChanges": "docs/breaking-changes.md",
-  "evidence": "docs/acceptance/gates.json",
-  "limitations": [
-    "Protocol/advanced extensions remain Planned/Partial with explicit capabilities.",
-    "PostgreSQL implementation is present but not compiled/system-tested this delivery; HTTP native Task not enabled.",
-    "No arbitrary global distributed transaction, .dtsx/COM/SSISDB/MSDTC compatibility or general exactly-once claim.",
-    "Pipeline has one controller per Activation; concurrent Package tasks run independent pipelines. No TSan/race-freedom certification.",
-    "Resident budget is logical wire-block accounting; actual SDK allocations use Context quota. Third-party dependency allocations are not full-process RSS accounting.",
-    "Linux runtime/build result is not asserted; historical ABI3/Linux evidence is not current evidence."
+  "remediations": [
+    {
+      "id": "R01",
+      "state": "Implemented",
+      "name": "Registry and native module lifecycle",
+      "verification": "Pending"
+    },
+    {
+      "id": "R02",
+      "state": "Implemented",
+      "name": "Physical Block Store ownership",
+      "verification": "Pending"
+    },
+    {
+      "id": "R03",
+      "state": "Implemented",
+      "name": "Shared executor and physical Execution Trees",
+      "verification": "Pending"
+    },
+    {
+      "id": "R04",
+      "state": "Implemented",
+      "name": "Indexed segmented Journal and snapshots",
+      "verification": "Pending"
+    },
+    {
+      "id": "R05",
+      "state": "Implemented",
+      "name": "Task facts, durability metrics and events",
+      "verification": "Pending"
+    },
+    {
+      "id": "R06",
+      "state": "Implemented",
+      "name": "Single version and acceptance model",
+      "verification": "Pending"
+    }
   ],
-  "artifacts": {
-    "archive": "artifacts/UniversalData-1.0.0-win-x64.zip",
-    "sha256": "07177d34bc9164aa11885b391ae5916560e4192e7c74f3ee1c8b2797739cfc97",
-    "manifest": "artifacts/1.0.0/win-x64/manifest.json",
-    "nativeLibrary": "artifacts/1.0.0/win-x64/sdk/bin/ud_data.dll",
-    "configuration": "Release",
-    "abiVersion": 4,
-    "verifiedFiles": 47,
-    "linuxBinary": "Not built; current delivery exempts Linux execution"
-  }
+  "workItems": [
+    {
+      "id": "CF-01",
+      "name": "ExecutableDefinition",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G08",
+        "G09"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-02",
+      "name": "Task Host",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G20"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-03",
+      "name": "Control Graph Binder",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G05",
+        "G09",
+        "G11"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-04",
+      "name": "Precedence Evaluator",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G05",
+        "G11"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-05",
+      "name": "Task State / Outcome",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G06",
+        "G45",
+        "G46"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-06",
+      "name": "Ready Scheduler",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G12",
+        "G23"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-07",
+      "name": "Sequence Container",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G08",
+        "G10",
+        "G46"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-08",
+      "name": "For Loop",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G08",
+        "G10"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-09",
+      "name": "Foreach Loop",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G10",
+        "G45"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-10",
+      "name": "Enumerator Registry",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/enumerator.c",
+        "components/contracts/src/registry.c"
+      ],
+      "goals": [
+        "G07",
+        "G10",
+        "G25"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-11",
+      "name": "Scoped Variables",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G02",
+        "G05",
+        "G08"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-12",
+      "name": "Event Handlers",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G12",
+        "G48"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-13",
+      "name": "Failure Propagation",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G06",
+        "G12"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-14",
+      "name": "Transaction Policy",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G25",
+        "G46"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-15",
+      "name": "Deadline / Cancel",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G12",
+        "G16",
+        "G17",
+        "G18"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-16",
+      "name": "Retry Semantics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G20",
+        "G46"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-17",
+      "name": "Child Package",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G17",
+        "G45"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-18",
+      "name": "Control Diagnostics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G48"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-01",
+      "name": "Pipeline Definition",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G09",
+        "G13",
+        "G21"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-02",
+      "name": "Component Metadata",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G07",
+        "G21"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-03",
+      "name": "Schema Binder",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G02",
+        "G04",
+        "G05",
+        "G21"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-04",
+      "name": "Physical Planner",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G23"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-05",
+      "name": "Synchronous Execution",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G03",
+        "G22",
+        "G32",
+        "G35"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-06",
+      "name": "Asynchronous Execution",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G23",
+        "G24"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-07",
+      "name": "Component Lifecycle",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G21",
+        "G46"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-08",
+      "name": "Multiport Routing",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G22",
+        "G34",
+        "G35",
+        "G36",
+        "G42"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-09",
+      "name": "Error Policies",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G30",
+        "G42"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-10",
+      "name": "Backpressure",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G22",
+        "G23"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-11",
+      "name": "Buffer Ownership",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G03",
+        "G23"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-12",
+      "name": "Buffer Layout",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G02",
+        "G03",
+        "G32"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-13",
+      "name": "Spill",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G23",
+        "G24",
+        "G52"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-14",
+      "name": "Shared Compute",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G24",
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G58"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-15",
+      "name": "Early Validation",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G02",
+        "G09",
+        "G21",
+        "G25"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-16",
+      "name": "Explain / Inspector",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G23",
+        "G48"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-17",
+      "name": "Detailed Metrics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G48"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-18",
+      "name": "Recoverable Pipeline",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G45",
+        "G46"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-01",
+      "name": "Connection Definition",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G08",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-02",
+      "name": "Scope Resolution",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G08",
+        "G17",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-03",
+      "name": "Registry Consistency",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G07",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-04",
+      "name": "Factory",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-05",
+      "name": "Lease",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G52"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-06",
+      "name": "Capabilities",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G28",
+        "G29"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-07",
+      "name": "Credentials",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G08",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-08",
+      "name": "Authorization",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G15",
+        "G16",
+        "G18",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-09",
+      "name": "Pool",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-10",
+      "name": "Session Isolation",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G46"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-11",
+      "name": "Thread Affinity",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G07",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-12",
+      "name": "Transaction Enlistment",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G46"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-13",
+      "name": "Metadata Discovery",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G28",
+        "G29"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-14",
+      "name": "Schema Evolution",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G02",
+        "G25",
+        "G28",
+        "G29"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-15",
+      "name": "Bulk Reader / Writer",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G28",
+        "G29"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-16",
+      "name": "Retry / Reconnect",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G46"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-17",
+      "name": "Error Normalization",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G06",
+        "G25",
+        "G46"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-18",
+      "name": "Metrics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G48"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-19",
+      "name": "Resource Unification",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G14",
+        "G15",
+        "G16",
+        "G18",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-20",
+      "name": "Native Driver Plugin",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G07",
+        "G20",
+        "G25",
+        "G50"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-01",
+      "name": "Execution Tree Builder",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-02",
+      "name": "Tree Graph",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G22",
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-03",
+      "name": "Shared Worker Pool",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G12",
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-04",
+      "name": "Unified Work Scheduling",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G12",
+        "G23",
+        "G24",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-05",
+      "name": "Work Item Identity",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G09",
+        "G23",
+        "G45",
+        "G48"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-06",
+      "name": "Event-driven Ready Queue",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G22",
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-07",
+      "name": "Cross-Tree Backpressure",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G22",
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-08",
+      "name": "Source Partitioning",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G26",
+        "G27",
+        "G45",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-09",
+      "name": "Partition Strategies",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G04",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-10",
+      "name": "Parallel Aggregate",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G24",
+        "G38",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-11",
+      "name": "Parallel Join",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G24",
+        "G37",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-12",
+      "name": "Parallel Sort",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G24",
+        "G39",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-13",
+      "name": "Ordering Contract",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G04",
+        "G23",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-14",
+      "name": "Component Concurrency",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G07",
+        "G21"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-15",
+      "name": "Driver Concurrency",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G07",
+        "G25",
+        "G46"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-16",
+      "name": "Shared Resource Budget",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G23",
+        "G25",
+        "G52"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-17",
+      "name": "Cancellation",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G12",
+        "G23",
+        "G52"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-18",
+      "name": "Checkpoint Barrier",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G45",
+        "G46",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-19",
+      "name": "Deterministic Semantics",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G04",
+        "G24",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-20",
+      "name": "Detailed Scheduler Metrics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G23",
+        "G48"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-21",
+      "name": "Adaptive Scheduling",
+      "priority": "P2",
+      "state": "Planned",
+      "verification": "Not in P0/P1 delivery (P2)",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G23",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [],
+      "evidence": []
+    },
+    {
+      "id": "PP-22",
+      "name": "Benchmark Harness",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G23",
+        "G24",
+        "G52",
+        "G53",
+        "G58"
+      ],
+      "phase": "R7",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    }
+  ],
+  "limitations": [
+    "No arbitrary global distributed transaction or general exactly-once guarantee",
+    "Advanced protocols, CDC/SCD/Fuzzy and BI Planner remain outside the current core acceptance",
+    "Single-session container transactions; arbitrary resource combinations and transactional child checkpoints are rejected before effects",
+    "Query/Schema enumerators have no reproducible external snapshot token and reject checkpoint resume",
+    "Recovery plans serialize tree scheduling; operator partitions merge in deterministic partition order",
+    "Source ranges and round-robin partitions are stable logical row positions; file partitions scan the authorized immutable source instead of assuming record-safe byte offsets",
+    "Driver/external RSS is outside the native allocator quota; benchmark RSS is measured separately",
+    "Advanced SSIS components and BI Planner remain their existing Planned/Partial status; all 69 goals are retained",
+    "Pool reuse requires UD_CONNECT_POOL and a successful native reset_session; unknown third-party session state is closed instead of reused",
+    "PostgreSQL module requires libpq >=17 for nonblocking cancellation; tested against a disposable local server, without production connections",
+    "Float64 SUM preserves serial input order and reports effective partition count 1; integer/Decimal SUM uses exact private 256-bit partial state and checks the public range only at final output",
+    "Runtime task/pipeline diagnostic records are bounded at 1024/256 and report dropped counts; callback events remain the complete optional host stream",
+    "Windows is exempt by explicit user instruction; no Windows compilation, runtime or binary certification is claimed"
+  ]
 }

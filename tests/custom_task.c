@@ -26,7 +26,7 @@ static void observe(void *user, const ud_execution_event *event) {
     if(event->state == UD_EXEC_RUNNING && event->task_id.length) atomic_store(&f->entered,1);
     if (f->mode == 3 && f->execution && event->kind == UD_EXEC_EVENT_BEFORE_CHECKPOINT) {
         ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
-        if (!ud_execution_get_metrics(f->execution, &m) && m.completed_tasks == 1)
+        if (!ud_execution_get_metrics(f->execution, &m) && m.executed_tasks == 1)
             _exit(91);
     }
 }

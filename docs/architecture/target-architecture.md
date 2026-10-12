@@ -1,3 +1,5 @@
+> 前轮设计记录：本轮架构和 API 以 [四引擎目标](../architecture/etl-four-engine-target.md)、[运行决策](../architecture/etl-runtime-decisions.md) 与当前公开头文件为准。当前版本、能力状态和 Linux 验收统一来自 `metadata/product.json`；Windows 本轮豁免。
+
 # 目标代码结构与单向依赖
 
 完整产品/技术设计及三次反思见 [Phase 0–7 设计](phase-0-7-design.md)。

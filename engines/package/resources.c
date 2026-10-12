@@ -12,10 +12,13 @@ ud_status ud_execution_prepare_buffers(ud_execution *e) {
                                  .abi_version = UD_ABI_VERSION,
                                  .max_blocks = 16384,
                                  .resident_limit = UINT64_C(67108864),
+                                 .working_limit = UINT64_C(67108864),
                                  .check = check_buffers,
                                  .user = e};
-    if (e->options.context.memory_limit)
+    if (e->options.context.memory_limit) {
         options.resident_limit = e->options.context.memory_limit / 4;
+        options.working_limit = e->options.context.memory_limit / 4;
+    }
     if (!options.resident_limit)
         return UD_RESOURCE;
     uint64_t value = 0;
@@ -26,6 +29,8 @@ ud_status ud_execution_prepare_buffers(ud_execution *e) {
     }
     if (!s && ud_member(policy, "spillBytes"))
         s = ud_json_uint(ud_member(policy, "spillBytes"), &options.spill_limit);
+    if (!s && ud_member(policy, "workingBytes"))
+        s = ud_json_uint(ud_member(policy, "workingBytes"), &options.working_limit);
     if (!s && ud_member(policy, "maxBlocks")) {
         s = ud_json_uint(ud_member(policy, "maxBlocks"), &value);
         options.max_blocks = (uint32_t)value;

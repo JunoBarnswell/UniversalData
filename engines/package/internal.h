@@ -7,6 +7,7 @@
 #include "../../components/contracts/registry_internal.h"
 #include "../../components/foundation/thread.h"
 #include "ud/buffer.h"
+#include "../../components/execution/executor.h"
 #include <stdatomic.h>
 #ifdef _WIN32
 #include <windows.h>
@@ -47,6 +48,20 @@ struct ud_activation {
     uint32_t depth;
     atomic_int cancelled;
     int parallel;
+    struct ud_activation *scope_authority;
+    int stepping;
+    struct ud_transaction *transaction;
+    const ud_json *event_handlers;
+    uint32_t event_depth;
+    int transaction_serial;
+    ud_string transaction_connection;
+    void *cancel_instance;
+    void (*cancel_callback)(void *);
+    uint32_t cancel_pins;
+    int cancel_sent;
+    struct ud_activation *next_cancel;
+    uint32_t task_facts;
+    atomic_uint_fast64_t input_rows, output_rows, rejected_rows, committed_rows, acknowledged_rows;
 };
 struct ud_execution {
     ud_context *ctx;
@@ -59,8 +74,19 @@ struct ud_execution {
     ud_activation root;
     atomic_int state, result;
     atomic_uint_fast64_t input_rows, output_rows, rejected_rows, batches, queued, high_water,
-        completed_tasks, spill_bytes;
-    atomic_uint workers;
+        executed_tasks, durable_tasks, recovery_tasks, resumed_tasks, spill_bytes, committed_rows, acknowledged_rows;
+    atomic_uint_fast64_t pipeline_trees;
+    atomic_uint tree_active, tree_high_water;
+    ud_executor *executor;
+    struct ud_connection_manager *connections;
+    ud_condition finished;
+    atomic_uint error_count;
+    atomic_int error_limit_reason;
+    ud_bytes pipeline_reports, bound_plans, control_reports;
+    uint64_t control_record_count, control_records_dropped, pipeline_record_count, pipeline_records_dropped;
+    ud_mutex diagnostics_lock, cancellation_lock;
+    ud_condition cancellation_changed;
+    ud_activation *cancellable;
     ud_mutex events_lock, journal_lock, serial_tasks_lock;
     uint64_t event_sequence;
     ud_buffer_manager *buffers;
@@ -83,9 +109,14 @@ ud_status ud_json_keys(const ud_json *, const char *const *, uint32_t);
 ud_status ud_package_check(const ud_package *);
 ud_status ud_control_validate(ud_activation *, const ud_json *, uint32_t);
 ud_status ud_control_handler(ud_activation *, const ud_json *, const char *);
+ud_status ud_enumerators_register(ud_registry *);
+ud_status ud_foreach(ud_activation *,const ud_json *,const ud_json *,int,uint32_t);
+ud_status ud_control_iteration(ud_activation *,const ud_json *,uint64_t);
+ud_status ud_checkpoint_enumerator(ud_activation *,const uint8_t digest[32]);
 ud_status ud_control_execute(ud_activation *, const ud_json *);
 ud_status ud_pipeline_validate(ud_activation *, const ud_json *);
 ud_status ud_pipeline_bind_validate(ud_activation *, const ud_json *);
+ud_status ud_control_explain(ud_activation *,const ud_json *,ud_bytes *);
 ud_status ud_pipeline_execute(ud_activation *, const ud_json *);
 ud_status ud_pipeline_field_namespace(const ud_component_context *, char output[33]);
 ud_status ud_transforms_register(ud_registry *);
@@ -93,6 +124,14 @@ ud_status ud_builtin_register(ud_registry *);
 ud_status ud_component_lookup(ud_activation *, ud_string, ud_component_descriptor *);
 void ud_activation_notify_kind(ud_activation *, int32_t kind, ud_execution_state, ud_status);
 void ud_activation_notify(ud_activation *, ud_execution_state, ud_status);
+enum { UD_TASK_EXECUTED = 1, UD_TASK_DURABLE = 2, UD_TASK_UNCERTAIN = 4, UD_TASK_RESUMED = 8 };
+void ud_task_cancel_register(ud_activation *,void *,void (*)(void *));
+void ud_task_cancel_unregister(ud_activation *);
+void ud_task_fact(ud_activation *, uint32_t);
+void ud_target_rows(ud_activation *,uint64_t,int acknowledged);
+int ud_transaction_rows(ud_activation *,uint64_t);
+void ud_task_rows(ud_activation *, uint64_t input, uint64_t output, uint64_t rejected);
+uint32_t ud_execution_concurrency(const ud_activation *);
 ud_status ud_scope_enter(ud_activation *, ud_string name, const ud_json *, ud_scope *);
 void ud_scope_leave(ud_activation *, ud_scope *);
 ud_status ud_resolve_value(void *, ud_string, ud_value *);
@@ -114,6 +153,14 @@ ud_status ud_connection_definition(ud_activation *, ud_string, const ud_json **,
                                    int *project_scope);
 ud_status ud_connection_definitions_check(const ud_json *);
 typedef struct ud_connection_lease ud_connection_lease;
+ud_status ud_connections_create(ud_execution *);
+ud_status ud_connections_destroy(ud_execution *);
+void ud_connections_cancel(ud_execution *);
+ud_status ud_connections_release_activation(ud_activation *);
+ud_status ud_connections_diagnostics(ud_execution *, ud_bytes *);
+ud_status ud_transaction_enter(ud_activation *, const ud_json *, int validate);
+ud_status ud_transaction_leave(ud_activation *, ud_status);
+int ud_transaction_active(const ud_activation *);
 ud_status ud_acquire_file_connection(ud_activation *, ud_string, ud_connection_lease **);
 ud_status ud_filesystem_register(ud_registry *);
 ud_status ud_process_register(ud_registry *);

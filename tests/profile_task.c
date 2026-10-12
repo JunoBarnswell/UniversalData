@@ -49,7 +49,7 @@ static void observe(void *user, const ud_execution_event *event) {
     ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
     if (ud_execution_get_metrics(f->execution, &m))
         return;
-    if (f->mode == 3 && event->kind == UD_EXEC_EVENT_BEFORE_CHECKPOINT && m.completed_tasks == 1)
+    if (f->mode == 3 && event->kind == UD_EXEC_EVENT_BEFORE_CHECKPOINT && m.executed_tasks == 1)
         _exit(91);
     if (!f->interrupted && event->pipeline_id.length && m.input_rows) {
         f->interrupted = 1;

@@ -48,6 +48,10 @@ UD_API void ud_plan_fingerprint(const ud_plan *, uint8_t out[32]);
 UD_API ud_status ud_compute_apply(const ud_plan *, const ud_batch *, ud_batch **);
 UD_API ud_status ud_accumulator_create(const ud_plan *, ud_accumulator **);
 UD_API ud_status ud_accumulator_add(ud_accumulator *, const ud_batch *);
+/* Opaque canonical partial state; exact integer/Decimal SUM uses signed 256-bit
+ * state and validates the declared output range only when finalizing. */
+UD_API ud_status ud_accumulator_partial_snapshot(const ud_accumulator *,ud_batch **);
+UD_API ud_status ud_accumulator_merge(ud_accumulator *,const ud_batch *partial_state);
 UD_API ud_status ud_accumulator_snapshot(const ud_accumulator *, ud_batch **);
 UD_API ud_status ud_accumulator_restore(ud_accumulator *, const ud_batch *);
 UD_API void ud_accumulator_destroy(ud_accumulator *);

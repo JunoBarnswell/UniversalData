@@ -7,4 +7,4 @@ using var package = new Package(File.ReadAllText(args[0]));
 using var execution = package.CreateExecution("fixture", (_, resource, _) => Path.IsPathFullyQualified(resource) && Path.GetFullPath(resource).StartsWith(root, StringComparison.Ordinal), File.ReadAllText(args[1]), args[2]);
 execution.Start(); while (!execution.Wait(100)) { }
 var m = execution.Metrics;
-Console.WriteLine(JsonSerializer.Serialize(new { state = (int)m.State, result = (int)m.Result, inputRows = m.InputRows, outputRows = m.OutputRows, rejectedRows = m.RejectedRows, completedTasks = m.CompletedTasks }));
+Console.WriteLine(JsonSerializer.Serialize(new { state = (int)m.State, result = (int)m.Result, inputRows = m.InputRows, outputRows = m.OutputRows, rejectedRows = m.RejectedRows, executedTasks = m.ExecutedTasks, durableTasks = m.DurableTasks, recoveryTasks = m.RecoveryTasks, resumedTasks = m.ResumedTasks, pipelineTrees = m.PipelineTrees, treeHighWater = m.TreeHighWater, workerHighWater = m.WorkerHighWater }));

@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='ud-value-pipeline-') as folder:
             path.write_text(''.join(json.dumps(row, ensure_ascii=False, allow_nan=False) + '\n' for row in rows), encoding='utf-8')
         fields = [metadata, dict(metadata, name='peer'), dict(name='id', type='int64', nullable=False)]
         rfields = [dict(metadata, name='rkey'), dict(name='rid', type='int64', nullable=False)]
-        schema = dict(version=4, fields=fields); rschema = dict(version=4, fields=rfields)
+        schema = dict(version=6, fields=fields); rschema = dict(version=6, fields=rfields)
         def source_component(name='source', connection='input', schema=schema):
             return dict(id=name, component='file.ndjson.source', config=dict(connection=connection, schema=schema, batchSize=2))
         def sink(name):
@@ -39,10 +39,10 @@ with tempfile.TemporaryDirectory(prefix='ud-value-pipeline-') as folder:
                 dict(id='join', component='join', config=dict(leftKey=0, rightKey=0)), sink('joined')],
                 paths=[edge('source','join'), edge('right','join',port=1), edge('join','joined')]),
             dict(id='group', components=[source_component(),
-                dict(id='aggregate', component='aggregate', config=dict(plan={'version':4,'group':['key'],'aggregates':[{'function':'count','column':'*','name':'cnt'}]})), sink('groups')],
+                dict(id='aggregate', component='aggregate', config=dict(plan={'version':6,'group':['key'],'aggregates':[{'function':'count','column':'*','name':'cnt'}]})), sink('groups')],
                 paths=[edge('source','aggregate'), edge('aggregate','groups')])]
         for language in range(languages):
-            package = dict(version=4, id='semantics-'+metadata['type'], parameters={}, variables={},
+            package = dict(version=6, id='semantics-'+metadata['type'], parameters={}, variables={},
                 connections=[dict(id=name, driver='file', resource=str(path)) for name,path in
                     [('input',source),('right',right)] + [(name,directory/(str(language)+'-'+name+'.ndjson')) for name in ['yes','no','joined','groups']]],
                 controlFlow=dict(tasks=[dict(id=flow['id'], kind='dataFlow', config=dict(pipeline=flow['id'])) for flow in flows], constraints=[]), dataFlows=flows)
@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='ud-value-pipeline-') as folder:
                     command = [sys.argv[4],'-Djava.library.path='+str(pathlib.Path(sys.argv[7]).resolve()),'-cp',sys.argv[5]+os.pathsep+sys.argv[6],'Consumer',str(definition),str(params),'same-id',str(root)]
             result = subprocess.run(command,capture_output=True,text=True,timeout=30)
             assert result.returncode == 0, (metadata['type'],result.stdout,result.stderr)
-            metrics = json.loads(result.stdout); assert metrics['state'] == 5 and metrics['completedTasks'] == 3
+            metrics = json.loads(result.stdout); assert metrics['state'] == 5 and metrics['executedTasks'] == 3
             read = lambda name: [json.loads(line) for line in (directory/(str(language)+'-'+name+'.ndjson')).read_text(encoding='utf-8').splitlines()]
             yes,no = read('yes'),read('no')
             assert [r['id'] for r in yes] == [r['id'] for r in left_rows if r['key'] is not None]

@@ -1,3 +1,5 @@
+> 前轮设计记录：本轮架构和 API 以 [四引擎目标](../architecture/etl-four-engine-target.md)、[运行决策](../architecture/etl-runtime-decisions.md) 与当前公开头文件为准。当前版本、能力状态和 Linux 验收统一来自 `metadata/product.json`；Windows 本轮豁免。
+
 # UniversalData 统一产品架构与 Phase 0–7 实施设计
 
 设计日期：2026-10-12。审查基线：PR #3 的 `902b45d`。本轮允许删除旧 API、协议与实现；只接受一个当前版本族。用户最新验收约定为 **Windows 编译和测试，Linux 免测**。本轮 Phase 0–7 的统一架构与核心组件源码完成后集中编译与关键验收；协议及高级扩展保留真实待实现状态；历史 Linux 记录不证明本轮代码。
@@ -126,7 +128,7 @@ Public 批次、表达式和算子 API 是嵌入式消费接口，不是第二�
 
 ## 本轮产物交付整改
 
-实际发现：当前 ABI 4 DLL 仅位于新构建目录及本机临时安装目录；`artifacts/native` 仍是 ABI 旧版 0.1.0，当前语言消费记录使用临时安装，未完成可分发 ZIP 的验收。由此不能将先前的核心行为测试等同于完整产物交付。
+实际发现：当前 ABI 5 DLL 仅位于新构建目录及本机临时安装目录；`artifacts/native` 仍是 ABI 旧版 0.1.0，当前语言消费记录使用临时安装，未完成可分发 ZIP 的验收。由此不能将先前的核心行为测试等同于完整产物交付。
 
 1. **产物边界反思。** `ud_data` 是唯一 native facade 的 CMake target 和库名，Windows 文件为 `ud_data.dll`。交付一个明确的版本/RID 目录及 ZIP，包含同一次 Release 构建的 SDK、JNI、启用的连接器、头文件、CMake exports、许可证和语言包；不能通过复制旧目录或建立别名补足“存在”。
 2. **平台边界反思。** 一个 Windows 包不能因缺少免测的 Linux 二进制而无法生成。打包只要求所选 RID 的真实产物，保留同一核心与 POSIX 算子实现；Linux 当前二进制状态明确为未构建、未验收。

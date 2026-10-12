@@ -224,7 +224,8 @@ ud_status ud_schema_to_json(const ud_batch *schema, char **out, uint32_t *length
         fields[j] = schema->column[j].field;
     ud_bytes bytes = {0};
     bytes.ctx = schema->ctx;
-    ud_status s = ud_bytes_put(&bytes, "{\"version\":4,\"fields\":", 22);
+    static const char prefix[] = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":";
+    ud_status s = ud_bytes_put(&bytes, prefix, sizeof(prefix) - 1);
     if (!s)
         s = emit_fields(&bytes, fields, schema->columns);
     if (!s)

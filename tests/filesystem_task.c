@@ -38,7 +38,7 @@ static void observe(void *user, const ud_execution_event *event) {
     if (f->mode == 4 && f->execution && event->kind == UD_EXEC_EVENT_BEFORE_CHECKPOINT &&
         event->task_id.length) {
         ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
-        if (!ud_execution_get_metrics(f->execution, &m) && m.completed_tasks == 1)
+        if (!ud_execution_get_metrics(f->execution, &m) && m.executed_tasks == 1)
             _exit(91);
     }
 }
@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
         OK(ud_execution_get_metrics(e, &m));
         CHECK(m.queued_batches == 0 && m.result == s);
         if (!s)
-            CHECK(m.completed_tasks == (uint64_t)atoi(argv[6]));
+            CHECK(m.executed_tasks == (uint64_t)atoi(argv[6]));
         CHECK(m.state == (s == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
                           : s == UD_CANCELLED    ? UD_EXEC_CANCELLED
                           : s                    ? UD_EXEC_FAILED

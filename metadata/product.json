@@ -1,0 +1,3941 @@
+{
+  "modelVersion": 1,
+  "product": {
+    "name": "UniversalData",
+    "sdkVersion": "1.2.0",
+    "abiVersion": 6,
+    "protocolVersion": 6
+  },
+  "scope": {
+    "name": "ETL four engines R0–R7 P0/P1",
+    "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
+    "extensions": "Tracked independently; Planned/Partial remain incomplete",
+    "windows": "Exempt — explicit current user instruction"
+  },
+  "baseline": {
+    "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "merged": true
+  },
+  "candidate": {
+    "branch": "codex/ssis-infrastructure-convergence",
+    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
+    "sourceCommit": null,
+    "sourceFingerprint": null,
+    "mergeEvidence": null
+  },
+  "goals": [
+    {
+      "id": "G00",
+      "phase": 0,
+      "name": "产品/架构/SSIS 证据及破坏性矩阵",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "设计文件无矛盾；真实源码职责和官方证据可追溯；所有权/迁移标准明确",
+      "implementation": [
+        "docs/product",
+        "docs/architecture",
+        "docs/adr",
+        "docs/roadmap.md"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G01",
+      "phase": 1,
+      "name": "唯一执行器和主版本切换",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "仅 Package/Execution 启停；无 Job/Dag/Run/桥接导出；全部消费端 current ABI",
+      "implementation": [
+        "include/ud/package.h",
+        "engines/package",
+        "docs/breaking-changes.md"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G02",
+      "phase": 1,
+      "name": "统一 Schema 和列 identity/lineage",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "重命名/派生/Join/Arrow/Wire 保持或明确生成列 identity 和来源；ETL/Query 使用相同字段规范",
+      "implementation": [
+        "components/data",
+        "include/ud/data.h"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G03",
+      "phase": 1,
+      "name": "sealed Batch/Buffer 所有权",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "扇出无悬空引用；修改 sealed Buffer 拒绝；同步共享、异步独立；配额/销毁/Arrow 释放正确",
+      "implementation": [
+        "components/data/src/columnar.c",
+        "tests/architecture_foundation.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G04",
+      "phase": 1,
+      "name": "统一类型/转换/NULL/Compare/Hash",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "Decimal/UTC/NUL/嵌套/NaN/NULL 在表达式、ETL、Query、spill 中一致；同值 hash 相同",
+      "implementation": [
+        "components/data",
+        "components/compute"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G05",
+      "phase": 1,
+      "name": "统一表达式 AST/Binder/函数 Registry",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "参数/变量/列、类型推断、常量折叠、向量评估、函数目录与权限上下文；Control/Derived/Split 共用语义",
+      "implementation": [
+        "components/expression",
+        "include/ud/expression.h"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G06",
+      "phase": 1,
+      "name": "唯一状态/错误/诊断模型",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "状态迁移合法；END 不冒充成功；CommitUnknown/取消/失败分类一致；终态结果可并发安全读取",
+      "implementation": [
+        "components/execution/src/state.c",
+        "engines/package/runtime.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G07",
+      "phase": 1,
+      "name": "统一组件/插件 Registry",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "Task/Source/Transform/Destination/Connection/Enumerator/LogProvider 均走同一版本化注册和卸载租用规则",
+      "implementation": [
+        "components/contracts",
+        "include/ud/component.h",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G08",
+      "phase": 2,
+      "name": "Project/Package/Environment 与作用域",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "Project→Package→Container→Task 遮蔽和只读参数规则；共享连接/环境绑定；一个 JSON 产品模型",
+      "implementation": [
+        "include/ud/project.h",
+        "engines/package/project.c",
+        "engines/package/model.c",
+        "connectors/manager.c",
+        "catalog/deployment.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G09",
+      "phase": 2,
+      "name": "Package 定义/绑定/运行生命周期",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "定义严格版本化；未知成员/依赖/端口/能力提前拒绝；一个执行资源上下文",
+      "implementation": [
+        "engines/package/model.c",
+        "engines/package/runtime.c",
+        "tests/package_execution.py"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G10",
+      "phase": 2,
+      "name": "Sequence/For/Foreach 控制流",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "嵌套/局部作用域、循环变量/边界/上限、退出/取消/错误传播均实际验证",
+      "implementation": [
+        "engines/control-flow/control.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G11",
+      "phase": 2,
+      "name": "Success/Failure/Completion + expression + AND/OR",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "不同约束组合、Skipped 前驱、失败分支、循环体按明确控制语义执行",
+      "implementation": [
+        "engines/control-flow/control.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G12",
+      "phase": 2,
+      "name": "受限并发/任务超时/事件处理器",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "任务预算与 Pipeline 预算共享；超时取消；处理器不抹除原错误；多个事件的防重入",
+      "implementation": [
+        "engines/control-flow",
+        "engines/package"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G13",
+      "phase": 2,
+      "name": "DataFlow Task",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "通过正式 Pipeline 接口承载独立数据流，不调用旧 executor",
+      "implementation": [
+        "engines/control-flow/control.c",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G14",
+      "phase": 2,
+      "name": "Execute SQL Task",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "SQL Task 与 Source/Sink 使用同一 Manager；参数化、失败分类和恢复副作用清晰",
+      "implementation": [
+        "engines/control-flow",
+        "engines/data-flow/builtins.c",
+        "components/contracts"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G15",
+      "phase": 2,
+      "name": "File System Task",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "明确操作范围/权限策略；路径/覆盖/失败/原子性与取消实际验证",
+      "implementation": [
+        "engines/control-flow/filesystem.c",
+        "connectors/manager.c",
+        "components/foundation/src/platform.c",
+        "tests/filesystem_task.c",
+        "tests/filesystem_task.py"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G16",
+      "phase": 2,
+      "name": "Execute Process Task",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "默认禁用、显式宿主授权；退出码/超时/取消/资源清理；不承诺权限沙箱",
+      "implementation": [
+        "engines/control-flow/process.c",
+        "connectors/manager.c",
+        "include/ud/connector.h",
+        "tests/process_task.c",
+        "tests/process_task.py"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G17",
+      "phase": 2,
+      "name": "Execute Package Task",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "真正子 Package 的参数/作用域/错误/取消/资源传递；非另一运行时或 Sequence 别名",
+      "implementation": [
+        "engines/package/child.c",
+        "engines/package/runtime.c",
+        "engines/control-flow/control.c",
+        "tests/child_package.c",
+        "tests/child_package.py"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G18",
+      "phase": 2,
+      "name": "HTTP Task",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "同一连接和宿主授权；TLS/超时/取消/HTTP 失败/重试边界",
+      "implementation": [
+        "engines/control-flow/http.c",
+        "connectors/manager.c",
+        "engines/data-flow/builtins.c",
+        "include/ud/connector.h"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": false
+    },
+    {
+      "id": "G19",
+      "phase": 2,
+      "name": "Check/Data Profiling Task",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "实际统计和规则结果、失败和资源预算；不以空检查伪装完成",
+      "implementation": [
+        "include/ud/profile.h",
+        "components/compute/src/profile.c",
+        "engines/control-flow/profile.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G20",
+      "phase": 2,
+      "name": "Native Custom Task",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "公开版本化回调/生命周期/默认授权/不能访问私有结构，插件卸载和错误传播",
+      "implementation": [
+        "include/ud/component.h",
+        "include/ud/plugin.h",
+        "components/contracts/src/registry.c",
+        "components/contracts/src/plugin.c",
+        "examples/plugins/custom_task.c",
+        "engines/control-flow/control.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G21",
+      "phase": 3,
+      "name": "组件 metadata/设计时与运行时生命周期",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "端口/外部列/配置 schema/权限/错误输出/资源和版本 metadata 可检索；Configure 无副作用，失败反序 Dispose",
+      "implementation": [
+        "include/ud/component.h",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G22",
+      "phase": 3,
+      "name": "多输入/输出 Path/End/backpressure",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "多 Source/Join/Union/Multicast/Error Output 同一 scheduler；公平轮询；队列上界和每端口 End 契约",
+      "implementation": [
+        "engines/data-flow/pipeline.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G23",
+      "phase": 3,
+      "name": "Execution Trees/Buffer Pool/资源调度",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "同步/异步树和两级并发共享预算；CPU/队列/内存/Spill 上限，所有取消路径释放资源",
+      "implementation": [
+        "engines/data-flow",
+        "components/execution"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G24",
+      "phase": 3,
+      "name": "阻塞 Sort/Aggregate/Join 的 Pipeline spill",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "不只是内存算子或外部文件 API；管道状态、分区、偏斜、稳定排序和恢复受统一预算",
+      "implementation": [
+        "engines/data-flow/builtins.c",
+        "components/compute"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G25",
+      "phase": 4,
+      "name": "逻辑 Connection Manager 与物理 Driver",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "定义/作用域/凭据引用/授权/租用/能力/释放统一；Source/Sink/SQL Task 无全局密钥旁路",
+      "implementation": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G26",
+      "phase": 4,
+      "name": "CSV Source/Destination",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "严格 CSV、Schema/null marker/UTF8/跨行、源位置、目标发布，全部经 Manager",
+      "implementation": [
+        "components/data/src/csv.c",
+        "engines/data-flow/builtins.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G27",
+      "phase": 4,
+      "name": "JSON/NDJSON Source/Destination",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "严格 JSON、递归 Schema/UTC/Decimal、输入错误、分页/恢复/原子文件提交",
+      "implementation": [
+        "components/data/src/json.c",
+        "engines/data-flow/builtins.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G28",
+      "phase": 4,
+      "name": "SQLite Source/Destination",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "有界游标、能力/权限、Append/Upsert/Delete、schema/事务/receipt 和 Pipeline 恢复",
+      "implementation": [
+        "plugins/sqlite.c",
+        "tests/package_sql.py"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G29",
+      "phase": 4,
+      "name": "PostgreSQL Source/Destination",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "真实 PostgreSQL 的类型、游标、权限、事务/回执、增量/恢复，含 Package 路径",
+      "implementation": [
+        "plugins/postgresql.c",
+        "engines/data-flow/builtins.c"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "libpq >=17 for bounded nonblocking query/cancellation",
+        "Disposable local PostgreSQL >=17 integration fixture"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G30",
+      "phase": 4,
+      "name": "Data Conversion",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "统一显式转换、精度/舍入/NULL/非法值和错误输出",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G31",
+      "phase": 4,
+      "name": "Derived Column",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "统一 AST/函数、保留原列、精度/NULL/lineage 和错误输出",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G32",
+      "phase": 4,
+      "name": "Copy Column",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "identity/lineage 规则、Buffer 共享正确",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G33",
+      "phase": 4,
+      "name": "Character Map",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "字符策略明确、Unicode/ASCII 边界和配置校验",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G34",
+      "phase": 4,
+      "name": "Conditional Split",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "多条件、默认输出、三值逻辑、命中规则和生命周期",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G35",
+      "phase": 4,
+      "name": "Multicast",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "同 Buffer 引用多输出，无深复制语义差异，背压/取消/释放",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G36",
+      "phase": 4,
+      "name": "Union All",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "多输入同 Schema、End 顺序、公平轮询、不重复或丢行",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G37",
+      "phase": 4,
+      "name": "Merge/Merge Join",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "有序输入契约、重复键/NULL、偏斜和 End/背压",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G38",
+      "phase": 4,
+      "name": "Aggregate",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "统一 NULL/Decimal/分组，async/spill 和状态恢复",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G39",
+      "phase": 4,
+      "name": "Sort",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "统一 Compare、稳定顺序、NULL/NaN、async/spill 和状态恢复",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G40",
+      "phase": 4,
+      "name": "Lookup/Cache Transform",
+      "priority": "P0",
+      "code": "Partial",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "缓存/缺失/重复键策略和一致类型、配额/错误输出",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+    },
+    {
+      "id": "G41",
+      "phase": 4,
+      "name": "Pivot/Unpivot",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "Schema/重复/聚合/NULL/资源契约和组合行为",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G42",
+      "phase": 4,
+      "name": "Error Output/Reject/Quarantine",
+      "priority": "P0",
+      "code": "Partial",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "质量错误在同一 Pipeline Path 和提交链路；隔离失败不推进状态",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+    },
+    {
+      "id": "G43",
+      "phase": 4,
+      "name": "Null/Unique/Range/Regex/Reference",
+      "priority": "P0",
+      "code": "Partial",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "统一规则状态与跨批次验证；失败分类；正常/错误输出",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+    },
+    {
+      "id": "G44",
+      "phase": 4,
+      "name": "Row Count/Audit",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "可核对输入/输出/拒绝/隔离和提交计数，不记录秘密",
+      "implementation": [
+        "engines/data-flow",
+        "components/compute",
+        "plugins"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G45",
+      "phase": 5,
+      "name": "统一任务/批次 Checkpoint Journal",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "一个版本化、校验、独占、原子发布日志；任务/循环/变量/源位置/算子/目标回执记录",
+      "implementation": [
+        "engines/package/checkpoint.c"
+      ],
+      "dependsOn": [
+        "G25"
+      ],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G46",
+      "phase": 5,
+      "name": "CommitUnknown/事务和故障恢复",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "真实进程终止：提交前/后/日志前/后；不推进未确认源；回执核实；无伪成功/重复写/资源泄漏",
+      "implementation": [
+        "engines/package",
+        "connectors",
+        "plugins"
+      ],
+      "dependsOn": [
+        "G45"
+      ],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G47",
+      "phase": 5,
+      "name": "Catalog/Deployment/Environment/Version",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "可嵌入可选持久实现或 repository ABI；版本、环境、参数、发布、运行历史分离，非 Web 服务",
+      "implementation": [
+        "catalog",
+        "include/ud/catalog.h"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G48",
+      "phase": 5,
+      "name": "结构化 Events/Logs/Trace/Metrics/Lineage/Audit",
+      "priority": "P0",
+      "code": "Partial",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "Package/Execution/Task/Pipeline/Component ID 完整；行数/重试/spill/等待/峰值；秘密不进入日志",
+      "implementation": [
+        "engines/package",
+        "catalog"
+      ],
+      "dependsOn": [
+        "G02"
+      ],
+      "externalPrerequisites": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G49",
+      "phase": 6,
+      "name": "薄 C/.NET/Java Package/Execution 绑定",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "仅 ABI 投影；无旧类/业务引擎；生命周期/编码/回调/错误/取消/并发一致",
+      "implementation": [
+        "bindings",
+        "hosts",
+        "examples"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G50",
+      "phase": 6,
+      "name": "独立 C/Native/NuGet/Maven 安装消费",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "安装后的同 ABI native/Java/.NET 组件与同 Package 实际运行；不能把纯托管包当双平台 native 发布",
+      "implementation": [
+        "packaging",
+        "cmake",
+        "tests/package_language_parity.py"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G51",
+      "phase": 6,
+      "name": "Linux 原生与 ABI 门禁；Windows 本轮豁免",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "Linux 编译/关键验收；Windows Exempt，不继承历史通过证据",
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "tests"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "requiredThisDelivery": true
+    },
+    {
+      "id": "G52",
+      "phase": 6,
+      "name": "内存安全/线程竞态/资源故障门禁",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "ASan/UBSan、引用/卸载/跨线程取消、内存/磁盘/超时/拒绝访问，无伪成功",
+      "implementation": [
+        "tests",
+        "engines",
+        "components"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+    },
+    {
+      "id": "G53",
+      "phase": 6,
+      "name": "九项附件核心集成验收",
+      "priority": "P0",
+      "code": "Partial",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "附件 §10 九项全部有当前代码、实际用例和日志；不能用旧用例通过替代新模型",
+      "implementation": [
+        "tests",
+        "docs/acceptance"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": true,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+    },
+    {
+      "id": "G54",
+      "phase": 7,
+      "name": "Slowly Changing Dimension",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "版本化 SCD 配置、键/属性/生效期和目标事务；Type 范围明确",
+      "implementation": [
+        "components/compute",
+        "engines/query",
+        "plugins",
+        "connectors"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G55",
+      "phase": 7,
+      "name": "Fuzzy Lookup/Fuzzy Grouping",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "公开独立算法/相似度/阈值/Unicode、确定性和资源边界，不复制微软专有实现",
+      "implementation": [
+        "components/compute",
+        "engines/query",
+        "plugins",
+        "connectors"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G56",
+      "phase": 7,
+      "name": "Term Extraction/Lookup",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "可组合文本算子、编码/词法/配置/资源/结果验收",
+      "implementation": [
+        "components/compute",
+        "engines/query",
+        "plugins",
+        "connectors"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G57",
+      "phase": 7,
+      "name": "CDC",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "PostgreSQL slot/快照/事务/LSN/ack/Schema 变化/故障重放与权限；目标确认后才推进",
+      "implementation": [
+        "components/compute",
+        "engines/query",
+        "plugins",
+        "connectors"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G58",
+      "phase": 7,
+      "name": "并行分区/Window/BI Dataset/Query",
+      "priority": "P1/P2",
+      "code": "Partial",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "共用 Compute/Expression/Planner/资源；新 API 不建立第二套语义或运行时",
+      "implementation": [
+        "components/compute",
+        "engines/query",
+        "plugins",
+        "connectors"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+    },
+    {
+      "id": "G59",
+      "phase": 7,
+      "name": "ODBC/SQL Server",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "真实驱动/DSN、类型/事务/失败/权限/Package 消费；SQLite ODBC 驱动不代表 SQL Server 已验收",
+      "implementation": [
+        "plugins",
+        "connectors",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "可用 SQL Server 测试实例/ODBC 驱动；安全配置的权限/凭据"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G60",
+      "phase": 7,
+      "name": "MySQL",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "真实驱动、schema/NULL/Decimal/UTC、事务/游标/恢复和 Package 消费",
+      "implementation": [
+        "plugins",
+        "connectors",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "MySQL 测试实例和驱动"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G61",
+      "phase": 7,
+      "name": "HTTP 集成",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "Source/Destination/task 的连接、分页、TLS/权限/限流/取消/幂等语义",
+      "implementation": [
+        "plugins",
+        "connectors",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "可受控 HTTP 测试端点"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G62",
+      "phase": 7,
+      "name": "SFTP",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "连接/凭据引用、主机身份校验、原子交付/恢复/取消",
+      "implementation": [
+        "plugins",
+        "connectors",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "SFTP 测试服务和安全配置"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G63",
+      "phase": 7,
+      "name": "Kafka",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "有界输入/分区/offset/事务、ack/重放/背压和授权",
+      "implementation": [
+        "plugins",
+        "connectors",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "Kafka 测试服务"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G64",
+      "phase": 7,
+      "name": "RabbitMQ",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "确认/重投递/背压/失败与资源释放",
+      "implementation": [
+        "plugins",
+        "connectors",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "RabbitMQ 测试服务"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G65",
+      "phase": 7,
+      "name": "Cloud Object Storage",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "对象版本/分页/条件发布/重试/权限/提交不确定性",
+      "implementation": [
+        "plugins",
+        "connectors",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "选定 provider 的受控测试服务或可用仿真服务"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G66",
+      "phase": 7,
+      "name": "Excel",
+      "priority": "P1/P2",
+      "code": "Planned",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "格式/Schema/编码/类型/NULL/边界和资源限制；支持范围明确",
+      "implementation": [
+        "plugins",
+        "connectors",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "可校验来源的第三方库/格式 fixture"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+    },
+    {
+      "id": "G67",
+      "phase": 7,
+      "name": "Parquet/Arrow",
+      "priority": "P1/P2",
+      "code": "Partial",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "批次/类型/Schema/所有权、平台相关库和 Pipeline 往返",
+      "implementation": [
+        "plugins",
+        "connectors",
+        "engines/data-flow"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "锁定格式库及可验证 artifacts"
+      ],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+    },
+    {
+      "id": "G68",
+      "phase": 7,
+      "name": "Microsoft 专属扩展和兼容边界",
+      "priority": "Optional-contract",
+      "code": "Documented boundary",
+      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "acceptance": "定义 WMI/SMO/SSAS/Agent/OLEDB/dtsx 插件类别与范围；无未验证兼容声明。不强制复制 Windows 专属实现。",
+      "implementation": [
+        "docs/product/component-catalog.md",
+        "docs/architecture/ssis-reference-matrix.md"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Documented boundary。"
+    }
+  ],
+  "remediations": [
+    {
+      "id": "R01",
+      "state": "Implemented",
+      "name": "Registry and native module lifecycle",
+      "verification": "Pending"
+    },
+    {
+      "id": "R02",
+      "state": "Implemented",
+      "name": "Physical Block Store ownership",
+      "verification": "Pending"
+    },
+    {
+      "id": "R03",
+      "state": "Implemented",
+      "name": "Shared executor and physical Execution Trees",
+      "verification": "Pending"
+    },
+    {
+      "id": "R04",
+      "state": "Implemented",
+      "name": "Indexed segmented Journal and snapshots",
+      "verification": "Pending"
+    },
+    {
+      "id": "R05",
+      "state": "Implemented",
+      "name": "Task facts, durability metrics and events",
+      "verification": "Pending"
+    },
+    {
+      "id": "R06",
+      "state": "Implemented",
+      "name": "Single version and acceptance model",
+      "verification": "Pending"
+    }
+  ],
+  "gates": [
+    {
+      "id": "windows-msvc",
+      "status": "Exempt",
+      "command": "packaging/package.ps1 -BuildDirectory build/windows; Release C17/JNI/SQLite",
+      "evidence": [],
+      "reason": "Current user requires Linux only; Windows exempt"
+    },
+    {
+      "id": "windows-native",
+      "status": "Exempt",
+      "command": "ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure",
+      "evidence": [],
+      "reason": "Current user requires Linux only; Windows exempt"
+    },
+    {
+      "id": "windows-asan",
+      "status": "Exempt",
+      "command": "ctest --test-dir build/abi4-asan-msvc -C Debug --parallel 4 --output-on-failure",
+      "evidence": [],
+      "runtimeOptions": "halt_on_error=1:abort_on_error=1",
+      "reason": "Current user requires Linux only; Windows exempt"
+    },
+    {
+      "id": "sqlite-transactions-recovery",
+      "status": "Pending",
+      "command": "sqlite_receipts_upsert/package_sql_integration/package_durable_recovery/child_package_execution/project_environment_deployment",
+      "evidence": []
+    },
+    {
+      "id": "memory-quota-spill-concurrency",
+      "status": "Pending",
+      "command": "shared_value_semantics/core_runtime_resources/core_pipeline_components/package_failure_boundaries/process_task_execution",
+      "evidence": []
+    },
+    {
+      "id": "language-parity",
+      "status": "Pending",
+      "command": "tests/installed_sdk.py: actual ZIP, dynamic C Data target, native NuGet without SDK PATH, Maven/JNI from bundle",
+      "evidence": []
+    },
+    {
+      "id": "installed-c",
+      "status": "Pending",
+      "command": "ZIP-extracted SDK -> external CMake UniversalData::Data -> Package/resource/SQLite/Pipeline and datatype/wire execution",
+      "evidence": []
+    },
+    {
+      "id": "installed-nuget",
+      "status": "Pending",
+      "command": "ZIP-extracted native-containing nupkg -> fresh external cache/clients; Package and typed data without SDK loader PATH",
+      "evidence": []
+    },
+    {
+      "id": "installed-maven",
+      "status": "Pending",
+      "command": "ZIP-extracted JAR/POM -> fresh external Maven repository/client -> JNI/native from same bundle",
+      "evidence": []
+    },
+    {
+      "id": "source-contracts",
+      "status": "Pending",
+      "command": "python scripts/static_check.py; git diff --check; removed ABI/API reference audit",
+      "evidence": []
+    },
+    {
+      "id": "windows-release",
+      "status": "Exempt",
+      "command": "packaging/package.ps1; ctest -C Release",
+      "evidence": [],
+      "reason": "Current user requires Linux only; Windows exempt"
+    },
+    {
+      "id": "distributable-bundle",
+      "status": "Pending",
+      "command": "python tests/installed_sdk.py --bundle artifacts/UniversalData-1.1.0-win-x64.zip --work external-fresh-directory --evidence bundle-consumers.json",
+      "evidence": []
+    },
+    {
+      "id": "block-store-ownership",
+      "status": "Pending",
+      "evidence": [],
+      "command": ""
+    },
+    {
+      "id": "pipeline-tree-parallelism",
+      "status": "Pending",
+      "evidence": [],
+      "command": ""
+    },
+    {
+      "id": "journal-indexed-recovery",
+      "status": "Pending",
+      "evidence": [],
+      "command": ""
+    },
+    {
+      "id": "task-facts",
+      "status": "Pending",
+      "evidence": [],
+      "command": ""
+    },
+    {
+      "id": "single-product-model",
+      "status": "Pending",
+      "evidence": [],
+      "command": ""
+    },
+    {
+      "id": "linux-release",
+      "name": "Linux Release native/JNI build",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "linux-native",
+      "name": "Linux native end-to-end cases",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "linux-sanitizers",
+      "name": "Linux ASan/UBSan",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "four-engines",
+      "name": "Four-engine completion scheduling, partition semantics and transactions",
+      "status": "Pending",
+      "evidence": []
+    },
+    {
+      "id": "million-row-benchmark",
+      "name": "1/2/4/8/16 workers, million rows and spill",
+      "status": "Pending",
+      "evidence": []
+    }
+  ],
+  "artifacts": null,
+  "remoteCI": {
+    "state": "Blocked",
+    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38270005891",
+    "sourceCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "startedSteps": 0,
+    "reason": "GitHub account payment/spending-limit restriction; no code steps ran"
+  },
+  "historicalEvidence": {
+    "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
+    "location": "docs/acceptance/evidence/ssis-core-windows",
+    "note": "Historical ABI 4 Windows evidence; does not certify this ABI 6 Linux delivery"
+  },
+  "limitations": [
+    "No arbitrary global distributed transaction or general exactly-once guarantee",
+    "Advanced protocols, CDC/SCD/Fuzzy and BI Planner remain outside the current core acceptance",
+    "Single-session container transactions; arbitrary resource combinations and transactional child checkpoints are rejected before effects",
+    "Query/Schema enumerators have no reproducible external snapshot token and reject checkpoint resume",
+    "Recovery plans serialize tree scheduling; operator partitions merge in deterministic partition order",
+    "Source ranges and round-robin partitions are stable logical row positions; file partitions scan the authorized immutable source instead of assuming record-safe byte offsets",
+    "Driver/external RSS is outside the native allocator quota; benchmark RSS is measured separately",
+    "Advanced SSIS components and BI Planner remain their existing Planned/Partial status; all 69 goals are retained",
+    "Pool reuse requires UD_CONNECT_POOL and a successful native reset_session; unknown third-party session state is closed instead of reused",
+    "PostgreSQL module requires libpq >=17 for nonblocking cancellation; tested against a disposable local server, without production connections",
+    "Float64 SUM preserves serial input order and reports effective partition count 1; integer/Decimal SUM uses exact private 256-bit partial state and checks the public range only at final output",
+    "Runtime task/pipeline diagnostic records are bounded at 1024/256 and report dropped counts; callback events remain the complete optional host stream",
+    "Windows is exempt by explicit user instruction; no Windows compilation, runtime or binary certification is claimed"
+  ],
+  "componentCatalog": [
+    {
+      "ssis": "Package / Project / Environment",
+      "entries": "`ud_package`、`ud_execution`、Catalog deployment",
+      "contract": "不可变定义；一个根 Execution；子包使用独立 Activation"
+    },
+    {
+      "ssis": "Sequence / For / Foreach",
+      "entries": "`sequence`、`for`、`foreach`",
+      "contract": "原生容器、作用域、显式上限"
+    },
+    {
+      "ssis": "Precedence / Event Handlers",
+      "entries": "success/failure/completion + AST + AND/OR；before/after/failure",
+      "contract": "共享 Executor 的有界任务调度；deadline、有序事件；错误处理不清除原始失败"
+    },
+    {
+      "ssis": "Data Flow Task / Execute Package",
+      "entries": "`dataFlow`、`executePackage`",
+      "contract": "独立 Control Flow / Data Flow，共用根资源预算；异步边界形成可并行 Execution Tree；每组件独立 Activation"
+    },
+    {
+      "ssis": "Execute SQL / File System / Execute Process",
+      "entries": "`sql.execute`、`file.system`、`process.execute`",
+      "contract": "授权先于 I/O；Windows/POSIX 原生进程管理"
+    },
+    {
+      "ssis": "Data Profiling / HTTP / Native Custom Task",
+      "entries": "`data.profile`、`profile.statistics`、`http.request`、第三方 Task descriptors",
+      "contract": "HTTP 依赖可选 libcurl，关闭时 Unsupported；插件必须当前完整 ABI"
+    },
+    {
+      "ssis": "Flat File / JSON / Database Source",
+      "entries": "`file.csv.source`、`file.ndjson.source`、`sql.source`",
+      "contract": "唯一 typed schema；SQL 恢复需要持久 snapshot，缺少即拒绝"
+    },
+    {
+      "ssis": "Flat File / JSON / Database Destination",
+      "entries": "`file.csv.destination`、`file.ndjson.destination`、`sql.destination`",
+      "contract": "文件 staging/hash/publish；SQL 事务+receipt，不把输入消费视为提交"
+    },
+    {
+      "ssis": "Data Conversion / Derived Column",
+      "entries": "`cast`、`derive`",
+      "contract": "Data 转换和唯一 Expression AST"
+    },
+    {
+      "ssis": "Copy Column / Character Map",
+      "entries": "`copyColumn`、`characterMap`",
+      "contract": "复制列保留 lineage；trim/upper_ascii/lower_ascii 保留非 ASCII UTF8"
+    },
+    {
+      "ssis": "Conditional Split / Multicast / Union All",
+      "entries": "`split`、`multicast`、`unionAll`、`pass`",
+      "contract": "多端口、有界队列、sealed 引用共享、schema 检查"
+    },
+    {
+      "ssis": "Sort / Aggregate / Join",
+      "entries": "`sort`、`aggregate`、`join`",
+      "contract": "共用 Compute operator 和 Buffer Manager；Sort 稳定外存归并，Aggregate 有界分组，Join 有界 block nested loops"
+    },
+    {
+      "ssis": "Lookup",
+      "entries": "`lookup`",
+      "contract": "确定性首个匹配、inner lookup；无匹配不输出；独立 Cache Transform 尚未实现"
+    },
+    {
+      "ssis": "Window",
+      "entries": "`window`",
+      "contract": "Row Number/Running Sum，分区及排序；BI Dataset/Query planner/并行分区待实现"
+    },
+    {
+      "ssis": "Row Count / Audit",
+      "entries": "`rowCount`、`audit`",
+      "contract": "Activation 变量及根有序事件；并发任务不得写共享祖先变量"
+    },
+    {
+      "ssis": "Error Output / Data Quality",
+      "entries": "`quality` 普通端口 0、错误端口 1",
+      "contract": "NotNull/Unique/PrimaryKey/Range/Regex/RowCount；错误行携带 rule、source row、code；目标负责持久化"
+    },
+    {
+      "ssis": "Connection Manager",
+      "entries": "file/process/http definitions；SQLite/PostgreSQL physical driver",
+      "contract": "file/process/http definitions；SQLite/PostgreSQL typed driver；SQLite 纳入 Windows 验收，PostgreSQL 数据库行为未验收"
+    },
+    {
+      "ssis": "Expression Function",
+      "entries": "`abs`、`length`、`trim`、`upper_ascii`、`lower_ascii`、`concat`、`coalesce`、`substring`",
+      "contract": "8 个 native pure descriptors；length/substring 按 UTF8 code point；coalesce 参数显式求值"
+    },
+    {
+      "ssis": "Buffer Manager",
+      "entries": "`ud_buffer_manager` / `ud_operator`",
+      "contract": "按真实 allocation capacity 去重计量；驻留只 retain；spill 使用唯一 wire；显式 View 和 working quota；失败文件由管理器持有并重试清理"
+    },
+    {
+      "ssis": "Transaction / Checkpoint / Catalog",
+      "entries": "Journal 4、目标 receipt、immutable artifacts/history",
+      "contract": "当前版本索引式分段 Journal、原子快照/manifest、目标 receipt、不可变 artifacts/history；不提供跨任意目标的分布式事务"
+    }
+  ],
+  "deferredComponents": "Merge/Merge Join、Pivot/Unpivot、完整 Cache Transform、Pipeline ForeignKey reference input、SCD、Fuzzy、Term、CDC、并行分区、BI planner、ODBC/SQL Server、MySQL、HTTP Source/Destination、SFTP、Kafka、RabbitMQ、Cloud、Excel、Parquet",
+  "historicalGoalEvidence": [
+    {
+      "id": "G00",
+      "evidence": [
+        {
+          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
+          "reference": "docs/architecture/ssis-reference-matrix.md",
+          "type": "design-review"
+        }
+      ]
+    },
+    {
+      "id": "G01",
+      "evidence": [
+        {
+          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
+          "reference": "docs/validation.md",
+          "type": "executed-development-milestone"
+        }
+      ]
+    },
+    {
+      "id": "G03",
+      "evidence": [
+        {
+          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
+          "reference": "docs/validation.md",
+          "type": "executed-development-milestone"
+        }
+      ]
+    },
+    {
+      "id": "G06",
+      "evidence": [
+        {
+          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
+          "reference": "docs/validation.md",
+          "type": "executed-development-milestone"
+        }
+      ]
+    },
+    {
+      "id": "G08",
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-project/evidence.json",
+          "type": "executed-scope-environment-binding"
+        }
+      ]
+    },
+    {
+      "id": "G09",
+      "evidence": [
+        {
+          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
+          "reference": "docs/validation.md",
+          "type": "executed-development-milestone"
+        }
+      ]
+    },
+    {
+      "id": "G13",
+      "evidence": [
+        {
+          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
+          "reference": "docs/validation.md",
+          "type": "executed-development-milestone"
+        }
+      ]
+    },
+    {
+      "id": "G14",
+      "evidence": [
+        {
+          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
+          "reference": "docs/validation.md",
+          "type": "executed-development-milestone"
+        }
+      ]
+    },
+    {
+      "id": "G15",
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-filesystem/evidence.json",
+          "type": "executed-operation-auth-atomicity-cancellation-recovery"
+        }
+      ]
+    },
+    {
+      "id": "G16",
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-process/evidence.json",
+          "type": "executed-linux-auth-exit-timeout-cancel-cleanup-recovery"
+        }
+      ]
+    },
+    {
+      "id": "G17",
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-child-package/evidence.json",
+          "type": "executed-child-isolation-propagation-recovery"
+        }
+      ]
+    },
+    {
+      "id": "G18",
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-http/evidence.json",
+          "type": "executed-http-tls-authorization-retry-recovery-installed-consumers"
+        }
+      ]
+    },
+    {
+      "id": "G19",
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-profile/evidence.json",
+          "type": "executed-real-profiling-rules-budget-recovery-language-parity"
+        }
+      ]
+    },
+    {
+      "id": "G20",
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-custom-task/evidence.json",
+          "type": "executed-public-sdk-shared-module-registration-ownership-authorization-recovery"
+        }
+      ]
+    },
+    {
+      "id": "G27",
+      "evidence": [
+        {
+          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
+          "reference": "docs/validation.md",
+          "type": "executed-development-milestone"
+        }
+      ]
+    },
+    {
+      "id": "G45",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-recovery/evidence.json",
+          "scope": "Supported deterministic file-source recovery; general SQL-source snapshots and arbitrary side effects explicitly excluded"
+        }
+      ]
+    },
+    {
+      "id": "G46",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-recovery/evidence.json",
+          "scope": "Supported deterministic file-source recovery; general SQL-source snapshots and arbitrary side effects explicitly excluded"
+        }
+      ]
+    },
+    {
+      "id": "G47",
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-catalog/evidence.json",
+          "type": "verified-supported-subset"
+        },
+        {
+          "reference": "docs/acceptance/evidence/ssis-project/evidence.json",
+          "type": "verified-supported-subset"
+        },
+        {
+          "reference": "docs/acceptance/evidence/ssis-history/evidence.json",
+          "type": "verified-supported-subset"
+        }
+      ]
+    },
+    {
+      "id": "G48",
+      "evidence": [
+        {
+          "reference": "docs/acceptance/evidence/ssis-catalog/evidence.json",
+          "type": "verified-supported-subset"
+        },
+        {
+          "reference": "docs/acceptance/evidence/ssis-history/evidence.json",
+          "type": "verified-supported-subset"
+        }
+      ]
+    },
+    {
+      "id": "G49",
+      "evidence": [
+        {
+          "sourceCommit": "fac8ee71734d5a5d81d56292893861dad6abba82",
+          "reference": "docs/validation.md",
+          "type": "executed-development-milestone"
+        }
+      ]
+    }
+  ],
+  "fourEngineWorkItems": [
+    {
+      "id": "CF-01",
+      "name": "ExecutableDefinition",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G08",
+        "G09"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-02",
+      "name": "Task Host",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G07",
+        "G20"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-03",
+      "name": "Control Graph Binder",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G05",
+        "G09",
+        "G11"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-04",
+      "name": "Precedence Evaluator",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G05",
+        "G11"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-05",
+      "name": "Task State / Outcome",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G06",
+        "G45",
+        "G46"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-06",
+      "name": "Ready Scheduler",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G12",
+        "G23"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-07",
+      "name": "Sequence Container",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G08",
+        "G10",
+        "G46"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-08",
+      "name": "For Loop",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G08",
+        "G10"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-09",
+      "name": "Foreach Loop",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G10",
+        "G45"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-10",
+      "name": "Enumerator Registry",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/enumerator.c",
+        "components/contracts/src/registry.c"
+      ],
+      "goals": [
+        "G07",
+        "G10",
+        "G25"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-11",
+      "name": "Scoped Variables",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G02",
+        "G05",
+        "G08"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-12",
+      "name": "Event Handlers",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G12",
+        "G48"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-13",
+      "name": "Failure Propagation",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G06",
+        "G12"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-14",
+      "name": "Transaction Policy",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G25",
+        "G46"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-15",
+      "name": "Deadline / Cancel",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G12",
+        "G16",
+        "G17",
+        "G18"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-16",
+      "name": "Retry Semantics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G20",
+        "G46"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-17",
+      "name": "Child Package",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G17",
+        "G45"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CF-18",
+      "name": "Control Diagnostics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/control-flow/control.c",
+        "engines/control-flow/enumerator.c",
+        "engines/package/runtime.c"
+      ],
+      "goals": [
+        "G48"
+      ],
+      "phase": "R2",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "four_engine_connections_enumerators",
+        "package_execution",
+        "package_durable_recovery",
+        "child_package_execution"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-01",
+      "name": "Pipeline Definition",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G09",
+        "G13",
+        "G21"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-02",
+      "name": "Component Metadata",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G07",
+        "G21"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-03",
+      "name": "Schema Binder",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G02",
+        "G04",
+        "G05",
+        "G21"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-04",
+      "name": "Physical Planner",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G23"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-05",
+      "name": "Synchronous Execution",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G03",
+        "G22",
+        "G32",
+        "G35"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-06",
+      "name": "Asynchronous Execution",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G23",
+        "G24"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-07",
+      "name": "Component Lifecycle",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G21",
+        "G46"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-08",
+      "name": "Multiport Routing",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G22",
+        "G34",
+        "G35",
+        "G36",
+        "G42"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-09",
+      "name": "Error Policies",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G30",
+        "G42"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-10",
+      "name": "Backpressure",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G22",
+        "G23"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-11",
+      "name": "Buffer Ownership",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G03",
+        "G23"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-12",
+      "name": "Buffer Layout",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G02",
+        "G03",
+        "G32"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-13",
+      "name": "Spill",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G23",
+        "G24",
+        "G52"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-14",
+      "name": "Shared Compute",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G24",
+        "G37",
+        "G38",
+        "G39",
+        "G40",
+        "G58"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-15",
+      "name": "Early Validation",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G02",
+        "G09",
+        "G21",
+        "G25"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-16",
+      "name": "Explain / Inspector",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G23",
+        "G48"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-17",
+      "name": "Detailed Metrics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G48"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DF-18",
+      "name": "Recoverable Pipeline",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "engines/data-flow/pipeline.c",
+        "engines/data-flow/builtins.c",
+        "components/execution/src/buffer.c"
+      ],
+      "goals": [
+        "G45",
+        "G46"
+      ],
+      "phase": "R3",
+      "acceptance": [
+        "core_pipeline_components",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "value_semantics_pipeline",
+        "package_durable_recovery"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-01",
+      "name": "Connection Definition",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G08",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-02",
+      "name": "Scope Resolution",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G08",
+        "G17",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-03",
+      "name": "Registry Consistency",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G07",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-04",
+      "name": "Factory",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-05",
+      "name": "Lease",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G52"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-06",
+      "name": "Capabilities",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G28",
+        "G29"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-07",
+      "name": "Credentials",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G08",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-08",
+      "name": "Authorization",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G15",
+        "G16",
+        "G18",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-09",
+      "name": "Pool",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-10",
+      "name": "Session Isolation",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G46"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-11",
+      "name": "Thread Affinity",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G07",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-12",
+      "name": "Transaction Enlistment",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G46"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-13",
+      "name": "Metadata Discovery",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G28",
+        "G29"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-14",
+      "name": "Schema Evolution",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G02",
+        "G25",
+        "G28",
+        "G29"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-15",
+      "name": "Bulk Reader / Writer",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G28",
+        "G29"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-16",
+      "name": "Retry / Reconnect",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G46"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-17",
+      "name": "Error Normalization",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G06",
+        "G25",
+        "G46"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-18",
+      "name": "Metrics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G25",
+        "G48"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-19",
+      "name": "Resource Unification",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G14",
+        "G15",
+        "G16",
+        "G18",
+        "G25"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CM-20",
+      "name": "Native Driver Plugin",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c",
+        "include/ud/connector.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c"
+      ],
+      "goals": [
+        "G07",
+        "G20",
+        "G25",
+        "G50"
+      ],
+      "phase": "R4",
+      "acceptance": [
+        "four_engine_connections_enumerators",
+        "sqlite_receipts_upsert",
+        "project_environment_deployment",
+        "http_task_execution",
+        "process_task_execution",
+        "four_engine_postgresql.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-01",
+      "name": "Execution Tree Builder",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-02",
+      "name": "Tree Graph",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G22",
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-03",
+      "name": "Shared Worker Pool",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G12",
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-04",
+      "name": "Unified Work Scheduling",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G12",
+        "G23",
+        "G24",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-05",
+      "name": "Work Item Identity",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G09",
+        "G23",
+        "G45",
+        "G48"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-06",
+      "name": "Event-driven Ready Queue",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G22",
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-07",
+      "name": "Cross-Tree Backpressure",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G22",
+        "G23"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-08",
+      "name": "Source Partitioning",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G26",
+        "G27",
+        "G45",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-09",
+      "name": "Partition Strategies",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G04",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-10",
+      "name": "Parallel Aggregate",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G24",
+        "G38",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-11",
+      "name": "Parallel Join",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G24",
+        "G37",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-12",
+      "name": "Parallel Sort",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G24",
+        "G39",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-13",
+      "name": "Ordering Contract",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G04",
+        "G23",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-14",
+      "name": "Component Concurrency",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G07",
+        "G21"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-15",
+      "name": "Driver Concurrency",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G07",
+        "G25",
+        "G46"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-16",
+      "name": "Shared Resource Budget",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G23",
+        "G25",
+        "G52"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-17",
+      "name": "Cancellation",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G12",
+        "G23",
+        "G52"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-18",
+      "name": "Checkpoint Barrier",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G45",
+        "G46",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-19",
+      "name": "Deterministic Semantics",
+      "priority": "P0",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G04",
+        "G24",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-20",
+      "name": "Detailed Scheduler Metrics",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G23",
+        "G48"
+      ],
+      "phase": "R5",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PP-21",
+      "name": "Adaptive Scheduling",
+      "priority": "P2",
+      "state": "Planned",
+      "verification": "Not in P0/P1 delivery (P2)",
+      "owner": [
+        "components/execution/src/executor.c",
+        "engines/data-flow/pipeline.c",
+        "components/compute/src/operator.c",
+        "components/compute/src/partition.c"
+      ],
+      "goals": [
+        "G23",
+        "G58"
+      ],
+      "phase": "R5",
+      "acceptance": [],
+      "evidence": []
+    },
+    {
+      "id": "PP-22",
+      "name": "Benchmark Harness",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Pending final Linux evidence sealing",
+      "owner": [
+        "benchmarks/four_engines.py"
+      ],
+      "goals": [
+        "G23",
+        "G24",
+        "G52",
+        "G53",
+        "G58"
+      ],
+      "phase": "R7",
+      "acceptance": [
+        "four_engine_scheduling_operators",
+        "pipeline_tree_parallelism",
+        "block_store_ownership",
+        "indexed_segment_journal",
+        "logical_durable_task_facts",
+        "benchmarks/four_engines.py"
+      ],
+      "evidence": []
+    }
+  ]
+}

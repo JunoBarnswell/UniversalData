@@ -36,6 +36,54 @@ void ud_activation_notify_kind(ud_activation *e, int32_t kind, ud_execution_stat
 void ud_activation_notify(ud_activation *e, ud_execution_state state, ud_status result) {
     ud_activation_notify_kind(e, UD_EXEC_EVENT_STATE, state, result);
 }
+void ud_task_rows(ud_activation *activation, uint64_t input, uint64_t output, uint64_t rejected) {
+    ud_activation *owner = activation->scope_authority ? activation->scope_authority : activation;
+    atomic_fetch_add(&owner->input_rows, input);
+    atomic_fetch_add(&owner->output_rows, output);
+    atomic_fetch_add(&owner->rejected_rows, rejected);
+    atomic_fetch_add(&activation->execution->input_rows, input);
+    atomic_fetch_add(&activation->execution->output_rows, output);
+    atomic_fetch_add(&activation->execution->rejected_rows, rejected);
+}
+void ud_task_fact(ud_activation *activation, uint32_t fact) {
+    ud_execution *execution = activation->execution;
+    if (activation->task_facts & fact)
+        return;
+    activation->task_facts |= fact;
+    int kind = 0;
+    if (fact == UD_TASK_EXECUTED) {
+        atomic_fetch_add(&execution->executed_tasks, 1);
+        kind = UD_EXEC_EVENT_TASK_EXECUTED;
+    } else if (fact == UD_TASK_DURABLE) {
+        atomic_fetch_add(&execution->durable_tasks, 1);
+        if (activation->task_facts & UD_TASK_UNCERTAIN) {
+            activation->task_facts &= ~UD_TASK_UNCERTAIN;
+            atomic_fetch_sub(&execution->recovery_tasks, 1);
+        }
+        kind = UD_EXEC_EVENT_TASK_CONFIRMED;
+    } else if (fact == UD_TASK_UNCERTAIN) {
+        atomic_fetch_add(&execution->recovery_tasks, 1);
+        kind = UD_EXEC_EVENT_TASK_UNCERTAIN;
+    } else if (fact == UD_TASK_RESUMED)
+        atomic_fetch_add(&execution->resumed_tasks, 1);
+    if (kind)
+        ud_activation_notify_kind(activation, kind,
+                                  fact == UD_TASK_UNCERTAIN ? UD_EXEC_RECOVERY_REQUIRED
+                                                          : UD_EXEC_RUNNING,
+                                  fact == UD_TASK_UNCERTAIN ? UD_COMMIT_UNKNOWN : UD_OK);
+}
+uint32_t ud_execution_concurrency(const ud_activation *activation) {
+    uint32_t concurrency=activation->execution->options.max_concurrency;
+    for (const ud_activation *a=activation;a;a=a->parent) {
+        const ud_json *policy=ud_member(a->package->document,"policy");
+        if (ud_member(policy,"maxConcurrency")) {
+            uint64_t requested=0;
+            if (ud_json_uint(ud_member(policy,"maxConcurrency"),&requested)) return 0;
+            if (requested<concurrency) concurrency=(uint32_t)requested;
+        }
+    }
+    return concurrency;
+}
 ud_status ud_activation_check(const ud_activation *e) {
     if (!e)
         return UD_INVALID;
@@ -77,6 +125,7 @@ ud_status ud_activation_bind_roots(ud_activation *e) {
     return s;
 }
 ud_status ud_activation_validate_definition(ud_activation *e, uint32_t depth) {
+    UD_TRY(ud_transaction_enter(e,ud_member(ud_member(e->package->document,"policy"),"transaction"),1));
     const ud_json *flows = ud_member(e->package->document, "dataFlows");
     for (uint32_t i = 0; i < ud_json_size(flows); i++)
         UD_TRY(ud_pipeline_validate(e, ud_json_at(flows, i)));
@@ -87,7 +136,9 @@ ud_status ud_activation_validate_definition(ud_activation *e, uint32_t depth) {
         uint32_t n;
         UD_TRY(ud_json_key(handlers, i, &key, &n));
         if (!((n == 7 && !memcmp(key, "failure", 7)) || (n == 6 && !memcmp(key, "before", 6)) ||
-              (n == 5 && !memcmp(key, "after", 5))))
+              (n == 5 && !memcmp(key, "after", 5)) ||
+              (n == 7 && !memcmp(key,"warning",7)) || (n == 5 && !memcmp(key,"error",5)) ||
+              (n == 10 && !memcmp(key,"taskFailed",10))))
             return UD_UNSUPPORTED;
         UD_TRY(ud_control_validate(e, ud_json_at(handlers, i), depth));
     }
@@ -118,10 +169,22 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     e->root.execution = e;
     e->root.definition = &e->root;
     atomic_init(&e->root.cancelled, 0);
-    atomic_init(&e->workers, 0);
+    atomic_init(&e->root.input_rows, 0);
+    atomic_init(&e->root.output_rows, 0);
+    atomic_init(&e->root.rejected_rows, 0);
+    atomic_init(&e->root.committed_rows,0);atomic_init(&e->root.acknowledged_rows,0);
     ud_mutex_init(&e->events_lock);
     ud_mutex_init(&e->journal_lock);
     ud_mutex_init(&e->serial_tasks_lock);
+    ud_condition_init(&e->finished);
+    atomic_init(&e->error_count, 0);
+    atomic_init(&e->error_limit_reason, UD_OK);
+    e->pipeline_reports.ctx=ctx;
+    e->bound_plans.ctx=ctx;
+    e->control_reports.ctx=ctx;
+    ud_mutex_init(&e->diagnostics_lock);
+    ud_mutex_init(&e->cancellation_lock);
+    ud_condition_init(&e->cancellation_changed);
     e->options = *options;
     if (!e->options.max_concurrency)
         e->options.max_concurrency = 1;
@@ -137,9 +200,18 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     atomic_init(&e->batches, 0);
     atomic_init(&e->queued, 0);
     atomic_init(&e->high_water, 0);
-    atomic_init(&e->completed_tasks, 0);
+    atomic_init(&e->executed_tasks, 0);
+    atomic_init(&e->durable_tasks, 0);
+    atomic_init(&e->recovery_tasks, 0);
+    atomic_init(&e->resumed_tasks, 0);
+    atomic_init(&e->pipeline_trees, 0);
+    atomic_init(&e->tree_active, 0);
+    atomic_init(&e->tree_high_water, 0);
     atomic_init(&e->spill_bytes, 0);
-    ud_status s = copy_string(ctx, options->tenant, &e->options.tenant);
+    atomic_init(&e->committed_rows,0);atomic_init(&e->acknowledged_rows,0);
+    ud_status s = ud_executor_create(ctx, e->options.max_concurrency, &e->executor);
+    if (!s)
+        s = copy_string(ctx, options->tenant, &e->options.tenant);
     if (!s)
         s = copy_string(ctx, options->execution_id, &e->options.execution_id);
     if (!s)
@@ -195,10 +267,11 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         }
     }
     if (!s)
+        s = ud_connections_create(e);
+    if (!s)
         s = ud_activation_validate_definition(&e->root, 0);
     if (s) {
         atomic_store(&e->state, UD_EXEC_FAILED);
-        atomic_store(&e->workers, 0);
         atomic_store(&e->result, s);
         ud_status closed = ud_execution_destroy(e);
         return closed ? closed : s;
@@ -221,7 +294,9 @@ ud_status ud_execution_create(const ud_package *p, const ud_execution_options *o
 }
 ud_status ud_activation_run_definition(ud_activation *e) {
     const ud_json *handlers = ud_member(e->package->document, "eventHandlers");
+    e->event_handlers=handlers;
     ud_status s = ud_activation_check(e);
+    if (!s) s=ud_transaction_enter(e,ud_member(ud_member(e->package->document,"policy"),"transaction"),0);
     if (!s)
         s = ud_control_handler(e, ud_member(handlers, "before"), "before");
     if (!s)
@@ -233,16 +308,17 @@ ud_status ud_activation_run_definition(ud_activation *e) {
         if (secondary == UD_COMMIT_UNKNOWN)
             s = secondary;
     }
+    s=ud_transaction_leave(e,s);
     return s == UD_BUSY ? UD_TRANSIENT : s;
 }
 static ud_status execute(ud_execution *e) {
-    atomic_store(&e->workers, 1);
+    ud_status pool = ud_executor_start(e->executor);
     uint64_t now = ud_now_ms();
     if (e->options.timeout_ms)
         e->root.deadline =
             e->options.timeout_ms > UINT64_MAX - now ? UINT64_MAX : now + e->options.timeout_ms;
     ud_activation_notify(&e->root, UD_EXEC_RUNNING, UD_OK);
-    ud_status s = ud_activation_check(&e->root);
+    ud_status s = pool ? pool : ud_activation_check(&e->root);
     if (!s)
         s = ud_checkpoint_open(e);
     if (!s)
@@ -263,9 +339,12 @@ static ud_status execute(ud_execution *e) {
                     : s == UD_CANCELLED    ? UD_EXEC_CANCELLED
                     : s                    ? UD_EXEC_FAILED
                                            : UD_EXEC_SUCCEEDED;
-    atomic_store(&e->workers, 0);
+
     atomic_store(&e->result, s);
     atomic_store(&e->state, state);
+    ud_mutex_lock(&e->events_lock);
+    ud_condition_wake(&e->finished);
+    ud_mutex_unlock(&e->events_lock);
     ud_activation_notify(&e->root, state, s);
     return s;
 }
@@ -312,18 +391,36 @@ ud_status ud_execution_wait(ud_execution *e, uint32_t timeout) {
     if (!e)
         return UD_INVALID;
     uint64_t start = ud_now_ms();
+    ud_mutex_lock(&e->events_lock);
     while (!ud_execution_terminal(atomic_load(&e->state))) {
-        if (atomic_load(&e->state) == UD_EXEC_READY)
+        uint64_t elapsed = ud_now_ms() - start;
+        if (atomic_load(&e->state) == UD_EXEC_READY || elapsed >= timeout) {
+            ud_mutex_unlock(&e->events_lock);
             return UD_BUSY;
-        if (ud_now_ms() - start >= timeout)
-            return UD_BUSY;
-        ud_sleep_ms(1);
+        }
+        ud_condition_wait_ms(&e->finished, &e->events_lock, timeout - (uint32_t)elapsed);
     }
+    ud_mutex_unlock(&e->events_lock);
     return atomic_load(&e->result);
 }
 void ud_execution_cancel(ud_execution *e) {
-    if (e)
+    if (e) {
         ud_cancel(e->ctx);
+        ud_executor_cancel(e->executor);
+        ud_connections_cancel(e);
+        ud_mutex_lock(&e->cancellation_lock);
+        for (;;) {
+            ud_activation *a=e->cancellable;
+            while (a && a->cancel_sent) a=a->next_cancel;
+            if (!a) break;
+            a->cancel_sent=1;a->cancel_pins++;
+            ud_mutex_unlock(&e->cancellation_lock);
+            a->cancel_callback(a->cancel_instance);
+            ud_mutex_lock(&e->cancellation_lock);
+            a->cancel_pins--;ud_condition_wake(&e->cancellation_changed);
+        }
+        ud_mutex_unlock(&e->cancellation_lock);
+    }
 }
 ud_status ud_execution_get_metrics(const ud_execution *e, ud_execution_metrics *m) {
     if (!e || !m)
@@ -339,8 +436,15 @@ ud_status ud_execution_get_metrics(const ud_execution *e, ud_execution_metrics *
     m->queued_batches = atomic_load(&e->queued);
     m->queue_high_water = atomic_load(&e->high_water);
     m->memory_used = ud_memory_used(e->ctx);
-    m->completed_tasks = atomic_load(&e->completed_tasks);
+    m->executed_tasks = atomic_load(&e->executed_tasks);
+    m->durable_tasks = atomic_load(&e->durable_tasks);
+    m->recovery_tasks = atomic_load(&e->recovery_tasks);
+    m->resumed_tasks = atomic_load(&e->resumed_tasks);
+    m->pipeline_trees = atomic_load(&e->pipeline_trees);
+    m->tree_high_water = atomic_load(&e->tree_high_water);
+    m->worker_high_water = ud_executor_high_water(e->executor);
     m->spill_bytes = atomic_load(&e->spill_bytes);
+    m->committed_rows=atomic_load(&e->committed_rows);m->acknowledged_rows=atomic_load(&e->acknowledged_rows);m->error_count=atomic_load(&e->error_count);
     return UD_OK;
 }
 ud_status ud_execution_destroy(ud_execution *e) {
@@ -368,6 +472,8 @@ ud_status ud_execution_destroy(ud_execution *e) {
         if (cleanup)
             return ud_fail(ctx, UD_RESOURCE, "execution retains buffer resources: %s",
                            ud_status_name(cleanup));
+        cleanup = ud_connections_destroy(e);
+        if (cleanup) return cleanup;
         ud_scope_leave(&e->root, &e->root.globals);
         ud_scope_leave(&e->root, &e->root.project_scope);
         cleanup = ud_registry_destroy(e->registry);
@@ -383,12 +489,19 @@ ud_status ud_execution_destroy(ud_execution *e) {
         ud_package_destroy(e->package);
         e->package = NULL;
         e->root.package = NULL;
+        cleanup = ud_executor_destroy(e->executor);
+        if (cleanup)
+            return cleanup;
+        e->executor = NULL;
         ud_free((void *)e->options.tenant.data);
         e->options.tenant = (ud_string){0};
         ud_free((void *)e->options.execution_id.data);
         e->options.execution_id = (ud_string){0};
         ud_free((void *)e->options.state_directory.data);
         e->options.state_directory = (ud_string){0};
+        ud_bytes_clear(&e->pipeline_reports);
+        ud_bytes_clear(&e->bound_plans);
+        ud_bytes_clear(&e->control_reports);
         e->disposed = 1;
     }
     if (ud_memory_used(ctx) != ud_allocation_bytes(e)) {
@@ -399,6 +512,100 @@ ud_status ud_execution_destroy(ud_execution *e) {
     ud_mutex_destroy(&e->events_lock);
     ud_mutex_destroy(&e->journal_lock);
     ud_mutex_destroy(&e->serial_tasks_lock);
+    ud_condition_destroy(&e->finished);
+    ud_mutex_destroy(&e->diagnostics_lock);
+    ud_mutex_destroy(&e->cancellation_lock);
+    ud_condition_destroy(&e->cancellation_changed);
     ud_free(e);
     return ud_context_destroy(ctx);
+}
+
+static ud_status owned_json(ud_bytes *bytes,char **out,uint32_t *length) {
+    if (bytes->size>UINT32_MAX) return UD_RESOURCE;
+    *out=ud_strdup_n(bytes->ctx,(const char *)bytes->data,bytes->size);
+    if (!*out) return UD_RESOURCE;
+    *length=(uint32_t)bytes->size;return UD_OK;
+}
+ud_status ud_execution_explain(ud_execution *e,char **out,uint32_t *length) {
+    if (!e || !out || !length) return UD_INVALID;
+    *out=NULL;*length=0;
+    int state=atomic_load(&e->state);
+    if (state==UD_EXEC_RUNNING || state==UD_EXEC_DRAINING) return UD_BUSY;
+    ud_bytes bytes={.ctx=e->ctx};
+    ud_status status=ud_bytes_put(&bytes,"{\"version\":",sizeof("{\"version\":")-1);
+    char version[128];int n=snprintf(version,sizeof(version),"%u,\"workerLimit\":%u,\"control\":",UD_PLAN_VERSION,e->options.max_concurrency);
+    if (!status) status=ud_bytes_put(&bytes,version,(size_t)n);
+    if (!status) status=ud_control_explain(&e->root,ud_member(e->package->document,"controlFlow"),&bytes);
+    if (!status) status=ud_bytes_put(&bytes,",\"pipelines\":[",sizeof(",\"pipelines\":[")-1);
+    if (!status) status=ud_bytes_put(&bytes,e->bound_plans.data,e->bound_plans.size);
+    if (!status) status=ud_bytes_put(&bytes,"]}",sizeof("]}")-1);
+    if (!status) status=owned_json(&bytes,out,length);
+    ud_bytes_clear(&bytes);return status;
+}
+ud_status ud_execution_diagnostics(ud_execution *e,char **out,uint32_t *length) {
+    if (!e || !out || !length) return UD_INVALID;
+    *out=NULL;*length=0;
+    int state=atomic_load(&e->state);
+    if (state==UD_EXEC_RUNNING || state==UD_EXEC_DRAINING) return UD_BUSY;
+    ud_bytes bytes={.ctx=e->ctx};
+    ud_status status=ud_bytes_put(&bytes,"{\"connections\":",sizeof("{\"connections\":")-1);
+    if (!status) status=ud_connections_diagnostics(e,&bytes);
+    if (!status) status=ud_bytes_put(&bytes,",\"scheduler\":",sizeof(",\"scheduler\":")-1);
+    if (!status) status=ud_executor_diagnostics(e->executor,&bytes);
+    if (!status) status=ud_bytes_put(&bytes,",\"tasks\":[",sizeof(",\"tasks\":[")-1);
+    if (!status) status=ud_bytes_put(&bytes,e->control_reports.data,e->control_reports.size);
+    char count[128];int count_size=snprintf(count,sizeof(count),"],\"taskRecords\":%llu,\"taskRecordsDropped\":%llu,\"pipelines\":[",(unsigned long long)e->control_record_count,(unsigned long long)e->control_records_dropped);
+    if (!status) status=ud_bytes_put(&bytes,count,(size_t)count_size);
+    ud_mutex_lock(&e->diagnostics_lock);
+    if (!status) status=ud_bytes_put(&bytes,e->pipeline_reports.data,e->pipeline_reports.size);
+    ud_mutex_unlock(&e->diagnostics_lock);
+    char tail[384];int n=snprintf(tail,sizeof(tail),"],\"pipelineRecords\":%llu,\"pipelineRecordsDropped\":%llu,\"errorCount\":%u,\"workerHighWater\":%u,\"spillBytes\":%llu,\"state\":%d,\"outcome\":%d}",
+        (unsigned long long)e->pipeline_record_count,(unsigned long long)e->pipeline_records_dropped,atomic_load(&e->error_count),ud_executor_high_water(e->executor),(unsigned long long)atomic_load(&e->spill_bytes),
+        atomic_load(&e->state),atomic_load(&e->result));
+    if (!status) status=ud_bytes_put(&bytes,tail,(size_t)n);
+    if (!status) status=owned_json(&bytes,out,length);
+    ud_bytes_clear(&bytes);return status;
+}
+ud_status ud_activation_raise(ud_activation *a,int32_t kind,ud_status result) {
+    if (!a || (kind!=UD_EXEC_EVENT_WARNING && kind!=UD_EXEC_EVENT_ERROR)) return UD_INVALID;
+    if (a->event_depth>=a->execution->options.max_depth) return UD_RESOURCE;
+    ud_activation_notify_kind(a,kind,UD_EXEC_RUNNING,result);
+    const char *handler=kind==UD_EXEC_EVENT_WARNING ? "warning" : "error";
+    a->event_depth++;
+    ud_status status=UD_OK;
+    for (ud_activation *at=a;!status && at;at=at->parent)
+        status=ud_control_handler(at,ud_member(at->event_handlers,handler),handler);
+    a->event_depth--;
+    return status;
+}
+
+void ud_task_cancel_register(ud_activation *a,void *instance,void (*cancel)(void *)) {
+    if (!cancel) return;
+    ud_execution *e=a->execution;
+    ud_mutex_lock(&e->cancellation_lock);
+    a->cancel_instance=instance;a->cancel_callback=cancel;a->cancel_sent=0;
+    a->next_cancel=e->cancellable;e->cancellable=a;
+    ud_mutex_unlock(&e->cancellation_lock);
+    if (ud_is_cancelled(e->ctx)) ud_execution_cancel(e);
+}
+void ud_task_cancel_unregister(ud_activation *a) {
+    if (!a->cancel_callback) return;
+    ud_execution *e=a->execution;
+    ud_mutex_lock(&e->cancellation_lock);
+    while (a->cancel_pins) ud_condition_wait(&e->cancellation_changed,&e->cancellation_lock);
+    ud_activation **at=&e->cancellable;
+    while (*at && *at!=a) at=&(*at)->next_cancel;
+    if (*at) *at=a->next_cancel;
+    a->next_cancel=NULL;a->cancel_callback=NULL;
+    ud_mutex_unlock(&e->cancellation_lock);
+}
+
+void ud_target_rows(ud_activation *a,uint64_t rows,int acknowledged) {
+    ud_activation *owner=a->scope_authority ? a->scope_authority : a;
+    if (acknowledged) {
+        atomic_fetch_add(&a->execution->acknowledged_rows,rows);atomic_fetch_add(&owner->acknowledged_rows,rows);
+    } else {
+        atomic_fetch_add(&a->execution->committed_rows,rows);atomic_fetch_add(&owner->committed_rows,rows);
+        ud_activation_notify_kind(a,UD_EXEC_EVENT_TARGET_COMMITTED,UD_EXEC_RUNNING,UD_OK);
+    }
 }

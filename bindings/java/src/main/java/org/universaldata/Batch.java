@@ -3,7 +3,7 @@ import java.util.Objects;
 
 /** Owned typed batch; schema and nested JSON use the native SDK contract. */
 public final class Batch implements AutoCloseable {
-    static { System.loadLibrary("ud_java"); }
+    static { ProductVersion.requireNative(); }
     private long handle;
     public Batch(String schemaJson, String dataJson) { this(schemaJson, dataJson, Rounding.EXACT, 268435456L); }
     public Batch(String schemaJson, String dataJson, Rounding rounding, long memoryLimit) {

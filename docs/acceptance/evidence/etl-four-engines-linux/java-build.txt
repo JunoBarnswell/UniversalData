@@ -1,0 +1,1 @@
+Maven package and Java SDK consumer compilation succeeded (JDK 17, Maven; package exit code 0).

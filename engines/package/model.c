@@ -53,8 +53,8 @@ ud_status ud_connection_definitions_check(const ud_json *defs) {
         return UD_SCHEMA;
     for (uint32_t i = 0; i < ud_json_size(defs); i++) {
         const ud_json *def = ud_json_at(defs, i);
-        static const char *keys[] = {"id", "driver", "resource", "credentialReference"};
-        UD_TRY(ud_json_keys(def, keys, 4));
+        static const char *keys[] = {"id", "driver", "resource", "credentialReference", "revision", "maxLeases", "acquireTimeoutMs", "idleTimeoutMs"};
+        UD_TRY(ud_json_keys(def, keys, 8));
         ud_string id;
         UD_TRY(ud_json_string(ud_member(def, "id"), &id));
         for (uint32_t j = 0; j < i; j++) {
@@ -62,6 +62,11 @@ ud_status ud_connection_definitions_check(const ud_json *defs) {
             UD_TRY(ud_json_string(ud_member(ud_json_at(defs, j), "id"), &other));
             if (ud_same(id, other))
                 return UD_SCHEMA;
+        }
+        const char *limits[]={"revision","maxLeases","acquireTimeoutMs","idleTimeoutMs"};
+        for (uint32_t k=0;k<4;k++) if (ud_member(def,limits[k])) {
+            uint64_t value;UD_TRY(ud_json_uint(ud_member(def,limits[k]),&value));
+            if ((k<2 && !value) || (k==1 && value>65536) || (k>=2 && value>3600000)) return UD_SCHEMA;
         }
         const char *fields[] = {"driver", "resource", "credentialReference"};
         for (int f = 0; f < 3; f++) {
@@ -144,24 +149,29 @@ ud_status ud_package_check(const ud_package *p) {
     }
     const ud_json *policy = ud_member(p->document, "policy");
     if (policy) {
-        static const char *allowed[] = {"maxConcurrency", "buffers"};
-        UD_TRY(ud_json_keys(policy, allowed, 2));
+        static const char *allowed[] = {"maxConcurrency", "buffers", "connections", "maxErrorCount", "maxTrees", "maxPartitions", "transaction"};
+        UD_TRY(ud_json_keys(policy, allowed, 7));
         if (ud_member(policy, "maxConcurrency")) {
             uint64_t concurrency;
             UD_TRY(ud_json_uint(ud_member(policy, "maxConcurrency"), &concurrency));
             if (!concurrency || concurrency > 64)
                 return UD_SCHEMA;
         }
+        const char *limits[]={"maxErrorCount","maxTrees","maxPartitions"};
+        for (uint32_t k=0;k<3;k++) if (ud_member(policy,limits[k])) {
+            uint64_t value;UD_TRY(ud_json_uint(ud_member(policy,limits[k]),&value));
+            if ((k && (!value || value>64)) || (!k && value>UINT32_MAX)) return UD_SCHEMA;
+        }
         const ud_json *buffers = ud_member(policy, "buffers");
         if (buffers) {
-            static const char *bk[] = {"connection", "residentBytes", "spillBytes", "maxBlocks"};
-            UD_TRY(ud_json_keys(buffers, bk, 4));
-            const char *limits[] = {"residentBytes", "spillBytes", "maxBlocks"};
-            for (uint32_t i = 0; i < 3; i++)
+            static const char *bk[] = {"connection", "residentBytes", "workingBytes", "spillBytes", "maxBlocks"};
+            UD_TRY(ud_json_keys(buffers, bk, 5));
+            const char *limits[] = {"residentBytes", "workingBytes", "spillBytes", "maxBlocks"};
+            for (uint32_t i = 0; i < 4; i++)
                 if (ud_member(buffers, limits[i])) {
                     uint64_t value;
                     UD_TRY(ud_json_uint(ud_member(buffers, limits[i]), &value));
-                    if (!value || (i == 2 && value > 1000000))
+                    if (!value || (i == 3 && value > 1000000))
                         return UD_SCHEMA;
                 }
         }
@@ -243,7 +253,7 @@ ud_status ud_definition_box(ud_context *ctx, ud_string name_space, ud_string nam
     if (!value && required)
         return UD_SCHEMA;
     ud_bytes schema = {.ctx = ctx};
-    const char *prefix = "{\"version\":4,\"fields\":[{\"name\":";
+    const char *prefix = "{\"version\":6,\"fields\":[{\"name\":";
     ud_status s = ud_bytes_put(&schema, prefix, strlen(prefix));
     if (!s)
         s = ud_json_quote(&schema, name.data, name.length);
@@ -460,15 +470,18 @@ ud_status ud_execution_variable_field(const ud_execution *e, ud_string name, ud_
 ud_status ud_variable_writable(ud_activation *e, ud_string name, ud_variable **out) {
     if (!e || !out)
         return UD_INVALID;
+    if (e->stepping)
+        return UD_AUTH; /* Pipeline scopes are immutable during concurrent steps. */
     *out = find_slot(e, name, 0);
     if (!*out)
         return UD_SCHEMA;
     if ((*out)->readonly)
         return UD_AUTH;
-    if (e->parallel)
+    const ud_activation *authority = e->scope_authority ? e->scope_authority : e;
+    if (authority->parallel)
         for (ud_scope *scope = e->scope; scope; scope = scope->parent)
             for (ud_variable *v = scope->values; v; v = v->next)
-                if (v == *out && scope->owner != e)
+                if (v == *out && scope->owner != authority)
                     return UD_AUTH;
     return UD_OK;
 }

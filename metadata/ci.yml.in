@@ -1,0 +1,68 @@
+name: package-sdk-ci
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package-and-bindings:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Product authority
+        run: python scripts/product_model.py check
+      - name: Pinned SQLite and HTTP dependency
+        run: |
+          python scripts/fetch_deps.py --platform linux --output build/deps
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+      - name: Linux Release native and JNI
+        run: |
+          cmake -S . -B build/full -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$PWD/build/deps/sqlite/sqlite-amalgamation-3490100" -DUD_WITH_HTTP=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/full --parallel 4
+          ctest --test-dir build/full --output-on-failure --parallel 4
+      - name: Linux distributable and independent C, NuGet and Maven consumers
+        run: |
+          python packaging/package-linux.py --build build/full --output build/delivery
+          python tests/installed_sdk.py --bundle build/UniversalData-@UD_SDK_VERSION@-linux-x64.zip --work "$RUNNER_TEMP/ud-sdk-$GITHUB_RUN_ID" --evidence build/sdk-consumers.json
+      - name: Million rows, spill and 1/2/4/8/16 worker comparison
+        run: python benchmarks/four_engines.py --cli build/full/hosts/ud_cli --output build/four-engine-benchmark.json
+      - name: Public contracts and removed legacy exports
+        run: python scripts/static_check.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-sdk-linux-x64
+          path: |
+            build/delivery
+            build/UniversalData-@UD_SDK_VERSION@-linux-x64.zip
+            build/sdk-consumers.json
+            build/four-engine-benchmark.json
+  minimal-components:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake --preset core-only
+      - run: cmake --build --preset core-only --parallel 2
+      - run: ctest --preset core-only
+      - run: cmake --install build/core --prefix "$PWD/build/sdk"
+      - run: cmake -S examples/c -B build/consumer -DCMAKE_PREFIX_PATH="$PWD/build/sdk"
+      - run: cmake --build build/consumer && build/consumer/consumer
+  memory-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build/asan -DUD_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
+      - run: cmake --build build/asan --parallel 2
+      - run: ctest --test-dir build/asan --output-on-failure

@@ -53,7 +53,7 @@ int main(void) {
         if (!s)
             s = clean;
         char reply[128];
-        int bytes = snprintf(reply, sizeof(reply), "{\"version\":4,\"state\":%d,\"result\":%d}",
+        int bytes = snprintf(reply, sizeof(reply), "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"state\":%d,\"result\":%d}",
                              m.state, s);
         uint32_t length = (uint32_t)bytes;
         for (int i = 0; i < 4; i++)

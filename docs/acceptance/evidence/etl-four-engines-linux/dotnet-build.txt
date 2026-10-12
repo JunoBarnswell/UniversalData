@@ -1,0 +1,38 @@
+
+Welcome to .NET 8.0!
+---------------------
+SDK Version: 8.0.418
+
+----------------
+Installed an ASP.NET Core HTTPS development certificate.
+To trust the certificate, view the instructions: https://aka.ms/dotnet-https-linux
+
+----------------
+Write your first app: https://aka.ms/dotnet-hello-world
+Find out what's new: https://aka.ms/dotnet-whats-new
+Explore documentation: https://aka.ms/dotnet-docs
+Report issues and find source on GitHub: https://github.com/dotnet/core
+Use 'dotnet --help' to see available commands or visit: https://aka.ms/dotnet-cli
+--------------------------------------------------------------------------------------
+  Determining projects to restore...
+  Restored /workspace/UniversalData/examples/dotnet/Consumer.csproj (in 96 ms).
+  Restored /workspace/UniversalData/bindings/dotnet/UniversalData/UniversalData.csproj (in 90 ms).
+  UniversalData -> /workspace/UniversalData/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  Consumer -> /workspace/UniversalData/examples/dotnet/bin/Release/net8.0/Consumer.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:03.04
+  Determining projects to restore...
+  Restored /workspace/UniversalData/examples/dotnet-data/DataConsumer.csproj (in 85 ms).
+  1 of 2 projects are up-to-date for restore.
+  UniversalData -> /workspace/UniversalData/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  DataConsumer -> /workspace/UniversalData/examples/dotnet-data/bin/Release/net8.0/DataConsumer.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:01.19

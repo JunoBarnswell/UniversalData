@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace UniversalData;
 
-/// <summary>Immutable native Package definition; ABI 4. No managed planning.</summary>
+/// <summary>Immutable native Package definition; Current ABI. No managed planning.</summary>
 public sealed class Package : IDisposable
 {
     private readonly ContextHandle context;

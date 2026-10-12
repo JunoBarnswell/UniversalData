@@ -1,13 +1,23 @@
-#include "ud/plugin.h"
+#include "../connection_internal.h"
 #include "../../data/internal.h"
+#include "../../foundation/thread.h"
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <dlfcn.h>
 #endif
+typedef struct module_record {
+    void *library;
+    ud_plugin_api api;
+    uint32_t references;
+    struct module_record *next;
+} module_record;
+static ud_mutex modules_lock=UD_MUTEX_INITIALIZER;
+static module_record *modules;
 struct ud_plugin {
     ud_context *ctx;
     void *library;
+    module_record *module;
     ud_plugin_api api;
     ud_host_api host;
     atomic_uint live, active, registrations;
@@ -84,9 +94,13 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
         return ud_fail(ctx, UD_IO, "plugin library or entry point missing (OS error %lu): %s",
                        loader_error, path);
     }
+    ud_mutex_lock(&modules_lock);
+    module_record *shared=modules;
+    while (shared && shared->library!=p->library) shared=shared->next;
     p->api.struct_size = sizeof(p->api);
     p->api.abi_version = UD_PLUGIN_ABI;
-    ud_status s = entry(UD_PLUGIN_ABI, &p->api);
+    ud_status s = shared ? UD_OK : entry(UD_PLUGIN_ABI, &p->api);
+    if (shared) p->api=shared->api;
     int component_only = p->api.roles == UD_PLUGIN_COMPONENTS && p->api.components &&
                          !p->api.initialize && !p->api.destroy;
     if (!s && (p->api.struct_size != sizeof(p->api) || p->api.abi_version != UD_PLUGIN_ABI ||
@@ -96,8 +110,14 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                (!component_only && (!(p->api.roles & UD_PLUGIN_CONNECTOR) || !p->api.connector ||
                                     !p->api.initialize || !p->api.destroy))))
         s = UD_INCOMPATIBLE;
-    if (!s && (p->api.capabilities & caps) != caps)
-        s = UD_UNSUPPORTED;
+    if (!s && (p->api.capabilities & caps) != caps) s = UD_UNSUPPORTED;
+    if (!s && !shared) {
+        shared=malloc(sizeof(*shared));
+        if (!shared) s=UD_RESOURCE;
+        else { *shared=(module_record){.library=p->library,.api=p->api,.next=modules};modules=shared; }
+    }
+    if (!s) { shared->references++;p->module=shared; }
+    ud_mutex_unlock(&modules_lock);
     if (s) {
         close_library(p->library);
         ud_free(p);
@@ -118,7 +138,7 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_is_cancelled,
                             report,
                             ud_value_parse_field,
-                            ud_value_format};
+                            ud_value_format, NULL, NULL};
     *out = p;
     return UD_OK;
 }
@@ -157,7 +177,7 @@ ud_status ud_plugin_register_components(ud_plugin *p, ud_registry *registry) {
                                       retain_module, release_module);
 }
 static ud_status connection_instance_create(ud_plugin *p, const char *config, uint32_t n,
-                                            ud_plugin_instance **out) {
+                                            ud_plugin_instance **out,void *control_user,ud_status (*check)(void *)) {
     if (!p || !out || (!config && n))
         return UD_INVALID;
     *out = NULL;
@@ -167,7 +187,8 @@ static ud_status connection_instance_create(ud_plugin *p, const char *config, ui
     if (!instance)
         return UD_RESOURCE;
     atomic_fetch_add(&p->active, 1);
-    ud_status s = p->api.initialize(&p->host, config ? config : "", n, &instance->state);
+    ud_host_api host=p->host;host.control_user=control_user;host.check_io=check;
+    ud_status s = p->api.initialize(&host, config ? config : "", n, &instance->state);
     atomic_fetch_sub(&p->active, 1);
     if (s) {
         if (instance->state)
@@ -200,10 +221,18 @@ ud_status ud_plugin_unload(ud_plugin *p) {
         return UD_OK;
     if (atomic_load(&p->live) || atomic_load(&p->active) || atomic_load(&p->registrations))
         return ud_fail(p->ctx, UD_BUSY, "plugin has live instances or callbacks");
-    atomic_fetch_add(&p->active, 1);
-    if (p->api.shutdown)
-        p->api.shutdown();
-    close_library(p->library);
+    ud_mutex_lock(&modules_lock);
+    module_record *module=p->module;
+    if (!--module->references) {
+        module_record **at=&modules;
+        while (*at && *at!=module) at=&(*at)->next;
+        if (*at) *at=module->next;
+        /* Entry/shutdown are metadata lifecycle callbacks: non-reentrant with
+         * load/unload. This is never the scheduler, Journal or event lock. */
+        if (module->api.shutdown) module->api.shutdown();
+        close_library(p->library);free(module);
+    } else close_library(p->library);
+    ud_mutex_unlock(&modules_lock);
     ud_free(p);
     return UD_OK;
 }
@@ -212,7 +241,7 @@ struct ud_connection {
     ud_plugin_instance *instance;
     ud_connection_options options;
     const ud_connector_api *api;
-    int cursor;
+    int cursor, transaction;
 };
 static int valid_string(ud_string s, int required) {
     return (!required || s.length) && (!s.length || (s.data && !memchr(s.data, 0, s.length) &&
@@ -221,11 +250,11 @@ static int valid_string(ud_string s, int required) {
 static ud_status authorize_connection(ud_connection *c, int32_t action) {
     if (!c || !c->options.authorize)
         return UD_AUTH;
-    return c->options.authorize(c->options.authorize_user, c->options.tenant, c->options.resource,
-                                action) == UD_OK
-               ? UD_OK
-               : ud_fail(c->instance->plugin->ctx, UD_AUTH,
-                         "connector operation denied by authorization callback");
+    if (c->options.check) UD_TRY(c->options.check(c->options.authorize_user));
+    ud_status grant=c->options.authorize(c->options.authorize_user,c->options.tenant,c->options.resource,action);
+    if (grant==UD_OK) return UD_OK;
+    if (c->options.check) UD_TRY(c->options.check(c->options.authorize_user));
+    return ud_fail(c->instance->plugin->ctx,UD_AUTH,"connector operation denied by authorization callback");
 }
 static ud_status connection_enter(ud_connection *c, int32_t action) {
     if (!c)
@@ -245,61 +274,135 @@ static void connection_leave(ud_connection *c) {
     atomic_fetch_sub(&c->instance->plugin->active, 1);
     atomic_store(&c->instance->busy, 0);
 }
-ud_status ud_connection_open(ud_plugin *p, const ud_connection_options *options,
-                             ud_connection **out) {
-    if (!out)
-        return UD_INVALID;
+static ud_status validate_driver(ud_plugin *p) {
+    const ud_connector_api *api = p->api.connector;
+    if (!api) return UD_UNSUPPORTED;
+    if (api->struct_size != sizeof(*api) || api->abi_version != UD_PLUGIN_ABI ||
+        !api->test || !api->discover || !api->cancel || !api->set_control) return UD_INCOMPATIBLE;
+    if ((api->capabilities & UD_CONNECT_READ) &&
+        (!api->read_open || !api->read_next || !api->read_close)) return UD_INCOMPATIBLE;
+    if ((api->capabilities & (UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE)) &&
+        (!api->write || !api->receipt || !(api->capabilities & UD_CONNECT_RECEIPTS))) return UD_INCOMPATIBLE;
+    if ((api->capabilities & UD_CONNECT_TRANSACTION) &&
+        (!api->begin || !api->commit || !api->rollback)) return UD_INCOMPATIBLE;
+    if ((api->capabilities & UD_CONNECT_METADATA) && !api->metadata) return UD_INCOMPATIBLE;
+    if ((api->capabilities & UD_CONNECT_POOL) && !api->reset_session) return UD_INCOMPATIBLE;
+    return UD_OK;
+}
+ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options *options,
+                                      ud_string configuration, ud_connection **out) {
+    if (!out) return UD_INVALID;
     *out = NULL;
     if (!p || !options || options->struct_size != sizeof(*options) ||
-        options->abi_version != UD_ABI_VERSION)
-        return UD_INCOMPATIBLE;
-    if (!valid_string(options->tenant, 1) || !valid_string(options->resource, 1) ||
-        !valid_string(options->credential_reference, 1))
-        return UD_INVALID;
-    if (!options->authorize || !options->resolve ||
-        options->authorize(options->authorize_user, options->tenant, options->resource,
-                           UD_ACCESS_OPEN) != UD_OK)
+        options->abi_version != UD_ABI_VERSION) return UD_INCOMPATIBLE;
+    if (!valid_string(options->tenant,1) || !valid_string(options->resource,1) ||
+        !valid_string(configuration,1)) return UD_INVALID;
+    if (options->check) UD_TRY(options->check(options->authorize_user));
+    if (!options->authorize || options->authorize(options->authorize_user,options->tenant,
+        options->resource,UD_ACCESS_OPEN)!=UD_OK) {
+        if (options->check) UD_TRY(options->check(options->authorize_user));
         return UD_AUTH;
-    const ud_connector_api *api = p->api.connector;
-    if (!api)
-        return UD_UNSUPPORTED;
-    if (api->struct_size != sizeof(*api) || api->abi_version != UD_PLUGIN_ABI || !api->test ||
-        !api->discover || !api->cancel)
-        return UD_INCOMPATIBLE;
-    if ((api->capabilities & UD_CONNECT_READ) &&
-        (!api->read_open || !api->read_next || !api->read_close))
-        return UD_INCOMPATIBLE;
-    if ((api->capabilities & (UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE)) &&
-        (!api->write || !api->receipt || !(api->capabilities & UD_CONNECT_RECEIPTS)))
-        return UD_INCOMPATIBLE;
+    }
+    UD_TRY(validate_driver(p));
     ud_connection *c = ud_alloc(p->ctx, sizeof(*c));
-    if (!c)
-        return UD_RESOURCE;
+    if (!c) return UD_RESOURCE;
     c->options = *options;
     c->options.tenant.data = ud_strdup_n(p->ctx, options->tenant.data, options->tenant.length);
-    c->options.resource.data =
-        ud_strdup_n(p->ctx, options->resource.data, options->resource.length);
+    c->options.resource.data = ud_strdup_n(p->ctx, options->resource.data, options->resource.length);
     c->options.credential_reference = (ud_string){0};
-    c->api = api;
-    ud_string configuration = {0};
-    ud_status s =
-        !c->options.tenant.data || !c->options.resource.data
-            ? UD_RESOURCE
-            : options->resolve(options->resolve_user, p->ctx, options->tenant, options->resource,
-                               options->credential_reference, &configuration);
-    if (!s && !valid_string(configuration, 1))
-        s = UD_AUTH;
-    if (!s)
-        s = connection_instance_create(p, configuration.data, configuration.length, &c->instance);
-    ud_free((void *)configuration.data);
-    if (s) {
-        ud_free((void *)c->options.tenant.data);
-        ud_free((void *)c->options.resource.data);
-        ud_free(c);
-        return s;
+    c->api = p->api.connector;
+    ud_status status = !c->options.tenant.data || !c->options.resource.data ? UD_RESOURCE :
+        connection_instance_create(p, configuration.data, configuration.length, &c->instance,
+                                   options->authorize_user,options->check);
+    if (status) {
+        ud_free((void *)c->options.tenant.data); ud_free((void *)c->options.resource.data); ud_free(c);
+        return status;
     }
     *out = c;
     return UD_OK;
+}
+ud_status ud_connection_open(ud_plugin *p, const ud_connection_options *options, ud_connection **out) {
+    if (!out) return UD_INVALID;
+    *out = NULL;
+    if (!p || !options || options->struct_size != sizeof(*options) ||
+        options->abi_version != UD_ABI_VERSION) return UD_INCOMPATIBLE;
+    if (!valid_string(options->credential_reference,1)) return UD_INVALID;
+    if (options->check) UD_TRY(options->check(options->authorize_user));
+    if (!options->authorize || !options->resolve || options->authorize(options->authorize_user,
+        options->tenant,options->resource,UD_ACCESS_OPEN)!=UD_OK) {
+        if (options->check) UD_TRY(options->check(options->authorize_user));
+        return UD_AUTH;
+    }
+    UD_TRY(validate_driver(p));
+    ud_string configuration = {0};
+    ud_status status = options->resolve(options->resolve_user,p->ctx,options->tenant,
+        options->resource,options->credential_reference,&configuration);
+    if (!status) status = ud_connection_open_resolved(p,options,configuration,out);
+    ud_free((void *)configuration.data);
+    return status;
+}
+int ud_connection_reusable(const ud_connection *c) {
+    return c && (c->api->capabilities & UD_CONNECT_POOL) && !c->cursor && !c->transaction && !atomic_load(&c->instance->busy);
+}
+ud_status ud_connection_reset_session(ud_connection *c) {
+    if (!ud_connection_reusable(c)) return UD_UNSUPPORTED;
+    int expected=0;
+    if (!atomic_compare_exchange_strong(&c->instance->busy,&expected,1)) return UD_BUSY;
+    atomic_fetch_add(&c->instance->plugin->active,1);
+    ud_status status=c->api->reset_session(c->instance->state);
+    connection_leave(c);
+    return status;
+}
+ud_status ud_connection_bind_lease(ud_connection *c, void *user, ud_authorize_fn authorize,
+                                   ud_status (*check)(void *)) {
+    if (!c || atomic_load(&c->instance->busy)) return UD_BUSY;
+    c->options.authorize_user = user;
+    c->options.authorize = authorize;
+    c->api->set_control(c->instance->state,user,check);
+    return UD_OK;
+}
+ud_status ud_connection_begin(ud_connection *c, int32_t isolation) {
+    if (!c || c->transaction || c->cursor || isolation < UD_ISOLATION_READ_COMMITTED ||
+        isolation > UD_ISOLATION_SERIALIZABLE) return UD_INVALID;
+    if (!(c->api->capabilities & UD_CONNECT_TRANSACTION)) return UD_UNSUPPORTED;
+    UD_TRY(connection_enter(c,UD_ACCESS_WRITE));
+    ud_status status = c->api->begin(c->instance->state,isolation);
+    if (!status) c->transaction = 1;
+    connection_leave(c);
+    return status;
+}
+ud_status ud_connection_commit(ud_connection *c) {
+    if (!c || !c->transaction || c->cursor) return UD_INVALID;
+    UD_TRY(connection_enter(c,UD_ACCESS_WRITE));
+    ud_status status = c->api->commit(c->instance->state);
+    if (!status) c->transaction = 0;
+    connection_leave(c);
+    return status ? UD_COMMIT_UNKNOWN : UD_OK;
+}
+ud_status ud_connection_rollback(ud_connection *c) {
+    if (!c || !c->transaction) return UD_INVALID;
+    UD_TRY(ud_connection_read_close(c));
+    int expected = 0;
+    if (!atomic_compare_exchange_strong(&c->instance->busy,&expected,1)) return UD_BUSY;
+    atomic_fetch_add(&c->instance->plugin->active,1);
+    ud_status status = c->api->rollback(c->instance->state);
+    if (!status) c->transaction = 0;
+    connection_leave(c);
+    return status ? UD_COMMIT_UNKNOWN : UD_OK;
+}
+ud_status ud_connection_metadata(ud_connection *c, const ud_metadata_options *options, ud_batch **out) {
+    if (!out) return UD_INVALID;
+    *out = NULL;
+    if (!c || !options || options->struct_size != sizeof(*options) ||
+        options->abi_version != UD_ABI_VERSION) return UD_INCOMPATIBLE;
+    if (!(c->api->capabilities & UD_CONNECT_METADATA)) return UD_UNSUPPORTED;
+    if (!options->limit || options->limit > 65536 || options->kind < UD_METADATA_CATALOGS ||
+        options->kind > UD_METADATA_INDEXES || !valid_string(options->parent,0)) return UD_INVALID;
+    UD_TRY(connection_enter(c,UD_ACCESS_DISCOVER));
+    ud_status status = c->api->metadata(c->instance->state,options,out);
+    connection_leave(c);
+    if (status) { ud_batch_destroy(*out); *out = NULL; }
+    return status;
 }
 uint64_t ud_connection_capabilities(const ud_connection *c) {
     return c ? c->api->capabilities : 0;
@@ -461,6 +564,7 @@ ud_status ud_connection_close(ud_connection *c) {
     if (!c)
         return UD_OK;
     UD_TRY(ud_connection_read_close(c));
+    if (c->transaction) UD_TRY(ud_connection_rollback(c));
     UD_TRY(connection_instance_destroy(c->instance));
     ud_free((void *)c->options.tenant.data);
     ud_free((void *)c->options.resource.data);

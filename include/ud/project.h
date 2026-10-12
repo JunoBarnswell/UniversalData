@@ -8,7 +8,7 @@ typedef struct ud_project ud_project;
 typedef struct ud_project_binding {
     uint32_t struct_size, abi_version;
     uint64_t package_revision;
-    ud_string environment;                            /* Optional version-3 Environment document. */
+    ud_string environment;                            /* Optional current-version Environment document. */
     ud_string project_parameters, package_parameters; /* Explicit overrides. */
 } ud_project_binding;
 /* Project contains immutable Package revision references, shared connection

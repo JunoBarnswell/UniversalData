@@ -1,6 +1,6 @@
 # Native Custom Task / Function 插件契约
 
-只使用安装后的 public SDK headers。模块导出 `ud_plugin_get_api`，只接受当前完整 ABI 4；component-only 模块提供 `UD_PLUGIN_COMPONENTS` 和 component table，没有 dummy factory 或 generic execute 入口。Physical connector 模块提供单独 connector table 和必要连接 factories。
+只使用安装后的 public SDK headers。模块导出 `ud_plugin_get_api`，只接受当前完整 ABI 5；component-only 模块提供 `UD_PLUGIN_COMPONENTS` 和 component table，没有 dummy factory 或 generic execute 入口。Physical connector 模块提供单独 connector table 和必要连接 factories。
 
 Registry 原子复制元数据并 retain 模块；重复 ID、旧版本、裁剪布局或非法 callback table 整体拒绝。Root Execution 合并同一 Registry 描述，并租用外部 Registry；Expression 同样租用函数所属 Registry。存在活动引用时 unload/destroy Busy，调用方先结束 Execution/Expression、销毁 Registry，再卸载模块。
 

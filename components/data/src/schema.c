@@ -49,7 +49,8 @@ ud_status ud_column_id_make(ud_context *ctx, ud_string scope, ud_string name, ud
         !ud_utf8_valid(name.data, name.length))
         return UD_SCHEMA;
     ud_bytes bytes = {.ctx = ctx};
-    ud_status s = ud_bytes_put(&bytes, "UD.ColumnIdentity.4", 19);
+    static const char prefix[] = "UD.ColumnIdentity." UD_PROTOCOL_VERSION_TEXT;
+    ud_status s = ud_bytes_put(&bytes, prefix, sizeof(prefix) - 1);
     if (!s)
         s = ud_put_string(&bytes, scope.data, scope.length);
     if (!s)
@@ -359,7 +360,8 @@ ud_status ud_schema_owner_create(ud_context *ctx, const ud_field *fields, uint32
     if (!ctx || !fields || !columns || columns > 65536)
         return UD_INVALID;
     if (!scope.length)
-        scope = (ud_string){"UD.Schema.4", 11};
+        scope = (ud_string){"UD.Schema." UD_PROTOCOL_VERSION_TEXT,
+                             sizeof("UD.Schema." UD_PROTOCOL_VERSION_TEXT) - 1};
     ud_column_id parent;
     UD_TRY(ud_column_id_make(ctx, scope, (ud_string){"root", 4}, &parent));
     ud_schema_owner *schema = ud_alloc(ctx, sizeof(*schema));

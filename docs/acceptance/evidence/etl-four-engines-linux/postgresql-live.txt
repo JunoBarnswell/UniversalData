@@ -1,0 +1,2 @@
+PostgreSQL live typed connector: default deny, 9 scalar types/NaN/Infinity/exact Decimal/UTC/Binary, NUL write rollback + receipt absence, corrected idempotent retry, bounded cursor/END, Compare/Hash parity and clean release passed
+PostgreSQL package commit/rollback, clean-session pool reuse, Query/Schema enumeration, deadline server cancellation and disconnected write CommitUnknown passed

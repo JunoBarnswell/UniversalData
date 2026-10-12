@@ -23,6 +23,8 @@ UD_API ud_status ud_connection_lease_write(ud_connection_lease *, const ud_write
 UD_API ud_status ud_connection_lease_receipt(ud_connection_lease *, ud_string job,
                                              ud_string batch_id, ud_commit_receipt *);
 UD_API ud_status ud_connection_lease_execute_sql(ud_connection_lease *, ud_string statement);
+UD_API ud_status ud_connection_lease_metadata(ud_connection_lease *, const ud_metadata_options *, ud_batch **);
+UD_API ud_status ud_connection_lease_discover(ud_connection_lease *, ud_string table, ud_batch **);
 UD_API ud_status ud_connection_lease_release(ud_connection_lease *);
 #ifdef __cplusplus
 }

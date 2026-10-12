@@ -119,7 +119,7 @@ ud_status ud_expression_register_functions(ud_registry *registry) {
         d->struct_size = sizeof(*d);
         d->abi_version = UD_ABI_VERSION;
         d->id = d->name = (ud_string){ids[i], (uint32_t)strlen(ids[i])};
-        d->version = (ud_string){"1.0.0", 5};
+        d->version = (ud_string){UD_SDK_VERSION, sizeof(UD_SDK_VERSION)-1};
         d->configuration_schema = (ud_string){"{}", 2};
         d->category = UD_COMPONENT_FUNCTION;
         d->synchronous_input = d->error_output = -1;

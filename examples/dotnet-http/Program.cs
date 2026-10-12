@@ -23,4 +23,4 @@ int status=0;
 try { execution.Start();while(!execution.Wait(100)) { } }
 catch(UniversalDataException error) { status=error.Status; }
 var m=execution.Metrics;
-Console.WriteLine(JsonSerializer.Serialize(new { result=status,state=(int)m.State,completedTasks=m.CompletedTasks,resolutions,networkGrants }));
+Console.WriteLine(JsonSerializer.Serialize(new { result=status,state=(int)m.State,executedTasks=m.ExecutedTasks,resolutions,networkGrants }));

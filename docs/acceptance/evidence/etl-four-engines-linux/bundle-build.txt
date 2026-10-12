@@ -1,0 +1,58 @@
+-- Install configuration: "Release"
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_foundation.a
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_columnar.a
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_plugins.a
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_expression.a
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_runtime.a
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_compute.a
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_package.a
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_data.so.1.2.0
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_data.so.6
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_data.so
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/UniversalData/plugins/ud_connector_postgresql.so
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/bin/ud_cli
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/bin/ud_worker
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_java.so
+-- Set non-toolchain portion of runtime path of "/workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/libud_java.so" to ""
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/activation.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/buffer.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/catalog.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/component.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/compute.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/connection_manager.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/connector.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/csv.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/data.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/engine.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/execution.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/expression.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/format.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/json.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/memory.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/operator.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/package.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/plugin.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/profile.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/project.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/quality.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/regex.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/status.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/partition.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/include/ud/version.h
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/share/UniversalData/LICENSE
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/share/UniversalData/NOTICE
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/share/UniversalData/licenses
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/share/UniversalData/licenses/Apache-2.0.txt
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/share/UniversalData/licenses/DuckDB-MIT.txt
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/cmake/UniversalData/UniversalDataTargets.cmake
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/cmake/UniversalData/UniversalDataTargets-release.cmake
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/cmake/UniversalData/UniversalDataConfig.cmake
+-- Installing: /workspace/UniversalData/artifacts/1.2.0/linux-x64/sdk/lib/cmake/UniversalData/UniversalDataConfigVersion.cmake
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/UniversalData/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  The package UniversalData.1.2.0 is missing a readme. Go to https://aka.ms/nuget/authoring-best-practices/readme to learn why package readmes are important.
+  Successfully created package '/workspace/UniversalData/artifacts/1.2.0/linux-x64/packages/UniversalData.1.2.0.nupkg'.
+{"archive": "/workspace/UniversalData/artifacts/1.2.0/UniversalData-1.2.0-linux-x64.zip", "sha256": "f675c5d8d93a216e11ccb0340dbbc8e8950dc877c3a6774c1e3b2d9b7087ea51", "manifest": "/workspace/UniversalData/artifacts/1.2.0/linux-x64/manifest.json", "sourceFingerprint": "0230c67a45b32339ce258bd4021f4007517c2d6eb26c2a187e6d598e783edab5"}

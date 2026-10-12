@@ -1,0 +1,195 @@
+{
+  "exitCode": 0,
+  "sdkVersion": "1.2.0",
+  "abiVersion": 6,
+  "configuration": "Release",
+  "sourceFingerprint": "0230c67a45b32339ce258bd4021f4007517c2d6eb26c2a187e6d598e783edab5",
+  "archive": "/workspace/UniversalData/artifacts/1.2.0/UniversalData-1.2.0-linux-x64.zip",
+  "archiveSha256": "f675c5d8d93a216e11ccb0340dbbc8e8950dc877c3a6774c1e3b2d9b7087ea51",
+  "verifiedFiles": 51,
+  "unpackedDirectory": "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle",
+  "logs": "/workspace/scratch/ud-sdk-consumer-abi6-final",
+  "nativeLibrary": {
+    "path": "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/sdk/lib/libud_data.so",
+    "sha256": "1556ee898dd1f0a9551b45dca9c9a2d9d8c488d884c9526b4c61506ebe8444bc"
+  },
+  "nuget": {
+    "path": "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/packages/UniversalData.1.2.0.nupkg",
+    "sha256": "106e2b0746c15be089ef4e5649eec2dadf9037ac9a46c1bd30ca05a19e862d66",
+    "nativeFromPackage": true,
+    "sdkLoaderPath": false
+  },
+  "maven": {
+    "path": "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/packages/universal-data-1.2.0.jar",
+    "sha256": "37a847ff480d660d70f53e2578aeb0d9f29558fdb35725041c259ad28268e054",
+    "nativeFromBundle": true
+  },
+  "c": {
+    "cmakeTarget": "UniversalData::Data",
+    "dynamicPackage": true,
+    "dynamicResources": true,
+    "installedHostPipeline": true,
+    "dynamicSQLite": true
+  },
+  "languageParity": "10003 rows / 20006 input and output / 8 tasks; Package/Project/child and scalar/nested/wire equality",
+  "commands": [
+    {
+      "step": "c-configure",
+      "command": [
+        "/workspace/.universaldata-tools/bin/cmake",
+        "-S",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/c-source",
+        "-B",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/c-build",
+        "-DCMAKE_PREFIX_PATH=/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/sdk",
+        "-DCMAKE_BUILD_TYPE=Release"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-build",
+      "command": [
+        "/workspace/.universaldata-tools/bin/cmake",
+        "--build",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/c-build",
+        "--config",
+        "Release",
+        "--parallel",
+        "4"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-dynamic-resources",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData/tests/core_runtime.py",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/c-build/consumer_resources"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "installed-host-pipeline",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData/tests/core_pipeline.py",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/sdk/bin/ud_cli"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-dynamic-sqlite",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData/tests/package_sql.py",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/c-build/consumer_sql",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-restore-package",
+      "command": [
+        "/workspace/.universaldata-tools/dotnet8/dotnet",
+        "restore",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/dotnet-package/Consumer.csproj",
+        "--source",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/packages",
+        "--packages",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/nuget-cache",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-build-package",
+      "command": [
+        "/workspace/.universaldata-tools/dotnet8/dotnet",
+        "build",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/dotnet-package/Consumer.csproj",
+        "--configuration",
+        "Release",
+        "--no-restore",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-restore-data",
+      "command": [
+        "/workspace/.universaldata-tools/dotnet8/dotnet",
+        "restore",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/dotnet-data/DataConsumer.csproj",
+        "--source",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/packages",
+        "--packages",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/nuget-cache",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-build-data",
+      "command": [
+        "/workspace/.universaldata-tools/dotnet8/dotnet",
+        "build",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/dotnet-data/DataConsumer.csproj",
+        "--configuration",
+        "Release",
+        "--no-restore",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "maven-install",
+      "command": [
+        "/workspace/.universaldata-tools/maven/bin/mvn",
+        "-B",
+        "-q",
+        "-f",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/packages/universal-data-1.2.0.pom",
+        "install:install-file",
+        "-Dfile=/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/packages/universal-data-1.2.0.jar",
+        "-DpomFile=/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/packages/universal-data-1.2.0.pom",
+        "-DlocalRepositoryPath=/workspace/scratch/ud-sdk-consumer-abi6-final/maven-repository"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "maven-consumer",
+      "command": [
+        "/workspace/.universaldata-tools/maven/bin/mvn",
+        "-B",
+        "-q",
+        "-f",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/java-consumer/pom.xml",
+        "-Dmaven.repo.local=/workspace/scratch/ud-sdk-consumer-abi6-final/java-cache",
+        "package"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-language-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData/tests/package_language_parity.py",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/c-build/consumer_package",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/c-build/consumer_data",
+        "/workspace/.universaldata-tools/dotnet8/dotnet",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/dotnet-package/bin/Release/net8.0/Consumer.dll",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/java-consumer/target/classes",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/maven-repository/org/universaldata/universal-data/1.2.0/universal-data-1.2.0.jar",
+        "/workspace/scratch/ud-sdk-consumer-abi6-final/bundle/sdk/lib",
+        "--managed-native-local"
+      ],
+      "exitCode": 0
+    }
+  ]
+}

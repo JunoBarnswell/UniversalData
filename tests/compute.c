@@ -7,7 +7,7 @@ int main(void) {
     OK(ud_context_create(NULL, &c));
     ud_field schema[]={{.name="key",.name_length=3,.type=UD_UTF8,.nullable=1},
                        {.name="amount",.name_length=6,.type=UD_INT64,.nullable=1}};
-    const char *definition="{\"version\":4,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,\"type\":\"int64\"}]},\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\",\"column\":\"amount\",\"name\":\"total\"},{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"},{\"function\":\"min\",\"column\":\"amount\",\"name\":\"smallest\"},{\"function\":\"max\",\"column\":\"amount\",\"name\":\"largest\"}]}";
+    const char *definition="{\"version\":6,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,\"type\":\"int64\"}]},\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\",\"column\":\"amount\",\"name\":\"total\"},{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"},{\"function\":\"min\",\"column\":\"amount\",\"name\":\"smallest\"},{\"function\":\"max\",\"column\":\"amount\",\"name\":\"largest\"}]}";
     ud_plan *p=NULL;
     OK(ud_plan_create_fields(c,UD_PLAN_VERSION,schema,2,
                               (ud_string){definition,(uint32_t)strlen(definition)},NULL,&p));
@@ -67,15 +67,18 @@ int main(void) {
     CHECK(ud_batch_rows(joined) == 4 && ud_batch_columns(joined) == 4);
     ud_batch_destroy(joined);
     ud_batch_destroy(right);
+    ud_buffer_options options = {.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,
+        .max_blocks=4,.resident_limit=1048576,.working_limit=1048576};
+    ud_buffer_manager *buffers=NULL;OK(ud_buffer_manager_create(c,&options,&buffers));
+    OK(ud_batch_seal(input));
+    ud_buffer_block *block=NULL,*got=NULL;OK(ud_buffer_store(buffers,input,&block));
     ud_queue *q = NULL;
     OK(ud_queue_create(c, 1, &q));
-    OK(ud_queue_push(q, input));
-    CHECK(ud_queue_push(q, input) == UD_BUSY);
-    ud_batch *got = NULL;
-    OK(ud_queue_pop(q, &got));
-    CHECK(got == input);
+    OK(ud_queue_push(q, block));CHECK(ud_queue_count(q)==1);
+    CHECK(ud_queue_push(q, block) == UD_BUSY);
+    OK(ud_queue_pop(q, &got));CHECK(got==block);OK(ud_buffer_release(got));
     CHECK(ud_queue_pop(q, &got) == UD_END);
-    ud_queue_destroy(q);
+    OK(ud_queue_destroy(q));OK(ud_buffer_manager_destroy(buffers));
     CHECK(ud_truth_and(-1, 0) == 0 && ud_truth_and(-1, 1) == -1 && ud_truth_or(-1, 1) == 1 &&
           ud_truth_not(-1) == -1);
     ud_batch_destroy(input);

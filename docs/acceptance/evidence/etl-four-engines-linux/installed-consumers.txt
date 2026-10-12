@@ -1,0 +1,14 @@
+ZIP integrity: 51 files; native version 1.2.0; current ABI accepted, previous ABI rejected
+c-configure exit=0
+c-build exit=0
+c-dynamic-resources exit=0
+installed-host-pipeline exit=0
+c-dynamic-sqlite exit=0
+nuget-restore-package exit=0
+nuget-build-package exit=0
+nuget-restore-data exit=0
+nuget-build-data exit=0
+maven-install exit=0
+maven-consumer exit=0
+bundle-language-parity exit=0
+Actual distributable C/NuGet/Maven/JNI consumers passed; evidence=docs/acceptance/evidence/etl-four-engines-linux/installed-consumers.json

@@ -204,7 +204,8 @@ ud_status ud_compute_inner_join(ud_context *ctx, const ud_batch *left, uint32_t 
     ud_buffer_options budget = {.struct_size = sizeof(budget),
                                 .abi_version = UD_ABI_VERSION,
                                 .max_blocks = 16384,
-                                .resident_limit = UINT64_C(67108864)};
+                                .resident_limit = UINT64_C(67108864),
+                                .working_limit = UINT64_C(67108864)};
     ud_status s = ud_buffer_manager_create(ctx, &budget, &buffers);
     ud_operator_options options = {.struct_size = sizeof(options),
                                    .abi_version = UD_ABI_VERSION,

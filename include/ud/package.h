@@ -6,13 +6,17 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define UD_PACKAGE_VERSION 4u
 typedef struct ud_package ud_package;
 enum {
     UD_EXEC_EVENT_STATE = 1,
     UD_EXEC_EVENT_BEFORE_CHECKPOINT,
     UD_EXEC_EVENT_AFTER_CHECKPOINT,
-    UD_EXEC_EVENT_TARGET_COMMITTED
+    UD_EXEC_EVENT_TARGET_COMMITTED,
+    UD_EXEC_EVENT_TASK_EXECUTED,
+    UD_EXEC_EVENT_TASK_CONFIRMED,
+    UD_EXEC_EVENT_TASK_UNCERTAIN,
+    UD_EXEC_EVENT_WARNING,
+    UD_EXEC_EVENT_ERROR
 };
 typedef struct ud_execution_event {
     uint32_t struct_size, abi_version;
@@ -40,23 +44,29 @@ typedef struct ud_execution_options {
     void *observe_user;
     ud_string state_directory; /* Optional authorized durable journal; absolute path. */
     int32_t resume;
-    uint32_t max_concurrency; /* 0 selects 1; upper bound on native task workers. */
+    uint32_t max_concurrency; /* 0 selects 1; shared Control/Tree native worker budget. */
 } ud_execution_options;
 typedef struct ud_execution_metrics {
     uint32_t struct_size, abi_version;
     int32_t state;
     ud_status result;
     uint64_t input_rows, output_rows, rejected_rows, batches, queued_batches, queue_high_water,
-        memory_used, completed_tasks, spill_bytes;
+        memory_used, executed_tasks, durable_tasks, recovery_tasks, resumed_tasks, spill_bytes,
+        pipeline_trees, tree_high_water, worker_high_water, committed_rows, acknowledged_rows, error_count;
 } ud_execution_metrics;
 /* Package owns an immutable parsed document. Serializer returns owned ud_free
- * text. Version 4 only; old Job/DAG formats are incompatible. */
+ * text. Current version only; old Job/DAG formats are incompatible. */
 UD_API ud_status ud_package_create(ud_context *, ud_string document, ud_package **);
 UD_API ud_status ud_package_serialize(const ud_package *, char **, uint32_t *);
 UD_API void ud_package_destroy(ud_package *);
 UD_API ud_status ud_execution_create(const ud_package *, const ud_execution_options *,
                                      ud_execution **);
 UD_API ud_status ud_execution_create_json(ud_string, const ud_execution_options *, ud_execution **);
+/* Owned JSON, released with ud_free. Both use the bound native model; neither
+ * acquires external resources. Diagnostics are available after execution joins. */
+UD_API ud_status ud_activation_raise(ud_activation *,int32_t event_kind,ud_status original_result);
+UD_API ud_status ud_execution_explain(ud_execution *,char **,uint32_t *);
+UD_API ud_status ud_execution_diagnostics(ud_execution *,char **,uint32_t *);
 UD_API ud_status ud_execution_execute(ud_execution *);
 UD_API ud_status ud_execution_start(ud_execution *);
 UD_API ud_status ud_execution_wait(ud_execution *, uint32_t timeout_ms);

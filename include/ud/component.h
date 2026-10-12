@@ -12,10 +12,8 @@ enum {
     UD_COMPONENT_SOURCE,
     UD_COMPONENT_TRANSFORM,
     UD_COMPONENT_DESTINATION,
-    UD_COMPONENT_CONNECTION,
-    UD_COMPONENT_ENUMERATOR,
-    UD_COMPONENT_LOG_PROVIDER,
-    UD_COMPONENT_FUNCTION
+    UD_COMPONENT_FUNCTION,
+    UD_COMPONENT_ENUMERATOR
 };
 enum { UD_COMPONENT_DATA = 1, UD_COMPONENT_INPUT_END, UD_COMPONENT_POLL };
 typedef struct ud_component_event {
@@ -44,8 +42,21 @@ typedef struct ud_component_context {
  * This is a host/plugin contract, not a claim inferred by the runtime. */
 #define UD_COMPONENT_REPLAY_SAFE UINT64_C(0x8000000000000000)
 #define UD_COMPONENT_THREAD_SAFE UINT64_C(0x4000000000000000)
+#define UD_COMPONENT_STATEFUL UINT64_C(0x0800000000000000)
+#define UD_COMPONENT_BLOCKING UINT64_C(0x0400000000000000)
+#define UD_COMPONENT_PARTIALLY_BLOCKING UINT64_C(0x0200000000000000)
+#define UD_COMPONENT_THREAD_AFFINE UINT64_C(0x0100000000000000)
+#define UD_COMPONENT_CLONEABLE UINT64_C(0x0080000000000000)
+#define UD_COMPONENT_MERGEABLE UINT64_C(0x0040000000000000)
+#define UD_ENUMERATOR_DETERMINISTIC UINT64_C(0x0020000000000000)
+#define UD_ENUMERATOR_SNAPSHOT UINT64_C(0x0010000000000000)
+#define UD_ENUMERATOR_RESUMABLE UINT64_C(0x0008000000000000)
 #define UD_FUNCTION_PURE UINT64_C(0x2000000000000000)
 #define UD_FUNCTION_DETERMINISTIC UINT64_C(0x1000000000000000)
+typedef struct ud_component_plan {
+    uint32_t struct_size, abi_version, partitions;
+    int32_t ordering; /* UD_ORDER_*; dynamic physical policy, pure binding only. */
+} ud_component_plan;
 typedef struct ud_component_descriptor {
     uint32_t struct_size, abi_version;
     ud_string id, name, version, configuration_schema;
@@ -75,6 +86,16 @@ typedef struct ud_component_descriptor {
     ud_status (*function_bind)(void *, const ud_field *, uint32_t, ud_field *);
     ud_status (*function_evaluate)(void *, ud_context *, const ud_value *, uint32_t,
                                    const ud_field *, ud_value *);
+    /* Optional task lifecycle: prepare returns invoke's instance, finish commits,
+     * cancel is safe concurrently, and dispose consumes exactly once. */
+    void (*cancel)(void *);
+    /* Enumerator configure returns one ValueSet schema; prepare opens it. next
+     * returns an owned sealed single-row ValueSet, END once iteration completes. */
+    ud_status (*enumerate_next)(void *, ud_batch **);
+    ud_status (*enumerate_position)(void *, uint64_t *);
+    uint64_t optional_outputs; /* Unconnected optional ports never accept emitted data. */
+    ud_status (*describe_plan)(void *,const ud_component_context *,ud_string,
+                              const ud_batch *const *,ud_component_plan *);
 } ud_component_descriptor;
 UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
 /* Copies descriptor metadata, retains callback user by contract (host lifetime).
