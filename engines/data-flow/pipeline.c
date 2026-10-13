@@ -55,9 +55,9 @@ typedef struct node {
         first_ms, end_ms, ready_ms, prepare_ms, prepare_cpu_ns, finish_ms, finish_cpu_ns,
         blocked_ms, input_wait_ms, capacity_wait_ms;
     int blocked_kind;
-    uint64_t barrier_mask,barrier_epoch,acknowledged_epoch,watermark_mask;
+    uint64_t barrier_mask, barrier_epoch, acknowledged_epoch, watermark_mask;
     atomic_uint_fast64_t staged_epoch;
-    int64_t watermarks[64],last_watermark;
+    int64_t watermarks[64], last_watermark;
     ud_string source_position;
 } node;
 typedef struct physical_plan {
@@ -69,7 +69,8 @@ typedef struct physical_plan {
     ud_string id;
     ud_work_group *group;
     atomic_uint_fast64_t confirmed_epoch;
-    ud_mutex epoch_lock;int epoch_lock_ready;
+    ud_mutex epoch_lock;
+    int epoch_lock_ready;
     ud_json *epoch_record;
 } physical_plan;
 static ud_status plan_json(physical_plan *, ud_bytes *, int, ud_status);
@@ -94,12 +95,13 @@ static ud_status clear(physical_plan *p, ud_status result) {
     if (p->nodes)
         for (uint32_t i = p->count; i; i--) {
             node *n = p->nodes + (p->order ? p->order[i - 1] : i - 1);
-            ud_free((void*)n->source_position.data);
+            ud_free((void *)n->source_position.data);
             if (n->opened)
                 n->descriptor.dispose(n->instance, result);
             if (n->schemas)
                 for (uint32_t j = 0; j < n->descriptor.outputs; j++)
                     ud_batch_destroy(n->schemas[j]);
+            ud_component_plan_clear(&n->binding);
             ud_free(n->schemas);
             ud_free(n->input_plans);
             for (uint32_t k = 0; k < n->ports.input_count; k++)
@@ -116,7 +118,8 @@ static ud_status clear(physical_plan *p, ud_status result) {
         }
     ud_free(p->order);
     ud_json_destroy(p->epoch_record);
-    if(p->epoch_lock_ready)ud_mutex_destroy(&p->epoch_lock);
+    if (p->epoch_lock_ready)
+        ud_mutex_destroy(&p->epoch_lock);
     ud_free(p->nodes);
     ud_free(p->edges);
     ud_free(p->trees);
@@ -150,8 +153,8 @@ static ud_status bind_ports(node *n, ud_activation *e, const ud_json *definition
                                         .max_batch_rows = e->execution->options.max_batch_rows};
     UD_TRY(ud_bound_config(&n->activation, ud_member(definition, "config"), &n->configuration));
     ud_json *bound = NULL;
-    UD_TRY(ud_component_bind_configuration(e->execution->ctx, &n->descriptor,
-                                           n->configuration, &bound));
+    UD_TRY(ud_component_bind_configuration(e->execution->ctx, &n->descriptor, n->configuration,
+                                           &bound));
     ud_json_destroy(n->configuration);
     n->configuration = bound;
     UD_TRY(ud_json_serialize(n->configuration, &n->json, &n->json_length));
@@ -486,8 +489,37 @@ typedef struct emit_target {
     physical_plan *plan;
     node *node;
 } emit_target;
-static ud_status stage_epoch(physical_plan *,node *,uint64_t);
-static ud_status epoch_component_key(physical_plan *,node *,char [65]);
+static uint32_t recommended_rows(void *user) {
+    emit_target *target = user;
+    node *n = target->node;
+    physical_plan *p = target->plan;
+    uint64_t rows = n->context.max_batch_rows,
+             width = n->binding.row_width ? n->binding.row_width : 64;
+    uint32_t capacity = p->execution->execution->options.edge_capacity, free_slots = capacity;
+    for (uint32_t i = 0; i < n->output_edges; i++) {
+        uint32_t used = ud_queue_count(p->edges[n->outputs[i]].queue),
+                 available = used < capacity ? capacity - used : 0;
+        if (available < free_slots)
+            free_slots = available;
+    }
+    if (capacity && free_slots < capacity)
+        rows = rows * free_slots / capacity;
+    ud_buffer_options limits;
+    ud_buffer_metrics metrics;
+    if (!ud_buffer_manager_limits(p->execution->execution->buffers, &limits) &&
+        !ud_buffer_manager_metrics(p->execution->execution->buffers, &metrics)) {
+        uint64_t available = limits.working_limit > metrics.working_bytes
+                                 ? limits.working_limit - metrics.working_bytes
+                                 : 0;
+        uint64_t fair = p->concurrency ? available / p->concurrency : available;
+        uint64_t bounded = fair / (width + sizeof(ud_row_info));
+        if (bounded < rows)
+            rows = bounded;
+    }
+    return rows ? (uint32_t)rows : 1;
+}
+static ud_status stage_epoch(physical_plan *, node *, uint64_t);
+static ud_status epoch_component_key(physical_plan *, node *, char[65]);
 static ud_status route_identified(void *user, uint32_t port, ud_batch *b) {
     emit_target *target = user;
     node *n = target->node;
@@ -511,7 +543,11 @@ static ud_status route_identified(void *user, uint32_t port, ud_batch *b) {
         ud_buffer_block *block = NULL;
         UD_TRY(ud_buffer_store(e->execution->buffers, b, &block));
         uint64_t queued = atomic_fetch_add(&e->execution->queued, 1) + 1;
-        ud_stream_event frame={.struct_size=sizeof(frame),.abi_version=UD_ABI_VERSION,.kind=UD_STREAM_DATA,.block=block,.epoch=atomic_load(&p->confirmed_epoch)+1};
+        ud_stream_event frame = {.struct_size = sizeof(frame),
+                                 .abi_version = UD_ABI_VERSION,
+                                 .kind = UD_STREAM_DATA,
+                                 .block = block,
+                                 .epoch = atomic_load(&p->confirmed_epoch) + 1};
         ud_status s = ud_queue_push(v->queue, &frame);
         if (s) {
             atomic_fetch_sub(&e->execution->queued, 1);
@@ -543,21 +579,62 @@ static ud_status route_identified(void *user, uint32_t port, ud_batch *b) {
 
     return UD_OK;
 }
-static ud_status route_event(void*user,uint32_t port,const ud_component_event*event){
-    emit_target*target=user;physical_plan*p=target->plan;node*n=target->node;
-    if(!event||event->struct_size!=sizeof(*event)||event->abi_version!=UD_ABI_VERSION||port>=n->descriptor.outputs||!n->emit_allowed||n->emitted[port])return UD_INVALID;
-    if(event->kind==UD_COMPONENT_DATA)return route_identified(user,port,(ud_batch*)event->batch);
-    if(event->kind!=UD_COMPONENT_WATERMARK&&event->kind!=UD_COMPONENT_CHECKPOINT_BARRIER&&event->kind!=UD_COMPONENT_SCHEMA_CHANGE&&event->kind!=UD_COMPONENT_INPUT_END)return UD_SCHEMA;
-    if(event->kind==UD_COMPONENT_CHECKPOINT_BARRIER&&n->descriptor.category==UD_COMPONENT_SOURCE){
-        if(!n->descriptor.confirm_epoch||!event->epoch||event->epoch!=atomic_load(&p->confirmed_epoch)+1)return UD_UNSUPPORTED;
-        if(n->barrier_epoch!=event->epoch){ud_free((void*)n->source_position.data);n->source_position=(ud_string){ud_strdup_n(p->execution->execution->ctx,event->source_position.data,event->source_position.length),event->source_position.length};if(!n->source_position.data)return UD_RESOURCE;n->barrier_epoch=event->epoch;UD_TRY(stage_epoch(p,n,event->epoch));}
+static ud_status route_event(void *user, uint32_t port, const ud_component_event *event) {
+    emit_target *target = user;
+    physical_plan *p = target->plan;
+    node *n = target->node;
+    if (!event || event->struct_size != sizeof(*event) || event->abi_version != UD_ABI_VERSION ||
+        port >= n->descriptor.outputs || !n->emit_allowed || n->emitted[port])
+        return UD_INVALID;
+    if (event->kind == UD_COMPONENT_DATA)
+        return route_identified(user, port, (ud_batch *)event->batch);
+    if (event->kind != UD_COMPONENT_WATERMARK && event->kind != UD_COMPONENT_CHECKPOINT_BARRIER &&
+        event->kind != UD_COMPONENT_SCHEMA_CHANGE && event->kind != UD_COMPONENT_INPUT_END)
+        return UD_SCHEMA;
+    if (event->kind == UD_COMPONENT_CHECKPOINT_BARRIER &&
+        n->descriptor.category == UD_COMPONENT_SOURCE) {
+        if (!n->descriptor.confirm_epoch || !event->epoch ||
+            event->epoch != atomic_load(&p->confirmed_epoch) + 1)
+            return UD_UNSUPPORTED;
+        if (n->barrier_epoch != event->epoch) {
+            ud_free((void *)n->source_position.data);
+            n->source_position =
+                (ud_string){ud_strdup_n(p->execution->execution->ctx, event->source_position.data,
+                                        event->source_position.length),
+                            event->source_position.length};
+            if (!n->source_position.data)
+                return UD_RESOURCE;
+            n->barrier_epoch = event->epoch;
+            UD_TRY(stage_epoch(p, n, event->epoch));
+        }
     }
-    int connected=0;
-    for(uint32_t i=0;i<n->output_edges;i++){edge*v=p->edges+n->outputs[i];if(v->output!=port)continue;connected=1;
-        ud_stream_event frame={.struct_size=sizeof(frame),.abi_version=UD_ABI_VERSION,.kind=event->kind,.epoch=event->epoch,.schema_version=event->schema_version,.watermark=event->watermark,.source_position=event->source_position};
-        if(event->batch)UD_TRY(ud_buffer_store(p->execution->execution->buffers,event->batch,&frame.block));ud_status status=ud_queue_push(v->queue,&frame);if(status){ud_buffer_release(frame.block);return status;}atomic_fetch_add(&p->execution->execution->queued,1);ud_work_group_ready(p->group,p->nodes[v->to].tree);
+    int connected = 0;
+    for (uint32_t i = 0; i < n->output_edges; i++) {
+        edge *v = p->edges + n->outputs[i];
+        if (v->output != port)
+            continue;
+        connected = 1;
+        ud_stream_event frame = {.struct_size = sizeof(frame),
+                                 .abi_version = UD_ABI_VERSION,
+                                 .kind = event->kind,
+                                 .epoch = event->epoch,
+                                 .schema_version = event->schema_version,
+                                 .watermark = event->watermark,
+                                 .source_position = event->source_position};
+        if (event->batch)
+            UD_TRY(ud_buffer_store(p->execution->execution->buffers, event->batch, &frame.block));
+        ud_status status = ud_queue_push(v->queue, &frame);
+        if (status) {
+            ud_buffer_release(frame.block);
+            return status;
+        }
+        atomic_fetch_add(&p->execution->execution->queued, 1);
+        ud_work_group_ready(p->group, p->nodes[v->to].tree);
     }
-    if(!connected)return UD_SCHEMA;n->emitted[port]=1;return UD_OK;
+    if (!connected)
+        return UD_SCHEMA;
+    n->emitted[port] = 1;
+    return UD_OK;
 }
 static ud_status route(void *user, uint32_t port, ud_batch *batch) {
     emit_target *target = user;
@@ -738,27 +815,21 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                             .transaction_serial = e->transaction_serial,
                             .transaction_connection = e->transaction_connection};
         atomic_init(&n->activation.cancelled, 0);
-        n->context = (ud_component_context){sizeof(n->context),
-                                            UD_ABI_VERSION,
-                                            e->execution->ctx,
-                                            e->execution,
-                                            &n->activation,
-                                            e->task_id,
-                                            p->id,
-                                            n->id,
-                                            e->execution->options.max_batch_rows,
-                                            route,
-                                            targets + index,
-                                            ud_resolve_value,
-                                            &n->activation,
-                                            ud_resolve_field};
+        n->context=(ud_component_context){.struct_size=sizeof(n->context),.abi_version=UD_ABI_VERSION,.memory=e->execution->ctx,.execution=e->execution,.activation=&n->activation,.task_id=e->task_id,.pipeline_id=p->id,.component_id=n->id,.max_batch_rows=e->execution->options.max_batch_rows,.recommended_batch_rows=recommended_rows,.emit=route,.emit_user=targets+index,.resolve=ud_resolve_value,.resolve_user=&n->activation,.resolve_field=ud_resolve_field};
 
         char error_scope[33];
-        UD_TRY(ud_pipeline_field_namespace(&n->context,error_scope));
-        ud_id scope = {0};UD_TRY(ud_id_parse((ud_string){error_scope,32},&scope));
-        n->context.errors=(ud_error_context){.struct_size=sizeof(ud_error_context),.abi_version=UD_ABI_VERSION,
-            .memory=n->context.memory,.execution_id=e->execution->options.execution_id,
-            .package_id=e->package->id,.task_id=e->task_id,.pipeline_id=p->id,.component_id=n->id,.field_scope=scope};
+        UD_TRY(ud_pipeline_field_namespace(&n->context, error_scope));
+        ud_id scope = {0};
+        UD_TRY(ud_id_parse((ud_string){error_scope, 32}, &scope));
+        n->context.errors = (ud_error_context){.struct_size = sizeof(ud_error_context),
+                                               .abi_version = UD_ABI_VERSION,
+                                               .memory = n->context.memory,
+                                               .execution_id = e->execution->options.execution_id,
+                                               .package_id = e->package->id,
+                                               .task_id = e->task_id,
+                                               .pipeline_id = p->id,
+                                               .component_id = n->id,
+                                               .field_scope = scope};
 
         if (n->activation.transaction_serial && ud_member(n->configuration, "connection")) {
             ud_string connection;
@@ -785,9 +856,10 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
         }
         for (uint32_t edge_index = 0; edge_index < n->output_edges; edge_index++)
             n->context.connected_outputs |= UINT64_C(1) << p->edges[n->outputs[edge_index]].output;
-        n->context.emit_event=route_event;
+        n->context.emit_event = route_event;
         n->context.input_count = n->descriptor.inputs;
-        n->last_watermark=INT64_MIN;atomic_init(&n->staged_epoch,0);
+        n->last_watermark = INT64_MIN;
+        atomic_init(&n->staged_epoch, 0);
         n->context.output_count = n->descriptor.outputs;
         n->context.input_plans = n->input_plans;
         n->context.output_schemas = (const ud_batch *const *)n->schemas;
@@ -839,11 +911,12 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
         n->binding.state_version = n->descriptor.state_version;
         for (uint32_t j = 0; j < n->descriptor.outputs; j++) {
             n->ports.outputs[j].schema = n->schemas[j];
-            if((int32_t)j != n->descriptor.error_output) {
+            if ((int32_t)j != n->descriptor.error_output) {
                 n->ports.outputs[j].sort = n->binding.sort;
                 n->ports.outputs[j].partition_count = n->binding.partitions;
                 n->ports.outputs[j].partition_key_count = n->binding.partition_key_count;
-                memcpy(n->ports.outputs[j].partition_keys, n->binding.partition_keys, sizeof(n->binding.partition_keys));
+                memcpy(n->ports.outputs[j].partition_keys, n->binding.partition_keys,
+                       sizeof(n->binding.partition_keys));
             }
         }
         for (uint32_t j = 0; j < n->descriptor.outputs; j++)
@@ -883,9 +956,24 @@ ud_status ud_pipeline_bind_validate(ud_activation *e, const ud_json *definition)
 static ud_status prepare(physical_plan *p, const ud_json *definition, emit_target *targets) {
     ud_activation *e = p->execution;
     UD_TRY(configure_plan(p, definition, targets));
-    ud_mutex_init(&p->epoch_lock);p->epoch_lock_ready=1;atomic_init(&p->confirmed_epoch,0);
-    char*epoch_json=NULL;uint32_t epoch_length=0;ud_status saved=ud_checkpoint_epoch_info(e,p->id,&epoch_json,&epoch_length);
-    if(saved!=UD_END&&saved)return saved;if(!saved){ud_status status=ud_json_parse(e->execution->ctx,epoch_json,epoch_length,&p->epoch_record,NULL);ud_free(epoch_json);if(status)return status;uint64_t epoch;UD_TRY(ud_json_uint(ud_member(p->epoch_record,"epoch"),&epoch));atomic_store(&p->confirmed_epoch,epoch);}
+    ud_mutex_init(&p->epoch_lock);
+    p->epoch_lock_ready = 1;
+    atomic_init(&p->confirmed_epoch, 0);
+    char *epoch_json = NULL;
+    uint32_t epoch_length = 0;
+    ud_status saved = ud_checkpoint_epoch_info(e, p->id, &epoch_json, &epoch_length);
+    if (saved != UD_END && saved)
+        return saved;
+    if (!saved) {
+        ud_status status =
+            ud_json_parse(e->execution->ctx, epoch_json, epoch_length, &p->epoch_record, NULL);
+        ud_free(epoch_json);
+        if (status)
+            return status;
+        uint64_t epoch;
+        UD_TRY(ud_json_uint(ud_member(p->epoch_record, "epoch"), &epoch));
+        atomic_store(&p->confirmed_epoch, epoch);
+    }
     for (uint32_t i = 0; i < p->paths; i++)
         UD_TRY(ud_queue_create(e->execution->ctx, e->execution->options.edge_capacity,
                                &p->edges[i].queue));
@@ -894,8 +982,40 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
             node *n = p->nodes + p->order[i];
             if ((n->descriptor.category == UD_COMPONENT_SOURCE) != (pass == 0))
                 continue;
-            n->context.recovery_epoch=atomic_load(&p->confirmed_epoch);
-            const ud_json*positions=ud_member(p->epoch_record,"sources");for(uint32_t k=0;k<ud_json_size(positions);k++){ud_string id;UD_TRY(ud_json_string(ud_member(ud_json_at(positions,k),"id"),&id));if(ud_same(id,n->id))UD_TRY(ud_json_string(ud_member(ud_json_at(positions,k),"position"),&n->context.recovery_position));}
+            n->context.recovery_epoch = atomic_load(&p->confirmed_epoch);
+            const ud_json *saved_components = ud_member(p->epoch_record, "components");
+            for (uint32_t k = 0; k < ud_json_size(saved_components); k++) {
+                const ud_json *entry = ud_json_at(saved_components, k);
+                ud_string id;
+                UD_TRY(ud_json_string(ud_member(entry, "id"), &id));
+                if (ud_same(id, n->id)) {
+                    const char *value = NULL;
+                    uint32_t length = 0;
+                    const ud_json *terminal = ud_member(entry, "terminal");
+                    if (ud_json_kind(terminal) != UD_JSON_BOOL)
+                        return UD_CORRUPT;
+                    UD_TRY(ud_json_text(terminal, &value, &length));
+                    n->context.recovery_terminal = length == 4 && !memcmp(value, "true", 4);
+                }
+            }
+
+            const ud_json *positions = ud_member(p->epoch_record, "sources");
+            for (uint32_t k = 0; k < ud_json_size(positions); k++) {
+                ud_string id;
+                UD_TRY(ud_json_string(ud_member(ud_json_at(positions, k), "id"), &id));
+                if (ud_same(id, n->id))
+                    UD_TRY(ud_json_string(ud_member(ud_json_at(positions, k), "position"),
+                                          &n->context.recovery_position));
+            }
+            if (n->descriptor.category == UD_COMPONENT_SOURCE &&
+                n->context.recovery_position.length) {
+                n->source_position =
+                    (ud_string){ud_strdup_n(e->execution->ctx, n->context.recovery_position.data,
+                                            n->context.recovery_position.length),
+                                n->context.recovery_position.length};
+                if (!n->source_position.data)
+                    return UD_RESOURCE;
+            }
             const ud_batch **inputs =
                 ud_alloc(e->execution->ctx, (n->descriptor.inputs + 1) * sizeof(*inputs));
             if (!inputs)
@@ -917,56 +1037,267 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
             if (s)
                 return s;
             n->opened = 1;
-            if(atomic_load(&p->confirmed_epoch)&&n->descriptor.restore){
-                const ud_json*components=ud_member(p->epoch_record,"components");int found=0;
-                for(uint32_t k=0;k<ud_json_size(components);k++){const ud_json*entry=ud_json_at(components,k);ud_string id;uint64_t version;UD_TRY(ud_json_string(ud_member(entry,"id"),&id));if(!ud_same(id,n->id))continue;found=1;UD_TRY(ud_json_uint(ud_member(entry,"stateVersion"),&version));if(version!=n->descriptor.state_version)return UD_INCOMPATIBLE;}
-                if(!found)return UD_CORRUPT;char key[65];UD_TRY(epoch_component_key(p,n,key));ud_batch*state=NULL;ud_status restored=ud_checkpoint_snapshot_read(p->execution,(ud_string){key,64},atomic_load(&p->confirmed_epoch),&state);if(!restored)restored=n->descriptor.restore(n->instance,state);ud_batch_destroy(state);if(restored)return restored;
-                atomic_store(&n->staged_epoch,atomic_load(&p->confirmed_epoch));n->acknowledged_epoch=atomic_load(&p->confirmed_epoch);
+            if (atomic_load(&p->confirmed_epoch)) {
+                const ud_json *components = ud_member(p->epoch_record, "components"), *entry = NULL;
+                for (uint32_t k = 0; k < ud_json_size(components); k++) {
+                    ud_string id;
+                    const ud_json *item = ud_json_at(components, k);
+                    UD_TRY(ud_json_string(ud_member(item, "id"), &id));
+                    if (ud_same(id, n->id)) {
+                        entry = item;
+                        break;
+                    }
+                }
+                if (!entry)
+                    return UD_CORRUPT;
+                uint64_t version = 0, ended = 0;
+                UD_TRY(ud_json_uint(ud_member(entry, "stateVersion"), &version));
+                UD_TRY(ud_json_uint(ud_member(entry, "endedInputs"), &ended));
+                if (version != n->descriptor.state_version ||
+                    (n->descriptor.inputs < 64 && (ended >> n->descriptor.inputs)))
+                    return UD_INCOMPATIBLE;
+                if (n->descriptor.restore) {
+                    char key[65];
+                    UD_TRY(epoch_component_key(p, n, key));
+                    ud_batch *state = NULL;
+                    ud_status restored =
+                        ud_checkpoint_snapshot_read(p->execution, (ud_string){key, 64},
+                                                    atomic_load(&p->confirmed_epoch), &state);
+                    if (!restored)
+                        restored = n->descriptor.restore(n->instance, state);
+                    ud_batch_destroy(state);
+                    if (restored)
+                        return restored;
+                }
+                n->ended = 0;
+                for (uint32_t port = 0; port < n->descriptor.inputs; port++)
+                    if (ended & (UINT64_C(1) << port)) {
+                        n->ended++;
+                        if (n->inputs[port] != UINT32_MAX)
+                            p->edges[n->inputs[port]].ended = 1;
+                    }
+                if (n->context.recovery_terminal)
+                    atomic_store(&n->state, UD_EXEC_SUCCEEDED);
+                atomic_store(&n->staged_epoch, atomic_load(&p->confirmed_epoch));
+                n->acknowledged_epoch = atomic_load(&p->confirmed_epoch);
             }
         }
     return UD_OK;
 }
-static ud_status epoch_component_key(physical_plan*p,node*n,char out[65]){ud_bytes b={.ctx=p->execution->execution->ctx};ud_status s=ud_put_string(&b,p->id.data,p->id.length);if(!s)s=ud_put_string(&b,n->id.data,n->id.length);uint8_t hash[32];if(!s){ud_hash(b.data,b.size,hash);for(uint32_t i=0;i<32;i++)snprintf(out+2*i,3,"%02x",hash[i]);}ud_bytes_clear(&b);return s;}
-static ud_status stage_epoch(physical_plan*p,node*n,uint64_t epoch){
-    if(atomic_load(&n->staged_epoch)==epoch)return UD_OK;
-    if(ud_transaction_active(&n->activation))return UD_UNSUPPORTED;
-    if(n->descriptor.category==UD_COMPONENT_DESTINATION&&!(n->descriptor.effects&UD_EFFECT_RECEIPTED))return UD_UNSUPPORTED;
-    if((n->descriptor.capabilities&UD_COMPONENT_STATEFUL)&&!n->descriptor.checkpoint)return UD_UNSUPPORTED;
-    ud_batch*state=NULL;ud_status status=UD_OK;
-    if(n->descriptor.checkpoint)status=n->descriptor.checkpoint(n->instance,&state);
-    else{ud_field field={.name="stateless",.name_length=9,.type=UD_INT64};ud_value value={.type=UD_INT64};status=ud_batch_create(p->execution->execution->ctx,&field,1,1,&state);if(!status)status=ud_batch_append(state,&value,1);if(!status)status=ud_batch_seal(state);}
-    char key[65];if(!status)status=epoch_component_key(p,n,key);
-    if(!status)status=ud_checkpoint_snapshot_write(p->execution,(ud_string){key,64},epoch,state);ud_batch_destroy(state);
-    if(!status)atomic_store(&n->staged_epoch,epoch);return status;
-}
-static ud_status commit_epoch(physical_plan*p,uint64_t epoch){
-    ud_mutex_lock(&p->epoch_lock);ud_status status=UD_OK;
-    if(epoch<=atomic_load(&p->confirmed_epoch)){ud_mutex_unlock(&p->epoch_lock);return UD_OK;}
-    for(uint32_t i=0;i<p->count;i++)if(atomic_load(&p->nodes[i].staged_epoch)!=epoch){ud_mutex_unlock(&p->epoch_lock);return UD_OK;}
-    ud_bytes payload={.ctx=p->execution->execution->ctx,.limit=16u*1024u*1024u};char header[96];int n=snprintf(header,sizeof(header),"{\"epoch\":%llu,\"sources\":[",(unsigned long long)epoch);status=ud_bytes_put(&payload,header,(size_t)n);uint32_t sources=0;
-    for(uint32_t i=0;!status&&i<p->count;i++){node*source=p->nodes+i;if(source->descriptor.category!=UD_COMPONENT_SOURCE)continue;if(sources++)status=ud_bytes_put(&payload,",",1);if(!status)status=ud_bytes_put(&payload,"{\"id\":",6);if(!status)status=ud_json_quote(&payload,source->id.data,source->id.length);if(!status)status=ud_bytes_put(&payload,",\"position\":",12);if(!status)status=ud_json_quote(&payload,source->source_position.data,source->source_position.length);if(!status)status=ud_bytes_put(&payload,"}",1);}
-    const char*next="],\"components\":[";if(!status)status=ud_bytes_put(&payload,next,strlen(next));
-    for(uint32_t i=0;!status&&i<p->count;i++){node*component=p->nodes+i;if(i)status=ud_bytes_put(&payload,",",1);if(!status)status=ud_bytes_put(&payload,"{\"id\":",6);if(!status)status=ud_json_quote(&payload,component->id.data,component->id.length);char metadata[64];int length=snprintf(metadata,sizeof(metadata),",\"stateVersion\":%u}",component->descriptor.state_version);if(!status)status=ud_bytes_put(&payload,metadata,(size_t)length);}
-    if(!status)status=ud_bytes_put(&payload,"]}",2);if(!status)status=ud_checkpoint_epoch_commit(p->execution,p->id,(ud_string){(char*)payload.data,(uint32_t)payload.size});
-    if(!status){atomic_store(&p->confirmed_epoch,epoch);for(uint32_t i=0;i<p->tree_count;i++)ud_work_group_ready(p->group,i);}
-    ud_bytes_clear(&payload);ud_mutex_unlock(&p->epoch_lock);return status;
-}
-static ud_status forward_control(physical_plan*p,node*n,const ud_component_event*event){emit_target target={p,n};for(uint32_t port=0;port<n->descriptor.outputs;port++)if(n->context.connected_outputs&(UINT64_C(1)<<port)){ud_component_event output=*event;if(event->kind==UD_COMPONENT_SCHEMA_CHANGE)output.batch=n->schemas[port];UD_TRY(route_event(&target,port,&output));}return UD_OK;}
-static ud_status stream_control(physical_plan*p,node*n,const ud_component_event*event){
-    uint64_t bit=UINT64_C(1)<<event->input;
-    if(event->kind==UD_COMPONENT_CHECKPOINT_BARRIER){uint64_t committed=atomic_load(&p->confirmed_epoch);if(event->epoch!=committed+1)return UD_FENCED;if(n->barrier_mask&&n->barrier_epoch!=event->epoch)return UD_FENCED;n->barrier_epoch=event->epoch;n->barrier_mask|=bit;uint64_t required=0;for(uint32_t i=0;i<n->descriptor.inputs;i++)if(n->inputs[i]!=UINT32_MAX&&!p->edges[n->inputs[i]].ended)required|=UINT64_C(1)<<i;
-        if((n->barrier_mask&required)!=required)return UD_OK;UD_TRY(stage_epoch(p,n,event->epoch));UD_TRY(forward_control(p,n,event));return commit_epoch(p,event->epoch);
+static ud_status epoch_component_key(physical_plan *p, node *n, char out[65]) {
+    ud_bytes b = {.ctx = p->execution->execution->ctx};
+    ud_status s = ud_put_string(&b, p->id.data, p->id.length);
+    if (!s)
+        s = ud_put_string(&b, n->id.data, n->id.length);
+    uint8_t hash[32];
+    if (!s) {
+        ud_hash(b.data, b.size, hash);
+        for (uint32_t i = 0; i < 32; i++)
+            snprintf(out + 2 * i, 3, "%02x", hash[i]);
     }
-    if(event->kind==UD_COMPONENT_WATERMARK){if((n->watermark_mask&bit)&&event->watermark<n->watermarks[event->input])return UD_FENCED;n->watermarks[event->input]=event->watermark;n->watermark_mask|=bit;uint64_t required=0;int64_t minimum=INT64_MAX;for(uint32_t i=0;i<n->descriptor.inputs;i++)if(n->inputs[i]!=UINT32_MAX&&!p->edges[n->inputs[i]].ended){required|=UINT64_C(1)<<i;if(n->watermarks[i]<minimum)minimum=n->watermarks[i];}if((n->watermark_mask&required)!=required||minimum<=n->last_watermark)return UD_OK;n->last_watermark=minimum;ud_component_event output=*event;output.watermark=minimum;return forward_control(p,n,&output);}
-    if(event->kind==UD_COMPONENT_SCHEMA_CHANGE){if(!event->batch)return UD_SCHEMA;const ud_batch*expected=n->ports.inputs[event->input].schema;if(expected->columns!=event->batch->columns)return UD_INCOMPATIBLE;for(uint32_t i=0;i<expected->columns;i++)if(!ud_field_matches(&expected->column[i].field,&event->batch->column[i].field,UD_FIELD_PORT))return UD_INCOMPATIBLE;return forward_control(p,n,event);}
+    ud_bytes_clear(&b);
+    return s;
+}
+static ud_status stage_epoch(physical_plan *p, node *n, uint64_t epoch) {
+    if (atomic_load(&n->staged_epoch) == epoch)
+        return UD_OK;
+    if (ud_transaction_active(&n->activation))
+        return UD_UNSUPPORTED;
+    if ((n->descriptor.effects & UD_EFFECT_EXTERNAL_WRITE) &&
+        !(n->descriptor.effects & UD_EFFECT_RECEIPTED))
+        return UD_UNSUPPORTED;
+    if ((n->descriptor.capabilities & UD_COMPONENT_STATEFUL) && !n->descriptor.checkpoint)
+        return UD_UNSUPPORTED;
+    ud_batch *state = NULL;
+    ud_status status = UD_OK;
+    if (n->descriptor.checkpoint)
+        status = n->descriptor.checkpoint(n->instance, &state);
+    else {
+        ud_field field = {.name = "stateless", .name_length = 9, .type = UD_INT64};
+        ud_value value = {.type = UD_INT64};
+        status = ud_batch_create(p->execution->execution->ctx, &field, 1, 1, &state);
+        if (!status)
+            status = ud_batch_append(state, &value, 1);
+        if (!status)
+            status = ud_batch_seal(state);
+    }
+    char key[65];
+    if (!status)
+        status = epoch_component_key(p, n, key);
+    if (!status)
+        status = ud_checkpoint_snapshot_write(p->execution, (ud_string){key, 64}, epoch, state);
+    ud_batch_destroy(state);
+    if (!status)
+        atomic_store(&n->staged_epoch, epoch);
+    return status;
+}
+static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
+    ud_mutex_lock(&p->epoch_lock);
+    ud_status status = UD_OK;
+    if (epoch <= atomic_load(&p->confirmed_epoch)) {
+        ud_mutex_unlock(&p->epoch_lock);
+        return UD_OK;
+    }
+    int active = 0;
+    for (uint32_t i = 0; i < p->count; i++)
+        if (p->nodes[i].descriptor.confirm_epoch && p->nodes[i].barrier_epoch == epoch)
+            active = 1;
+    if (!active) {
+        ud_mutex_unlock(&p->epoch_lock);
+        return UD_OK;
+    }
+    for (uint32_t i = 0; !status && i < p->count; i++)
+        if (atomic_load(&p->nodes[i].state) == UD_EXEC_SUCCEEDED &&
+            atomic_load(&p->nodes[i].staged_epoch) != epoch)
+            status = stage_epoch(p, p->nodes + i, epoch);
+    if (status) {
+        ud_mutex_unlock(&p->epoch_lock);
+        return status;
+    }
+
+    for (uint32_t i = 0; i < p->count; i++)
+        if (atomic_load(&p->nodes[i].staged_epoch) != epoch) {
+            ud_mutex_unlock(&p->epoch_lock);
+            return UD_OK;
+        }
+    ud_bytes payload = {.ctx = p->execution->execution->ctx, .limit = 16u * 1024u * 1024u};
+    char header[96];
+    int n = snprintf(header, sizeof(header), "{\"epoch\":%llu,\"sources\":[",
+                     (unsigned long long)epoch);
+    status = ud_bytes_put(&payload, header, (size_t)n);
+    uint32_t sources = 0;
+    for (uint32_t i = 0; !status && i < p->count; i++) {
+        node *source = p->nodes + i;
+        if (source->descriptor.category != UD_COMPONENT_SOURCE)
+            continue;
+        if (sources++)
+            status = ud_bytes_put(&payload, ",", 1);
+        if (!status)
+            status = ud_bytes_put(&payload, "{\"id\":", 6);
+        if (!status)
+            status = ud_json_quote(&payload, source->id.data, source->id.length);
+        if (!status)
+            status = ud_bytes_put(&payload, ",\"position\":", 12);
+        if (!status)
+            status = ud_json_quote(&payload, source->source_position.data,
+                                   source->source_position.length);
+        if (!status)
+            status = ud_bytes_put(&payload, "}", 1);
+    }
+    const char *next = "],\"components\":[";
+    if (!status)
+        status = ud_bytes_put(&payload, next, strlen(next));
+    for (uint32_t i = 0; !status && i < p->count; i++) {
+        node *component = p->nodes + i;
+        if (i)
+            status = ud_bytes_put(&payload, ",", 1);
+        if (!status)
+            status = ud_bytes_put(&payload, "{\"id\":", 6);
+        if (!status)
+            status = ud_json_quote(&payload, component->id.data, component->id.length);
+        char metadata[160];
+        uint64_t ended = 0;
+        for (uint32_t port = 0; port < component->descriptor.inputs; port++)
+            if (component->inputs[port] == UINT32_MAX || p->edges[component->inputs[port]].ended)
+                ended |= UINT64_C(1) << port;
+        int length =
+            snprintf(metadata, sizeof(metadata),
+                     ",\"stateVersion\":%u,\"endedInputs\":%llu,\"terminal\":%s}",
+                     component->descriptor.state_version, (unsigned long long)ended,
+                     atomic_load(&component->state) == UD_EXEC_SUCCEEDED ? "true" : "false");
+        if (!status)
+            status = ud_bytes_put(&payload, metadata, (size_t)length);
+    }
+    if (!status)
+        status = ud_bytes_put(&payload, "]}", 2);
+    if (!status)
+        status = ud_checkpoint_epoch_commit(
+            p->execution, p->id, (ud_string){(char *)payload.data, (uint32_t)payload.size});
+    if (!status) {
+        atomic_store(&p->confirmed_epoch, epoch);
+        for (uint32_t i = 0; i < p->tree_count; i++)
+            ud_work_group_ready(p->group, i);
+    }
+    ud_bytes_clear(&payload);
+    ud_mutex_unlock(&p->epoch_lock);
+    return status;
+}
+static ud_status forward_control(physical_plan *p, node *n, const ud_component_event *event) {
+    emit_target target = {p, n};
+    for (uint32_t port = 0; port < n->descriptor.outputs; port++)
+        if (n->context.connected_outputs & (UINT64_C(1) << port)) {
+            ud_component_event output = *event;
+            if (event->kind == UD_COMPONENT_SCHEMA_CHANGE)
+                output.batch = n->schemas[port];
+            UD_TRY(route_event(&target, port, &output));
+        }
+    return UD_OK;
+}
+static ud_status stream_control(physical_plan *p, node *n, const ud_component_event *event) {
+    uint64_t bit = UINT64_C(1) << event->input;
+    if (event->kind == UD_COMPONENT_CHECKPOINT_BARRIER) {
+        uint64_t committed = atomic_load(&p->confirmed_epoch);
+        if (event->epoch != committed + 1)
+            return UD_FENCED;
+        if (n->barrier_mask && n->barrier_epoch != event->epoch)
+            return UD_FENCED;
+        n->barrier_epoch = event->epoch;
+        n->barrier_mask |= bit;
+        uint64_t required = 0;
+        for (uint32_t i = 0; i < n->descriptor.inputs; i++)
+            if (n->inputs[i] != UINT32_MAX && !p->edges[n->inputs[i]].ended)
+                required |= UINT64_C(1) << i;
+        if ((n->barrier_mask & required) != required)
+            return UD_OK;
+        UD_TRY(stage_epoch(p, n, event->epoch));
+        UD_TRY(forward_control(p, n, event));
+        return commit_epoch(p, event->epoch);
+    }
+    if (event->kind == UD_COMPONENT_WATERMARK) {
+        if ((n->watermark_mask & bit) && event->watermark < n->watermarks[event->input])
+            return UD_FENCED;
+        n->watermarks[event->input] = event->watermark;
+        n->watermark_mask |= bit;
+        uint64_t required = 0;
+        int64_t minimum = INT64_MAX;
+        for (uint32_t i = 0; i < n->descriptor.inputs; i++)
+            if (n->inputs[i] != UINT32_MAX && !p->edges[n->inputs[i]].ended) {
+                required |= UINT64_C(1) << i;
+                if (n->watermarks[i] < minimum)
+                    minimum = n->watermarks[i];
+            }
+        if ((n->watermark_mask & required) != required || minimum <= n->last_watermark)
+            return UD_OK;
+        n->last_watermark = minimum;
+        ud_component_event output = *event;
+        output.watermark = minimum;
+        return forward_control(p, n, &output);
+    }
+    if (event->kind == UD_COMPONENT_SCHEMA_CHANGE) {
+        if (!event->batch)
+            return UD_SCHEMA;
+        const ud_batch *expected = n->ports.inputs[event->input].schema;
+        if (expected->columns != event->batch->columns)
+            return UD_INCOMPATIBLE;
+        for (uint32_t i = 0; i < expected->columns; i++)
+            if (!ud_field_matches(&expected->column[i].field, &event->batch->column[i].field,
+                                  UD_FIELD_PORT))
+                return UD_INCOMPATIBLE;
+        return forward_control(p, n, event);
+    }
     return UD_UNSUPPORTED;
 }
 static ud_status step(physical_plan *p, node *n, int *progress) {
-    uint64_t confirmed=atomic_load(&p->confirmed_epoch);
-    if(n->barrier_mask&&atomic_load(&n->staged_epoch)<=confirmed)n->barrier_mask=0;
-    if(n->descriptor.category==UD_COMPONENT_SOURCE&&n->barrier_epoch){
-        if(n->barrier_epoch>confirmed)return UD_OK;
-        if(n->acknowledged_epoch<n->barrier_epoch){UD_TRY(n->descriptor.confirm_epoch(n->instance,n->barrier_epoch,n->source_position));n->acknowledged_epoch=n->barrier_epoch;}
+    uint64_t confirmed = atomic_load(&p->confirmed_epoch);
+    if (n->barrier_mask && n->barrier_epoch <= confirmed)
+        n->barrier_mask = 0;
+    if (n->descriptor.category == UD_COMPONENT_SOURCE && n->barrier_epoch) {
+        if (n->barrier_epoch > confirmed)
+            return UD_OK;
+        if (n->acknowledged_epoch < n->barrier_epoch) {
+            UD_TRY(n->descriptor.confirm_epoch(n->instance, n->barrier_epoch, n->source_position));
+            n->acknowledged_epoch = n->barrier_epoch;
+        }
     }
     ud_activation *e = p->execution;
     if (atomic_load(&n->state) == UD_EXEC_SUCCEEDED)
@@ -980,10 +1311,33 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
             }
             return UD_OK;
         }
+    if (n->barrier_mask && !n->pending && atomic_load(&n->staged_epoch) != n->barrier_epoch) {
+        uint64_t required = 0;
+        for (uint32_t port = 0; port < n->descriptor.inputs; port++)
+            if (n->inputs[port] != UINT32_MAX && !p->edges[n->inputs[port]].ended)
+                required |= UINT64_C(1) << port;
+        if ((n->barrier_mask & required) == required) {
+            memset(n->emitted, 0, n->descriptor.outputs);
+            n->emit_allowed = 1;
+            ud_component_event barrier = {.struct_size = sizeof(barrier),
+                                          .abi_version = UD_ABI_VERSION,
+                                          .kind = UD_COMPONENT_CHECKPOINT_BARRIER,
+                                          .epoch = n->barrier_epoch};
+            ud_status status = stage_epoch(p, n, n->barrier_epoch);
+            if (!status)
+                status = forward_control(p, n, &barrier);
+            n->emit_allowed = 0;
+            if (!status)
+                status = commit_epoch(p, n->barrier_epoch);
+            if (!status)
+                *progress = 1;
+            return status;
+        }
+    }
     ud_component_event event = {sizeof(event), UD_ABI_VERSION, UD_COMPONENT_POLL, 0, NULL};
     const ud_batch *input = NULL;
     ud_buffer_block *block = NULL;
-    ud_stream_event received={0};
+    ud_stream_event received = {0};
     ud_buffer_view *view = NULL;
     int selected = n->pending || n->descriptor.category == UD_COMPONENT_SOURCE ||
                    n->ended == n->descriptor.inputs;
@@ -992,28 +1346,41 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     if (!selected)
         for (uint32_t i = 0; i < n->descriptor.inputs; i++) {
             uint32_t port = (n->next_port + i) % n->descriptor.inputs;
-            if ((n->barrier_mask&(UINT64_C(1)<<port)) || !(demand & (UINT64_C(1) << port)) || n->inputs[port] == UINT32_MAX)
+            if ((n->barrier_mask & (UINT64_C(1) << port)) || n->inputs[port] == UINT32_MAX)
                 continue;
             edge *v = p->edges + n->inputs[port];
+            int32_t head = ud_queue_front_kind(v->queue);
+            if (!(demand & (UINT64_C(1) << port)) && (!head || head == UD_STREAM_DATA))
+                continue;
             if (ud_queue_count(v->queue)) {
-                UD_TRY(ud_queue_pop(v->queue,&received));block=received.block;
-                atomic_fetch_sub(&e->execution->queued,1);ud_work_group_ready(p->group,p->nodes[v->from].tree);
-                ud_status status=block?ud_buffer_read(block,&view):UD_OK;
-                if(status){ud_stream_event_clear(&received);return status;}
-                input=view?ud_buffer_view_batch(view):NULL;
-                if(received.kind==UD_STREAM_DATA)atomic_fetch_add(&v->consumed,input->rows);
-                event.kind=received.kind;event.input=port;event.batch=input;event.epoch=received.epoch;event.schema_version=received.schema_version;event.watermark=received.watermark;event.source_position=received.source_position;
-                if(event.kind==UD_COMPONENT_INPUT_END){if(v->ended){ud_buffer_view_release(view);ud_stream_event_clear(&received);return UD_SCHEMA;}v->ended=1;n->ended++;}
-                selected = 1;
-                n->next_port = (port + 1) % n->descriptor.inputs;
-                break;
-            }
-            if (!v->ended && atomic_load(&p->nodes[v->from].state) == UD_EXEC_SUCCEEDED &&
-                !ud_queue_count(v->queue)) {
-                v->ended = 1;
-                n->ended++;
-                event.kind = UD_COMPONENT_INPUT_END;
+                UD_TRY(ud_queue_pop(v->queue, &received));
+                block = received.block;
+                atomic_fetch_sub(&e->execution->queued, 1);
+                ud_work_group_ready(p->group, p->nodes[v->from].tree);
+                ud_status status = block ? ud_buffer_read(block, &view) : UD_OK;
+                if (status) {
+                    ud_stream_event_clear(&received);
+                    return status;
+                }
+                input = view ? ud_buffer_view_batch(view) : NULL;
+                if (received.kind == UD_STREAM_DATA)
+                    atomic_fetch_add(&v->consumed, input->rows);
+                event.kind = received.kind;
                 event.input = port;
+                event.batch = input;
+                event.epoch = received.epoch;
+                event.schema_version = received.schema_version;
+                event.watermark = received.watermark;
+                event.source_position = received.source_position;
+                if (event.kind == UD_COMPONENT_INPUT_END) {
+                    if (v->ended) {
+                        ud_buffer_view_release(view);
+                        ud_stream_event_clear(&received);
+                        return UD_SCHEMA;
+                    }
+                    v->ended = 1;
+                    n->ended++;
+                }
                 selected = 1;
                 n->next_port = (port + 1) % n->descriptor.inputs;
                 break;
@@ -1050,7 +1417,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     ud_task_cancel_register(&n->activation, n->instance, n->descriptor.cancel);
     ud_status s = ud_activation_check(&n->activation);
     if (!s)
-        s = event.kind>=UD_COMPONENT_WATERMARK ? stream_control(p,n,&event) : n->descriptor.step(n->instance, &event);
+        s = event.kind >= UD_COMPONENT_WATERMARK ? stream_control(p, n, &event)
+                                                 : n->descriptor.step(n->instance, &event);
     ud_task_cancel_unregister(&n->activation);
     n->callback_ms += ud_now_ms() - started;
     n->cpu_ns += ud_thread_cpu_ns() - cpu;
@@ -1070,7 +1438,17 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
             s = UD_INVALID;
         else {
             n->end_ms = ud_now_ms();
-            atomic_store(&n->state, UD_EXEC_SUCCEEDED);
+            n->emit_allowed = 1;
+            ud_component_event end = {.struct_size = sizeof(end),
+                                      .abi_version = UD_ABI_VERSION,
+                                      .kind = UD_COMPONENT_INPUT_END,
+                                      .source_position = n->source_position};
+            s = forward_control(p, n, &end);
+            n->emit_allowed = 0;
+            if (!s)
+                atomic_store(&n->state, UD_EXEC_SUCCEEDED);
+            if (!s)
+                s = commit_epoch(p, atomic_load(&p->confirmed_epoch) + 1);
             for (uint32_t i = 0; i < n->output_edges; i++)
                 ud_work_group_ready(p->group, p->nodes[p->edges[n->outputs[i]].to].tree);
             s = UD_OK;
@@ -1081,6 +1459,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
         ud_task_rows(e, 0, input->rows, 0);
     ud_buffer_view_release(view);
     ud_status cleanup = ud_buffer_release(block);
+    received.block = NULL;
+    ud_stream_event_clear(&received);
     if (cleanup && !s)
         s = cleanup;
     if (s)
@@ -1135,8 +1515,10 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
     UD_TRY(ud_bytes_put(b, ",", 1));
     UD_TRY(json_number(b, "treeConcurrency", p->concurrency));
     if (p->execution->execution->options.state_directory.length)
-        UD_TRY(ud_bytes_put(b, ",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"",
-                            sizeof(",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"") - 1));
+        UD_TRY(ud_bytes_put(
+            b, ",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"",
+            sizeof(",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"") -
+                1));
     UD_TRY(ud_bytes_put(b, ",\"trees\":[", sizeof(",\"trees\":[") - 1));
     for (uint32_t t = 0; t < p->tree_count; t++) {
         if (t)
@@ -1175,11 +1557,11 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
                     UD_TRY(ud_json_quote(b, id, 32));
                     UD_TRY(ud_bytes_put(b, ",\"name\":", 8));
                     UD_TRY(ud_json_quote(b, port->name.data, port->name.length));
-                    UD_TRY(ud_bytes_put(b,",",1));
+                    UD_TRY(ud_bytes_put(b, ",", 1));
                     UD_TRY(json_number(b, "direction", port->direction));
-                    UD_TRY(ud_bytes_put(b,",",1));
+                    UD_TRY(ud_bytes_put(b, ",", 1));
                     UD_TRY(json_number(b, "index", port->index));
-                    UD_TRY(ud_bytes_put(b,",",1));
+                    UD_TRY(ud_bytes_put(b, ",", 1));
                     UD_TRY(json_number(b, "flags", port->flags));
                     UD_TRY(ud_bytes_put(b, "}", 1));
                 }
@@ -1194,9 +1576,22 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
             UD_TRY(json_number(b, "partitions", partitions));
             UD_TRY(ud_bytes_put(b, ",", 1));
             UD_TRY(json_number(b, "ordering", n->binding.ordering));
-            const char *physical_names[] = {"algorithm", "estimatedRows", "rowWidthEstimate", "memoryBudget", "spillBudget", "estimatedCost", "stateVersion", "effects"};
-            const uint64_t physical_values[] = {n->binding.algorithm,n->binding.estimated_rows,n->binding.row_width,n->binding.memory_budget,n->binding.spill_budget,n->binding.estimated_cost,n->binding.state_version,n->binding.effects};
-            for(uint32_t field=0;field<8;field++){UD_TRY(ud_bytes_put(b, ",", 1));UD_TRY(json_number(b, physical_names[field], physical_values[field]));}
+            const char *physical_names[] = {"algorithm",    "estimatedRows", "rowWidthEstimate",
+                                            "memoryBudget", "spillBudget",   "estimatedCost",
+                                            "stateVersion", "effects"};
+            const uint64_t physical_values[] = {n->binding.algorithm,     n->binding.estimated_rows,
+                                                n->binding.row_width,     n->binding.memory_budget,
+                                                n->binding.spill_budget,  n->binding.estimated_cost,
+                                                n->binding.state_version, n->binding.effects};
+            for (uint32_t field = 0; field < 8; field++) {
+                UD_TRY(ud_bytes_put(b, ",", 1));
+                UD_TRY(json_number(b, physical_names[field], physical_values[field]));
+            }
+            if (n->binding.physical_tree.length) {
+                UD_TRY(ud_bytes_put(b, ",\"physicalPlan\":", 16));
+                UD_TRY(ud_bytes_put(b, n->binding.physical_tree.data,
+                                    n->binding.physical_tree.length));
+            }
             UD_TRY(ud_bytes_put(b, ",\"sortKeys\":[", 13));
             for (uint32_t k = 0; k < n->binding.sort.count; k++) {
                 char id[33];

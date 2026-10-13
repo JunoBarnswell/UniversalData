@@ -5857,43 +5857,43 @@
     },
     {
       "id": "A1",
-      "state": "Pending",
+      "state": "InProgress",
       "verification": "NotRun",
       "name": "Native MySQL / MariaDB / ODBC / OCI drivers"
     },
     {
       "id": "A2",
-      "state": "Pending",
+      "state": "InProgress",
       "verification": "NotRun",
       "name": "Parquet / Arrow IPC / REST formats"
     },
     {
       "id": "A3",
-      "state": "Pending",
+      "state": "InProgress",
       "verification": "NotRun",
       "name": "Bounded physical operators and performance"
     },
     {
       "id": "B1",
-      "state": "Pending",
+      "state": "InProgress",
       "verification": "NotRun",
       "name": "Metadata extension platform and templates"
     },
     {
       "id": "B2",
-      "state": "Pending",
+      "state": "InProgress",
       "verification": "NotRun",
       "name": "Advanced relational operators"
     },
     {
       "id": "B3",
-      "state": "Pending",
+      "state": "InProgress",
       "verification": "NotRun",
       "name": "Quality, text and fuzzy matching"
     },
     {
       "id": "B4",
-      "state": "Pending",
+      "state": "InProgress",
       "verification": "NotRun",
       "name": "Nested fields, changes and CDC"
     }

@@ -223,8 +223,12 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
     }
     const char *keys[] = {"dbname", "connect_timeout", "application_name", NULL};
     const char *values[] = {copy, "10", "UniversalDataSDK/1.0.0", NULL};
-    p->configuration=plugin_string(host,config,length);
-    if(!p->configuration){host->deallocate(copy);host->deallocate(p);return UD_RESOURCE;}
+    p->configuration = plugin_string(host, config, length);
+    if (!p->configuration) {
+        host->deallocate(copy);
+        host->deallocate(p);
+        return UD_RESOURCE;
+    }
     p->db = PQconnectStartParams(keys, values, 1);
     host->deallocate(copy);
     ud_status s = !p->db ? UD_RESOURCE : UD_OK;
@@ -386,59 +390,84 @@ static void parameters_clear(postgres_state *p, pg_parameters *v) {
 }
 static ud_status parameters_allocate(postgres_state *p, uint32_t count, pg_parameters *v) {
     memset(v, 0, sizeof(*v));
-    if (count > 65535) return UD_RESOURCE;
-    if (!count) return UD_OK;
-    ud_host_api *h = &p->host; v->count = count;
+    if (count > 65535)
+        return UD_RESOURCE;
+    if (!count)
+        return UD_OK;
+    ud_host_api *h = &p->host;
+    v->count = count;
     v->values = h->allocate(h->context, count * sizeof(*v->values));
     v->owned = h->allocate(h->context, count * sizeof(*v->owned));
     v->types = h->allocate(h->context, count * sizeof(*v->types));
     v->lengths = h->allocate(h->context, count * sizeof(*v->lengths));
     v->formats = h->allocate(h->context, count * sizeof(*v->formats));
     if (!v->values || !v->owned || !v->types || !v->lengths || !v->formats) {
-        parameters_clear(p, v); return UD_RESOURCE;
+        parameters_clear(p, v);
+        return UD_RESOURCE;
     }
     return UD_OK;
 }
-static ud_status parameter_value(postgres_state *p, const ud_value *value,
-                                 pg_parameters *v, uint32_t i) {
+static ud_status parameter_value(postgres_state *p, const ud_value *value, pg_parameters *v,
+                                 uint32_t i) {
     ud_host_api *h = &p->host;
-    v->types[i] = value->type == UD_BOOL ? 16 : value->type == UD_INT64 ? 20
-        : value->type == UD_FLOAT64 ? 701 : value->type == UD_DECIMAL128 ? 1700
-        : value->type == UD_BINARY ? 17 : value->type == UD_DATE32 ? 1082
-        : value->type == UD_TIME64 ? 1083 : value->type == UD_TIMESTAMP ? 1184
-        : value->type == UD_UTF8 ? 25 : 0;
-    if (!v->types[i]) return UD_UNSUPPORTED;
-    if (value->is_null) return UD_OK;
+    v->types[i] = value->type == UD_BOOL         ? 16
+                  : value->type == UD_INT64      ? 20
+                  : value->type == UD_FLOAT64    ? 701
+                  : value->type == UD_DECIMAL128 ? 1700
+                  : value->type == UD_BINARY     ? 17
+                  : value->type == UD_DATE32     ? 1082
+                  : value->type == UD_TIME64     ? 1083
+                  : value->type == UD_TIMESTAMP  ? 1184
+                  : value->type == UD_UTF8       ? 25
+                                                 : 0;
+    if (!v->types[i])
+        return UD_UNSUPPORTED;
+    if (value->is_null)
+        return UD_OK;
     if (value->type == UD_BINARY) {
-        if (value->text_length > INT_MAX) return UD_RESOURCE;
+        if (value->text_length > INT_MAX)
+            return UD_RESOURCE;
         v->values[i] = value->text ? value->text : "";
-        v->formats[i] = 1; v->lengths[i] = (int)value->text_length;
+        v->formats[i] = 1;
+        v->lengths[i] = (int)value->text_length;
         return UD_OK;
     }
-    const char *data; uint32_t length; char text[256];
+    const char *data;
+    uint32_t length;
+    char text[256];
     if (value->type == UD_UTF8) {
-        data = value->text; length = value->text_length;
-        if (length && memchr(data, 0, length)) return UD_PARSE;
+        data = value->text;
+        length = value->text_length;
+        if (length && memchr(data, 0, length))
+            return UD_PARSE;
     } else {
         uint32_t required;
         ud_status status = h->format_value(value, text, sizeof(text), &required);
-        if (status) return status;
-        data = text; length = required - 1;
+        if (status)
+            return status;
+        data = text;
+        length = required - 1;
     }
     v->owned[i] = plugin_string(h, data, length);
-    if (!v->owned[i]) return UD_RESOURCE;
-    v->values[i] = v->owned[i]; return UD_OK;
+    if (!v->owned[i])
+        return UD_RESOURCE;
+    v->values[i] = v->owned[i];
+    return UD_OK;
 }
 static ud_status parameters_create(postgres_state *p, const ud_batch *b, uint32_t row,
                                    pg_parameters *v) {
     uint32_t count = b ? p->host.columns(b) : 0;
-    if (b && row >= p->host.rows(b)) return UD_SCHEMA;
+    if (b && row >= p->host.rows(b))
+        return UD_SCHEMA;
     ud_status status = parameters_allocate(p, count, v);
     for (uint32_t i = 0; !status && i < count; i++) {
-        ud_value value; status = p->host.get(b, row, i, &value);
-        if (!status) status = parameter_value(p, &value, v, i);
+        ud_value value;
+        status = p->host.get(b, row, i, &value);
+        if (!status)
+            status = parameter_value(p, &value, v, i);
     }
-    if (status) parameters_clear(p, v);
+    if (status)
+        parameters_clear(p, v);
     return status;
 }
 static ud_status parameters_statement(postgres_state *p, const ud_write_options *options,
@@ -446,12 +475,15 @@ static ud_status parameters_statement(postgres_state *p, const ud_write_options 
                                       pg_parameters *v) {
     ud_status status = parameters_allocate(p, plan->parameter_count, v);
     for (uint32_t i = 0; !status && i < plan->parameter_count; i++) {
-        ud_sql_parameter ref = plan->parameters[i]; ud_value value;
+        ud_sql_parameter ref = plan->parameters[i];
+        ud_value value;
         const ud_batch *source = ref.source == UD_SQL_BEFORE ? options->before : batch;
         status = p->host.get(source, ref.row, ref.column, &value);
-        if (!status) status = parameter_value(p, &value, v, i);
+        if (!status)
+            status = parameter_value(p, &value, v, i);
     }
-    if (status) parameters_clear(p, v);
+    if (status)
+        parameters_clear(p, v);
     return status;
 }
 
@@ -637,7 +669,8 @@ static ud_status next_read(void *state, ud_batch **out) {
 }
 static void cancel_operation(void *state) {
     postgres_state *p = state;
-    if(p->cdc)ud_pg_cdc_cancel(p->cdc);
+    if (p->cdc)
+        ud_pg_cdc_cancel(p->cdc);
     atomic_store(&p->cancelled, 1);
 }
 static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string batch_id,
@@ -762,10 +795,12 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (h->columns(batch) > 65535)
         return UD_RESOURCE;
     atomic_store(&p->cancelled, 0);
-    if (options->mode == UD_WRITE_CHANGESET && p->transaction) return UD_UNSUPPORTED;
+    if (options->mode == UD_WRITE_CHANGESET && p->transaction)
+        return UD_UNSUPPORTED;
     int own = !p->transaction;
     ud_status s = own ? command(p, "BEGIN") : UD_OK;
-    if (s) return s;
+    if (s)
+        return s;
     char *table = plugin_identifier(h, options->table);
     if (!s && !table)
         s = UD_RESOURCE;
@@ -817,24 +852,34 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     }
     uint32_t columns = options->mode == UD_WRITE_DELETE ? options->key_count : h->columns(batch);
     uint32_t limit = columns ? 65535 / columns : 0;
-    if (!limit) s = UD_RESOURCE;
-    if (limit > 1024) limit = 1024;
+    if (!limit)
+        s = UD_RESOURCE;
+    if (limit > 1024)
+        limit = 1024;
     for (uint32_t row = 0; !s && !existing && row < h->rows(batch);) {
         s = control(p);
         uint32_t count = options->mode == UD_WRITE_CHANGESET ? 1 : h->rows(batch) - row;
-        if (count > limit) count = limit;
-        ud_sql_statement plan = {0}; pg_parameters parameters = {0};
-        if (!s) s = h->compile_write(h->context, UD_SQL_POSTGRESQL, UD_SQL_PARAMETER_NUMBERED,
-                                     options, batch, row, count, &plan);
-        if (!s) s = parameters_statement(p, options, batch, &plan, &parameters);
+        if (count > limit)
+            count = limit;
+        ud_sql_statement plan = {0};
+        pg_parameters parameters = {0};
+        if (!s)
+            s = h->compile_write(h->context, UD_SQL_POSTGRESQL, UD_SQL_PARAMETER_NUMBERED, options,
+                                 batch, row, count, &plan);
+        if (!s)
+            s = parameters_statement(p, options, batch, &plan, &parameters);
         PGresult *changed = !s ? query(p, plan.sql.data, (int)parameters.count, parameters.types,
                                        parameters.values, parameters.lengths, parameters.formats, 0)
                                : NULL;
-        if (!s && (!changed || PQresultStatus(changed) != PGRES_COMMAND_OK)) s = pg_failure(p, changed);
+        if (!s && (!changed || PQresultStatus(changed) != PGRES_COMMAND_OK))
+            s = pg_failure(p, changed);
         if (!s && options->mode == UD_WRITE_CHANGESET &&
             options->operations[row] != UD_CHANGE_UPSERT && strcmp(PQcmdTuples(changed), "1"))
-            s = h->report(h->context, UD_FENCED, "changeset preimage or current business-key conflict");
-        PQclear(changed); parameters_clear(p, &parameters); h->statement_clear(&plan);
+            s = h->report(h->context, UD_FENCED,
+                          "changeset preimage or current business-key conflict");
+        PQclear(changed);
+        parameters_clear(p, &parameters);
+        h->statement_clear(&plan);
         row += count;
     }
     for (int j = 0; j < 4; j++)
@@ -860,7 +905,8 @@ static void destroy(void *state) {
         return;
     p->host.batch_destroy(p->schema);
     p->schema = NULL;
-    if(p->cdc)ud_pg_cdc_close(p->cdc);
+    if (p->cdc)
+        ud_pg_cdc_close(p->cdc);
     p->host.deallocate(p->configuration);
     if (p->cancel)
         PQcancelFinish(p->cancel);
@@ -1082,35 +1128,59 @@ static ud_status provision(void *state) {
                           "CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY "
                           "KEY(tenant,job,batch_id))");
 }
-static ud_status cdc_open(void*state,const ud_cdc_options*options){postgres_state*p=state;if(p->reading||p->transaction||p->cdc)return UD_BUSY;return ud_pg_cdc_open(&p->host,p->configuration,options,&p->cdc);}
-static ud_status cdc_next(void*state,ud_cdc_event*out){postgres_state*p=state;return p->cdc?ud_pg_cdc_next(p->cdc,out):UD_INVALID;}
-static ud_status cdc_confirm(void*state,ud_string position){postgres_state*p=state;return p->cdc?ud_pg_cdc_confirm(p->cdc,position):UD_INVALID;}
-static ud_status cdc_close(void*state){postgres_state*p=state;ud_status status=ud_pg_cdc_close(p->cdc);p->cdc=NULL;return status;}
+static ud_status cdc_open(void *state, const ud_cdc_options *options) {
+    postgres_state *p = state;
+    if (p->reading || p->transaction || p->cdc)
+        return UD_BUSY;
+    ud_host_api host = p->host;
+    host.check_io = p->check;
+    host.control_user = p->control_user;
+    return ud_pg_cdc_open(&host, p->configuration, options, &p->cdc);
+}
+static ud_status cdc_next(void *state, ud_cdc_event *out) {
+    postgres_state *p = state;
+    return p->cdc ? ud_pg_cdc_next(p->cdc, out) : UD_INVALID;
+}
+static ud_status cdc_confirm(void *state, ud_string position) {
+    postgres_state *p = state;
+    return p->cdc ? ud_pg_cdc_confirm(p->cdc, position) : UD_INVALID;
+}
+static ud_status cdc_close(void *state) {
+    postgres_state *p = state;
+    ud_status status = ud_pg_cdc_close(p->cdc);
+    p->cdc = NULL;
+    return status;
+}
 static const ud_connector_api connector = {
-    sizeof(connector),
-    UD_PLUGIN_ABI,
-    UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-        UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
-        UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
-        UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
-    test_connection,
-    discover,
-    open_read,
-    next_read,
-    close_read,
-    write_batch,
-    receipt,
-    cancel_operation,
-    execute_command,
-    begin_transaction,
-    commit_transaction,
-    rollback_transaction,
-    metadata,
-    set_control,
-    reset_session,
-    NULL,
-    provision,
-    UD_SQL_POSTGRESQL,NULL,cdc_open,cdc_next,cdc_confirm,cdc_close};
+    .struct_size = sizeof(connector),
+    .abi_version = UD_PLUGIN_ABI,
+    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
+                    UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
+                    UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL |
+                    UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC |
+                    UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
+    .test = test_connection,
+    .discover = discover,
+    .read_open = open_read,
+    .read_next = next_read,
+    .read_close = close_read,
+    .write = write_batch,
+    .receipt = receipt,
+    .cancel = cancel_operation,
+    .execute = execute_command,
+    .begin = begin_transaction,
+    .commit = commit_transaction,
+    .rollback = rollback_transaction,
+    .metadata = metadata,
+    .set_control = set_control,
+    .reset_session = reset_session,
+    .provision = provision,
+    .metadata_dialect = UD_SQL_POSTGRESQL,
+    .parameter_style = UD_SQL_PARAMETER_NUMBERED,
+    .cdc_open = cdc_open,
+    .cdc_next = cdc_next,
+    .cdc_confirm = cdc_confirm,
+    .cdc_close = cdc_close};
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
         return UD_INCOMPATIBLE;

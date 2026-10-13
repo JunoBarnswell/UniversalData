@@ -6,11 +6,11 @@ with tempfile.TemporaryDirectory(prefix='ud-package-sql-') as folder:
  {'id':'populate','kind':'sql.execute','config':{'connection':'sourceDB','statement':'INSERT INTO src VALUES '+','.join('('+str(i)+')' for i in range(31))}},
  {'id':'createTarget','kind':'sql.execute','config':{'connection':'targetDB','statement':'CREATE TABLE dest(x INTEGER,twice INTEGER)'}},
  {'id':'flow','kind':'dataFlow','config':{'pipeline':'p'}}]
- package={'version':8,'id':'sqlFixture','connections':[{'id':'sourceDB','driver':str(pathlib.Path(sys.argv[2]).resolve()),'resource':'source-db','credentialReference':'source'},
+ package={'version':9,'id':'sqlFixture','connections':[{'id':'sourceDB','driver':str(pathlib.Path(sys.argv[2]).resolve()),'resource':'source-db','credentialReference':'source'},
  {'id':'targetDB','driver':str(pathlib.Path(sys.argv[2]).resolve()),'resource':'target-db','credentialReference':'target'},
  {'id':'rejected','driver':'file','resource':str(r/'rejected.ndjson')}],
  'controlFlow':{'tasks':tasks,'constraints':[{'from':a['id'],'to':b['id'],'on':'success'} for a,b in zip(tasks,tasks[1:])]},
- 'dataFlows':[{'id':'p','components':[{'id':'source','component':'sql.source','config':{'connection':'sourceDB','schema':{'version':8,'fields':[{'name':'x','type':'int64','nullable':True}]},'batchSize':11,'sql':'SELECT x FROM src ORDER BY x'}},
+ 'dataFlows':[{'id':'p','components':[{'id':'source','component':'sql.source','config':{'connection':'sourceDB','schema':{'version':9,'fields':[{'name':'x','type':'int64','nullable':True}]},'batchSize':11,'sql':'SELECT x FROM src ORDER BY x'}},
  {'id':'derive','component':'derive','config':{'columns':[{'name':'twice','expression':{'op':'mul','args':[{'column':'x'},lit(2)]}}]}},
  {'id':'split','component':'split','config':{'condition':{'op':'lt','args':[{'column':'x'},lit(20)]}}},
  {'id':'target','component':'sql.destination','config':{'connection':'targetDB','table':'dest','mode':'append','keys':[]}},

@@ -165,6 +165,8 @@ UD_API ud_status ud_batch_retain(ud_batch *);
  * source indices are allowed; output names/identities must be distinct. */
 UD_API ud_status ud_batch_project(ud_context *, const ud_batch *, const uint32_t *source_columns,
                                   const ud_field *target_fields, uint32_t columns, ud_batch **);
+/* Owned immutable row slice shares buffers and preserves row provenance. */
+UD_API ud_status ud_batch_slice(ud_context *,const ud_batch *,uint32_t,uint32_t,ud_batch **);
 UD_API uint32_t ud_batch_rows(const ud_batch *batch);
 UD_API uint32_t ud_batch_columns(const ud_batch *batch);
 /* Canonical immutable field metadata borrows the retained schema tree and stays
@@ -202,9 +204,6 @@ struct ArrowArray {
     void (*release)(struct ArrowArray *);
     void *private_data;
 };
-#endif
-#ifndef ARROW_C_STREAM_INTERFACE
-#define ARROW_C_STREAM_INTERFACE
 #endif
 #ifndef ARROW_C_STREAM_INTERFACE
 #define ARROW_C_STREAM_INTERFACE

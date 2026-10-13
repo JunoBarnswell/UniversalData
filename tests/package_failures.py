@@ -1,9 +1,9 @@
 import copy,json,pathlib,subprocess,sys,tempfile
 with tempfile.TemporaryDirectory(prefix='ud-package-failures-') as folder:
  r=pathlib.Path(folder);source=r/'in.ndjson';source.write_text('{"x":1}\n{"x":2}\n')
- base={'version':8,'id':'failures','parameters':{},'variables':{},'connections':[{'id':'in','driver':'file','resource':str(source)},{'id':'out','driver':'file','resource':str(r/'out.ndjson')}],
+ base={'version':9,'id':'failures','parameters':{},'variables':{},'connections':[{'id':'in','driver':'file','resource':str(source)},{'id':'out','driver':'file','resource':str(r/'out.ndjson')}],
  'controlFlow':{'tasks':[{'id':'flow','kind':'dataFlow','config':{'pipeline':'p'}}],'constraints':[]},
- 'dataFlows':[{'id':'p','components':[{'id':'source','component':'file.ndjson.source','config':{'connection':'in','schema':{'version':8,'fields':[{'name':'x','type':'int64','nullable':False}]}}},
+ 'dataFlows':[{'id':'p','components':[{'id':'source','component':'file.ndjson.source','config':{'connection':'in','schema':{'version':9,'fields':[{'name':'x','type':'int64','nullable':False}]}}},
  {'id':'sink','component':'file.ndjson.destination','config':{'connection':'out'}}],'paths':[{'from':'source','output':0,'to':'sink','input':0}]}]}
  def run(p,permit,create,result):
   path=r/'package.json';path.write_text(json.dumps(p));subprocess.run([sys.argv[1],str(path),str(permit),str(create),str(result)],check=True)

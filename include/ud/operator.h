@@ -10,7 +10,7 @@ extern "C" {
 #endif
 typedef struct ud_operator ud_operator;
 enum { UD_PHYSICAL_STREAM = 1, UD_PHYSICAL_SORT, UD_PHYSICAL_HASH,
-       UD_PHYSICAL_GRACE_HASH, UD_PHYSICAL_MERGE, UD_PHYSICAL_INDEX };
+       UD_PHYSICAL_GRACE_HASH, UD_PHYSICAL_MERGE, UD_PHYSICAL_INDEX,UD_PHYSICAL_JOIN_TREE };
 
 enum {
     UD_OPERATOR_SORT = 1,
@@ -30,7 +30,8 @@ enum {
     UD_OPERATOR_STANDARDIZE, UD_OPERATOR_REGEX_EXTRACT, UD_OPERATOR_REGEX_REPLACE,
     UD_OPERATOR_TERM_EXTRACT, UD_OPERATOR_TERM_LOOKUP, UD_OPERATOR_DATA_PROFILE,
     UD_OPERATOR_MULTIWAY_JOIN, UD_OPERATOR_ASOF_JOIN, UD_OPERATOR_TEMPORAL_JOIN,
-    UD_OPERATOR_DIFF_COMPARE, UD_OPERATOR_FUZZY_LOOKUP, UD_OPERATOR_FUZZY_GROUPING
+    UD_OPERATOR_DIFF_COMPARE, UD_OPERATOR_FUZZY_LOOKUP, UD_OPERATOR_FUZZY_GROUPING,
+    UD_OPERATOR_CACHE_LOOKUP
 };
 typedef struct ud_sort_key {
     ud_id field;
@@ -83,6 +84,7 @@ typedef struct ud_physical_plan_info {
     ud_sort_contract sort;
     ud_string decision; /* Borrowed immutable diagnostic text. */
 } ud_physical_plan_info;
+UD_API ud_status ud_operator_explain(const ud_operator *,char **,uint32_t *);
 UD_API ud_status ud_operator_physical_plan(const ud_operator *, ud_physical_plan_info *);
 UD_API ud_status ud_operator_configuration_schema(int32_t kind, ud_string *);
 /* Pure binding copies schemas. Separate instances may share Buffer Manager. */

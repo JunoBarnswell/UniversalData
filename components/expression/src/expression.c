@@ -1,6 +1,7 @@
 #include "ud/expression.h"
 #include "ud/json.h"
 #include "ud/format.h"
+#include "ud/sql.h"
 #include "../../data/internal.h"
 #include "../../contracts/registry_internal.h"
 #include <math.h>
@@ -44,7 +45,8 @@ static ud_status string(const ud_json *v, ud_string *out) {
         return UD_SCHEMA;
     return ud_json_text(v, &out->data, &out->length);
 }
-static ud_status apply_operation(const expression_node*n,const ud_value*a,const ud_value*z,ud_value*out){
+static ud_status apply_operation(const expression_node *n, const ud_value *a, const ud_value *z,
+                                 ud_value *out) {
     memset(out, 0, sizeof(*out));
     out->type = n->type;
     if (n->op == ISNULL) {
@@ -52,7 +54,8 @@ static ud_status apply_operation(const expression_node*n,const ud_value*a,const 
         return UD_OK;
     }
     if (n->op == AND || n->op == OR || n->op == NOT) {
-        int32_t x = a->is_null ? -1 : (int32_t)a->integer, y = z->is_null ? -1 : (int32_t)z->integer;
+        int32_t x = a->is_null ? -1 : (int32_t)a->integer,
+                y = z->is_null ? -1 : (int32_t)z->integer;
         int32_t result = n->op == AND  ? ud_truth_and(x, y)
                          : n->op == OR ? ud_truth_or(x, y)
                                        : ud_truth_not(x);
@@ -121,7 +124,7 @@ static ud_status eval(const ud_expression *e, const expression_node *n, const ud
     UD_TRY(eval(e, n->args[0], b, row, &a));
     if (n->args[1])
         UD_TRY(eval(e, n->args[1], b, row, &z));
-    return apply_operation(n,&a,&z,out);
+    return apply_operation(n, &a, &z, out);
 }
 static void node_free(expression_node *n) {
     if (!n)
@@ -453,35 +456,102 @@ ud_status ud_expression_evaluate(const ud_expression *e, const ud_batch *b, uint
         return UD_CANCELLED;
     return eval(e, e->root, b, row, out);
 }
-static ud_status vector_node(const ud_expression*e,const expression_node*n,const ud_batch*b,ud_batch**out){
-    *out=NULL;if(ud_is_cancelled(e->ctx))return UD_CANCELLED;
-    ud_field field=n->field;field.name="value";field.name_length=5;field.nullable=1;
-    if(n->kind==COLUMN&&!n->constant){uint32_t column=n->column;return ud_batch_project(e->ctx,b,&column,&field,1,out);}
-    ud_batch *arguments[16]={0};ud_status status=UD_OK;
-    for(uint32_t i=0;!status&&!n->constant&&i<n->argument_count;i++)status=vector_node(e,n->args[i],b,arguments+i);
-    /* Operation nodes have their arity in args; function nodes retain argument_count. */
-    if(!n->constant&&n->kind==OPERATION)for(uint32_t i=0;!status&&i<2&&n->args[i];i++)if(!arguments[i])status=vector_node(e,n->args[i],b,arguments+i);
-    if(!status)status=ud_batch_create(e->ctx,&field,1,b->rows,out);
-    for(uint32_t row=0;!status&&row<b->rows;row++){
-        if(!(row&255)&&ud_is_cancelled(e->ctx)){status=UD_CANCELLED;break;}
-        ud_value value={0},values[16]={{0}};int owned=0;
-        if(n->constant)value=n->value;
-        else if(n->kind==REFERENCE){status=e->resolve(e->user,n->name,&value);if(!status&&(value.type!=n->type||(value.type==UD_DECIMAL128&&!value.is_null&&(value.precision!=n->field.precision||value.scale!=n->field.scale))))status=UD_SCHEMA;}
-        else {for(uint32_t i=0;!status&&i<16&&arguments[i];i++)status=ud_batch_get(arguments[i],row,0,values+i);
-            if(!status&&n->kind==FUNCTION){status=n->function.function_evaluate(n->function.user,e->ctx,values,n->argument_count,&n->field,&value);owned=1;if(!status&&value.type!=n->field.type)status=UD_SCHEMA;}
-            else if(!status)status=apply_operation(n,values,values+1,&value);
-        }
-        if(!status)status=ud_batch_append(*out,&value,1);if(!status)status=ud_batch_copy_row_info(*out,row,b,row);if(owned)ud_clear_value(&value);
+static ud_status vector_node(const ud_expression *e, const expression_node *n, const ud_batch *b,
+                             ud_batch **out) {
+    *out = NULL;
+    if (ud_is_cancelled(e->ctx))
+        return UD_CANCELLED;
+    ud_field field = n->field;
+    field.name = "value";
+    field.name_length = 5;
+    field.nullable = 1;
+    if (n->kind == COLUMN && !n->constant) {
+        uint32_t column = n->column;
+        return ud_batch_project(e->ctx, b, &column, &field, 1, out);
     }
-    for(uint32_t i=0;i<16;i++)ud_batch_destroy(arguments[i]);
-    if(!status)status=ud_batch_seal(*out);if(status){ud_batch_destroy(*out);*out=NULL;}return status;
+    ud_batch *arguments[16] = {0};
+    ud_status status = UD_OK;
+    for (uint32_t i = 0; !status && !n->constant && i < n->argument_count; i++)
+        status = vector_node(e, n->args[i], b, arguments + i);
+    /* Operation nodes have their arity in args; function nodes retain argument_count. */
+    if (!n->constant && n->kind == OPERATION)
+        for (uint32_t i = 0; !status && i < 2 && n->args[i]; i++)
+            if (!arguments[i])
+                status = vector_node(e, n->args[i], b, arguments + i);
+    if (!status)
+        status = ud_batch_create(e->ctx, &field, 1, b->rows, out);
+    for (uint32_t row = 0; !status && row < b->rows; row++) {
+        if (!(row & 255) && ud_is_cancelled(e->ctx)) {
+            status = UD_CANCELLED;
+            break;
+        }
+        ud_value value = {0}, values[16] = {{0}};
+        int owned = 0;
+        if (n->constant)
+            value = n->value;
+        else if (n->kind == REFERENCE) {
+            status = e->resolve(e->user, n->name, &value);
+            if (!status &&
+                (value.type != n->type ||
+                 (value.type == UD_DECIMAL128 && !value.is_null &&
+                  (value.precision != n->field.precision || value.scale != n->field.scale))))
+                status = UD_SCHEMA;
+        } else {
+            for (uint32_t i = 0; !status && i < 16 && arguments[i]; i++)
+                status = ud_batch_get(arguments[i], row, 0, values + i);
+            if (!status && n->kind == FUNCTION) {
+                status = n->function.function_evaluate(n->function.user, e->ctx, values,
+                                                       n->argument_count, &n->field, &value);
+                owned = 1;
+                if (!status && value.type != n->field.type)
+                    status = UD_SCHEMA;
+            } else if (!status)
+                status = apply_operation(n, values, values + 1, &value);
+        }
+        if (!status)
+            status = ud_batch_append(*out, &value, 1);
+        if (!status)
+            status = ud_batch_copy_row_info(*out, row, b, row);
+        if (owned)
+            ud_clear_value(&value);
+    }
+    for (uint32_t i = 0; i < 16; i++)
+        ud_batch_destroy(arguments[i]);
+    if (!status)
+        status = ud_batch_seal(*out);
+    if (status) {
+        ud_batch_destroy(*out);
+        *out = NULL;
+    }
+    return status;
 }
-ud_status ud_expression_evaluate_batch(const ud_expression*e,const ud_batch*b,ud_string name,ud_batch**out){
-    if(!out)return UD_INVALID;*out=NULL;if(!e||!b||!b->sealed||b->ctx!=e->ctx)return UD_INVALID;
-    if(e->schema){if(b->columns!=e->schema->columns)return UD_SCHEMA;for(uint32_t i=0;i<b->columns;i++)if(!ud_field_matches(&b->column[i].field,&e->schema->column[i].field,UD_FIELD_PORT))return UD_SCHEMA;}
-    ud_batch*vector=NULL;ud_field field={0};ud_status status=vector_node(e,e->root,b,&vector);
-    if(!status)status=ud_field_derive(e->ctx,&e->root->field,(ud_string){"expression-result",17},name,&field);field.nullable=1;uint32_t column=0;
-    if(!status)status=ud_batch_project(e->ctx,vector,&column,&field,1,out);ud_field_clear(&field);ud_batch_destroy(vector);return status;
+ud_status ud_expression_evaluate_batch(const ud_expression *e, const ud_batch *b, ud_string name,
+                                       ud_batch **out) {
+    if (!out)
+        return UD_INVALID;
+    *out = NULL;
+    if (!e || !b || !b->sealed || b->ctx != e->ctx)
+        return UD_INVALID;
+    if (e->schema) {
+        if (b->columns != e->schema->columns)
+            return UD_SCHEMA;
+        for (uint32_t i = 0; i < b->columns; i++)
+            if (!ud_field_matches(&b->column[i].field, &e->schema->column[i].field, UD_FIELD_PORT))
+                return UD_SCHEMA;
+    }
+    ud_batch *vector = NULL;
+    ud_field field = {0};
+    ud_status status = vector_node(e, e->root, b, &vector);
+    if (!status)
+        status = ud_field_derive(e->ctx, &e->root->field, (ud_string){"expression-result", 17},
+                                 name, &field);
+    field.nullable = 1;
+    uint32_t column = 0;
+    if (!status)
+        status = ud_batch_project(e->ctx, vector, &column, &field, 1, out);
+    ud_field_clear(&field);
+    ud_batch_destroy(vector);
+    return status;
 }
 void ud_expression_destroy(ud_expression *e) {
     if (!e)
@@ -494,4 +564,109 @@ void ud_expression_destroy(ud_expression *e) {
     if (e->registry_owned)
         ud_registry_destroy(e->registry);
     ud_free(e);
+}
+
+/* SQL lowering shares the bound AST and scalar semantics. Only exact primitive
+ * domains are admitted; arithmetic, text/collation, temporal casts and mutable
+ * references retain their Native vector execution. A caller must additionally
+ * prove the provider's source columns have these actual domains. */
+typedef struct sql_expression {
+    ud_expression *expression;
+    ud_bytes text;
+    int style;
+    uint32_t count;
+    ud_field fields[4096];
+    ud_value values[4096];
+} sql_expression;
+static ud_status sql_put(sql_expression *s, const char *text) {
+    return ud_bytes_put(&s->text, text, strlen(text));
+}
+static ud_status sql_node(sql_expression *s, const expression_node *n) {
+    if (n->type != UD_BOOL && n->type != UD_INT64)
+        return UD_UNSUPPORTED;
+    if (n->constant) {
+        if (s->count == 4096)
+            return UD_RESOURCE;
+        uint32_t at = s->count++;
+        s->fields[at] = n->field;
+        char name[24];
+        int length = snprintf(name, sizeof(name), "p%u", at + 1);
+        s->fields[at].name = ud_strdup_n(s->expression->ctx, name, (size_t)length);
+        s->fields[at].name_length = (uint32_t)length;
+        s->fields[at].identity = (ud_id){0};
+        s->fields[at].lineage = NULL;
+        s->fields[at].lineage_count = 0;
+        s->fields[at].key_order = 0;
+        s->values[at] = n->value;
+        if (!s->fields[at].name)
+            return UD_RESOURCE;
+        char marker[24];
+        int size = snprintf(marker, sizeof(marker), "$%u", at + 1);
+        return ud_bytes_put(&s->text, marker, (size_t)size);
+    }
+    if (n->kind == COLUMN) {
+        const ud_field *field = &s->expression->schema->column[n->column].field;
+        UD_TRY(sql_put(s, "\""));
+        for (uint32_t i = 0; i < field->name_length; i++) {
+            if (field->name[i] == '"')
+                UD_TRY(sql_put(s, "\""));
+            UD_TRY(ud_bytes_put(&s->text, field->name + i, 1));
+        }
+        return sql_put(s, "\"");
+    }
+    if (n->kind != OPERATION || n->op < EQ)
+        return UD_UNSUPPORTED;
+    UD_TRY(sql_put(s, "("));
+    if (n->op == NOT)
+        UD_TRY(sql_put(s, "NOT "));
+    UD_TRY(sql_node(s, n->args[0]));
+    if (n->op == ISNULL)
+        UD_TRY(sql_put(s, " IS NULL"));
+    else if (n->op != NOT) {
+        const char *operators[] = {" = ", " <> ", " < ", " <= ", " > ", " >= ", " AND ", " OR "};
+        if (n->op > OR)
+            return UD_UNSUPPORTED;
+        UD_TRY(sql_put(s, operators[n->op - EQ]));
+        UD_TRY(sql_node(s, n->args[1]));
+    }
+    return sql_put(s, ")");
+}
+ud_status ud_expression_sql(ud_expression *expression, int32_t dialect, ud_string *text,
+                            ud_batch **parameters) {
+    if (!expression || !text || !parameters)
+        return UD_INVALID;
+    *text = (ud_string){0};
+    *parameters = NULL;
+    if (dialect != UD_SQL_POSTGRESQL || expression->root->type != UD_BOOL)
+        return UD_UNSUPPORTED;
+    sql_expression *sql = ud_alloc(expression->ctx, sizeof(*sql));
+    if (!sql)
+        return UD_RESOURCE;
+    sql->expression = expression;
+    sql->text = (ud_bytes){.ctx = expression->ctx};
+    ud_status status = sql_node(sql, expression->root);
+    if (!status && sql->count) {
+        status = ud_batch_create(expression->ctx, sql->fields, sql->count, 1, parameters);
+        if (!status)
+            status = ud_batch_append(*parameters, sql->values, sql->count);
+        if (!status)
+            status = ud_batch_seal(*parameters);
+    }
+    if (!status) {
+        text->length = (uint32_t)sql->text.size;
+        status = ud_bytes_put(&sql->text, "", 1);
+    }
+    if (!status) {
+        text->data = (char *)sql->text.data;
+        sql->text.data = NULL;
+    }
+    for (uint32_t i = 0; i < sql->count; i++)
+        ud_free((void *)sql->fields[i].name);
+    ud_bytes_clear(&sql->text);
+    ud_free(sql);
+    if (status) {
+        ud_batch_destroy(*parameters);
+        *parameters = NULL;
+    }
+    return status;
 }

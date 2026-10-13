@@ -127,6 +127,7 @@ typedef struct ud_connector_api {
     ud_status (*provision)(void *); /* Explicit authorized SDK receipt schema provisioning. */
     int32_t metadata_dialect;       /* UD_SQL_*; provider declares its metadata grammar. */
     int32_t (*session_dialect)(void *);
+    int32_t parameter_style;
     ud_status (*cdc_open)(void *,const ud_cdc_options *);
     ud_status (*cdc_next)(void *,ud_cdc_event *);
     ud_status (*cdc_confirm)(void *,ud_string position);
@@ -134,6 +135,8 @@ typedef struct ud_connector_api {
 } ud_connector_api;
 UD_API ud_status ud_connection_open(ud_plugin *, const ud_connection_options *, ud_connection **);
 UD_API ud_status ud_connection_provision(ud_connection *);
+UD_API int32_t ud_connection_dialect(const ud_connection *);
+UD_API int32_t ud_connection_parameter_style(const ud_connection *);
 UD_API uint64_t ud_connection_capabilities(const ud_connection *);
 UD_API ud_status ud_connection_execute_command(ud_connection *, const ud_read_options *,
                                                uint64_t *processed_rows);

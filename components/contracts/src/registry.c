@@ -350,3 +350,5 @@ ud_status ud_registry_describe(const ud_registry *r, char **out, uint32_t *lengt
     ud_bytes_clear(&bytes);
     return s;
 }
+
+void ud_component_plan_clear(ud_component_plan*plan){if(!plan)return;ud_free((void*)plan->physical_tree.data);plan->physical_tree=(ud_string){0};}

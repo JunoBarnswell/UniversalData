@@ -770,30 +770,9 @@ static ud_status provision(void *state) {
     return rc == SQLITE_OK ? UD_OK : failure(p, rc);
 }
 static const ud_connector_api connector = {
-    sizeof(connector),
-    UD_PLUGIN_ABI,
-    UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-        UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
-        UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_PREPARED |
-        UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
-    connector_test,
-    connector_discover,
-    connector_read_open,
-    connector_read_next,
-    connector_read_close,
-    connector_write,
-    connector_receipt,
-    connector_cancel,
-    connector_execute_command,
-    begin_transaction,
-    commit_transaction,
-    rollback_transaction,
-    metadata,
-    set_control,
-    reset_session,
-    NULL,
-    provision,
-    UD_SQL_SQLITE};
+ .struct_size=sizeof(connector),.abi_version=UD_PLUGIN_ABI,
+ .capabilities=UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_EXECUTE_SQL|UD_CONNECT_TRANSACTION|UD_CONNECT_METADATA|UD_CONNECT_POOL|UD_CONNECT_CHANGESET|UD_CONNECT_PREPARED|UD_CONNECT_BATCH_WRITE|UD_CONNECT_PROVISION,
+ .test=connector_test,.discover=connector_discover,.read_open=connector_read_open,.read_next=connector_read_next,.read_close=connector_read_close,.write=connector_write,.receipt=connector_receipt,.cancel=connector_cancel,.execute=connector_execute_command,.begin=begin_transaction,.commit=commit_transaction,.rollback=rollback_transaction,.metadata=metadata,.set_control=set_control,.reset_session=reset_session,.provision=provision,.metadata_dialect=UD_SQL_SQLITE,.parameter_style=UD_SQL_PARAMETER_QUESTION};
 
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))

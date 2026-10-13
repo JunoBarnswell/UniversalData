@@ -1,6 +1,7 @@
 #include "ud/quality.h"
 #include "ud/regex.h"
 #include "ud/cache.h"
+#include "snapshot.h"
 #include "../internal.h"
 typedef struct seen_key {
     ud_value *values;
@@ -200,7 +201,8 @@ ud_status ud_quality_create(ud_context *ctx, const ud_field *fields, uint32_t co
                                       .duplicates = UD_CACHE_FIRST,
                                       .buffers = options->buffers,
                                       .check = options->check,
-                                      .user = options->user};
+                                      .user = options->user,
+                                      .record_state = options->record_state};
             if (!s && options->buffers)
                 s = ud_cache_create(ctx, input->reference, &cache, &r->reference);
             q->reference_ready = 0;
@@ -227,7 +229,15 @@ ud_status ud_quality_create(ud_context *ctx, const ud_field *fields, uint32_t co
             if (!r->config.pattern)
                 s = UD_RESOURCE;
             if (!s && !input->match)
-                s = ud_regex_compile(ctx, r->config.pattern, r->config.pattern_length, &(ud_regex_options){.struct_size=sizeof(ud_regex_options),.abi_version=UD_ABI_VERSION,.max_steps=1000000,.max_depth=64,.heap_bytes=1048576,.check=options->check,.user=options->user}, &r->regex);
+                s = ud_regex_compile(ctx, r->config.pattern, r->config.pattern_length,
+                                     &(ud_regex_options){.struct_size = sizeof(ud_regex_options),
+                                                         .abi_version = UD_ABI_VERSION,
+                                                         .max_steps = 1000000,
+                                                         .max_depth = 64,
+                                                         .heap_bytes = 1048576,
+                                                         .check = options->check,
+                                                         .user = options->user},
+                                     &r->regex);
         }
     }
     if (!s) {
@@ -323,58 +333,62 @@ static ud_status check_rule(ud_quality *q, quality_rule *r, const ud_batch *inpu
     }
     return UD_OK;
 }
+static ud_status record_one_key(ud_quality *q, quality_rule *rule, const ud_batch *input,
+                                uint32_t row) {
+    int null = 0;
+    for (uint32_t j = 0; j < rule->config.column_count; j++) {
+        ud_value value;
+        UD_TRY(ud_batch_get(input, row, rule->config.columns[j], &value));
+        null |= value.is_null;
+    }
+    if (null)
+        return UD_OK;
+    int absent = 0;
+    UD_TRY(check_rule(q, rule, input, row, &absent));
+    if (!absent)
+        return UD_OK;
+    if (!rule->buckets || rule->key_count >= rule->bucket_count / 2) {
+        uint32_t capacity = rule->bucket_count ? rule->bucket_count * 2 : 64;
+        if (capacity < rule->bucket_count)
+            return UD_RESOURCE;
+        seen_key **buckets = ud_alloc(q->ctx, (size_t)capacity * sizeof(*buckets));
+        if (!buckets)
+            return UD_RESOURCE;
+        for (seen_key *key = rule->seen; key; key = key->next) {
+            uint32_t at = (uint32_t)key->hash & (capacity - 1);
+            key->bucket_next = buckets[at];
+            buckets[at] = key;
+        }
+        ud_free(rule->buckets);
+        rule->buckets = buckets;
+        rule->bucket_count = capacity;
+    }
+    seen_key *key = ud_alloc(q->ctx, sizeof(*key));
+    if (!key)
+        return UD_RESOURCE;
+    key->values = ud_alloc(q->ctx, rule->config.column_count * sizeof(*key->values));
+    if (!key->values) {
+        ud_free(key);
+        return UD_RESOURCE;
+    }
+    key->next = rule->seen;
+    rule->seen = key;
+    for (uint32_t j = 0; j < rule->config.column_count; j++) {
+        ud_value value;
+        UD_TRY(ud_batch_get(input, row, rule->config.columns[j], &value));
+        UD_TRY(ud_copy_value(q->ctx, &value, key->values + j, 0));
+    }
+    UD_TRY(key_hash(input, row, rule->config.columns, rule->config.column_count, &key->hash));
+    key->bucket_next = rule->buckets[key->hash & (rule->bucket_count - 1)];
+    rule->buckets[key->hash & (rule->bucket_count - 1)] = key;
+    rule->key_count++;
+    return UD_OK;
+}
 static ud_status record_keys(ud_quality *q, const ud_batch *input, uint32_t row) {
     for (uint32_t r = 0; r < q->count; r++) {
         quality_rule *rule = q->rules + r;
-        if (rule->config.kind != UD_RULE_UNIQUE && rule->config.kind != UD_RULE_PRIMARY_KEY)
-            continue;
-        int null = 0;
-        for (uint32_t j = 0; j < rule->config.column_count; j++) {
-            ud_value value;
-            UD_TRY(ud_batch_get(input, row, rule->config.columns[j], &value));
-            null |= value.is_null;
-        }
-        if (null)
-            continue;
-        int absent = 0;
-        UD_TRY(check_rule(q, rule, input, row, &absent));
-        if (!absent)
-            continue;
-        if (!rule->buckets || rule->key_count >= rule->bucket_count / 2) {
-            uint32_t capacity = rule->bucket_count ? rule->bucket_count * 2 : 64;
-            if (capacity < rule->bucket_count)
-                return UD_RESOURCE;
-            seen_key **buckets = ud_alloc(q->ctx, (size_t)capacity * sizeof(*buckets));
-            if (!buckets)
-                return UD_RESOURCE;
-            for (seen_key *key = rule->seen; key; key = key->next) {
-                uint32_t at = (uint32_t)key->hash & (capacity - 1);
-                key->bucket_next = buckets[at];
-                buckets[at] = key;
-            }
-            ud_free(rule->buckets);
-            rule->buckets = buckets;
-            rule->bucket_count = capacity;
-        }
-        seen_key *key = ud_alloc(q->ctx, sizeof(*key));
-        if (!key)
-            return UD_RESOURCE;
-        key->values = ud_alloc(q->ctx, rule->config.column_count * sizeof(*key->values));
-        if (!key->values) {
-            ud_free(key);
-            return UD_RESOURCE;
-        }
-        key->next = rule->seen;
-        rule->seen = key;
-        for (uint32_t j = 0; j < rule->config.column_count; j++) {
-            ud_value value;
-            UD_TRY(ud_batch_get(input, row, rule->config.columns[j], &value));
-            UD_TRY(ud_copy_value(q->ctx, &value, key->values + j, 0));
-        }
-        UD_TRY(key_hash(input, row, rule->config.columns, rule->config.column_count, &key->hash));
-        key->bucket_next = rule->buckets[key->hash & (rule->bucket_count - 1)];
-        rule->buckets[key->hash & (rule->bucket_count - 1)] = key;
-        rule->key_count++;
+        if (rule->config.kind == UD_RULE_UNIQUE || rule->config.kind == UD_RULE_PRIMARY_KEY)
+            UD_TRY(record_one_key(q, rule, input, row));
     }
     return UD_OK;
 }
@@ -573,4 +587,237 @@ ud_status ud_quality_finish(ud_quality *q) {
 void ud_quality_get_metrics(const ud_quality *q, ud_quality_metrics *out) {
     if (out)
         *out = q ? q->metrics : (ud_quality_metrics){0};
+}
+static ud_status quality_contract(ud_quality *q, uint8_t digest[32]) {
+    ud_bytes bytes = {.ctx = q->ctx};
+    uint8_t schema[32];
+    ud_status status = ud_schema_fingerprint(q->schema, schema);
+    if (!status)
+        status = ud_bytes_put(&bytes, schema, 32);
+    if (!status)
+        status = ud_put_u64(&bytes, q->count);
+    for (uint32_t i = 0; !status && i < q->count; i++) {
+        ud_quality_rule *r = &q->rules[i].config;
+        if (r->match) {
+            status = UD_UNSUPPORTED;
+            break;
+        }
+        status = ud_put_string(&bytes, r->id, r->id_length);
+        uint64_t values[] = {r->kind, r->rule_version, r->policy, r->column_count,
+                             r->expected_rows};
+        for (uint32_t k = 0; !status && k < 5; k++)
+            status = ud_put_u64(&bytes, values[k]);
+        for (uint32_t k = 0; !status && k < r->column_count; k++)
+            status = ud_put_u64(&bytes, r->columns[k]);
+        if (!status && r->kind == UD_RULE_RANGE) {
+            ud_field field = q->schema->column[r->columns[0]].field;
+            field.nullable = 1;
+            ud_batch *bounds = NULL;
+            status = ud_batch_create(q->ctx, &field, 1, 2, &bounds);
+            if (!status)
+                status = ud_batch_append(bounds, &r->minimum, 1);
+            if (!status)
+                status = ud_batch_append(bounds, &r->maximum, 1);
+            if (!status)
+                status = ud_batch_seal(bounds);
+            if (!status)
+                status = ud_encode_batch(&bytes, bounds);
+            ud_batch_destroy(bounds);
+        }
+        if (!status)
+            status = ud_put_string(&bytes, r->pattern, r->pattern_length);
+        if (!status && r->kind == UD_RULE_FOREIGN_KEY) {
+            ud_batch *reference = NULL;
+            status = ud_cache_schema(q->rules[i].reference, &reference);
+            if (!status)
+                status = ud_schema_fingerprint(reference, schema);
+            if (!status)
+                status = ud_bytes_put(&bytes, schema, 32);
+            for (uint32_t k = 0; !status && k < r->column_count; k++)
+                status = ud_put_u64(&bytes, r->reference_columns[k]);
+            ud_batch_destroy(reference);
+        }
+    }
+    if (!status)
+        ud_hash(bytes.data, bytes.size, digest);
+    ud_bytes_clear(&bytes);
+    return status;
+}
+static ud_status rule_metrics_write(ud_bytes *b, const ud_quality_rule_metrics *m) {
+    uint64_t values[] = {
+        m->evaluated,        m->failed,         m->rejected,         m->ignored,
+        m->reference_loaded, m->reference_hits, m->reference_misses, m->reference_duplicates,
+        m->reference_pages};
+    for (uint32_t i = 0; i < 9; i++)
+        UD_TRY(ud_put_u64(b, values[i]));
+    return UD_OK;
+}
+static ud_status rule_metrics_read(ud_bytes *b, ud_quality_rule_metrics *m) {
+    uint64_t values[9];
+    for (uint32_t i = 0; i < 9; i++)
+        UD_TRY(ud_get_u64(b, values + i));
+    *m = (ud_quality_rule_metrics){values[0], values[1], values[2], values[3], values[4],
+                                   values[5], values[6], values[7], values[8]};
+    return UD_OK;
+}
+ud_status ud_quality_checkpoint(ud_quality *q, ud_batch **out) {
+    if (!q || !out || q->failed)
+        return UD_INVALID;
+    *out = NULL;
+    UD_TRY(quality_check(q));
+    ud_bytes bytes = {.ctx = q->ctx};
+    uint8_t contract[32];
+    ud_status status = quality_contract(q, contract);
+    if (!status)
+        status = ud_bytes_put(&bytes, "UDQUALITY9", 10);
+    if (!status)
+        status = ud_bytes_put(&bytes, contract, 32);
+    uint64_t values[] = {q->reference_ready,  q->finished,         q->metrics.processed,
+                         q->metrics.accepted, q->metrics.rejected, q->metrics.violations,
+                         q->metrics.ignored};
+    for (uint32_t i = 0; !status && i < 7; i++)
+        status = ud_put_u64(&bytes, values[i]);
+    for (uint32_t i = 0; !status && i < q->count; i++) {
+        quality_rule *r = q->rules + i;
+        status = rule_metrics_write(&bytes, &r->metrics);
+        if (!status)
+            status = ud_put_u64(&bytes, r->key_count);
+        if (!status && r->key_count) {
+            ud_field *fields = ud_alloc(q->ctx, r->config.column_count * sizeof(*fields));
+            if (!fields)
+                status = UD_RESOURCE;
+            for (uint32_t k = 0; fields && k < r->config.column_count; k++)
+                fields[k] = q->schema->column[r->config.columns[k]].field;
+            ud_batch *chunk = NULL;
+            if (!status)
+                status = ud_batch_create(q->ctx, fields, r->config.column_count,
+                                         q->options.max_batch_rows, &chunk);
+            for (seen_key *key = r->seen; !status && key; key = key->next) {
+                status = ud_batch_append(chunk, key->values, r->config.column_count);
+                if (!status && (chunk->rows == q->options.max_batch_rows || !key->next)) {
+                    status = ud_batch_seal(chunk);
+                    if (!status)
+                        status = ud_encode_batch(&bytes, chunk);
+                    ud_batch_destroy(chunk);
+                    chunk = NULL;
+                    if (!status && key->next)
+                        status = ud_batch_create(q->ctx, fields, r->config.column_count,
+                                                 q->options.max_batch_rows, &chunk);
+                }
+            }
+            ud_batch_destroy(chunk);
+            ud_free(fields);
+        }
+        if (!status && r->reference) {
+            ud_batch *cache = NULL;
+            status = ud_cache_checkpoint(r->reference, &cache);
+            if (!status)
+                status = ud_encode_batch(&bytes, cache);
+            ud_batch_destroy(cache);
+        }
+    }
+    if (!status)
+        status = ud_snapshot_batch(q->ctx, &bytes, out);
+    ud_bytes_clear(&bytes);
+    return status;
+}
+ud_status ud_quality_restore(ud_quality **owner, const ud_batch *state) {
+    if (!owner || !*owner)
+        return UD_INVALID;
+    ud_quality *q = *owner;
+    uint32_t rule_count = q->count;
+    UD_TRY(quality_check(q));
+    ud_bytes bytes;
+    UD_TRY(ud_snapshot_bytes(q->ctx, state, &bytes));
+    uint8_t magic[10], contract[32], expected[32];
+    UD_TRY(ud_bytes_get(&bytes, magic, 10));
+    UD_TRY(ud_bytes_get(&bytes, contract, 32));
+    UD_TRY(quality_contract(q, expected));
+    if (memcmp(magic, "UDQUALITY9", 10) || memcmp(contract, expected, 32))
+        return UD_FENCED;
+    ud_quality_rule *rules = ud_alloc(q->ctx, q->count * sizeof(*rules));
+    ud_batch **references = ud_alloc(q->ctx, q->count * sizeof(*references));
+    ud_status status = rules && references ? UD_OK : UD_RESOURCE;
+    for (uint32_t i = 0; !status && i < q->count; i++) {
+        rules[i] = q->rules[i].config;
+        if (q->rules[i].reference) {
+            status = ud_cache_schema(q->rules[i].reference, references + i);
+            rules[i].reference = references[i];
+        }
+    }
+    ud_quality *fresh = NULL;
+    if (!status)
+        status = ud_quality_create(q->ctx, q->schema->schema->fields, q->schema->columns, rules,
+                                   q->count, &q->options, &fresh);
+    uint64_t values[7] = {0};
+    for (uint32_t i = 0; !status && i < 7; i++)
+        status = ud_get_u64(&bytes, values + i);
+    if (!status && (values[0] > 1 || values[1] > 1 || values[3] > values[2] ||
+                    values[4] > values[2] || values[3] != values[2] - values[4]))
+        status = UD_CORRUPT;
+    for (uint32_t i = 0; !status && i < q->count; i++) {
+        quality_rule *r = fresh->rules + i;
+        status = rule_metrics_read(&bytes, &r->metrics);
+        uint64_t count = 0;
+        if (!status)
+            status = ud_get_u64(&bytes, &count);
+        if (!status && count && r->config.kind != UD_RULE_UNIQUE &&
+            r->config.kind != UD_RULE_PRIMARY_KEY)
+            status = UD_CORRUPT;
+        uint32_t *columns = ud_alloc(q->ctx, r->config.column_count * sizeof(*columns));
+        if (r->config.column_count && !columns && !status)
+            status = UD_RESOURCE;
+        for (uint32_t k = 0; columns && k < r->config.column_count; k++)
+            columns[k] = k;
+        while (!status && r->key_count < count) {
+            ud_batch *chunk = NULL;
+            status = ud_decode_batch(&bytes, &chunk);
+            if (!status && (!chunk->rows || chunk->columns != r->config.column_count ||
+                            chunk->rows > count - r->key_count))
+                status = UD_CORRUPT;
+            for (uint32_t k = 0; !status && k < chunk->columns; k++)
+                if (!ud_field_matches(&chunk->column[k].field,
+                                      &fresh->schema->column[r->config.columns[k]].field,
+                                      UD_FIELD_PORT))
+                    status = UD_CORRUPT;
+            const uint32_t *original = r->config.columns;
+            r->config.columns = columns;
+            for (uint32_t row = 0; !status && row < chunk->rows; row++) {
+                uint64_t before = r->key_count;
+                status = record_one_key(fresh, r, chunk, row);
+                if (!status && r->key_count != before + 1)
+                    status = UD_CORRUPT;
+            }
+            r->config.columns = original;
+            ud_batch_destroy(chunk);
+        }
+        ud_free(columns);
+        if (!status && r->reference) {
+            ud_batch *cache = NULL;
+            status = ud_decode_batch(&bytes, &cache);
+            if (!status)
+                status = ud_cache_restore(r->reference, cache);
+            ud_batch_destroy(cache);
+            if (!status && values[0])
+                status = ud_cache_reader_create(r->reference, fresh->schema, r->config.columns,
+                                                r->config.column_count, &r->reader);
+        }
+    }
+    if (!status && bytes.pos != bytes.size)
+        status = UD_CORRUPT;
+    if (!status) {
+        fresh->reference_ready = (int)values[0];
+        fresh->finished = (int)values[1];
+        fresh->metrics =
+            (ud_quality_metrics){values[2], values[3], values[4], values[5], values[6]};
+        *owner = fresh;
+        fresh = NULL;
+        ud_quality_destroy(q);
+    }
+    ud_quality_destroy(fresh);
+    for (uint32_t i = 0; references && i < rule_count; i++)
+        ud_batch_destroy(references[i]);
+    ud_free(references);
+    ud_free(rules);
+    return status;
 }

@@ -32,7 +32,7 @@ typedef struct ud_quality_rule {
     const char *pattern;
     uint32_t pattern_length;
     void *match_user;
-    ud_regex_match_fn match; /* NULL uses SDK's bounded UTF8 NFA. */
+    ud_regex_match_fn match; /* NULL uses SDK's bounded UTF8 PCRE2 engine. */
     uint64_t expected_rows;
 } ud_quality_rule;
 typedef struct ud_quality_violation {
@@ -46,7 +46,7 @@ typedef struct ud_quality_metrics {
 } ud_quality_metrics;
 typedef struct ud_quality_options {
     uint32_t struct_size, abi_version, max_batch_rows, max_violations;
-    int32_t policy;
+    int32_t policy,record_state;
     ud_buffer_manager *buffers;
     ud_status (*check)(void *);
     void *user;
@@ -70,6 +70,8 @@ UD_API ud_status ud_quality_create(ud_context *, const ud_field *, uint32_t colu
 UD_API ud_status ud_quality_schema(const ud_quality *, ud_batch **);
 UD_API ud_status ud_quality_apply(ud_quality *, const ud_batch *, ud_batch **accepted,
                                   ud_batch **rejected, ud_quality_violation **, uint32_t *);
+UD_API ud_status ud_quality_checkpoint(ud_quality *,ud_batch **);
+UD_API ud_status ud_quality_restore(ud_quality **,const ud_batch *);
 UD_API ud_status ud_quality_finish(ud_quality *);
 UD_API void ud_quality_get_metrics(const ud_quality *, ud_quality_metrics *);
 UD_API void ud_quality_destroy(ud_quality *);

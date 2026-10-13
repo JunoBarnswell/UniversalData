@@ -24,7 +24,7 @@ struct ud_batch {
     atomic_uint references;
     int sealed;
     ud_context *ctx;
-    uint32_t columns, rows, capacity;
+    uint32_t columns, rows, capacity,row_offset,owner_first;
     ud_column *column;
     ud_schema_owner *schema;
     ud_row_info *row_info;

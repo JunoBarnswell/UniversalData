@@ -198,7 +198,7 @@ static int float_operators(ud_context *ctx) {
     }
     ud_batch_destroy(joined);
     const char *commands =
-        "{\"version\":8,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*"
+        "{\"version\":9,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*"
         "\",\"name\":\"cnt\"},{\"function\":\"min\",\"column\":\"key\",\"name\":\"lo\"},{"
         "\"function\":\"max\",\"column\":\"key\",\"name\":\"hi\"}]}";
     ud_field left_fields[2];
@@ -424,7 +424,7 @@ static int allocation_failures(void) {
             field.name_length = 3;
             ud_plan *plan = NULL;
             ud_quality *q = NULL;
-            const char *commands = "{\"version\":8,\"group\":[\"key\"],\"aggregates\":[{"
+            const char *commands = "{\"version\":9,\"group\":[\"key\"],\"aggregates\":[{"
                                    "\"function\":\"count\",\"column\":\"*\",\"name\":\"cnt\"}]}";
             OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1,
                                      (ud_string){commands, (uint32_t)strlen(commands)}, NULL,

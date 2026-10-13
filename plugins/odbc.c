@@ -9,35 +9,8 @@
 #include <pthread.h>
 /* One ODBC owner for every external Driver Manager provider. SQLGetInfo and
  * SQLGetFunctions establish actual capabilities before a lease is admitted. */
-typedef struct odbc_state {
-    ud_host_api host;
-    SQLHENV environment;
-    SQLHDBC connection;
-    SQLHSTMT cursor;
-    pthread_mutex_t handles_lock;
-    SQLHSTMT handles[16];
-    ud_batch *schema;
-    uint32_t batch_size;
-    uint64_t capabilities;
-    int dialect, ansi, utc, transaction, broken, array_parameters;
-    atomic_int cancelled;
-    void *check_user;
-    ud_status (*check)(void *);
-    char dbms[128], version[128], client[128], quote;
-    SQLINTEGER native_error;
-    char sqlstate[6];
-} odbc_state;
-enum {
-    DIALECT_GENERIC = 0,
-    DIALECT_MSSQL,
-    DIALECT_MYSQL,
-    DIALECT_POSTGRES,
-    DIALECT_SQLITE,
-    DIALECT_ORACLE,
-    DIALECT_DB2,
-    DIALECT_DUCKDB
-};
-static ud_status control(odbc_state *p) {
+#include "odbc_internal.h"
+ud_status ud_odbc_control(odbc_state *p) {
     if (atomic_load(&p->cancelled) || p->host.cancelled(p->host.context))
         return UD_CANCELLED;
     return p->check ? p->check(p->check_user) : UD_OK;
@@ -71,29 +44,38 @@ static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
     return UD_IO;
 }
 /* Registration protects every live statement against concurrent cancellation.
- * Free and cancel hold the same short ownership lock; I/O does not hold it. */
+ * Free and ud_odbc_cancel hold the same short ownership lock; I/O does not hold it. */
 static SQLRETURN statement_allocate(odbc_state *p, SQLHSTMT *out) {
     pthread_mutex_lock(&p->handles_lock);
-    uint32_t i = 0; while (i < 16 && p->handles[i]) i++;
+    uint32_t i = 0;
+    while (i < 16 && p->handles[i])
+        i++;
     SQLRETURN rc = i == 16 ? SQL_ERROR : SQLAllocHandle(SQL_HANDLE_STMT, p->connection, out);
-    if (SQL_SUCCEEDED(rc)) p->handles[i] = *out;
-    pthread_mutex_unlock(&p->handles_lock); return rc;
+    if (SQL_SUCCEEDED(rc))
+        p->handles[i] = *out;
+    pthread_mutex_unlock(&p->handles_lock);
+    return rc;
 }
 static void statement_release(odbc_state *p, SQLHSTMT handle) {
-    if (!handle) return;
+    if (!handle)
+        return;
     pthread_mutex_lock(&p->handles_lock);
-    for (uint32_t i = 0; i < 16; i++) if (p->handles[i] == handle) { p->handles[i] = NULL; break; }
+    for (uint32_t i = 0; i < 16; i++)
+        if (p->handles[i] == handle) {
+            p->handles[i] = NULL;
+            break;
+        }
     SQLFreeHandle(SQL_HANDLE_STMT, handle);
     pthread_mutex_unlock(&p->handles_lock);
 }
-static ud_status parameter_get(odbc_state *p, const ud_batch *batch, uint32_t first,
-                               uint32_t row, const uint32_t *mapping, uint32_t i,
-                               const ud_write_options *write, const ud_sql_statement *plan,
-                               ud_value *out) {
-    if (!plan) return p->host.get(batch, first + row, mapping ? mapping[i] : i, out);
+static ud_status parameter_get(odbc_state *p, const ud_batch *batch, uint32_t first, uint32_t row,
+                               const uint32_t *mapping, uint32_t i, const ud_write_options *write,
+                               const ud_sql_statement *plan, ud_value *out) {
+    if (!plan)
+        return p->host.get(batch, first + row, mapping ? mapping[i] : i, out);
     ud_sql_parameter ref = plan->parameters[i];
-    return p->host.get(ref.source == UD_SQL_BEFORE ? write->before : batch,
-                       ref.row, ref.column, out);
+    return p->host.get(ref.source == UD_SQL_BEFORE ? write->before : batch, ref.row, ref.column,
+                       out);
 }
 static ud_status wide(odbc_state *p, const char *text, uint32_t length, SQLWCHAR **out,
                       SQLINTEGER *units) {
@@ -195,7 +177,7 @@ static ud_status utf8(odbc_state *p, const SQLWCHAR *text, uint32_t units, char 
 }
 static ud_status prepare(odbc_state *p, ud_string sql, SQLHSTMT *out) {
     *out = SQL_NULL_HSTMT;
-    ud_status s = control(p);
+    ud_status s = ud_odbc_control(p);
     if (s)
         return s;
     if (!SQL_SUCCEEDED(statement_allocate(p, out)))
@@ -400,7 +382,7 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
         *affected = 0;
     if (!rows)
         return UD_OK;
-    ud_status s = control(p);
+    ud_status s = ud_odbc_control(p);
     if (s)
         return s;
     SQLUSMALLINT *statuses = p->host.allocate(p->host.context, rows * sizeof(*statuses));
@@ -412,7 +394,8 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
         p->host.deallocate(statuses);
         for (uint32_t row = 0; row < rows; row++) {
             uint64_t count = 0;
-            s = execute_bound(p, stmt, parameters, first + row, 1, mapping, columns, &count, write, plan);
+            s = execute_bound(p, stmt, parameters, first + row, 1, mapping, columns, &count, write,
+                              plan);
             if (s)
                 return s;
             if (affected)
@@ -433,7 +416,8 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
     }
     parameter *bound = NULL;
     if (!s)
-        s = parameters_bind(p, stmt, parameters, first, rows, mapping, columns, write, plan, &bound);
+        s = parameters_bind(p, stmt, parameters, first, rows, mapping, columns, write, plan,
+                            &bound);
     SQLRETURN rc = !s ? SQLExecute(stmt) : SQL_ERROR;
     if (!s && !SQL_SUCCEEDED(rc))
         s = failure(p, SQL_HANDLE_STMT, stmt);
@@ -482,7 +466,7 @@ static ud_status command(odbc_state *p, ud_string sql, const ud_batch *parameter
         statement_release(p, stmt);
     return s;
 }
-static ud_status literal_command(odbc_state *p, const char *sql) {
+ud_status ud_odbc_command(odbc_state *p, const char *sql) {
     return command(p, (ud_string){sql, (uint32_t)strlen(sql)}, NULL, NULL);
 }
 static ud_status get_cell(odbc_state *p, SQLHSTMT stmt, uint32_t column, int binary, char **out,
@@ -580,7 +564,7 @@ static ud_status get_cell(odbc_state *p, SQLHSTMT stmt, uint32_t column, int bin
     return UD_OK;
 }
 
-static ud_status read_close(void *state) {
+ud_status ud_odbc_read_close(void *state) {
     odbc_state *p = state;
     if (p->cursor)
         statement_release(p, p->cursor);
@@ -589,7 +573,7 @@ static ud_status read_close(void *state) {
     p->schema = NULL;
     return UD_OK;
 }
-static ud_status read_open(void *state, const ud_read_options *o, const ud_batch *schema) {
+ud_status ud_odbc_read_open(void *state, const ud_read_options *o, const ud_batch *schema) {
     odbc_state *p = state;
     if (p->cursor)
         return UD_BUSY;
@@ -630,10 +614,10 @@ static ud_status read_open(void *state, const ud_read_options *o, const ud_batch
     p->host.deallocate(fields);
     p->batch_size = o->batch_size;
     if (s)
-        read_close(p);
+        ud_odbc_read_close(p);
     return s;
 }
-static ud_status read_next(void *state, ud_batch **out) {
+ud_status ud_odbc_read_next(void *state, ud_batch **out) {
     odbc_state *p = state;
     *out = NULL;
     if (!p->cursor)
@@ -648,7 +632,7 @@ static ud_status read_next(void *state, ud_batch **out) {
     if (!values || !owned)
         s = UD_RESOURCE;
     while (!s && p->host.rows(*out) < p->batch_size) {
-        s = control(p);
+        s = ud_odbc_control(p);
         if (s)
             break;
         SQLRETURN rc = SQLFetch(p->cursor);
@@ -708,7 +692,7 @@ static ud_status read_next(void *state, ud_batch **out) {
     }
     return UD_OK;
 }
-static ud_status begin(void *state, int32_t isolation) {
+ud_status ud_odbc_begin(void *state, int32_t isolation) {
     odbc_state *p = state;
     if (p->transaction)
         return UD_INVALID;
@@ -726,10 +710,11 @@ static ud_status begin(void *state, int32_t isolation) {
     p->transaction = 1;
     return UD_OK;
 }
-static ud_status end_transaction(odbc_state *p, int commit) {
+static ud_status end_transaction(odbc_state *p, int commit_requested) {
     if (!p->transaction)
         return UD_INVALID;
-    SQLRETURN rc = SQLEndTran(SQL_HANDLE_DBC, p->connection, commit ? SQL_COMMIT : SQL_ROLLBACK);
+    SQLRETURN rc =
+        SQLEndTran(SQL_HANDLE_DBC, p->connection, commit_requested ? SQL_COMMIT : SQL_ROLLBACK);
     if (!SQL_SUCCEEDED(rc)) {
         failure(p, SQL_HANDLE_DBC, p->connection);
         return UD_COMMIT_UNKNOWN;
@@ -738,14 +723,14 @@ static ud_status end_transaction(odbc_state *p, int commit) {
     if (!SQL_SUCCEEDED(SQLSetConnectAttr(p->connection, SQL_ATTR_AUTOCOMMIT,
                                          (SQLPOINTER)SQL_AUTOCOMMIT_ON, 0))) {
         p->broken = 1;
-        return commit ? UD_COMMIT_UNKNOWN : UD_IO;
+        return commit_requested ? UD_COMMIT_UNKNOWN : UD_IO;
     }
     return UD_OK;
 }
-static ud_status commit(void *state) {
+ud_status ud_odbc_commit(void *state) {
     return end_transaction(state, 1);
 }
-static ud_status rollback(void *state) {
+ud_status ud_odbc_rollback(void *state) {
     return end_transaction(state, 0);
 }
 static char *identifier(odbc_state *p, ud_string value) {
@@ -833,7 +818,7 @@ static ud_status columns_query(odbc_state *p, ud_string table, SQLHSTMT *stmt, i
     }
     return s;
 }
-static ud_status discover(void *state, ud_string table, ud_batch **out) {
+ud_status ud_odbc_discover(void *state, ud_string table, ud_batch **out) {
     odbc_state *p = state;
     *out = NULL;
     char **primary = p->host.allocate(p->host.context, 64 * sizeof(*primary));
@@ -1002,25 +987,30 @@ static ud_status provision(void *state) {
               "NULL,batch_id TEXT NOT NULL,digest BLOB NOT NULL,source_position TEXT NOT "
               "NULL,PRIMARY KEY(tenant,job,batch_id))"
             : NULL;
-    return sql ? literal_command(p, sql) : UD_UNSUPPORTED;
+    ud_status status = sql ? ud_odbc_command(p, sql) : UD_UNSUPPORTED;
+    if (!status && p->dialect == DIALECT_MSSQL && (p->capabilities & UD_CONNECT_NATIVE_CDC))
+        status = ud_mssql_cdc_provision(p);
+    return status;
 }
 static int native_dialect(const odbc_state *p) {
-    return p->dialect == DIALECT_MSSQL ? UD_SQL_SQLSERVER
-         : p->dialect == DIALECT_MYSQL ? UD_SQL_MYSQL
-         : p->dialect == DIALECT_POSTGRES ? UD_SQL_POSTGRESQL
-         : p->dialect == DIALECT_SQLITE ? UD_SQL_SQLITE
-         : p->dialect == DIALECT_ORACLE ? UD_SQL_ORACLE
-         : p->dialect == DIALECT_DB2 ? UD_SQL_DB2
-         : p->dialect == DIALECT_DUCKDB ? UD_SQL_DUCKDB : UD_SQL_CANONICAL;
+    return p->dialect == DIALECT_MSSQL      ? UD_SQL_SQLSERVER
+           : p->dialect == DIALECT_MYSQL    ? UD_SQL_MYSQL
+           : p->dialect == DIALECT_POSTGRES ? UD_SQL_POSTGRESQL
+           : p->dialect == DIALECT_SQLITE   ? UD_SQL_SQLITE
+           : p->dialect == DIALECT_ORACLE   ? UD_SQL_ORACLE
+           : p->dialect == DIALECT_DB2      ? UD_SQL_DB2
+           : p->dialect == DIALECT_DUCKDB   ? UD_SQL_DUCKDB
+                                            : UD_SQL_CANONICAL;
 }
 static ud_status write_batch(void *state, ud_string tenant, const ud_write_options *o,
                              const ud_batch *batch, const uint8_t digest[32]) {
     odbc_state *p = state;
     if (p->cursor)
         return UD_BUSY;
-    if (o->mode == UD_WRITE_CHANGESET && p->transaction) return UD_UNSUPPORTED;
+    if (o->mode == UD_WRITE_CHANGESET && p->transaction)
+        return UD_UNSUPPORTED;
     int own = !p->transaction;
-    ud_status s = own ? begin(p, UD_ISOLATION_SERIALIZABLE) : UD_OK;
+    ud_status s = own ? ud_odbc_begin(p, UD_ISOLATION_SERIALIZABLE) : UD_OK;
     ud_commit_receipt previous = {0};
     if (!s)
         s = receipt(p, tenant, o->job, o->batch_id, &previous);
@@ -1033,21 +1023,30 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     p->host.deallocate((void *)previous.source_position.data);
     uint32_t width = o->mode == UD_WRITE_DELETE ? o->key_count : p->host.columns(batch);
     uint32_t limit = width ? 32767 / width : 0;
-    if (!limit) s = UD_RESOURCE;
-    if (limit > 1000) limit = 1000;
+    if (!limit)
+        s = UD_RESOURCE;
+    if (limit > 1000)
+        limit = 1000;
     for (uint32_t row = 0; !s && !existing && row < p->host.rows(batch);) {
         uint32_t count = o->mode == UD_WRITE_CHANGESET ? 1 : p->host.rows(batch) - row;
-        if (count > limit) count = limit;
-        ud_sql_statement plan = {0}; SQLHSTMT stmt = SQL_NULL_HSTMT;
-        s = p->host.compile_write(p->host.context, native_dialect(p), UD_SQL_PARAMETER_QUESTION,
-                                  o, batch, row, count, &plan);
-        if (!s) s = prepare(p, plan.sql, &stmt);
+        if (count > limit)
+            count = limit;
+        ud_sql_statement plan = {0};
+        SQLHSTMT stmt = SQL_NULL_HSTMT;
+        s = p->host.compile_write(p->host.context, native_dialect(p), UD_SQL_PARAMETER_QUESTION, o,
+                                  batch, row, count, &plan);
+        if (!s)
+            s = prepare(p, plan.sql, &stmt);
         uint64_t affected = 0;
-        if (!s) s = execute_bound(p, stmt, batch, 0, 1, NULL, plan.parameter_count,
-                                   &affected, o, &plan);
-        if (!s && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT && affected != 1)
+        if (!s)
+            s = execute_bound(p, stmt, batch, 0, 1, NULL, plan.parameter_count, &affected, o,
+                              &plan);
+        if (!s && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT &&
+            affected != 1)
             s = p->host.report(p->host.context, UD_FENCED, "changeset preimage conflict");
-        statement_release(p, stmt); p->host.statement_clear(&plan); row += count;
+        statement_release(p, stmt);
+        p->host.statement_clear(&plan);
+        row += count;
     }
     if (!s && !existing) {
         ud_field f[] = {{.name = "tenant", .name_length = 6, .type = UD_UTF8},
@@ -1075,11 +1074,11 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         p->host.batch_destroy(b);
     }
     if (!s)
-        s = control(p);
+        s = ud_odbc_control(p);
     if (own) {
         if (!s)
-            s = commit(p);
-        else if (rollback(p) != UD_OK)
+            s = ud_odbc_commit(p);
+        else if (ud_odbc_rollback(p) != UD_OK)
             s = UD_COMMIT_UNKNOWN;
     }
     return s;
@@ -1088,7 +1087,7 @@ static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **
     odbc_state *p = state;
     *out = NULL;
     if (o->kind == UD_METADATA_COLUMNS)
-        return discover(p, o->parent, out);
+        return ud_odbc_discover(p, o->parent, out);
     SQLHSTMT stmt = SQL_NULL_HSTMT;
     if (!SQL_SUCCEEDED(statement_allocate(p, &stmt)))
         return UD_RESOURCE;
@@ -1140,7 +1139,7 @@ static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **
         s = UD_RESOURCE;
     uint64_t at = 0;
     while (!s && p->host.rows(*out) < o->limit) {
-        s = control(p);
+        s = ud_odbc_control(p);
         if (s)
             break;
         rc = SQLFetch(stmt);
@@ -1176,7 +1175,7 @@ static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **
     }
     return s;
 }
-static ud_status execute(void *state, const ud_read_options *o, uint64_t *processed) {
+ud_status ud_odbc_execute(void *state, const ud_read_options *o, uint64_t *processed) {
     return command(state, o->sql, o->parameters, processed);
 }
 static ud_status test(void *state) {
@@ -1191,35 +1190,40 @@ static ud_status test(void *state) {
         statement_release(p, stmt);
     return s;
 }
-static void cancel(void *state) {
-    odbc_state *p = state; atomic_store(&p->cancelled, 1);
+void ud_odbc_cancel(void *state) {
+    odbc_state *p = state;
+    atomic_store(&p->cancelled, 1);
     pthread_mutex_lock(&p->handles_lock);
-    for (uint32_t i = 0; i < 16; i++) if (p->handles[i]) SQLCancelHandle(SQL_HANDLE_STMT, p->handles[i]);
+    ud_mssql_cdc_cancel(p);
+    for (uint32_t i = 0; i < 16; i++)
+        if (p->handles[i])
+            SQLCancelHandle(SQL_HANDLE_STMT, p->handles[i]);
     pthread_mutex_unlock(&p->handles_lock);
 }
 static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     odbc_state *p = state;
     p->check_user = user;
-    p->check = check;
+    p->check = check;p->host.control_user=user;p->host.check_io=check;
     atomic_store(&p->cancelled, 0);
 }
 static ud_status reset(void *state) {
     odbc_state *p = state;
-    if (p->cursor || p->transaction || p->broken)
+    if (p->cursor || p->transaction || p->cdc || p->broken)
         return UD_CORRUPT;
     atomic_store(&p->cancelled, 0);
-    return p->dialect == DIALECT_POSTGRES ? literal_command(p, "DISCARD ALL")
-           : p->dialect == DIALECT_MSSQL  ? literal_command(p, "EXEC sys.sp_reset_connection")
+    return p->dialect == DIALECT_POSTGRES ? ud_odbc_command(p, "DISCARD ALL")
+           : p->dialect == DIALECT_MSSQL  ? ud_odbc_command(p, "EXEC sys.sp_reset_connection")
                                           : UD_UNSUPPORTED;
 }
 static uint64_t capabilities(void *state) {
     return ((odbc_state *)state)->capabilities;
 }
-static void destroy(void *state) {
+void ud_odbc_destroy(void *state) {
     odbc_state *p = state;
     if (!p)
         return;
-    read_close(p);
+    ud_mssql_cdc_close(p);
+    ud_odbc_read_close(p);
     if (p->transaction)
         SQLEndTran(SQL_HANDLE_DBC, p->connection, SQL_ROLLBACK);
     if (p->connection) {
@@ -1229,6 +1233,7 @@ static void destroy(void *state) {
     if (p->environment)
         SQLFreeHandle(SQL_HANDLE_ENV, p->environment);
     pthread_mutex_destroy(&p->handles_lock);
+    p->host.deallocate(p->configuration);
     p->host.deallocate(p);
 }
 static int contains(const char *text, const char *word) {
@@ -1247,14 +1252,23 @@ static int contains(const char *text, const char *word) {
     }
     return 0;
 }
-static ud_status initialize(const ud_host_api *h, const char *configuration, uint32_t length,
-                            void **out) {
+ud_status ud_odbc_initialize(const ud_host_api *h, const char *configuration, uint32_t length,
+                             void **out) {
     *out = NULL;
     odbc_state *p = h->allocate(h->context, sizeof(*p));
     if (!p)
         return UD_RESOURCE;
     p->host = *h;
-    if (pthread_mutex_init(&p->handles_lock, NULL)) { h->deallocate(p); return UD_RESOURCE; }
+    p->configuration = plugin_string(h, configuration, length);
+    p->configuration_length = length;
+    if (!p->configuration) {
+        h->deallocate(p);
+        return UD_RESOURCE;
+    }
+    if (pthread_mutex_init(&p->handles_lock, NULL)) {
+        h->deallocate(p);
+        return UD_RESOURCE;
+    }
     p->check = h->check_io;
     p->check_user = h->control_user;
     atomic_init(&p->cancelled, 0);
@@ -1286,7 +1300,7 @@ static ud_status initialize(const ud_host_api *h, const char *configuration, uin
             s = UD_UNSUPPORTED;
     }
     if (!s)
-        s = control(p);
+        s = ud_odbc_control(p);
     if (!s && !SQL_SUCCEEDED(SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &p->environment)))
         s = UD_RESOURCE;
     if (!s && !SQL_SUCCEEDED(SQLSetEnvAttr(p->environment, SQL_ATTR_ODBC_VERSION,
@@ -1356,13 +1370,22 @@ static ud_status initialize(const ud_host_api *h, const char *configuration, uin
                 s = UD_AUTH;
         }
     }
+    if (!s && p->dialect == DIALECT_MSSQL) {
+        int enabled = 0;
+        s = ud_mssql_cdc_enabled(p, &enabled);
+        if (!s && enabled)
+            p->capabilities |= UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT;
+    }
     h->json_destroy(config);
     if (s) {
-        destroy(p);
+        ud_odbc_destroy(p);
         return s;
     }
     *out = p;
     return UD_OK;
+}
+static int32_t session_dialect(void *state) {
+    return native_dialect(state);
 }
 static const ud_connector_api connector = {
     .struct_size = sizeof(ud_connector_api),
@@ -1370,25 +1393,31 @@ static const ud_connector_api connector = {
     .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
                     UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS |
                     UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_PREPARED |
-                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
+                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION | UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT,
     .test = test,
-    .discover = discover,
-    .read_open = read_open,
-    .read_next = read_next,
-    .read_close = read_close,
+    .discover = ud_odbc_discover,
+    .read_open = ud_odbc_read_open,
+    .read_next = ud_odbc_read_next,
+    .read_close = ud_odbc_read_close,
     .write = write_batch,
     .receipt = receipt,
-    .cancel = cancel,
-    .execute = execute,
-    .begin = begin,
-    .commit = commit,
-    .rollback = rollback,
+    .cancel = ud_odbc_cancel,
+    .execute = ud_odbc_execute,
+    .begin = ud_odbc_begin,
+    .commit = ud_odbc_commit,
+    .rollback = ud_odbc_rollback,
     .metadata = metadata,
     .set_control = set_control,
     .reset_session = reset,
     .session_capabilities = capabilities,
     .provision = provision,
-    .metadata_dialect = UD_SQL_CANONICAL};
+    .parameter_style = UD_SQL_PARAMETER_QUESTION,
+    .metadata_dialect = UD_SQL_CANONICAL,
+    .session_dialect = session_dialect,
+    .cdc_open = ud_mssql_cdc_open,
+    .cdc_next = ud_mssql_cdc_next,
+    .cdc_confirm = ud_mssql_cdc_confirm,
+    .cdc_close = ud_mssql_cdc_close};
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t requested, ud_plugin_api *api) {
     if (requested != UD_PLUGIN_ABI || !api || api->struct_size != sizeof(*api))
         return UD_INCOMPATIBLE;
@@ -1399,8 +1428,8 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t requested, ud_plugin_api *
                            .roles = UD_PLUGIN_CONNECTOR,
                            .capabilities = UD_CAP_READ | UD_CAP_WRITE | UD_CAP_SQL |
                                            UD_CAP_TRANSACTION | UD_CAP_THREAD_SAFE,
-                           .initialize = initialize,
-                           .destroy = destroy,
+                           .initialize = ud_odbc_initialize,
+                           .destroy = ud_odbc_destroy,
                            .shutdown = plugin_shutdown,
                            .connector = &connector};
     return UD_OK;

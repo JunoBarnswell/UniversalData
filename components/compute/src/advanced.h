@@ -14,6 +14,7 @@ ud_status ud_advanced_end(ud_advanced *,uint32_t);
 ud_status ud_advanced_pull(ud_advanced *,ud_batch **,uint32_t *);
 uint64_t ud_advanced_demand(const ud_advanced *);
 ud_status ud_advanced_diagnostics(const ud_advanced *,char **,uint32_t *);
+ud_string ud_advanced_tree(const ud_advanced *);
 uint32_t ud_advanced_algorithm(const ud_advanced *);
 uint32_t ud_advanced_output_count(const ud_advanced *);
 void ud_advanced_destroy(ud_advanced *);

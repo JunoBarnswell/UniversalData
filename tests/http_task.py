@@ -88,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
         if https:
             connections.append({"id": "ca", "driver": "file", "resource": str(ca)})
             cfg["caConnection"] = "ca"
-        doc = {"version": 8, "id": "http", "variables": {"status": {"type": "int64", "default": -1}},
+        doc = {"version": 9, "id": "http", "variables": {"status": {"type": "int64", "default": -1}},
                "connections": connections,
                "controlFlow": {"tasks": [{"id": "request", "kind": "http.request", "config": cfg}], "constraints": []},
                "dataFlows": []}

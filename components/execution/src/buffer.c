@@ -551,14 +551,14 @@ ud_status ud_buffer_manager_destroy(ud_buffer_manager *manager) {
 
 ud_status ud_buffer_reserve_external(ud_buffer_manager *m,uint64_t bytes) {
     if(!m)return UD_INVALID;
-    ud_mutex_lock(&m->mutex);
+    ud_mutex_lock(&m->lock);
     ud_status status=bytes>m->options.spill_limit-m->metrics.spill_bytes?UD_RESOURCE:UD_OK;
     if(!status){m->metrics.spill_bytes+=bytes;m->metrics.total_spill_bytes+=bytes;
         if(m->metrics.spill_bytes>m->metrics.spill_high_water)m->metrics.spill_high_water=m->metrics.spill_bytes;}
-    ud_mutex_unlock(&m->mutex);return status;
+    ud_mutex_unlock(&m->lock);return status;
 }
 void ud_buffer_release_external(ud_buffer_manager *m,uint64_t bytes) {
-    if(!m)return;ud_mutex_lock(&m->mutex);if(bytes<=m->metrics.spill_bytes)m->metrics.spill_bytes-=bytes;ud_mutex_unlock(&m->mutex);
+    if(!m)return;ud_mutex_lock(&m->lock);if(bytes<=m->metrics.spill_bytes)m->metrics.spill_bytes-=bytes;ud_mutex_unlock(&m->lock);
 }
 
 ud_status ud_buffer_working_allocate(ud_buffer_manager *manager,size_t bytes,void **out) {
@@ -573,3 +573,5 @@ ud_status ud_buffer_manager_limits(const ud_buffer_manager *manager,ud_buffer_op
     if(out->struct_size!=sizeof(*out)||out->abi_version!=UD_ABI_VERSION)return UD_INCOMPATIBLE;
     *out=manager->options;return UD_OK;
 }
+
+uint32_t ud_buffer_block_views(const ud_buffer_block*b){if(!b)return 0;ud_buffer_manager*m=b->manager;ud_mutex_lock(&m->mutex);uint32_t count=b->readers;ud_mutex_unlock(&m->mutex);return count;}

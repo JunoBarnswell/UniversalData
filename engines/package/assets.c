@@ -3,7 +3,8 @@
 #include "ud/connection_manager.h"
 #include "ud/format.h"
 struct ud_cache_asset {
-    ud_string id, source_connection;
+    ud_string id, source_connection,source_table;
+    uint32_t mode,max_entries;uint64_t ttl_ms;
     ud_execution *execution;
     ud_connection_lease *grant;
     ud_batch *schema;
@@ -99,10 +100,14 @@ ud_status ud_assets_create(ud_execution *e) {
         const ud_json *definition = ud_json_at(definitions, i);
         static const char *keys[] = {
             "id",          "schema",           "keys",       "duplicates", "scope",
-            "errorPolicy", "sourceConnection", "sourceTable"};
-        UD_TRY(ud_json_keys(definition, keys, 8));
+            "errorPolicy", "sourceConnection", "sourceTable","mode","maxEntries","ttlMs"};
+        UD_TRY(ud_json_keys(definition, keys, 11));
         struct ud_cache_asset *asset = e->assets + i;
         asset->execution = e;
+        ud_string mode={"full",4};if(ud_member(definition,"mode"))UD_TRY(ud_json_string(ud_member(definition,"mode"),&mode));
+        if(ud_named(mode,"partial"))asset->mode=UD_CACHE_PARTIAL;else if(!ud_named(mode,"full"))return UD_SCHEMA;
+        uint64_t maximum=4096,ttl=60000;if(ud_member(definition,"maxEntries"))UD_TRY(ud_json_uint(ud_member(definition,"maxEntries"),&maximum));if(ud_member(definition,"ttlMs"))UD_TRY(ud_json_uint(ud_member(definition,"ttlMs"),&ttl));if(!maximum||maximum>65536||!ttl)return UD_SCHEMA;asset->max_entries=(uint32_t)maximum;asset->ttl_ms=ttl;
+
         UD_TRY(ud_json_string(ud_member(definition, "id"), &asset->id));
         UD_TRY(
             ud_json_string(ud_member(definition, "sourceConnection"), &asset->source_connection));
@@ -142,6 +147,7 @@ ud_status ud_assets_create(ud_execution *e) {
         if (!status)
             status = ud_connection_field_namespace(&e->root, asset->source_connection, table,
                                                    name_space);
+        if(!status){asset->source_table=table;if(asset->mode==UD_CACHE_PARTIAL&&!table.length)status=UD_SCHEMA;}
         if (!status)
             status = ud_schema_from_json(e->ctx, json, length, (ud_string){name_space, 32},
                                          &asset->schema);
@@ -205,7 +211,7 @@ ud_status ud_asset_build(ud_activation *a, ud_string id, ud_cache **out) {
         return UD_INVALID;
     *out = NULL;
     struct ud_cache_asset *asset = find_asset(a, id);
-    if (!asset)
+    if (!asset || asset->mode!=UD_CACHE_FULL)
         return UD_SCHEMA;
     ud_mutex_lock(&a->execution->asset_lock);
     int busy = asset->building || asset->cache;
@@ -230,7 +236,7 @@ ud_status ud_asset_build(ud_activation *a, ud_string id, ud_cache **out) {
                                 .buffers = a->execution->buffers,
                                 .executor = a->execution->executor,
                                 .check = root_check,
-                                .user = asset};
+                                .user = asset,.record_state=a->execution->journal!=NULL};
     if (!status)
         status = ud_cache_create(a->execution->ctx, asset->schema, &options, out);
     if (status) {
@@ -240,11 +246,13 @@ ud_status ud_asset_build(ud_activation *a, ud_string id, ud_cache **out) {
     }
     return status;
 }
+static ud_status asset_checkpoint_key(struct ud_cache_asset*asset,char out[65]){ud_bytes bytes={.ctx=asset->execution->ctx};ud_status status=ud_put_string(&bytes,"cache.asset",11);if(!status)status=ud_put_string(&bytes,asset->id.data,asset->id.length);uint8_t digest[32];if(!status){ud_hash(bytes.data,bytes.size,digest);for(uint32_t i=0;i<32;i++)snprintf(out+2*i,3,"%02x",digest[i]);}ud_bytes_clear(&bytes);return status;}
 ud_status ud_asset_publish(ud_activation *a, ud_string id, ud_cache *cache) {
     struct ud_cache_asset *asset = find_asset(a, id);
     if (!asset || !cache)
         return UD_SCHEMA;
     uint8_t fingerprint[32];
+    if(asset->execution->journal){ud_batch*state=NULL;char key[65];ud_status status=asset_checkpoint_key(asset,key);if(!status)status=ud_cache_checkpoint(cache,&state);if(!status)status=ud_checkpoint_snapshot_write(&asset->execution->root,(ud_string){key,64},0,state);ud_batch_destroy(state);UD_TRY(status);}
     UD_TRY(ud_cache_fingerprint(cache, fingerprint));
     UD_TRY(ud_cache_retain(cache));
     ud_mutex_lock(&a->execution->asset_lock);
@@ -268,7 +276,14 @@ ud_status ud_asset_acquire(ud_activation *a, ud_string id, ud_cache **out) {
     if (!asset)
         return UD_SCHEMA;
     ud_mutex_lock(&a->execution->asset_lock);
-    ud_status status = asset->cache ? ud_cache_retain(asset->cache) : UD_SCHEMA;
+    ud_status status=UD_OK;
+    if(!asset->cache&&asset->mode==UD_CACHE_FULL&&asset->execution->journal){char key[65];ud_batch*state=NULL;status=asset_checkpoint_key(asset,key);if(!status)status=ud_checkpoint_snapshot_read(&asset->execution->root,(ud_string){key,64},0,&state);
+        if(!status&&!asset->grant)status=ud_activation_acquire_grant(&asset->execution->root,asset->source_connection,&asset->grant);
+        ud_cache_options options={.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,.max_batch_rows=a->execution->options.max_batch_rows,.keys=asset->keys,.key_count=asset->key_count,.duplicates=asset->duplicates,.error_policy=asset->error_policy,.buffers=a->execution->buffers,.executor=a->execution->executor,.check=root_check,.user=asset,.record_state=1};
+        if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_restore(asset->cache,state);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);ud_batch_destroy(state);
+        if(status&&asset->cache){ud_cache_release(asset->cache);asset->cache=NULL;}
+    }
+    if(!status)status=asset->cache?ud_cache_retain(asset->cache):UD_SCHEMA;
     if (!status)
         *out = asset->cache;
     ud_mutex_unlock(&a->execution->asset_lock);
@@ -394,4 +409,16 @@ void ud_source_versions_destroy(ud_execution *e) {
         ud_free(e->source_families);
         e->source_families = next;
     }
+}
+
+ud_status ud_asset_mode(ud_activation*a,ud_string id,uint32_t*mode,ud_string*table){struct ud_cache_asset*asset=find_asset(a,id);if(!asset)return UD_SCHEMA;if(mode)*mode=asset->mode;if(table)*table=asset->source_table;return UD_OK;}
+ud_status ud_asset_partial(ud_activation*a,ud_string id,ud_connection_lease*lease,ud_cache**out){
+    if(!a||!lease||!out)return UD_INVALID;*out=NULL;struct ud_cache_asset*asset=find_asset(a,id);if(!asset||asset->mode!=UD_CACHE_PARTIAL)return UD_SCHEMA;
+    UD_TRY(ud_connection_lease_authorize(lease,UD_ACCESS_READ));ud_mutex_lock(&a->execution->asset_lock);ud_status status=UD_OK;
+    if(!asset->cache){status=ud_connection_lease_snapshot_grant(lease,&a->execution->root,&asset->grant);
+      ud_cache_options options={.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,.max_batch_rows=a->execution->options.max_batch_rows,.keys=asset->keys,.key_count=asset->key_count,.duplicates=asset->duplicates,.error_policy=asset->error_policy,.buffers=a->execution->buffers,.executor=a->execution->executor,.check=root_check,.user=asset,.mode=UD_CACHE_PARTIAL,.max_entries=asset->max_entries,.ttl_ms=asset->ttl_ms};
+      if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);
+      if(status&&asset->grant){ud_connection_lease_release(asset->grant);asset->grant=NULL;}
+    }else{ud_string first={0},next={0};status=ud_connection_lease_resource(asset->grant,&first);if(!status)status=ud_connection_lease_resource(lease,&next);if(!status&&!ud_same(first,next))status=UD_INCOMPATIBLE;}
+    if(!status)status=ud_cache_retain(asset->cache);if(!status)*out=asset->cache;ud_mutex_unlock(&a->execution->asset_lock);return status;
 }

@@ -35,6 +35,7 @@ UD_API void ud_buffer_view_release(ud_buffer_view *);
 /* BUSY preserves the handle when views are alive. Other results consume it;
  * a failed spill deletion remains owned by the manager for destroy retry. */
 UD_API ud_status ud_buffer_release(ud_buffer_block *);
+UD_API uint32_t ud_buffer_block_views(const ud_buffer_block *);
 UD_API ud_status ud_buffer_manager_metrics(const ud_buffer_manager *, ud_buffer_metrics *);
 /* State indexes share the same bounded working domain as Wire/rehydration. */
 UD_API ud_status ud_buffer_working_allocate(ud_buffer_manager *, size_t, void **);

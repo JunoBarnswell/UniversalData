@@ -863,3 +863,6 @@ ud_status ud_connection_lease_cdc_open(ud_connection_lease*l,const ud_cdc_option
 ud_status ud_connection_lease_cdc_next(ud_connection_lease*l,ud_cdc_event*e){if(!l||!l->connection)return UD_UNSUPPORTED;UD_TRY(ud_connection_lease_authorize(l,UD_ACCESS_READ));return ud_connection_cdc_next(l->connection,e);}
 ud_status ud_connection_lease_cdc_confirm(ud_connection_lease*l,ud_string p){if(!l||!l->connection)return UD_UNSUPPORTED;UD_TRY(ud_connection_lease_authorize(l,UD_ACCESS_READ));return ud_connection_cdc_confirm(l->connection,p);}
 ud_status ud_connection_lease_cdc_close(ud_connection_lease*l){return l&&l->connection?ud_connection_cdc_close(l->connection):UD_UNSUPPORTED;}
+
+int32_t ud_connection_lease_dialect(const ud_connection_lease*l){return l&&l->connection?ud_connection_dialect(l->connection):UD_SQL_CANONICAL;}
+int32_t ud_connection_lease_parameter_style(const ud_connection_lease*l){return l&&l->connection?ud_connection_parameter_style(l->connection):0;}

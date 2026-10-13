@@ -17,8 +17,10 @@ typedef struct relational_component {
     uint64_t committed, conflicts;
 } relational_component;
 static int outputs(int k) {
-    if(k==UD_OPERATOR_DIFF_COMPARE)return 5;
-    if(k==UD_OPERATOR_ASOF_JOIN||k==UD_OPERATOR_TEMPORAL_JOIN)return 2;
+    if (k == UD_OPERATOR_DIFF_COMPARE)
+        return 5;
+    if (k == UD_OPERATOR_ASOF_JOIN || k == UD_OPERATOR_TEMPORAL_JOIN)
+        return 2;
     return k == UD_OPERATOR_PIVOT || k == UD_OPERATOR_ROW_SAMPLING ||
                    k == UD_OPERATOR_PERCENTAGE_SAMPLING
                ? 2
@@ -29,7 +31,12 @@ static ud_status bind_operator(const ud_component_context *c, int kind, ud_strin
                                const ud_batch *const *in, ud_cache *reference, ud_operator **out) {
     ud_sort_contract order[2] = {{0}};
     for (uint32_t p = 0;
-         p < (kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN || kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN || kind == UD_OPERATOR_DIFF_COMPARE ? 2u : 1u); p++)
+         p < (kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN ||
+                      kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN ||
+                      kind == UD_OPERATOR_DIFF_COMPARE
+                  ? 2u
+                  : 1u);
+         p++)
         if (c->input_plans)
             order[p] = c->input_plans[p].sort;
     ud_operator_options options = {.struct_size = sizeof(options),
@@ -67,7 +74,11 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     UD_TRY(ud_json_parse(c->memory, text.data, text.length, &config, NULL));
     ud_batch *dimension = NULL;
     const ud_batch *bound[2] = {
-        in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN || kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN || kind == UD_OPERATOR_DIFF_COMPARE ? in[1] : NULL};
+        in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN ||
+                       kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN ||
+                       kind == UD_OPERATOR_DIFF_COMPARE
+                   ? in[1]
+                   : NULL};
     ud_status s =
         kind == UD_OPERATOR_SCD ? inputs_for_scd(c, config, in[0], bound, &dimension) : UD_OK;
     ud_operator *o = NULL;
@@ -125,7 +136,11 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     if (!s)
         s = ud_error_policy(r->config, "errorPolicy", UD_ERROR_FAIL, &r->policy);
     const ud_batch *bound[2] = {
-        in[0], r->kind == UD_OPERATOR_MERGE || r->kind == UD_OPERATOR_MERGE_JOIN || r->kind == UD_OPERATOR_ASOF_JOIN || r->kind == UD_OPERATOR_TEMPORAL_JOIN || r->kind == UD_OPERATOR_DIFF_COMPARE ? in[1] : NULL};
+        in[0], r->kind == UD_OPERATOR_MERGE || r->kind == UD_OPERATOR_MERGE_JOIN ||
+                       r->kind == UD_OPERATOR_ASOF_JOIN || r->kind == UD_OPERATOR_TEMPORAL_JOIN ||
+                       r->kind == UD_OPERATOR_DIFF_COMPARE
+                   ? in[1]
+                   : NULL};
     if (!s && r->kind == UD_OPERATOR_SCD) {
         s = inputs_for_scd(c, r->config, in[0], bound, &r->dimension);
         if (!s)
@@ -192,8 +207,12 @@ static ud_status finish(void *ptr) {
     (void)ptr;
     return UD_OK;
 }
-static ud_status checkpoint(void*instance,ud_batch**out){return ud_operator_checkpoint(((relational_component*)instance)->operator,out);}
-static ud_status restore_state(void*instance,const ud_batch*state){return ud_operator_restore(&((relational_component*)instance)->operator,state);}
+static ud_status checkpoint(void *instance, ud_batch **out) {
+    return ud_operator_checkpoint(((relational_component *)instance)->operator, out);
+}
+static ud_status restore_state(void *instance, const ud_batch *state) {
+    return ud_operator_restore(&((relational_component *)instance)->operator, state);
+}
 static ud_status diagnostics(void *ptr, char **out, uint32_t *n) {
     return ud_operator_diagnostics(((relational_component *)ptr)->operator, out, n);
 }
@@ -204,13 +223,18 @@ static ud_status describe(void *user, const ud_component_context *c, ud_string t
     UD_TRY(ud_json_parse(c->memory, text.data, text.length, &config, NULL));
     ud_batch *dimension = NULL;
     const ud_batch *bound[2] = {
-        in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN || kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN || kind == UD_OPERATOR_DIFF_COMPARE ? in[1] : NULL};
+        in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN ||
+                       kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN ||
+                       kind == UD_OPERATOR_DIFF_COMPARE
+                   ? in[1]
+                   : NULL};
     ud_status s =
         kind == UD_OPERATOR_SCD ? inputs_for_scd(c, config, in[0], bound, &dimension) : UD_OK;
     ud_operator *o = NULL;
     if (!s)
         s = bind_operator(c, kind, text, bound, NULL, &o);
-    if (!s) s = ud_component_operator_plan(o, plan);
+    if (!s)
+        s = ud_component_operator_plan(o, plan);
     ud_operator_destroy(o);
     ud_batch_destroy(dimension);
     ud_json_destroy(config);
@@ -510,8 +534,9 @@ ud_status ud_relational_register(ud_registry *registry) {
                    {"rowSampling", UD_OPERATOR_ROW_SAMPLING},
                    {"percentageSampling", UD_OPERATOR_PERCENTAGE_SAMPLING},
                    {"scd", UD_OPERATOR_SCD},
-                   {"asOfJoin",UD_OPERATOR_ASOF_JOIN},{"temporalJoin",UD_OPERATOR_TEMPORAL_JOIN},
-                   {"diffCompare",UD_OPERATOR_DIFF_COMPARE}};
+                   {"asOfJoin", UD_OPERATOR_ASOF_JOIN},
+                   {"temporalJoin", UD_OPERATOR_TEMPORAL_JOIN},
+                   {"diffCompare", UD_OPERATOR_DIFF_COMPARE}};
     for (uint32_t i = 0; i < sizeof(entries) / sizeof(*entries); i++) {
         int k = entries[i].kind;
         ud_string schema = {0};
@@ -524,19 +549,28 @@ ud_status ud_relational_register(ud_registry *registry) {
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = schema,
             .category = UD_COMPONENT_TRANSFORM,
-            .inputs = k == UD_OPERATOR_MERGE || k == UD_OPERATOR_MERGE_JOIN || k==UD_OPERATOR_ASOF_JOIN || k==UD_OPERATOR_TEMPORAL_JOIN || k==UD_OPERATOR_DIFF_COMPARE ? 2 : 1,
+            .inputs = k == UD_OPERATOR_MERGE || k == UD_OPERATOR_MERGE_JOIN ||
+                              k == UD_OPERATOR_ASOF_JOIN || k == UD_OPERATOR_TEMPORAL_JOIN ||
+                              k == UD_OPERATOR_DIFF_COMPARE
+                          ? 2
+                          : 1,
             .outputs = (uint32_t)outputs(k),
             .synchronous_input = -1,
-            .error_output = k==UD_OPERATOR_DIFF_COMPARE?4:k==UD_OPERATOR_ASOF_JOIN||k==UD_OPERATOR_TEMPORAL_JOIN?1:k == UD_OPERATOR_PIVOT ? 1
-                            : k == UD_OPERATOR_SCD ? 5
-                                                   : -1,
+            .error_output = k == UD_OPERATOR_DIFF_COMPARE                                  ? 4
+                            : k == UD_OPERATOR_ASOF_JOIN || k == UD_OPERATOR_TEMPORAL_JOIN ? 1
+                            : k == UD_OPERATOR_PIVOT                                       ? 1
+                            : k == UD_OPERATOR_SCD                                         ? 5
+                                                                                           : -1,
             .capabilities = UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_REPLAY_SAFE |
                             UD_COMPONENT_STATEFUL |
                             (k == UD_OPERATOR_ROW_SAMPLING ? UD_COMPONENT_BLOCKING
                                                            : UD_COMPONENT_PARTIALLY_BLOCKING),
-            .optional_outputs = k==UD_OPERATOR_DIFF_COMPARE?UINT64_C(16):k==UD_OPERATOR_ASOF_JOIN||k==UD_OPERATOR_TEMPORAL_JOIN?UINT64_C(2):k == UD_OPERATOR_PIVOT ? UINT64_C(2)
-                                : k == UD_OPERATOR_SCD ? UINT64_C(33)
-                                                       : 0,
+            .optional_outputs = k == UD_OPERATOR_DIFF_COMPARE ? UINT64_C(16)
+                                : k == UD_OPERATOR_ASOF_JOIN || k == UD_OPERATOR_TEMPORAL_JOIN
+                                    ? UINT64_C(2)
+                                : k == UD_OPERATOR_PIVOT ? UINT64_C(2)
+                                : k == UD_OPERATOR_SCD   ? UINT64_C(33)
+                                                         : 0,
             .user = (void *)(intptr_t)k,
             .configure = configure,
             .prepare = prepare,
@@ -545,7 +579,10 @@ ud_status ud_relational_register(ud_registry *registry) {
             .dispose = dispose,
             .diagnostics = diagnostics,
             .describe_plan = describe,
-            .input_demand = demand, .state_version=1, .checkpoint=checkpoint, .restore=restore_state};
+            .input_demand = demand,
+            .state_version = 1,
+            .checkpoint = checkpoint,
+            .restore = restore_state};
         UD_TRY(ud_registry_register(registry, &d));
     }
     ud_component_descriptor d = {.struct_size = sizeof(d),
@@ -570,25 +607,39 @@ ud_status ud_relational_register(ud_registry *registry) {
     return ud_registry_register(registry, &d);
 }
 
-ud_status ud_component_operator_options(const ud_component_context *c,ud_operator_options *o) {
-    o->record_state=c->execution->journal!=NULL;
+ud_status ud_component_operator_options(const ud_component_context *c, ud_operator_options *o) {
+    o->record_state = c->execution->journal != NULL;
     ud_buffer_options limits = {0};
-    UD_TRY(ud_execution_buffer_options(c->execution,&limits));
+    UD_TRY(ud_execution_buffer_options(c->execution, &limits));
     uint32_t concurrency = ud_execution_concurrency(c->activation);
-    if(!concurrency) return UD_SCHEMA;
-    o->memory_budget=limits.working_limit/(2u*concurrency);
-    o->spill_budget=limits.spill_limit;
-    o->input_count=c->input_count;
-    o->errors=c->errors;
-    for(uint32_t i=0;i<c->input_count&&i<64;i++) if(c->input_plans) o->estimated_rows[i]=c->input_plans[i].estimated_rows;
+    if (!concurrency)
+        return UD_SCHEMA;
+    o->memory_budget = limits.working_limit / (2u * concurrency);
+    o->spill_budget = limits.spill_limit;
+    o->input_count = c->input_count;
+    o->errors = c->errors;
+    for (uint32_t i = 0; i < c->input_count && i < 64; i++)
+        if (c->input_plans)
+            o->estimated_rows[i] = c->input_plans[i].estimated_rows;
     return UD_OK;
 }
-ud_status ud_component_operator_plan(const ud_operator *o,ud_component_plan *out) {
-    ud_physical_plan_info info={.struct_size=sizeof(info),.abi_version=UD_ABI_VERSION};
-    UD_TRY(ud_operator_physical_plan(o,&info));
-    out->sort=info.sort;out->partitions=info.partitions;
-    out->algorithm=info.algorithm;out->ordering=info.sort.count?UD_ORDER_GLOBAL:info.algorithm==UD_PHYSICAL_GRACE_HASH?UD_ORDER_PARTITION:UD_ORDER_UNORDERED;
-    out->estimated_rows=info.estimated_rows;out->row_width=info.row_width;
-    out->memory_budget=info.memory_budget;out->spill_budget=info.spill_budget;out->estimated_cost=info.estimated_cost;
+ud_status ud_component_operator_plan(const ud_operator *o, ud_component_plan *out) {
+    ud_physical_plan_info info = {.struct_size = sizeof(info), .abi_version = UD_ABI_VERSION};
+    UD_TRY(ud_operator_physical_plan(o, &info));
+    out->sort = info.sort;
+    out->partitions = info.partitions;
+    out->algorithm = info.algorithm;
+    out->ordering = info.sort.count                            ? UD_ORDER_GLOBAL
+                    : info.algorithm == UD_PHYSICAL_GRACE_HASH ? UD_ORDER_PARTITION
+                                                               : UD_ORDER_UNORDERED;
+    out->estimated_rows = info.estimated_rows;
+    out->row_width = info.row_width;
+    out->memory_budget = info.memory_budget;
+    out->spill_budget = info.spill_budget;
+    out->estimated_cost = info.estimated_cost;
+    char *tree = NULL;
+    uint32_t length = 0;
+    UD_TRY(ud_operator_explain(o, &tree, &length));
+    out->physical_tree = (ud_string){tree, length};
     return UD_OK;
 }

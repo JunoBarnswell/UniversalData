@@ -140,3 +140,17 @@ ud_status ud_write_digest(ud_context*ctx,ud_string tenant,ud_string resource,con
 }
 
 void ud_cdc_event_clear(ud_cdc_event*event){if(!event)return;ud_free((void*)event->position.data);ud_free((void*)event->transaction_id.data);ud_batch_destroy(event->after);ud_batch_destroy(event->before);ud_free(event->operations);memset(event,0,sizeof(*event));}
+
+ud_status ud_sql_compile_lookup(ud_context*ctx,int32_t dialect,int32_t style,ud_string table_name,const ud_batch*reference,const uint32_t*reference_keys,const ud_batch*probe,const uint32_t*keys,uint32_t key_count,uint32_t first,uint32_t rows,ud_sql_statement*out){
+    if(!ctx||!reference||!probe||!out||!reference_keys||!keys||!key_count||first>probe->rows||rows>probe->rows-first)return UD_INVALID;memset(out,0,sizeof(*out));if(!rows)return UD_OK;
+    ud_write_options options={.table=table_name,.keys=reference_keys,.key_count=key_count};writer w={.ctx=ctx,.text={.ctx=ctx,.limit=16u*1024u*1024u},.statement=out,.options=&options,.batch=reference,.dialect=dialect,.style=style};ud_status status=UD_OK;
+    for(uint32_t i=0;!status&&i<key_count;i++)if(reference_keys[i]>=reference->columns||keys[i]>=probe->columns||!ud_field_matches(&reference->column[reference_keys[i]].field,&probe->column[keys[i]].field,UD_FIELD_VALUE_TYPE))status=UD_SCHEMA;
+    if(!status)status=put(&w,"SELECT ");if(!status)status=fields(&w,NULL);if(!status)status=put(&w," FROM ");if(!status)status=table(&w);if(!status)status=put(&w," WHERE ");
+    for(uint32_t row=0;!status&&row<rows;row++){if(row)status=put(&w," OR ");if(!status)status=put(&w,"(");for(uint32_t k=0;!status&&k<key_count;k++){if(k)status=put(&w," AND ");if(!status)status=column(&w,reference_keys[k],NULL);if(!status)status=put(&w,"=");if(!status)status=parameter(&w,first+row,keys[k],UD_SQL_AFTER);}if(!status)status=put(&w,")");}
+    if(!status){out->sql.length=(uint32_t)w.text.size;status=ud_bytes_put(&w.text,"",1);}if(!status){out->sql.data=(const char*)w.text.data;w.text.data=NULL;}ud_bytes_clear(&w.text);if(status)ud_sql_statement_clear(out);return status;
+}
+
+ud_status ud_sql_compile_scan(ud_context*ctx,int32_t dialect,ud_string table_name,const ud_batch*schema,ud_string*out){
+    if(!ctx||!schema||!out||!schema->columns||!table_name.length)return UD_INVALID;*out=(ud_string){0};ud_write_options options={.table=table_name};ud_sql_statement statement={0};writer w={.ctx=ctx,.text={.ctx=ctx},.statement=&statement,.options=&options,.batch=schema,.dialect=dialect};
+    ud_status status=put(&w,"SELECT ");if(!status)status=fields(&w,NULL);if(!status)status=put(&w," FROM ");if(!status)status=table(&w);if(!status){out->length=(uint32_t)w.text.size;status=ud_bytes_put(&w.text,"",1);}if(!status){out->data=(char*)w.text.data;w.text.data=NULL;}ud_bytes_clear(&w.text);return status;
+}

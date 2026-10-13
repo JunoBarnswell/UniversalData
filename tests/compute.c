@@ -8,7 +8,7 @@ int main(void) {
     ud_field schema[] = {{.name = "key", .name_length = 3, .type = UD_UTF8, .nullable = 1},
                          {.name = "amount", .name_length = 6, .type = UD_INT64, .nullable = 1}};
     const char *definition =
-        "{\"version\":8,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,"
+        "{\"version\":9,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,"
         "\"type\":\"int64\"}]},\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\","
         "\"column\":\"amount\",\"name\":\"total\"},{\"function\":\"count\",\"column\":\"*\","
         "\"name\":\"rows\"},{\"function\":\"min\",\"column\":\"amount\",\"name\":\"smallest\"},{"
@@ -80,16 +80,21 @@ int main(void) {
     ud_buffer_manager *buffers = NULL;
     OK(ud_buffer_manager_create(c, &options, &buffers));
     OK(ud_batch_seal(input));
-    ud_buffer_block *block = NULL, *got = NULL;
+    ud_buffer_block *block = NULL;
+    ud_stream_event got = {0};
     OK(ud_buffer_store(buffers, input, &block));
     ud_queue *q = NULL;
     OK(ud_queue_create(c, 1, &q));
-    OK(ud_queue_push(q, block));
+    ud_stream_event event = {.struct_size = sizeof(event),
+                             .abi_version = UD_ABI_VERSION,
+                             .kind = UD_STREAM_DATA,
+                             .block = block};
+    OK(ud_queue_push(q, &event));
     CHECK(ud_queue_count(q) == 1);
-    CHECK(ud_queue_push(q, block) == UD_BUSY);
+    CHECK(ud_queue_push(q, &event) == UD_BUSY);
     OK(ud_queue_pop(q, &got));
-    CHECK(got == block);
-    OK(ud_buffer_release(got));
+    CHECK(got.block == block && got.kind == UD_STREAM_DATA);
+    OK(ud_stream_event_clear(&got));
     CHECK(ud_queue_pop(q, &got) == UD_END);
     OK(ud_queue_destroy(q));
     OK(ud_buffer_manager_destroy(buffers));

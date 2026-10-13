@@ -225,6 +225,8 @@ ud_status ud_asset_schema(ud_activation *, ud_string, ud_batch **, int *, int *)
 ud_status ud_asset_source(ud_activation *, ud_string, ud_string *);
 ud_status ud_asset_keys(ud_activation *, ud_string, const uint32_t **, uint32_t *);
 ud_status ud_asset_build(ud_activation *, ud_string, ud_cache **);
+ud_status ud_asset_mode(ud_activation *,ud_string,uint32_t *,ud_string *);
+ud_status ud_asset_partial(ud_activation *,ud_string,struct ud_connection_lease *,ud_cache **);
 ud_status ud_assets_bind_source(ud_activation *, ud_string, struct ud_connection_lease *);
 ud_status ud_asset_publish(ud_activation *, ud_string, ud_cache *);
 ud_status ud_asset_acquire(ud_activation *, ud_string, ud_cache **);
