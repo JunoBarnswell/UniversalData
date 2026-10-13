@@ -105,7 +105,7 @@ static ud_status profile_value(ud_profile *p, const ud_batch *batch, uint32_t ro
     if (c->count == 1 || ud_value_compare(&v, &c->maximum) > 0) { ud_clear_value(&c->maximum); UD_TRY(ud_copy_value(p->ctx, &v, &c->maximum, 0)); }
     uint64_t length = v.type == UD_UTF8 || v.type == UD_BINARY ? v.text_length : v.child_count;
     if (v.type == UD_UTF8) { length = 0; for (uint32_t i = 0; i < v.text_length; i++) length += ((unsigned char)v.text[i] & 192) != 128; }
-    if (v.type >= UD_UTF8) {
+    if (v.type == UD_UTF8 || v.type == UD_BINARY || v.type >= UD_STRUCT) {
         if (UINT64_MAX - c->length_sum < length) return UD_OVERFLOW;
         c->length_sum += length; if (c->count == 1 || length < c->length_min) c->length_min = length;
         if (length > c->length_max) c->length_max = length; c->lengths[length_bucket(length)]++;
@@ -121,7 +121,7 @@ static ud_status profile_value(ud_profile *p, const ud_batch *batch, uint32_t ro
             error = c->top[at].count; ud_clear_value(&c->top[at].value); }
         UD_TRY(ud_copy_value(p->ctx, &v, &c->top[at].value, 0)); c->top[at].error = error; c->top[at].count = error + 1;
     }
-    int numeric = v.type >= UD_INT64 && v.type <= UD_TIMESTAMP;
+    int numeric = v.type >= UD_INT64 && v.type <= UD_TIMESTAMP && v.type != UD_UTF8;
     if (numeric) {
         double x = v.type == UD_FLOAT64 ? v.real : (double)v.integer;
         if (v.type == UD_DECIMAL128) { char text[128]; uint32_t n; UD_TRY(ud_value_format(&v, text, sizeof(text), &n)); x = strtod(text, NULL); }

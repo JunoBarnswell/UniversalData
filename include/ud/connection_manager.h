@@ -14,10 +14,15 @@ UD_API ud_status ud_activation_acquire_connection(ud_activation *, ud_string id,
  * opening a second physical session; used by execution snapshot assets. */
 UD_API ud_status ud_activation_acquire_grant(ud_activation *, ud_string, ud_connection_lease **);
 UD_API ud_status ud_connection_lease_authorize(ud_connection_lease *, int32_t action);
+UD_API ud_status ud_connection_lease_authorize_uri(ud_connection_lease *,ud_string);
 UD_API ud_status ud_connection_lease_resource(const ud_connection_lease *, ud_string *);
 UD_API ud_status ud_connection_lease_snapshot_grant(ud_connection_lease *, ud_activation *,
                                                     ud_connection_lease **);
 UD_API ud_status ud_connection_lease_path(const ud_connection_lease *, ud_string *);
+UD_API ud_status ud_connection_lease_cdc_open(ud_connection_lease *,const ud_cdc_options *);
+UD_API ud_status ud_connection_lease_cdc_next(ud_connection_lease *,ud_cdc_event *);
+UD_API ud_status ud_connection_lease_cdc_confirm(ud_connection_lease *,ud_string);
+UD_API ud_status ud_connection_lease_cdc_close(ud_connection_lease *);
 UD_API ud_status ud_connection_lease_read_open(ud_connection_lease *, const ud_read_options *,
                                                const ud_batch *);
 UD_API ud_status ud_connection_lease_read_next(ud_connection_lease *, ud_batch **);

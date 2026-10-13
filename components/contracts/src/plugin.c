@@ -264,7 +264,8 @@ struct ud_connection {
     ud_connection_options options;
     const ud_connector_api *api;
     uint64_t capabilities;
-    int cursor, transaction;
+    int cursor, transaction,cdc;
+    int32_t dialect;
 };
 static int valid_string(ud_string s, int required) {
     return (!required || s.length) && (!s.length || (s.data && !memchr(s.data, 0, s.length) &&
@@ -320,6 +321,7 @@ static ud_status validate_driver(ud_plugin *p) {
         return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_METADATA) && !api->metadata)
         return UD_INCOMPATIBLE;
+    if((api->capabilities&UD_CONNECT_CDC)&&(!api->cdc_open||!api->cdc_next||!api->cdc_confirm||!api->cdc_close))return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_POOL) && !api->reset_session)
         return UD_INCOMPATIBLE;
     return UD_OK;
@@ -365,6 +367,7 @@ ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options 
         return status;
     }
     c->capabilities=c->api->session_capabilities?c->api->session_capabilities(c->instance->state):c->api->capabilities;
+    c->dialect=c->api->session_dialect?c->api->session_dialect(c->instance->state):c->api->metadata_dialect;
     *out = c;
     return UD_OK;
 }
@@ -398,7 +401,7 @@ ud_status ud_connection_open(ud_plugin *p, const ud_connection_options *options,
     return status;
 }
 int ud_connection_reusable(const ud_connection *c) {
-    return c && (c->capabilities & UD_CONNECT_POOL) && !c->cursor && !c->transaction &&
+    return c && (c->capabilities & UD_CONNECT_POOL) && !c->cursor && !c->transaction && !c->cdc &&
            !atomic_load(&c->instance->busy);
 }
 ud_status ud_connection_reset_session(ud_connection *c) {
@@ -511,7 +514,7 @@ ud_status ud_connection_schema(ud_connection *connection, ud_string table, ud_st
     ud_status status = ud_connection_discover(connection, table, &metadata);
     if (!status)
         status = ud_schema_from_metadata(connection->instance->plugin->ctx, metadata, scope,
-                                         connection->api->metadata_dialect, out);
+                                         connection->dialect, out);
     ud_batch_destroy(metadata);
     return status;
 }
@@ -568,36 +571,10 @@ ud_status ud_connection_write(ud_connection *c, const ud_write_options *options,
     if (!c || !options || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    if (!batch || c->cursor || !valid_string(options->table, 1) || !valid_string(options->job, 1) ||
-        !valid_string(options->batch_id, 1) || !valid_string(options->source_position, 0) ||
-        (options->key_count && !options->keys))
-        return UD_INVALID;
-    if (options->key_count > ud_batch_columns(batch))
-        return UD_SCHEMA;
-    uint64_t cap = options->mode == UD_WRITE_APPEND   ? UD_CONNECT_APPEND
-                   : options->mode == UD_WRITE_UPSERT ? UD_CONNECT_UPSERT
-                   : options->mode == UD_WRITE_DELETE ? UD_CONNECT_DELETE
-                   : options->mode == UD_WRITE_CHANGESET ? UD_CONNECT_CHANGESET
-                                                      : 0;
-    if (!cap || !(c->capabilities & cap))
-        return UD_UNSUPPORTED;
-    if (options->mode != UD_WRITE_APPEND && !options->key_count)
-        return UD_INVALID;
-    for (uint32_t j = 0; j < options->key_count; j++) {
-        if (options->keys[j] >= ud_batch_columns(batch))
-            return UD_SCHEMA;
-        for (uint32_t k = 0; k < j; k++)
-            if (options->keys[j] == options->keys[k])
-                return UD_SCHEMA;
-    }
-    if (options->mode == UD_WRITE_CHANGESET) {
-        if(c->transaction) return UD_UNSUPPORTED;
-        if(!options->operations || !batch->sealed) return UD_SCHEMA;
-        if(options->before && (!options->before->sealed || options->before->columns!=batch->columns || options->before->rows!=batch->rows)) return UD_SCHEMA;
-        if(options->current_column!=UINT32_MAX && (options->current_column>=batch->columns || batch->column[options->current_column].field.type!=UD_BOOL)) return UD_SCHEMA;
-        for(uint32_t j=0;options->before && j<batch->columns;j++) if(!ud_field_matches(&batch->column[j].field,&options->before->column[j].field,UD_FIELD_VALUE_TYPE)) return UD_SCHEMA;
-        for(uint32_t row=0;row<batch->rows;row++) if(options->operations[row]<UD_CHANGE_INSERT || options->operations[row]>UD_CHANGE_UPSERT) return UD_SCHEMA;
-    }
+    if(c->cursor)return UD_BUSY;UD_TRY(ud_write_validate(options,batch));
+    uint64_t cap=options->mode==UD_WRITE_APPEND?UD_CONNECT_APPEND:options->mode==UD_WRITE_UPSERT?UD_CONNECT_UPSERT:options->mode==UD_WRITE_DELETE?UD_CONNECT_DELETE:UD_CONNECT_CHANGESET;
+    if(!(c->capabilities&cap)||!c->api->write)return UD_UNSUPPORTED;
+    if(c->transaction&&options->mode==UD_WRITE_CHANGESET)return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
     uint8_t digest[32];
     ud_status s = ud_connection_digest(c, options, batch, digest);
@@ -606,42 +583,7 @@ ud_status ud_connection_write(ud_connection *c, const ud_write_options *options,
     connection_leave(c);
     return s;
 }
-ud_status ud_connection_digest(ud_connection *c, const ud_write_options *options,
-                               const ud_batch *batch, uint8_t out[32]) {
-    if (!c || !options || !batch || !out)
-        return UD_INVALID;
-    if (options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION)
-        return UD_INCOMPATIBLE;
-    if (!valid_string(options->table, 1) || !valid_string(options->job, 1) ||
-        !valid_string(options->batch_id, 1) || !valid_string(options->source_position, 0) ||
-        options->key_count > batch->columns || (options->key_count && !options->keys))
-        return UD_INVALID;
-    ud_bytes wire = {.ctx = c->instance->plugin->ctx};
-    ud_status s = ud_put_u64(&wire, UD_CONFIG_VERSION);
-    ud_string strings[] = {c->options.tenant, c->options.resource, options->table,
-                           options->job,      options->batch_id,   options->source_position};
-    for (uint32_t j = 0; !s && j < 6; j++)
-        s = ud_put_string(&wire, strings[j].data, strings[j].length);
-    if (!s)
-        s = ud_put_u64(&wire, (uint64_t)options->mode);
-    if (!s)
-        s = ud_put_u64(&wire, options->key_count);
-    for (uint32_t j = 0; !s && j < options->key_count; j++)
-        s = ud_put_u64(&wire, options->keys[j]);
-    if(!s&&options->mode==UD_WRITE_CHANGESET) {
-        if(!options->operations || (options->before && options->before->rows!=batch->rows)) s=UD_SCHEMA;
-        if(!s)s=ud_put_u64(&wire,options->current_column);
-        for(uint32_t row=0;!s&&row<batch->rows;row++)s=ud_put_u64(&wire,(uint64_t)options->operations[row]);
-        if(!s)s=ud_put_u64(&wire, options->before ? 1 : 0);
-        if(!s && options->before)s=ud_encode_batch(&wire,options->before);
-    }
-    if (!s)
-        s = ud_encode_batch(&wire, batch);
-    if (!s)
-        ud_hash(wire.data, wire.size, out);
-    ud_bytes_clear(&wire);
-    return s;
-}
+ud_status ud_connection_digest(ud_connection*c,const ud_write_options*options,const ud_batch*batch,uint8_t out[32]){return c?ud_write_digest(c->instance->plugin->ctx,c->options.tenant,c->options.resource,options,batch,out):UD_INVALID;}
 
 ud_status ud_connection_receipt(ud_connection *c, ud_string job, ud_string batch_id,
                                 ud_commit_receipt *out) {
@@ -696,3 +638,8 @@ ud_status ud_connection_provision(ud_connection *c){
     if(!c||!(c->capabilities&UD_CONNECT_PROVISION)||!c->api->provision)return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c,UD_ACCESS_WRITE));ud_status status=c->api->provision(c->instance->state);connection_leave(c);return status;
 }
+
+ud_status ud_connection_cdc_open(ud_connection*c,const ud_cdc_options*options){if(!c||!options||options->struct_size!=sizeof(*options)||options->abi_version!=UD_ABI_VERSION)return UD_INCOMPATIBLE;if(c->cursor||c->transaction||c->cdc)return UD_BUSY;if(!(c->capabilities&UD_CONNECT_CDC)||!c->api->cdc_open)return UD_UNSUPPORTED;UD_TRY(connection_enter(c,UD_ACCESS_READ));ud_status s=c->api->cdc_open(c->instance->state,options);if(!s)c->cdc=1;connection_leave(c);return s;}
+ud_status ud_connection_cdc_next(ud_connection*c,ud_cdc_event*out){if(!c||!out||!c->cdc)return UD_INVALID;memset(out,0,sizeof(*out));UD_TRY(connection_enter(c,UD_ACCESS_READ));ud_status s=c->api->cdc_next(c->instance->state,out);connection_leave(c);if(s)ud_cdc_event_clear(out);else if(out->struct_size!=sizeof(*out)||out->abi_version!=UD_ABI_VERSION){ud_cdc_event_clear(out);s=UD_INCOMPATIBLE;}return s;}
+ud_status ud_connection_cdc_confirm(ud_connection*c,ud_string position){if(!c||!c->cdc||!valid_string(position,1))return UD_INVALID;UD_TRY(connection_enter(c,UD_ACCESS_READ));ud_status s=c->api->cdc_confirm(c->instance->state,position);connection_leave(c);return s;}
+ud_status ud_connection_cdc_close(ud_connection*c){if(!c||!c->cdc)return UD_INVALID;UD_TRY(connection_enter(c,UD_ACCESS_READ));ud_status s=c->api->cdc_close(c->instance->state);if(!s)c->cdc=0;connection_leave(c);return s;}

@@ -25,6 +25,7 @@ struct ud_advanced {
     ud_value *owned_values;
     ud_row_info next_info;
     int override_info;
+    int full_row;uint32_t window_column,private_columns;uint64_t window_width;ud_batch*fingerprint_row;
 };
 const ud_json *ud_advanced_member(const ud_json *,const char *);
 int ud_advanced_named(const ud_json *,const char *);

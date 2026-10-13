@@ -1,6 +1,7 @@
 #ifndef UD_CONNECTOR_H
 #define UD_CONNECTOR_H
 #include "data.h"
+#include "cdc.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -125,6 +126,11 @@ typedef struct ud_connector_api {
         void *);                    /* Actual immutable probe results, not a driver-name guess. */
     ud_status (*provision)(void *); /* Explicit authorized SDK receipt schema provisioning. */
     int32_t metadata_dialect;       /* UD_SQL_*; provider declares its metadata grammar. */
+    int32_t (*session_dialect)(void *);
+    ud_status (*cdc_open)(void *,const ud_cdc_options *);
+    ud_status (*cdc_next)(void *,ud_cdc_event *);
+    ud_status (*cdc_confirm)(void *,ud_string position);
+    ud_status (*cdc_close)(void *);
 } ud_connector_api;
 UD_API ud_status ud_connection_open(ud_plugin *, const ud_connection_options *, ud_connection **);
 UD_API ud_status ud_connection_provision(ud_connection *);
@@ -135,6 +141,10 @@ UD_API ud_status ud_connection_begin(ud_connection *, int32_t isolation);
 UD_API ud_status ud_connection_commit(ud_connection *);
 UD_API ud_status ud_connection_rollback(ud_connection *);
 UD_API ud_status ud_connection_metadata(ud_connection *, const ud_metadata_options *, ud_batch **);
+UD_API ud_status ud_connection_cdc_open(ud_connection *,const ud_cdc_options *);
+UD_API ud_status ud_connection_cdc_next(ud_connection *,ud_cdc_event *);
+UD_API ud_status ud_connection_cdc_confirm(ud_connection *,ud_string);
+UD_API ud_status ud_connection_cdc_close(ud_connection *);
 UD_API ud_status ud_connection_test(ud_connection *);
 UD_API ud_status ud_connection_schema(ud_connection *, ud_string table, ud_string name_space,
                                       ud_batch **);

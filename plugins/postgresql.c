@@ -1,4 +1,5 @@
 #include "common.h"
+#include "postgresql_cdc.h"
 #include <libpq-fe.h>
 #include <stdatomic.h>
 #ifdef _WIN32
@@ -9,6 +10,8 @@
 typedef struct {
     ud_host_api host;
     PGconn *db;
+    ud_pg_cdc *cdc;
+    char *configuration;
     PGcancelConn *cancel;
     ud_batch *schema;
     uint32_t batch_size;
@@ -220,6 +223,8 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
     }
     const char *keys[] = {"dbname", "connect_timeout", "application_name", NULL};
     const char *values[] = {copy, "10", "UniversalDataSDK/1.0.0", NULL};
+    p->configuration=plugin_string(host,config,length);
+    if(!p->configuration){host->deallocate(copy);host->deallocate(p);return UD_RESOURCE;}
     p->db = PQconnectStartParams(keys, values, 1);
     host->deallocate(copy);
     ud_status s = !p->db ? UD_RESOURCE : UD_OK;
@@ -632,6 +637,7 @@ static ud_status next_read(void *state, ud_batch **out) {
 }
 static void cancel_operation(void *state) {
     postgres_state *p = state;
+    if(p->cdc)ud_pg_cdc_cancel(p->cdc);
     atomic_store(&p->cancelled, 1);
 }
 static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string batch_id,
@@ -854,6 +860,8 @@ static void destroy(void *state) {
         return;
     p->host.batch_destroy(p->schema);
     p->schema = NULL;
+    if(p->cdc)ud_pg_cdc_close(p->cdc);
+    p->host.deallocate(p->configuration);
     if (p->cancel)
         PQcancelFinish(p->cancel);
     if (p->db)
@@ -1074,13 +1082,17 @@ static ud_status provision(void *state) {
                           "CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY "
                           "KEY(tenant,job,batch_id))");
 }
+static ud_status cdc_open(void*state,const ud_cdc_options*options){postgres_state*p=state;if(p->reading||p->transaction||p->cdc)return UD_BUSY;return ud_pg_cdc_open(&p->host,p->configuration,options,&p->cdc);}
+static ud_status cdc_next(void*state,ud_cdc_event*out){postgres_state*p=state;return p->cdc?ud_pg_cdc_next(p->cdc,out):UD_INVALID;}
+static ud_status cdc_confirm(void*state,ud_string position){postgres_state*p=state;return p->cdc?ud_pg_cdc_confirm(p->cdc,position):UD_INVALID;}
+static ud_status cdc_close(void*state){postgres_state*p=state;ud_status status=ud_pg_cdc_close(p->cdc);p->cdc=NULL;return status;}
 static const ud_connector_api connector = {
     sizeof(connector),
     UD_PLUGIN_ABI,
     UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
         UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
         UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
-        UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
+        UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
     test_connection,
     discover,
     open_read,
@@ -1098,7 +1110,7 @@ static const ud_connector_api connector = {
     reset_session,
     NULL,
     provision,
-    UD_SQL_POSTGRESQL};
+    UD_SQL_POSTGRESQL,NULL,cdc_open,cdc_next,cdc_confirm,cdc_close};
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
         return UD_INCOMPATIBLE;

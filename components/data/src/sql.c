@@ -102,3 +102,41 @@ ud_status ud_sql_compile_preimage(ud_context*ctx,int32_t dialect,int32_t style,
     if(!status&&dialect!=UD_SQL_SQLITE)status=put(&w," FOR UPDATE");
     if(!status){out->sql.length=(uint32_t)w.text.size;status=ud_bytes_put(&w.text,"",1);}if(!status){out->sql.data=(const char*)w.text.data;w.text.data=NULL;}ud_bytes_clear(&w.text);if(status)ud_sql_statement_clear(out);return status;
 }
+
+ud_status ud_write_validate(const ud_write_options*o,const ud_batch*b){
+    if(!o||!b||o->struct_size!=sizeof(*o)||o->abi_version!=UD_ABI_VERSION)return UD_INCOMPATIBLE;
+    if(!b->sealed||!o->table.data||!o->table.length||!o->job.data||!o->job.length||!o->batch_id.data||!o->batch_id.length||(o->source_position.length&&!o->source_position.data)||o->mode<UD_WRITE_APPEND||o->mode>UD_WRITE_CHANGESET||o->key_count>b->columns||(o->key_count&&!o->keys))return UD_INVALID;
+    if(o->mode!=UD_WRITE_APPEND&&!o->key_count)return UD_SCHEMA;
+    for(uint32_t i=0;i<o->key_count;i++){if(o->keys[i]>=b->columns)return UD_SCHEMA;for(uint32_t k=0;k<i;k++)if(o->keys[k]==o->keys[i])return UD_SCHEMA;for(uint32_t row=0;row<b->rows&&o->mode!=UD_WRITE_APPEND;row++){ud_value v;UD_TRY(ud_batch_get(b,row,o->keys[i],&v));if(v.is_null)return UD_SCHEMA;}}
+    if(o->mode==UD_WRITE_CHANGESET){if(!o->operations)return UD_SCHEMA;if(o->before&&(!o->before->sealed||o->before->ctx!=b->ctx||o->before->columns!=b->columns||o->before->rows!=b->rows))return UD_SCHEMA;for(uint32_t i=0;o->before&&i<b->columns;i++)if(!ud_field_matches(&o->before->column[i].field,&b->column[i].field,UD_FIELD_VALUE_TYPE))return UD_SCHEMA;if(o->current_column!=UINT32_MAX&&(o->current_column>=b->columns||b->column[o->current_column].field.type!=UD_BOOL))return UD_SCHEMA;for(uint32_t row=0;row<b->rows;row++)if(o->operations[row]<UD_CHANGE_INSERT||o->operations[row]>UD_CHANGE_UPSERT)return UD_SCHEMA;}
+    return UD_OK;
+}
+ud_status ud_write_digest(ud_context*ctx,ud_string tenant,ud_string resource,const ud_write_options*options,const ud_batch*batch,uint8_t out[32]){if(!ctx||!out)return UD_INVALID;UD_TRY(ud_write_validate(options,batch));
+    ud_bytes wire = {.ctx = ctx};
+    ud_status s = ud_put_u64(&wire, UD_CONFIG_VERSION);
+    ud_string strings[] = {tenant, resource, options->table,
+                           options->job,      options->batch_id,   options->source_position};
+    for (uint32_t j = 0; !s && j < 6; j++)
+        s = ud_put_string(&wire, strings[j].data, strings[j].length);
+    if (!s)
+        s = ud_put_u64(&wire, (uint64_t)options->mode);
+    if (!s)
+        s = ud_put_u64(&wire, options->key_count);
+    for (uint32_t j = 0; !s && j < options->key_count; j++)
+        s = ud_put_u64(&wire, options->keys[j]);
+    if(!s&&options->mode==UD_WRITE_CHANGESET) {
+        if(!options->operations || (options->before && options->before->rows!=batch->rows)) s=UD_SCHEMA;
+        if(!s)s=ud_put_u64(&wire,options->current_column);
+        for(uint32_t row=0;!s&&row<batch->rows;row++)s=ud_put_u64(&wire,(uint64_t)options->operations[row]);
+        if(!s)s=ud_put_u64(&wire, options->before ? 1 : 0);
+        if(!s && options->before)s=ud_encode_batch(&wire,options->before);
+    }
+    if (!s)
+        s = ud_encode_batch(&wire, batch);
+    if (!s)
+        ud_hash(wire.data, wire.size, out);
+    ud_bytes_clear(&wire);
+    return s;
+}
+
+void ud_cdc_event_clear(ud_cdc_event*event){if(!event)return;ud_free((void*)event->position.data);ud_free((void*)event->transaction_id.data);ud_batch_destroy(event->after);ud_batch_destroy(event->before);ud_free(event->operations);memset(event,0,sizeof(*event));}

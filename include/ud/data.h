@@ -205,6 +205,9 @@ struct ArrowArray {
 #endif
 #ifndef ARROW_C_STREAM_INTERFACE
 #define ARROW_C_STREAM_INTERFACE
+#endif
+#ifndef ARROW_C_STREAM_INTERFACE
+#define ARROW_C_STREAM_INTERFACE
 struct ArrowArrayStream {
     int (*get_schema)(struct ArrowArrayStream *, struct ArrowSchema *);
     int (*get_next)(struct ArrowArrayStream *, struct ArrowArray *);

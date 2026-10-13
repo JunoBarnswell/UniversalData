@@ -1,0 +1,563 @@
+{
+  "version": 9,
+  "id": "tenTypedTables",
+  "parameters": {
+    "sqlitePlugin": {
+      "type": "utf8",
+      "default": "/absolute/path/to/ud_connector_sqlite.so"
+    }
+  },
+  "connections": [
+    {
+      "id": "database",
+      "driver": {
+        "$parameter": "sqlitePlugin"
+      },
+      "resource": "example-database",
+      "credentialReference": "example-database"
+    },
+    {
+      "id": "output_00",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_00.ndjson"
+    },
+    {
+      "id": "output_01",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_01.ndjson"
+    },
+    {
+      "id": "output_02",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_02.ndjson"
+    },
+    {
+      "id": "output_03",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_03.ndjson"
+    },
+    {
+      "id": "output_04",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_04.ndjson"
+    },
+    {
+      "id": "output_05",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_05.ndjson"
+    },
+    {
+      "id": "output_06",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_06.ndjson"
+    },
+    {
+      "id": "output_07",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_07.ndjson"
+    },
+    {
+      "id": "output_08",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_08.ndjson"
+    },
+    {
+      "id": "output_09",
+      "driver": "file",
+      "resource": "/absolute/path/to/output/table_09.ndjson"
+    }
+  ],
+  "templates": [
+    {
+      "id": "tableCopy",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pipeline": {
+            "type": "string",
+            "minLength": 1
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "schema": {
+            "type": "object"
+          },
+          "mapping": {
+            "type": "array",
+            "minItems": 1
+          },
+          "destination": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "pipeline",
+          "statement",
+          "schema",
+          "mapping",
+          "destination"
+        ],
+        "additionalProperties": false
+      },
+      "dataFlow": {
+        "id": {
+          "$template": "pipeline"
+        },
+        "components": [
+          {
+            "id": "read",
+            "component": "sql.source",
+            "config": {
+              "connection": "database",
+              "schema": {
+                "$template": "schema"
+              },
+              "sql": {
+                "$template": "statement"
+              },
+              "batchSize": 512
+            }
+          },
+          {
+            "id": "map",
+            "component": "derive",
+            "config": {
+              "columns": {
+                "$template": "mapping"
+              }
+            }
+          },
+          {
+            "id": "write",
+            "component": "file.ndjson.destination",
+            "config": {
+              "connection": {
+                "$template": "destination"
+              }
+            }
+          }
+        ],
+        "paths": [
+          {
+            "from": "read",
+            "to": "map"
+          },
+          {
+            "from": "map",
+            "to": "write"
+          }
+        ]
+      },
+      "task": {
+        "id": {
+          "$template": "pipeline"
+        },
+        "kind": "dataFlow",
+        "config": {
+          "pipeline": {
+            "$template": "pipeline"
+          }
+        }
+      }
+    }
+  ],
+  "instances": [
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_00",
+        "statement": "SELECT \"key_0\",\"amount_0\" FROM \"table_00\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_0",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_0",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_0"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_0"
+            }
+          }
+        ],
+        "destination": "output_00"
+      }
+    },
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_01",
+        "statement": "SELECT \"key_1\",\"amount_1\" FROM \"table_01\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_1",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_1",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_1"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_1"
+            }
+          }
+        ],
+        "destination": "output_01"
+      }
+    },
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_02",
+        "statement": "SELECT \"key_2\",\"amount_2\" FROM \"table_02\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_2",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_2",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_2"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_2"
+            }
+          }
+        ],
+        "destination": "output_02"
+      }
+    },
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_03",
+        "statement": "SELECT \"key_3\",\"amount_3\" FROM \"table_03\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_3",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_3",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_3"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_3"
+            }
+          }
+        ],
+        "destination": "output_03"
+      }
+    },
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_04",
+        "statement": "SELECT \"key_4\",\"amount_4\" FROM \"table_04\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_4",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_4",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_4"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_4"
+            }
+          }
+        ],
+        "destination": "output_04"
+      }
+    },
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_05",
+        "statement": "SELECT \"key_5\",\"amount_5\" FROM \"table_05\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_5",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_5",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_5"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_5"
+            }
+          }
+        ],
+        "destination": "output_05"
+      }
+    },
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_06",
+        "statement": "SELECT \"key_6\",\"amount_6\" FROM \"table_06\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_6",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_6",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_6"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_6"
+            }
+          }
+        ],
+        "destination": "output_06"
+      }
+    },
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_07",
+        "statement": "SELECT \"key_7\",\"amount_7\" FROM \"table_07\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_7",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_7",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_7"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_7"
+            }
+          }
+        ],
+        "destination": "output_07"
+      }
+    },
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_08",
+        "statement": "SELECT \"key_8\",\"amount_8\" FROM \"table_08\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_8",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_8",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_8"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_8"
+            }
+          }
+        ],
+        "destination": "output_08"
+      }
+    },
+    {
+      "template": "tableCopy",
+      "parameters": {
+        "pipeline": "table_09",
+        "statement": "SELECT \"key_9\",\"amount_9\" FROM \"table_09\"",
+        "schema": {
+          "version": 9,
+          "fields": [
+            {
+              "name": "key_9",
+              "type": "int64",
+              "nullable": false
+            },
+            {
+              "name": "amount_9",
+              "type": "decimal128",
+              "precision": 18,
+              "scale": 2,
+              "nullable": true
+            }
+          ]
+        },
+        "mapping": [
+          {
+            "name": "canonicalKey",
+            "expression": {
+              "column": "key_9"
+            }
+          },
+          {
+            "name": "canonicalAmount",
+            "expression": {
+              "column": "amount_9"
+            }
+          }
+        ],
+        "destination": "output_09"
+      }
+    }
+  ],
+  "controlFlow": {
+    "tasks": [],
+    "constraints": []
+  }
+}

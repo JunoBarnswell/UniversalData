@@ -1,4 +1,8 @@
 #include "mysql_family.h"
+#include "binlog.h"
+#if defined(UD_MARIADB_CLIENT)
+#include <mariadb_rpl.h>
+#endif
 #include <stdatomic.h>
 #include <stdio.h>
 #include <math.h>
@@ -9,9 +13,17 @@ typedef bool ud_mysql_bool;
 typedef my_bool ud_mysql_bool;
 #endif
 #define UD_MYSQL_CELL_LIMIT (16u * 1024u * 1024u)
+typedef struct mysql_cdc {MYSQL*stream;ud_binlog*decoder;ud_batch*schema;char*file,*table,*gtid;uint64_t position,confirmed;uint32_t phase,rows;int snapshot,opened;
+#if defined(UD_MYSQL_CLIENT)
+    MYSQL_RPL rpl;
+#else
+    MARIADB_RPL*rpl;MARIADB_RPL_EVENT*event;
+#endif
+} mysql_cdc;
 typedef struct mysql_state {
     ud_host_api host;
     MYSQL *db, *cancel_db;
+    mysql_cdc *cdc;
     MYSQL_STMT *cursor;
     ud_batch *schema;
     uint32_t batch_size;
@@ -379,9 +391,85 @@ static MYSQL *connect_session(mysql_state*p){
     if(!mysql_real_connect(db,p->host_name,p->user,p->password,p->database,p->port,NULL,CLIENT_FOUND_ROWS)){mysql_close(db);return NULL;}
     if(!mysql_get_ssl_cipher(db)){mysql_close(db);return NULL;}return db;
 }
-static void cancel(void*state){mysql_state*p=state;atomic_store(&p->cancelled,1);p->broken=1;pthread_mutex_lock(&p->cancellation);if(!p->cancel_db)p->cancel_db=connect_session(p);if(p->cancel_db && p->db)mysql_kill(p->cancel_db,mysql_thread_id(p->db));pthread_mutex_unlock(&p->cancellation);}
+static ud_status cdc_close(void*state);
+static ud_status binlog_open(mysql_state*p){mysql_cdc*c=p->cdc;
+#if defined(UD_MYSQL_CLIENT)
+    memset(&c->rpl,0,sizeof(c->rpl));c->rpl.file_name=c->file;c->rpl.file_name_length=strlen(c->file);c->rpl.start_position=c->position;c->rpl.server_id=c->rows;c->rpl.flags=1;
+    if(mysql_binlog_open(c->stream,&c->rpl))return mysql_errno(c->stream)==1236?UD_FENCED:UD_IO;
+#else
+    if(c->rpl)mariadb_rpl_close(c->rpl);c->rpl=mariadb_rpl_init(c->stream);if(!c->rpl)return UD_RESOURCE;
+    mariadb_rpl_optionsv(c->rpl,MARIADB_RPL_FILENAME,c->file,strlen(c->file));mariadb_rpl_optionsv(c->rpl,MARIADB_RPL_START,(unsigned long)c->position);mariadb_rpl_optionsv(c->rpl,MARIADB_RPL_SERVER_ID,c->rows);mariadb_rpl_optionsv(c->rpl,MARIADB_RPL_FLAGS,1u);mariadb_rpl_optionsv(c->rpl,MARIADB_RPL_VERIFY_CHECKSUM,1u);mariadb_rpl_optionsv(c->rpl,MARIADB_RPL_UNCOMPRESS,1u);
+    if(mariadb_rpl_open(c->rpl))return c->rpl->error_no==1236?UD_FENCED:UD_IO;
+#endif
+    c->opened=1;return UD_OK;
+}
+static ud_status cdc_position(mysql_state*p,ud_string position){ud_json*json=NULL;ud_status status=p->host.json_parse(p->host.context,position.data,position.length,&json,NULL);const char*file=NULL,*number=NULL,*vendor=NULL;uint32_t n=0,k=0,v=0;if(!status)status=p->host.json_text(p->host.json_find(json,"file",4),&file,&n);if(!status)status=p->host.json_text(p->host.json_find(json,"position",8),&number,&k);if(!status)status=p->host.json_text(p->host.json_find(json,"vendor",6),&vendor,&v);
+#if defined(UD_MYSQL_CLIENT)
+    if(!status&&(v!=5||memcmp(vendor,"mysql",5)))status=UD_FENCED;
+#else
+    if(!status&&(v!=7||memcmp(vendor,"mariadb",7)))status=UD_FENCED;
+#endif
+    uint64_t value=0;for(uint32_t i=0;!status&&i<k;i++){if(number[i]<'0'||number[i]>'9'||value>(UINT64_MAX-(unsigned)(number[i]-'0'))/10)status=UD_CORRUPT;else value=value*10+(unsigned)(number[i]-'0');}
+    for(uint32_t i=0;!status&&i<n;i++)if(!((file[i]>='a'&&file[i]<='z')||(file[i]>='A'&&file[i]<='Z')||(file[i]>='0'&&file[i]<='9')||file[i]=='.'||file[i]=='_'||file[i]=='-'))status=UD_SCHEMA;
+    if(!status&&(!n||value<4))status=UD_FENCED;if(!status){p->cdc->file=plugin_string(&p->host,file,n);p->cdc->position=value;p->cdc->confirmed=value;if(!p->cdc->file)status=UD_RESOURCE;}p->host.json_destroy(json);return status;
+}
+static ud_status cdc_open(void*state,const ud_cdc_options*options){mysql_state*p=state;if(p->cdc||p->cursor||p->transaction||!options->server_id)return UD_BUSY;mysql_cdc*c=p->host.allocate(p->host.context,sizeof(*c));if(!c)return UD_RESOURCE;p->cdc=c;c->rows=options->server_id;
+    c->stream=connect_session(p);ud_status status=c->stream?UD_OK:UD_AUTH;c->table=plugin_string(&p->host,options->table.data,options->table.length);if(!c->table)status=UD_RESOURCE;ud_field*fields=NULL;if(!status)status=plugin_fields(&p->host,options->schema,&fields);if(!status)status=p->host.batch_create(p->host.context,fields,p->host.columns(options->schema),0,&c->schema);p->host.deallocate(fields);
+    if(!status)status=command(p,"SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    if(!status&&mysql_query(p->db,"SELECT @@global.binlog_format,@@global.binlog_row_image,@@global.log_bin"))status=failure(p,NULL);MYSQL_RES*probe=!status?mysql_store_result(p->db):NULL;MYSQL_ROW row=probe?mysql_fetch_row(probe):NULL;if(!status&&(!row||strcmp(row[0],"ROW")||strcmp(row[1],"FULL")||strcmp(row[2],"1")))status=UD_UNSUPPORTED;if(probe)mysql_free_result(probe);
+    if(!status&&options->mode==UD_CDC_SNAPSHOT_STREAM){status=command(p,"FLUSH TABLES WITH READ LOCK");int locked=!status;if(!status)status=command(p,"START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY");
+#if defined(UD_MYSQL_CLIENT)
+        const char*show="SHOW BINARY LOG STATUS";
+#else
+        const char*show="SHOW MASTER STATUS";
+#endif
+        if(!status&&mysql_query(p->db,show))status=failure(p,NULL);MYSQL_RES*result=!status?mysql_store_result(p->db):NULL;MYSQL_ROW record=result?mysql_fetch_row(result):NULL;if(!status&&(!record||!record[0]||!record[1]))status=UD_SCHEMA;
+        if(!status){c->file=plugin_string(&p->host,record[0],(uint32_t)strlen(record[0]));c->position=0;for(const char*at=record[1];*at;at++){if(*at<'0'||*at>'9'||c->position>UINT64_MAX/10){status=UD_CORRUPT;break;}c->position=c->position*10+(unsigned)(*at-'0');}if(!c->file)status=UD_RESOURCE;}if(result)mysql_free_result(result);if(locked){ud_status released=command(p,"UNLOCK TABLES");if(!status)status=released;}
+        if(!status){size_t size=options->table.length*2+64;char*query=p->host.allocate(p->host.context,size);if(!query)status=UD_RESOURCE;else{size_t n=0;memcpy(query,"SELECT * FROM `",15);n=15;for(uint32_t i=0;i<options->table.length;i++){char ch=options->table.data[i];if(ch=='.'){memcpy(query+n,"`.`",3);n+=3;}else{if(ch=='`')query[n++]='`';query[n++]=ch;}}query[n++]='`';query[n]=0;ud_read_options read={.struct_size=sizeof(read),.abi_version=UD_ABI_VERSION,.batch_size=options->batch_rows,.sql={query,(uint32_t)n}};status=read_open(p,&read,options->schema);p->host.deallocate(query);}}
+        if(!status)c->snapshot=1;
+    }else if(!status)status=cdc_position(p,options->position);
+    if(!status)status=ud_binlog_create(&p->host,options,
+#if defined(UD_MYSQL_CLIENT)
+      0,
+#else
+      1,
+#endif
+      &c->decoder);
+    if(status){cdc_close(p);return status;}return UD_OK;
+}
+static ud_status cdc_next(void*state,ud_cdc_event*out){mysql_state*p=state;mysql_cdc*c=p->cdc;if(!c)return UD_INVALID;memset(out,0,sizeof(*out));out->struct_size=sizeof(*out);out->abi_version=UD_ABI_VERSION;out->schema_version=1;ud_status status=check(p);if(status)return status;
+    if(c->snapshot){if(!c->phase){c->phase=1;out->kind=UD_CDC_BEGIN;out->transaction_id=(ud_string){plugin_string(&p->host,"snapshot",8),8};return out->transaction_id.data?UD_OK:UD_RESOURCE;}status=read_next(p,&out->after);if(!status){uint32_t rows=p->host.rows(out->after);out->operations=p->host.allocate(p->host.context,rows*sizeof(*out->operations));if(!out->operations)return UD_RESOURCE;for(uint32_t i=0;i<rows;i++)out->operations[i]=UD_CHANGE_INSERT;out->kind=UD_CDC_ROWS;out->position=(ud_string){plugin_string(&p->host,"snapshot",8),8};return UD_OK;}if(status!=UD_END)return status;status=command(p,"COMMIT");if(status)return status;c->snapshot=0;out->kind=UD_CDC_COMMIT;char position[512];int n=snprintf(position,sizeof(position),"{\"file\":\"%s\",\"position\":%llu,\"gtid\":\"\",\"vendor\":\"%s\"}",c->file,(unsigned long long)c->position,
+#if defined(UD_MYSQL_CLIENT)
+      "mysql"
+#else
+      "mariadb"
+#endif
+      );out->position=(ud_string){plugin_string(&p->host,position,(uint32_t)n),(uint32_t)n};return out->position.data?UD_OK:UD_RESOURCE;}
+    if(!c->opened){status=binlog_open(p);if(status)return status;}
+    const unsigned char*raw=NULL;size_t length=0;
+#if defined(UD_MYSQL_CLIENT)
+    if(mysql_binlog_fetch(c->stream,&c->rpl)){return mysql_errno(c->stream)==1236?UD_FENCED:UD_IO;}if(!c->rpl.size){mysql_binlog_close(c->stream,&c->rpl);c->opened=0;return UD_BUSY;}raw=c->rpl.buffer;length=c->rpl.size;
+#else
+    if(c->event)mariadb_free_rpl_event(c->event);c->event=mariadb_rpl_fetch(c->rpl,NULL);if(!c->event){if(c->rpl->error_no)return c->rpl->error_no==1236?UD_FENCED:UD_IO;c->opened=0;return UD_BUSY;}raw=c->event->raw_data;length=c->event->raw_data_size;
+#endif
+    const unsigned char*event=raw;size_t size=length;if(size>=20&&event[0]==0){event++;size--;}
+    if(size<19)return UD_CORRUPT;uint32_t kind=event[4];uint64_t next=0;for(uint32_t i=0;i<4;i++)next|=(uint64_t)event[13+i]<<(8*i);
+    status=ud_binlog_decode(c->decoder,raw,length,(ud_string){c->file,(uint32_t)strlen(c->file)},out);if(status==UD_OK||status==UD_BUSY){if(next)c->position=next;}
+    if(kind==4&&size>=27){uint64_t offset=0;for(uint32_t i=0;i<8;i++)offset|=(uint64_t)event[19+i]<<(8*i);size_t n=size-27;if(n>4)n-=4;char*file=plugin_string(&p->host,(const char*)event+27,(uint32_t)n);if(!file)return UD_RESOURCE;p->host.deallocate(c->file);c->file=file;c->position=offset;}
+    return status;
+}
+static ud_status cdc_confirm(void*state,ud_string position){mysql_state*p=state;mysql_cdc*c=p->cdc;if(!c)return UD_INVALID;ud_json*document=NULL;ud_status status=p->host.json_parse(p->host.context,position.data,position.length,&document,NULL);const char*value;uint32_t n;if(!status)status=p->host.json_text(p->host.json_find(document,"position",8),&value,&n);uint64_t confirmed=0;for(uint32_t i=0;!status&&i<n;i++){if(value[i]<'0'||value[i]>'9'||confirmed>UINT64_MAX/10)status=UD_CORRUPT;else confirmed=confirmed*10+(unsigned)(value[i]-'0');}if(!status)c->confirmed=confirmed;p->host.json_destroy(document);return status;}
+static ud_status cdc_close(void*state){mysql_state*p=state;mysql_cdc*c=p->cdc;if(!c)return UD_OK;read_close(p);
+#if defined(UD_MYSQL_CLIENT)
+    if(c->opened)mysql_binlog_close(c->stream,&c->rpl);
+#else
+    if(c->event)mariadb_free_rpl_event(c->event);if(c->rpl)mariadb_rpl_close(c->rpl);
+#endif
+    if(c->stream)mysql_close(c->stream);ud_binlog_destroy(c->decoder);p->host.batch_destroy(c->schema);p->host.deallocate(c->file);p->host.deallocate(c->table);p->host.deallocate(c->gtid);p->host.deallocate(c);p->cdc=NULL;return UD_OK;
+}
+static void cancel(void*state){mysql_state*p=state;atomic_store(&p->cancelled,1);p->broken=1;pthread_mutex_lock(&p->cancellation);if(!p->cancel_db)p->cancel_db=connect_session(p);if(p->cancel_db && p->db)mysql_kill(p->cancel_db,mysql_thread_id(p->db));if(p->cancel_db&&p->cdc&&p->cdc->stream)mysql_kill(p->cancel_db,mysql_thread_id(p->cdc->stream));pthread_mutex_unlock(&p->cancellation);}
 static ud_status reset(void*state){mysql_state*p=state;if(p->broken||p->cursor||p->transaction)return UD_UNSUPPORTED;if(mysql_reset_connection(p->db))return failure(p,NULL);atomic_store(&p->cancelled,0);return session_policy(p);}
-void ud_mysql_destroy(void*state){mysql_state*p=state;if(!p)return;read_close(p);if(p->db)mysql_close(p->db);if(p->cancel_db)mysql_close(p->cancel_db);pthread_mutex_destroy(&p->cancellation);char*strings[]={p->host_name,p->user,p->password,p->database,p->ca,p->cert,p->key};for(uint32_t i=0;i<7;i++)p->host.deallocate(strings[i]);p->host.deallocate(p);}
+void ud_mysql_destroy(void*state){mysql_state*p=state;if(!p)return;cdc_close(p);read_close(p);if(p->db)mysql_close(p->db);if(p->cancel_db)mysql_close(p->cancel_db);pthread_mutex_destroy(&p->cancellation);char*strings[]={p->host_name,p->user,p->password,p->database,p->ca,p->cert,p->key};for(uint32_t i=0;i<7;i++)p->host.deallocate(strings[i]);p->host.deallocate(p);}
 static ud_status config_string(mysql_state*p,const ud_json*j,const char*key,int required,char**out){const ud_json*v=p->host.json_find(j,key,(uint32_t)strlen(key));if(!v)return required?UD_SCHEMA:UD_OK;const char*s;uint32_t n;if(p->host.json_kind(v)!=UD_JSON_STRING)return UD_SCHEMA;ud_status status=p->host.json_text(v,&s,&n);if(!status){*out=plugin_string(&p->host,s,n);if(!*out)status=UD_RESOURCE;}return status;}
 ud_status ud_mysql_initialize(const ud_host_api*h,const char*configuration,uint32_t length,void**out){
     *out=NULL;if(!h||h->struct_size!=sizeof(*h)||h->abi_version!=UD_PLUGIN_ABI)return UD_INCOMPATIBLE;
@@ -394,5 +482,5 @@ ud_status ud_mysql_initialize(const ud_host_api*h,const char*configuration,uint3
     if(!s)s=session_policy(p);h->json_destroy(j);if(s){ud_mysql_destroy(p);return s;}*out=p;return UD_OK;
 }
 const ud_connector_api ud_mysql_connector={.struct_size=sizeof(ud_connector_api),.abi_version=UD_PLUGIN_ABI,
- .capabilities=UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_EXECUTE_SQL|UD_CONNECT_TRANSACTION|UD_CONNECT_METADATA|UD_CONNECT_POOL|UD_CONNECT_CHANGESET|UD_CONNECT_PREPARED|UD_CONNECT_BATCH_WRITE|UD_CONNECT_PROVISION,
- .test=test,.discover=discover,.read_open=read_open,.read_next=read_next,.read_close=read_close,.write=write_batch,.receipt=receipt,.cancel=cancel,.execute=execute,.begin=begin,.commit=commit,.rollback=rollback,.metadata=metadata,.set_control=set_control,.reset_session=reset,.provision=provision,.metadata_dialect=UD_MYSQL_DIALECT};
+ .capabilities=UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_EXECUTE_SQL|UD_CONNECT_TRANSACTION|UD_CONNECT_METADATA|UD_CONNECT_POOL|UD_CONNECT_CHANGESET|UD_CONNECT_CDC|UD_CONNECT_NATIVE_CDC|UD_CONNECT_PREPARED|UD_CONNECT_BATCH_WRITE|UD_CONNECT_PROVISION,
+ .test=test,.discover=discover,.read_open=read_open,.read_next=read_next,.read_close=read_close,.write=write_batch,.receipt=receipt,.cancel=cancel,.execute=execute,.begin=begin,.commit=commit,.rollback=rollback,.metadata=metadata,.set_control=set_control,.reset_session=reset,.provision=provision,.metadata_dialect=UD_MYSQL_DIALECT,.cdc_open=cdc_open,.cdc_next=cdc_next,.cdc_confirm=cdc_confirm,.cdc_close=cdc_close};

@@ -135,6 +135,7 @@ ud_status ud_connection_field_namespace(ud_activation *, ud_string, ud_string, c
 ud_status ud_pipeline_field_namespace(const ud_component_context *, char output[33]);
 ud_status ud_transforms_register(ud_registry *);
 ud_status ud_builtin_register(ud_registry *);
+ud_status ud_cdc_register(ud_registry *);
 ud_status ud_advanced_register(ud_registry *);
 ud_status ud_relational_register(ud_registry *);
 ud_status ud_pipeline_write(const ud_component_context *, struct ud_connection_lease *, const ud_write_options *, const ud_batch *);

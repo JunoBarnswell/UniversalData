@@ -1,6 +1,7 @@
 #include "ud/connection_manager.h"
 #include "../components/contracts/connection_internal.h"
 #include "../engines/package/internal.h"
+#include "rest.h"
 
 typedef struct session {
     ud_plugin *plugin;
@@ -33,6 +34,7 @@ struct ud_connection_lease {
     ud_json *definition;
     ud_string id, resource, driver;
     session *session;
+    ud_rest_target *rest;
     ud_connection *connection;
     uint64_t capabilities;
     uint32_t pins;
@@ -54,6 +56,7 @@ ud_status ud_connection_lease_authorize(ud_connection_lease *l, int32_t action) 
                ? UD_OK
                : UD_AUTH;
 }
+ud_status ud_connection_lease_authorize_uri(ud_connection_lease*l,ud_string uri){if(!l||!uri.data||!uri.length)return UD_INVALID;UD_TRY(ud_connection_lease_authorize(l,UD_ACCESS_NETWORK));ud_execution*e=l->activation->execution;return e->options.authorize&&e->options.authorize(e->options.authorize_user,e->options.tenant,uri,UD_ACCESS_NETWORK)==UD_OK?UD_OK:UD_AUTH;}
 static ud_status session_grant(void *user, ud_string tenant, ud_string resource, int32_t action) {
     ud_connection_lease *l = user;
     if (!l || !ud_same(tenant, l->activation->execution->options.tenant) ||
@@ -488,6 +491,7 @@ ud_status ud_http_connection_credentials(ud_connection_lease *l, ud_string *out)
     }
     return UD_OK;
 }
+ud_status ud_connection_lease_bind_rest(ud_connection_lease*l,const ud_component_context*c,const ud_json*config){if(!l||!c||l->rest||!ud_named(l->driver,"http"))return UD_INVALID;UD_TRY(ud_connection_lease_authorize(l,UD_ACCESS_WRITE));ud_status status=ud_rest_target_open(c,l,config,&l->rest);if(!status)l->capabilities|=UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_CHANGESET|UD_CONNECT_RECEIPTS;return status;}
 ud_status ud_connection_lease_read_open(ud_connection_lease *l, const ud_read_options *o,
                                         const ud_batch *b) {
     if (!l || !l->connection)
@@ -506,17 +510,16 @@ ud_status ud_connection_lease_read_close(ud_connection_lease *l) {
 }
 ud_status ud_connection_lease_write(ud_connection_lease *l, const ud_write_options *o,
                                     const ud_batch *b) {
-    if (!l || !l->connection)
-        return UD_UNSUPPORTED;
+    if(!l||(!l->connection&&!l->rest))return UD_UNSUPPORTED;
     UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_WRITE));
+    if(l->rest){uint8_t digest[32];UD_TRY(ud_write_digest(l->activation->execution->ctx,l->activation->execution->options.tenant,l->resource,o,b,digest));return ud_rest_target_write(l->rest,o,b,digest);}
     return ud_connection_write(l->connection, o, b);
 }
 ud_status ud_connection_lease_receipt(ud_connection_lease *l, ud_string job, ud_string batch,
                                       ud_commit_receipt *out) {
-    if (!l || !l->connection)
-        return UD_UNSUPPORTED;
+    if(!l||(!l->connection&&!l->rest))return UD_UNSUPPORTED;
     UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_RECEIPT));
-    return ud_connection_receipt(l->connection, job, batch, out);
+    return l->rest?ud_rest_target_receipt(l->rest,job,batch,out):ud_connection_receipt(l->connection,job,batch,out);
 }
 ud_status ud_connection_lease_execute_command(ud_connection_lease *l, const ud_read_options *options, uint64_t *processed) {
     if (!l || !l->connection)
@@ -526,10 +529,9 @@ ud_status ud_connection_lease_execute_command(ud_connection_lease *l, const ud_r
 }
 ud_status ud_connection_lease_digest(ud_connection_lease *l, const ud_write_options *o,
                                      const ud_batch *b, uint8_t digest[32]) {
-    if (!l || !l->connection)
-        return UD_UNSUPPORTED;
+    if(!l||(!l->connection&&!l->rest))return UD_UNSUPPORTED;
     UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_WRITE));
-    return ud_connection_digest(l->connection, o, b, digest);
+    return l->rest?ud_write_digest(l->activation->execution->ctx,l->activation->execution->options.tenant,l->resource,o,b,digest):ud_connection_digest(l->connection,o,b,digest);
 }
 ud_status ud_connection_lease_metadata(ud_connection_lease *l, const ud_metadata_options *o,
                                        ud_batch **out) {
@@ -622,6 +624,7 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
                 status = disposed;
         }
     }
+    ud_rest_target_close(l->rest);
     ud_json_destroy(l->definition);
     ud_free(l);
     return status;
@@ -855,3 +858,8 @@ ud_status ud_connection_lease_provision(ud_connection_lease *lease){
     if(!lease||!lease->connection)return UD_UNSUPPORTED;
     UD_TRY(ud_connection_lease_authorize(lease,UD_ACCESS_WRITE));return ud_connection_provision(lease->connection);
 }
+
+ud_status ud_connection_lease_cdc_open(ud_connection_lease*l,const ud_cdc_options*o){if(!l||!l->connection)return UD_UNSUPPORTED;UD_TRY(ud_connection_lease_authorize(l,UD_ACCESS_READ));return ud_connection_cdc_open(l->connection,o);}
+ud_status ud_connection_lease_cdc_next(ud_connection_lease*l,ud_cdc_event*e){if(!l||!l->connection)return UD_UNSUPPORTED;UD_TRY(ud_connection_lease_authorize(l,UD_ACCESS_READ));return ud_connection_cdc_next(l->connection,e);}
+ud_status ud_connection_lease_cdc_confirm(ud_connection_lease*l,ud_string p){if(!l||!l->connection)return UD_UNSUPPORTED;UD_TRY(ud_connection_lease_authorize(l,UD_ACCESS_READ));return ud_connection_cdc_confirm(l->connection,p);}
+ud_status ud_connection_lease_cdc_close(ud_connection_lease*l){return l&&l->connection?ud_connection_cdc_close(l->connection):UD_UNSUPPORTED;}
