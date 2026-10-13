@@ -114,7 +114,7 @@ print(f"ZIP integrity: {len(listed)} files; native version {version}; current AB
 # These real consumers use public installed headers and the dynamic Data target.
 c_source = work / "c-source"
 c_source.mkdir()
-for origin, filename in [("hosts/cli.c", "package.c"), ("tests/typed_data_runner.c", "data.c"),
+for origin, filename in [("hosts/cli.c", "package.c"), ("tests/typed_data_runner.c", "data.c"), ("tests/wire_decode.c", "wire_decode.c"),
                          ("tests/core_runtime.c", "resources.c"), ("tests/package_sql.c", "sql.c"),
                          ("tests/next_phase_queries.c", "query.c"),
                          ("tests/check.h", "check.h")]:
@@ -122,7 +122,7 @@ for origin, filename in [("hosts/cli.c", "package.c"), ("tests/typed_data_runner
 (c_source / "CMakeLists.txt").write_text(
     "cmake_minimum_required(VERSION 3.24)\nproject(InstalledSDK C)\n"
     "find_package(UniversalData " + version + " EXACT CONFIG REQUIRED COMPONENTS Data)\n"
-    "foreach(name package data resources sql query)\n"
+    "foreach(name package data resources sql query wire_decode)\n"
     "  add_executable(consumer_\u0024{name} \u0024{name}.c)\n"
     "  target_link_libraries(consumer_\u0024{name} PRIVATE UniversalData::Data)\n"
     "  if(MSVC)\n    target_compile_options(consumer_\u0024{name} PRIVATE /utf-8 /experimental:c11atomics)\n"
@@ -137,7 +137,7 @@ native_environment = dict(environment)
 native_environment["PATH"] = str(native) + os.pathsep + environment["PATH"]
 native_environment["LD_LIBRARY_PATH"] = str(native)
 run("c-dynamic-resources", [sys.executable, ROOT / "tests/core_runtime.py", c_output / ("consumer_resources" + executable)], native_environment)
-run("installed-host-pipeline", [sys.executable, ROOT / "tests/core_pipeline.py", sdk / "bin" / ("ud_cli" + executable)], native_environment)
+run("installed-host-pipeline", [sys.executable, ROOT / "tests/core_pipeline.py", sdk / "bin" / ("ud_cli" + executable), c_output / ("consumer_wire_decode" + executable)], native_environment)
 if manifest["capabilities"]["sqlite"]:
     connector = sdk / "lib/UniversalData/plugins" / ("ud_connector_sqlite.dll" if os.name == "nt" else "ud_connector_sqlite.so")
     run("c-dynamic-sqlite", [sys.executable, ROOT / "tests/package_sql.py", c_output / ("consumer_sql" + executable), connector], native_environment)
@@ -201,6 +201,11 @@ if manifest["capabilities"]["sqlite"]:
         "--data-dll", dotnet_outputs[1], "--java", arguments.java,
         "--classes", java_client / "target/classes", "--jar", installed_jar,
         "--native", native, "--sqlite", connector])
+if manifest['capabilities']['sqlite']:
+    run('bundle-advanced-metadata-parity', [sys.executable, ROOT / 'tests/advanced_metadata.py',
+        '--query', c_output / ('consumer_query' + executable), '--sqlite', connector,
+        '--dotnet', arguments.dotnet, '--data-dll', dotnet_outputs[1], '--java', arguments.java,
+        '--classes', java_client / 'target/classes', '--jar', installed_jar, '--native', native])
 record = {"exitCode": 0, "sdkVersion": version, "abiVersion": manifest["abiVersion"], "configuration": "Release",
           "sourceFingerprint": fingerprint, "archive": str(bundle), "archiveSha256": digest(bundle),
           "verifiedFiles": len(listed), "unpackedDirectory": str(unpacked), "logs": str(work),

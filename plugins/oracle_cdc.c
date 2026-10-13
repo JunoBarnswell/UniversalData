@@ -31,7 +31,7 @@ static ud_status scalar(oracle *p, const char *sql, ud_type type, ud_value *out)
     if (!status)
         status = p->host.get(batch, 0, 0, out);
     if (!status && !out->is_null && (type == UD_UTF8 || type == UD_BINARY)) {
-        out->text = plugin_string(&p->host, out->text, out->text_length);
+        out->text = plugin_bytes(&p->host, out->text, out->text_length);
         if (!out->text)
             status = UD_RESOURCE;
     }

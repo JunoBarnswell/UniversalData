@@ -20,7 +20,7 @@ typedef struct mysql_cdc {
     char *file, *table, *gtid, *incarnation;
     uint64_t position, confirmed;
     uint32_t phase, rows;
-    int snapshot, opened, checksum;
+    int snapshot, opened, checksum, schema_changed;
 #if defined(UD_MYSQL_CLIENT)
     MYSQL_RPL rpl;
 #else
@@ -61,8 +61,8 @@ static ud_status failure(mysql_state *p, MYSQL_STMT *stmt) {
     unsigned int code = stmt ? mysql_stmt_errno(stmt) : mysql_errno(p->db);
     const char *state = stmt ? mysql_stmt_sqlstate(stmt) : mysql_sqlstate(p->db);
     char safe[96];
-    snprintf(safe, sizeof(safe), "SQL provider operation failed (code %u, state %.5s)",
-             code, state ? state : "");
+    snprintf(safe, sizeof(safe), "SQL provider operation failed (code %u, state %.5s)", code,
+             state ? state : "");
     p->host.report(p->host.context, UD_IO, safe);
     if (atomic_load(&p->cancelled))
         return UD_CANCELLED;
@@ -921,11 +921,13 @@ static ud_status binlog_open(mysql_state *p) {
     c->rpl.start_position = c->position;
     c->rpl.server_id = c->rows;
     c->rpl.flags = 1;
-    if (mysql_binlog_open(c->stream, &c->rpl))
-        { unsigned int code = mysql_errno(c->stream); char safe[96];
-            snprintf(safe, sizeof(safe), "binlog transport failed (code %u)", code);
-            p->host.report(p->host.context, UD_IO, safe);
-            return code == 1236 ? UD_FENCED : UD_IO; }
+    if (mysql_binlog_open(c->stream, &c->rpl)) {
+        unsigned int code = mysql_errno(c->stream);
+        char safe[96];
+        snprintf(safe, sizeof(safe), "binlog transport failed (code %u)", code);
+        p->host.report(p->host.context, UD_IO, safe);
+        return code == 1236 ? UD_FENCED : UD_IO;
+    }
 #else
     if (c->rpl)
         mariadb_rpl_close(c->rpl);
@@ -935,14 +937,17 @@ static ud_status binlog_open(mysql_state *p) {
     mariadb_rpl_optionsv(c->rpl, MARIADB_RPL_FILENAME, c->file, strlen(c->file));
     mariadb_rpl_optionsv(c->rpl, MARIADB_RPL_START, (unsigned long)c->position);
     mariadb_rpl_optionsv(c->rpl, MARIADB_RPL_SERVER_ID, c->rows);
-    mariadb_rpl_optionsv(c->rpl, MARIADB_RPL_FLAGS, MARIADB_RPL_BINLOG_DUMP_NON_BLOCK | MARIADB_RPL_BINLOG_SEND_ANNOTATE_ROWS);
+    mariadb_rpl_optionsv(c->rpl, MARIADB_RPL_FLAGS,
+                         MARIADB_RPL_BINLOG_DUMP_NON_BLOCK | MARIADB_RPL_BINLOG_SEND_ANNOTATE_ROWS);
     mariadb_rpl_optionsv(c->rpl, MARIADB_RPL_VERIFY_CHECKSUM, 1u);
     mariadb_rpl_optionsv(c->rpl, MARIADB_RPL_UNCOMPRESS, 1u);
-    if (mariadb_rpl_open(c->rpl))
-        { unsigned int code = c->rpl->error_no; char safe[96];
-            snprintf(safe, sizeof(safe), "binlog transport failed (code %u)", code);
-            p->host.report(p->host.context, UD_IO, safe);
-            return code == 1236 ? UD_FENCED : UD_IO; }
+    if (mariadb_rpl_open(c->rpl)) {
+        unsigned int code = c->rpl->error_no;
+        char safe[96];
+        snprintf(safe, sizeof(safe), "binlog transport failed (code %u)", code);
+        p->host.report(p->host.context, UD_IO, safe);
+        return code == 1236 ? UD_FENCED : UD_IO;
+    }
 #endif
     c->opened = 1;
     return UD_OK;
@@ -969,8 +974,8 @@ static ud_status cdc_position(mysql_state *p, ud_string position) {
     const char *incarnation = NULL;
     uint32_t incarnation_length = 0;
     if (!status)
-        status = p->host.json_text(p->host.json_find(json, "incarnation", 11),
-                                   &incarnation, &incarnation_length);
+        status = p->host.json_text(p->host.json_find(json, "incarnation", 11), &incarnation,
+                                   &incarnation_length);
     if (!status && (strlen(p->cdc->incarnation) != incarnation_length ||
                     memcmp(p->cdc->incarnation, incarnation, incarnation_length)))
         status = UD_FENCED;
@@ -1001,14 +1006,19 @@ static ud_status cdc_position(mysql_state *p, ud_string position) {
 }
 static ud_status cdc_incarnation(mysql_state *p, const ud_cdc_options *o) {
 #if defined(UD_MYSQL_CLIENT)
-    const char *identity = "SELECT CONCAT(@@server_uuid,':',TABLE_ID) FROM INFORMATION_SCHEMA.INNODB_TABLES WHERE NAME=CONCAT(DATABASE(),'/',?)";
+    const char *identity = "SELECT CONCAT(@@server_uuid,':',TABLE_ID) FROM "
+                           "INFORMATION_SCHEMA.INNODB_TABLES WHERE NAME=CONCAT(DATABASE(),'/',?)";
 #else
-    const char *identity = "SELECT CONCAT(@@server_uid,':',TABLE_ID) FROM INFORMATION_SCHEMA.INNODB_SYS_TABLES WHERE NAME=CONCAT(DATABASE(),'/',?)";
+    const char *identity =
+        "SELECT CONCAT(@@server_uid,':',TABLE_ID) FROM INFORMATION_SCHEMA.INNODB_SYS_TABLES WHERE "
+        "NAME=CONCAT(DATABASE(),'/',?)";
 #endif
     MYSQL_STMT *stmt = mysql_stmt_init(p->db);
-    if (!stmt) return UD_RESOURCE;
+    if (!stmt)
+        return UD_RESOURCE;
     ud_status status = mysql_stmt_prepare(stmt, identity, (unsigned long)strlen(identity))
-                           ? failure(p, stmt) : UD_OK;
+                           ? failure(p, stmt)
+                           : UD_OK;
     MYSQL_BIND input = {0}, output = {0};
     unsigned long input_length = o->table.length, size = 0;
     input.buffer_type = MYSQL_TYPE_STRING;
@@ -1019,21 +1029,24 @@ static ud_status cdc_incarnation(mysql_state *p, const ud_cdc_options *o) {
     ud_mysql_bool null = 0, truncated = 0;
     output.buffer_type = MYSQL_TYPE_STRING;
     output.buffer = value;
-    output.buffer_length = sizeof(value)-1;
+    output.buffer_length = sizeof(value) - 1;
     output.length = &size;
     output.is_null = &null;
     output.error = &truncated;
     if (!status && (mysql_stmt_bind_param(stmt, &input) || mysql_stmt_execute(stmt) ||
                     mysql_stmt_bind_result(stmt, &output) || mysql_stmt_store_result(stmt)))
         status = failure(p, stmt);
-    if (!status && (mysql_stmt_num_rows(stmt) != 1 || mysql_stmt_fetch(stmt) || null ||
-                    truncated || !size || size >= sizeof(value))) status = UD_FENCED;
-    for (uint32_t i=0; !status && i<size; i++)
-        if (!(value[i]>='a'&&value[i]<='z') && !(value[i]>='A'&&value[i]<='Z') &&
-            !(value[i]>='0'&&value[i]<='9') && !strchr("-:+/=",value[i])) status=UD_CORRUPT;
+    if (!status && (mysql_stmt_num_rows(stmt) != 1 || mysql_stmt_fetch(stmt) || null || truncated ||
+                    !size || size >= sizeof(value)))
+        status = UD_FENCED;
+    for (uint32_t i = 0; !status && i < size; i++)
+        if (!(value[i] >= 'a' && value[i] <= 'z') && !(value[i] >= 'A' && value[i] <= 'Z') &&
+            !(value[i] >= '0' && value[i] <= '9') && !strchr("-:+/=", value[i]))
+            status = UD_CORRUPT;
     if (!status) {
-        p->cdc->incarnation = plugin_string(&p->host,value,(uint32_t)size);
-        if (!p->cdc->incarnation) status=UD_RESOURCE;
+        p->cdc->incarnation = plugin_string(&p->host, value, (uint32_t)size);
+        if (!p->cdc->incarnation)
+            status = UD_RESOURCE;
     }
     mysql_stmt_close(stmt);
     return status;
@@ -1063,9 +1076,9 @@ static ud_status cdc_open(void *state, const ud_cdc_options *options) {
         status = cdc_incarnation(p, options);
     if (!status)
         status = command(p, "SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-    if (!status &&
-        mysql_query(p->db,
-                    "SELECT @@global.binlog_format,@@global.binlog_row_image,@@global.log_bin,@@global.binlog_checksum"))
+    if (!status && mysql_query(p->db, "SELECT "
+                                      "@@global.binlog_format,@@global.binlog_row_image,@@global."
+                                      "log_bin,@@global.binlog_checksum"))
         status = failure(p, NULL);
     MYSQL_RES *probe = !status ? mysql_store_result(p->db) : NULL;
     MYSQL_ROW row = probe ? mysql_fetch_row(probe) : NULL;
@@ -1073,7 +1086,8 @@ static ud_status cdc_open(void *state, const ud_cdc_options *options) {
         status = UD_UNSUPPORTED;
     if (!status) {
         c->checksum = row[3] && !strcmp(row[3], "CRC32");
-        if (!c->checksum && (!row[3] || strcmp(row[3], "NONE"))) status = UD_UNSUPPORTED;
+        if (!c->checksum && (!row[3] || strcmp(row[3], "NONE")))
+            status = UD_UNSUPPORTED;
     }
     if (probe)
         mysql_free_result(probe);
@@ -1162,11 +1176,74 @@ static ud_status cdc_open(void *state, const ud_cdc_options *options) {
     }
     return UD_OK;
 }
+static ud_status cdc_schema_event(mysql_state *p, ud_cdc_event *out) {
+    mysql_cdc *c = p->cdc;
+    ud_batch *metadata = NULL, *actual = NULL;
+    ud_status status = discover(p, (ud_string){c->table, (uint32_t)strlen(c->table)}, &metadata);
+    if (!status)
+        status = p->host.schema_from_metadata(
+            p->host.context, metadata,
+            (ud_string){c->incarnation, (uint32_t)strlen(c->incarnation)},
+#if defined(UD_MYSQL_CLIENT)
+            UD_SQL_MYSQL,
+#else
+            UD_SQL_MARIADB,
+#endif
+            &actual);
+    int changed = !status && p->host.columns(actual) != p->host.columns(c->schema);
+    for (uint32_t i = 0; !status && !changed && i < p->host.columns(actual); i++) {
+        ud_field before, after;
+        status = p->host.field(c->schema, i, &before);
+        if (!status)
+            status = p->host.field(actual, i, &after);
+        if (!status &&
+            (before.name_length != after.name_length ||
+             memcmp(before.name, after.name, before.name_length) || before.type != after.type ||
+             before.nullable != after.nullable || before.precision != after.precision ||
+             before.scale != after.scale || before.key_order != after.key_order))
+            changed = 1;
+    }
+    if (!status && !changed) {
+        p->host.batch_destroy(actual);
+        p->host.batch_destroy(metadata);
+        ud_binlog_unchanged_schema(c->decoder, out);
+        return UD_OK;
+    }
+    ud_field *fields = NULL;
+    if (!status)
+        status = plugin_fields(&p->host, actual, &fields);
+    uint32_t columns = actual ? p->host.columns(actual) : 0;
+    for (uint32_t i = 0; !status && i < columns; i++) {
+        for (uint32_t j = 0; j < p->host.columns(c->schema); j++) {
+            ud_field before;
+            status = p->host.field(c->schema, j, &before);
+            if (status)
+                break;
+            if (before.name_length == fields[i].name_length &&
+                !memcmp(before.name, fields[i].name, before.name_length)) {
+                fields[i].identity = before.identity;
+                fields[i].lineage = before.lineage;
+                fields[i].lineage_count = before.lineage_count;
+                break;
+            }
+        }
+    }
+    if (!status)
+        status = p->host.batch_create(p->host.context, fields, columns, 0, &out->after);
+    p->host.deallocate(fields);
+    p->host.batch_destroy(actual);
+    p->host.batch_destroy(metadata);
+    if (!status)
+        c->schema_changed = 1;
+    return status;
+}
 static ud_status cdc_next(void *state, ud_cdc_event *out) {
     mysql_state *p = state;
     mysql_cdc *c = p->cdc;
     if (!c)
         return UD_INVALID;
+    if (c->schema_changed)
+        return UD_FENCED;
     memset(out, 0, sizeof(*out));
     out->struct_size = sizeof(*out);
     out->abi_version = UD_ABI_VERSION;
@@ -1205,15 +1282,16 @@ static ud_status cdc_next(void *state, ud_cdc_event *out) {
         out->kind = UD_CDC_COMMIT;
         char position[512];
         int n = snprintf(position, sizeof(position),
-                         "{\"file\":\"%s\",\"position\":%llu,\"gtid\":\"\",\"vendor\":\"%s\",\"incarnation\":\"%s\"}",
+                         "{\"file\":\"%s\",\"position\":%llu,\"gtid\":\"\",\"vendor\":\"%s\","
+                         "\"incarnation\":\"%s\"}",
                          c->file, (unsigned long long)c->position,
 #if defined(UD_MYSQL_CLIENT)
                          "mysql"
 #else
                          "mariadb"
 #endif
-                         , c->incarnation
-        );
+                         ,
+                         c->incarnation);
         out->position = (ud_string){plugin_string(&p->host, position, (uint32_t)n), (uint32_t)n};
         return out->position.data ? UD_OK : UD_RESOURCE;
     }
@@ -1226,10 +1304,13 @@ static ud_status cdc_next(void *state, ud_cdc_event *out) {
     size_t length = 0;
 #if defined(UD_MYSQL_CLIENT)
     if (mysql_binlog_fetch(c->stream, &c->rpl)) {
-        { unsigned int code = mysql_errno(c->stream); char safe[96];
+        {
+            unsigned int code = mysql_errno(c->stream);
+            char safe[96];
             snprintf(safe, sizeof(safe), "binlog transport failed (code %u)", code);
             p->host.report(p->host.context, UD_IO, safe);
-            return code == 1236 ? UD_FENCED : UD_IO; }
+            return code == 1236 ? UD_FENCED : UD_IO;
+        }
     }
     if (!c->rpl.size) {
         mysql_binlog_close(c->stream, &c->rpl);
@@ -1243,39 +1324,42 @@ static ud_status cdc_next(void *state, ud_cdc_event *out) {
         mariadb_free_rpl_event(c->event);
     c->event = mariadb_rpl_fetch(c->rpl, NULL);
     if (!c->event) {
-        if (c->rpl->error_no)
-            { unsigned int code = c->rpl->error_no; char safe[96];
+        if (c->rpl->error_no) {
+            unsigned int code = c->rpl->error_no;
+            char safe[96];
             snprintf(safe, sizeof(safe), "binlog transport failed (code %u)", code);
             p->host.report(p->host.context, UD_IO, safe);
-            return code == 1236 ? UD_FENCED : UD_IO; }
+            return code == 1236 ? UD_FENCED : UD_IO;
+        }
         c->opened = 0;
         return UD_BUSY;
     }
     raw = c->event->raw_data;
     length = c->event->raw_data_size;
 #endif
-    const unsigned char *event = raw;
-    size_t size = length;
-    if (size >= 20 && event[0] == 0 && (uint64_t)(event[10]|event[11]<<8|event[12]<<16|event[13]<<24) == size-1) {
-        event++;
-        size--;
-    }
-    if (size < 19)
-        return UD_CORRUPT;
+    const uint8_t *event = NULL;
+    size_t size = 0;
+    status = ud_binlog_packet(raw, length, &event, &size);
+    if (status)
+        return status;
     uint32_t kind = event[4];
     uint64_t next = 0;
     for (uint32_t i = 0; i < 4; i++)
         next |= (uint64_t)event[13 + i] << (8 * i);
     status = ud_binlog_decode(c->decoder, raw, length,
                               (ud_string){c->file, (uint32_t)strlen(c->file)}, out);
+    if (status == UD_OK && out->kind == UD_CDC_SCHEMA_CHANGE)
+        status = cdc_schema_event(p, out);
     if (status == UD_OK && !out->kind) {
-        char safe[96]; snprintf(safe, sizeof(safe), "binlog decoder emitted no event for type %u", kind);
+        char safe[96];
+        snprintf(safe, sizeof(safe), "binlog decoder emitted no event for type %u", kind);
         p->host.report(p->host.context, UD_CORRUPT, safe);
         status = UD_CORRUPT;
     }
     if (status && status != UD_BUSY) {
-        char safe[96]; snprintf(safe,sizeof(safe),"binlog event %u failed decoding (%d)",kind,status);
-        p->host.report(p->host.context,status,safe);
+        char safe[96];
+        snprintf(safe, sizeof(safe), "binlog event %u failed decoding (%d)", kind, status);
+        p->host.report(p->host.context, status, safe);
     }
     if (status == UD_OK || status == UD_BUSY) {
         if (next)

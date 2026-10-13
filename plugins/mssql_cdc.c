@@ -11,11 +11,12 @@
     } while (0)
 /* SQL Server CDC uses the provider's capture tables and transaction LSNs. The
  * peer session is owned by this same leased ODBC connection. Initial snapshot
- * holds a table writer fence while a separately committed marker is captured;
- * the marker proves that the asynchronous capture process passed the fence. */
+ * holds a table writer fence while a marker is committed by the peer. Capture
+ * is allowed to pass that marker after the snapshot releases the table lock;
+ * later writers then have LSNs strictly beyond the snapshot boundary. */
 struct ud_mssql_cdc {
     odbc_state *owner, *peer;
-    ud_batch *schema, *log_schema, *chunk, *old;
+    ud_batch *schema, *log_schema, *chunk, *old, *fence_marker;
     char *table, *capture, *identity;
     uint8_t position[10], confirmed[10], transaction[10], upper[10], old_sequence[10];
     uint32_t batch_rows, row, phase;
@@ -40,8 +41,9 @@ static ud_status scalar(odbc_state *p, const char *sql, const ud_batch *params, 
     if (!status)
         status = p->host.get(batch, 0, 0, out);
     if (!status && (type == UD_UTF8 || type == UD_BINARY) && !out->is_null) {
-        out->text = plugin_string(&p->host, out->text, out->text_length);
-        if (!out->text)
+        char *owned = plugin_bytes(&p->host, out->text, out->text_length);
+        out->text = owned;
+        if (!owned)
             status = UD_RESOURCE;
     }
     ud_odbc_read_close(p);
@@ -244,7 +246,6 @@ static ud_status fence(struct ud_mssql_cdc *c) {
     if (status)
         return status;
     TRY(scalar(c->peer, "SELECT CONVERT(binary(16),NEWID()) AS [value]", NULL, UD_BINARY, &value));
-    fprintf(stderr,"MS fence marker length=%u memory=%llu\n",value.text_length,(unsigned long long)0);
     if (value.is_null || value.text_length != 16) {
         p->host.deallocate((void *)value.text);
         return UD_CORRUPT;
@@ -261,9 +262,20 @@ static ud_status fence(struct ud_mssql_cdc *c) {
     uint64_t rows = 0;
     if (!status)
         status = ud_odbc_execute(c->peer, &insert, &rows);
-    fprintf(stderr,"MS fence insert status=%d rows=%llu\n",status,(unsigned long long)rows);
     if (!status && rows != 1)
         status = UD_CORRUPT;
+    if (!status) {
+        c->fence_marker = params;
+        params = NULL;
+    }
+    p->host.batch_destroy(params);
+    return status;
+}
+static ud_status confirm_snapshot_fence(struct ud_mssql_cdc *c) {
+    odbc_state *p = c->owner;
+    ud_batch *params = c->fence_marker;
+    ud_status status = params ? UD_OK : UD_CORRUPT;
+    ud_value value = {0};
     const char *poll = "SELECT TOP(1) [__$start_lsn] AS [value] FROM cdc.ud_sdk_cdc_fence_CT WHERE "
                        "marker=? AND [__$operation]=2 ORDER BY [__$start_lsn] DESC";
     struct timespec started;
@@ -279,7 +291,6 @@ static ud_status fence(struct ud_mssql_cdc *c) {
         if (status)
             break;
         status = scalar(c->peer, poll, params, UD_BINARY, &value);
-        if(status!=UD_END)fprintf(stderr,"MS fence poll status=%d memory=%llu\n",status,(unsigned long long)0);
         if (!status && !value.is_null) {
             if (value.text_length != 10)
                 status = UD_CORRUPT;
@@ -295,6 +306,7 @@ static ud_status fence(struct ud_mssql_cdc *c) {
         nanosleep(&delay, NULL);
     }
     p->host.batch_destroy(params);
+    c->fence_marker = NULL;
     if (status)
         return status;
     memcpy(c->confirmed, c->position, 10);
@@ -446,10 +458,8 @@ ud_status ud_mssql_cdc_open(void *state, const ud_cdc_options *o) {
     }
     if (!status)
         status = source_identity(c);
-    fprintf(stderr,"MS CDC identity status=%d\n",status);
     if (!status && o->mode == UD_CDC_SNAPSHOT_STREAM) {
         status = fence(c);
-        fprintf(stderr,"MS CDC fence status=%d\n",status);
         if (!status) {
             char *names = NULL;
             status = source_fields(c, &names);
@@ -475,8 +485,8 @@ ud_status ud_mssql_cdc_open(void *state, const ud_cdc_options *o) {
         if (!status)
             memcpy(c->confirmed, c->position, 10);
     }
-    if (!status)
-        status = retained(c, c->snapshot ? c->peer : p);
+    if (!status && !c->snapshot)
+        status = retained(c, p);
     if (status) {
         ud_mssql_cdc_close(p);
         return status;
@@ -504,6 +514,10 @@ ud_status ud_mssql_cdc_next(void *state, ud_cdc_event *out) {
         if (status == UD_END) {
             ud_odbc_read_close(p);
             status = ud_odbc_commit(p);
+            if (!status)
+                status = confirm_snapshot_fence(c);
+            if (!status)
+                status = retained(c, c->peer);
             if (!status) {
                 c->snapshot = 0;
                 out->kind = UD_CDC_COMMIT;
@@ -696,6 +710,7 @@ ud_status ud_mssql_cdc_close(void *state) {
     p->host.batch_destroy(c->log_schema);
     p->host.batch_destroy(c->chunk);
     p->host.batch_destroy(c->old);
+    p->host.batch_destroy(c->fence_marker);
     p->host.deallocate(c->table);
     p->host.deallocate(c->capture);
     p->host.deallocate(c->identity);

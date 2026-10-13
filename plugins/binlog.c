@@ -470,19 +470,31 @@ static ud_status rows(ud_binlog *d, bytes *b, int kind, ud_cdc_event *out) {
     return status;
 }
 
-ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string file,
-                           ud_cdc_event *out) {
-    memset(out, 0, sizeof(*out));
-    out->struct_size = sizeof(*out);
-    out->abi_version = UD_ABI_VERSION;
-    out->schema_version = d->version;
+ud_status ud_binlog_packet(const void *raw, size_t size, const uint8_t **out, size_t *length) {
+    if (!raw || !out || !length)
+        return UD_INVALID;
     const uint8_t *data = raw;
+    /* Client APIs differ only in whether their raw event includes the protocol
+     * status byte. Exact event length proves its presence; zero timestamps do
+     * not. Every decoder and rotation uses this same framing owner. */
     if (size >= 20 && data[0] == 0 && little(data + 10, 4) == size - 1) {
         data++;
         size--;
     }
     if (size < 19 || little(data + 9, 4) != size)
         return UD_CORRUPT;
+    *out = data;
+    *length = size;
+    return UD_OK;
+}
+ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string file,
+                           ud_cdc_event *out) {
+    memset(out, 0, sizeof(*out));
+    out->struct_size = sizeof(*out);
+    out->abi_version = UD_ABI_VERSION;
+    out->schema_version = d->version;
+    const uint8_t *data = NULL;
+    TRY(ud_binlog_packet(raw, size, &data, &size));
     uint32_t kind = data[4];
     uint64_t position = little(data + 13, 4);
     bytes body = {data + 19, size - 19, 0};
@@ -503,8 +515,9 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
     if (d->checksum) {
         if (body.n < 4)
             return UD_CORRUPT;
-        if ((uint32_t)crc32(0, data, (uInt)(size - 4)) != little(data + size - 4, 4))
+        if ((uint32_t)crc32(0, data, (uInt)(size - 4)) != little(data + size - 4, 4)) {
             return UD_CORRUPT;
+        }
         body.n -= 4;
     }
     if (kind == 19) {
@@ -523,8 +536,10 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
             snprintf(transaction, sizeof(transaction), "%u-%u-%llu", domain, server,
                      (unsigned long long)sequence);
             if (body.p[12] & 32) {
-                out->kind = UD_CDC_SCHEMA_CHANGE;
-                return UD_OK;
+                d->host.deallocate(d->transaction);
+                d->transaction =
+                    plugin_string(&d->host, transaction, (uint32_t)strlen(transaction));
+                return d->transaction ? UD_BUSY : UD_RESOURCE;
             }
         } else {
             if (d->maria || body.n < 25)
@@ -567,28 +582,57 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
         /* Query events may be protocol comment placeholders (MariaDB's
          * annotation downgrade), not DDL. Strip complete SQL comments first. */
         for (;;) {
-            while (n && (*query==' '||*query=='\t'||*query=='\r'||*query=='\n')) { query++; n--; }
-            if (n && (*query=='#' || (n>1 && query[0]=='-' && query[1]=='-'))) {
-                while(n && *query!='\n') { query++; n--; }
+            while (n && (*query == ' ' || *query == '\t' || *query == '\r' || *query == '\n')) {
+                query++;
+                n--;
+            }
+            if (n && (*query == '#' || (n > 1 && query[0] == '-' && query[1] == '-'))) {
+                while (n && *query != '\n') {
+                    query++;
+                    n--;
+                }
                 continue;
             }
-            if (n>1 && query[0]=='/' && query[1]=='*') {
-                size_t end=2; while(end+1<n && !(query[end]=='*'&&query[end+1]=='/')) end++;
-                if(end+1==n) return UD_CORRUPT;
-                query+=end+2; n-=end+2; continue;
+            if (n > 1 && query[0] == '/' && query[1] == '*') {
+                size_t end = 2;
+                while (end + 1 < n && !(query[end] == '*' && query[end + 1] == '/'))
+                    end++;
+                if (end + 1 == n)
+                    return UD_CORRUPT;
+                query += end + 2;
+                n -= end + 2;
+                continue;
             }
             break;
         }
-        if (!n) return UD_BUSY;
+        if (!n)
+            return UD_BUSY;
         if (n == 6 && !memcmp(query, "COMMIT", 6)) {
             if (!d->begun)
                 return UD_CORRUPT;
             d->begun = 0;
             out->kind = UD_CDC_COMMIT;
             s = UD_OK;
-        } else if (n == 5 && !memcmp(query, "BEGIN", 5))
-            s = UD_BUSY;
-        else {
+        } else if (n == 5 && !memcmp(query, "BEGIN", 5)) {
+            if (d->begun)
+                s = UD_BUSY;
+            else {
+                /* Legacy binlog streams expose BEGIN without a GTID packet.
+                 * Its physical start position is the transaction identity. */
+                char identity[320];
+                int length = snprintf(identity, sizeof(identity), "%.*s:%llu", (int)file.length,
+                                      file.data, (unsigned long long)position);
+                if (length < 0 || (size_t)length >= sizeof(identity))
+                    return UD_RESOURCE;
+                d->begun = 1;
+                d->host.deallocate(d->transaction);
+                d->transaction = plugin_string(&d->host, identity, (uint32_t)length);
+                out->transaction_id = (ud_string){
+                    plugin_string(&d->host, identity, (uint32_t)length), (uint32_t)length};
+                out->kind = UD_CDC_BEGIN;
+                s = d->transaction && out->transaction_id.data ? UD_OK : UD_RESOURCE;
+            }
+        } else {
             out->kind = UD_CDC_SCHEMA_CHANGE;
             s = UD_OK;
         }
@@ -600,14 +644,18 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
     else if (kind == 39 || kind == 40 || kind >= 166)
         s = UD_UNSUPPORTED;
     if (!s) {
+        if (out->kind == UD_CDC_SCHEMA_CHANGE)
+            out->schema_version = ++d->version;
         size_t n = file.length + strlen(d->incarnation) + 256;
         char *text = d->host.allocate(d->host.context, n);
         if (!text)
             return UD_RESOURCE;
-        int length = snprintf(
-            text, n, "{\"file\":\"%.*s\",\"position\":%llu,\"gtid\":\"%s\",\"vendor\":\"%s\",\"incarnation\":\"%s\"}",
-            (int)file.length, file.data, (unsigned long long)position,
-            d->transaction ? d->transaction : "", d->maria ? "mariadb" : "mysql", d->incarnation);
+        int length = snprintf(text, n,
+                              "{\"file\":\"%.*s\",\"position\":%llu,\"gtid\":\"%s\",\"vendor\":\"%"
+                              "s\",\"incarnation\":\"%s\"}",
+                              (int)file.length, file.data, (unsigned long long)position,
+                              d->transaction ? d->transaction : "", d->maria ? "mariadb" : "mysql",
+                              d->incarnation);
         if (length < 0 || (size_t)length >= n) {
             d->host.deallocate(text);
             return UD_RESOURCE;
@@ -677,6 +725,12 @@ void ud_binlog_destroy(ud_binlog *d) {
     d->host.deallocate(d);
 }
 
+void ud_binlog_unchanged_schema(ud_binlog *d, ud_cdc_event *out) {
+    /* Unrelated database DDL still completes its log transaction. It changes
+     * no source columns and cannot leave a previously emitted BEGIN open. */
+    out->kind = d->begun ? UD_CDC_COMMIT : UD_CDC_HEARTBEAT;
+    d->begun = 0;
+}
 ud_status ud_binlog_drain(ud_binlog *d, ud_cdc_event *out) {
     if (!d->pending)
         return UD_BUSY;
@@ -705,11 +759,8 @@ ud_status ud_binlog_drain(ud_binlog *d, ud_cdc_event *out) {
 }
 ud_status ud_binlog_rotation(ud_binlog *d, const void *raw, size_t size, ud_string *file,
                              uint64_t *offset) {
-    const uint8_t *data = raw;
-    if (size >= 20 && data[0] == 0 && little(data + 10, 4) == size - 1) {
-        data++;
-        size--;
-    }
+    const uint8_t *data = NULL;
+    TRY(ud_binlog_packet(raw, size, &data, &size));
     if (size < 27 || data[4] != 4)
         return UD_CORRUPT;
     size_t n = size - 27;

@@ -35,7 +35,10 @@ with tempfile.TemporaryDirectory(prefix='ud-advanced-formats-') as tmp:
    else:written.extend(body['rows']);receipts[key]=receipt
    counts['post']+=1;self.reply(200,receipt)
  server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Service)
- private=pathlib.Path('/workspace/.universaldata-tools/pr5-fixtures');tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);tls.load_cert_chain(private/'server.pem',private/'server.key');server.socket=tls.wrap_socket(server.socket,server_side=True);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start();base='https://localhost:'+str(server.server_port)
+ private=root/'tls';private.mkdir()
+ subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(private/'server.key'),'-out',str(private/'server.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost,IP:127.0.0.1','-addext','extendedKeyUsage=serverAuth'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+ (private/'server.key').chmod(0o600);(private/'ca.pem').write_bytes((private/'server.pem').read_bytes())
+ tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);tls.load_cert_chain(private/'server.pem',private/'server.key');server.socket=tls.wrap_socket(server.socket,server_side=True);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start();base='https://localhost:'+str(server.server_port)
  try:
   connections=[dict(id='source',driver='http',resource=base+'/source'),dict(id='sink',driver='http',resource=base+'/sink'),dict(id='ca',driver='file',resource=str(private/'ca.pem'))]
   folder,p=execute('rest',document(connections,[node('s','rest.source',connection='source',schema=schema,caConnection='ca',batchSize=3,maxAttempts=3,retryDelayMs=1),node('d','rest.destination',connection='sink',table='target',mode='append',receiptUrl=base+'/receipt',caConnection='ca')],[('s','d')]))

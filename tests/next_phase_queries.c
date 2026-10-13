@@ -85,6 +85,50 @@ int main(int argc, char **argv) {
         ud_batch_destroy(identified);
         ud_batch_destroy(b);
         free(wire);
+    } else if (!strcmp(argv[1], "--instantiate")) {
+        CHECK(argc == 4);
+        uint32_t n;
+        char *s = read_fixture(argv[2], &n);
+        ud_package *package = NULL;
+        OK(ud_package_create(ctx, (ud_string){s, n}, &package));
+        OK(ud_package_serialize(package, &json, &length));
+        write_fixture(argv[3], json, length);
+        ud_package_destroy(package);
+        free(s);
+    } else if (!strcmp(argv[1], "--catalog") || !strcmp(argv[1], "--explain") ||
+               !strcmp(argv[1], "--execute")) {
+        CHECK(argc == 4);
+        uint32_t n;
+        char *s = read_fixture(argv[2], &n);
+        ud_execution *e = NULL;
+        ud_execution_options o = {.struct_size = sizeof(o),
+                                  .abi_version = UD_ABI_VERSION,
+                                  .context = {.struct_size = sizeof(ud_context_options),
+                                              .abi_version = UD_ABI_VERSION,
+                                              .memory_limit = 268435456},
+                                  .edge_capacity = 2,
+                                  .max_batch_rows = 4096,
+                                  .max_depth = 32,
+                                  .max_concurrency = 1,
+                                  .tenant = {"fixture", 7},
+                                  .authorize = authorize,
+                                  .resolve = resolve};
+        ud_status opened = ud_execution_create_json((ud_string){s, n}, &o, &e);
+        if (opened) fprintf(stderr, "Native binding: %s\n", ud_error(ctx));
+        OK(opened);
+        if (!strcmp(argv[1], "--catalog"))
+            OK(ud_execution_component_catalog(e, &json, &length));
+        else if (!strcmp(argv[1], "--explain"))
+            OK(ud_execution_explain(e, &json, &length));
+        else {
+            OK(ud_execution_execute(e));
+            OK(ud_execution_diagnostics(e, &json, &length));
+        }
+        write_fixture(argv[3], json, length);
+        ud_free(json);
+        json = NULL;
+        OK(ud_execution_destroy(e));
+        free(s);
     } else if (!strcmp(argv[1], "--discover")) {
         CHECK(argc == 6);
         uint32_t n;
@@ -102,7 +146,9 @@ int main(int argc, char **argv) {
                                   .tenant = {"fixture", 7},
                                   .authorize = authorize,
                                   .resolve = resolve};
-        OK(ud_execution_create_json((ud_string){s, n}, &o, &e));
+        ud_status opened = ud_execution_create_json((ud_string){s, n}, &o, &e);
+        if (opened) fprintf(stderr, "Native binding: %s\n", ud_error(ctx));
+        OK(opened);
         OK(ud_execution_discover_schema(e, str(argv[3]), str(argv[4]), &json, &length));
         write_fixture(argv[5], json, length);
         ud_free(json);

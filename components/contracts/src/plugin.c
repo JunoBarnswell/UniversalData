@@ -165,7 +165,8 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_sql_compile_write,
                             ud_sql_statement_clear,
                             ud_value_compare,
-                            ud_sql_compile_preimage};
+                            ud_sql_compile_preimage,
+                            ud_schema_from_metadata};
     *out = p;
     return UD_OK;
 }
@@ -829,9 +830,11 @@ ud_status ud_connection_cdc_next(ud_connection *c, ud_cdc_event *out) {
         c->cdc_version = out->schema_version;
     else {
         char safe[128];
-        snprintf(safe, sizeof(safe), "CDC event contract rejected (kind=%d, version=%llu, status=%d)",
-                 out->kind, (unsigned long long)out->schema_version, status);
-        if (!*ud_error(c->ctx)) ud_fail(c->ctx, status, "%s", safe);
+        snprintf(safe, sizeof(safe),
+                 "CDC event contract rejected (kind=%d, version=%llu, status=%d)", out->kind,
+                 (unsigned long long)out->schema_version, status);
+        if (status != UD_BUSY && status != UD_END && !*ud_error(c->ctx))
+            ud_fail(c->ctx, status, "%s", safe);
         ud_cdc_event_clear(out);
     }
     return status;

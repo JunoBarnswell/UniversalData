@@ -5,6 +5,21 @@ import org.universaldata.Schema;
 import org.universaldata.Execution;
 public final class DataConsumer {
     public static void main(String[] args) throws Exception {
+        if (args.length == 3 && args[0].equals("--instantiate")) {
+            try(org.universaldata.Package packageDefinition=new org.universaldata.Package(Files.readString(Path.of(args[1])))) {
+                Files.writeString(Path.of(args[2]),packageDefinition.toJson());
+            }
+            return;
+        }
+        if (args.length == 3 && (args[0].equals("--catalog") || args[0].equals("--explain") || args[0].equals("--execute"))) {
+            try(Execution execution=new Execution(Files.readString(Path.of(args[1])),"fixture",(t,r,a)->true,"{}","",
+                (t,r,ref)->ref.equals("fixture")?r:null,2,4096,268435456L,0,null,false,1)) {
+                if(args[0].equals("--execute")) execution.execute();
+                Files.writeString(Path.of(args[2]),args[0].equals("--catalog")?execution.componentCatalog():
+                    args[0].equals("--explain")?execution.explain():execution.diagnostics());
+            }
+            return;
+        }
         if (args.length == 5 && args[0].equals("--compare")) {
             Files.writeString(Path.of(args[4]),Schema.compare(Files.readString(Path.of(args[1])),Files.readString(Path.of(args[2])),Files.readString(Path.of(args[3]))));
             return;

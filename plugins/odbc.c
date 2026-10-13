@@ -13,7 +13,9 @@
 ud_status ud_odbc_control(odbc_state *p) {
     if (atomic_load(&p->cancelled) || p->host.cancelled(p->host.context))
         return UD_CANCELLED;
-    return p->check ? p->check(p->check_user) : UD_OK;
+    return p->check           ? p->check(p->check_user)
+           : p->host.check_io ? p->host.check_io(p->host.control_user)
+                              : UD_OK;
 }
 static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
     SQLCHAR message[2];
@@ -22,8 +24,8 @@ static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
                    sizeof(message), &length);
     p->sqlstate[5] = 0;
     char safe[96];
-    snprintf(safe, sizeof(safe), "ODBC operation failed (SQLSTATE %.5s, native %ld)",
-             p->sqlstate, (long)p->native_error);
+    snprintf(safe, sizeof(safe), "ODBC operation failed (SQLSTATE %.5s, native %ld)", p->sqlstate,
+             (long)p->native_error);
     p->host.report(p->host.context, UD_IO, safe);
     if (!strncmp(p->sqlstate, "08", 2)) {
         p->broken = 1;
@@ -663,13 +665,19 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
                 int zoned = 0;
                 for (uint32_t at = 0; at < n; at++) {
                     char ch = owned[i][at];
-                    if (at == 10) ch = 'T';
-                    else if (at > 18 && ch == ' ') continue;
-                    if (at > 18 && (ch == '+' || ch == '-' || ch == 'Z')) zoned = 1;
+                    if (at == 10)
+                        ch = 'T';
+                    else if (at > 18 && ch == ' ')
+                        continue;
+                    if (at > 18 && (ch == '+' || ch == '-' || ch == 'Z'))
+                        zoned = 1;
                     time[normalized++] = ch;
                 }
                 if (!zoned) {
-                    if (!p->utc) { s = UD_UNSUPPORTED; break; }
+                    if (!p->utc) {
+                        s = UD_UNSUPPORTED;
+                        break;
+                    }
                     time[normalized++] = 'Z';
                 }
                 n = normalized;
@@ -784,29 +792,42 @@ static ud_status sql_declaration(odbc_state *p, int type, int precision, int sca
         return UD_OK;
     }
     if (p->dialect == DIALECT_POSTGRES) {
-        if (!strcmp(lower, "int8")) strcpy(lower, "bigint");
-        else if (!strcmp(lower, "int4")) strcpy(lower, "integer");
-        else if (!strcmp(lower, "int2")) strcpy(lower, "smallint");
-        else if (!strcmp(lower, "float8")) strcpy(lower, "double precision");
-        else if (!strcmp(lower, "float4")) strcpy(lower, "real");
-        else if (!strcmp(lower, "bool")) strcpy(lower, "boolean");
-        else if (!strcmp(lower, "varchar")) strcpy(lower, "character varying");
-        else if (!strcmp(lower, "timestamptz")) strcpy(lower, "timestamp with time zone");
-        else if (!strcmp(lower, "timestamp")) return UD_UNSUPPORTED;
-        else if (!strcmp(lower, "time")) strcpy(lower, "time without time zone");
+        if (!strcmp(lower, "int8"))
+            strcpy(lower, "bigint");
+        else if (!strcmp(lower, "int4"))
+            strcpy(lower, "integer");
+        else if (!strcmp(lower, "int2"))
+            strcpy(lower, "smallint");
+        else if (!strcmp(lower, "float8"))
+            strcpy(lower, "double precision");
+        else if (!strcmp(lower, "float4"))
+            strcpy(lower, "real");
+        else if (!strcmp(lower, "bool"))
+            strcpy(lower, "boolean");
+        else if (!strcmp(lower, "varchar"))
+            strcpy(lower, "character varying");
+        else if (!strcmp(lower, "timestamptz"))
+            strcpy(lower, "timestamp with time zone");
+        else if (!strcmp(lower, "timestamp"))
+            return UD_UNSUPPORTED;
+        else if (!strcmp(lower, "time"))
+            strcpy(lower, "time without time zone");
     } else if (p->dialect == DIALECT_MSSQL) {
         if (!strcmp(lower, "datetime2") || !strcmp(lower, "datetime") ||
             !strcmp(lower, "smalldatetime")) {
-            if (!p->utc) return UD_UNSUPPORTED;
+            if (!p->utc)
+                return UD_UNSUPPORTED;
             snprintf(out, 80, "%s_utc", !strcmp(lower, "datetime2") ? "datetime2" : "datetime");
             return UD_OK;
         }
     } else if (p->dialect == DIALECT_MYSQL && !strncmp(lower, "datetime", 8)) {
-        if (!p->utc) return UD_UNSUPPORTED;
+        if (!p->utc)
+            return UD_UNSUPPORTED;
         strcpy(lower, "datetime_utc");
     } else if (p->dialect == DIALECT_ORACLE &&
                (!strcmp(lower, "date") || !strcmp(lower, "timestamp"))) {
-        if (!p->utc) return UD_UNSUPPORTED;
+        if (!p->utc)
+            return UD_UNSUPPORTED;
         snprintf(out, 80, "%s_utc", lower);
         return UD_OK;
     }
@@ -904,7 +925,7 @@ ud_status ud_odbc_discover(void *state, ud_string table, ud_batch **out) {
         char type[80];
         if (!s)
             s = sql_declaration(p, atoi(values[1]), atoi(values[3]), atoi(values[4]), values[2],
-                               type);
+                                type);
         int key = 0;
         for (uint32_t k = 0; !s && k < count; k++)
             if (primary[k] && !strcmp(primary[k], values[0]))
@@ -970,7 +991,7 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
                     memcpy(out->digest, digest, 32);
                 if (!s)
                     s = get_cell(p, stmt, 1, 0, &position, &length, &null);
-                if (!s && null)
+                if (!s && null && p->dialect != DIALECT_ORACLE)
                     s = UD_CORRUPT;
                 if (!s) {
                     out->source_position = (ud_string){position, length};
@@ -1007,6 +1028,12 @@ static ud_status provision(void *state) {
             ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT "
               "NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL,source_position TEXT NOT "
               "NULL,PRIMARY KEY(tenant,job,batch_id))"
+        : p->dialect == DIALECT_ORACLE
+            ? "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_receipts_v2(tenant "
+              "VARCHAR2(128 BYTE) NOT NULL,job VARCHAR2(256 BYTE) NOT NULL,batch_id "
+              "VARCHAR2(128 BYTE) NOT NULL,digest RAW(32) NOT NULL,source_position "
+              "CLOB,PRIMARY KEY(tenant,job,batch_id))'; "
+              "EXCEPTION WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;"
         : p->dialect == DIALECT_SQLITE || p->dialect == DIALECT_DUCKDB
             ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT "
               "NULL,batch_id TEXT NOT NULL,digest BLOB NOT NULL,source_position TEXT NOT "
@@ -1083,7 +1110,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
                         {.name = "job", .name_length = 3, .type = UD_UTF8},
                         {.name = "batch", .name_length = 5, .type = UD_UTF8},
                         {.name = "digest", .name_length = 6, .type = UD_BINARY},
-                        {.name = "position", .name_length = 8, .type = UD_UTF8}};
+                        {.name = "position", .name_length = 8, .type = UD_UTF8, .nullable = 1}};
         ud_value v[] = {
             {.type = UD_UTF8, .text = tenant.data, .text_length = tenant.length},
             {.type = UD_UTF8, .text = o->job.data, .text_length = o->job.length},
@@ -1091,7 +1118,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
             {.type = UD_BINARY, .text = (const char *)digest, .text_length = 32},
             {.type = UD_UTF8,
              .text = o->source_position.data,
-             .text_length = o->source_position.length}};
+             .text_length = o->source_position.length,
+             .is_null = p->dialect == DIALECT_ORACLE && !o->source_position.length}};
         ud_batch *b = NULL;
         s = p->host.batch_create(p->host.context, f, 5, 1, &b);
         if (!s)

@@ -143,11 +143,15 @@
         "paths": [
           {
             "from": "read",
-            "to": "map"
+            "to": "map",
+            "input": 0,
+            "output": 0
           },
           {
             "from": "map",
-            "to": "write"
+            "to": "write",
+            "input": 0,
+            "output": 0
           }
         ]
       },

@@ -55,11 +55,36 @@ typedef struct node {
         first_ms, end_ms, ready_ms, prepare_ms, prepare_cpu_ns, finish_ms, finish_cpu_ns,
         blocked_ms, input_wait_ms, capacity_wait_ms;
     int blocked_kind;
+    uint64_t batch_latency[64], batch_samples, batch_max_ns, batch_sum_ns;
     uint64_t barrier_mask, barrier_epoch, acknowledged_epoch, watermark_mask;
     atomic_uint_fast64_t staged_epoch;
     int64_t watermarks[64], last_watermark;
     ud_string source_position;
 } node;
+static void batch_observe(node *n, uint64_t nanoseconds) {
+    uint32_t bucket = 0;
+    uint64_t upper = 1;
+    while (upper < nanoseconds && bucket < 63) {
+        bucket++;
+        upper <<= 1;
+    }
+    n->batch_latency[bucket]++;
+    n->batch_samples++;
+    if (nanoseconds > n->batch_max_ns)
+        n->batch_max_ns = nanoseconds;
+    n->batch_sum_ns += nanoseconds;
+}
+static uint64_t batch_p95(const node *n) {
+    uint64_t rank = n->batch_samples - n->batch_samples / 20, seen = 0;
+    if (!rank)
+        return 0;
+    for (uint32_t bucket = 0; bucket < 64; bucket++) {
+        seen += n->batch_latency[bucket];
+        if (seen >= rank)
+            return bucket == 63 ? UINT64_MAX : UINT64_C(1) << bucket;
+    }
+    return UINT64_MAX;
+}
 typedef struct physical_plan {
     ud_activation *execution;
     node *nodes;
@@ -1447,6 +1472,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     memset(n->emitted, 0, n->descriptor.outputs);
     n->emit_allowed = 1;
     uint64_t started = ud_now_ms(), cpu = ud_thread_cpu_ns();
+    uint64_t started_ns = ud_monotonic_ns(), produced_before = n->produced;
     if (!n->first_ms)
         n->first_ms = started;
     n->steps++;
@@ -1458,6 +1484,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
         s = event.kind >= UD_COMPONENT_WATERMARK ? stream_control(p, n, &event)
                                                  : n->descriptor.step(n->instance, &event);
     ud_task_cancel_unregister(&n->activation);
+    if (input || n->produced != produced_before)
+        batch_observe(n, ud_monotonic_ns() - started_ns);
     n->callback_ms += ud_now_ms() - started;
     n->cpu_ns += ud_thread_cpu_ns() - cpu;
     n->emit_allowed = 0;
@@ -1682,6 +1710,20 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
                     UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
                     UD_TRY(json_number(b, names[k], values[k]));
                 }
+                UD_TRY(ud_bytes_put(b, ",\"batchLatency\":{", sizeof(",\"batchLatency\":{") - 1));
+                UD_TRY(json_number(b, "samples", n->batch_samples));
+                UD_TRY(ud_bytes_put(b, ",", 1));
+                UD_TRY(json_number(b, "p95UpperNs", batch_p95(n)));
+                UD_TRY(ud_bytes_put(b, ",", 1));
+                UD_TRY(json_number(b, "maxNs", n->batch_max_ns));
+                UD_TRY(ud_bytes_put(b, ",", 1));
+                UD_TRY(json_number(b, "sumNs", n->batch_sum_ns));
+                UD_TRY(ud_bytes_put(b,
+                                    ",\"method\":\"log2-nanoseconds-upper-bound\",\"scope\":"
+                                    "\"component-batch-callback\"}",
+                                    sizeof(",\"method\":\"log2-nanoseconds-upper-bound\",\"scope\":"
+                                           "\"component-batch-callback\"}") -
+                                        1));
                 if (n->opened && n->descriptor.diagnostics) {
                     char *facts = NULL;
                     uint32_t length = 0;

@@ -16,6 +16,8 @@
   </PropertyGroup>
   <ItemGroup Condition="'$(NativeLibraryDirectory)' != ''">
     <None Include="$(NativeLibraryDirectory)/$(NativeLibraryName)" Pack="true" PackagePath="runtimes/$(NativeRuntimeIdentifier)/native/" />
+    <None Include="$(NativeDependencyDirectory)/*" Condition="'$(NativeDependencyDirectory)' != ''" Pack="true" PackagePath="runtimes/$(NativeRuntimeIdentifier)/native/" />
+    <None Include="$(NativeLicenseDirectory)/**/*" Condition="'$(NativeLicenseDirectory)' != ''" Pack="true" PackagePath="licenses/" />
   </ItemGroup>
   <Target Name="ValidateNativePackage" BeforeTargets="GenerateNuspec">
     <Error Condition="('$(NativeLibraryDirectory)' != '' Or '$(NativeRuntimeIdentifier)' != '') And ('$(NativeLibraryDirectory)' == '' Or '$(NativeLibraryName)' == '')" Text="Specify NativeLibraryDirectory and a supported NativeRuntimeIdentifier together." />

@@ -64,6 +64,11 @@ def main():
                     facts=run(args.driver,doc,root,workers);signature=digest(root/'output.ndjson')
                     if workload=='errorDualSink':assert digest(root/'errors.ndjson')['rows']==min(args.rows//10,100000);assert facts['committedErrors']==min(args.rows//10,100000)
                     if workload=='cacheLookup':assert digest(root/'second.ndjson')==signature;assert facts['diagnostics']['caches'][0]['loaded']==args.references
+                tails=[dict(pipeline=pipeline['id'],component=node['id'],**node['batchLatency'])
+                       for pipeline in facts['diagnostics']['pipelines'] for tree in pipeline['trees']
+                       for node in tree['nodes'] if node.get('batchLatency',{}).get('samples')]
+                assert tails and all(t['p95UpperNs']>0 for t in tails)
+                facts['batchLatencies']=tails
                 expected_rows=args.rows-min(args.rows//10,100000) if workload=='errorDualSink' else args.rows
                 assert signature['rows']==expected_rows,(workload,signature,expected_rows)
                 if workload in golden:assert golden[workload]==signature,(workload,workers,signature,golden[workload])
