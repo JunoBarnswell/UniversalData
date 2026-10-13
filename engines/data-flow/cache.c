@@ -91,7 +91,7 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     if (!status && !build)
         status = ud_compute_join_schema(c->memory, in[0], reference, out);
     if (!status)
-        status = ud_error_schema(c, build ? reference : in[0], include, out + (build ? 0 : 1));
+        status = ud_error_schema(&c->errors, build ? reference : in[0], include, out + (build ? 0 : 1));
     ud_free(mapping);
     ud_free(keys);
     ud_batch_destroy(reference);
@@ -159,7 +159,7 @@ static ud_status build_drain(cache_component *c) {
     status = ud_batch_create(c->context.memory, c->errors->schema->fields, c->errors->columns,
                              duplicates->rows, &errors);
     for (uint32_t row = 0; !status && row < duplicates->rows; row++)
-        status = ud_error_append(&c->context, errors, duplicates, row,
+        status = ud_error_append(&c->context.errors, errors, duplicates, row,
                                  (ud_string){"cache.duplicate", 15}, 1, (ud_id){0}, UD_QUALITY,
                                  UD_ERROR_REDIRECT);
     if (!status && errors->rows) {
@@ -199,7 +199,7 @@ static ud_status lookup_drain(cache_component *c) {
                 if (c->policy == UD_ERROR_FAIL)
                     status = UD_QUALITY;
                 else if (c->policy == UD_ERROR_REDIRECT) {
-                    status = ud_error_append(&c->context, errors, c->input, c->row,
+                    status = ud_error_append(&c->context.errors, errors, c->input, c->row,
                                              (ud_string){"cache.miss", 10}, 1, (ud_id){0},
                                              UD_QUALITY, c->policy);
                     if (!status)

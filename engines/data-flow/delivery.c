@@ -138,26 +138,8 @@ ud_status ud_rule_facts_restore(ud_execution *e, const ud_json *array, int subtr
     }
     return UD_OK;
 }
-ud_status ud_rule_token(const ud_component_context *c, ud_string rule, uint32_t version,
-                        ud_id *out) {
-    ud_bytes identity = {.ctx = c->memory};
-    ud_string parts[] = {c->activation->package->id, c->pipeline_id, c->component_id, rule};
-    ud_status status = UD_OK;
-    for (uint32_t i = 0; !status && i < 4; i++)
-        status = ud_put_string(&identity, parts[i].data, parts[i].length);
-    if (!status)
-        status = ud_put_u64(&identity, version);
-    if (!status) {
-        uint8_t digest[32];
-        ud_hash(identity.data, identity.size, digest);
-        *out = (ud_id){0};
-        for (uint32_t i = 0; i < 8; i++) {
-            out->high = (out->high << 8) | digest[i];
-            out->low = (out->low << 8) | digest[i + 8];
-        }
-    }
-    ud_bytes_clear(&identity);
-    return status;
+ud_status ud_rule_token(const ud_component_context *c,ud_string rule,uint32_t version,ud_id *out) {
+    return ud_error_rule_token(&c->errors,rule,version,out);
 }
 ud_status ud_rule_statistics(ud_execution *e, ud_id token, uint64_t *committed, uint64_t *ack,
                              uint64_t *unknown) {

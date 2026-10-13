@@ -3,6 +3,7 @@
 #include "compute.h"
 #include "buffer.h"
 #include "partition.h"
+#include "error.h"
 typedef struct ud_executor ud_executor;
 #ifdef __cplusplus
 extern "C" {
@@ -22,7 +23,14 @@ enum {
     UD_OPERATOR_UNPIVOT,
     UD_OPERATOR_ROW_SAMPLING,
     UD_OPERATOR_PERCENTAGE_SAMPLING,
-    UD_OPERATOR_SCD
+    UD_OPERATOR_SCD,
+    UD_OPERATOR_DEDUPLICATE, UD_OPERATOR_TOP_N, UD_OPERATOR_RANK,
+    UD_OPERATOR_SURROGATE_KEY, UD_OPERATOR_ALTER_ROW, UD_OPERATOR_FLATTEN,
+    UD_OPERATOR_EXPLODE, UD_OPERATOR_PARSE_JSON, UD_OPERATOR_JSON_PATH,
+    UD_OPERATOR_STANDARDIZE, UD_OPERATOR_REGEX_EXTRACT, UD_OPERATOR_REGEX_REPLACE,
+    UD_OPERATOR_TERM_EXTRACT, UD_OPERATOR_TERM_LOOKUP, UD_OPERATOR_DATA_PROFILE,
+    UD_OPERATOR_MULTIWAY_JOIN, UD_OPERATOR_ASOF_JOIN, UD_OPERATOR_TEMPORAL_JOIN,
+    UD_OPERATOR_DIFF_COMPARE, UD_OPERATOR_FUZZY_LOOKUP, UD_OPERATOR_FUZZY_GROUPING
 };
 typedef struct ud_sort_key {
     ud_id field;
@@ -62,6 +70,8 @@ typedef struct ud_operator_options {
     uint64_t frame_preceding, frame_following;
     uint64_t estimated_rows[64], memory_budget, spill_budget;
     uint32_t input_count;
+    const ud_expression_options *expression_bindings;
+    ud_error_context errors;
 } ud_operator_options;
 typedef struct ud_physical_plan_info {
     uint32_t struct_size, abi_version, algorithm, input_count, output_count, partitions;

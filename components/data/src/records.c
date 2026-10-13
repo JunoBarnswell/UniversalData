@@ -35,8 +35,8 @@ ud_status ud_batch_copy_row_info(ud_batch *out, uint32_t target, const ud_batch 
         return UD_OK;
     return ud_batch_set_row_info(out, target, &info);
 }
-ud_status ud_batch_append_from(ud_batch *out, const ud_batch *input, uint32_t row) {
-    if (!out || !input || row >= input->rows || out->columns != input->columns || out->sealed)
+ud_status ud_batch_append_projected(ud_batch *out, const ud_batch *input, uint32_t row,const uint32_t *columns) {
+    if (!out || !input || row >= input->rows || (!columns && out->columns > input->columns) || out->sealed)
         return UD_INVALID;
     ud_row_info info;
     UD_TRY(ud_batch_row_info(input, row, &info));
@@ -49,12 +49,16 @@ ud_status ud_batch_append_from(ud_batch *out, const ud_batch *input, uint32_t ro
         return UD_RESOURCE;
     ud_status status = UD_OK;
     for (uint32_t col = 0; !status && col < out->columns; col++)
-        status = ud_batch_get(input, row, col, values + col);
+        status = ud_batch_get(input, row, columns ? columns[col] : col, values + col);
     if (!status)
         status = ud_batch_append(out, values, out->columns);
     if (!status && out->row_info)
         out->row_info[out->rows - 1] = info;
     return status;
+}
+ud_status ud_batch_append_from(ud_batch *out,const ud_batch *input,uint32_t row) {
+    if(!out||!input||out->columns!=input->columns)return UD_INVALID;
+    return ud_batch_append_projected(out,input,row,NULL);
 }
 static ud_id record_id(ud_id scope, uint64_t position) {
     uint8_t bytes[24], digest[32];

@@ -137,6 +137,7 @@ typedef struct ud_row_info {
  * means unspecified direct-API provenance. Mutation requires an owned mutable batch. */
 UD_API ud_status ud_batch_row_info(const ud_batch *, uint32_t, ud_row_info *);
 UD_API ud_status ud_batch_set_row_info(ud_batch *, uint32_t, const ud_row_info *);
+UD_API ud_status ud_batch_append_projected(ud_batch *,const ud_batch *,uint32_t row,const uint32_t *columns);
 UD_API ud_status ud_batch_append_from(ud_batch *, const ud_batch *, uint32_t);
 /* Returns a sealed column-sharing view with new deterministic source identities. */
 UD_API ud_status ud_batch_identify(ud_context *, const ud_batch *, ud_id scope, uint64_t first,

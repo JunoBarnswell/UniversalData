@@ -419,7 +419,7 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
             }
         }
         if (!s)
-            s = ud_error_schema(c, in[0], include, out + 1);
+            s = ud_error_schema(&c->errors, in[0], include, out + 1);
     } else if (!s && kind == DERIVE) {
         const ud_json *columns = ud_member(config, "columns");
         uint32_t count = ud_json_size(columns), original = ud_batch_columns(in[0]);
@@ -507,7 +507,7 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
             }
         }
         if (!s)
-            s = ud_error_schema(c, payload, include, out + 1);
+            s = ud_error_schema(&c->errors, payload, include, out + 1);
         ud_batch_destroy(payload);
         ud_free(nullable);
     }
@@ -1542,7 +1542,7 @@ static ud_status cast_rows(builtin *b, const ud_batch *input) {
                                conversion == UD_AUTH))
             status = conversion;
         else if (!status && policy == UD_ERROR_REDIRECT) {
-            status = ud_error_append(&b->context, errors, input, row, (ud_string){"cast", 4}, 1,
+            status = ud_error_append(&b->context.errors, errors, input, row, (ud_string){"cast", 4}, 1,
                                      input->column[bad].field.identity, conversion, policy);
             if (!status)
                 ud_task_rows(b->context.activation, 0, 0, 1);
@@ -1753,7 +1753,7 @@ static ud_status step(void *ptr, const ud_component_event *event) {
                 s = ud_batch_create(b->context.memory, b->errors->schema->fields,
                                     b->errors->columns, batch->rows, &errors);
                 for (uint32_t row = 0; !s && row < batch->rows; row++)
-                    s = ud_error_append(&b->context, errors, batch, row,
+                    s = ud_error_append(&b->context.errors, errors, batch, row,
                                         (ud_string){"xlsx.cell", 9}, 1, (ud_id){0}, UD_PARSE,
                                         UD_ERROR_REDIRECT);
                 if (!s)
@@ -2110,6 +2110,7 @@ static ud_status describe_source(void *user, const ud_component_context *c, ud_s
 }
 ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_relational_register(registry));
+    UD_TRY(ud_advanced_register(registry));
     static const struct {
         const char *id;
         int kind;

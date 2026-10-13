@@ -135,6 +135,7 @@ ud_status ud_connection_field_namespace(ud_activation *, ud_string, ud_string, c
 ud_status ud_pipeline_field_namespace(const ud_component_context *, char output[33]);
 ud_status ud_transforms_register(ud_registry *);
 ud_status ud_builtin_register(ud_registry *);
+ud_status ud_advanced_register(ud_registry *);
 ud_status ud_relational_register(ud_registry *);
 ud_status ud_pipeline_write(const ud_component_context *, struct ud_connection_lease *, const ud_write_options *, const ud_batch *);
 ud_status ud_component_lookup(ud_activation *, ud_string, ud_component_descriptor *);
@@ -226,9 +227,7 @@ ud_status ud_asset_publish(ud_activation *, ud_string, ud_cache *);
 ud_status ud_asset_acquire(ud_activation *, ud_string, ud_cache **);
 
 ud_status ud_error_policy(const ud_json *, const char *, int, int *);
-ud_status ud_error_schema(const ud_component_context *, const ud_batch *, int, ud_batch **);
-ud_status ud_error_append(const ud_component_context *, ud_batch *, const ud_batch *, uint32_t,
-                          ud_string, uint32_t, ud_id, ud_status, int);
+
 ud_status ud_schema_report(ud_activation *, ud_string, ud_status);
 ud_status ud_quality_component_register(ud_registry *);
 ud_status ud_cache_components_register(ud_registry *);

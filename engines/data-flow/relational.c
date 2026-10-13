@@ -17,6 +17,8 @@ typedef struct relational_component {
     uint64_t committed, conflicts;
 } relational_component;
 static int outputs(int k) {
+    if(k==UD_OPERATOR_DIFF_COMPARE)return 5;
+    if(k==UD_OPERATOR_ASOF_JOIN||k==UD_OPERATOR_TEMPORAL_JOIN)return 2;
     return k == UD_OPERATOR_PIVOT || k == UD_OPERATOR_ROW_SAMPLING ||
                    k == UD_OPERATOR_PERCENTAGE_SAMPLING
                ? 2
@@ -27,7 +29,7 @@ static ud_status bind_operator(const ud_component_context *c, int kind, ud_strin
                                const ud_batch *const *in, ud_cache *reference, ud_operator **out) {
     ud_sort_contract order[2] = {{0}};
     for (uint32_t p = 0;
-         p < (kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN ? 2u : 1u); p++)
+         p < (kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN || kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN || kind == UD_OPERATOR_DIFF_COMPARE ? 2u : 1u); p++)
         if (c->input_plans)
             order[p] = c->input_plans[p].sort;
     ud_operator_options options = {.struct_size = sizeof(options),
@@ -65,7 +67,7 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     UD_TRY(ud_json_parse(c->memory, text.data, text.length, &config, NULL));
     ud_batch *dimension = NULL;
     const ud_batch *bound[2] = {
-        in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN ? in[1] : NULL};
+        in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN || kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN || kind == UD_OPERATOR_DIFF_COMPARE ? in[1] : NULL};
     ud_status s =
         kind == UD_OPERATOR_SCD ? inputs_for_scd(c, config, in[0], bound, &dimension) : UD_OK;
     ud_operator *o = NULL;
@@ -86,7 +88,7 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
                 }
             }
             if (!s)
-                s = ud_error_schema(c, in[0], include, out + p);
+                s = ud_error_schema(&c->errors, in[0], include, out + p);
         } else
             s = ud_operator_schema(o, p, out + p);
     ud_operator_destroy(o);
@@ -123,7 +125,7 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     if (!s)
         s = ud_error_policy(r->config, "errorPolicy", UD_ERROR_FAIL, &r->policy);
     const ud_batch *bound[2] = {
-        in[0], r->kind == UD_OPERATOR_MERGE || r->kind == UD_OPERATOR_MERGE_JOIN ? in[1] : NULL};
+        in[0], r->kind == UD_OPERATOR_MERGE || r->kind == UD_OPERATOR_MERGE_JOIN || r->kind == UD_OPERATOR_ASOF_JOIN || r->kind == UD_OPERATOR_TEMPORAL_JOIN || r->kind == UD_OPERATOR_DIFF_COMPARE ? in[1] : NULL};
     if (!s && r->kind == UD_OPERATOR_SCD) {
         s = inputs_for_scd(c, r->config, in[0], bound, &r->dimension);
         if (!s)
@@ -161,7 +163,7 @@ static ud_status pull(relational_component *r) {
                             batch->rows, &errors);
         const char *name = r->kind == UD_OPERATOR_PIVOT ? "pivot.rejected" : "scd.fixedViolation";
         for (uint32_t row = 0; !s && row < batch->rows; row++)
-            s = ud_error_append(&r->context, errors, batch, row,
+            s = ud_error_append(&r->context.errors, errors, batch, row,
                                 (ud_string){name, (uint32_t)strlen(name)}, 1, (ud_id){0},
                                 UD_QUALITY, r->policy);
         if (!s)
@@ -200,7 +202,7 @@ static ud_status describe(void *user, const ud_component_context *c, ud_string t
     UD_TRY(ud_json_parse(c->memory, text.data, text.length, &config, NULL));
     ud_batch *dimension = NULL;
     const ud_batch *bound[2] = {
-        in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN ? in[1] : NULL};
+        in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN || kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN || kind == UD_OPERATOR_DIFF_COMPARE ? in[1] : NULL};
     ud_status s =
         kind == UD_OPERATOR_SCD ? inputs_for_scd(c, config, in[0], bound, &dimension) : UD_OK;
     ud_operator *o = NULL;
@@ -505,7 +507,9 @@ ud_status ud_relational_register(ud_registry *registry) {
                    {"unpivot", UD_OPERATOR_UNPIVOT},
                    {"rowSampling", UD_OPERATOR_ROW_SAMPLING},
                    {"percentageSampling", UD_OPERATOR_PERCENTAGE_SAMPLING},
-                   {"scd", UD_OPERATOR_SCD}};
+                   {"scd", UD_OPERATOR_SCD},
+                   {"asOfJoin",UD_OPERATOR_ASOF_JOIN},{"temporalJoin",UD_OPERATOR_TEMPORAL_JOIN},
+                   {"diffCompare",UD_OPERATOR_DIFF_COMPARE}};
     for (uint32_t i = 0; i < sizeof(entries) / sizeof(*entries); i++) {
         int k = entries[i].kind;
         ud_string schema = {0};
@@ -518,17 +522,17 @@ ud_status ud_relational_register(ud_registry *registry) {
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = schema,
             .category = UD_COMPONENT_TRANSFORM,
-            .inputs = k == UD_OPERATOR_MERGE || k == UD_OPERATOR_MERGE_JOIN ? 2 : 1,
+            .inputs = k == UD_OPERATOR_MERGE || k == UD_OPERATOR_MERGE_JOIN || k==UD_OPERATOR_ASOF_JOIN || k==UD_OPERATOR_TEMPORAL_JOIN || k==UD_OPERATOR_DIFF_COMPARE ? 2 : 1,
             .outputs = (uint32_t)outputs(k),
             .synchronous_input = -1,
-            .error_output = k == UD_OPERATOR_PIVOT ? 1
+            .error_output = k==UD_OPERATOR_DIFF_COMPARE?4:k==UD_OPERATOR_ASOF_JOIN||k==UD_OPERATOR_TEMPORAL_JOIN?1:k == UD_OPERATOR_PIVOT ? 1
                             : k == UD_OPERATOR_SCD ? 5
                                                    : -1,
             .capabilities = UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_REPLAY_SAFE |
                             UD_COMPONENT_STATEFUL |
                             (k == UD_OPERATOR_ROW_SAMPLING ? UD_COMPONENT_BLOCKING
                                                            : UD_COMPONENT_PARTIALLY_BLOCKING),
-            .optional_outputs = k == UD_OPERATOR_PIVOT ? UINT64_C(2)
+            .optional_outputs = k==UD_OPERATOR_DIFF_COMPARE?UINT64_C(16):k==UD_OPERATOR_ASOF_JOIN||k==UD_OPERATOR_TEMPORAL_JOIN?UINT64_C(2):k == UD_OPERATOR_PIVOT ? UINT64_C(2)
                                 : k == UD_OPERATOR_SCD ? UINT64_C(33)
                                                        : 0,
             .user = (void *)(intptr_t)k,
@@ -572,6 +576,7 @@ ud_status ud_component_operator_options(const ud_component_context *c,ud_operato
     o->memory_budget=limits.working_limit/(2u*concurrency);
     o->spill_budget=limits.spill_limit;
     o->input_count=c->input_count;
+    o->errors=c->errors;
     for(uint32_t i=0;i<c->input_count&&i<64;i++) if(c->input_plans) o->estimated_rows[i]=c->input_plans[i].estimated_rows;
     return UD_OK;
 }

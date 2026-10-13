@@ -2,6 +2,7 @@
 #define UD_COMPONENT_H
 #include "expression.h"
 #include "json.h"
+#include "error.h"
 #include "activation.h"
 #include "operator.h"
 #ifdef __cplusplus
@@ -58,6 +59,7 @@ typedef struct ud_component_context {
     uint32_t input_count, output_count;
     uint64_t connected_outputs;            /* Binding knows which regular ports have edges. */
     const ud_batch *const *output_schemas; /* Resolved output identities at pure binding. */
+    ud_error_context errors;
 } ud_component_context;
 /* Task promises its effects may safely be replayed after an interrupted invoke.
  * This is a host/plugin contract, not a claim inferred by the runtime. */

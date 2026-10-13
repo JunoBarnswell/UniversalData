@@ -300,8 +300,10 @@ ud_status ud_relational_create(ud_context *ctx, const ud_operator_options *o,
         return UD_RESOURCE;
     r->ctx = ctx;
     r->options = *o;
+    if(!r->options.errors.memory){r->options.errors=(ud_error_context){.struct_size=sizeof(ud_error_context),.abi_version=UD_ABI_VERSION,.memory=ctx};ud_id_make(ctx,(ud_string){"native.compute",14},(ud_string){"errors",6},&r->options.errors.field_scope);}
     r->ports = o->kind == UD_OPERATOR_JOIN || o->kind == UD_OPERATOR_MERGE ||
-                       o->kind == UD_OPERATOR_MERGE_JOIN
+                       o->kind == UD_OPERATOR_MERGE_JOIN || o->kind == UD_OPERATOR_ASOF_JOIN ||
+                       o->kind == UD_OPERATOR_TEMPORAL_JOIN || o->kind == UD_OPERATOR_DIFF_COMPARE
                    ? 2
                    : 1;
     r->outputs = 1;
@@ -436,47 +438,7 @@ ud_status ud_relational_create(ud_context *ctx, const ud_operator_options *o,
                                                          : -1;
             if (r->join_type < 0)
                 s = UD_SCHEMA;
-            const ud_json *aliases = ud_rel_member(r->config, "rightAliases");
-            ud_field *right = ud_alloc(ctx, in[1]->columns * sizeof(*right));
-            ud_batch *aliased = NULL;
-            if (!right)
-                s = UD_RESOURCE;
-            for (uint32_t i = 0; !s && i < in[1]->columns; i++) {
-                right[i] = in[1]->column[i].field;
-                const ud_json *alias = ud_json_find(aliases, right[i].name, right[i].name_length);
-                if (alias) {
-                    ud_string n;
-                    s = ud_rel_text(alias, &n);
-                    right[i].name = n.data;
-                    right[i].name_length = n.length;
-                }
-            }
-            if (!s)
-                s = ud_batch_create(ctx, right, in[1]->columns, 0, &aliased);
-            if (!s)
-                s = r->join_type >= 4 ? ud_rel_clone(ctx, in[0], 0, &r->schema[0])
-                                      : ud_compute_join_schema(ctx, in[0], aliased, &r->schema[0]);
-            ud_free(right);
-            ud_batch_destroy(aliased);
-            if (!s && r->join_type >= 1 && r->join_type <= 3) {
-                ud_field *f = ud_alloc(ctx, r->schema[0]->columns * sizeof(*f));
-                if (!f)
-                    s = UD_RESOURCE;
-                for (uint32_t i = 0; !s && i < r->schema[0]->columns; i++) {
-                    f[i] = r->schema[0]->column[i].field;
-                    if ((i >= in[0]->columns && (r->join_type == 1 || r->join_type == 2)) ||
-                        (i < in[0]->columns && (r->join_type == 2 || r->join_type == 3)))
-                        f[i].nullable = 1;
-                }
-                ud_batch *nullable = NULL;
-                if (!s)
-                    s = ud_batch_create(ctx, f, r->schema[0]->columns, 0, &nullable);
-                ud_free(f);
-                if (!s) {
-                    ud_batch_destroy(r->schema[0]);
-                    r->schema[0] = nullable;
-                }
-            }
+            if(!s)s=ud_rel_join_schema(r);
         }
         if (!s) {
             r->output_order = r->order[0];
@@ -486,7 +448,11 @@ ud_status ud_relational_create(ud_context *ctx, const ud_operator_options *o,
             if (r->join_type == 2 || r->join_type == 3)
                 memset(&r->output_order, 0, sizeof(r->output_order));
         }
-    } else if (!s && o->kind == UD_OPERATOR_PIVOT)
+    } else if(!s && (o->kind==UD_OPERATOR_ASOF_JOIN || o->kind==UD_OPERATOR_TEMPORAL_JOIN))
+        s=ud_temporal_bind(r);
+    else if(!s && o->kind==UD_OPERATOR_DIFF_COMPARE)
+        s=ud_diff_bind(r);
+    else if (!s && o->kind == UD_OPERATOR_PIVOT)
         s = ud_rel_pivot_bind(r);
     else if (!s && o->kind == UD_OPERATOR_UNPIVOT)
         s = ud_rel_unpivot_bind(r);
@@ -560,6 +526,11 @@ ud_status ud_relational_pull(ud_relational *r, ud_batch **out, uint32_t *port) {
     ud_status s = ud_rel_control(r);
     if (!s) {
         switch (r->options.kind) {
+        case UD_OPERATOR_ASOF_JOIN:
+        case UD_OPERATOR_TEMPORAL_JOIN:
+            s=ud_temporal_pull(r,out,&p);break;
+        case UD_OPERATOR_DIFF_COMPARE:
+            s=ud_diff_pull(r,out,&p);break;
         case UD_OPERATOR_JOIN:
             s = r->hash_join ? ud_hash_join_pull(r, out) : ud_rel_merge_pull(r, out);
             break;
@@ -621,6 +592,7 @@ void ud_relational_destroy(ud_relational *r) {
     if (!r)
         return;
     ud_hash_join_destroy(r);
+    ud_batch_destroy(r->pending_error);
     for (uint32_t p = 0; p < 2; p++) {
         ud_buffer_view_release(r->in[p].view);
         ud_buffer_release(r->in[p].block);
@@ -669,3 +641,5 @@ ud_status ud_compute_field_index(const ud_batch *schema,const ud_json *field,uin
 uint32_t ud_relational_algorithm(const ud_relational *r) {
     return r->algorithm ? r->algorithm : r->rank_sort ? UD_PHYSICAL_SORT : UD_PHYSICAL_STREAM;
 }
+
+uint32_t ud_relational_output_count(const ud_relational *r){return r->outputs;}

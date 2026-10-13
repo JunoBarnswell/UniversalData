@@ -227,7 +227,7 @@ ud_status ud_quality_create(ud_context *ctx, const ud_field *fields, uint32_t co
             if (!r->config.pattern)
                 s = UD_RESOURCE;
             if (!s && !input->match)
-                s = ud_regex_compile(ctx, r->config.pattern, r->config.pattern_length, &r->regex);
+                s = ud_regex_compile(ctx, r->config.pattern, r->config.pattern_length, &(ud_regex_options){.struct_size=sizeof(ud_regex_options),.abi_version=UD_ABI_VERSION,.max_steps=1000000,.max_depth=64,.heap_bytes=1048576,.check=options->check,.user=options->user}, &r->regex);
         }
     }
     if (!s) {

@@ -724,6 +724,13 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                                             &n->activation,
                                             ud_resolve_field};
 
+        char error_scope[33];
+        UD_TRY(ud_pipeline_field_namespace(&n->context,error_scope));
+        ud_id scope = {0};UD_TRY(ud_id_parse((ud_string){error_scope,32},&scope));
+        n->context.errors=(ud_error_context){.struct_size=sizeof(ud_error_context),.abi_version=UD_ABI_VERSION,
+            .memory=n->context.memory,.execution_id=e->execution->options.execution_id,
+            .package_id=e->package->id,.task_id=e->task_id,.pipeline_id=p->id,.component_id=n->id,.field_scope=scope};
+
         if (n->activation.transaction_serial && ud_member(n->configuration, "connection")) {
             ud_string connection;
             UD_TRY(ud_json_string(ud_member(n->configuration, "connection"), &connection));

@@ -168,7 +168,7 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     if (!status)
         status = ud_quality_schema(quality, out);
     if (!status)
-        status = ud_error_schema(c, in[0], include, out + 1);
+        status = ud_error_schema(&c->errors, in[0], include, out + 1);
     ud_quality_destroy(quality);
     ud_json_destroy(config);
     return status;
@@ -248,7 +248,7 @@ static ud_status drain(quality_component *q) {
             if (!status && ud_member(rule, "version"))
                 status = ud_json_uint(ud_member(rule, "version"), &version);
             if (!status)
-                status = ud_error_append(&q->context, errors, q->pending_input, v->input_row, id,
+                status = ud_error_append(&q->context.errors, errors, q->pending_input, v->input_row, id,
                                          (uint32_t)version, v->column_id, UD_QUALITY, v->policy);
         }
         if (!status && errors->rows)

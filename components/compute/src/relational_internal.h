@@ -62,6 +62,8 @@ struct ud_relational {
     int scd_ready;
     uint32_t algorithm;
     ud_hash_join *hash_join;
+    uint32_t left_time,right_time,right_end,tie_break;
+    ud_batch *pending_error;
 };
 const ud_json *ud_rel_member(const ud_json *j, const char *key);
 int ud_rel_named(const ud_json *j, const char *text);
@@ -103,4 +105,9 @@ ud_status ud_hash_join_push(ud_relational *,uint32_t,const ud_batch *);
 ud_status ud_hash_join_end(ud_relational *,uint32_t);
 ud_status ud_hash_join_pull(ud_relational *,ud_batch **);
 void ud_hash_join_destroy(ud_relational *);
+ud_status ud_rel_join_schema(ud_relational *);
+ud_status ud_temporal_bind(ud_relational *);
+ud_status ud_temporal_pull(ud_relational *,ud_batch **,uint32_t *);
+ud_status ud_diff_bind(ud_relational *);
+ud_status ud_diff_pull(ud_relational *,ud_batch **,uint32_t *);
 #endif
