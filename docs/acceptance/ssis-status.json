@@ -22,14 +22,16 @@
     "state": "R1–R5 P0/P1 implemented and Linux verified; unmerged PR candidate",
     "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
     "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
-    "mergeEvidence": null
+    "mergeEvidence": null,
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
   },
   "remoteCI": {
     "state": "Blocked",
-    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38305032129",
-    "sourceCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38325912089",
+    "sourceCommit": "a698129fff37349d6e29b51dcd47ebc8583b4e80",
     "startedSteps": 0,
-    "reason": "GitHub account payment/spending-limit restriction; no code steps ran. Current Linux local evidence is independent."
+    "reason": "Blocked before code execution: GitHub account payment/spending-limit restriction",
+    "evidence": "docs/acceptance/evidence/etl-next-phase-linux/remote-ci.json"
   },
   "artifacts": {
     "archive": "artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip",

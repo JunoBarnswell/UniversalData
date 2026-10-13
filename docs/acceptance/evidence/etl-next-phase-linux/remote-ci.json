@@ -1,0 +1,37 @@
+{
+  "observedAtUtc": "2026-10-13T00:11:42.115178+00:00",
+  "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5",
+  "run": {
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38325912089",
+    "sourceCommit": "a698129fff37349d6e29b51dcd47ebc8583b4e80",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "failure"
+  },
+  "jobs": [
+    {
+      "id": 115064410575,
+      "name": "minimal-components",
+      "conclusion": "failure",
+      "steps": []
+    },
+    {
+      "id": 115064410770,
+      "name": "memory-check",
+      "conclusion": "failure",
+      "steps": []
+    },
+    {
+      "id": 115064410810,
+      "name": "package-and-bindings",
+      "conclusion": "failure",
+      "steps": []
+    }
+  ],
+  "annotations": [
+    {
+      "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+    }
+  ],
+  "classification": "Blocked before code execution: GitHub account payment/spending-limit restriction"
+}
