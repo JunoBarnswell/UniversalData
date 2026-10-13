@@ -156,6 +156,10 @@ UD_API ud_status ud_field_from_sql(ud_string declaration, int32_t dialect, ud_fi
 UD_API ud_status ud_schema_fingerprint(const ud_batch *, uint8_t out[32]);
 UD_API ud_status ud_schema_from_metadata(ud_context *, const ud_batch *, ud_string, int32_t,
                                          ud_batch **);
+/* Attach proven existing identities to discovered fields with the same name.
+ * Rename/drop/key/type compatibility is still decided by schema_compare/map. */
+UD_API ud_status ud_schema_bind_identity(ud_context *, const ud_batch *bound,
+                                         const ud_batch *discovered, ud_batch **);
 UD_API ud_status ud_schema_compare(ud_context *, const ud_batch *, const ud_batch *, ud_string,
                                    char **, uint32_t *);
 UD_API ud_status ud_schema_compare_json(ud_context *, ud_string, ud_string, ud_string, char **,

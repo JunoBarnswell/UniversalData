@@ -1137,7 +1137,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
             s = execute_bound(p, stmt, batch, 0, array ? count : 1, NULL, plan.parameter_count,
                               &affected, o, &plan);
         if (!s && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT &&
-            affected != 1)
+            o->operations[row] != UD_CHANGE_TRUNCATE && affected != 1)
             s = p->host.report(p->host.context, UD_FENCED, "changeset preimage conflict");
         statement_release(p, stmt);
         p->host.statement_clear(&plan);

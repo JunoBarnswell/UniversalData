@@ -19,7 +19,7 @@ struct ud_binlog {
     int maria, begun, checksum;
     uint8_t *pending;
     size_t pending_size, pending_at;
-    int pending_action;
+    int pending_action, pending_control;
     ud_string pending_position;
     int64_t pending_watermark;
     char **owned_values;
@@ -572,6 +572,97 @@ ud_status ud_binlog_packet(const void *raw, size_t size, const uint8_t **out, si
     *length = size;
     return UD_OK;
 }
+static void sql_space(const char **text, size_t *size) {
+    while (*size && (**text == ' ' || **text == '\t' || **text == '\r' || **text == '\n')) {
+        (*text)++;
+        (*size)--;
+    }
+}
+static int sql_word(const char **text, size_t *size, const char *word) {
+    size_t length = strlen(word);
+    if (*size < length)
+        return 0;
+    for (size_t at = 0; at < length; at++) {
+        unsigned char value = (unsigned char)(*text)[at];
+        if (value >= 'a' && value <= 'z')
+            value -= 'a' - 'A';
+        if (value != (unsigned char)word[at])
+            return 0;
+    }
+    if (*size > length && (*text)[length] != ' ' && (*text)[length] != '\t' &&
+        (*text)[length] != '\n' && (*text)[length] != '\r')
+        return 0;
+    *text += length;
+    *size -= length;
+    sql_space(text, size);
+    return 1;
+}
+static int sql_name(const char **text, size_t *size, char output[257]) {
+    uint32_t length = 0;
+    int quoted = *size && **text == '`';
+    if (quoted) {
+        (*text)++;
+        (*size)--;
+    }
+    int closed = !quoted;
+    while (*size) {
+        unsigned char value = (unsigned char)**text;
+        if (quoted && value == '`') {
+            (*text)++;
+            (*size)--;
+            if (*size && **text == '`') {
+                value = '`';
+            } else {
+                closed = 1;
+                break;
+            }
+        } else if (!quoted && !(value > 127 || (value >= 'a' && value <= 'z') ||
+                                (value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9') ||
+                                value == '_' || value == '$'))
+            break;
+        if (length == 256 || !value)
+            return 0;
+        output[length++] = (char)value;
+        (*text)++;
+        (*size)--;
+    }
+    output[length] = 0;
+    sql_space(text, size);
+    return length && closed;
+}
+static int source_truncate(ud_binlog *decoder, const char *query, size_t size, const char *database,
+                           size_t database_length) {
+    if (!sql_word(&query, &size, "TRUNCATE"))
+        return 0;
+    (void)sql_word(&query, &size, "TABLE");
+    char first[257], second[257];
+    if (!sql_name(&query, &size, first))
+        return 0;
+    const char *table = first, *schema = NULL;
+    if (size && *query == '.') {
+        query++;
+        size--;
+        sql_space(&query, &size);
+        if (!sql_name(&query, &size, second))
+            return 0;
+        schema = first;
+        table = second;
+    }
+    if (size && *query == ';') {
+        query++;
+        size--;
+        sql_space(&query, &size);
+    }
+    if (size || strcmp(table, decoder->table))
+        return 0;
+    if (decoder->database) {
+        if (schema)
+            return !strcmp(schema, decoder->database);
+        return strlen(decoder->database) == database_length &&
+               !memcmp(database, decoder->database, database_length);
+    }
+    return schema == NULL;
+}
 ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string file,
                            ud_cdc_event *out) {
     memset(out, 0, sizeof(*out));
@@ -717,6 +808,28 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
                 out->kind = UD_CDC_BEGIN;
                 s = d->transaction && out->transaction_id.data ? UD_OK : UD_RESOURCE;
             }
+        } else if (source_truncate(d, query, n, (const char *)body.p + 13 + status,
+                                   database_length)) {
+            if (!d->begun) {
+                char identity[320];
+                int length = snprintf(identity, sizeof(identity), "%.*s:%llu", (int)file.length,
+                                      file.data, (unsigned long long)position);
+                if (length < 0 || (size_t)length >= sizeof(identity))
+                    return UD_RESOURCE;
+                d->host.deallocate(d->transaction);
+                d->transaction = plugin_string(&d->host, identity, (uint32_t)length);
+                out->transaction_id = (ud_string){
+                    plugin_string(&d->host, identity, (uint32_t)length), (uint32_t)length};
+                if (!d->transaction || !out->transaction_id.data)
+                    return UD_RESOURCE;
+                d->begun = 1;
+                out->kind = UD_CDC_BEGIN;
+                d->pending_control = 1;
+            } else {
+                out->kind = UD_CDC_TRUNCATE;
+                d->pending_control = 2;
+            }
+            s = UD_OK;
         } else {
             out->kind = UD_CDC_SCHEMA_CHANGE;
             s = UD_OK;
@@ -746,7 +859,7 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
             return UD_RESOURCE;
         }
         out->position = (ud_string){text, (uint32_t)length};
-        if (d->pending) {
+        if (d->pending || d->pending_control) {
             d->pending_position =
                 (ud_string){plugin_string(&d->host, text, (uint32_t)length), (uint32_t)length};
             d->pending_watermark = out->watermark;
@@ -817,6 +930,61 @@ void ud_binlog_destroy(ud_binlog *d) {
     d->host.deallocate(d);
 }
 
+ud_status ud_binlog_rebind(ud_binlog *d, const ud_batch *schema, uint64_t version,
+                           ud_string position) {
+    if (d->pending || d->pending_control)
+        return UD_BUSY;
+    ud_field *fields = NULL;
+    ud_batch *owned = NULL;
+    ud_status status = plugin_fields(&d->host, schema, &fields);
+    uint32_t columns = d->host.columns(schema);
+    if (!status)
+        status = d->host.batch_create(d->host.context, fields, columns, 0, &owned);
+    d->host.deallocate(fields);
+    uint8_t *types = NULL, *meta = NULL, *unsigned_columns = NULL, *before = NULL, *after = NULL;
+    if (!status) {
+        types = d->host.allocate(d->host.context, columns);
+        meta = d->host.allocate(d->host.context, columns * 2);
+        unsigned_columns = d->host.allocate(d->host.context, columns);
+        before = d->host.allocate(d->host.context, (columns + 7) / 8);
+        after = d->host.allocate(d->host.context, (columns + 7) / 8);
+        if (!types || !meta || !unsigned_columns || !before || !after)
+            status = UD_RESOURCE;
+    }
+    if (!status) {
+        d->host.batch_destroy(d->schema);
+        d->schema = owned;
+        owned = NULL;
+        d->host.deallocate(d->types);
+        d->host.deallocate(d->meta);
+        d->host.deallocate(d->unsigned_columns);
+        d->host.deallocate(d->before_map);
+        d->host.deallocate(d->after_map);
+        d->types = types;
+        d->meta = meta;
+        d->unsigned_columns = unsigned_columns;
+        d->before_map = before;
+        d->after_map = after;
+        d->columns = columns;
+        d->table_id = 0;
+        d->version = version;
+        if (position.length) {
+            d->pending_position = (ud_string){
+                plugin_string(&d->host, position.data, position.length), position.length};
+            if (!d->pending_position.data)
+                return UD_RESOURCE;
+            d->pending_control = d->begun ? 2 : 3;
+        }
+    } else {
+        d->host.deallocate(types);
+        d->host.deallocate(meta);
+        d->host.deallocate(unsigned_columns);
+        d->host.deallocate(before);
+        d->host.deallocate(after);
+    }
+    d->host.batch_destroy(owned);
+    return status;
+}
 void ud_binlog_unchanged_schema(ud_binlog *d, ud_cdc_event *out) {
     /* Unrelated database DDL still completes its log transaction. It changes
      * no source columns and cannot leave a previously emitted BEGIN open. */
@@ -824,6 +992,38 @@ void ud_binlog_unchanged_schema(ud_binlog *d, ud_cdc_event *out) {
     d->begun = 0;
 }
 ud_status ud_binlog_drain(ud_binlog *d, ud_cdc_event *out) {
+    if (d->pending_control) {
+        memset(out, 0, sizeof(*out));
+        out->struct_size = sizeof(*out);
+        out->abi_version = UD_ABI_VERSION;
+        out->schema_version = d->version;
+        out->watermark = d->pending_watermark;
+        out->position = (ud_string){
+            plugin_string(&d->host, d->pending_position.data, d->pending_position.length),
+            d->pending_position.length};
+        if (!out->position.data)
+            return UD_RESOURCE;
+        if (d->pending_control == 3) {
+            out->kind = UD_CDC_BEGIN;
+            d->begun = 1;
+            d->pending_control = 2;
+            out->transaction_id = (ud_string){
+                plugin_string(&d->host, d->pending_position.data, d->pending_position.length),
+                d->pending_position.length};
+            if (!out->transaction_id.data)
+                return UD_RESOURCE;
+        } else if (d->pending_control == 1) {
+            out->kind = UD_CDC_TRUNCATE;
+            d->pending_control = 2;
+        } else {
+            out->kind = UD_CDC_COMMIT;
+            d->pending_control = 0;
+            d->begun = 0;
+            d->host.deallocate((void *)d->pending_position.data);
+            d->pending_position = (ud_string){0};
+        }
+        return UD_OK;
+    }
     if (!d->pending)
         return UD_BUSY;
     memset(out, 0, sizeof(*out));

@@ -1134,7 +1134,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s)
             s = execute_statement(p, stmt, 1, &affected);
         if (!s && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT &&
-            affected != 1)
+            o->operations[row] != UD_CHANGE_TRUNCATE && affected != 1)
             s = UD_FENCED;
         release(p, stmt);
         cells_clear(p, values, plan.parameter_count);

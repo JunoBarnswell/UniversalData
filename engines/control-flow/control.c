@@ -455,6 +455,8 @@ static ud_status perform_task(ud_activation *e, const ud_json *task) {
     const ud_json *handlers = ud_member(task, "eventHandlers");
     e->event_handlers = handlers;
     if (!s)
+        s = ud_debug_boundary(e, UD_DEBUG_TASK);
+    if (!s)
         s = ud_transaction_enter(e, ud_member(task, "transaction"), 0);
     if (!s)
         s = ud_control_handler(e, ud_member(handlers, "before"), "before");

@@ -31,6 +31,14 @@ public sealed class Execution : IDisposable
         uint edgeCapacity = 2, uint maxBatchRows = 4096, ulong memoryLimit = 268435456, ulong timeoutMilliseconds = 0, string? stateDirectory = null, bool resume = false, uint maxConcurrency = 1,
         Registry? registry = null, Action<ExecutionEvent>? observe = null, ulong eventSequenceStart = 0)
     {
+        bool ownedRegistry = false;
+        using (var document = System.Text.Json.JsonDocument.Parse(packageJson))
+            if (document.RootElement.TryGetProperty("extensions", out var extensions) && extensions.GetArrayLength() != 0) {
+                if (authorize is null) throw new UniversalDataException((int)StatusCode.Auth, "Managed extension loading needs a host scope");
+                if (registry is null) { registry = new Registry(memoryLimit); ownedRegistry = true; }
+                try { registry.LoadPackageExtensions(packageJson, tenant, authorize); }
+                catch { if (ownedRegistry) registry.Dispose(); throw; }
+            }
         Native.Authorizer? grant = authorize is null ? null : (_, scope, resource, action) =>
         {
             callbackDepth++; try { return authorize(Text(scope), Text(resource), (ConnectionAccess)action) ? 0 : 13; } catch { return 13; } finally { callbackDepth--; }
@@ -92,8 +100,9 @@ public sealed class Execution : IDisposable
             IntPtr pointer;
             Check(registry is null ? Native.ud_execution_create_json(document, ref options, out pointer)
                                    : registry.CreateExecution(document, ref options, out pointer));
-            execution = new ExecutionHandle(pointer, grant, resolver, observer, registry);
+            execution = new ExecutionHandle(pointer, grant, resolver, observer, registry, ownedRegistry);
         }
+        catch { if (ownedRegistry) registry?.Dispose(); throw; }
         finally { foreach (var pin in pins) pin.Free(); GC.KeepAlive(grant); GC.KeepAlive(resolver); GC.KeepAlive(observer); GC.KeepAlive(registry); }
     }
 
@@ -103,6 +112,11 @@ public sealed class Execution : IDisposable
     { if (status != 0) throw new UniversalDataException(status, Marshal.PtrToStringUTF8(Native.ud_status_name(status)) ?? "Native error"); }
 
     private void Open() => ObjectDisposedException.ThrowIf(disposed, this);
+
+    internal static IDisposable EnterCallback()
+    { callbackDepth++; return new CallbackLease(); }
+    private sealed class CallbackLease : IDisposable
+    { public void Dispose() { callbackDepth--; } }
 
     private static void Control()
     { if (callbackDepth != 0) throw new InvalidOperationException("Execution callbacks cannot start, wait or dispose an execution"); }
@@ -150,6 +164,23 @@ public sealed class Execution : IDisposable
 
     public string Explain() => Inspect(false);
 
+    public void ConfigureDebug(string configuration)
+    {
+        Control(); lock (controller) { Open(); using var strings = new NativeStrings(configuration);
+            Check(Native.ud_execution_debug_configure(execution, strings[0])); }
+    }
+    public void DebugControl(string command)
+    {
+        Control(); lock (controller) { Open(); using var strings = new NativeStrings(command);
+            Check(Native.ud_execution_debug_control(execution, strings[0])); }
+    }
+    public string DebugSnapshot()
+    {
+        Control(); lock (controller) { Open();
+            Check(Native.ud_execution_debug_snapshot(execution, out var text, out var length));
+            return DataOwnership.Text(text, length); }
+    }
+
     public string Diagnostics() => Inspect(true);
     internal void RecordCatalog(IntPtr catalog, ulong revision)
     { Control(); lock (controller) { Open(); Check(Native.ud_catalog_record_execution(catalog, execution, revision)); } }
@@ -173,23 +204,28 @@ public sealed class Execution : IDisposable
 internal sealed class ExecutionHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
     private readonly Native.Authorizer? authorizer; private readonly Native.Resolver? resolver;
-    private readonly Native.Observer? observer; private readonly Registry? registry;
+    private readonly Native.Observer? observer; private readonly Registry? registry; private readonly bool ownedRegistry;
 
-    internal ExecutionHandle(IntPtr pointer, Native.Authorizer? grant, Native.Resolver? resolve, Native.Observer? observation, Registry? registrations) : base(true)
+    internal ExecutionHandle(IntPtr pointer, Native.Authorizer? grant, Native.Resolver? resolve, Native.Observer? observation, Registry? registrations, bool ownRegistrations = false) : base(true)
     {
-        authorizer = grant; resolver = resolve; observer = observation; registry = registrations; SetHandle(pointer);
+        authorizer = grant; resolver = resolve; observer = observation; registry = registrations; ownedRegistry = ownRegistrations; SetHandle(pointer);
     }
 
     protected override bool ReleaseHandle()
     {
         Native.ud_execution_cancel_raw(handle); int result;
         do { result = Native.ud_execution_destroy(handle); if (result == 11) Native.ud_execution_wait_raw(handle, 100); } while (result == 11);
-        GC.KeepAlive(authorizer); GC.KeepAlive(resolver); GC.KeepAlive(observer); GC.KeepAlive(registry); return result == 0;
+        GC.KeepAlive(authorizer); GC.KeepAlive(resolver); GC.KeepAlive(observer);
+        if (result == 0 && ownedRegistry) registry?.Dispose();
+        GC.KeepAlive(registry); return result == 0;
     }
 }
 
 internal static partial class Native
 {
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_configure(ExecutionHandle execution, StringValue configuration);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_control(ExecutionHandle execution, StringValue command);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_snapshot(ExecutionHandle execution, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_record_execution(IntPtr catalog, ExecutionHandle execution, ulong revision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void Observer(IntPtr user, IntPtr executionEvent);
     [StructLayout(LayoutKind.Sequential)] internal struct ExecutionEventValue

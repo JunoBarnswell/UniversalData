@@ -114,7 +114,7 @@ ud_status ud_builtin_sink_batch(builtin *b, const ud_batch *input, ud_batch **ou
         status = ud_batch_row_info(input, row, &info);
         if (!status && b->mode == UD_WRITE_CHANGESET && !info.operation)
             continue;
-        if (!status && b->mode == UD_WRITE_CHANGESET && info.operation > UD_CHANGE_UPSERT)
+        if (!status && b->mode == UD_WRITE_CHANGESET && info.operation > UD_CHANGE_TRUNCATE)
             status = UD_SCHEMA;
         if (!status)
             status = ud_batch_append_projected(selected, input, row, b->write_indices);
@@ -122,7 +122,7 @@ ud_status ud_builtin_sink_batch(builtin *b, const ud_batch *input, ud_batch **ou
             ud_value previous;
             status = ud_batch_get(input, row, b->before_column, &previous);
             if (!status && previous.is_null && info.operation != UD_CHANGE_INSERT &&
-                info.operation != UD_CHANGE_UPSERT)
+                info.operation != UD_CHANGE_UPSERT && info.operation != UD_CHANGE_TRUNCATE)
                 status = UD_SCHEMA;
             for (uint32_t col = 0; !status && col < b->columns; col++) {
                 if (previous.is_null)
@@ -249,6 +249,15 @@ ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input, const ud_batc
                           b->key_count};
     o.current_column = UINT32_MAX;
     o.load_mode = b->load_mode;
+    const ud_json *truncate = ud_member(b->config, "allowTruncate");
+    if (truncate) {
+        const char *text;
+        uint32_t length;
+        if (ud_json_kind(truncate) != UD_JSON_BOOL)
+            return UD_SCHEMA;
+        UD_TRY(ud_json_text(truncate, &text, &length));
+        o.allow_truncate = length == 4 && !memcmp(text, "true", 4);
+    }
     o.before = before;
     int32_t *operations = b->mode == UD_WRITE_CHANGESET
                               ? ud_alloc(b->context.memory, input->rows * sizeof(*operations))
@@ -258,6 +267,12 @@ ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input, const ud_batc
         ud_row_info info;
         status = ud_batch_row_info(input, row, &info);
         operations[row] = (int32_t)info.operation;
+        if (!status && info.operation == UD_CHANGE_TRUNCATE) {
+            if (!o.allow_truncate)
+                status = UD_UNSUPPORTED;
+            else
+                status = ud_connection_lease_authorize(b->lease, UD_ACCESS_DELETE);
+        }
     }
     o.operations = operations;
     if (!status)
@@ -289,6 +304,12 @@ ud_status ud_builtin_sink_records(builtin *b, const ud_batch *input) {
     UD_TRY(ud_error_policy(b->config, "errorPolicy", UD_ERROR_FAIL, &policy));
     if (policy == UD_ERROR_FAIL)
         return mapped_write(b, input);
+    for (uint32_t row = 0; row < input->rows; row++) {
+        ud_row_info info;
+        UD_TRY(ud_batch_row_info(input, row, &info));
+        if (info.operation == UD_CHANGE_TRUNCATE)
+            return mapped_write(b, input); /* A table reset has no rejected-record boundary. */
+    }
     if (!ud_transaction_active(b->context.activation))
         return UD_UNSUPPORTED;
     ud_string savepoint = {"ud_record_batch", 15};

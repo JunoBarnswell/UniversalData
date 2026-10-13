@@ -549,7 +549,7 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
     for (uint32_t j = 0; !status && j < actual->columns; j++)
         if (!used[j]) {
             status = change(changes, &first, "Added", &actual->column[j].field, -1, (int)j);
-            if (strict)
+            if (strict || actual->column[j].field.key_order)
                 *compatible = 0;
         }
     ud_free(used);
@@ -558,6 +558,31 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
         ud_free(indices);
     else
         *mapping = indices;
+    return status;
+}
+ud_status ud_schema_bind_identity(ud_context *ctx, const ud_batch *bound,
+                                  const ud_batch *discovered, ud_batch **out) {
+    if (!ctx || !bound || !discovered || !out || bound->ctx != ctx || discovered->ctx != ctx)
+        return UD_INVALID;
+    *out = NULL;
+    ud_field *fields = ud_alloc(ctx, discovered->columns * sizeof(*fields));
+    if (!fields)
+        return UD_RESOURCE;
+    for (uint32_t at = 0; at < discovered->columns; at++) {
+        fields[at] = discovered->column[at].field;
+        for (uint32_t prior = 0; prior < bound->columns; prior++) {
+            const ud_field *before = &bound->column[prior].field;
+            if (before->name_length == fields[at].name_length &&
+                !memcmp(before->name, fields[at].name, before->name_length)) {
+                fields[at].identity = before->identity;
+                fields[at].lineage = before->lineage;
+                fields[at].lineage_count = before->lineage_count;
+                break;
+            }
+        }
+    }
+    ud_status status = ud_batch_create(ctx, fields, discovered->columns, 0, out);
+    ud_free(fields);
     return status;
 }
 ud_status ud_schema_compare(ud_context *ctx, const ud_batch *expected, const ud_batch *actual,

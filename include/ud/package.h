@@ -77,9 +77,16 @@ UD_API ud_status ud_execution_id(const ud_execution *, ud_string *);
  * acquires external resources. Diagnostics are available after execution joins. */
 UD_API ud_status ud_activation_raise(ud_activation *, int32_t event_kind,
                                      ud_status original_result);
+/* Pure callback-owned field namespace. Returns owned Native text. */
+UD_API ud_status ud_component_schema_namespace(const ud_component_context *, char **, uint32_t *);
 UD_API ud_status ud_execution_component_catalog(ud_execution *, char **, uint32_t *);
 UD_API ud_status ud_execution_explain(ud_execution *, char **, uint32_t *);
 UD_API ud_status ud_execution_diagnostics(ud_execution *, char **, uint32_t *);
+/* Debug sessions explicitly use one Native scheduling worker. Pause/step only
+ * at Task/Batch or resolved Epoch boundaries; active transactions never park. */
+UD_API ud_status ud_execution_debug_configure(ud_execution *, ud_string configuration);
+UD_API ud_status ud_execution_debug_control(ud_execution *, ud_string command);
+UD_API ud_status ud_execution_debug_snapshot(ud_execution *, char **, uint32_t *);
 /* One Data Schema result. Database resources discover a table; file resources
  * accept csv/ndjson/jsonArray or infer the framing from the filename. Sampling
  * is bounded to 256 complete records; unsupported unions never narrow silently. */

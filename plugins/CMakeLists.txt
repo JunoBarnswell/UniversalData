@@ -10,7 +10,7 @@ if(UD_WITH_SQLITE)
 endif()
 if(UD_WITH_POSTGRESQL)
   find_package(PostgreSQL 17 REQUIRED)
-  ud_plugin_target(ud_connector_postgresql postgresql.c postgresql_cdc.c)
+  ud_plugin_target(ud_connector_postgresql postgresql.c postgresql_cdc.c postgresql_metadata.c)
   target_link_libraries(ud_connector_postgresql PRIVATE PostgreSQL::PostgreSQL)
 endif()
 

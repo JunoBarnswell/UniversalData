@@ -105,6 +105,7 @@ struct ud_execution {
     ud_activation *cancellable;
     ud_mutex events_lock, journal_lock, serial_tasks_lock;
     uint64_t event_sequence;
+    struct ud_debug *debug;
     ud_buffer_manager *buffers;
     struct ud_connection_lease *buffer_lease;
     int threaded;
@@ -133,6 +134,12 @@ ud_status ud_pipeline_validate(ud_activation *, const ud_json *);
 ud_status ud_pipeline_bind_validate(ud_activation *, const ud_json *);
 ud_status ud_control_explain(ud_activation *, const ud_json *, ud_bytes *);
 ud_status ud_pipeline_execute(ud_activation *, const ud_json *);
+enum { UD_DEBUG_TASK = 1, UD_DEBUG_BATCH = 2, UD_DEBUG_EPOCH = 3 };
+int ud_debug_enabled(const ud_execution *);
+ud_status ud_debug_boundary(ud_activation *, int32_t);
+void ud_debug_advance(ud_activation *);
+ud_status ud_debug_preview(ud_activation *, uint32_t, const ud_batch *);
+void ud_debug_destroy(ud_execution *);
 ud_status ud_connection_field_namespace(ud_activation *, ud_string, ud_string, char[33]);
 ud_status ud_pipeline_field_namespace(const ud_component_context *, char output[33]);
 ud_status ud_transforms_register(ud_registry *);
@@ -231,6 +238,7 @@ ud_status ud_checkpoint_epoch_info(ud_activation *, ud_string, char **, uint32_t
 ud_status ud_checkpoint_epoch_commit(ud_activation *, ud_string, ud_string);
 ud_status ud_checkpoint_cursor(ud_activation *, ud_string, ud_string);
 ud_status ud_checkpoint_schema(ud_activation *, ud_string, const ud_batch *);
+ud_status ud_checkpoint_schema_event(ud_activation *, ud_string, const ud_cdc_event *, ud_status);
 
 ud_status ud_assets_create(ud_execution *);
 void ud_assets_destroy(ud_execution *);

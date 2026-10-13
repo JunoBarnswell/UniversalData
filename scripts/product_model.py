@@ -117,6 +117,13 @@ def projections(model):
             "// Generated from metadata/product.json.\nnamespace UniversalData;\n"
             "internal static class ProductVersion\n{\n    internal const uint Abi = " + str(abi) +
             ";\n    internal const string Sdk = \"" + version + "\";\n}\n",
+        "bindings/dotnet/UniversalData/ProductInfo.cs":
+            "// Generated from metadata/product.json.\nnamespace UniversalData;\n"
+            "public static class ProductInfo\n{\n    public const string Sdk = \"" + version +
+            "\";\n    public const int Protocol = " + str(protocol) + ";\n}\n",
+        "products/designer/src/version.ts":
+            "// Generated from metadata/product.json.\nexport const PRODUCT_VERSION = \"" + version +
+            "\";\nexport const PROTOCOL_VERSION = " + str(protocol) + ";\n",
         "bindings/java/src/main/java/org/universaldata/ProductVersion.java":
             "// Generated from metadata/product.json.\npackage org.universaldata;\n"
             "public final class ProductVersion {\n    private ProductVersion() {}\n"

@@ -177,7 +177,10 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_sql_compile_scan,
                             ud_sql_compile_bulk_release,
                             ud_sql_compile_stage,
-                            ud_random_bytes};
+                            ud_random_bytes,
+                            ud_schema_compare,
+                            ud_schema_map,
+                            ud_schema_bind_identity};
     *out = p;
     return UD_OK;
 }
@@ -887,23 +890,31 @@ ud_status ud_connection_cdc_open(ud_connection *c, const ud_cdc_options *options
     if (!options->schema || !options->table.length || !options->batch_rows ||
         options->mode < UD_CDC_STREAM || options->mode > UD_CDC_SNAPSHOT_STREAM)
         return UD_SCHEMA;
-    ud_batch *actual = NULL;
-    UD_TRY(ud_connection_schema(c, options->table, (ud_string){"cdc.preflight", 13}, &actual));
-    ud_status s = actual->columns != options->schema->columns ? UD_INCOMPATIBLE : UD_OK;
-    for (uint32_t i = 0; !s && i < actual->columns; i++) {
-        const ud_field *a = &actual->column[i].field, *expected = &options->schema->column[i].field;
-        if (!ud_field_matches(a, expected, UD_FIELD_VALUE_TYPE) ||
-            a->name_length != expected->name_length ||
-            memcmp(a->name, expected->name, a->name_length) || (a->nullable && !expected->nullable))
-            s = UD_INCOMPATIBLE;
+    ud_batch *discovered = NULL, *actual = NULL, *projected = NULL;
+    UD_TRY(ud_connection_schema(c, options->table,
+                                options->field_namespace.data ? options->field_namespace
+                                                              : (ud_string){"cdc.preflight", 13},
+                                &discovered));
+    ud_status s = ud_schema_bind_identity(c->ctx, options->schema, discovered, &actual);
+    ud_batch_destroy(discovered);
+    if (!s)
+        s = ud_schema_map(c->ctx, actual, options->schema, options->schema_policy, &projected);
+    ud_batch_destroy(projected);
+    if (s) {
+        ud_batch_destroy(actual);
+        return s == UD_SCHEMA ? UD_INCOMPATIBLE : s;
     }
-    ud_batch_destroy(actual);
-    if (s)
-        return s;
+    ud_cdc_options current = *options;
+    current.schema = actual;
+    options = &current;
     if (c->dialect == UD_SQL_SQLSERVER && options->mode == UD_CDC_SNAPSHOT_STREAM)
         UD_TRY(authorize_connection(c, UD_ACCESS_WRITE));
-    UD_TRY(ud_batch_create(c->ctx, options->schema->schema->fields, options->schema->columns, 0,
-                           &c->cdc_schema));
+    s = ud_batch_create(c->ctx, options->schema->schema->fields, options->schema->columns, 0,
+                        &c->cdc_schema);
+    if (s) {
+        ud_batch_destroy(actual);
+        return s;
+    }
     c->cdc_batch_rows = options->batch_rows;
     c->cdc_version = 0;
     c->cdc_transaction = 0;
@@ -914,9 +925,11 @@ ud_status ud_connection_cdc_open(ud_connection *c, const ud_cdc_options *options
     if (s) {
         ud_batch_destroy(c->cdc_schema);
         c->cdc_schema = NULL;
+        ud_batch_destroy(actual);
         return s;
     }
     s = c->api->cdc_open(c->instance->state, options);
+    ud_batch_destroy(actual);
     if (!s)
         c->cdc = 1;
     else {
@@ -939,6 +952,31 @@ static ud_status cdc_shape(ud_connection *c, ud_batch *b) {
     }
     return ud_batch_seal(b);
 }
+ud_status ud_connection_cdc_schema(ud_connection *c, ud_batch **out) {
+    if (!c || !out || !c->cdc_schema)
+        return UD_INVALID;
+    return ud_batch_create(c->ctx, c->cdc_schema->schema->fields, c->cdc_schema->columns, 0, out);
+}
+ud_status ud_connection_cdc_rebind(ud_connection *c, const ud_batch *schema, uint64_t version) {
+    if (!c || !c->cdc || !schema || schema->ctx != c->ctx || !version || version < c->cdc_version)
+        return UD_INVALID;
+    if (!c->api->cdc_rebind)
+        return UD_UNSUPPORTED;
+    ud_batch *owned = NULL;
+    UD_TRY(ud_batch_create(c->ctx, schema->schema->fields, schema->columns, 0, &owned));
+    ud_status status = connection_enter(c, UD_ACCESS_READ);
+    if (!status) {
+        status = c->api->cdc_rebind(c->instance->state, owned, version);
+        connection_leave(c);
+    }
+    if (!status) {
+        ud_batch_destroy(c->cdc_schema);
+        c->cdc_schema = owned;
+        c->cdc_version = version;
+    } else
+        ud_batch_destroy(owned);
+    return status;
+}
 ud_status ud_connection_cdc_next(ud_connection *c, ud_cdc_event *out) {
     if (!c || !out || !c->cdc)
         return UD_INVALID;
@@ -948,7 +986,7 @@ ud_status ud_connection_cdc_next(ud_connection *c, ud_cdc_event *out) {
     connection_leave(c);
     if (!status && (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION))
         status = UD_INCOMPATIBLE;
-    if (!status && (out->kind < UD_CDC_BEGIN || out->kind > UD_CDC_HEARTBEAT ||
+    if (!status && (out->kind < UD_CDC_BEGIN || out->kind > UD_CDC_TRUNCATE ||
                     !out->schema_version || out->schema_version < c->cdc_version))
         status = UD_CORRUPT;
     if (!status) {
@@ -988,6 +1026,11 @@ ud_status ud_connection_cdc_next(ud_connection *c, ud_cdc_event *out) {
                 status = ud_batch_seal(out->after);
             break;
         case UD_CDC_HEARTBEAT:
+            break;
+        case UD_CDC_TRUNCATE:
+            if (!c->cdc_transaction || !valid_string(out->position, 1) || out->after ||
+                out->before || out->operations)
+                status = UD_CORRUPT;
             break;
         }
     }

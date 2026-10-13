@@ -20,7 +20,8 @@ enum {
     RECORD_TRANSACTION_MANIFEST,
     RECORD_TRANSACTION_DECISION,
     RECORD_TRANSACTION_COMPLETE,
-    RECORD_TRANSACTION_FACT
+    RECORD_TRANSACTION_FACT,
+    RECORD_SCHEMA_EVENT
 };
 typedef struct checkpoint_journal {
     ud_execution *execution;
@@ -295,7 +296,7 @@ static ud_status file_record(checkpoint_journal *j, ud_activation *a, uint64_t k
 static ud_status restore_fact(void *user, uint64_t kind, ud_string key, const ud_json *payload) {
     checkpoint_journal *j = user;
     ud_execution *e = j->execution;
-    if (kind < RECORD_HEADER || kind > RECORD_TRANSACTION_FACT)
+    if (kind < RECORD_HEADER || kind > RECORD_SCHEMA_EVENT)
         return UD_CORRUPT;
     if (kind == RECORD_SOURCE || kind == RECORD_FILE_DONE) {
         char *path = ud_strdup_n(e->ctx, key.data, key.length);
@@ -778,6 +779,44 @@ ud_status ud_checkpoint_cursor(ud_activation *a, ud_string component, ud_string 
     }
     ud_bytes_clear(&key);
     checkpoint_after(a, status);
+    return status;
+}
+ud_status ud_checkpoint_schema_event(ud_activation *a, ud_string component,
+                                     const ud_cdc_event *event, ud_status decision) {
+    checkpoint_journal *journal = a->execution->journal;
+    if (!journal)
+        return UD_OK;
+    ud_bytes key = {.ctx = a->execution->ctx},
+             record = {.ctx = a->execution->ctx, .limit = 16u * 1024u * 1024u};
+    ud_status status = snapshot_key(a, component, event->schema_version, 0, &key);
+    char header[160];
+    int length =
+        snprintf(header, sizeof(header),
+                 "{\"version\":%u,\"schemaVersion\":%llu,\"result\":%d,\"sourcePosition\":",
+                 UD_CONFIG_VERSION, (unsigned long long)event->schema_version, decision);
+    if (!status)
+        status = ud_bytes_put(&record, header, (size_t)length);
+    if (!status)
+        status = ud_json_quote(&record, event->position.data, event->position.length);
+    if (!status)
+        status = ud_bytes_put(&record, ",\"schema\":", 10);
+    char *schema = NULL;
+    uint32_t size = 0;
+    if (!status && event->after)
+        status = ud_schema_to_json(event->after, &schema, &size);
+    if (!status)
+        status = ud_bytes_put(&record, schema ? schema : "null", schema ? size : 4);
+    if (!status)
+        status = ud_bytes_put(&record, "}", 1);
+    ud_mutex_lock(&a->execution->journal_lock);
+    if (!status)
+        status = append(journal, a, RECORD_SCHEMA_EVENT,
+                        (ud_string){(char *)key.data, (uint32_t)key.size},
+                        (ud_string){(char *)record.data, (uint32_t)record.size});
+    ud_mutex_unlock(&a->execution->journal_lock);
+    ud_free(schema);
+    ud_bytes_clear(&key);
+    ud_bytes_clear(&record);
     return status;
 }
 ud_status ud_checkpoint_schema(ud_activation *a, ud_string component, const ud_batch *schema) {

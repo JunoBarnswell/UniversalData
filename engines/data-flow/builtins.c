@@ -496,7 +496,8 @@ static const char *configuration_schema(int kind) {
                "\"array\"},\"schemaPolicy\":{\"type\":\"object\"},\"provisionReceipts\":{\"type\":"
                "\"boolean\"},\"errorPolicy\":{\"type\":\"string\",\"enum\":[\"fail\",\"redirect\","
                "\"ignore\"]},"
-               "\"includeInput\":{\"type\":\"boolean\",\"default\":false}},\"required\":["
+               "\"includeInput\":{\"type\":\"boolean\",\"default\":false},\"allowTruncate\":{"
+               "\"type\":\"boolean\",\"default\":false}},\"required\":["
                "\"connection\","
                "\"table\",\"mode\"],\"additionalProperties\":false}";
     case SQL_COMMAND:

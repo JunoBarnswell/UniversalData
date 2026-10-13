@@ -79,6 +79,8 @@ void ud_task_fact(ud_activation *activation, uint32_t fact) {
                                   fact == UD_TASK_UNCERTAIN ? UD_COMMIT_UNKNOWN : UD_OK);
 }
 uint32_t ud_execution_concurrency(const ud_activation *activation) {
+    if (ud_debug_enabled(activation->execution))
+        return 1;
     uint32_t concurrency = activation->execution->options.max_concurrency;
     for (const ud_activation *a = activation; a; a = a->parent) {
         const ud_json *policy = ud_member(a->package->document, "policy");
@@ -592,6 +594,7 @@ ud_status ud_execution_destroy(ud_execution *e) {
         ud_bytes_clear(&e->schema_reports);
         ud_bytes_clear(&e->bound_plans);
         ud_bytes_clear(&e->control_reports);
+        ud_debug_destroy(e);
         e->disposed = 1;
     }
     if (ud_memory_used(ctx) != ud_allocation_bytes(e)) {
@@ -883,4 +886,20 @@ ud_status ud_execution_component_catalog(ud_execution *e, char **out, uint32_t *
     if (!e)
         return UD_INVALID;
     return ud_registry_describe(e->registry, out, length);
+}
+
+ud_status ud_component_schema_namespace(const ud_component_context *context, char **out,
+                                        uint32_t *length) {
+    if (!context || !out || !length || context->struct_size != sizeof(*context) ||
+        context->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    *out = NULL;
+    *length = 0;
+    char scope[33];
+    UD_TRY(ud_pipeline_field_namespace(context, scope));
+    *out = ud_strdup_n(context->memory, scope, 32);
+    if (!*out)
+        return UD_RESOURCE;
+    *length = 32;
+    return UD_OK;
 }

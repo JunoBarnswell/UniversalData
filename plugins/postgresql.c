@@ -1,3 +1,4 @@
+#include "postgresql_metadata.h"
 #include "common.h"
 #include "postgresql_cdc.h"
 #include <libpq-fe.h>
@@ -345,60 +346,19 @@ static ud_status table_name(postgres_state *p, ud_string table, char **out) {
 }
 static ud_status discover(void *state, ud_string table, ud_batch **out) {
     postgres_state *p = state;
-    ud_host_api *h = &p->host;
     char *quoted = NULL;
-    ud_status named = table_name(p, table, &quoted);
-    if (named)
-        return named;
+    ud_status status = table_name(p, table, &quoted);
+    if (status)
+        return status;
     const char *args[] = {quoted};
-    PGresult *r = query(
-        p,
-        "SELECT a.attname,format_type(a.atttypid,a.atttypmod),NOT a.attnotnull,"
-        "COALESCE(array_position(i.indkey::smallint[],a.attnum)-array_lower(i.indkey::smallint[],1)"
-        "+1,0),"
-        "has_column_privilege(a.attrelid,a.attname,'SELECT'),has_column_privilege(a.attrelid,a."
-        "attname,'INSERT'),"
-        "has_column_privilege(a.attrelid,a.attname,'UPDATE'),has_table_privilege(a.attrelid,'"
-        "DELETE') "
-        "FROM pg_attribute a LEFT JOIN pg_index i ON i.indrelid=a.attrelid AND i.indisprimary "
-        "WHERE a.attrelid=$1::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum",
-        1, NULL, args, NULL, NULL, 0);
-    h->deallocate(quoted);
-    if (!r || PQresultStatus(r) != PGRES_TUPLES_OK) {
-        ud_status s = pg_failure(p, r);
-        PQclear(r);
-        return s;
-    }
-    int count = PQntuples(r);
-    if (count < 1 || count > 65536) {
-        PQclear(r);
-        return UD_SCHEMA;
-    }
-    ud_field fields[] = {{.name = "name", .name_length = 4, .type = UD_UTF8},
-                         {.name = "declared_type", .name_length = 13, .type = UD_UTF8},
-                         {.name = "nullable", .name_length = 8, .type = UD_BOOL},
-                         {.name = "key_order", .name_length = 9, .type = UD_INT64},
-                         {.name = "readable", .name_length = 8, .type = UD_BOOL},
-                         {.name = "appendable", .name_length = 10, .type = UD_BOOL},
-                         {.name = "updatable", .name_length = 9, .type = UD_BOOL},
-                         {.name = "deletable", .name_length = 9, .type = UD_BOOL}};
-    ud_status s = h->batch_create(h->context, fields, 8, (uint32_t)count, out);
-    for (int row = 0; !s && row < count; row++) {
-        ud_value v[8] = {{.type = UD_UTF8},  {.type = UD_UTF8}, {.type = UD_BOOL},
-                         {.type = UD_INT64}, {.type = UD_BOOL}, {.type = UD_BOOL},
-                         {.type = UD_BOOL},  {.type = UD_BOOL}};
-        for (int j = 0; j < 2; j++) {
-            v[j].text = PQgetvalue(r, row, j);
-            v[j].text_length = (uint32_t)PQgetlength(r, row, j);
-        }
-        v[2].integer = !strcmp(PQgetvalue(r, row, 2), "t");
-        v[3].integer = strtoll(PQgetvalue(r, row, 3), NULL, 10);
-        for (int j = 4; j < 8; j++)
-            v[j].integer = !strcmp(PQgetvalue(r, row, j), "t");
-        s = h->append(*out, v, 8);
-    }
-    PQclear(r);
-    return s;
+    PGresult *result = query(p, ud_pg_metadata_query(), 1, NULL, args, NULL, NULL, 0);
+    p->host.deallocate(quoted);
+    if (!result || PQresultStatus(result) != PGRES_TUPLES_OK)
+        status = pg_failure(p, result);
+    else
+        status = ud_pg_metadata_decode(&p->host, result, out);
+    PQclear(result);
+    return status;
 }
 static ud_status close_read(void *state) {
     postgres_state *p = state;
@@ -1006,7 +966,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s && (!changed || PQresultStatus(changed) != PGRES_COMMAND_OK))
             s = pg_failure(p, changed);
         if (!s && options->mode == UD_WRITE_CHANGESET &&
-            options->operations[row] != UD_CHANGE_UPSERT && strcmp(PQcmdTuples(changed), "1"))
+            options->operations[row] != UD_CHANGE_UPSERT &&
+            options->operations[row] != UD_CHANGE_TRUNCATE && strcmp(PQcmdTuples(changed), "1"))
             s = h->report(h->context, UD_FENCED,
                           "changeset preimage or current business-key conflict");
         PQclear(changed);
@@ -1432,6 +1393,10 @@ static ud_status cdc_next(void *state, ud_cdc_event *out) {
     postgres_state *p = state;
     return p->cdc ? ud_pg_cdc_next(p->cdc, out) : UD_INVALID;
 }
+static ud_status cdc_rebind(void *state, const ud_batch *schema, uint64_t version) {
+    postgres_state *p = state;
+    return p->cdc ? ud_pg_cdc_rebind(p->cdc, schema, version) : UD_INVALID;
+}
 static ud_status cdc_confirm(void *state, ud_string position) {
     postgres_state *p = state;
     return p->cdc ? ud_pg_cdc_confirm(p->cdc, position) : UD_INVALID;
@@ -1477,6 +1442,7 @@ static const ud_connector_api connector = {
     .cdc_next = cdc_next,
     .cdc_confirm = cdc_confirm,
     .cdc_close = cdc_close,
+    .cdc_rebind = cdc_rebind,
     .transaction_begin = transaction_begin,
     .transaction_prepare = transaction_prepare,
     .transaction_resolve = transaction_resolve,

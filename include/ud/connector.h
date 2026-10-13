@@ -66,7 +66,13 @@ typedef struct ud_metadata_options {
 enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3, UD_WRITE_CHANGESET = 4 };
 enum { UD_LOAD_AUTO = 0, UD_LOAD_PARAMETERS = 1, UD_LOAD_NATIVE = 2 };
 enum { UD_DELIVERY_RESPONSE = 1, UD_DELIVERY_IDEMPOTENT = 2, UD_DELIVERY_RECEIPT = 3 };
-enum { UD_CHANGE_INSERT = 1, UD_CHANGE_UPDATE = 2, UD_CHANGE_DELETE = 3, UD_CHANGE_UPSERT = 4 };
+enum {
+    UD_CHANGE_INSERT = 1,
+    UD_CHANGE_UPDATE = 2,
+    UD_CHANGE_DELETE = 3,
+    UD_CHANGE_UPSERT = 4,
+    UD_CHANGE_TRUNCATE = 5
+};
 enum {
     UD_ACCESS_OPEN = 1,
     UD_ACCESS_DISCOVER = 2,
@@ -112,6 +118,7 @@ typedef struct ud_write_options {
         current_column; /* UINT32_MAX for ordinary Changesets; SCD supplies its current BOOL. */
     int32_t
         load_mode; /* AUTO selects a proven native transport; explicit NATIVE never falls back. */
+    int32_t allow_truncate; /* Explicit whole-table data reset; compiled as transactional DELETE. */
 } ud_write_options;
 typedef struct ud_commit_receipt {
     int32_t committed;
@@ -163,6 +170,7 @@ typedef struct ud_connector_api {
     ud_status (*transaction_recover)(void *, const ud_transaction_branch *, int32_t *state);
     ud_status (*record_diagnostic)(void *,
                                    ud_string *provider_code); /* Owned code only; consumes it. */
+    ud_status (*cdc_rebind)(void *, const ud_batch *, uint64_t schema_version);
 } ud_connector_api;
 UD_API ud_status ud_connection_savepoint(ud_connection *, ud_string, int32_t);
 UD_API ud_status ud_connection_record_diagnostic(ud_connection *, ud_string *);
@@ -187,6 +195,8 @@ UD_API ud_status ud_connection_cdc_open(ud_connection *, const ud_cdc_options *)
 UD_API ud_status ud_connection_cdc_next(ud_connection *, ud_cdc_event *);
 UD_API ud_status ud_connection_cdc_confirm(ud_connection *, ud_string);
 UD_API ud_status ud_connection_cdc_close(ud_connection *);
+UD_API ud_status ud_connection_cdc_rebind(ud_connection *, const ud_batch *, uint64_t);
+UD_API ud_status ud_connection_cdc_schema(ud_connection *, ud_batch **);
 UD_API ud_status ud_connection_test(ud_connection *);
 UD_API ud_status ud_connection_schema(ud_connection *, ud_string table, ud_string name_space,
                                       ud_batch **);

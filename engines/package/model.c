@@ -81,12 +81,36 @@ ud_status ud_package_check(const ud_package *p) {
     static const char *keys[] = {"version",       "id",          "parameters", "variables",
                                  "connections",   "controlFlow", "dataFlows",  "policy",
                                  "eventHandlers", "project",     "deployment", "caches",
-                                 "layout"};
-    UD_TRY(ud_json_keys(p->document, keys, 13));
+                                 "layout",        "extensions"};
+    UD_TRY(ud_json_keys(p->document, keys, 14));
     uint64_t version;
     UD_TRY(ud_json_uint(ud_member(p->document, "version"), &version));
     if (version != UD_PACKAGE_VERSION)
         return UD_INCOMPATIBLE;
+    const ud_json *extensions = ud_member(p->document, "extensions");
+    if (extensions && (ud_json_kind(extensions) != UD_JSON_ARRAY || ud_json_size(extensions) > 128))
+        return UD_SCHEMA;
+    for (uint32_t at = 0; at < ud_json_size(extensions); at++) {
+        const ud_json *entry = ud_json_at(extensions, at);
+        static const char *extension_keys[] = {"kind", "path", "sha256"};
+        UD_TRY(ud_json_keys(entry, extension_keys, 3));
+        ud_string kind, path, digest;
+        UD_TRY(ud_json_string(ud_member(entry, "kind"), &kind));
+        UD_TRY(ud_json_string(ud_member(entry, "path"), &path));
+        UD_TRY(ud_json_string(ud_member(entry, "sha256"), &digest));
+        if (!ud_named(kind, "managedAssembly") || !path.length || digest.length != 64)
+            return UD_SCHEMA;
+        for (uint32_t offset = 0; offset < digest.length; offset++)
+            if (!((digest.data[offset] >= '0' && digest.data[offset] <= '9') ||
+                  (digest.data[offset] >= 'a' && digest.data[offset] <= 'f')))
+                return UD_SCHEMA;
+        for (uint32_t prior = 0; prior < at; prior++) {
+            ud_string other;
+            UD_TRY(ud_json_string(ud_member(ud_json_at(extensions, prior), "path"), &other));
+            if (ud_same(path, other))
+                return UD_SCHEMA;
+        }
+    }
     const ud_json *project = ud_member(p->document, "project");
     if (project) {
         static const char *pk[] = {"id", "parameters", "variables", "connections"};

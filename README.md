@@ -28,9 +28,9 @@ SDK 仅保留 `ud_package` / `ud_execution` 执行链路。旧 CSV Job、DAG、R
 
 双击根目录的 `UniversalData.sln`，选择 `Debug | x64` 或 `Release | x64`，执行“生成解决方案”（Ctrl+Shift+B）。解决方案包含 `UniversalData.Native`、.NET SDK、`Consumer` 和 `DataConsumer`；原生项目先构建，再编译托管项目，并将对应配置的 `ud_data.dll` 复制到托管输出目录。
 
-原生项目通过 Makefile 工程调用现有 CMake，支持源码浏览、IntelliSense、生成、重新生成与清理。默认编译全部原生 SDK 组件及 CLI/Worker；不要求 JDK、Maven 或 Python。JNI、SQLite/PostgreSQL、HTTP、测试和 benchmark 使用其他预设或显式配置启用。
+原生项目通过 Makefile 工程调用现有 CMake，支持源码浏览、IntelliSense、生成、重新生成与清理。CORE 明确构建原生 SDK 子集；产品宿主通过 `UD_BUILD_HOSTS=ON` 构建，要求 .NET SDK 10。PRODUCT 还要求全部驱动、Web 和语言依赖。JNI、SQLite/PostgreSQL、HTTP、测试和 benchmark 使用其他预设或显式配置启用。
 
-原生产物位于 `build/vs2026/<Debug|Release>/ud_data.dll`，CLI/Worker 位于 `build/vs2026/hosts/<Debug|Release>/`；托管 SDK 和示例位于各项目的 `bin/x64/<Debug|Release>/net8.0/`。原生构建完整日志保存在 `%TEMP%/UniversalData-vs2026/`，失败时输出真实退出码及错误摘要。默认原生启动项目为 CLI，调试前在项目属性中填写执行参数。
+原生产物位于 `build/vs2026/<Debug|Release>/ud_data.dll`，CLI/Worker 位于 `build/vs2026/hosts/product/<cli|worker>/`；托管 SDK 和示例位于各项目的 `bin/x64/<Debug|Release>/net8.0/`。原生构建完整日志保存在 `%TEMP%/UniversalData-vs2026/`，失败时输出真实退出码及错误摘要。默认原生启动项目为 CLI，调试前在项目属性中填写执行参数。
 
 在 VS2026 Developer PowerShell 中也可编译完整解决方案：
 
@@ -65,7 +65,7 @@ mvn -f bindings/java/pom.xml package
 
 原生 [HTTP Task](docs/architecture/http-task.md) 使用同一逻辑连接、宿主网络授权和凭据 resolver，强制 TLS 校验、禁用重定向并限制重试。HTTP Data Flow 源/目标仍为独立待办。
 
-CLI：`ud_cli execute package.json '{}' tenant execution-id /authorized/root`。默认拒绝文件/数据库访问；SDK 宿主通过授权和凭据解析回调授予权限。Worker 为独立进程，不是权限沙箱。Java JAR 使用同一 ZIP 内的 JNI 和原生库；按 RID 生成的 NuGet 自带同一次构建的核心原生库。数据库连接器位于 SDK 的 `lib/UniversalData/plugins`，需由宿主显式加载。
+CLI：`ud_cli execute host-policy.json package.json '{}'`。SDK 未提供的新执行 ID 由 Native 生成；CLI 将原状态目录保存在 Native Catalog，恢复时使用 `ud_cli execute host-policy.json package.json '{}' ORIGINAL_ID resume`。CLI、Worker 与管理服务共用宿主资源范围、凭据引用及固定 C# 程序集加载入口。产品宿主使用 .NET 10，默认管理地址为 `127.0.0.1:5080`。Java JAR 使用同一发布物内的 JNI 和原生库；数据库连接器由宿主显式加载。
 
 ## Linux 产物交付
 
@@ -98,4 +98,4 @@ python tests/installed_sdk.py --bundle artifacts/UniversalData-1.2.0-win-x64.zip
 
 设计与边界：[产品](docs/product/product-model.md)、[架构](docs/architecture/target-architecture.md)、[SSIS 公开文档映射](docs/architecture/ssis-reference-matrix.md)、[破坏性变更](docs/breaking-changes.md)、[公共 ABI](docs/architecture/public-c-abi.md)、[路线图](docs/roadmap.md)。不声称 `.dtsx`/COM/SSISDB/SQL Agent 兼容；不提供默认 Web 管理平台或跨任意目标的全局 exactly-once。
 
-四引擎本轮设计与追踪：[产品模型](docs/product/etl-four-engine-product-model.md)、[目标架构](docs/architecture/etl-four-engine-target.md)、[运行决策](docs/architecture/etl-runtime-decisions.md)、[删除矩阵](docs/architecture/etl-destructive-migration.md)、[78 项工作项与 69 目标同源映射](docs/acceptance/etl-four-engine-traceability.md)。`ud_cli inspect package.json` 读取原生绑定计划；`ud_execution_diagnostics` / `.NET Execution.Diagnostics()` / `Java Execution.diagnostics()` 返回统一运行事实。
+四引擎本轮设计与追踪：[产品模型](docs/product/etl-four-engine-product-model.md)、[目标架构](docs/architecture/etl-four-engine-target.md)、[运行决策](docs/architecture/etl-runtime-decisions.md)、[删除矩阵](docs/architecture/etl-destructive-migration.md)、[78 项工作项与 69 目标同源映射](docs/acceptance/etl-four-engine-traceability.md)。`ud_cli inspect host-policy.json package.json` 读取原生绑定计划；`ud_execution_diagnostics` / `.NET Execution.Diagnostics()` / `Java Execution.diagnostics()` 返回统一运行事实。

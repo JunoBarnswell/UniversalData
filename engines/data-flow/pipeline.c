@@ -56,7 +56,7 @@ typedef struct node {
         blocked_ms, input_wait_ms, capacity_wait_ms;
     int blocked_kind;
     uint64_t batch_latency[64], batch_samples, batch_max_ns, batch_sum_ns;
-    uint64_t barrier_mask, barrier_epoch, acknowledged_epoch, watermark_mask;
+    uint64_t barrier_mask, barrier_epoch, acknowledged_epoch, watermark_mask, schema_version;
     atomic_uint_fast64_t staged_epoch;
     int64_t watermarks[64], last_watermark;
     ud_string source_position;
@@ -607,6 +607,7 @@ static ud_status route_identified(void *user, uint32_t port, ud_batch *b) {
         atomic_fetch_add(&owner->error_rows, b->rows);
     }
     atomic_fetch_add(&e->execution->batches, 1);
+    UD_TRY(ud_debug_preview(&n->activation, port, b));
     if (n->descriptor.category == UD_COMPONENT_SOURCE)
         ud_task_rows(e, b->rows, 0, 0);
 
@@ -624,6 +625,9 @@ static ud_status route_event(void *user, uint32_t port, const ud_component_event
     if (event->kind != UD_COMPONENT_WATERMARK && event->kind != UD_COMPONENT_CHECKPOINT_BARRIER &&
         event->kind != UD_COMPONENT_SCHEMA_CHANGE && event->kind != UD_COMPONENT_INPUT_END)
         return UD_SCHEMA;
+    if (event->kind == UD_COMPONENT_SCHEMA_CHANGE ||
+        (event->kind == UD_COMPONENT_CHECKPOINT_BARRIER && event->schema_version))
+        n->schema_version = event->schema_version;
     if (event->kind == UD_COMPONENT_CHECKPOINT_BARRIER &&
         n->descriptor.category == UD_COMPONENT_SOURCE) {
         if (!n->descriptor.confirm_epoch || !event->epoch ||
@@ -1244,6 +1248,12 @@ static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
         if (!status)
             status = ud_json_quote(&payload, source->source_position.data,
                                    source->source_position.length);
+        char schema_version[64];
+        int schema_size =
+            snprintf(schema_version, sizeof(schema_version), ",\"schemaVersion\":%llu",
+                     (unsigned long long)source->schema_version);
+        if (!status)
+            status = ud_bytes_put(&payload, schema_version, (size_t)schema_size);
         if (!status)
             status = ud_bytes_put(&payload, "}", 1);
     }
@@ -1309,6 +1319,7 @@ static ud_status forward_control(physical_plan *p, node *n, const ud_component_e
     return UD_OK;
 }
 static ud_status stream_control(physical_plan *p, node *n, const ud_component_event *event) {
+    ud_activation *e = p->execution;
     uint64_t bit = UINT64_C(1) << event->input;
     if (event->kind == UD_COMPONENT_CHECKPOINT_BARRIER) {
         uint64_t committed = atomic_load(&p->confirmed_epoch);
@@ -1358,7 +1369,39 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
             if (!ud_field_matches(&expected->column[i].field, &event->batch->column[i].field,
                                   UD_FIELD_PORT))
                 return UD_INCOMPATIBLE;
-        return forward_control(p, n, event);
+        /* Stable projected contracts admit the event. Re-run pure binding for
+         * affected nodes; state remains owned by the original instance. */
+        const ud_batch **inputs =
+            ud_alloc(e->execution->ctx, n->descriptor.inputs * sizeof(*inputs));
+        ud_batch **outputs = ud_alloc(e->execution->ctx, n->descriptor.outputs * sizeof(*outputs));
+        if ((n->descriptor.inputs && !inputs) || (n->descriptor.outputs && !outputs)) {
+            ud_free(inputs);
+            ud_free(outputs);
+            return UD_RESOURCE;
+        }
+        for (uint32_t at = 0; at < n->descriptor.inputs; at++)
+            inputs[at] = n->ports.inputs[at].schema;
+        ud_status status = n->descriptor.configure(
+            n->descriptor.user, &n->context, (ud_string){n->json, n->json_length}, inputs, outputs);
+        for (uint32_t port = 0; !status && port < n->descriptor.outputs; port++) {
+            if (!outputs[port] || outputs[port]->columns != n->schemas[port]->columns) {
+                status = UD_INCOMPATIBLE;
+                break;
+            }
+            for (uint32_t field = 0; !status && field < outputs[port]->columns; field++)
+                if (!ud_field_matches(&outputs[port]->column[field].field,
+                                      &n->schemas[port]->column[field].field, UD_FIELD_PORT))
+                    status = UD_INCOMPATIBLE;
+        }
+        for (uint32_t at = 0; at < n->descriptor.outputs; at++)
+            ud_batch_destroy(outputs[at]);
+        ud_free(inputs);
+        ud_free(outputs);
+        if (!status) {
+            n->schema_version = event->schema_version;
+            status = forward_control(p, n, event);
+        }
+        return status;
     }
     return UD_UNSUPPORTED;
 }
@@ -1377,6 +1420,17 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     ud_activation *e = p->execution;
     if (atomic_load(&n->state) == UD_EXEC_SUCCEEDED)
         return UD_OK;
+    if (n->descriptor.category == UD_COMPONENT_SOURCE) {
+        if (ud_debug_enabled(e->execution))
+            for (uint32_t other = 0; other < p->count; other++)
+                if (p->nodes[other].descriptor.category != UD_COMPONENT_SOURCE &&
+                    p->nodes[other].pending)
+                    return UD_OK;
+        ud_status gate = ud_debug_boundary(&n->activation, UD_DEBUG_BATCH);
+        if (gate == UD_BUSY)
+            return UD_OK;
+        UD_TRY(gate);
+    }
     for (uint32_t i = 0; i < n->output_edges; i++)
         if (ud_queue_count(p->edges[n->outputs[i]].queue) == e->execution->options.edge_capacity) {
             n->wait_capacity++;
@@ -1508,6 +1562,9 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     uint32_t emitted = 0;
     for (uint32_t j = 0; j < n->descriptor.outputs; j++)
         emitted += n->emitted[j];
+    if (emitted && n->descriptor.category == UD_COMPONENT_SOURCE &&
+        !ud_transaction_active(&n->activation))
+        ud_debug_advance(&n->activation);
     if (s == UD_BUSY || s < UD_OK || s > UD_TRUNCATED)
         s = UD_INVALID;
     if (s == UD_END) {
@@ -1529,7 +1586,6 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
                 s = commit_epoch(p, atomic_load(&p->confirmed_epoch) + 1);
             for (uint32_t i = 0; i < n->output_edges; i++)
                 ud_work_group_ready(p->group, p->nodes[p->edges[n->outputs[i]].to].tree);
-            s = UD_OK;
         }
     } else if (!s && event.kind == UD_COMPONENT_POLL && !emitted && !was_pending && !n->pending)
         s = UD_INVALID;

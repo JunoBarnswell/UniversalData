@@ -29,12 +29,11 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     {
         if (tenant != "local") return false;
         if (Resources is not null && Resources.TryGetValue(resource, out var grants) && grants.Contains(access)) return true;
+        if (access == ConnectionAccess.Execute) return PluginRoots.Any(root => Inside(resource, root));
         if (Inside(resource, DataDirectory)) return true;
         if (Uri.TryCreate(resource, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "ftp" or "sftp")
             return NetworkOrigins.Any(origin => Uri.TryCreate(origin, UriKind.Absolute, out var permitted) &&
                 uri.Scheme == permitted.Scheme && uri.Host.Equals(permitted.Host, StringComparison.OrdinalIgnoreCase) && uri.Port == permitted.Port);
-        if (access == ConnectionAccess.Execute)
-            return PluginRoots.Any(root => Inside(resource, root));
         return FileRoots.Any(root => Inside(resource, root));
     }
     public string Resolve(string tenant, string resource, string reference)

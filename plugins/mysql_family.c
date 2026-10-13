@@ -27,6 +27,7 @@ typedef struct mysql_cdc {
     char *file, *table, *gtid, *incarnation;
     uint64_t position, confirmed;
     uint32_t phase, rows;
+    char *schema_position;
     int snapshot, opened, checksum, schema_changed;
 #if defined(UD_MYSQL_CLIENT)
     MYSQL_RPL rpl;
@@ -970,7 +971,8 @@ static ud_status apply_statement(mysql_state *p, const ud_write_options *options
     if (!status && stmt)
         status = execute_bound(p, stmt, &params, &affected);
     if (!status && options->mode == UD_WRITE_CHANGESET &&
-        options->operations[first] != UD_CHANGE_UPSERT && affected != 1)
+        options->operations[first] != UD_CHANGE_UPSERT &&
+        options->operations[first] != UD_CHANGE_TRUNCATE && affected != 1)
         status = UD_FENCED;
     bindings_free(&params);
     if (stmt)
@@ -1444,32 +1446,43 @@ static ud_status cdc_schema_event(mysql_state *p, ud_cdc_event *out) {
         ud_binlog_unchanged_schema(c->decoder, out);
         return UD_OK;
     }
-    ud_field *fields = NULL;
     if (!status)
-        status = plugin_fields(&p->host, actual, &fields);
-    uint32_t columns = actual ? p->host.columns(actual) : 0;
-    for (uint32_t i = 0; !status && i < columns; i++) {
-        for (uint32_t j = 0; j < p->host.columns(c->schema); j++) {
-            ud_field before;
-            status = p->host.field(c->schema, j, &before);
-            if (status)
-                break;
-            if (before.name_length == fields[i].name_length &&
-                !memcmp(before.name, fields[i].name, before.name_length)) {
-                fields[i].identity = before.identity;
-                fields[i].lineage = before.lineage;
-                fields[i].lineage_count = before.lineage_count;
-                break;
-            }
-        }
-    }
-    if (!status)
-        status = p->host.batch_create(p->host.context, fields, columns, 0, &out->after);
-    p->host.deallocate(fields);
+        status = p->host.schema_bind_identity(p->host.context, c->schema, actual, &out->after);
     p->host.batch_destroy(actual);
     p->host.batch_destroy(metadata);
-    if (!status)
+    if (!status) {
         c->schema_changed = 1;
+        p->host.deallocate(c->schema_position);
+        c->schema_position = plugin_string(&p->host, out->position.data, out->position.length);
+        if (!c->schema_position)
+            status = UD_RESOURCE;
+    }
+    return status;
+}
+static ud_status cdc_rebind(void *state, const ud_batch *schema, uint64_t version) {
+    mysql_state *p = state;
+    mysql_cdc *c = p->cdc;
+    if (!c)
+        return UD_INVALID;
+    ud_field *fields = NULL;
+    ud_batch *owned = NULL;
+    ud_status status = plugin_fields(&p->host, schema, &fields);
+    if (!status)
+        status = p->host.batch_create(p->host.context, fields, p->host.columns(schema), 0, &owned);
+    p->host.deallocate(fields);
+    ud_string position = {c->schema_position,
+                          c->schema_position ? (uint32_t)strlen(c->schema_position) : 0};
+    if (!status)
+        status = ud_binlog_rebind(c->decoder, owned, version, position);
+    if (!status) {
+        p->host.batch_destroy(c->schema);
+        c->schema = owned;
+        owned = NULL;
+        c->schema_changed = 0;
+        p->host.deallocate(c->schema_position);
+        c->schema_position = NULL;
+    }
+    p->host.batch_destroy(owned);
     return status;
 }
 static ud_status cdc_next(void *state, ud_cdc_event *out) {
@@ -1653,6 +1666,7 @@ static ud_status cdc_close(void *state) {
 #endif
     if (c->stream)
         mysql_close(c->stream);
+    p->host.deallocate(c->schema_position);
     ud_binlog_destroy(c->decoder);
     p->host.batch_destroy(c->schema);
     p->host.deallocate(c->file);
@@ -1838,6 +1852,7 @@ const ud_connector_api ud_mysql_connector = {
     .cdc_next = cdc_next,
     .cdc_confirm = cdc_confirm,
     .cdc_close = cdc_close,
+    .cdc_rebind = cdc_rebind,
     .transaction_begin = transaction_begin,
     .transaction_prepare = transaction_prepare,
     .transaction_resolve = transaction_resolve,

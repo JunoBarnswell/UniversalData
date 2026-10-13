@@ -486,7 +486,7 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
         return UD_SCHEMA;
     if (o->mode == UD_WRITE_CHANGESET) {
         if (!o->operations || rows != 1 || o->operations[first] < UD_CHANGE_INSERT ||
-            o->operations[first] > UD_CHANGE_UPSERT)
+            o->operations[first] > UD_CHANGE_TRUNCATE)
             return UD_SCHEMA;
         if (o->current_column != UINT32_MAX &&
             (o->current_column >= b->columns || b->column[o->current_column].field.type != UD_BOOL))
@@ -494,6 +494,8 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
     }
     for (uint32_t row = first; row < first + rows; row++)
         for (uint32_t k = 0; k < o->key_count && o->mode != UD_WRITE_APPEND; k++) {
+            if (o->mode == UD_WRITE_CHANGESET && o->operations[row] == UD_CHANGE_TRUNCATE)
+                continue;
             ud_value value;
             ud_status status = ud_batch_get(b, row, o->keys[k], &value);
             if (status)
@@ -537,7 +539,15 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
     ud_status s = UD_OK;
     if (mode == UD_WRITE_UPSERT && rows > 1)
         s = last_rows(&w, first, &rows);
-    if (!s && mode == UD_WRITE_APPEND)
+    if (!s && action == UD_CHANGE_TRUNCATE) {
+        if (!o->allow_truncate || o->current_column != UINT32_MAX)
+            s = UD_UNSUPPORTED;
+        else {
+            s = put(&w, "DELETE FROM ");
+            if (!s)
+                s = table(&w);
+        }
+    } else if (!s && mode == UD_WRITE_APPEND)
         s = insert(&w, first, rows, action == UD_CHANGE_INSERT && o->current_column != UINT32_MAX);
     else if (!s && mode == UD_WRITE_UPSERT)
         s = upsert(&w, first, rows);
@@ -676,6 +686,9 @@ ud_status ud_write_validate(const ud_write_options *o, const ud_batch *b) {
             if (o->keys[k] == o->keys[i])
                 return UD_SCHEMA;
         for (uint32_t row = 0; row < b->rows && o->mode != UD_WRITE_APPEND; row++) {
+            if (o->mode == UD_WRITE_CHANGESET && o->operations &&
+                o->operations[row] == UD_CHANGE_TRUNCATE)
+                continue;
             ud_value v;
             UD_TRY(ud_batch_get(b, row, o->keys[i], &v));
             if (v.is_absent && o->mode == UD_WRITE_CHANGESET && o->before && o->operations &&
@@ -699,7 +712,8 @@ ud_status ud_write_validate(const ud_write_options *o, const ud_batch *b) {
             (o->current_column >= b->columns || b->column[o->current_column].field.type != UD_BOOL))
             return UD_SCHEMA;
         for (uint32_t row = 0; row < b->rows; row++)
-            if (o->operations[row] < UD_CHANGE_INSERT || o->operations[row] > UD_CHANGE_UPSERT)
+            if (o->operations[row] < UD_CHANGE_INSERT || o->operations[row] > UD_CHANGE_TRUNCATE ||
+                (o->operations[row] == UD_CHANGE_TRUNCATE && !o->allow_truncate))
                 return UD_SCHEMA;
         for (uint32_t row = 0; o->before && row < b->rows; row++)
             if (o->operations[row] == UD_CHANGE_UPDATE || o->operations[row] == UD_CHANGE_DELETE)
@@ -736,6 +750,8 @@ ud_status ud_write_digest(ud_context *ctx, ud_string tenant, ud_string resource,
             s = UD_SCHEMA;
         if (!s)
             s = ud_put_u64(&wire, options->current_column);
+        if (!s)
+            s = ud_put_u64(&wire, (uint64_t)options->allow_truncate);
         for (uint32_t row = 0; !s && row < batch->rows; row++)
             s = ud_put_u64(&wire, (uint64_t)options->operations[row]);
         if (!s)

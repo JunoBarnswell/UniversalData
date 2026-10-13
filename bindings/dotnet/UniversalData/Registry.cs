@@ -32,7 +32,7 @@ public sealed class ManagedTaskContext
 }
 
 /// <summary>Registrations and callback owners belong to the sole Native Registry.</summary>
-public sealed class Registry : IDisposable
+public sealed partial class Registry : IDisposable
 {
     private readonly ContextHandle context;
     private readonly object sync = new();
@@ -86,7 +86,7 @@ public sealed class Registry : IDisposable
             if (registry == IntPtr.Zero) return;
             // Native returns BUSY while an Execution leases this Registry. Keep it usable for retry.
             DataOwnership.Check(context, Native.ud_registry_destroy(registry));
-            registry = IntPtr.Zero; context.Dispose();
+            registry = IntPtr.Zero; ReleaseModules(); context.Dispose();
         }
         GC.SuppressFinalize(this);
     }
@@ -125,6 +125,7 @@ internal sealed class TaskRegistration
     }
     private int PrepareInstance(IntPtr user, IntPtr context, Native.StringValue configuration, IntPtr inputs, IntPtr outputs, out IntPtr instance)
     {
+        using var guard = Execution.EnterCallback();
         instance = IntPtr.Zero; IManagedTask? task = null;
         var callback = Marshal.PtrToStructure<Native.CallbackContext>(context);
         try
@@ -138,17 +139,19 @@ internal sealed class TaskRegistration
     private static Instance State(IntPtr pointer) => (Instance)GCHandle.FromIntPtr(pointer).Target!;
     private int InvokeInstance(IntPtr pointer, IntPtr context, Native.StringValue configuration)
     {
+        using var guard = Execution.EnterCallback();
         var state = State(pointer); var callback = new ManagedTaskContext(context);
         try { state.Task.Execute(callback, Native.Text(configuration)); return 0; }
         catch (Exception error) { return Failure(state.Memory, error); }
         finally { callback.End(); }
     }
     private int FinishInstance(IntPtr pointer)
-    { var state = State(pointer); try { state.Task.Finish(); return 0; } catch (Exception error) { return Failure(state.Memory, error); } }
+    { using var guard = Execution.EnterCallback(); var state = State(pointer); try { state.Task.Finish(); return 0; } catch (Exception error) { return Failure(state.Memory, error); } }
     private void CancelInstance(IntPtr pointer)
-    { var state = State(pointer); try { state.Task.Cancel(); } catch (Exception error) { Fault(state, error); } }
+    { using var guard = Execution.EnterCallback(); var state = State(pointer); try { state.Task.Cancel(); } catch (Exception error) { Fault(state, error); } }
     private void DisposeInstance(IntPtr pointer, int status)
     {
+        using var guard = Execution.EnterCallback();
         var handle = GCHandle.FromIntPtr(pointer); var state = (Instance)handle.Target!;
         try { state.Task.Dispose(); } catch (Exception error) { Fault(state, error); }
         finally { handle.Free(); }

@@ -3,6 +3,7 @@
 #include "common.h"
 typedef struct ud_binlog ud_binlog;
 ud_status ud_binlog_packet(const void *, size_t, const uint8_t **, size_t *);
+ud_status ud_binlog_rebind(ud_binlog *, const ud_batch *, uint64_t, ud_string schema_position);
 void ud_binlog_unchanged_schema(ud_binlog *, ud_cdc_event *);
 ud_status ud_binlog_create(const ud_host_api *, const ud_cdc_options *, int mariadb,
                            ud_string incarnation, int checksum, ud_binlog **);

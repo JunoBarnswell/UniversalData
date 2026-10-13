@@ -13,6 +13,8 @@ assert len(sys.argv) in [2, 8], 'cli [dotnet package.dll java classes jar native
 languages = 3 if len(sys.argv) == 8 else 1
 with tempfile.TemporaryDirectory(prefix='ud-value-pipeline-') as folder:
     root = pathlib.Path(folder)
+    policy = root / 'host-policy.json'
+    policy.write_text(json.dumps(dict(dataDirectory=str(root/'native-state'), fileRoots=[str(root)], networkOrigins=[], pluginRoots=[], credentialFiles={})))
     for metadata, values in CASES:
         directory = root / metadata['type']; directory.mkdir()
         source = directory / 'input.ndjson'; right = directory / 'right.ndjson'
@@ -47,7 +49,7 @@ with tempfile.TemporaryDirectory(prefix='ud-value-pipeline-') as folder:
                     [('input',source),('right',right)] + [(name,directory/(str(language)+'-'+name+'.ndjson')) for name in ['yes','no','joined','groups']]],
                 controlFlow=dict(tasks=[dict(id=flow['id'], kind='dataFlow', config=dict(pipeline=flow['id'])) for flow in flows], constraints=[]), dataFlows=flows)
             definition = directory / 'package.json'; definition.write_text(json.dumps(package,ensure_ascii=False),encoding='utf-8')
-            command = [cli,'execute',str(definition),'{}','fixture','same-id',str(root)]
+            command = [cli,'execute',str(policy),str(definition),'{}',metadata['type']+'-'+str(language)]
             if language:
                 params = directory / 'parameters.json'; params.write_text('{}')
                 if language == 1:

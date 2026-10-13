@@ -21,7 +21,8 @@ with tempfile.TemporaryDirectory(prefix="ud-core-pipeline-") as folder:
             dict(id="bad",component="file.ndjson.destination",config=dict(connection="bad"))],
             "paths":[dict(**{"from":a,"output":port,"to":b,"input":0}) for a,port,b in [("source",0,"quality"),("quality",0,"chars"),("quality",1,"bad"),("chars",0,"copy"),("copy",0,"window"),("window",0,"count"),("count",0,"audit"),("audit",0,"ok")]]}]}
     path=root/"package.json";path.write_text(json.dumps(package))
-    result=subprocess.run([sys.argv[1],"execute",str(path),"{}","fixture","core",str(root)],capture_output=True,text=True,timeout=60)
+    policy=root/"host-policy.json";policy.write_text(json.dumps(dict(dataDirectory=str(root/"native-state"),fileRoots=[str(root)],networkOrigins=[],pluginRoots=[],credentialFiles={})))
+    result=subprocess.run([sys.argv[1],"execute",str(policy),str(path),"{}","core"],capture_output=True,text=True,timeout=60)
     assert result.returncode==0,(result.stdout,result.stderr)
     metrics=json.loads(result.stdout);assert metrics["state"]==5 and metrics["result"]==0 and metrics["spillBytes"]>0
     with (root/"ok.csv").open(newline="") as file: rows=list(csv.DictReader(file))

@@ -587,6 +587,12 @@ ud_status ud_catalog_latest_revision(ud_catalog *catalog, int32_t kind, ud_strin
         }
     }
     sqlite3_finalize(statement);
+    if (!status) {
+        char *document = NULL; uint32_t length = 0;
+        ud_catalog_key key = {sizeof(key), UD_ABI_VERSION, kind, id, *revision};
+        status = get_document(catalog, &key, &document, &length);
+        ud_free(document);
+    }
     return status;
 }
 void ud_catalog_close(ud_catalog *c) {

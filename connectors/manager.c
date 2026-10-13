@@ -1312,6 +1312,8 @@ ud_status ud_transaction_commit_epoch(ud_activation *activation) {
     transaction->delivery = NULL;
     transaction->pending_rows = transaction->pending_errors = transaction->pending_tasks = 0;
     transaction->fact_order = 0;
+    ud_debug_advance(owner);
+    UD_TRY(ud_debug_boundary(owner, UD_DEBUG_EPOCH));
     if (transaction->attempt == UINT64_MAX)
         return UD_RESOURCE;
     transaction->attempt++;
@@ -1409,6 +1411,17 @@ ud_status ud_connection_lease_cdc_confirm(ud_connection_lease *l, ud_string p) {
         return UD_UNSUPPORTED;
     UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_READ));
     return ud_connection_cdc_confirm(l->connection, p);
+}
+ud_status ud_connection_lease_cdc_schema(ud_connection_lease *lease, ud_batch **out) {
+    return lease && lease->connection ? ud_connection_cdc_schema(lease->connection, out)
+                                      : UD_UNSUPPORTED;
+}
+ud_status ud_connection_lease_cdc_rebind(ud_connection_lease *lease, const ud_batch *schema,
+                                         uint64_t version) {
+    if (!lease || !lease->connection)
+        return UD_UNSUPPORTED;
+    UD_TRY(ud_activation_check(lease->activation));
+    return ud_connection_cdc_rebind(lease->connection, schema, version);
 }
 ud_status ud_connection_lease_cdc_close(ud_connection_lease *l) {
     return l && l->connection ? ud_connection_cdc_close(l->connection) : UD_UNSUPPORTED;

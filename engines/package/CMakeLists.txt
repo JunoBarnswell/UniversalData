@@ -5,6 +5,7 @@ set(src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/cdc.c ${PROJECT_SOURCE_DIR}/con
 if(UD_WITH_ARROW_FILES)
   list(APPEND src ${PROJECT_SOURCE_DIR}/connectors/columnar_file.cpp)
 endif()
+list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/debug.c)
 ud_component(ud_package Package ${src})
 target_link_libraries(ud_package PUBLIC ud_expression ud_compute ud_runtime ud_plugins Threads::Threads ZLIB::ZLIB EXPAT::EXPAT SQLite::SQLite3)
 if(UD_WITH_HTTP)

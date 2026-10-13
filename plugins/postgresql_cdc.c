@@ -1,3 +1,4 @@
+#include "postgresql_metadata.h"
 #include "postgresql_cdc.h"
 #include <libpq-fe.h>
 #include <stdio.h>
@@ -21,7 +22,11 @@ struct ud_pg_cdc {
     uint32_t relation, batch_rows, phase, timeline;
     char system_id[32];
     uint32_t *oids;
-    uint8_t *key_columns;
+    uint8_t *key_columns, *pending_keys;
+    uint32_t *pending_oids;
+    uint32_t pending_columns;
+    char *field_namespace;
+    int schema_changed, pending_invalid;
     int snapshot_mode, streaming;
     atomic_int cancelled;
 };
@@ -482,52 +487,94 @@ static ud_status decode(ud_pg_cdc *p, packet *input, ud_cdc_event *out) {
         memcpy(qualified, schema, ns);
         qualified[ns] = '.';
         memcpy(qualified + ns + 1, table, nt);
+        qualified[ns + nt + 1] = 0;
         int match =
             !strcmp(p->table, qualified) ||
             (!strchr(p->table, '.') && strlen(p->table) == nt && !memcmp(p->table, table, nt));
         p->host.deallocate(qualified);
         if (!match)
             return UD_BUSY;
-        if (columns != p->host.columns(p->schema) ||
-            (identity != 'f' && identity != 'd' && identity != 'i'))
+        if (columns > 65536 || !columns || (identity != 'f' && identity != 'd' && identity != 'i'))
             return UD_INCOMPATIBLE;
-        for (uint32_t i = 0; i < columns; i++) {
+        const char *values[] = {p->table};
+        PGresult *result =
+            PQexecParams(p->snapshot, ud_pg_metadata_query(), 1, NULL, values, NULL, NULL, 0);
+        ud_batch *metadata = NULL, *actual = NULL, *aligned = NULL;
+        ud_status status = result && PQresultStatus(result) == PGRES_TUPLES_OK
+                               ? ud_pg_metadata_decode(&p->host, result, &metadata)
+                               : pg_status(p, result);
+        PQclear(result);
+        if (!status)
+            status = p->host.schema_from_metadata(
+                p->host.context, metadata,
+                (ud_string){p->field_namespace, (uint32_t)strlen(p->field_namespace)},
+                UD_SQL_POSTGRESQL, &actual);
+        if (!status)
+            status = p->host.schema_bind_identity(p->host.context, p->schema, actual, &aligned);
+        p->host.batch_destroy(metadata);
+        p->host.batch_destroy(actual);
+        uint32_t *oids =
+            !status ? p->host.allocate(p->host.context, (size_t)columns * sizeof(*oids)) : NULL;
+        uint8_t *keys = !status ? p->host.allocate(p->host.context, (size_t)columns) : NULL;
+        if (!status && (!oids || !keys))
+            status = UD_RESOURCE;
+        int changed = !status && columns != p->host.columns(p->schema),
+            invalid = !status && columns != p->host.columns(aligned);
+        for (uint32_t at = 0; !status && at < columns; at++) {
             uint64_t flags, oid, modifier;
             const char *name;
-            uint32_t n;
-            ud_field field;
-            if (!integer(input, 1, &flags) || !string(input, &name, &n) ||
-                !integer(input, 4, &oid) || !integer(input, 4, &modifier))
-                return UD_CORRUPT;
-            ud_status s = p->host.field(p->schema, i, &field);
-            if (s)
-                return s;
-            if (field.name_length != n || memcmp(field.name, name, n))
-                return UD_INCOMPATIBLE;
-            if ((flags & ~UINT64_C(1)) || (identity != 'f' && !!(flags & 1) != p->key_columns[i]))
-                return UD_INCOMPATIBLE;
-            int compatible = field.type == UD_BOOL         ? oid == 16
-                             : field.type == UD_INT64      ? oid == 20 || oid == 21 || oid == 23
-                             : field.type == UD_FLOAT64    ? oid == 700 || oid == 701
-                             : field.type == UD_UTF8       ? oid == 25 || oid == 1043
-                             : field.type == UD_BINARY     ? oid == 17
-                             : field.type == UD_DECIMAL128 ? oid == 1700
-                             : field.type == UD_UINT64     ? oid == 1700
-                             : field.type == UD_INTERVAL || field.type == UD_DURATION ? oid == 1186
-                             : field.type == UD_DATE32                                ? oid == 1082
-                             : field.type == UD_TIME64                                ? oid == 1083
-                             : field.type == UD_TIMESTAMP                             ? oid == 1184
-                                                                                      : 0;
-            if (!compatible || (p->oids && p->oids[i] != oid))
-                return UD_INCOMPATIBLE;
-            if (field.type == UD_DECIMAL128) {
-                if (modifier < 4 || (int32_t)((modifier - 4) >> 16) != field.precision ||
-                    ((int32_t)((modifier - 4) & 2047) ^ 1024) - 1024 != field.scale)
-                    return UD_INCOMPATIBLE;
+            uint32_t length;
+            if (!integer(input, 1, &flags) || !string(input, &name, &length) ||
+                !integer(input, 4, &oid) || !integer(input, 4, &modifier) ||
+                (flags & ~UINT64_C(1))) {
+                status = UD_CORRUPT;
+                break;
             }
+            ud_field field = {0};
+            oids[at] = (uint32_t)oid;
+            keys[at] = (uint8_t)(flags & 1);
+            if (at < p->host.columns(aligned)) {
+                status = p->host.field(aligned, at, &field);
+                if (!status && (field.name_length != length || memcmp(field.name, name, length)))
+                    invalid = 1;
+                if (identity == 'f')
+                    keys[at] = field.key_order != 0;
+            }
+            if (!status && at < p->host.columns(p->schema)) {
+                ud_field before;
+                status = p->host.field(p->schema, at, &before);
+                if (!status && (!p->host.field_matches(&before, &field, UD_FIELD_PORT) ||
+                                p->oids[at] != oids[at] || p->key_columns[at] != keys[at]))
+                    changed = 1;
+                if (!status && p->key_columns[at] != keys[at])
+                    invalid = 1;
+            }
+            (void)modifier;
         }
         p->relation = (uint32_t)relation;
-        return UD_BUSY;
+        if (!status && (changed || invalid)) {
+            if (p->version == UINT64_MAX)
+                status = UD_RESOURCE;
+            else {
+                p->version++;
+                out->kind = UD_CDC_SCHEMA_CHANGE;
+                out->schema_version = p->version;
+                out->after = aligned;
+                aligned = NULL;
+                p->pending_oids = oids;
+                p->pending_keys = keys;
+                p->pending_columns = (uint32_t)columns;
+                oids = NULL;
+                keys = NULL;
+                p->schema_changed = 1;
+                p->pending_invalid = invalid;
+                status = position_text(p, p->lsn, &out->position);
+            }
+        }
+        p->host.deallocate(oids);
+        p->host.deallocate(keys);
+        p->host.batch_destroy(aligned);
+        return status ? status : changed || invalid ? UD_OK : UD_BUSY;
     }
     if (kind == 'I' || kind == 'U' || kind == 'D') {
         uint64_t relation, tag;
@@ -612,8 +659,23 @@ static ud_status decode(ud_pg_cdc *p, packet *input, ud_cdc_event *out) {
             s = position_text(p, p->lsn, &out->position);
         return s;
     }
-    if (kind == 'T')
-        return UD_INCOMPATIBLE;
+    if (kind == 'T') {
+        uint64_t count, flags;
+        if (!integer(input, 4, &count) || !integer(input, 1, &flags) || (flags & ~UINT64_C(3)))
+            return UD_CORRUPT;
+        int matches = 0;
+        for (uint64_t index = 0; index < count; index++) {
+            uint64_t relation;
+            if (!integer(input, 4, &relation))
+                return UD_CORRUPT;
+            if (relation == p->relation)
+                matches = 1;
+        }
+        if (!matches)
+            return UD_BUSY;
+        out->kind = UD_CDC_TRUNCATE;
+        return position_text(p, p->lsn, &out->position);
+    }
     if (kind == 'Y' || kind == 'O')
         return UD_BUSY;
     (void)value;
@@ -653,6 +715,8 @@ ud_status ud_pg_cdc_next(ud_pg_cdc *p, ud_cdc_event *out) {
     ud_status s = check(p);
     if (s)
         return s;
+    if (p->schema_changed)
+        return UD_FENCED;
     if (p->snapshot_mode)
         return snapshot_next(p, out);
     if (!p->streaming) {
@@ -752,6 +816,11 @@ ud_status ud_pg_cdc_open(const ud_host_api *h, const char *config, const ud_cdc_
         p->slot = identifier(p, p->replication, o->slot);
     p->publication = plugin_string(h, o->publication.data, o->publication.length);
     p->table = plugin_string(h, o->table.data, o->table.length);
+    p->field_namespace =
+        plugin_string(h, o->field_namespace.data ? o->field_namespace.data : "cdc.preflight",
+                      o->field_namespace.data ? o->field_namespace.length : 13);
+    if (!p->field_namespace)
+        s = UD_RESOURCE;
     if (!p->slot || !p->publication || !p->table)
         s = UD_RESOURCE;
     ud_field *f = NULL;
@@ -887,6 +956,36 @@ ud_status ud_pg_cdc_open(const ud_host_api *h, const char *config, const ud_cdc_
     *out = p;
     return UD_OK;
 }
+ud_status ud_pg_cdc_rebind(ud_pg_cdc *p, const ud_batch *schema, uint64_t version) {
+    if (!p || !schema || !version || p->pending_invalid)
+        return UD_INCOMPATIBLE;
+    uint32_t columns = p->host.columns(schema);
+    if (p->schema_changed ? columns != p->pending_columns : columns != p->host.columns(p->schema))
+        return UD_INCOMPATIBLE;
+    ud_field *fields = NULL;
+    ud_batch *owned = NULL;
+    ud_status status = plugin_fields(&p->host, schema, &fields);
+    if (!status)
+        status = p->host.batch_create(p->host.context, fields, columns, 0, &owned);
+    p->host.deallocate(fields);
+    if (!status) {
+        p->host.batch_destroy(p->schema);
+        p->schema = owned;
+        owned = NULL;
+        p->version = version;
+        if (p->schema_changed) {
+            p->host.deallocate(p->oids);
+            p->host.deallocate(p->key_columns);
+            p->oids = p->pending_oids;
+            p->key_columns = p->pending_keys;
+            p->pending_oids = NULL;
+            p->pending_keys = NULL;
+        }
+        p->schema_changed = 0;
+    }
+    p->host.batch_destroy(owned);
+    return status;
+}
 void ud_pg_cdc_cancel(ud_pg_cdc *p) {
     if (!p)
         return;
@@ -915,6 +1014,9 @@ ud_status ud_pg_cdc_close(ud_pg_cdc *p) {
     p->host.deallocate(p->transaction);
     p->host.deallocate(p->oids);
     p->host.deallocate(p->key_columns);
+    p->host.deallocate(p->pending_oids);
+    p->host.deallocate(p->pending_keys);
+    p->host.deallocate(p->field_namespace);
     p->host.deallocate(p);
     return UD_OK;
 }

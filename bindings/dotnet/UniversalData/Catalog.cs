@@ -65,6 +65,22 @@ public sealed class Catalog : IDisposable
             DataOwnership.Check(context, status); return revision;
         }
     }
+    public (string Package, string Parameters) BindPackage(string deploymentId, ulong deploymentRevision,
+        string packageId, string projectParameters = "{}", string packageParameters = "{}")
+    {
+        lock (sync) {
+            Open(); using var values = new NativeStrings(deploymentId, packageId, projectParameters, packageParameters);
+            var binding = new Native.CatalogBinding { Size = (uint)Marshal.SizeOf<Native.CatalogBinding>(), Abi = ProductVersion.Abi,
+                DeploymentId = values[0], DeploymentRevision = deploymentRevision, PackageId = values[1],
+                ProjectParameters = values[2], PackageParameters = values[3] };
+            DataOwnership.Check(context, Native.ud_catalog_bind_package(catalog, ref binding, out var package, out var parameters, out var parameterLength));
+            try {
+                var boundParameters = DataOwnership.Text(parameters, parameterLength); parameters = IntPtr.Zero;
+                DataOwnership.Check(context, Native.ud_package_serialize(package, out var text, out var length));
+                return (DataOwnership.Text(text, length), boundParameters);
+            } finally { Native.ud_free(parameters); Native.ud_package_destroy(package); }
+        }
+    }
     public void Record(ExecutionEvent executionEvent)
     {
         lock (sync)
@@ -93,6 +109,11 @@ public sealed class Catalog : IDisposable
 
 internal static partial class Native
 {
+    [StructLayout(LayoutKind.Sequential)] internal struct CatalogBinding
+    { internal uint Size, Abi; internal StringValue DeploymentId; internal ulong DeploymentRevision;
+      internal StringValue PackageId, ProjectParameters, PackageParameters; }
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_bind_package(IntPtr catalog, ref CatalogBinding binding, out IntPtr package, out IntPtr parameters, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_package_serialize(IntPtr package, out IntPtr text, out uint length);
     [StructLayout(LayoutKind.Sequential)] internal struct CatalogOptions
     { internal uint Size, Abi; internal StringValue Directory, Tenant; internal IntPtr Authorize, User; internal int Create; }
     [StructLayout(LayoutKind.Sequential)] internal struct CatalogKey

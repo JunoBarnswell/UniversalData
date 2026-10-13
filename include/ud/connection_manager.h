@@ -28,6 +28,8 @@ UD_API ud_status ud_connection_lease_cdc_open(ud_connection_lease *, const ud_cd
 UD_API ud_status ud_connection_lease_cdc_next(ud_connection_lease *, ud_cdc_event *);
 UD_API ud_status ud_connection_lease_cdc_confirm(ud_connection_lease *, ud_string);
 UD_API ud_status ud_connection_lease_cdc_close(ud_connection_lease *);
+UD_API ud_status ud_connection_lease_cdc_rebind(ud_connection_lease *, const ud_batch *, uint64_t);
+UD_API ud_status ud_connection_lease_cdc_schema(ud_connection_lease *, ud_batch **);
 UD_API ud_status ud_connection_lease_read_open(ud_connection_lease *, const ud_read_options *,
                                                const ud_batch *);
 UD_API ud_status ud_connection_lease_read_next(ud_connection_lease *, ud_batch **);
