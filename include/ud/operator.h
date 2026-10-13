@@ -8,9 +8,19 @@ typedef struct ud_executor ud_executor;
 extern "C" {
 #endif
 typedef struct ud_operator ud_operator;
-enum { UD_OPERATOR_SORT = 1, UD_OPERATOR_AGGREGATE, UD_OPERATOR_JOIN, UD_OPERATOR_WINDOW,
-       UD_OPERATOR_MERGE, UD_OPERATOR_MERGE_JOIN, UD_OPERATOR_PIVOT, UD_OPERATOR_UNPIVOT,
-       UD_OPERATOR_ROW_SAMPLING, UD_OPERATOR_PERCENTAGE_SAMPLING, UD_OPERATOR_SCD };
+enum {
+    UD_OPERATOR_SORT = 1,
+    UD_OPERATOR_AGGREGATE,
+    UD_OPERATOR_JOIN,
+    UD_OPERATOR_WINDOW,
+    UD_OPERATOR_MERGE,
+    UD_OPERATOR_MERGE_JOIN,
+    UD_OPERATOR_PIVOT,
+    UD_OPERATOR_UNPIVOT,
+    UD_OPERATOR_ROW_SAMPLING,
+    UD_OPERATOR_PERCENTAGE_SAMPLING,
+    UD_OPERATOR_SCD
+};
 typedef struct ud_sort_key {
     ud_id field;
     int32_t descending, nulls_first;
@@ -38,7 +48,7 @@ typedef struct ud_operator_options {
     ud_string window_name;
     uint32_t partition_count; /* 0 selects 1; <=64, same algorithms at every width. */
     ud_executor *executor;    /* Borrowed root pool; required above one partition. */
-    ud_string configuration; /* Native binding for relational, sampling and SCD operators. */
+    ud_string configuration;  /* Native binding for relational, sampling and SCD operators. */
     const ud_sort_contract *input_order; /* One contract per input; copied on binding. */
     ud_cache *reference; /* Sealed SCD current-dimension asset, retained by operator. */
 } ud_operator_options;

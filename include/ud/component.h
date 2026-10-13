@@ -27,13 +27,16 @@ typedef struct ud_component_event {
  * reference. At most one Buffer per output per step. Only invoke in step. */
 typedef ud_status (*ud_component_emit)(void *, uint32_t output, ud_batch *);
 typedef struct ud_component_plan ud_component_plan;
-enum {UD_PORT_INPUT=1,UD_PORT_OUTPUT=2,UD_PORT_REQUIRED=1,UD_PORT_ERROR=2};
+enum { UD_PORT_INPUT = 1, UD_PORT_OUTPUT = 2, UD_PORT_REQUIRED = 1, UD_PORT_ERROR = 2 };
 typedef struct ud_component_port {
-    ud_id id;ud_string name;uint32_t direction,index,flags;
+    ud_id id;
+    ud_string name;
+    uint32_t direction, index, flags;
     const ud_batch *schema; /* Borrowed Binder-owned schema. */
 } ud_component_port;
 typedef struct ud_component_ports {
-    uint32_t input_count,output_count;ud_component_port *inputs,*outputs;
+    uint32_t input_count, output_count;
+    ud_component_port *inputs, *outputs;
 } ud_component_ports;
 typedef struct ud_component_context {
     uint32_t struct_size, abi_version;
@@ -48,8 +51,8 @@ typedef struct ud_component_context {
     void *resolve_user;
     ud_status (*resolve_field)(void *, ud_string, ud_field *);
     const ud_component_plan *input_plans; /* Borrowed for the instance lifetime. */
-    uint32_t input_count,output_count;
-    uint64_t connected_outputs; /* Binding knows which regular ports have edges. */
+    uint32_t input_count, output_count;
+    uint64_t connected_outputs;            /* Binding knows which regular ports have edges. */
     const ud_batch *const *output_schemas; /* Resolved output identities at pure binding. */
 } ud_component_context;
 /* Task promises its effects may safely be replayed after an interrupted invoke.

@@ -39,8 +39,8 @@ static ud_status sql_type(ud_field *field, ud_string declaration, int32_t dialec
                 field->type = (ud_type)i + 1;
                 break;
             }
-        if (field->type == UD_DECIMAL128)
-            return UD_UNSUPPORTED;
+        if(!strncmp(begin,"decimal128(",11)){int precision=0,scale=0;char tail=0;if(sscanf(begin+10,"(%d,%d)%c",&precision,&scale,&tail)!=2||precision<1||precision>38||scale<-38||scale>38)return UD_UNSUPPORTED;field->type=UD_DECIMAL128;field->precision=precision;field->scale=scale;}
+        else if(field->type==UD_DECIMAL128)return UD_UNSUPPORTED;
     } else if (dialect == UD_SQL_SQLITE) {
         if (!strcmp(begin, "boolean") || !strcmp(begin, "bool"))
             field->type = UD_BOOL;

@@ -219,3 +219,8 @@ if(TARGET ud_connector_sqlite AND TARGET test_next_phase_execution)
     $<TARGET_FILE:test_next_phase_execution> $<TARGET_FILE:ud_connector_sqlite>)
   set_tests_properties(ssis_native_features PROPERTIES TIMEOUT 600)
 endif()
+
+if(TARGET ud_connector_sqlite AND TARGET test_next_phase_execution)
+  add_test(NAME pr5_foundation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/pr5_foundation.py $<TARGET_FILE:test_next_phase_execution> $<TARGET_FILE:ud_connector_sqlite>)
+  set_tests_properties(pr5_foundation PROPERTIES TIMEOUT 300)
+endif()

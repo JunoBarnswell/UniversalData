@@ -40,14 +40,54 @@ int32_t ud_value_compare(const ud_value *a, const ud_value *b) {
 static uint64_t hash_byte(uint64_t hash, uint8_t byte) {
     return (hash ^ byte) * UINT64_C(1099511628211);
 }
-static ud_status canonical_integer(ud_status (*emit)(void*,const void*,size_t),void *user,uint64_t v){uint8_t bytes[8];for(uint32_t i=0;i<8;i++)bytes[i]=(uint8_t)(v>>(8*i));return emit(user,bytes,8);}
-ud_status ud_value_canonical(const ud_value *v,ud_status (*emit)(void*,const void*,size_t),void *user,uint32_t depth){
-    if(!v||!emit||depth>32)return UD_SCHEMA;
-    UD_TRY(canonical_integer(emit,user,(uint64_t)v->type));uint8_t null=(uint8_t)!!v->is_null;UD_TRY(emit(user,&null,1));if(null)return UD_OK;
-    if(v->type==UD_UTF8||v->type==UD_BINARY){UD_TRY(canonical_integer(emit,user,v->text_length));return emit(user,v->text,v->text_length);}
-    if(v->type>=UD_STRUCT){UD_TRY(canonical_integer(emit,user,v->child_count));for(uint32_t i=0;i<v->child_count;i++)UD_TRY(ud_value_canonical(v->children+i,emit,user,depth+1));return UD_OK;}
-    if(v->type==UD_DECIMAL128){UD_TRY(canonical_integer(emit,user,v->decimal.low));return canonical_integer(emit,user,(uint64_t)v->decimal.high);}
-    uint64_t bits=(uint64_t)v->integer;if(v->type==UD_FLOAT64){bits=0;if(isnan(v->real))bits=UINT64_C(0x7ff8000000000000);else if(v->real!=0)memcpy(&bits,&v->real,8);}return canonical_integer(emit,user,bits);
+static ud_status canonical_integer(ud_status (*emit)(void *, const void *, size_t), void *user,
+                                   uint64_t v) {
+    uint8_t bytes[8];
+    for (uint32_t i = 0; i < 8; i++)
+        bytes[i] = (uint8_t)(v >> (8 * i));
+    return emit(user, bytes, 8);
 }
-static ud_status hash_bytes(void *user,const void *bytes,size_t length){uint64_t *hash=user;const uint8_t *p=bytes;for(size_t i=0;i<length;i++)*hash=hash_byte(*hash,p[i]);return UD_OK;}
-uint64_t ud_value_hash(const ud_value *v,uint64_t hash){ud_value_canonical(v,hash_bytes,&hash,0);return hash;}
+ud_status ud_value_canonical(const ud_value *v, ud_status (*emit)(void *, const void *, size_t),
+                             void *user, uint32_t depth) {
+    if (!v || !emit || depth > 32)
+        return UD_SCHEMA;
+    UD_TRY(canonical_integer(emit, user, (uint64_t)v->type));
+    uint8_t null = (uint8_t)!!v->is_null;
+    UD_TRY(emit(user, &null, 1));
+    if (null)
+        return UD_OK;
+    if (v->type == UD_UTF8 || v->type == UD_BINARY) {
+        UD_TRY(canonical_integer(emit, user, v->text_length));
+        return emit(user, v->text, v->text_length);
+    }
+    if (v->type >= UD_STRUCT) {
+        UD_TRY(canonical_integer(emit, user, v->child_count));
+        for (uint32_t i = 0; i < v->child_count; i++)
+            UD_TRY(ud_value_canonical(v->children + i, emit, user, depth + 1));
+        return UD_OK;
+    }
+    if (v->type == UD_DECIMAL128) {
+        UD_TRY(canonical_integer(emit, user, v->decimal.low));
+        return canonical_integer(emit, user, (uint64_t)v->decimal.high);
+    }
+    uint64_t bits = (uint64_t)v->integer;
+    if (v->type == UD_FLOAT64) {
+        bits = 0;
+        if (isnan(v->real))
+            bits = UINT64_C(0x7ff8000000000000);
+        else if (v->real != 0)
+            memcpy(&bits, &v->real, 8);
+    }
+    return canonical_integer(emit, user, bits);
+}
+static ud_status hash_bytes(void *user, const void *bytes, size_t length) {
+    uint64_t *hash = user;
+    const uint8_t *p = bytes;
+    for (size_t i = 0; i < length; i++)
+        *hash = hash_byte(*hash, p[i]);
+    return UD_OK;
+}
+uint64_t ud_value_hash(const ud_value *v, uint64_t hash) {
+    ud_value_canonical(v, hash_bytes, &hash, 0);
+    return hash;
+}

@@ -19,7 +19,7 @@
   },
   "candidate": {
     "branch": "codex/etl-next-phase-r1-r5",
-    "state": "N1–N5 implementation in PR #5; Linux acceptance pending",
+    "state": "PR #5 E01–E15 / N01–N11 / D01–D12 implementation in progress; ABI 8 verification pending",
     "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
     "sourceFingerprint": null,
     "mergeEvidence": null,

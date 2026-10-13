@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 1.4.0 / ABI 8；N1–N5 implementation in PR #5; Linux acceptance pending。
+SDK 1.4.0 / ABI 8；PR #5 E01–E15 / N01–N11 / D01–D12 implementation in progress; ABI 8 verification pending。
 
 门禁通过 0/18；Linux 本轮必验，Windows 豁免；远程 CI 使用实际运行状态。
 

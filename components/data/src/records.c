@@ -42,9 +42,11 @@ ud_status ud_batch_append_from(ud_batch *out, const ud_batch *input, uint32_t ro
     UD_TRY(ud_batch_row_info(input, row, &info));
     if (info.id.high || info.id.low)
         UD_TRY(metadata(out));
-    if(!out->append_values)out->append_values=ud_alloc(out->ctx,(size_t)out->columns*sizeof(*out->append_values));
-    ud_value *values=out->append_values;
-    if(!values)return UD_RESOURCE;
+    if (!out->append_values)
+        out->append_values = ud_alloc(out->ctx, (size_t)out->columns * sizeof(*out->append_values));
+    ud_value *values = out->append_values;
+    if (!values)
+        return UD_RESOURCE;
     ud_status status = UD_OK;
     for (uint32_t col = 0; !status && col < out->columns; col++)
         status = ud_batch_get(input, row, col, values + col);
@@ -128,14 +130,29 @@ uint64_t ud_batch_error_rows(const ud_batch *batch) {
     return count;
 }
 
-static ud_status digest_bytes(void *user,const void *p,size_t n){ud_sha256_update(user,p,n);return UD_OK;}
-ud_status ud_batch_hash_rows(const ud_batch *batch,ud_sha256 *hash) {
-    if(!batch||!hash)return UD_INVALID;
-    for(uint32_t row=0;row<batch->rows;row++){
-        for(uint32_t col=0;col<batch->columns;col++){ud_value value;UD_TRY(ud_batch_get(batch,row,col,&value));UD_TRY(ud_value_canonical(&value,digest_bytes,hash,0));}
-        ud_row_info info;UD_TRY(ud_batch_row_info(batch,row,&info));uint64_t parts[]={info.id.high,info.id.low,info.rule.high,info.rule.low,info.flags};
-        uint8_t bytes[40];for(uint32_t n=0;n<5;n++)for(uint32_t j=0;j<8;j++)bytes[n*8+j]=(uint8_t)(parts[n]>>(8*j));ud_sha256_update(hash,bytes,40);
-    }return UD_OK;
+static ud_status digest_bytes(void *user, const void *p, size_t n) {
+    ud_sha256_update(user, p, n);
+    return UD_OK;
+}
+ud_status ud_batch_hash_rows(const ud_batch *batch, ud_sha256 *hash) {
+    if (!batch || !hash)
+        return UD_INVALID;
+    for (uint32_t row = 0; row < batch->rows; row++) {
+        for (uint32_t col = 0; col < batch->columns; col++) {
+            ud_value value;
+            UD_TRY(ud_batch_get(batch, row, col, &value));
+            UD_TRY(ud_value_canonical(&value, digest_bytes, hash, 0));
+        }
+        ud_row_info info;
+        UD_TRY(ud_batch_row_info(batch, row, &info));
+        uint64_t parts[] = {info.id.high, info.id.low, info.rule.high, info.rule.low, info.flags};
+        uint8_t bytes[40];
+        for (uint32_t n = 0; n < 5; n++)
+            for (uint32_t j = 0; j < 8; j++)
+                bytes[n * 8 + j] = (uint8_t)(parts[n] >> (8 * j));
+        ud_sha256_update(hash, bytes, 40);
+    }
+    return UD_OK;
 }
 ud_status ud_batch_fingerprint(const ud_batch *batch, uint8_t out[32]) {
     if (!batch || !out)

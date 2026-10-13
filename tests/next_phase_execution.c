@@ -128,6 +128,7 @@ int main(int argc, char **argv) {
            (unsigned long long)m.error_rows, (unsigned long long)m.committed_error_rows,
            (unsigned long long)m.acknowledged_error_rows, (int)length, diagnostics);
     ud_free(diagnostics);
+    printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,m.tree_high_water,(unsigned long long)m.spill_bytes);
     process_usage(stdout);
     printf("}\n");
     OK(ud_execution_destroy(execution));

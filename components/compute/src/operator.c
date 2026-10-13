@@ -124,14 +124,66 @@ static int compare(ud_operator *o, const cursor *a, const cursor *b) {
     }
     return 0;
 }
-static int heap_less(ud_operator *o,cursor *streams,uint32_t a,uint32_t b){int order=compare(o,streams+a,streams+b);return order<0||(!order&&a<b);}
-static void heap_down(ud_operator *o,cursor *streams,uint32_t *heap,uint32_t size,uint32_t at){for(;;){uint32_t left=at*2+1;if(left>=size)return;uint32_t best=left;if(left+1<size&&heap_less(o,streams,heap[left+1],heap[left]))best=left+1;if(!heap_less(o,streams,heap[best],heap[at]))return;uint32_t swap=heap[at];heap[at]=heap[best];heap[best]=swap;at=best;}}
-static ud_status merge_batch(ud_operator *o,cursor *streams,uint32_t count,ud_batch **out){
-    UD_TRY(copy_schema(o->ctx,o->schema,o->options.max_batch_rows,out));uint32_t heap[32],size=0;ud_status s=UD_OK;
-    for(uint32_t i=0;!s&&i<count;i++){ud_status next=advance(o,streams+i);if(next==UD_END)continue;if(next){s=next;break;}heap[size++]=i;}
-    for(uint32_t i=size/2;i;i--)heap_down(o,streams,heap,size,i-1);
-    while(!s&&size&&(*out)->rows<o->options.max_batch_rows){s=check(o);if(s)break;uint32_t best=heap[0];s=ud_batch_append_from(*out,streams[best].batch,streams[best].row++);if(s)break;ud_status next=advance(o,streams+best);if(next==UD_END)heap[0]=heap[--size];else if(next){s=next;break;}if(size)heap_down(o,streams,heap,size,0);}
-    if(s||!(*out)->rows){ud_batch_destroy(*out);*out=NULL;return s?s:UD_END;}return ud_batch_seal(*out);
+static int heap_less(ud_operator *o, cursor *streams, uint32_t a, uint32_t b) {
+    int order = compare(o, streams + a, streams + b);
+    return order < 0 || (!order && a < b);
+}
+static void heap_down(ud_operator *o, cursor *streams, uint32_t *heap, uint32_t size, uint32_t at) {
+    for (;;) {
+        uint32_t left = at * 2 + 1;
+        if (left >= size)
+            return;
+        uint32_t best = left;
+        if (left + 1 < size && heap_less(o, streams, heap[left + 1], heap[left]))
+            best = left + 1;
+        if (!heap_less(o, streams, heap[best], heap[at]))
+            return;
+        uint32_t swap = heap[at];
+        heap[at] = heap[best];
+        heap[best] = swap;
+        at = best;
+    }
+}
+static ud_status merge_batch(ud_operator *o, cursor *streams, uint32_t count, ud_batch **out) {
+    UD_TRY(copy_schema(o->ctx, o->schema, o->options.max_batch_rows, out));
+    uint32_t heap[32], size = 0;
+    ud_status s = UD_OK;
+    for (uint32_t i = 0; !s && i < count; i++) {
+        ud_status next = advance(o, streams + i);
+        if (next == UD_END)
+            continue;
+        if (next) {
+            s = next;
+            break;
+        }
+        heap[size++] = i;
+    }
+    for (uint32_t i = size / 2; i; i--)
+        heap_down(o, streams, heap, size, i - 1);
+    while (!s && size && (*out)->rows < o->options.max_batch_rows) {
+        s = check(o);
+        if (s)
+            break;
+        uint32_t best = heap[0];
+        s = ud_batch_append_from(*out, streams[best].batch, streams[best].row++);
+        if (s)
+            break;
+        ud_status next = advance(o, streams + best);
+        if (next == UD_END)
+            heap[0] = heap[--size];
+        else if (next) {
+            s = next;
+            break;
+        }
+        if (size)
+            heap_down(o, streams, heap, size, 0);
+    }
+    if (s || !(*out)->rows) {
+        ud_batch_destroy(*out);
+        *out = NULL;
+        return s ? s : UD_END;
+    }
+    return ud_batch_seal(*out);
 }
 static ud_status prepare_merge(ud_operator *o) {
     while (o->run_count > 32) {
@@ -222,8 +274,12 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
         o->options.partition_count = 1;
     if (options->kind == UD_OPERATOR_JOIN || options->kind >= UD_OPERATOR_MERGE) {
         ud_status status = ud_relational_create(ctx, options, inputs, &o->relational);
-        if (status) { ud_free(o); return status; }
-        *out = o; return UD_OK;
+        if (status) {
+            ud_free(o);
+            return status;
+        }
+        *out = o;
+        return UD_OK;
     }
     o->options.aggregation = NULL;
     o->ports = 1;
@@ -388,8 +444,10 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
     return UD_OK;
 }
 ud_status ud_operator_schema(const ud_operator *o, uint32_t output, ud_batch **out) {
-    if (!o || !out) return UD_INVALID;
-    if (o->relational) return ud_relational_schema(o->relational, output, out);
+    if (!o || !out)
+        return UD_INVALID;
+    if (o->relational)
+        return ud_relational_schema(o->relational, output, out);
     return output ? UD_INVALID : copy_schema(o->ctx, o->schema, 0, out);
 }
 typedef struct partition_work {
@@ -508,7 +566,6 @@ static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *in
     }
     for (uint32_t i = 0; i < work.count; i++) {
         ud_batch_destroy(work.results[i]);
-
     }
 
     ud_free(work.results);
@@ -516,7 +573,8 @@ static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *in
 }
 ud_status ud_operator_push(ud_operator *o, uint32_t port, const ud_batch *input) {
     if (o && o->relational) {
-        if (!input || !input->sealed || input->rows > o->options.max_batch_rows) return UD_INVALID;
+        if (!input || !input->sealed || input->rows > o->options.max_batch_rows)
+            return UD_INVALID;
         return ud_relational_push(o->relational, port, input);
     }
     if (!o || port >= o->ports || o->port_ended[port] || !input || !input->sealed ||
@@ -534,7 +592,8 @@ ud_status ud_operator_push(ud_operator *o, uint32_t port, const ud_batch *input)
     return status;
 }
 ud_status ud_operator_finish_input(ud_operator *o, uint32_t port) {
-    if (o && o->relational) return ud_relational_end(o->relational, port);
+    if (o && o->relational)
+        return ud_relational_end(o->relational, port);
     if (!o || port >= o->ports || o->port_ended[port])
         return UD_INVALID;
     UD_TRY(check(o));
@@ -715,15 +774,16 @@ static ud_status window_pull(ud_operator *o, ud_batch **out) {
     return ud_batch_seal(*out);
 }
 
-
 ud_status ud_operator_pull(ud_operator *o, ud_batch **out, uint32_t *output) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
     if (!o)
         return UD_INVALID;
-    if (output) *output = 0;
-    if (o->relational) return ud_relational_pull(o->relational, out, output);
+    if (output)
+        *output = 0;
+    if (o->relational)
+        return ud_relational_pull(o->relational, out, output);
     UD_TRY(check(o));
     if (o->ended != o->ports)
         return UD_BUSY;
@@ -732,7 +792,7 @@ ud_status ud_operator_pull(ud_operator *o, ud_batch **out, uint32_t *output) {
         s = window_pull(o, out);
     else if (o->group_sort)
         s = aggregate_pull(o, out);
- else {
+    else {
         if (!o->prepared) {
             s = prepare_merge(o);
             o->prepared = !s;
@@ -747,7 +807,11 @@ ud_status ud_operator_pull(ud_operator *o, ud_batch **out, uint32_t *output) {
 ud_status ud_operator_destroy(ud_operator *o) {
     if (!o)
         return UD_OK;
-    if (o->relational) { ud_relational_destroy(o->relational); ud_free(o); return UD_OK; }
+    if (o->relational) {
+        ud_relational_destroy(o->relational);
+        ud_free(o);
+        return UD_OK;
+    }
     UD_TRY(ud_operator_destroy(o->group_sort));
     o->group_sort = NULL;
     for (uint32_t i = 0; i < 32; i++) {
@@ -785,25 +849,39 @@ uint32_t ud_operator_partition_count(const ud_operator *o) {
 }
 
 ud_status ud_operator_order(const ud_operator *o, ud_sort_contract *out) {
-    if (!o || !out) return UD_INVALID;
+    if (!o || !out)
+        return UD_INVALID;
     memset(out, 0, sizeof(*out));
-    if (o->relational) return ud_relational_order(o->relational, out);
+    if (o->relational)
+        return ud_relational_order(o->relational, out);
     if (o->options.kind == UD_OPERATOR_SORT || o->options.kind == UD_OPERATOR_WINDOW) {
-        if (o->options.key_count > 16) return UD_RESOURCE;
-        out->count = o->options.key_count; out->stable = 1;
-        for (uint32_t k=0;k<out->count;k++) out->keys[k]=(ud_sort_key){
-            o->schema->column[o->keys[k]].field.identity, o->options.descending, !o->options.descending};
+        if (o->options.key_count > 16)
+            return UD_RESOURCE;
+        out->count = o->options.key_count;
+        out->stable = 1;
+        for (uint32_t k = 0; k < out->count; k++)
+            out->keys[k] = (ud_sort_key){o->schema->column[o->keys[k]].field.identity,
+                                         o->options.descending, !o->options.descending};
     }
     return UD_OK;
 }
 uint64_t ud_operator_input_demand(const ud_operator *o) {
-    if (!o) return 0;
-    if (o->relational) return ud_relational_demand(o->relational);
-    uint64_t mask=0; for(uint32_t p=0;p<o->ports;p++) if(!o->port_ended[p]) mask|=UINT64_C(1)<<p;
+    if (!o)
+        return 0;
+    if (o->relational)
+        return ud_relational_demand(o->relational);
+    uint64_t mask = 0;
+    for (uint32_t p = 0; p < o->ports; p++)
+        if (!o->port_ended[p])
+            mask |= UINT64_C(1) << p;
     return mask;
 }
-ud_status ud_operator_diagnostics(const ud_operator *o,char **json,uint32_t *length) {
-    if(!o||!json||!length) return UD_INVALID;
-    if(o->relational) return ud_relational_diagnostics(o->relational,json,length);
-    *json=ud_strdup_n(o->ctx,"{}",2);*length=2;return *json?UD_OK:UD_RESOURCE;
+ud_status ud_operator_diagnostics(const ud_operator *o, char **json, uint32_t *length) {
+    if (!o || !json || !length)
+        return UD_INVALID;
+    if (o->relational)
+        return ud_relational_diagnostics(o->relational, json, length);
+    *json = ud_strdup_n(o->ctx, "{}", 2);
+    *length = 2;
+    return *json ? UD_OK : UD_RESOURCE;
 }

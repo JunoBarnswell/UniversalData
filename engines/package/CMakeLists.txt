@@ -1,5 +1,3 @@
-find_package(ZLIB REQUIRED)
-find_package(EXPAT REQUIRED)
 find_package(Threads REQUIRED)
 set(src ${PROJECT_SOURCE_DIR}/connectors/xlsx.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/relational.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/delivery.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/error.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/quality.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/cache.c ${CMAKE_CURRENT_SOURCE_DIR}/assets.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/enumerator.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/transforms.c ${CMAKE_CURRENT_SOURCE_DIR}/resources.c ${CMAKE_CURRENT_SOURCE_DIR}/child.c ${CMAKE_CURRENT_SOURCE_DIR}/project.c ${CMAKE_CURRENT_SOURCE_DIR}/model.c ${CMAKE_CURRENT_SOURCE_DIR}/runtime.c ${CMAKE_CURRENT_SOURCE_DIR}/checkpoint.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/profile.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/http.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/process.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/filesystem.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/control.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline.c
