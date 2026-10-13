@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix='ud-advanced-formats-') as tmp:
     subset=records[cursor:cursor+7];self.reply(200,dict(rows=subset,nextCursor=str(cursor+7) if cursor+7<len(records) else None));return
    key=tuple(params.get(k,[''])[0] for k in ('tenant','job','batch'));self.reply(200,receipts.get(key,dict(committed=False)))
   def do_POST(self):
-   body=json.loads(self.rfile.read(int(self.headers['Content-Length'])));assert len(body['rows'])==len(body['rowInfo']);assert body['schema']['version']==9
+   body=json.loads(self.rfile.read(int(self.headers['Content-Length'])));assert len(body['rows'])==len(body['rowInfo']);assert body['schema']['version']==10
    key=tuple(body[k] for k in ('tenant','job','batchId'));receipt=dict(committed=True,digest=body['digest'],sourcePosition=body['sourcePosition'])
    if key in receipts:assert receipts[key]==receipt
    else:written.extend(body['rows']);receipts[key]=receipt
@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix='ud-advanced-formats-') as tmp:
  tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);tls.load_cert_chain(private/'server.pem',private/'server.key');server.socket=tls.wrap_socket(server.socket,server_side=True);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start();base='https://localhost:'+str(server.server_port)
  try:
   connections=[dict(id='source',driver='http',resource=base+'/source'),dict(id='sink',driver='http',resource=base+'/sink'),dict(id='ca',driver='file',resource=str(private/'ca.pem'))]
-  folder,p=execute('rest',document(connections,[node('s','rest.source',connection='source',schema=schema,caConnection='ca',batchSize=3,maxAttempts=3,retryDelayMs=1),node('d','rest.destination',connection='sink',table='target',mode='append',receiptUrl=base+'/receipt',caConnection='ca')],[('s','d')]))
+  folder,p=execute('rest',document(connections,[node('s','rest.source',connection='source',schema=schema,caConnection='ca',batchSize=3,maxAttempts=3,retryDelayMs=1),node('d','rest.destination',connection='sink',table='target',mode='append',delivery='receipt',receiptUrl=base+'/receipt',caConnection='ca')],[('s','d')]))
   assert written==records and counts['source']==6 and receipts,(len(written),counts)
   requests=counts['post'];r=subprocess.run([runner,str(folder/'package.json'),str(folder/'state'),'1','4'],capture_output=True,text=True,timeout=30);assert r.returncode==0 and json.loads(r.stdout)['result']==0,(r.stdout,r.stderr);assert counts['post']==requests and written==records
   print('REST verified TLS, pagination, rate-limit retry, typed rows, receipts and durable resume passed',flush=True)

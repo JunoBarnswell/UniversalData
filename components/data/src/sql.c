@@ -973,3 +973,110 @@ ud_status ud_sql_table_identifier(ud_context *ctx, int32_t dialect, ud_string na
     ud_bytes_clear(&w.text);
     return s;
 }
+ud_status ud_sql_compile_stage(ud_context *ctx, int32_t dialect, const ud_write_options *options,
+                               const ud_batch *batch, ud_string stage, int32_t phase,
+                               ud_string *out) {
+    if (!ctx || !options || !batch || !out)
+        return UD_INVALID;
+    *out = (ud_string){0};
+    if (dialect != UD_SQL_SQLSERVER && dialect != UD_SQL_ORACLE)
+        return UD_UNSUPPORTED;
+    if (phase < UD_SQL_STAGE_CREATE || phase > UD_SQL_STAGE_DROP || !stage.length ||
+        memchr(stage.data, '.', stage.length))
+        return UD_SCHEMA;
+    UD_TRY(ud_write_validate(options, batch));
+    if (options->mode != UD_WRITE_APPEND || ud_batch_has_absent(batch))
+        return UD_UNSUPPORTED;
+    writer w = {
+        .ctx = ctx, .text = {.ctx = ctx}, .options = options, .batch = batch, .dialect = dialect};
+    ud_status s = UD_OK;
+    if (phase == UD_SQL_STAGE_DROP) {
+        s = put(&w, "DROP TABLE ");
+        if (!s)
+            s = quote(&w, stage);
+    } else if (phase == UD_SQL_STAGE_CREATE && dialect == UD_SQL_SQLSERVER) {
+        s = put(&w, "SELECT TOP(0) ");
+        if (!s)
+            s = fields(&w, "ud_source.");
+        if (!s)
+            s = put(&w, " INTO ");
+        if (!s)
+            s = quote(&w, stage);
+        if (!s)
+            s = put(&w, " FROM ");
+        if (!s)
+            s = table(&w);
+        if (!s)
+            s = put(&w, " AS ud_source CROSS JOIN (SELECT 1 AS seed) AS ud_seed");
+    } else if (phase == UD_SQL_STAGE_CREATE) {
+        s = put(&w, "CREATE TABLE ");
+        if (!s)
+            s = quote(&w, stage);
+        if (!s)
+            s = put(&w, " AS SELECT ");
+        if (!s)
+            s = fields(&w, NULL);
+        if (!s)
+            s = put(&w, " FROM ");
+        if (!s)
+            s = table(&w);
+        if (!s)
+            s = put(&w, " WHERE 1=0");
+    } else {
+        s = put(&w, "INSERT INTO ");
+        if (!s)
+            s = table(&w);
+        if (!s)
+            s = put(&w, "(");
+        if (!s)
+            s = fields(&w, NULL);
+        if (!s)
+            s = put(&w, ") SELECT ");
+        if (!s)
+            s = fields(&w, NULL);
+        if (!s)
+            s = put(&w, " FROM ");
+        if (!s)
+            s = quote(&w, stage);
+    }
+    if (!s)
+        s = ud_bytes_put(&w.text, "", 1);
+    if (!s && w.text.size > UINT32_MAX)
+        s = UD_RESOURCE;
+    if (!s) {
+        *out = (ud_string){(const char *)w.text.data, (uint32_t)w.text.size - 1};
+        w.text.data = NULL;
+    }
+    ud_bytes_clear(&w.text);
+    return s;
+}
+ud_status ud_sql_compile_savepoint(ud_context *ctx, int32_t dialect, ud_string name, int32_t phase,
+                                   ud_string *out) {
+    if (!ctx || !out)
+        return UD_INVALID;
+    *out = (ud_string){0};
+    if (!name.data || !name.length || name.length > 64 || phase < UD_SAVEPOINT_BEGIN ||
+        phase > UD_SAVEPOINT_RELEASE)
+        return UD_SCHEMA;
+    if (dialect == UD_SQL_CANONICAL)
+        return UD_UNSUPPORTED;
+    if (phase == UD_SAVEPOINT_RELEASE && (dialect == UD_SQL_SQLSERVER || dialect == UD_SQL_ORACLE))
+        return UD_OK; /* These engines retire savepoints at transaction completion. */
+    writer w = {.ctx = ctx, .text = {.ctx = ctx}, .dialect = dialect};
+    const char *operation = phase == UD_SAVEPOINT_BEGIN
+                                ? (dialect == UD_SQL_SQLSERVER ? "SAVE TRANSACTION " : "SAVEPOINT ")
+                            : phase == UD_SAVEPOINT_RELEASE ? "RELEASE SAVEPOINT "
+                            : dialect == UD_SQL_SQLSERVER   ? "ROLLBACK TRANSACTION "
+                                                            : "ROLLBACK TO SAVEPOINT ";
+    ud_status status = put(&w, operation);
+    if (!status)
+        status = quote(&w, name);
+    if (!status)
+        status = ud_bytes_put(&w.text, "", 1);
+    if (!status) {
+        *out = (ud_string){(const char *)w.text.data, (uint32_t)w.text.size - 1};
+        w.text.data = NULL;
+    }
+    ud_bytes_clear(&w.text);
+    return status;
+}

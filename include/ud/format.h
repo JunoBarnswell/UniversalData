@@ -37,10 +37,12 @@ UD_API ud_status ud_batch_to_json(const ud_batch *, char **, uint32_t *length);
 UD_API ud_status ud_mysql_json_decode(ud_context *, const uint8_t *, uint32_t, char **, uint32_t *);
 /* NDJSON cursor with bounded rows / record bytes, immutable file offsets. */
 typedef struct ud_json_reader ud_json_reader;
+enum { UD_JSON_FRAMING_LINES = 0, UD_JSON_FRAMING_ARRAY = 1 };
 typedef struct ud_json_options {
     uint32_t struct_size, version, batch_size, max_record_bytes;
     int32_t rounding;
     const ud_record_options *records;
+    int32_t framing;
 } ud_json_options;
 UD_API ud_status ud_json_reader_open(ud_context *, const char *path, const ud_field *,
                                      uint32_t columns, const ud_json_options *, ud_json_reader **);

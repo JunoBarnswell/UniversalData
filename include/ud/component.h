@@ -108,7 +108,9 @@ enum {
     UD_EFFECT_EXTERNAL_WRITE = 2,
     UD_EFFECT_TRANSACTIONAL = 4,
     UD_EFFECT_RECEIPTED = 8,
-    UD_EFFECT_COMMIT_UNKNOWN = 16
+    UD_EFFECT_COMMIT_UNKNOWN = 16,
+    UD_EFFECT_IDEMPOTENT = 32,
+    UD_EFFECT_KEYED_REPLACE = 64 /* Bound output guarantees replacement by its declared keys. */
 };
 typedef struct ud_component_descriptor {
     uint32_t struct_size, abi_version;

@@ -8,6 +8,7 @@
 #else
 #include <poll.h>
 #endif
+static const ud_connector_api connector;
 typedef struct {
     ud_host_api host;
     PGconn *db;
@@ -23,6 +24,9 @@ typedef struct {
     ud_status (*check)(void *);
     ud_status control_status;
     int transaction, cleaning, broken;
+    int prepared_enabled;
+    char branch_id[65];
+    char record_code[6];
 } postgres_state;
 static void interrupt_result(postgres_state *);
 static ud_status control(postgres_state *p) {
@@ -171,6 +175,9 @@ static PGresult *query(postgres_state *p, const char *sql, int n, const Oid *typ
 }
 static ud_status pg_failure(postgres_state *p, const PGresult *result) {
     const char *code = result ? PQresultErrorField(result, PG_DIAG_SQLSTATE) : NULL;
+    memset(p->record_code, 0, sizeof(p->record_code));
+    if (code)
+        memcpy(p->record_code, code, 5);
     ud_status status = PQstatus(p->db) != CONNECTION_OK ? UD_TRANSIENT : UD_IO;
     if (p->control_status)
         status = p->control_status;
@@ -183,9 +190,13 @@ static ud_status pg_failure(postgres_state *p, const PGresult *result) {
             status = UD_TRANSIENT;
         else if (!strcmp(code, "22003"))
             status = UD_OVERFLOW;
+        else if (!strcmp(code, "22001"))
+            status = UD_TRUNCATED;
         else if (!strncmp(code, "22", 2))
             status = UD_PARSE;
-        else if (!strncmp(code, "23", 2) || !strncmp(code, "42", 2))
+        else if (!strncmp(code, "23", 2))
+            status = UD_QUALITY;
+        else if (!strncmp(code, "42", 2))
             status = UD_SCHEMA;
         else if (!strcmp(code, "57014"))
             status = UD_CANCELLED;
@@ -193,6 +204,15 @@ static ud_status pg_failure(postgres_state *p, const PGresult *result) {
     /* Database diagnostics can echo literal data / credentials; expose classification only. */
     return p->host.report(p->host.context, status,
                           code ? code : "PostgreSQL connection / protocol failure");
+}
+static ud_status record_diagnostic(void *state, ud_string *out) {
+    postgres_state *p = state;
+    uint32_t length = (uint32_t)strlen(p->record_code);
+    *out = (ud_string){length ? plugin_string(&p->host, p->record_code, length) : NULL, length};
+    if (length && !out->data)
+        return UD_RESOURCE;
+    memset(p->record_code, 0, sizeof(p->record_code));
+    return UD_OK;
 }
 static ud_status command(postgres_state *p, const char *sql) {
     PGresult *r = query(p, sql, 0, NULL, NULL, NULL, NULL, 0);
@@ -228,7 +248,7 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
         return UD_RESOURCE;
     }
     const char *keys[] = {"dbname", "connect_timeout", "application_name", NULL};
-    const char *values[] = {copy, "10", "UniversalDataSDK/1.0.0", NULL};
+    const char *values[] = {copy, "10", "UniversalDataSDK/" UD_SDK_VERSION, NULL};
     p->configuration = plugin_string(host, config, length);
     if (!p->configuration) {
         host->deallocate(copy);
@@ -275,6 +295,20 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
         s = UD_SCHEMA;
     if (!s)
         s = session_settings(p);
+    if (!s) {
+        PGresult *probe = query(p, "SHOW max_prepared_transactions", 0, NULL, NULL, NULL, NULL, 0);
+        if (!probe || PQresultStatus(probe) != PGRES_TUPLES_OK || PQntuples(probe) != 1)
+            s = pg_failure(p, probe);
+        else {
+            char *end = NULL;
+            unsigned long limit = strtoul(PQgetvalue(probe, 0, 0), &end, 10);
+            if (!end || *end)
+                s = UD_CORRUPT;
+            else
+                p->prepared_enabled = limit != 0;
+        }
+        PQclear(probe);
+    }
     if (!s) {
         p->cancel = PQcancelCreate(p->db);
         if (!p->cancel)
@@ -709,11 +743,12 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
             s = UD_RESOURCE;
     }
     const char *args[] = {owned[0], owned[1], owned[2]};
-    PGresult *r = !s ? query(p,
-                             "SELECT encode(digest,'hex'),source_position FROM ud_sdk_receipts_v2 "
-                             "WHERE tenant=$1 AND job=$2 AND batch_id=$3",
-                             3, NULL, args, NULL, NULL, 0)
-                     : NULL;
+    PGresult *r =
+        !s ? query(p,
+                   "SELECT encode(digest,'hex'),source_position FROM public.ud_sdk_receipts_v10 "
+                   "WHERE tenant=$1 AND job=$2 AND batch_id=$3",
+                   3, NULL, args, NULL, NULL, 0)
+           : NULL;
     if (!s && (!r || PQresultStatus(r) != PGRES_TUPLES_OK))
         s = h->report(h->context, UD_COMMIT_UNKNOWN,
                       "receipt store is unavailable; source position must not advance");
@@ -878,8 +913,6 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (h->columns(batch) > 65535)
         return UD_RESOURCE;
     atomic_store(&p->cancelled, 0);
-    if (options->mode == UD_WRITE_CHANGESET && p->transaction)
-        return UD_UNSUPPORTED;
     ud_bulk_reader *bulk = NULL;
     ud_status s = UD_OK;
     if (options->mode == UD_WRITE_APPEND && options->load_mode != UD_LOAD_PARAMETERS) {
@@ -929,7 +962,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     int reserve_lengths[] = {0, 0, 0, 32, 0}, reserve_formats[] = {0, 0, 0, 1, 0};
     PGresult *result =
         !s ? query(p,
-                   "INSERT INTO ud_sdk_receipts_v2(tenant,job,batch_id,digest,source_position) "
+                   "INSERT INTO "
+                   "public.ud_sdk_receipts_v10(tenant,job,batch_id,digest,source_position) "
                    "VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING batch_id",
                    5, reserve_types, reserve, reserve_lengths, reserve_formats, 0)
            : NULL;
@@ -1215,7 +1249,7 @@ static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **
 }
 static ud_status reset_session(void *state) {
     postgres_state *p = state;
-    if (p->reading || p->transaction || p->cdc || p->broken ||
+    if (p->reading || p->transaction || p->cdc || p->broken || p->branch_id[0] ||
         PQtransactionStatus(p->db) != PQTRANS_IDLE)
         return UD_CORRUPT;
     p->cleaning = 1;
@@ -1226,10 +1260,155 @@ static ud_status reset_session(void *state) {
     return status;
 }
 static ud_status provision(void *state) {
-    return command(state, "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job "
-                          "TEXT NOT NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL "
-                          "CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY "
-                          "KEY(tenant,job,batch_id))");
+    postgres_state *p = state;
+    if (p->transaction || p->reading || p->branch_id[0])
+        return UD_BUSY;
+    ud_status status = command(
+        state, "CREATE TABLE IF NOT EXISTS public.ud_sdk_receipts_v10(tenant TEXT NOT NULL,job "
+               "TEXT NOT NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL "
+               "CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY "
+               "KEY(tenant,job,batch_id))");
+    if (!status)
+        status =
+            command(state, "CREATE TABLE IF NOT EXISTS public.ud_sdk_tx_receipts_v10("
+                           "branch_id TEXT COLLATE \"C\" PRIMARY KEY CHECK(length(branch_id)=64),"
+                           "digest BYTEA NOT NULL CHECK(octet_length(digest)=32))");
+    return status;
+}
+static uint64_t session_capabilities(void *state) {
+    postgres_state *p = state;
+    return p->prepared_enabled
+               ? connector.capabilities
+               : connector.capabilities & ~(uint64_t)UD_CONNECT_TRANSACTION_PARTICIPANT;
+}
+static ud_status transaction_recover_state(void *state, const ud_transaction_branch *branch,
+                                           int32_t *result) {
+    postgres_state *p = state;
+    *result = UD_TX_UNKNOWN;
+    if (p->transaction && !memcmp(p->branch_id, branch->id.data, 64)) {
+        *result = UD_TX_ACTIVE;
+        return UD_OK;
+    }
+    char identity[65];
+    memcpy(identity, branch->id.data, 64);
+    identity[64] = 0;
+    const char *values[] = {identity};
+    PGresult *query_result = query(p,
+                                   "SELECT owner=current_user FROM pg_prepared_xacts "
+                                   "WHERE gid=$1 AND database=current_database()",
+                                   1, NULL, values, NULL, NULL, 0);
+    ud_status status = query_result && PQresultStatus(query_result) == PGRES_TUPLES_OK
+                           ? UD_OK
+                           : pg_failure(p, query_result);
+    if (!status && PQntuples(query_result) > 1)
+        status = UD_CORRUPT;
+    if (!status && PQntuples(query_result) == 1) {
+        if (PQgetisnull(query_result, 0, 0) || strcmp(PQgetvalue(query_result, 0, 0), "t"))
+            status = UD_AUTH;
+        else
+            *result = UD_TX_PREPARED;
+    }
+    PQclear(query_result);
+    if (status || *result == UD_TX_PREPARED)
+        return status;
+    query_result = query(p,
+                         "SELECT encode(digest,'hex') FROM public.ud_sdk_tx_receipts_v10 "
+                         "WHERE branch_id=$1",
+                         1, NULL, values, NULL, NULL, 0);
+    status = query_result && PQresultStatus(query_result) == PGRES_TUPLES_OK
+                 ? UD_OK
+                 : pg_failure(p, query_result);
+    if (!status && PQntuples(query_result) > 1)
+        status = UD_CORRUPT;
+    if (!status && PQntuples(query_result) == 1) {
+        const char *hex = PQgetvalue(query_result, 0, 0);
+        if (PQgetisnull(query_result, 0, 0) || PQgetlength(query_result, 0, 0) != 64)
+            status = UD_CORRUPT;
+        static const char alphabet[] = "0123456789abcdef";
+        for (uint32_t byte = 0; !status && byte < 32; byte++)
+            if (hex[2 * byte] != alphabet[branch->digest[byte] >> 4] ||
+                hex[2 * byte + 1] != alphabet[branch->digest[byte] & 15])
+                status = UD_FENCED;
+        if (!status)
+            *result = UD_TX_COMMITTED;
+    } else if (!status)
+        *result = UD_TX_NOT_FOUND;
+    PQclear(query_result);
+    return status;
+}
+static ud_status transaction_recover(void *state, const ud_transaction_branch *branch,
+                                     int32_t *result) {
+    postgres_state *postgres = state;
+    int cleaning = postgres->cleaning;
+    postgres->cleaning = 1;
+    ud_status status = transaction_recover_state(state, branch, result);
+    postgres->cleaning = cleaning;
+    return status;
+}
+static ud_status transaction_begin(void *state, const ud_transaction_branch *branch) {
+    postgres_state *p = state;
+    if (!p->prepared_enabled)
+        return UD_UNSUPPORTED;
+    if (p->branch_id[0])
+        return UD_BUSY;
+    ud_status status = begin_transaction(p, branch->isolation);
+    char identity[65];
+    memcpy(identity, branch->id.data, 64);
+    identity[64] = 0;
+    const char *values[] = {identity, (const char *)branch->digest};
+    Oid types[] = {25, 17};
+    int lengths[] = {64, 32}, formats[] = {0, 1};
+    PGresult *result = !status
+                           ? query(p,
+                                   "INSERT INTO public.ud_sdk_tx_receipts_v10(branch_id,digest) "
+                                   "VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING branch_id",
+                                   2, types, values, lengths, formats, 0)
+                           : NULL;
+    if (!status && (!result || PQresultStatus(result) != PGRES_TUPLES_OK))
+        status = pg_failure(p, result);
+    if (!status && PQntuples(result) != 1)
+        status = UD_FENCED;
+    PQclear(result);
+    if (!status)
+        memcpy(p->branch_id, identity, sizeof(identity));
+    else if (p->transaction) {
+        ud_status rolled_back = rollback_transaction(p);
+        if (rolled_back)
+            status = UD_COMMIT_UNKNOWN;
+    }
+    return status;
+}
+static ud_status transaction_prepare(void *state, const ud_transaction_branch *branch) {
+    postgres_state *p = state;
+    if (!p->transaction || memcmp(p->branch_id, branch->id.data, 64))
+        return UD_FENCED;
+    char statement[96];
+    snprintf(statement, sizeof(statement), "PREPARE TRANSACTION '%.*s'", 64, branch->id.data);
+    ud_status status = command(p, statement);
+    if (!status)
+        p->transaction = 0;
+    return status;
+}
+static ud_status transaction_resolve(void *state, const ud_transaction_branch *branch,
+                                     int32_t decision) {
+    postgres_state *p = state;
+    ud_status status;
+    if (p->transaction) {
+        if (decision != UD_TX_ROLLBACK || memcmp(p->branch_id, branch->id.data, 64))
+            return UD_FENCED;
+        p->cleaning = 1;
+        status = rollback_transaction(p);
+    } else {
+        p->cleaning = 1;
+        char statement[96];
+        snprintf(statement, sizeof(statement), "%s PREPARED '%.*s'",
+                 decision == UD_TX_COMMIT ? "COMMIT" : "ROLLBACK", 64, branch->id.data);
+        status = command(p, statement);
+    }
+    if (!status)
+        memset(p->branch_id, 0, sizeof(p->branch_id));
+    p->cleaning = 0;
+    return status;
 }
 static ud_status cdc_open(void *state, const ud_cdc_options *options) {
     postgres_state *p = state;
@@ -1273,7 +1452,7 @@ static const ud_connector_api connector = {
                     UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL |
                     UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC |
                     UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION |
-                    UD_CONNECT_NATIVE_BULK,
+                    UD_CONNECT_NATIVE_BULK | UD_CONNECT_TRANSACTION_PARTICIPANT,
     .test = test_connection,
     .discover = discover,
     .read_open = open_read,
@@ -1289,20 +1468,26 @@ static const ud_connector_api connector = {
     .metadata = metadata,
     .set_control = set_control,
     .reset_session = reset_session,
+    .session_capabilities = session_capabilities,
+    .record_diagnostic = record_diagnostic,
     .provision = provision,
     .metadata_dialect = UD_SQL_POSTGRESQL,
     .parameter_style = UD_SQL_PARAMETER_NUMBERED,
     .cdc_open = cdc_open,
     .cdc_next = cdc_next,
     .cdc_confirm = cdc_confirm,
-    .cdc_close = cdc_close};
+    .cdc_close = cdc_close,
+    .transaction_begin = transaction_begin,
+    .transaction_prepare = transaction_prepare,
+    .transaction_resolve = transaction_resolve,
+    .transaction_recover = transaction_recover};
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
         return UD_INCOMPATIBLE;
     *out = (ud_plugin_api){sizeof(*out),
                            UD_PLUGIN_ABI,
                            "org.universaldata.connector.postgresql",
-                           "1.0.0",
+                           UD_SDK_VERSION,
                            UD_PLUGIN_CONNECTOR,
                            UD_CAP_TRANSACTION | UD_CAP_THREAD_SAFE,
                            initialize,

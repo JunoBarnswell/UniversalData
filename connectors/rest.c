@@ -21,7 +21,27 @@ struct ud_rest_target {
     ud_http_options options;
     ud_json *config;
     ud_string receipt_url;
+    int32_t delivery;
 };
+ud_status ud_rest_delivery(const ud_json *config, int32_t *delivery) {
+    if (!config || !delivery)
+        return UD_INVALID;
+    ud_string mode = {"response", 8};
+    if (ud_member(config, "delivery"))
+        UD_TRY(ud_json_string(ud_member(config, "delivery"), &mode));
+    *delivery = ud_named(mode, "response")     ? UD_DELIVERY_RESPONSE
+                : ud_named(mode, "idempotent") ? UD_DELIVERY_IDEMPOTENT
+                : ud_named(mode, "receipt")    ? UD_DELIVERY_RECEIPT
+                                               : 0;
+    if (!*delivery)
+        return UD_SCHEMA;
+    if ((*delivery == UD_DELIVERY_RECEIPT) != (ud_member(config, "receiptUrl") != NULL))
+        return UD_SCHEMA;
+    return UD_OK;
+}
+int32_t ud_rest_target_delivery(const ud_rest_target *target) {
+    return target ? target->delivery : 0;
+}
 static ud_status copy_config(ud_context *c, const ud_json *input, ud_json **out) {
     char *text = NULL;
     uint32_t n;
@@ -274,7 +294,14 @@ ud_status ud_rest_target_open(const ud_component_context *c, ud_connection_lease
     if (!s)
         s = options(t->config, &t->options);
     if (!s)
+        s = ud_rest_delivery(t->config, &t->delivery);
+    if (!s && t->delivery == UD_DELIVERY_RECEIPT)
         s = ud_json_string(ud_member(t->config, "receiptUrl"), &t->receipt_url);
+    if (!s && t->delivery == UD_DELIVERY_RESPONSE) {
+        if (ud_member(t->config, "maxAttempts") && t->options.attempts != 1)
+            s = UD_SCHEMA;
+        t->options.attempts = 1;
+    }
     if (s) {
         ud_rest_target_close(t);
         return s;
@@ -284,6 +311,8 @@ ud_status ud_rest_target_open(const ud_component_context *c, ud_connection_lease
 }
 ud_status ud_rest_target_receipt(ud_rest_target *t, ud_string job, ud_string batch,
                                  ud_commit_receipt *out) {
+    if (!t || t->delivery != UD_DELIVERY_RECEIPT)
+        return UD_UNSUPPORTED;
     ud_string keys[] = {{"tenant", 6}, {"job", 3}, {"batch", 5}},
               values[] = {t->context.execution->options.tenant, job, batch}, url = {0};
     UD_TRY(query_url(t->context.memory, t->receipt_url, keys, values, 3, &url));
@@ -403,21 +432,23 @@ ud_status ud_rest_target_write(ud_rest_target *t, const ud_write_options *o, con
     request.body = (ud_string){(char *)body.data, (uint32_t)body.size};
     request.content_type = (ud_string){"application/vnd.universaldata.batch+json", 40};
     request.content_type.length = (uint32_t)strlen(request.content_type.data);
-    request.idempotency_key = (ud_string){hash, 64};
+    request.idempotency_key =
+        t->delivery == UD_DELIVERY_RESPONSE ? (ud_string){0} : (ud_string){hash, 64};
     ud_http_response response = {0};
     if (!s)
         s = ud_http_call(&t->context, t->lease, &request, &response);
-    if (!s) {
+    if (!s && t->delivery == UD_DELIVERY_RECEIPT) {
         ud_commit_receipt receipt = {0};
         s = receipt_parse(t, &response, &receipt);
         if (!s && (!receipt.committed || memcmp(receipt.digest, digest, 32) ||
                    !ud_same(receipt.source_position, o->source_position)))
             s = UD_COMMIT_UNKNOWN;
         ud_free((void *)receipt.source_position.data);
-    } else if (response.status == 409)
+    }
+    if (s && response.status == 409)
         s = UD_FENCED;
-    else if (s != UD_AUTH && s != UD_CANCELLED && s != UD_TIMEOUT &&
-             (!response.status || response.status >= 500))
+    else if (s && response.attempted &&
+             (!response.status || response.status >= 500 || response.status == 408))
         s = UD_COMMIT_UNKNOWN;
     ud_http_response_clear(&response);
     ud_bytes_clear(&body);

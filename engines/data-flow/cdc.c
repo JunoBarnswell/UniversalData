@@ -231,7 +231,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     }
     if (!result)
         result = ud_activation_acquire_connection(
-            c->activation, connection, UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC, &s->lease);
+            c->activation, connection, UD_CONNECT_READ | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC,
+            &s->lease);
     int32_t expected = (int32_t)(intptr_t)user;
     if (!result && ud_connection_lease_dialect(s->lease) != expected)
         result = UD_INCOMPATIBLE;

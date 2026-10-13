@@ -1,4 +1,5 @@
 #include "../journal.h"
+#include "ud/data.h"
 #include "../../foundation/internal.h"
 
 #define SEGMENT_BYTES UINT64_C(1048576)
@@ -817,6 +818,124 @@ ud_status ud_journal_visit(ud_journal *journal,
     for (journal_entry *entry = journal->entries; entry; entry = entry->next)
         UD_TRY(visitor(user, entry->kind, entry->key, entry->payload));
     return UD_OK;
+}
+typedef struct pending_fact {
+    ud_string key;
+    uint64_t order;
+} pending_fact;
+static int fact_order(const void *left, const void *right) {
+    uint64_t a = ((const pending_fact *)left)->order, b = ((const pending_fact *)right)->order;
+    return (a > b) - (a < b);
+}
+static ud_status fact_uint(ud_context *ctx, const ud_json *value, uint64_t *out) {
+    if (ud_json_kind(value) != UD_JSON_NUMBER)
+        return UD_CORRUPT;
+    const char *text;
+    uint32_t length;
+    UD_TRY(ud_json_text(value, &text, &length));
+    ud_value number;
+    UD_TRY(ud_value_parse(ctx, UD_UINT64, text, length, &number));
+    *out = number.unsigned_integer;
+    return UD_OK;
+}
+ud_status ud_journal_retire_owner(ud_journal *journal, ud_string owner) {
+    if (!journal || !owner.data || !owner.length)
+        return UD_INVALID;
+    ud_journal_record record = {.owner = owner};
+    return ud_journal_append(journal, &record, 1);
+}
+ud_status ud_journal_publish_owner(ud_journal *journal, uint64_t pending_kind, ud_string owner) {
+    if (!journal || !pending_kind || !owner.data || !owner.length)
+        return UD_INVALID;
+    uint32_t count = 0;
+    for (journal_entry *entry = journal->entries; entry; entry = entry->next)
+        count += entry->kind == pending_kind && equal(entry->owner, owner);
+    pending_fact *facts = count ? ud_alloc(journal->ctx, (size_t)count * sizeof(*facts)) : NULL;
+    if (count && !facts)
+        return UD_RESOURCE;
+    ud_status status = UD_OK;
+    uint32_t at = 0;
+    for (journal_entry *entry = journal->entries; !status && entry; entry = entry->next) {
+        if (entry->kind != pending_kind || !equal(entry->owner, owner))
+            continue;
+        facts[at].key = (ud_string){ud_strdup_n(journal->ctx, entry->key.data, entry->key.length),
+                                    entry->key.length};
+        if (!facts[at].key.data)
+            status = UD_RESOURCE;
+        if (!status)
+            status =
+                fact_uint(journal->ctx, ud_json_find(entry->payload, "order", 5), &facts[at].order);
+        at++;
+    }
+    if (!status && count)
+        qsort(facts, count, sizeof(*facts), fact_order);
+    for (uint32_t index = 0; !status && index < count; index++) {
+        if (!facts[index].order || (index && facts[index].order == facts[index - 1].order)) {
+            status = UD_CORRUPT;
+            break;
+        }
+        const ud_json *envelope = ud_journal_find(journal, pending_kind, facts[index].key);
+        const ud_json *records = ud_json_find(envelope, "records", 7);
+        uint32_t size = ud_json_size(records);
+        if (ud_json_kind(records) != UD_JSON_ARRAY || !size || size > 1024) {
+            status = UD_CORRUPT;
+            break;
+        }
+        ud_journal_record *decoded = ud_alloc(journal->ctx, (size_t)size * sizeof(*decoded));
+        if (!decoded) {
+            status = UD_RESOURCE;
+            break;
+        }
+        for (uint32_t record = 0; !status && record < size; record++) {
+            const ud_json *value = ud_json_at(records, record);
+            status = fact_uint(journal->ctx, ud_json_find(value, "kind", 4), &decoded[record].kind);
+            ud_string key = {0}, original_owner = {0};
+            if (!status)
+                status = ud_json_kind(ud_json_find(value, "key", 3)) == UD_JSON_STRING
+                             ? ud_json_text(ud_json_find(value, "key", 3), &key.data, &key.length)
+                             : UD_CORRUPT;
+            if (!status)
+                status = ud_json_kind(ud_json_find(value, "owner", 5)) == UD_JSON_STRING
+                             ? ud_json_text(ud_json_find(value, "owner", 5), &original_owner.data,
+                                            &original_owner.length)
+                             : UD_CORRUPT;
+            if (!status && ((decoded[record].kind && !key.length) ||
+                            (!decoded[record].kind &&
+                             (key.length || !original_owner.length ||
+                              ud_json_kind(ud_json_find(value, "payload", 7)) != UD_JSON_NULL))))
+                status = UD_CORRUPT;
+            if (!status) {
+                decoded[record].key =
+                    (ud_string){ud_strdup_n(journal->ctx, key.data, key.length), key.length};
+                decoded[record].owner = (ud_string){
+                    ud_strdup_n(journal->ctx, original_owner.data, original_owner.length),
+                    original_owner.length};
+                if (!decoded[record].key.data || !decoded[record].owner.data)
+                    status = UD_RESOURCE;
+            }
+            char *payload = NULL;
+            uint32_t length = 0;
+            if (!status && decoded[record].kind)
+                status = ud_json_serialize(ud_json_find(value, "payload", 7), &payload, &length);
+            decoded[record].payload = (ud_string){payload, length};
+            if (!status &&
+                (decoded[record].kind == pending_kind || equal(decoded[record].owner, owner)))
+                status = UD_CORRUPT;
+        }
+        /* Every key/owner is copied before a mutation can retire its index entry. */
+        if (!status)
+            status = ud_journal_append(journal, decoded, size);
+        for (uint32_t record = 0; record < size; record++) {
+            ud_free((void *)decoded[record].payload.data);
+            ud_free((void *)decoded[record].key.data);
+            ud_free((void *)decoded[record].owner.data);
+        }
+        ud_free(decoded);
+    }
+    for (uint32_t index = 0; index < at; index++)
+        ud_free((void *)facts[index].key.data);
+    ud_free(facts);
+    return status; /* Retain pending facts until the coordinator logs completion. */
 }
 void ud_journal_get_metrics(const ud_journal *journal, ud_journal_metrics *out) {
     if (!journal || !out)

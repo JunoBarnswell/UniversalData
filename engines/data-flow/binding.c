@@ -146,6 +146,42 @@ ud_status ud_builtin_create_operator(const ud_component_context *c, int kind, co
     return status;
 }
 
+ud_status ud_builtin_describe_sink(void *user, const ud_component_context *c, ud_string text,
+                                   const ud_batch *const *inputs, ud_component_plan *out) {
+    (void)inputs;
+    int kind = (int)(intptr_t)user;
+    ud_json *config = NULL;
+    UD_TRY(ud_builtin_parse(c, text, &config));
+    ud_string mode = {"append", 6};
+    ud_status status = UD_OK;
+    if (ud_member(config, "mode"))
+        status = ud_json_string(ud_member(config, "mode"), &mode);
+    int32_t delivery = UD_DELIVERY_RECEIPT;
+    if (!status && kind == REST_SINK)
+        status = ud_rest_delivery(config, &delivery);
+    out->effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_COMMIT_UNKNOWN;
+    if (kind == SQL_SINK)
+        out->effects |= UD_EFFECT_TRANSACTIONAL;
+    if (delivery == UD_DELIVERY_RECEIPT)
+        out->effects |= UD_EFFECT_RECEIPTED;
+    if (delivery == UD_DELIVERY_IDEMPOTENT)
+        out->effects |= UD_EFFECT_IDEMPOTENT;
+    int keyed = kind == SQL_SINK;
+    if (!status && kind == REST_SINK && ud_member(config, "keyedReplace")) {
+        const ud_json *value = ud_member(config, "keyedReplace");
+        const char *raw = NULL;
+        uint32_t length = 0;
+        status =
+            ud_json_kind(value) == UD_JSON_BOOL ? ud_json_text(value, &raw, &length) : UD_SCHEMA;
+        keyed = !status && length == 4 && !memcmp(raw, "true", 4);
+    }
+    if (!status && keyed && ud_named(mode, "upsert") &&
+        ud_json_kind(ud_member(config, "keys")) == UD_JSON_ARRAY &&
+        ud_json_size(ud_member(config, "keys")) && delivery != UD_DELIVERY_RESPONSE)
+        out->effects |= UD_EFFECT_KEYED_REPLACE;
+    ud_json_destroy(config);
+    return status;
+}
 ud_status ud_builtin_describe_operator(void *user, const ud_component_context *c, ud_string text,
                                        const ud_batch *const *inputs, ud_component_plan *out) {
     if (!out || out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION)
@@ -190,7 +226,14 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
     }
     if (!s && (source_kind(kind)))
         s = ud_builtin_schema_config(c, config, out);
-    else if (!s && (sink_kind(kind))) { /* No output schemas. */
+    else if (!s && kind == SQL_SINK) {
+        int policy;
+        s = ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy);
+        if (!s && policy != UD_ERROR_FAIL && !c->activation->transaction_serial)
+            s = UD_UNSUPPORTED;
+        if (!s)
+            s = error_schema(c, config, in[0], 0, out);
+    } else if (!s && (sink_kind(kind))) { /* No output schemas. */
     } else if (!s && kind == CAST) {
         char *schema = NULL;
         uint32_t length = 0;

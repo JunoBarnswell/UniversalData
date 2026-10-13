@@ -705,8 +705,21 @@ static ud_status validate_effects(physical_plan *p) {
     if (!reachable)
         return UD_RESOURCE;
     ud_status status = UD_OK;
+    int epochs = 0;
+    for (uint32_t index = 0; index < p->count; index++)
+        epochs |= p->nodes[index].descriptor.confirm_epoch != NULL;
     for (uint32_t index = 0; !status && index < p->count; index++) {
         node *n = p->nodes + index;
+        if (epochs && (n->binding.effects & UD_EFFECT_EXTERNAL_WRITE) &&
+            !(n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT))) {
+            status = UD_UNSUPPORTED;
+            break;
+        }
+        if (n->descriptor.confirm_epoch && p->execution->transaction_serial &&
+            !p->execution->transaction_epoch) {
+            status = UD_UNSUPPORTED;
+            break;
+        }
         int cache_build = ud_named(n->descriptor.id, "cacheBuild");
         uint64_t overlap = 0;
         const ud_json *incremental = ud_member(n->configuration, "incremental");
@@ -771,14 +784,9 @@ static ud_status validate_effects(physical_plan *p) {
                         status = UD_SCHEMA;
                 }
                 if (overlap && other->descriptor.category == UD_COMPONENT_DESTINATION) {
-                    ud_string mode = {0};
                     const ud_json *keys = ud_member(other->configuration, "keys");
-                    if (!ud_named(other->descriptor.id, "sql.destination"))
-                        status = UD_UNSUPPORTED;
-                    if (!status)
-                        status = ud_json_string(ud_member(other->configuration, "mode"), &mode);
-                    if (!status && (!ud_named(mode, "upsert") ||
-                                    ud_json_kind(keys) != UD_JSON_ARRAY || !ud_json_size(keys)))
+                    if (!(other->binding.effects & UD_EFFECT_KEYED_REPLACE) ||
+                        ud_json_kind(keys) != UD_JSON_ARRAY || !ud_json_size(keys))
                         status = UD_UNSUPPORTED;
                     /* Every cursor key must survive in a declared upsert key's lineage. */
                     const ud_json *source_keys = ud_member(incremental, "keys");
@@ -846,7 +854,8 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                             .parallel = e->parallel || (p->tree_count > 1 && p->concurrency > 1),
                             .transaction = e->transaction,
                             .transaction_serial = e->transaction_serial,
-                            .transaction_connection = e->transaction_connection};
+                            .transaction_epoch = e->transaction_epoch,
+                            .transaction_participants = e->transaction_participants};
         atomic_init(&n->activation.cancelled, 0);
         n->context = (ud_component_context){.struct_size = sizeof(n->context),
                                             .abi_version = UD_ABI_VERSION,
@@ -881,8 +890,7 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
         if (n->activation.transaction_serial && ud_member(n->configuration, "connection")) {
             ud_string connection;
             UD_TRY(ud_json_string(ud_member(n->configuration, "connection"), &connection));
-            if (!ud_same(connection, n->activation.transaction_connection))
-                return UD_UNSUPPORTED;
+            UD_TRY(ud_transaction_resource_validate(&n->activation, connection));
         }
 
         if (n->descriptor.category == UD_COMPONENT_SOURCE &&
@@ -960,7 +968,7 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                     return UD_SCHEMA;
             }
         }
-        n->binding.effects = n->descriptor.effects;
+        n->binding.effects |= n->descriptor.effects;
         n->binding.state_version = n->descriptor.state_version;
         for (uint32_t j = 0; j < n->descriptor.outputs; j++) {
             n->ports.outputs[j].schema = n->schemas[j];
@@ -1154,10 +1162,10 @@ static ud_status epoch_component_key(physical_plan *p, node *n, char out[65]) {
 static ud_status stage_epoch(physical_plan *p, node *n, uint64_t epoch) {
     if (atomic_load(&n->staged_epoch) == epoch)
         return UD_OK;
-    if (ud_transaction_active(&n->activation))
+    if (ud_transaction_active(&n->activation) && !n->activation.transaction_epoch)
         return UD_UNSUPPORTED;
-    if ((n->descriptor.effects & UD_EFFECT_EXTERNAL_WRITE) &&
-        !(n->descriptor.effects & UD_EFFECT_RECEIPTED))
+    if ((n->binding.effects & UD_EFFECT_EXTERNAL_WRITE) &&
+        !(n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT)))
         return UD_UNSUPPORTED;
     if ((n->descriptor.capabilities & UD_COMPONENT_STATEFUL) && !n->descriptor.checkpoint)
         return UD_UNSUPPORTED;
@@ -1266,6 +1274,8 @@ static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
     if (!status)
         status = ud_checkpoint_epoch_commit(
             p->execution, p->id, (ud_string){(char *)payload.data, (uint32_t)payload.size});
+    if (!status && ud_transaction_active(p->execution))
+        status = ud_transaction_commit_epoch(p->execution);
     if (!status) {
         uint64_t previous = atomic_load(&p->confirmed_epoch);
         atomic_store(&p->confirmed_epoch, epoch);
@@ -1496,7 +1506,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     uint32_t emitted = 0;
     for (uint32_t j = 0; j < n->descriptor.outputs; j++)
         emitted += n->emitted[j];
-    if (s == UD_BUSY || s < UD_OK || s > UD_TIMEOUT)
+    if (s == UD_BUSY || s < UD_OK || s > UD_TRUNCATED)
         s = UD_INVALID;
     if (s == UD_END) {
         if (emitted ||

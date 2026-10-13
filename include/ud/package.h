@@ -31,6 +31,9 @@ typedef struct ud_execution_event {
     const ud_activation *activation; /* Borrowed during observer only. */
 } ud_execution_event;
 typedef void (*ud_execution_observer)(void *, const ud_execution_event *);
+/* Observer failure latches a real execution fault without recursively invoking
+ * the observer. Safe inside the borrowed callback; first failure wins. */
+UD_API ud_status ud_activation_report_fault(const ud_activation *, ud_status, ud_string);
 typedef struct ud_execution_options {
     uint32_t struct_size, abi_version;
     ud_context_options context;

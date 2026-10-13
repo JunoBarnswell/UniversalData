@@ -27,9 +27,26 @@ enum {
     UD_CONNECT_BATCH_WRITE = 65536,
     UD_CONNECT_NATIVE_CDC = 131072,
     UD_CONNECT_PROVISION = 262144,
-    UD_CONNECT_NATIVE_BULK = 524288 /* Genuine native append transport; not parameter batching. */
+    UD_CONNECT_NATIVE_BULK = 524288, /* Genuine native append transport; not parameter batching. */
+    UD_CONNECT_TRANSACTION_PARTICIPANT = 1048576,
+    UD_CONNECT_PARAMETER_ARRAY = 2097152
 };
 enum { UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE };
+enum {
+    UD_TX_UNKNOWN = 0,
+    UD_TX_ACTIVE = 1,
+    UD_TX_PREPARED = 2,
+    UD_TX_COMMITTED = 3,
+    UD_TX_ROLLED_BACK = 4,
+    UD_TX_NOT_FOUND = 5
+};
+enum { UD_TX_COMMIT = 1, UD_TX_ROLLBACK = 2 };
+typedef struct ud_transaction_branch {
+    uint32_t struct_size, abi_version;
+    ud_string id; /* Native-generated 64 lowercase hex bytes; stable across recovery. */
+    int32_t isolation;
+    uint8_t digest[32]; /* Coordinator/participant binding proof stored with business effects. */
+} ud_transaction_branch;
 enum {
     UD_METADATA_CATALOGS = 1,
     UD_METADATA_SCHEMAS,
@@ -48,6 +65,7 @@ typedef struct ud_metadata_options {
 } ud_metadata_options;
 enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3, UD_WRITE_CHANGESET = 4 };
 enum { UD_LOAD_AUTO = 0, UD_LOAD_PARAMETERS = 1, UD_LOAD_NATIVE = 2 };
+enum { UD_DELIVERY_RESPONSE = 1, UD_DELIVERY_IDEMPOTENT = 2, UD_DELIVERY_RECEIPT = 3 };
 enum { UD_CHANGE_INSERT = 1, UD_CHANGE_UPDATE = 2, UD_CHANGE_DELETE = 3, UD_CHANGE_UPSERT = 4 };
 enum {
     UD_ACCESS_OPEN = 1,
@@ -136,7 +154,24 @@ typedef struct ud_connector_api {
     ud_status (*cdc_next)(void *, ud_cdc_event *);
     ud_status (*cdc_confirm)(void *, ud_string position);
     ud_status (*cdc_close)(void *);
+    /* Real durable participant protocol, independent of ordinary local begin.
+     * A committed branch must be proved by its receipt when the prepared ID is
+     * no longer listed. NOT_FOUND alone never proves a COMMIT decision. */
+    ud_status (*transaction_begin)(void *, const ud_transaction_branch *);
+    ud_status (*transaction_prepare)(void *, const ud_transaction_branch *);
+    ud_status (*transaction_resolve)(void *, const ud_transaction_branch *, int32_t decision);
+    ud_status (*transaction_recover)(void *, const ud_transaction_branch *, int32_t *state);
+    ud_status (*record_diagnostic)(void *,
+                                   ud_string *provider_code); /* Owned code only; consumes it. */
 } ud_connector_api;
+UD_API ud_status ud_connection_savepoint(ud_connection *, ud_string, int32_t);
+UD_API ud_status ud_connection_record_diagnostic(ud_connection *, ud_string *);
+UD_API ud_status ud_connection_transaction_begin(ud_connection *, const ud_transaction_branch *);
+UD_API ud_status ud_connection_transaction_prepare(ud_connection *, const ud_transaction_branch *);
+UD_API ud_status ud_connection_transaction_resolve(ud_connection *, const ud_transaction_branch *,
+                                                   int32_t);
+UD_API ud_status ud_connection_transaction_recover(ud_connection *, const ud_transaction_branch *,
+                                                   int32_t *);
 UD_API ud_status ud_connection_open(ud_plugin *, const ud_connection_options *, ud_connection **);
 UD_API ud_status ud_connection_provision(ud_connection *);
 UD_API int32_t ud_connection_dialect(const ud_connection *);

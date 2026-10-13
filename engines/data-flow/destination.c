@@ -179,21 +179,27 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
              o.batch_id.data);
     ud_string key = {identity, (uint32_t)strlen(identity)};
     int replaying = ud_checkpoint_batch_seen(c->activation, key);
+    int completed = ud_checkpoint_batch_completed(c->activation, key);
+    int32_t guarantee = ud_connection_lease_delivery(lease);
     if (!s)
         s = ud_checkpoint_batch(c->activation, key, digest, 0);
-    if (!s && replaying) {
+    if (!s && replaying && !completed && guarantee == UD_DELIVERY_RESPONSE)
+        s = UD_COMMIT_UNKNOWN;
+    if (!s && replaying && guarantee == UD_DELIVERY_RECEIPT) {
         ud_commit_receipt receipt = {0};
         s = ud_connection_lease_receipt(lease, o.job, o.batch_id, &receipt);
         if (!s && receipt.committed &&
             (memcmp(receipt.digest, digest, 32) ||
              !ud_same(receipt.source_position, o.source_position)))
             s = UD_CORRUPT;
+        if (!s && completed && !receipt.committed)
+            s = UD_CORRUPT;
         ud_free((void *)receipt.source_position.data);
     }
     struct ud_rule_delivery *delivery = NULL;
     if (!s)
         s = ud_rule_stage(c->activation, input, &delivery);
-    if (!s)
+    if (!s && !completed)
         s = ud_connection_lease_write(lease, &o, input);
     if (!s) {
         if (!ud_transaction_rows(c->activation, input->rows, ud_batch_error_rows(input)))
@@ -204,7 +210,7 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
             s = ud_checkpoint_batch(c->activation, key, digest, 1);
         if (s)
             s = UD_COMMIT_UNKNOWN;
-        else if (c->execution->journal) {
+        else if (c->execution->journal && !ud_transaction_active(c->activation)) {
             ud_target_rows(c->activation, input->rows, ud_batch_error_rows(input), 1);
             s = ud_rule_delivered(c->activation, delivery, 1);
         }
@@ -259,6 +265,100 @@ ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input, const ud_batc
     ud_free(operations);
     if (!status)
         b->number++;
+    return status;
+}
+static int record_failure(ud_status status) {
+    return status == UD_PARSE || status == UD_OVERFLOW || status == UD_TRUNCATED ||
+           status == UD_QUALITY;
+}
+static ud_status mapped_write(builtin *b, const ud_batch *input) {
+    ud_batch *mapped = NULL, *before = NULL;
+    ud_string previous = {0};
+    ud_status status = ud_connection_lease_record_diagnostic(b->lease, &previous);
+    ud_free((void *)previous.data);
+    if (!status)
+        status = ud_builtin_sink_batch(b, input, &mapped, &before);
+    if (!status)
+        status = ud_builtin_sink_write(b, mapped, before);
+    ud_batch_destroy(mapped);
+    ud_batch_destroy(before);
+    return status;
+}
+ud_status ud_builtin_sink_records(builtin *b, const ud_batch *input) {
+    int policy;
+    UD_TRY(ud_error_policy(b->config, "errorPolicy", UD_ERROR_FAIL, &policy));
+    if (policy == UD_ERROR_FAIL)
+        return mapped_write(b, input);
+    if (!ud_transaction_active(b->context.activation))
+        return UD_UNSUPPORTED;
+    ud_string savepoint = {"ud_record_batch", 15};
+    UD_TRY(ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_BEGIN));
+    ud_status status = mapped_write(b, input);
+    if (!status)
+        return ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_RELEASE);
+    if (!record_failure(status))
+        return status;
+    UD_TRY(ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_ROLLBACK));
+    UD_TRY(ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_RELEASE));
+    /* The failed batch intent remains fenced; row attempts use distinct identities. */
+    if (b->number == UINT64_MAX)
+        return UD_RESOURCE;
+    b->number++;
+    ud_batch *errors = NULL;
+    status = ud_batch_create(b->context.memory, b->errors->schema->fields, b->errors->columns,
+                             input->rows, &errors);
+    for (uint32_t row = 0; !status && row < input->rows; row++) {
+        ud_batch *record = NULL;
+        status = ud_batch_slice(b->context.memory, input, row, 1, &record);
+        if (!status)
+            status = ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_BEGIN);
+        int load = b->load_mode;
+        b->load_mode = UD_LOAD_PARAMETERS; /* Isolation retries use driver parameter binding. */
+        ud_status written = !status ? mapped_write(b, record) : status;
+        b->load_mode = load;
+        ud_batch_destroy(record);
+        if (status)
+            break;
+        if (!written) {
+            status = ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_RELEASE);
+            continue;
+        }
+        if (!record_failure(written)) {
+            status = written;
+            break;
+        }
+        ud_string provider = {0};
+        status = ud_connection_lease_record_diagnostic(b->lease, &provider);
+        if (!status)
+            status = ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_ROLLBACK);
+        if (!status)
+            status = ud_connection_lease_savepoint(b->lease, savepoint, UD_SAVEPOINT_RELEASE);
+        if (!status && policy == UD_ERROR_REDIRECT)
+            status = ud_error_append(&b->context.errors, errors,
+                                     &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                                        .abi_version = UD_ABI_VERSION,
+                                                        .input = input,
+                                                        .row = row,
+                                                        .rule = {"sql.destination", 15},
+                                                        .rule_version = 1,
+                                                        .code = written,
+                                                        .policy = policy,
+                                                        .provider_code = provider});
+        ud_free((void *)provider.data);
+        if (!status) {
+            ud_task_rows(b->context.activation, 0, 0, 1);
+            if (b->number == UINT64_MAX)
+                status = UD_RESOURCE;
+            else
+                b->number++;
+        }
+    }
+    if (!status && errors->rows) {
+        status = ud_batch_seal(errors);
+        if (!status)
+            status = b->context.emit(b->context.emit_user, 0, errors);
+    }
+    ud_batch_destroy(errors);
     return status;
 }
 

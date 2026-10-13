@@ -19,7 +19,7 @@
   },
   "candidate": {
     "branch": "codex/etl-ssis-product-alignment",
-    "state": "2.0 implementation in progress: Native identity/Catalog/bulk foundation, unified type domains, CDC field presence and record error contracts; transaction/schema/product closure and acceptance remain pending",
+    "state": "2.0 implementation in progress: Native types/presence/errors, distributed participants and staged checkpoint facts, REST delivery guarantees, remote native loading and .NET Registry/Observer code; schema/product closure and current acceptance remain pending",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,
@@ -62,7 +62,7 @@
       "phase": 4,
       "name": "SQL parameter arrays and truthful bulk capabilities",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -74,7 +74,8 @@
       "acceptance": "A bulk destination binds a driver or requests a native loading guarantee. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "ODBC parameter-array writes now use row-offset bindings and processed/status checks; PARAMETER_ARRAY and NATIVE_BULK are distinct capabilities. Microsoft BCP staged loading is implemented but not compiled or accepted."
     },
     {
       "id": "ETL-003",
@@ -142,7 +143,7 @@
       "phase": 2,
       "name": "Destination isolation and error barrier",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -154,7 +155,8 @@
       "acceptance": "Normal and rejected rows share a batch or a SQL statement fails for a record. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "SQL destination shares ud_record_error and an optional error port. Under declared participants, an optimistic batch is isolated with Native savepoints, then failed records use parameter binding. Execution faults cannot redirect; provider codes are sanitized. Real dual-target recovery remains pending."
     },
     {
       "id": "ETL-007",
@@ -242,7 +244,7 @@
       "phase": 3,
       "name": "Recoverable transaction participants",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -254,14 +256,15 @@
       "acceptance": "A required transaction includes multiple connections. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Connection Manager admits all participants before effects; Journal persists prepare decisions and publishes tentative facts only after resolution. PostgreSQL PREPARE TRANSACTION, MySQL/MariaDB XA and OCI XID/DBMS_XA have implementation. Capability-qualified SQL Server participants and real crash acceptance remain pending."
     },
     {
       "id": "ETL-012",
       "phase": 3,
       "name": "Durable coordinator decisions",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -273,7 +276,8 @@
       "acceptance": "The process stops before/after prepare, decision or participant commit. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Manager and Journal stage Task/Batch/Cursor/Epoch facts under a durable coordinator decision. Explicit Task/Epoch scopes publish only after branch resolution; Epoch scope rotates Native branches before source confirmation. Real crash recovery, metrics restoration and all boundary acceptance remain pending."
     },
     {
       "id": "ETL-013",
@@ -292,7 +296,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Real remote libpq COPY FROM STDIN for native append shares destination, typed streaming encoder, cancellation, transaction and receipt. Explicit native mode refuses unsupported operations; staging for upsert and real acceptance remain pending."
+      "progress": "Remote PostgreSQL COPY and controlled MySQL/MariaDB LOCAL INFILE share write/receipt semantics. Microsoft ODBC BCP and OCI Direct Path now stage first and apply business rows under the original transaction; remote performance and complete data-type/provider acceptance remain pending."
     },
     {
       "id": "ETL-014",
@@ -319,7 +323,7 @@
       "phase": 4,
       "name": "SQL Server BCP loading",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -331,14 +335,14 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Required genuine remote native transport; parameter batches do not count as BCP or Direct Path. Not implemented or verified in this source batch."
+      "progress": "Microsoft ODBC BCP uses its actual vendor SDK, bounded typed cells and controlled staging. Business apply and receipt remain on the original transaction; parameter-array capability is separate. Remote BCP integration/performance and Windows acceptance remain pending."
     },
     {
       "id": "ETL-016",
       "phase": 4,
       "name": "OCI staged Direct Path loading",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -350,7 +354,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Required genuine remote native transport; parameter batches do not count as BCP or Direct Path. Not implemented or verified in this source batch."
+      "progress": "OCI Direct Path loads a private CTAS stage on its own connection; business apply and receipt use the original transaction. Stage cleanup is deferred until the branch resolves. Complete driver type acceptance, real TCPS integration and performance remain pending."
     },
     {
       "id": "ETL-017",
@@ -377,7 +381,7 @@
       "phase": 3,
       "name": "Incremental overlap target capability proof",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -389,7 +393,8 @@
       "acceptance": "An overlapping incremental source binds to an idempotent/receipted destination. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Incremental overlap binds the KEYED_REPLACE effect and declared-key lineage rather than sql.destination/upsert names. Actual destination guarantees still require native/provider behavior acceptance."
     },
     {
       "id": "ETL-019",
@@ -556,7 +561,7 @@
       "phase": 3,
       "name": "Plain REST and receipt guarantees",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -568,7 +573,8 @@
       "acceptance": "A normal HTTP response is lost after the server may have committed. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native REST declares response, idempotent and receipt delivery modes. Response mode sends once and unresolved durable intents stop automatic replay; transport cancellation/timeout after send can be CommitUnknown. Live TLS/recovery acceptance remains pending."
     },
     {
       "id": "ETL-028",
@@ -594,7 +600,7 @@
       "phase": 5,
       "name": "Public managed Registry and native callback ownership",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -606,7 +612,8 @@
       "acceptance": "A managed component/task is registered and an exception escapes its callback. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Public .NET Registry owns managed Task registration through Native lifecycle callbacks. Execution leases the Registry and retains delegates/owners; Observer failures latch Native faults without recursion. Full managed Data Flow components and deployment assembly loading remain pending."
     },
     {
       "id": "ETL-030",
@@ -878,7 +885,7 @@
       "phase": 4,
       "name": "Proven filter pushdown and streaming JSON array",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -891,7 +898,8 @@
       "acceptance": "A provider filter needs semantic proof or a large JSON array must stream. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "JSON Source uses one bounded Reader and shared errors for NDJSON and multiline array objects. Framing offsets are checked on resume; malformed boundaries remain fatal. Compilation and real source acceptance remain pending."
     },
     {
       "id": "ETL-045",
@@ -1084,7 +1092,8 @@
         "File append/overwrite uses controlled generations, original checksum and atomic publish; recovery checks publication facts rather than overwriting old artifacts.",
         "Catalog uses SQLite transactions/WAL/indexes for multi-process management; execution correctness remains in Journal, not service memory or Catalog inference.",
         "Durable queued jobs survive restart; concurrent limits and retry bounds are enforced, and unknown commit disables automatic retry.",
-        "Concentrated compile/test gates follow coherent implementation. Windows and Linux are required; missing acceptance resources remain Blocked."
+        "Concentrated compile/test gates follow coherent implementation. Windows and Linux are required; missing acceptance resources remain Blocked.",
+        "Bounded transaction implementation review: prepared-ID disappearance alone is not a COMMIT proof. Each participant stores its binding digest with business effects; recovery checks prepared listings and visible receipts. Journal task/batch/cursor facts stay under the transaction owner until all participant outcomes resolve; completion logging precedes retiring pending facts. Required policy declares participants and needs an authorized state directory; unsupported resources are rejected before business effects."
       ]
     }
   ]

@@ -24,6 +24,10 @@ ud_status ud_journal_forget(ud_journal *, uint64_t kind, ud_string key);
 ud_status ud_journal_collect_blobs(ud_journal *);
 ud_status ud_journal_visit(ud_journal *,
                            ud_status (*)(void *, uint64_t, ud_string, const ud_json *), void *);
+/* Pending transaction fact envelopes use {order,records:[kind,key,owner,payload]}.
+ * Publish preserves their recorded order; discard never publishes their effects. */
+ud_status ud_journal_publish_owner(ud_journal *, uint64_t pending_kind, ud_string owner);
+ud_status ud_journal_retire_owner(ud_journal *, ud_string owner);
 void ud_journal_get_metrics(const ud_journal *, ud_journal_metrics *);
 void ud_journal_close(ud_journal *);
 #endif

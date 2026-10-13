@@ -293,7 +293,7 @@ struct ud_json_reader {
     ud_json_options options;
     ud_record_options records;
     uint64_t record;
-    int poisoned, finished;
+    int poisoned, finished, array_started;
 };
 void ud_json_reader_close(ud_json_reader *reader) {
     if (!reader)
@@ -314,7 +314,8 @@ ud_status ud_json_reader_open(ud_context *ctx, const char *path, const ud_field 
     if (options->struct_size != sizeof(*options) || options->version != UD_CONFIG_VERSION)
         return UD_INCOMPATIBLE;
     if (!options->batch_size || options->batch_size > 1000000 || !options->max_record_bytes ||
-        options->rounding < UD_ROUND_EXACT || options->rounding > UD_ROUND_CEILING)
+        options->rounding < UD_ROUND_EXACT || options->rounding > UD_ROUND_CEILING ||
+        options->framing < UD_JSON_FRAMING_LINES || options->framing > UD_JSON_FRAMING_ARRAY)
         return UD_INVALID;
     ud_json_reader *r = ud_alloc(ctx, sizeof(*r));
     if (!r)
@@ -338,7 +339,84 @@ ud_status ud_json_reader_open(ud_context *ctx, const char *path, const ud_field 
         *out = r;
     return s;
 }
+static ud_status next_nonspace(ud_json_reader *reader, int *out) {
+    for (;;) {
+        if (ud_is_cancelled(reader->ctx))
+            return UD_CANCELLED;
+        *out = fgetc(reader->file);
+        if (*out == EOF)
+            return ferror(reader->file) ? UD_IO : UD_OK;
+        if (*out != ' ' && *out != '\t' && *out != '\r' && *out != '\n')
+            return UD_OK;
+    }
+}
+static ud_status array_record(ud_json_reader *reader, ud_bytes *record) {
+    if (reader->finished)
+        return UD_END;
+    int ch;
+    UD_TRY(next_nonspace(reader, &ch));
+    if (!reader->array_started) {
+        if (ch != '[')
+            return UD_PARSE;
+        reader->array_started = 1;
+        UD_TRY(next_nonspace(reader, &ch));
+        if (ch == ']') {
+            UD_TRY(next_nonspace(reader, &ch));
+            if (ch != EOF)
+                return UD_PARSE;
+            reader->finished = 1;
+            return UD_END;
+        }
+    }
+    if (ch != '{')
+        return UD_PARSE;
+    uint8_t stack[64];
+    uint32_t depth = 0;
+    int quoted = 0, escaped = 0;
+    do {
+        if (ud_is_cancelled(reader->ctx))
+            return UD_CANCELLED;
+        if (ch == EOF)
+            return ferror(reader->file) ? UD_IO : UD_PARSE;
+        if (record->size == reader->options.max_record_bytes)
+            return UD_RESOURCE;
+        uint8_t byte = (uint8_t)ch;
+        UD_TRY(ud_bytes_put(record, &byte, 1));
+        if (quoted) {
+            if (escaped)
+                escaped = 0;
+            else if (ch == '\\')
+                escaped = 1;
+            else if (ch == '"')
+                quoted = 0;
+        } else if (ch == '"')
+            quoted = 1;
+        else if (ch == '{' || ch == '[') {
+            if (depth == sizeof(stack))
+                return UD_RESOURCE;
+            stack[depth++] = (uint8_t)ch;
+        } else if (ch == '}' || ch == ']') {
+            if (!depth || stack[depth - 1] != (ch == '}' ? '{' : '['))
+                return UD_PARSE;
+            depth--;
+        }
+        if (!depth)
+            break;
+        ch = fgetc(reader->file);
+    } while (1);
+    UD_TRY(next_nonspace(reader, &ch));
+    if (ch == ']') {
+        UD_TRY(next_nonspace(reader, &ch));
+        if (ch != EOF)
+            return UD_PARSE;
+        reader->finished = 1;
+    } else if (ch != ',')
+        return UD_PARSE;
+    return UD_OK;
+}
 static ud_status read_record(ud_json_reader *reader, ud_bytes *line) {
+    if (reader->options.framing == UD_JSON_FRAMING_ARRAY)
+        return array_record(reader, line);
     if (reader->finished)
         return UD_END;
     ud_status s = UD_OK;
@@ -430,20 +508,22 @@ ud_status ud_json_reader_next(ud_json_reader *reader, ud_batch **out, ud_batch *
             if (reader->records.policy == UD_ERROR_FAIL || !ud_record_error_recoverable(conversion))
                 s = conversion;
             else if (reader->records.policy == UD_ERROR_REDIRECT)
-                s = ud_error_append(&reader->records.errors, rejected,
-                                    &(ud_record_error){.struct_size = sizeof(ud_record_error),
-                                                       .abi_version = UD_ABI_VERSION,
-                                                       .source = provenance,
-                                                       .rule = {"json.parse", 10},
-                                                       .rule_version = 1,
-                                                       .column = column,
-                                                       .code = conversion,
-                                                       .policy = reader->records.policy,
-                                                       .input_format = {"NDJSON", 6},
-                                                       .raw = raw.data,
-                                                       .raw_length = reader->records.include_input
-                                                                         ? (uint32_t)raw.size
-                                                                         : 0});
+                s = ud_error_append(
+                    &reader->records.errors, rejected,
+                    &(ud_record_error){
+                        .struct_size = sizeof(ud_record_error),
+                        .abi_version = UD_ABI_VERSION,
+                        .source = provenance,
+                        .rule = {"json.parse", 10},
+                        .rule_version = 1,
+                        .column = column,
+                        .code = conversion,
+                        .policy = reader->records.policy,
+                        .input_format = reader->options.framing == UD_JSON_FRAMING_ARRAY
+                                            ? (ud_string){"JSON array", 10}
+                                            : (ud_string){"NDJSON", 6},
+                        .raw = raw.data,
+                        .raw_length = reader->records.include_input ? (uint32_t)raw.size : 0});
         }
         ud_json_destroy(json);
         ud_bytes_clear(&raw);
@@ -469,6 +549,28 @@ uint64_t ud_json_reader_record(const ud_json_reader *reader) {
 ud_status ud_json_reader_resume(ud_json_reader *reader, uint64_t offset, uint64_t record) {
     if (!reader || offset > INT64_MAX)
         return UD_INVALID;
+    if (reader->options.framing == UD_JSON_FRAMING_ARRAY) {
+        if (ud_seek(reader->file, 0))
+            return UD_IO;
+        clearerr(reader->file);
+        reader->poisoned = reader->finished = reader->array_started = 0;
+        uint64_t seen = 0;
+        ud_status status = UD_OK;
+        while (!status && ud_json_reader_offset(reader) < offset) {
+            ud_bytes raw = {.ctx = reader->ctx};
+            status = array_record(reader, &raw);
+            if (!status)
+                seen++;
+            ud_bytes_clear(&raw);
+        }
+        if (status || ud_json_reader_offset(reader) != offset || seen != record) {
+            reader->poisoned = 1;
+            return status == UD_IO || status == UD_CANCELLED || status == UD_RESOURCE ? status
+                                                                                      : UD_INVALID;
+        }
+        reader->record = record;
+        return UD_OK;
+    }
     int64_t old = ud_tell(reader->file);
     if (old < 0 || fseek(reader->file, 0, SEEK_END))
         return UD_IO;

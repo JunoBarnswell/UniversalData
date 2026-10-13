@@ -16,7 +16,11 @@ enum {
     RECORD_SNAPSHOT_DONE,
     RECORD_CURSOR,
     RECORD_SCHEMA,
-    RECORD_EPOCH
+    RECORD_EPOCH,
+    RECORD_TRANSACTION_MANIFEST,
+    RECORD_TRANSACTION_DECISION,
+    RECORD_TRANSACTION_COMPLETE,
+    RECORD_TRANSACTION_FACT
 };
 typedef struct checkpoint_journal {
     ud_execution *execution;
@@ -51,7 +55,116 @@ static ud_status append(checkpoint_journal *j, ud_activation *e, uint64_t kind, 
                           ? e->task_id
                           : (ud_string){0};
     ud_journal_record records[2] = {{kind, key, owner, payload}, {0, {0}, e->task_id, {0}}};
+    int tentative = kind == RECORD_TASK_BEGIN || kind == RECORD_TASK_DONE ||
+                    kind == RECORD_BATCH_DONE || kind == RECORD_ENUMERATOR ||
+                    kind == RECORD_CURSOR || kind == RECORD_EPOCH;
+    ud_string transaction = {0};
+    uint64_t order = 0;
+    ud_status positioned =
+        tentative ? ud_transaction_fact_position(e, &transaction, &order) : UD_END;
+    if (positioned != UD_END && positioned)
+        return positioned;
+    if (!positioned) {
+        ud_bytes envelope = {.ctx = e->execution->ctx};
+        char head[80];
+        int length = snprintf(head, sizeof(head), "{\"order\":%llu,\"records\":[",
+                              (unsigned long long)order);
+        ud_status status = ud_bytes_put(&envelope, head, (size_t)length);
+        uint32_t count = kind == RECORD_TASK_DONE ? 2 : 1;
+        for (uint32_t index = 0; !status && index < count; index++) {
+            if (index)
+                status = ud_bytes_put(&envelope, ",", 1);
+            length = snprintf(head, sizeof(head),
+                              "{\"kind\":%llu,\"key\":", (unsigned long long)records[index].kind);
+            if (!status)
+                status = ud_bytes_put(&envelope, head, (size_t)length);
+            if (!status)
+                status =
+                    ud_json_quote(&envelope, records[index].key.data, records[index].key.length);
+            if (!status)
+                status = ud_bytes_put(&envelope, ",\"owner\":", 9);
+            if (!status)
+                status = ud_json_quote(&envelope, records[index].owner.data,
+                                       records[index].owner.length);
+            if (!status)
+                status = ud_bytes_put(&envelope, ",\"payload\":", 11);
+            if (!status)
+                status = records[index].kind ? ud_bytes_put(&envelope, records[index].payload.data,
+                                                            records[index].payload.length)
+                                             : ud_bytes_put(&envelope, "null", 4);
+            if (!status)
+                status = ud_bytes_put(&envelope, "}", 1);
+        }
+        if (!status)
+            status = ud_bytes_put(&envelope, "]}", 2);
+        char identity[96];
+        length = snprintf(identity, sizeof(identity), "%.*s/%020llu", (int)transaction.length,
+                          transaction.data, (unsigned long long)order);
+        if (!status && envelope.size > UINT32_MAX)
+            status = UD_RESOURCE;
+        ud_journal_record pending = {
+            .kind = RECORD_TRANSACTION_FACT,
+            .key = {identity, (uint32_t)length},
+            .owner = transaction,
+            .payload = {(const char *)envelope.data, (uint32_t)envelope.size}};
+        if (!status)
+            status = ud_journal_append(j->store, &pending, 1);
+        ud_bytes_clear(&envelope);
+        return status;
+    }
     return ud_journal_append(j->store, records, kind == RECORD_TASK_DONE ? 2 : 1);
+}
+static uint64_t transaction_kind(int32_t phase) {
+    return phase == UD_TX_JOURNAL_MANIFEST   ? RECORD_TRANSACTION_MANIFEST
+           : phase == UD_TX_JOURNAL_DECISION ? RECORD_TRANSACTION_DECISION
+           : phase == UD_TX_JOURNAL_COMPLETE ? RECORD_TRANSACTION_COMPLETE
+                                             : 0;
+}
+ud_status ud_checkpoint_transaction_read(ud_activation *activation, int32_t phase,
+                                         ud_string identity, char **out, uint32_t *length) {
+    if (!activation || !out || !length || !transaction_kind(phase))
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    checkpoint_journal *journal = activation->execution->journal;
+    if (!journal)
+        return UD_END;
+    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_READ));
+    ud_mutex_lock(&activation->execution->journal_lock);
+    const ud_json *value = find(journal, transaction_kind(phase), identity);
+    ud_status status = value ? ud_json_serialize(value, out, length) : UD_END;
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    return status;
+}
+ud_status ud_checkpoint_transaction_record(ud_activation *activation, int32_t phase,
+                                           ud_string identity, ud_string payload) {
+    if (!activation || !transaction_kind(phase))
+        return UD_INVALID;
+    checkpoint_journal *journal = activation->execution->journal;
+    if (!journal)
+        return UD_UNSUPPORTED;
+    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_WRITE));
+    ud_journal_record record = {
+        .kind = transaction_kind(phase), .key = identity, .payload = payload};
+    ud_mutex_lock(&activation->execution->journal_lock);
+    ud_status status = ud_journal_append(journal->store, &record, 1);
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    return status;
+}
+ud_status ud_checkpoint_transaction_facts(ud_activation *activation, ud_string identity,
+                                          int commit) {
+    if (!activation)
+        return UD_INVALID;
+    checkpoint_journal *journal = activation->execution->journal;
+    if (!journal)
+        return UD_UNSUPPORTED;
+    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_WRITE));
+    ud_mutex_lock(&activation->execution->journal_lock);
+    ud_status status =
+        commit ? ud_journal_publish_owner(journal->store, RECORD_TRANSACTION_FACT, identity)
+               : ud_journal_retire_owner(journal->store, identity);
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    return status;
 }
 static ud_status snapshot(ud_activation *e, ud_bytes *bytes) {
     UD_TRY(ud_bytes_put(bytes, "{\"scopes\":[", 11));
@@ -182,7 +295,7 @@ static ud_status file_record(checkpoint_journal *j, ud_activation *a, uint64_t k
 static ud_status restore_fact(void *user, uint64_t kind, ud_string key, const ud_json *payload) {
     checkpoint_journal *j = user;
     ud_execution *e = j->execution;
-    if (kind < RECORD_HEADER || kind > RECORD_SCHEMA)
+    if (kind < RECORD_HEADER || kind > RECORD_TRANSACTION_FACT)
         return UD_CORRUPT;
     if (kind == RECORD_SOURCE || kind == RECORD_FILE_DONE) {
         char *path = ud_strdup_n(e->ctx, key.data, key.length);
@@ -467,6 +580,15 @@ int ud_checkpoint_batch_seen(ud_activation *e, ud_string identity) {
     int result = ud_checkpoint_batch_seen_record(e, identity);
     ud_mutex_unlock(&e->execution->journal_lock);
     return result;
+}
+int ud_checkpoint_batch_completed(ud_activation *activation, ud_string identity) {
+    if (!activation || !activation->execution->journal)
+        return 0;
+    checkpoint_journal *journal = activation->execution->journal;
+    ud_mutex_lock(&activation->execution->journal_lock);
+    int completed = find(journal, RECORD_BATCH_DONE, identity) != NULL;
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    return completed;
 }
 
 ud_status ud_checkpoint_batch(ud_activation *e, ud_string identity, const uint8_t digest[32],

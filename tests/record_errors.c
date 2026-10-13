@@ -90,6 +90,36 @@ int main(int argc, char **argv) {
     ud_batch_destroy(good);
     ud_batch_destroy(errors);
     ud_json_reader_close(json);
+    CHECK(!write_fixture(argv[1], "[\n{\"id\":1,\"text\":\"a]b\"},\n"
+                                  "{\"id\":\"bad\",\"text\":\"rejected\"},\n"
+                                  "{\"id\":2,\"text\":\"last\"}\n]"));
+    json_options.framing = UD_JSON_FRAMING_ARRAY;
+    json_options.batch_size = 1;
+    OK(ud_json_reader_open(ctx, argv[1], fields, 2, &json_options, &json));
+    OK(ud_json_reader_next(json, &good, &errors));
+    CHECK(good->rows == 1 && errors->rows == 0);
+    uint64_t bookmark = ud_json_reader_offset(json);
+    ud_batch_destroy(good);
+    ud_batch_destroy(errors);
+    OK(ud_json_reader_next(json, &good, &errors));
+    CHECK(good->rows == 0 && errors->rows == 1);
+    ud_batch_destroy(good);
+    ud_batch_destroy(errors);
+    OK(ud_json_reader_resume(json, bookmark, 1));
+    OK(ud_json_reader_next(json, &good, &errors));
+    CHECK(good->rows == 0 && errors->rows == 1);
+    ud_batch_destroy(good);
+    ud_batch_destroy(errors);
+    OK(ud_json_reader_next(json, &good, &errors));
+    CHECK(good->rows == 1 && errors->rows == 0);
+    ud_batch_destroy(good);
+    ud_batch_destroy(errors);
+    CHECK(ud_json_reader_next(json, &good, &errors) == UD_END);
+    ud_json_reader_close(json);
+    CHECK(!write_fixture(argv[1], "[{\"id\":1,\"text\":\"unclosed}"));
+    OK(ud_json_reader_open(ctx, argv[1], fields, 2, &json_options, &json));
+    CHECK(ud_json_reader_next(json, &good, &errors) == UD_PARSE && !good && !errors);
+    ud_json_reader_close(json);
     CHECK(!ud_record_error_recoverable(UD_COMMIT_UNKNOWN));
     CHECK(!ud_record_error_recoverable(UD_TRANSIENT));
     CHECK(!ud_record_error_recoverable(UD_CANCELLED));

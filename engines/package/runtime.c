@@ -90,6 +90,9 @@ uint32_t ud_execution_concurrency(const ud_activation *activation) {
 ud_status ud_activation_check(const ud_activation *e) {
     if (!e)
         return UD_INVALID;
+    ud_status observer = atomic_load(&e->execution->observer_fault);
+    if (observer)
+        return observer;
     if (ud_is_cancelled(e->execution->ctx))
         return UD_CANCELLED;
     uint64_t now = ud_now_ms();
@@ -99,6 +102,18 @@ ud_status ud_activation_check(const ud_activation *e) {
         else if (a->deadline && now >= a->deadline)
             return UD_TIMEOUT;
     return UD_OK;
+}
+ud_status ud_activation_report_fault(const ud_activation *activation, ud_status status,
+                                     ud_string message) {
+    if (!activation)
+        return UD_INVALID;
+    ud_status reported = ud_context_report(activation->execution->ctx, status, message);
+    if (reported != status)
+        return reported;
+    int expected = UD_OK;
+    if (atomic_compare_exchange_strong(&activation->execution->observer_fault, &expected, status))
+        atomic_fetch_add(&activation->execution->error_count, 1);
+    return status;
 }
 ud_status ud_component_lookup(ud_activation *e, ud_string id, ud_component_descriptor *out) {
     return ud_registry_find(e->execution->registry, id, out);
@@ -178,6 +193,7 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         return UD_RESOURCE;
     }
     e->ctx = ctx;
+    atomic_init(&e->observer_fault, UD_OK);
     e->root.execution = e;
     e->root.definition = &e->root;
     atomic_init(&e->root.cancelled, 0);

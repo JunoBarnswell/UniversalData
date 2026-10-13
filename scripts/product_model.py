@@ -116,7 +116,7 @@ def projections(model):
         "bindings/dotnet/UniversalData/ProductVersion.cs":
             "// Generated from metadata/product.json.\nnamespace UniversalData;\n"
             "internal static class ProductVersion\n{\n    internal const uint Abi = " + str(abi) +
-            ";\n}\n",
+            ";\n    internal const string Sdk = \"" + version + "\";\n}\n",
         "bindings/java/src/main/java/org/universaldata/ProductVersion.java":
             "// Generated from metadata/product.json.\npackage org.universaldata;\n"
             "public final class ProductVersion {\n    private ProductVersion() {}\n"

@@ -1,29 +1,19 @@
-# 统一事务、检查点与恢复
+# 统一事务、检查点与恢复，协议 10
 
-```mermaid
-flowchart LR
-Position[源位置/算子状态] --> Write[目标写入]
-Write --> Receipt[同事务提交回执]
-Receipt --> Checkpoint[持久检查点]
-Checkpoint --> Publish[原子可见代次]
-```
+C17 Execution、Connection Manager 和现有 Journal 是唯一执行与恢复所有者。Catalog 保存管理记录，不推断事务事实。旧协议与旧恢复状态明确拒绝，旧文件和数据库回执代次保留。
 
-一个 version 3 Execution Journal，Package fingerprint、参数指纹、Run ID、作用域/循环位置、Task 状态、Pipeline source positions/operator state、target receipts；类型/wire 版本明确，不复制裸 struct。Task 与 batch 是同一日志的不同记录类别，不再保留 CSV .state/.commit 与 DAG 各自恢复入口。记录校验、原子不覆盖发布、fsync 文件/父目录、exclusive writer lock。
+`transaction: {mode: "required", participants: ["business", "errors"], scope: "task", provisionReceipts: true}` 声明完整参与者。Manager 在业务副作用前检查所有连接的真实参与能力；普通本地事务能力不等于可恢复参与者能力。缺少 Native Journal 或任一参与者不支持时拒绝开始。
 
-数据库批次 write+receipt 同一目标事务。新目标文件先 stage、flush、hash、原子发布再记录 receipt；写后 journal 前崩溃通过确定性目标 identity/content 验证已提交结果，禁止猜测成功。只支持明确可重放源/目标/算子集合；不支持的恢复策略在 Validate 拒绝。多目标不形成分布式事务，部分已提交时 Package 失败而不是全局回滚成功。
+Task 范围整体提交。Data Flow 可显式选择 `scope: "epoch"`：每个屏障准备全部分支，先持久化共同决定，再解析分支结果，发布该 Epoch 的暂存事实，然后允许源确认，并开始下一分支。Task 范围中的 CDC 在绑定时拒绝，避免等待源确认与整体提交相互阻塞。
 
-CommitUnknown→RecoveryRequired→停止推进源→receipt 查询→digest/源位置一致则确认→否则暂停/人工决策。TRANSIENT 不等于可安全重试。源内容/Schema/包指纹变化拒绝恢复；任何未知版本/断裂/损坏不回退旧成功。Quality Error Output 与正常目标使用同一 checkpoint/receipt，隔离提交失败不确认源。
+PostgreSQL 使用 PREPARE TRANSACTION，并检查 max_prepared_transactions；MySQL/MariaDB 使用 XA START/END/PREPARE/COMMIT/ROLLBACK；OCI 使用真实 XID、OCITransPrepare 和 DBMS_XA 恢复。Native 分支 ID、配置指纹和同事务的分支回执证明提交。准备列表中找不到分支本身不能证明提交。不具备参与能力的 SQL Server/ODBC 资源不能冒充全局事务参与者。
 
-轨迹：第 2 批已提交、Journal 未发布、进程终止→重开读取回执→确认第 2 批→从下一位置继续。Loop checkpoint 包括迭代栈，不能跨迭代错误跳过。恢复未实现的部分保持 Planned/Unsupported，不称为 Verified。归属 engines/package/checkpoint.c、connectors/、tests/recovery/。
+Task Done、批次 Done、游标、枚举器和 Epoch 在未决事务内先存为有序暂存事实。共同提交后才发布；回滚仅退役暂存事实。持久 COMMIT 决定后禁止改为回滚。恢复没有决定的分支时先持久化回滚决定；存在决定时按决定逐个恢复，即使一个资源不可用，也尝试其他参与者。任何无法证明的提交进入 RecoveryRequired，停止源确认和自动重放。
 
-## 当前实现：Checkpoint Journal 5
+SQL 目标的记录错误在真实事务保护下使用 savepoint 隔离。先尝试批量写入，记录错误回滚该尝试后使用原生参数绑定逐行处理。正常目标和错误目标均须属于声明参与者。转换、截断和业务约束可重定向；连接中断、取消、超时、语句/Schema 执行故障以及提交不明保持失败。原始输入只有明确启用才保留。
 
-`state_directory` 是授权的绝对目录，`execution_id` 必须非空。`resume=0` 只创建新日志；目录已有日志拒绝覆盖。`resume=1` 要求有效日志，不能静默创建新执行。每个 `record-<20 位序号>.udj` 包含版本、连续序号、前一记录 SHA-256、记录类别/identity/payload 和当前 SHA-256；先写/flush 临时文件，再原子不覆盖发布。`writer.lock` 限制单 writer。
+REST 统一声明 `delivery: "response" | "idempotent" | "receipt"`。普通响应模式只发送一次；未决发送意图不能自动重放。幂等模式使用 Native 请求身份；回执模式验证 digest 和源位置，并可查询远端回执。增量重叠根据已绑定的 KEYED_REPLACE 能力与键 lineage 判断，不依赖 SQL 组件名称。
 
-一个日志记录 Package/参数/tenant/execution/批次大小/队列预算的 manifest、任务 Begin/Done、各作用域变量和循环 identity、文件源指纹、目标 staging intent/commit、数据库批次 intent/receipt digest。恢复按相同任务及迭代 identity 跳过 Done 并恢复变量；未完成确定性 Pipeline 从不可变文件源重放并重新计算算子，通过目标回执去重。没有重新引入 CSV 专属 checkpoint 或第二运行时。
+PostgreSQL COPY 与受控 MySQL/MariaDB LOCAL INFILE 在同一业务写入/回执路径内。SQL Server BCP 与 OCI Direct Path 只装载受控暂存区；正式业务写入和回执仍由原事务拥有，暂存区生命周期延续至事务结果确定。Direct Path 的独立提交不能被描述为可随业务事务回滚。
 
-文件目标仅清理由本日志明确记录的 staging 路径；已发布文件必须与重算结果的 SHA-256 一致，已提交目标及文件源在重新运行前再次验证。SQL 目标的 journal digest 与物理 driver write/receipt 使用同一个 digest 函数，只有目标确认后才写 batch Done；CommitUnknown 不增加 batch 序号。日志提交发生在外部提交后而失败时返回 RecoveryRequired。
-
-范围：当前支持文件源、确定性内置转换、SQL receipt 目标与原子 NDJSON 文件目标。SQL Source 尚无跨进程持久 snapshot 契约，启用 checkpoint 时在执行前 Unsupported；不可重放的 Task 中断后返回 CommitUnknown，不擅自重复外部副作用。自定义组件必须显式声明 REPLAY_SAFE，声明由宿主/插件负责履约。重放恢复不是跨任意目标全局 exactly-once；算子当前重算而非持久化所有内存对象。
-
-实际门禁 `package_durable_recovery` 使用真实子进程 `_exit`，覆盖循环变量、数据库提交后/日志前、文件发布后/日志前、再次 resume 不写重复数据、源/包变化、校验损坏/日志缺口、writer 排他，以及不明自定义副作用停止。内存检查在 ASan/UBSan 下重跑相同门禁。日志见 docs/acceptance/evidence/ssis-recovery。
+以上是当前源码契约，尚未进行 ABI 10 编译或行为验收。注册的 transaction_fact_publication 和真实数据库 participant_recovery 测试覆盖暂存事实发布，以及 prepare 后退出、部分提交后退出的恢复边界；它们当前不是通过证据。SQL Source 错误隔离、在线 Schema 重绑定、完整 Epoch/指标恢复与 Windows 驱动验收仍按 metadata/product.json 追踪。

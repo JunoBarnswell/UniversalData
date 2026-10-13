@@ -119,6 +119,9 @@ typedef struct builtin {
 
 ud_status ud_builtin_bind_expr(const ud_component_context *c, const ud_json *value,
                                const ud_batch *schema, ud_expression **out);
+ud_status ud_builtin_describe_sink(void *, const ud_component_context *, ud_string,
+                                   const ud_batch *const *, ud_component_plan *);
+ud_status ud_builtin_sink_records(builtin *, const ud_batch *);
 ud_status ud_builtin_blocking(builtin *b);
 uint64_t ud_builtin_builtin_demand(void *ptr);
 ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud_string text,

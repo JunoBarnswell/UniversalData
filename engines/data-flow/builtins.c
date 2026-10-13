@@ -27,6 +27,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                kind == CSV_SOURCE || kind == JSON_SOURCE))
         s = ud_builtin_clone_schema(c->memory, out[kind == SPLIT ? c->output_count - 1 : 1],
                                     &b->errors);
+    if (!s && kind == SQL_SINK)
+        s = ud_builtin_clone_schema(c->memory, out[0], &b->errors);
     if (!s && (kind == SQL_SINK || kind == REST_SINK)) {
         ud_string mode = {0};
         s = ud_json_string(ud_member(b->config, "mode"), &mode);
@@ -377,6 +379,8 @@ static ud_status step(void *ptr, const ud_component_event *event) {
         return status;
     }
     if (kind == SQL_SINK || kind == REST_SINK) {
+        if (kind == SQL_SINK)
+            return ud_builtin_sink_records(b, event->batch);
         ud_batch *mapped = NULL, *before = NULL;
         ud_status status = ud_builtin_sink_batch(b, event->batch, &mapped, &before);
         if (!status)
@@ -425,8 +429,12 @@ static const char *configuration_schema(int kind) {
                "\"string\"},\"timeoutMs\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":86400000}"
                ",\"maxResponseBytes\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":67108864},"
                "\"maxAttempts\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":8},"
-               "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000}},"
-               "\"required\":[\"connection\",\"receiptUrl\"],\"additionalProperties\":false}";
+               "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000},"
+               "\"delivery\":{\"type\":\"string\",\"enum\":[\"response\",\"idempotent\","
+               "\"receipt\"],"
+               "\"default\":\"response\"},\"keyedReplace\":{\"type\":\"boolean\",\"default\":false}"
+               "},"
+               "\"required\":[\"connection\"],\"additionalProperties\":false}";
     case PARQUET_SOURCE:
     case IPC_SOURCE:
     case IPC_STREAM_SOURCE:
@@ -447,7 +455,9 @@ static const char *configuration_schema(int kind) {
                "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
                "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
                "\"table\":{\"type\":\"string\"},\"errorPolicy\":{\"type\":\"string\"},"
-               "\"includeInput\":{\"type\":\"boolean\"}},\"required\":[\"connection\",\"schema\"],"
+               "\"includeInput\":{\"type\":\"boolean\"},\"framing\":{\"type\":\"string\","
+               "\"enum\":[\"lines\",\"array\"],\"default\":\"lines\"}},\"required\":["
+               "\"connection\",\"schema\"],"
                "\"additionalProperties\":false}";
     case SQL_SOURCE:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\","
@@ -478,7 +488,10 @@ static const char *configuration_schema(int kind) {
                "\"string\"},"
                "\"keys\":{\"type\":"
                "\"array\"},\"schemaPolicy\":{\"type\":\"object\"},\"provisionReceipts\":{\"type\":"
-               "\"boolean\"}},\"required\":[\"connection\","
+               "\"boolean\"},\"errorPolicy\":{\"type\":\"string\",\"enum\":[\"fail\",\"redirect\","
+               "\"ignore\"]},"
+               "\"includeInput\":{\"type\":\"boolean\",\"default\":false}},\"required\":["
+               "\"connection\","
                "\"table\",\"mode\"],\"additionalProperties\":false}";
     case CAST:
         return "{\"type\":\"object\",\"properties\":{\"schema\":{\"type\":\"object\"},\"rounding\":"
@@ -545,7 +558,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
                    {"sql.source", SQL_SOURCE, 0, 1, -1, -1},
                    {"file.csv.destination", CSV_SINK, 1, 0, -1, -1},
                    {"file.ndjson.destination", JSON_SINK, 1, 0, -1, -1},
-                   {"sql.destination", SQL_SINK, 1, 0, -1, -1},
+                   {"sql.destination", SQL_SINK, 1, 1, -1, 0},
                    {"pass", PASS, 1, 1, 0, -1},
                    {"cast", CAST, 1, 2, -1, 1},
                    {"derive", DERIVE, 1, 2, -1, 1},
@@ -595,7 +608,8 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .optional_outputs = kind == CAST || kind == DERIVE || kind == XLSX_SOURCE ||
                                         kind == CSV_SOURCE || kind == JSON_SOURCE
                                     ? UINT64_C(2)
-                                    : 0,
+                                : kind == SQL_SINK ? UINT64_C(1)
+                                                   : 0,
             .user = (void *)(intptr_t)kind,
             .configure = ud_builtin_configure,
             .prepare = prepare,
@@ -618,8 +632,10 @@ ud_status ud_builtin_register(ud_registry *registry) {
         if (kind == SORT || kind == JOIN || kind == AGGREGATE || kind == WINDOW)
             d.describe_plan = ud_builtin_describe_operator;
         if (kind == SQL_SINK || kind == REST_SINK) {
-            d.effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_TRANSACTIONAL | UD_EFFECT_RECEIPTED |
-                        UD_EFFECT_COMMIT_UNKNOWN;
+            d.effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_COMMIT_UNKNOWN;
+            if (kind == SQL_SINK)
+                d.effects |= UD_EFFECT_TRANSACTIONAL;
+            d.describe_plan = ud_builtin_describe_sink;
             d.state_version = 1;
             d.checkpoint = ud_builtin_checkpoint_state;
             d.restore = ud_builtin_restore_state;

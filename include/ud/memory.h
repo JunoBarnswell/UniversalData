@@ -28,6 +28,9 @@ UD_API void ud_free(void *ptr);
 UD_API void ud_cancel(ud_context *ctx);
 UD_API void ud_reset_cancel(ud_context *ctx);
 UD_API int32_t ud_is_cancelled(const ud_context *ctx);
+/* Language callbacks report into the same calling-thread native diagnostic.
+ * The host controls message content; raw data/credentials are not included implicitly. */
+UD_API ud_status ud_context_report(ud_context *, ud_status, ud_string message);
 #ifdef __cplusplus
 }
 #endif

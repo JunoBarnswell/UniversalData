@@ -160,9 +160,11 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     ud_connection_lease *source = NULL, *target = NULL;
     char *from = NULL, *to = NULL;
     if (!s && source_id.length)
-        s = ud_acquire_file_connection(c->activation, source_id, &source);
+        s = ud_acquire_file_connection(c->activation, source_id,
+                                       op == 2 || op == 3 ? UD_CONNECT_DELETE : UD_CONNECT_READ,
+                                       &source);
     if (!s && target_id.length)
-        s = ud_acquire_file_connection(c->activation, target_id, &target);
+        s = ud_acquire_file_connection(c->activation, target_id, UD_CONNECT_APPEND, &target);
     if (!s && source)
         s = ud_connection_lease_authorize(source, op == 3 ? UD_ACCESS_DELETE : UD_ACCESS_READ);
     if (!s && op == 2)
@@ -223,7 +225,7 @@ ud_status ud_filesystem_register(ud_registry *registry) {
                                  .abi_version = UD_ABI_VERSION,
                                  .id = {"file.system", 11},
                                  .name = {"File System", 11},
-                                 .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION)-1},
+                                 .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
                                  .configuration_schema = {schema, sizeof(schema) - 1},
                                  .category = UD_COMPONENT_TASK,
                                  .synchronous_input = -1,

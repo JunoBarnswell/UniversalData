@@ -352,7 +352,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     if (!s)
         s = ud_process_connection_path(program, &path);
     if (!s && p.cwd.length)
-        s = ud_acquire_file_connection(c->activation, p.cwd, &directory);
+        s = ud_acquire_file_connection(c->activation, p.cwd, UD_CONNECT_READ, &directory);
     if (!s && directory)
         s = ud_connection_lease_authorize(directory, UD_ACCESS_READ);
     if (!s && directory)
@@ -426,7 +426,7 @@ ud_status ud_process_register(ud_registry *registry) {
                                  .abi_version = UD_ABI_VERSION,
                                  .id = {"process.execute", 15},
                                  .name = {"Execute Process", 15},
-                                 .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION)-1},
+                                 .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
                                  .configuration_schema = {schema, sizeof(schema) - 1},
                                  .category = UD_COMPONENT_TASK,
                                  .synchronous_input = -1,

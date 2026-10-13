@@ -69,9 +69,10 @@ ud_status ud_child_package(ud_activation *e, const ud_json *config, int execute,
     child.parameters = parameters;
     child.depth = depth;
     child.parallel = e->parallel;
-    child.transaction=e->transaction;
-    child.transaction_serial=e->transaction_serial;
-    child.transaction_connection=e->transaction_connection;
+    child.transaction = e->transaction;
+    child.transaction_serial = e->transaction_serial;
+    child.transaction_epoch = e->transaction_epoch;
+    child.transaction_participants = e->transaction_participants;
     atomic_init(&child.cancelled, 0);
     size_t size = (size_t)e->task_id.length + package->id.length + 64;
     char *identity = ud_alloc(e->execution->ctx, size);

@@ -3,6 +3,7 @@
 #include "ud/format.h"
 #include "ud/compute.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 JNIEXPORT jint JNICALL Java_org_universaldata_ProductVersion_nativeAbi(JNIEnv *e, jclass cls) {
     (void)e;
@@ -176,6 +177,56 @@ JNIEXPORT jstring JNICALL Java_org_universaldata_Batch_nativeJson(JNIEnv *e, jcl
     jstring value = utf8(e, json);
     ud_free(json);
     return value;
+}
+static ud_status scalar(java_data *data, jint row, jint column, ud_type type, ud_value *value) {
+    if (!data || row < 0 || column < 0)
+        return UD_INVALID;
+    ud_status status = ud_batch_get(data->batch, (uint32_t)row, (uint32_t)column, value);
+    if (status)
+        return status;
+    return value->type == type && !value->is_null && !value->is_absent ? UD_OK : UD_INCOMPATIBLE;
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_Batch_nativeUInt64(JNIEnv *env, jclass cls,
+                                                                    jlong handle, jint row,
+                                                                    jint column) {
+    (void)cls;
+    ud_value value;
+    ud_status status = scalar((java_data *)(intptr_t)handle, row, column, UD_UINT64, &value);
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        return NULL;
+    }
+    char text[24];
+    snprintf(text, sizeof(text), "%llu", (unsigned long long)value.unsigned_integer);
+    return utf8(env, text);
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_Batch_nativeDuration(JNIEnv *env, jclass cls,
+                                                                    jlong handle, jint row,
+                                                                    jint column) {
+    (void)cls;
+    ud_value value;
+    ud_status status = scalar((java_data *)(intptr_t)handle, row, column, UD_DURATION, &value);
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        return 0;
+    }
+    return (jlong)value.integer;
+}
+JNIEXPORT jlongArray JNICALL Java_org_universaldata_Batch_nativeInterval(JNIEnv *env, jclass cls,
+                                                                         jlong handle, jint row,
+                                                                         jint column) {
+    (void)cls;
+    ud_value value;
+    ud_status status = scalar((java_data *)(intptr_t)handle, row, column, UD_INTERVAL, &value);
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        return NULL;
+    }
+    jlong parts[] = {value.interval.months, value.interval.days, value.interval.microseconds};
+    jlongArray result = (*env)->NewLongArray(env, 3);
+    if (result)
+        (*env)->SetLongArrayRegion(env, result, 0, 3, parts);
+    return result;
 }
 JNIEXPORT jbyteArray JNICALL Java_org_universaldata_Batch_nativeWire(JNIEnv *e, jclass cls,
                                                                      jlong handle) {

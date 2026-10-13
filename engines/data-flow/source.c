@@ -50,7 +50,16 @@ static ud_status open_file_reader(builtin *b, uint32_t batch) {
     if (!s && kind == JSON_SOURCE) {
         ud_json_options o = {sizeof(o), UD_CONFIG_VERSION, (uint32_t)batch,
                              1048576,   UD_ROUND_EXACT,    &b->records};
-        s = ud_json_reader_open(c->memory, b->path, b->fields, b->columns, &o, &b->reader);
+        ud_string framing = {"lines", 5};
+        if (ud_member(b->config, "framing"))
+            s = ud_json_string(ud_member(b->config, "framing"), &framing);
+        o.framing = ud_named(framing, "array")   ? UD_JSON_FRAMING_ARRAY
+                    : ud_named(framing, "lines") ? UD_JSON_FRAMING_LINES
+                                                 : -1;
+        if (!s && o.framing < 0)
+            s = UD_SCHEMA;
+        if (!s)
+            s = ud_json_reader_open(c->memory, b->path, b->fields, b->columns, &o, &b->reader);
     }
     return s;
 }

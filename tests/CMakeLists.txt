@@ -2,6 +2,10 @@ if(TARGET ud_package OR TARGET ud_worker)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
 endif()
 if(TARGET ud_package)
+  add_executable(test_transaction_facts transaction_facts.c)
+  target_link_libraries(test_transaction_facts PRIVATE ud_runtime)
+  add_test(NAME transaction_fact_publication COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/transaction_facts.py $<TARGET_FILE:test_transaction_facts>)
   add_executable(test_execution_identity execution_identity.c)
   target_link_libraries(test_execution_identity PRIVATE ud_package)
   add_test(NAME execution_identity COMMAND test_execution_identity)
@@ -256,6 +260,8 @@ if(TARGET ud_package)
 endif()
 
 if(TARGET ud_plugins)
+  add_executable(test_transaction_participants transaction_participants.c)
+  target_link_libraries(test_transaction_participants PRIVATE ud_plugins)
   add_executable(test_advanced_cdc advanced_cdc.c)
   target_link_libraries(test_advanced_cdc PRIVATE ud_plugins)
 endif()
@@ -295,6 +301,14 @@ if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
           $<TARGET_FILE:test_advanced_sql> $<TARGET_FILE:ud_connector_${driver}> native)
         set_tests_properties(integration_${driver}_native_bulk PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;native-bulk;${driver}"
+          RESOURCE_LOCK ud_integration_${driver})
+      endif()
+      if(driver MATCHES "^(postgresql|mysql|mariadb|oracle_oci)$")
+        add_test(NAME integration_${driver}_participant_recovery COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/transaction_participants.py UD_TEST_${fixture}_CONFIG
+          $<TARGET_FILE:test_transaction_participants> $<TARGET_FILE:ud_connector_${driver}>)
+        set_tests_properties(integration_${driver}_participant_recovery PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS "real-integration;crash-recovery;${driver}"
           RESOURCE_LOCK ud_integration_${driver})
       endif()
     endif()

@@ -197,10 +197,12 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
                                     .parallel = parent->parallel || parallel,
                                     .transaction = parent->transaction,
                                     .transaction_serial = parent->transaction_serial,
-                                    .transaction_connection = parent->transaction_connection};
+                                    .transaction_epoch = parent->transaction_epoch,
+                                    .transaction_participants = parent->transaction_participants};
         atomic_init(&validation.cancelled, 0);
         e = &validation;
         const ud_json *task = ud_json_at(tasks, i);
+        e->task_definition = task;
         static const char *keys[] = {"id",        "kind",      "config",        "children",
                                      "variables", "timeoutMs", "eventHandlers", "transaction",
                                      "retry"};
@@ -237,8 +239,8 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
             ud_string connection = {0};
             if (!s)
                 s = ud_json_string(ud_member(bound, "connection"), &connection);
-            if (!s && !ud_same(connection, e->transaction_connection))
-                s = UD_UNSUPPORTED;
+            if (!s)
+                s = ud_transaction_resource_validate(e, connection);
             ud_json_destroy(bound);
         }
         const ud_json *retry = ud_member(task, "retry");
@@ -381,7 +383,8 @@ ud_status ud_control_iteration(ud_activation *e, const ud_json *children, uint64
                                .parallel = e->parallel,
                                .transaction = e->transaction,
                                .transaction_serial = e->transaction_serial,
-                               .transaction_connection = e->transaction_connection,
+                               .transaction_epoch = e->transaction_epoch,
+                               .transaction_participants = e->transaction_participants,
                                .event_depth = e->event_depth};
     atomic_init(&iteration.cancelled, 0);
     ud_status result = ud_control_execute(&iteration, children);
@@ -413,7 +416,8 @@ ud_status ud_control_handler(ud_activation *e, const ud_json *flow, const char *
                              .parallel = e->parallel,
                              .transaction = e->transaction,
                              .transaction_serial = e->transaction_serial,
-                             .transaction_connection = e->transaction_connection,
+                             .transaction_epoch = e->transaction_epoch,
+                             .transaction_participants = e->transaction_participants,
                              .event_depth = e->event_depth + 1};
     atomic_init(&handler.cancelled, 0);
     atomic_init(&handler.input_rows, 0);
@@ -536,10 +540,12 @@ static ud_status perform_task(ud_activation *e, const ud_json *task) {
                 d.cancel(instance);
             if (prepared)
                 d.dispose(instance, s);
+            if (!s)
+                s = ud_activation_check(e);
             if (serial)
                 ud_mutex_unlock(&e->execution->serial_tasks_lock);
         }
-        if (s == UD_END || s < UD_OK || s > UD_TIMEOUT)
+        if (s == UD_END || s == UD_MORE || s < UD_OK || s > UD_TRUNCATED)
             s = UD_INVALID; /* Iteration sentinels are not Task outcomes. */
         ud_free(json);
         ud_json_destroy(bound);
@@ -606,7 +612,7 @@ static ud_status task_result(task_run *run) {
         if (!s) {
             ud_task_fact(a, UD_TASK_EXECUTED);
             s = ud_checkpoint_task_done(a);
-            if (!s && a->execution->journal)
+            if (!s && a->execution->journal && !ud_transaction_task_done(a))
                 ud_task_fact(a, UD_TASK_DURABLE);
         }
     }
@@ -661,7 +667,8 @@ static ud_status init_task(ud_activation *parent, const ud_json *definition, tas
     a->parallel = parent->parallel;
     a->transaction = parent->transaction;
     a->transaction_serial = parent->transaction_serial;
-    a->transaction_connection = parent->transaction_connection;
+    a->transaction_epoch = parent->transaction_epoch;
+    a->transaction_participants = parent->transaction_participants;
     atomic_init(&a->cancelled, 0);
     atomic_init(&a->input_rows, 0);
     atomic_init(&a->output_rows, 0);

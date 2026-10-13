@@ -52,6 +52,5 @@ and error batches use the existing Source Snapshot store with a persisted output
 port; both destination paths remain subject to the execution confirmation rules.
 
 Compilation and behavior acceptance for this implementation are pending. SQL
-source/destination isolation, online schema rebinding, transaction coordination,
-and complete recovery are tracked in the existing product model; this contract
+Source isolation, online schema rebinding and complete recovery are tracked in the existing product model; this contract
 does not declare those audit items complete.

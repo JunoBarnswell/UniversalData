@@ -64,6 +64,9 @@ typedef struct ud_host_api {
     int32_t (*field_matches)(const ud_field *, const ud_field *, int32_t);
     ud_status (*compile_scan)(ud_context *, int32_t, ud_string, const ud_batch *, ud_string *);
     ud_status (*compile_bulk_release)(ud_context *, int32_t, const ud_batch *, ud_string *);
+    ud_status (*compile_stage)(ud_context *, int32_t, const ud_write_options *, const ud_batch *,
+                               ud_string, int32_t, ud_string *);
+    ud_status (*random_bytes)(ud_context *, void *, uint32_t);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;

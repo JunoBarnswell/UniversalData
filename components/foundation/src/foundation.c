@@ -60,6 +60,13 @@ ud_status ud_fail(ud_context *ctx, ud_status code, const char *format, ...) {
     }
     return code;
 }
+ud_status ud_context_report(ud_context *ctx, ud_status code, ud_string message) {
+    if (!ctx || code <= UD_END || code > UD_TRUNCATED || code == UD_MORE || !message.data ||
+        !message.length || message.length > 16384 || memchr(message.data, 0, message.length) ||
+        !ud_utf8_valid(message.data, message.length))
+        return UD_INVALID;
+    return ud_fail(ctx, code, "%.*s", (int)message.length, message.data);
+}
 ud_status ud_context_create(const ud_context_options *options, ud_context **out) {
     if (!out)
         return UD_INVALID;

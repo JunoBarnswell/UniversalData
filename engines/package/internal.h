@@ -57,7 +57,8 @@ struct ud_activation {
     const ud_json *event_handlers, *task_definition;
     uint32_t event_depth;
     int transaction_serial;
-    ud_string transaction_connection;
+    int transaction_epoch;
+    const ud_json *transaction_participants;
     void *cancel_instance;
     void (*cancel_callback)(void *);
     uint32_t cancel_pins;
@@ -72,6 +73,7 @@ struct ud_execution {
     ud_context *ctx;
     ud_package *package;
     ud_execution_options options;
+    atomic_int observer_fault;
     ud_registry *registry, *external;
     ud_json *parameters;
     uint8_t parameters_fingerprint[32];
@@ -180,8 +182,17 @@ ud_status ud_connections_release_activation(ud_activation *);
 ud_status ud_connections_diagnostics(ud_execution *, ud_bytes *);
 ud_status ud_transaction_enter(ud_activation *, const ud_json *, int validate);
 ud_status ud_transaction_leave(ud_activation *, ud_status);
+ud_status ud_transaction_fact_position(ud_activation *, ud_string *identity, uint64_t *order);
+int ud_transaction_task_done(ud_activation *);
+ud_status ud_transaction_resource_validate(const ud_activation *, ud_string);
+enum { UD_TX_JOURNAL_MANIFEST = 1, UD_TX_JOURNAL_DECISION = 2, UD_TX_JOURNAL_COMPLETE = 3 };
+ud_status ud_checkpoint_transaction_read(ud_activation *, int32_t, ud_string, char **, uint32_t *);
+ud_status ud_checkpoint_transaction_record(ud_activation *, int32_t, ud_string, ud_string);
+ud_status ud_checkpoint_transaction_facts(ud_activation *, ud_string identity, int commit);
 int ud_transaction_active(const ud_activation *);
-ud_status ud_acquire_file_connection(ud_activation *, ud_string, ud_connection_lease **);
+ud_status ud_transaction_commit_epoch(ud_activation *);
+ud_status ud_acquire_file_connection(ud_activation *, ud_string, uint64_t capabilities,
+                                     ud_connection_lease **);
 ud_status ud_filesystem_register(ud_registry *);
 ud_status ud_process_register(ud_registry *);
 ud_status ud_http_register(ud_registry *);
@@ -199,6 +210,7 @@ ud_status ud_checkpoint_stage(ud_activation *, const char *target, const char *t
                               int *replaying);
 ud_status ud_checkpoint_file_done(ud_activation *, const char *target);
 int ud_checkpoint_batch_seen(ud_activation *, ud_string identity);
+int ud_checkpoint_batch_completed(ud_activation *, ud_string identity);
 ud_status ud_checkpoint_batch(ud_activation *, ud_string identity, const uint8_t digest[32],
                               int committed);
 

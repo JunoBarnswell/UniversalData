@@ -7,6 +7,7 @@
 #include <stdatomic.h>
 typedef struct odbc_state {
     ud_host_api host;
+    struct odbc_state *bulk_sessions, *bulk_next;
     struct ud_mssql_cdc *cdc;
     char *configuration;
     uint32_t configuration_length;
@@ -18,7 +19,7 @@ typedef struct odbc_state {
     ud_batch *schema;
     uint32_t batch_size;
     uint64_t capabilities;
-    int dialect, ansi, utc, transaction, broken, array_parameters;
+    int dialect, ansi, utc, transaction, broken, array_parameters, bulk_session;
     atomic_int cancelled;
     void *check_user;
     ud_status (*check)(void *);
@@ -47,6 +48,11 @@ ud_status ud_odbc_rollback(void *);
 ud_status ud_odbc_command(odbc_state *, const char *);
 ud_status ud_odbc_execute(void *, const ud_read_options *, uint64_t *);
 ud_status ud_odbc_initialize(const ud_host_api *, const char *, uint32_t, void **);
+ud_status ud_odbc_initialize_bulk(const ud_host_api *, const char *, uint32_t, void **);
+#ifdef UD_WITH_MSSQL_BCP
+ud_status ud_mssql_bulk_stage(odbc_state *, const ud_write_options *, const ud_batch *,
+                              const uint8_t digest[32], odbc_state **, ud_string *);
+#endif
 void ud_odbc_destroy(void *);
 void ud_odbc_cancel(void *);
 ud_status ud_odbc_discover(void *, ud_string, ud_batch **);
