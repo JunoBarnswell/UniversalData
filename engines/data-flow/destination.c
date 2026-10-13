@@ -242,6 +242,7 @@ ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input, const ud_batc
                           b->keys,
                           b->key_count};
     o.current_column = UINT32_MAX;
+    o.load_mode = b->load_mode;
     o.before = before;
     int32_t *operations = b->mode == UD_WRITE_CHANGESET
                               ? ud_alloc(b->context.memory, input->rows * sizeof(*operations))

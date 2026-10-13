@@ -44,7 +44,10 @@ typedef struct mysql_state {
     uint32_t batch_size;
     char *host_name, *user, *password, *database, *ca, *cert, *key;
     uint32_t port, timeout;
-    int utc, transaction, broken;
+    int utc, transaction, broken, bulk_allowed;
+    ud_bulk_reader *bulk;
+    ud_status bulk_status;
+    int bulk_requested;
     atomic_int cancelled;
     pthread_mutex_t cancellation;
     void *check_user;
@@ -807,6 +810,59 @@ static ud_status apply_statement(mysql_state *p, const ud_write_options *options
     p->host.statement_clear(&plan);
     return status;
 }
+/* The vendor LOCAL INFILE callbacks accept only the current Native Batch
+ * token. No callback opens a filesystem path requested by a server. */
+static int bulk_init(void **out, const char *filename, void *user) {
+    mysql_state *p = user;
+    *out = p;
+    if (!p->bulk || p->bulk_requested || strcmp(filename, "ud-native-batch")) {
+        p->bulk_status = UD_AUTH;
+        return 1;
+    }
+    p->bulk_requested = 1;
+    p->bulk_status = check(p);
+    return p->bulk_status ? 1 : 0;
+}
+static int bulk_read(void *user, char *buffer, unsigned int capacity) {
+    mysql_state *p = user;
+    uint32_t length = 0;
+    p->bulk_status = check(p);
+    if (!p->bulk_status)
+        p->bulk_status = p->host.bulk_read(p->bulk, buffer, capacity, &length);
+    if (p->bulk_status == UD_END) {
+        p->bulk_status = UD_OK;
+        return 0;
+    }
+    return p->bulk_status ? -1 : (int)length;
+}
+static void bulk_end(void *user) {
+    (void)user;
+}
+static int bulk_error(void *user, char *buffer, unsigned int capacity) {
+    (void)user;
+    const char *message = "Native controlled bulk input failed";
+    if (capacity)
+        snprintf(buffer, capacity, "%s", message);
+    return 1;
+}
+static ud_status native_load(mysql_state *p, const ud_write_options *o, const ud_batch *batch) {
+    ud_string sql = {0};
+    ud_status status = p->host.compile_bulk(p->host.context, UD_MYSQL_DIALECT, o, batch, &sql);
+    p->bulk_requested = 0;
+    p->bulk_status = UD_OK;
+    if (!status && mysql_real_query(p->db, sql.data, sql.length))
+        status = p->bulk_status ? p->bulk_status : failure(p, NULL);
+    if (!status && (!p->bulk_requested || mysql_warning_count(p->db) ||
+                    mysql_affected_rows(p->db) != p->host.rows(batch)))
+        status = UD_SCHEMA; /* LOCAL INFILE may downgrade record failures to warnings. */
+    p->host.deallocate((void *)sql.data);
+    return status;
+}
+static uint64_t session_capabilities(void *state) {
+    mysql_state *p = state;
+    return p->bulk_allowed ? ud_mysql_connector.capabilities
+                           : ud_mysql_connector.capabilities & ~(uint64_t)UD_CONNECT_NATIVE_BULK;
+}
 static ud_status write_batch(void *state, ud_string tenant, const ud_write_options *o,
                              const ud_batch *batch, const uint8_t digest[32]) {
     mysql_state *p = state;
@@ -817,6 +873,13 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (o->mode == UD_WRITE_CHANGESET && p->transaction)
         return UD_UNSUPPORTED;
     ud_status s = check(p);
+    if (!s && o->load_mode == UD_LOAD_NATIVE && !p->bulk_allowed)
+        s = UD_UNSUPPORTED;
+    if (!s && o->mode == UD_WRITE_APPEND && o->load_mode != UD_LOAD_PARAMETERS && p->bulk_allowed) {
+        s = p->host.bulk_open(p->host.context, batch, UD_MYSQL_DIALECT, &p->bulk);
+        if (s == UD_UNSUPPORTED && o->load_mode == UD_LOAD_AUTO)
+            s = UD_OK;
+    }
     int own = !p->transaction;
     /* Prove InnoDB before creating the receipt intent or mutating any business row. */
     if (!s)
@@ -839,7 +902,9 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
             chunk = 1024;
         if (!chunk)
             s = UD_RESOURCE;
-        for (uint32_t row = 0; !s && row < rows;) {
+        if (!s && p->bulk)
+            s = native_load(p, o, batch);
+        for (uint32_t row = 0; !s && !p->bulk && row < rows;) {
             s = check(p);
             if (s)
                 break;
@@ -855,6 +920,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
             s = receipt_insert(p, tenant, o, digest);
     }
     p->host.deallocate((void *)existing.source_position.data);
+    p->host.bulk_close(p->bulk);
+    p->bulk = NULL;
     if (own && p->transaction) {
         if (!s)
             s = commit(p);
@@ -870,7 +937,7 @@ static MYSQL *connect_session(mysql_state *p) {
     MYSQL *db = mysql_init(NULL);
     if (!db)
         return NULL;
-    unsigned int local = 0, timeout = p->timeout;
+    unsigned int local = 1, timeout = p->timeout;
     unsigned int protocol = MYSQL_PROTOCOL_TCP;
     mysql_options(db, MYSQL_OPT_PROTOCOL, &protocol);
 #if defined(UD_MARIADB_CLIENT)
@@ -880,6 +947,7 @@ static MYSQL *connect_session(mysql_state *p) {
     mysql_options(db, MYSQL_OPT_READ_TIMEOUT, &timeout);
     mysql_options(db, MYSQL_OPT_WRITE_TIMEOUT, &timeout);
     mysql_options(db, MYSQL_OPT_LOCAL_INFILE, &local);
+    mysql_set_local_infile_handler(db, bulk_init, bulk_read, bulk_end, bulk_error, p);
 #if defined(UD_MARIADB_CLIENT)
     mysql_options(db, MYSQL_OPT_RECONNECT, &reconnect);
 #endif
@@ -1463,6 +1531,8 @@ void ud_mysql_destroy(void *state) {
         return;
     cdc_close(p);
     read_close(p);
+    p->host.bulk_close(p->bulk);
+    p->bulk = NULL;
     if (p->db)
         mysql_close(p->db);
     if (p->cancel_db)
@@ -1557,6 +1627,16 @@ ud_status ud_mysql_initialize(const ud_host_api *h, const char *configuration, u
     }
     if (!s)
         s = session_policy(p);
+    if (!s && mysql_query(p->db, "SHOW GLOBAL VARIABLES LIKE 'local_infile'"))
+        s = failure(p, NULL);
+    if (!s) {
+        MYSQL_RES *result = mysql_store_result(p->db);
+        MYSQL_ROW row = result ? mysql_fetch_row(result) : NULL;
+        if (!result)
+            s = failure(p, NULL);
+        p->bulk_allowed = row && row[1] && (!strcmp(row[1], "ON") || !strcmp(row[1], "1"));
+        mysql_free_result(result);
+    }
     h->json_destroy(j);
     if (s) {
         ud_mysql_destroy(p);
@@ -1572,7 +1652,7 @@ const ud_connector_api ud_mysql_connector = {
                     UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
                     UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_CDC |
                     UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
-                    UD_CONNECT_PROVISION,
+                    UD_CONNECT_PROVISION | UD_CONNECT_NATIVE_BULK,
     .test = test,
     .discover = discover,
     .read_open = read_open,
@@ -1588,6 +1668,7 @@ const ud_connector_api ud_mysql_connector = {
     .metadata = metadata,
     .set_control = set_control,
     .reset_session = reset,
+    .session_capabilities = session_capabilities,
     .provision = provision,
     .parameter_style = UD_SQL_PARAMETER_QUESTION,
     .metadata_dialect = UD_MYSQL_DIALECT,

@@ -301,12 +301,19 @@ static ud_status test_connection(void *state) {
     PQclear(r);
     return s;
 }
+static ud_status table_name(postgres_state *p, ud_string table, char **out) {
+    ud_string name = {0};
+    ud_status status = p->host.table_identifier(p->host.context, UD_SQL_POSTGRESQL, table, &name);
+    *out = status ? NULL : (char *)name.data;
+    return status;
+}
 static ud_status discover(void *state, ud_string table, ud_batch **out) {
     postgres_state *p = state;
     ud_host_api *h = &p->host;
-    char *quoted = plugin_identifier(h, table);
-    if (!quoted)
-        return UD_RESOURCE;
+    char *quoted = NULL;
+    ud_status named = table_name(p, table, &quoted);
+    if (named)
+        return named;
     const char *args[] = {quoted};
     PGresult *r = query(
         p,
@@ -743,9 +750,10 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
 }
 static ud_status validate_target(postgres_state *p, ud_string table, const ud_batch *batch) {
     ud_host_api *h = &p->host;
-    char *name = plugin_identifier(h, table);
-    if (!name)
-        return UD_RESOURCE;
+    char *name = NULL;
+    ud_status named = table_name(p, table, &name);
+    if (named)
+        return named;
     const char *args[] = {name};
     PGresult *r = query(p,
                         "SELECT attname,atttypid::text,atttypmod::text FROM pg_attribute WHERE "
@@ -797,6 +805,66 @@ static ud_status validate_target(postgres_state *p, ud_string table, const ud_ba
     return s ? h->report(h->context, s, "target schema would narrow or coerce a typed value")
              : UD_OK;
 }
+/* COPY transports the same sealed typed Batch over the authenticated libpq
+ * session. Receipt reservation and business writes stay in the same transaction. */
+static ud_status copy_batch(postgres_state *p, const ud_write_options *options,
+                            const ud_batch *batch, ud_bulk_reader *reader) {
+    ud_host_api *h = &p->host;
+    ud_string sql = {0};
+    ud_status status = h->compile_bulk(h->context, UD_SQL_POSTGRESQL, options, batch, &sql);
+    PGresult *result = !status ? query(p, sql.data, 0, NULL, NULL, NULL, NULL, 0) : NULL;
+    h->deallocate((void *)sql.data);
+    if (!status && (!result || PQresultStatus(result) != PGRES_COPY_IN))
+        status = pg_failure(p, result);
+    int copying = !status;
+    PQclear(result);
+    char buffer[65536];
+    while (!status) {
+        status = control(p);
+        uint32_t length = 0;
+        if (!status)
+            status = h->bulk_read(reader, buffer, sizeof(buffer), &length);
+        if (status == UD_END) {
+            status = UD_OK;
+            break;
+        }
+        if (status)
+            break;
+        int accepted;
+        do {
+            accepted = PQputCopyData(p->db, buffer, (int)length);
+            if (!accepted && !wait_result(p)) {
+                status = pg_failure(p, NULL);
+                break;
+            }
+        } while (!accepted);
+        if (!status && accepted < 0)
+            status = pg_failure(p, NULL);
+    }
+    if (copying) {
+        int finished;
+        do {
+            finished = PQputCopyEnd(p->db, status ? "Native bulk input failed" : NULL);
+            if (!finished && !wait_result(p)) {
+                if (!status)
+                    status = pg_failure(p, NULL);
+                break;
+            }
+        } while (!finished);
+        if (finished < 0 && !status)
+            status = pg_failure(p, NULL);
+        while (wait_result(p) && (result = PQgetResult(p->db)) != NULL) {
+            if (!status && PQresultStatus(result) != PGRES_COMMAND_OK)
+                status = pg_failure(p, result);
+            if (!status && strtoull(PQcmdTuples(result), NULL, 10) != h->rows(batch))
+                status = UD_CORRUPT;
+            PQclear(result);
+        }
+        if (!status && (p->control_status || p->broken))
+            status = pg_failure(p, NULL);
+    }
+    return status;
+}
 static ud_status write_batch(void *state, ud_string tenant, const ud_write_options *options,
                              const ud_batch *batch, const uint8_t digest[32]) {
     postgres_state *p = state;
@@ -808,13 +876,24 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     atomic_store(&p->cancelled, 0);
     if (options->mode == UD_WRITE_CHANGESET && p->transaction)
         return UD_UNSUPPORTED;
-    int own = !p->transaction;
-    ud_status s = own ? command(p, "BEGIN") : UD_OK;
+    ud_bulk_reader *bulk = NULL;
+    ud_status s = UD_OK;
+    if (options->mode == UD_WRITE_APPEND && options->load_mode != UD_LOAD_PARAMETERS) {
+        s = h->bulk_open(h->context, batch, UD_SQL_POSTGRESQL, &bulk);
+        if (s == UD_UNSUPPORTED && options->load_mode == UD_LOAD_AUTO)
+            s = UD_OK;
+    }
     if (s)
         return s;
-    char *table = plugin_identifier(h, options->table);
-    if (!s && !table)
-        s = UD_RESOURCE;
+    int own = !p->transaction;
+    s = own ? command(p, "BEGIN") : UD_OK;
+    if (s) {
+        h->bulk_close(bulk);
+        return s;
+    }
+    char *table = NULL;
+    if (!s)
+        s = table_name(p, options->table, &table);
     if (!s) {
         size_t size = strlen(table) + 64;
         char *lock = h->allocate(h->context, size);
@@ -867,7 +946,11 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         s = UD_RESOURCE;
     if (limit > 1024)
         limit = 1024;
-    for (uint32_t row = 0; !s && !existing && row < h->rows(batch);) {
+    if (!s && !existing && bulk)
+        s = copy_batch(p, options, batch, bulk);
+    int used_copy = bulk != NULL;
+    h->bulk_close(bulk);
+    for (uint32_t row = 0; !s && !existing && !used_copy && row < h->rows(batch);) {
         s = control(p);
         uint32_t count = options->mode == UD_WRITE_CHANGESET ? 1 : h->rows(batch) - row;
         if (count > limit)
@@ -1185,7 +1268,8 @@ static const ud_connector_api connector = {
                     UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
                     UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL |
                     UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC |
-                    UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
+                    UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION |
+                    UD_CONNECT_NATIVE_BULK,
     .test = test_connection,
     .discover = discover,
     .read_open = open_read,

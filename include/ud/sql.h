@@ -6,24 +6,45 @@ extern "C" {
 #endif
 enum { UD_SQL_PARAMETER_NUMBERED = 1, UD_SQL_PARAMETER_QUESTION, UD_SQL_PARAMETER_NAMED };
 enum { UD_SQL_AFTER = 1, UD_SQL_BEFORE };
-typedef struct ud_sql_parameter { uint32_t row, column, source; } ud_sql_parameter;
+typedef struct ud_sql_parameter {
+    uint32_t row, column, source;
+} ud_sql_parameter;
 typedef struct ud_sql_statement {
     ud_string sql; /* Owned SQL contains identifiers and placeholders only. */
     ud_sql_parameter *parameters;
     uint32_t parameter_count;
 } ud_sql_statement;
+typedef struct ud_bulk_reader ud_bulk_reader;
+/* Native bounded typed text transport for PostgreSQL COPY and MySQL/MariaDB
+ * controlled LOCAL INFILE. No filename, whole-batch materialization or driver
+ * side type formatter. Reader retains the sealed Batch; host owns its context.
+ * PG Binary is exact bytea hex, MySQL Binary has no character conversion;
+ * NULL, delimiters, backslashes, record separators and NUL are distinguished. */
+UD_API ud_status ud_sql_bulk_open(ud_context *, const ud_batch *, int32_t dialect,
+                                  ud_bulk_reader **);
+UD_API ud_status ud_sql_bulk_read(ud_bulk_reader *, void *, uint32_t capacity, uint32_t *length);
+UD_API void ud_sql_bulk_close(ud_bulk_reader *);
+UD_API ud_status ud_sql_compile_bulk(ud_context *, int32_t dialect, const ud_write_options *,
+                                     const ud_batch *, ud_string *);
+/* Same quoted one/two-part table identity used by prepared and bulk grammar. */
+UD_API ud_status ud_sql_table_identifier(ud_context *, int32_t dialect, ud_string, ud_string *);
 /* Single Native write grammar for every provider. A Changeset statement covers
  * exactly one row; ordinary writes may compile bounded multi-row statements.
  * Providers bind the returned parameter references without formatting values. */
 UD_API uint32_t ud_sql_parameter_limit(int32_t dialect);
-UD_API ud_status ud_sql_compile_write(ud_context *,int32_t dialect,int32_t parameter_style,
-                                      const ud_write_options *,const ud_batch *,uint32_t first,
-                                      uint32_t rows,ud_sql_statement *);
-UD_API ud_status ud_sql_compile_preimage(ud_context *,int32_t,int32_t,const ud_write_options *,const ud_batch *,uint32_t,ud_sql_statement *);
-UD_API ud_status ud_sql_compile_scan(ud_context *,int32_t,ud_string,const ud_batch *,ud_string *);
-UD_API ud_status ud_sql_compile_lookup(ud_context *,int32_t,int32_t,ud_string,const ud_batch *,const uint32_t *,const ud_batch *,const uint32_t *,uint32_t,uint32_t,uint32_t,ud_sql_statement *);
-UD_API ud_status ud_write_validate(const ud_write_options *,const ud_batch *);
-UD_API ud_status ud_write_digest(ud_context *,ud_string tenant,ud_string resource,const ud_write_options *,const ud_batch *,uint8_t [32]);
+UD_API ud_status ud_sql_compile_write(ud_context *, int32_t dialect, int32_t parameter_style,
+                                      const ud_write_options *, const ud_batch *, uint32_t first,
+                                      uint32_t rows, ud_sql_statement *);
+UD_API ud_status ud_sql_compile_preimage(ud_context *, int32_t, int32_t, const ud_write_options *,
+                                         const ud_batch *, uint32_t, ud_sql_statement *);
+UD_API ud_status ud_sql_compile_scan(ud_context *, int32_t, ud_string, const ud_batch *,
+                                     ud_string *);
+UD_API ud_status ud_sql_compile_lookup(ud_context *, int32_t, int32_t, ud_string, const ud_batch *,
+                                       const uint32_t *, const ud_batch *, const uint32_t *,
+                                       uint32_t, uint32_t, uint32_t, ud_sql_statement *);
+UD_API ud_status ud_write_validate(const ud_write_options *, const ud_batch *);
+UD_API ud_status ud_write_digest(ud_context *, ud_string tenant, ud_string resource,
+                                 const ud_write_options *, const ud_batch *, uint8_t[32]);
 UD_API void ud_sql_statement_clear(ud_sql_statement *);
 #ifdef __cplusplus
 }

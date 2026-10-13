@@ -166,7 +166,12 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_sql_statement_clear,
                             ud_value_compare,
                             ud_sql_compile_preimage,
-                            ud_schema_from_metadata};
+                            ud_schema_from_metadata,
+                            ud_sql_bulk_open,
+                            ud_sql_bulk_read,
+                            ud_sql_bulk_close,
+                            ud_sql_compile_bulk,
+                            ud_sql_table_identifier};
     *out = p;
     return UD_OK;
 }
@@ -624,6 +629,11 @@ ud_status ud_connection_write(ud_connection *c, const ud_write_options *options,
                    : options->mode == UD_WRITE_DELETE ? UD_CONNECT_DELETE
                                                       : UD_CONNECT_CHANGESET;
     if (!(c->capabilities & cap) || !c->api->write)
+        return UD_UNSUPPORTED;
+    if (options->load_mode < UD_LOAD_AUTO || options->load_mode > UD_LOAD_NATIVE)
+        return UD_INVALID;
+    if (options->load_mode == UD_LOAD_NATIVE &&
+        (!(c->capabilities & UD_CONNECT_NATIVE_BULK) || options->mode != UD_WRITE_APPEND))
         return UD_UNSUPPORTED;
     if (c->transaction && options->mode == UD_WRITE_CHANGESET)
         return UD_UNSUPPORTED;

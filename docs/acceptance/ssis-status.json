@@ -19,11 +19,11 @@
   },
   "candidate": {
     "branch": "codex/etl-ssis-product-alignment",
-    "state": "2.0 architecture reviewed; unified contract implementation in progress",
+    "state": "2.0 implementation in progress: identity, indexed Native Catalog and controlled remote bulk transports; acceptance NotRun",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,
-    "pullRequest": null
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/6"
   },
   "remoteCI": {
     "state": "NotRun",
@@ -275,7 +275,7 @@
       "phase": 4,
       "name": "PostgreSQL COPY loading",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -286,14 +286,15 @@
       "acceptance": "A high-volume PostgreSQL destination is bound. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Real remote libpq COPY FROM STDIN for native append shares destination, typed streaming encoder, cancellation, transaction and receipt. Explicit native mode refuses unsupported operations; staging for upsert and real acceptance remain pending."
     },
     {
       "id": "ETL-014",
       "phase": 4,
       "name": "MySQL and MariaDB native loading",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -305,7 +306,8 @@
       "acceptance": "A native bulk destination receives controlled input bytes. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Genuine MySQL/MariaDB LOCAL INFILE callbacks accept only a controlled native Batch token, never a server filename. Session capability reflects local_infile availability; warnings/row-count mismatches fail and roll back with the receipt. Native append implemented; staging and real acceptance remain pending."
     },
     {
       "id": "ETL-015",
@@ -323,7 +325,8 @@
       "acceptance": "A SQL Server driver declares the native BCP loading capability. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Required genuine remote native transport; parameter batches do not count as BCP or Direct Path. Not implemented or verified in this source batch."
     },
     {
       "id": "ETL-016",
@@ -341,7 +344,8 @@
       "acceptance": "Direct Path independently commits staging before transactional business writes. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Required genuine remote native transport; parameter batches do not count as BCP or Direct Path. Not implemented or verified in this source batch."
     },
     {
       "id": "ETL-017",
@@ -428,7 +432,7 @@
       "phase": 6,
       "name": "SQLite indexed Native Catalog",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Implemented",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -440,7 +444,8 @@
       "acceptance": "Catalog versions, executions or events are queried with concurrent workers. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native SQLite WAL/transactions/indexes replace .udc scans; immutable versions, keyed digests, tenant isolation and bounded pagination share the current Catalog API. Behavior validation NotRun."
     },
     {
       "id": "ETL-022",

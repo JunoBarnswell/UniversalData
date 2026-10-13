@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 2.0.0 / ABI 10；2.0 architecture reviewed; unified contract implementation in progress。
+SDK 2.0.0 / ABI 10；2.0 implementation in progress: identity, indexed Native Catalog and controlled remote bulk transports; acceptance NotRun。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
@@ -20,15 +20,15 @@ SDK 2.0.0 / ABI 10；2.0 architecture reviewed; unified contract implementation 
 | ETL-010 CDC TRUNCATE semantics | Planned / NotRun |
 | ETL-011 Recoverable transaction participants | Planned / NotRun |
 | ETL-012 Durable coordinator decisions | Planned / NotRun |
-| ETL-013 PostgreSQL COPY loading | Planned / NotRun |
-| ETL-014 MySQL and MariaDB native loading | Planned / NotRun |
+| ETL-013 PostgreSQL COPY loading | Partial / NotRun |
+| ETL-014 MySQL and MariaDB native loading | Partial / NotRun |
 | ETL-015 SQL Server BCP loading | Planned / NotRun |
 | ETL-016 OCI staged Direct Path loading | Planned / NotRun |
 | ETL-017 Enterprise file layouts and publication | Planned / NotRun |
 | ETL-018 Incremental overlap target capability proof | Planned / NotRun |
 | ETL-019 Unified file and database discovery | Planned / NotRun |
 | ETL-020 One SDK and protocol family | Implemented / NotRun |
-| ETL-021 SQLite indexed Native Catalog | Planned / NotRun |
+| ETL-021 SQLite indexed Native Catalog | Implemented / NotRun |
 | ETL-022 Durable execution logs | Planned / NotRun |
 | ETL-023 Deployment and execution management | Planned / NotRun |
 | ETL-024 CLI resource policy | Planned / NotRun |

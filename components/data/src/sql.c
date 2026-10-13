@@ -389,15 +389,19 @@ static ud_status last_rows(writer *w, uint32_t first, uint32_t *count) {
 }
 uint32_t ud_sql_parameter_limit(int32_t dialect) {
     switch (dialect) {
-    case UD_SQL_SQLSERVER: return 2100;
-    case UD_SQL_SQLITE: return 32766;
+    case UD_SQL_SQLSERVER:
+        return 2100;
+    case UD_SQL_SQLITE:
+        return 32766;
     case UD_SQL_POSTGRESQL:
     case UD_SQL_MYSQL:
     case UD_SQL_MARIADB:
     case UD_SQL_ORACLE:
     case UD_SQL_DB2:
-    case UD_SQL_DUCKDB: return 65535;
-    default: return 0;
+    case UD_SQL_DUCKDB:
+        return 65535;
+    default:
+        return 0;
     }
 }
 ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
@@ -584,7 +588,8 @@ ud_status ud_write_validate(const ud_write_options *o, const ud_batch *b) {
     if (!b->sealed || !o->table.data || !o->table.length || !o->job.data || !o->job.length ||
         !o->batch_id.data || !o->batch_id.length ||
         (o->source_position.length && !o->source_position.data) || o->mode < UD_WRITE_APPEND ||
-        o->mode > UD_WRITE_CHANGESET || o->key_count > b->columns || (o->key_count && !o->keys))
+        o->mode > UD_WRITE_CHANGESET || o->load_mode < UD_LOAD_AUTO ||
+        o->load_mode > UD_LOAD_NATIVE || o->key_count > b->columns || (o->key_count && !o->keys))
         return UD_INVALID;
     if (o->mode != UD_WRITE_APPEND && !o->key_count)
         return UD_SCHEMA;
@@ -766,4 +771,64 @@ ud_status ud_sql_compile_scan(ud_context *ctx, int32_t dialect, ud_string table_
     }
     ud_bytes_clear(&w.text);
     return status;
+}
+
+/* Transport grammar is compiled by the same Native SQL owner as parameterized writes. */
+ud_status ud_sql_compile_bulk(ud_context *ctx, int32_t dialect, const ud_write_options *options,
+                              const ud_batch *batch, ud_string *out) {
+    if (!ctx || !out)
+        return UD_INVALID;
+    *out = (ud_string){0};
+    UD_TRY(ud_write_validate(options, batch));
+    if (options->mode != UD_WRITE_APPEND ||
+        (dialect != UD_SQL_POSTGRESQL && dialect != UD_SQL_MYSQL && dialect != UD_SQL_MARIADB))
+        return UD_UNSUPPORTED;
+    writer w = {
+        .ctx = ctx, .text = {.ctx = ctx}, .options = options, .batch = batch, .dialect = dialect};
+    ud_status s = put(&w, dialect == UD_SQL_POSTGRESQL
+                              ? "COPY "
+                              : "LOAD DATA LOCAL INFILE 'ud-native-batch' INTO TABLE ");
+    if (!s)
+        s = table(&w);
+    if (!s && dialect != UD_SQL_POSTGRESQL)
+        s = put(&w, " CHARACTER SET binary FIELDS TERMINATED BY X'09' ESCAPED BY X'5C' LINES "
+                    "TERMINATED BY X'0A' ");
+    if (!s)
+        s = put(&w, "(");
+    if (!s)
+        s = fields(&w, NULL);
+    if (!s)
+        s = put(&w, ")");
+    if (!s && dialect == UD_SQL_POSTGRESQL)
+        s = put(&w, " FROM STDIN WITH (FORMAT text)");
+    if (!s)
+        s = ud_bytes_put(&w.text, "", 1);
+    if (!s && w.text.size > UINT32_MAX)
+        s = UD_OVERFLOW;
+    if (!s) {
+        *out = (ud_string){(char *)w.text.data, (uint32_t)w.text.size - 1};
+        w.text.data = NULL;
+    }
+    ud_bytes_clear(&w.text);
+    return s;
+}
+ud_status ud_sql_table_identifier(ud_context *ctx, int32_t dialect, ud_string name,
+                                  ud_string *out) {
+    if (!ctx || !out || !name.data || !name.length || memchr(name.data, 0, name.length) ||
+        dialect < UD_SQL_CANONICAL || dialect > UD_SQL_DUCKDB)
+        return UD_INVALID;
+    *out = (ud_string){0};
+    ud_write_options options = {.table = name};
+    writer w = {.ctx = ctx, .text = {.ctx = ctx}, .options = &options, .dialect = dialect};
+    ud_status s = table(&w);
+    if (!s)
+        s = ud_bytes_put(&w.text, "", 1);
+    if (!s && w.text.size > UINT32_MAX)
+        s = UD_OVERFLOW;
+    if (!s) {
+        *out = (ud_string){(char *)w.text.data, (uint32_t)w.text.size - 1};
+        w.text.data = NULL;
+    }
+    ud_bytes_clear(&w.text);
+    return s;
 }

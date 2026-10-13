@@ -54,6 +54,12 @@ typedef struct ud_host_api {
                                   const ud_batch *, uint32_t, ud_sql_statement *);
     ud_status (*schema_from_metadata)(ud_context *, const ud_batch *, ud_string, int32_t,
                                       ud_batch **);
+    ud_status (*bulk_open)(ud_context *, const ud_batch *, int32_t, ud_bulk_reader **);
+    ud_status (*bulk_read)(ud_bulk_reader *, void *, uint32_t, uint32_t *);
+    void (*bulk_close)(ud_bulk_reader *);
+    ud_status (*compile_bulk)(ud_context *, int32_t, const ud_write_options *, const ud_batch *,
+                              ud_string *);
+    ud_status (*table_identifier)(ud_context *, int32_t, ud_string, ud_string *);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;

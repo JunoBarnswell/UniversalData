@@ -25,7 +25,7 @@ int main(void) {
                                     .abi_version = UD_ABI_VERSION,
                                     .context = {.struct_size = sizeof(ud_context_options),
                                                 .abi_version = UD_ABI_VERSION,
-                                                .memory_limit = 1024 * 1024},
+                                                .memory_limit = 16 * 1024 * 1024},
                                     .edge_capacity = 1,
                                     .max_batch_rows = 1,
                                     .max_depth = 2,

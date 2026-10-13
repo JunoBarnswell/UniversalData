@@ -35,6 +35,17 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                                                 : 0;
         if (!s && !b->mode)
             s = UD_SCHEMA;
+        if (!s && kind == SQL_SINK && ud_member(b->config, "loadMode")) {
+            ud_string load = {0};
+            s = ud_json_string(ud_member(b->config, "loadMode"), &load);
+            b->load_mode = ud_named(load, "auto")         ? UD_LOAD_AUTO
+                           : ud_named(load, "parameters") ? UD_LOAD_PARAMETERS
+                           : ud_named(load, "native")     ? UD_LOAD_NATIVE
+                                                          : -1;
+            if (!s && (b->load_mode < 0 ||
+                       (b->load_mode == UD_LOAD_NATIVE && b->mode != UD_WRITE_APPEND)))
+                s = UD_UNSUPPORTED;
+        }
         ud_string before = {"before", 6};
         if (!s && ud_member(b->config, "beforeField"))
             s = ud_json_string(ud_member(b->config, "beforeField"), &before);
@@ -89,8 +100,11 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                    : b->mode == UD_WRITE_UPSERT ? UD_CONNECT_UPSERT
                    : b->mode == UD_WRITE_DELETE ? UD_CONNECT_DELETE
                                                 : UD_CONNECT_CHANGESET;
-        if (kind == SQL_SINK)
+        if (kind == SQL_SINK) {
             caps |= UD_CONNECT_METADATA | UD_CONNECT_RECEIPTS;
+            if (b->load_mode == UD_LOAD_NATIVE)
+                caps |= UD_CONNECT_NATIVE_BULK;
+        }
         if (!s)
             s = kind == REST_SOURCE || kind == REST_SINK
                     ? ud_acquire_http_connection(c->activation, connection, &b->lease)
@@ -489,7 +503,9 @@ static const char *configuration_schema(int kind) {
     case SQL_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
                "\"table\":{\"type\":\"string\"},\"mode\":{\"type\":\"string\",\"enum\":[\"append\","
-               "\"upsert\",\"delete\",\"changeset\"]},\"beforeField\":{\"type\":\"string\"},"
+               "\"upsert\",\"delete\",\"changeset\"]},\"loadMode\":{\"type\":\"string\","
+               "\"enum\":[\"auto\",\"native\",\"parameters\"]},\"beforeField\":{\"type\":"
+               "\"string\"},"
                "\"keys\":{\"type\":"
                "\"array\"},\"schemaPolicy\":{\"type\":\"object\"},\"provisionReceipts\":{\"type\":"
                "\"boolean\"}},\"required\":[\"connection\","

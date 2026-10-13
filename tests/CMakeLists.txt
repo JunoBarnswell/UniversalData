@@ -15,6 +15,9 @@ if(TARGET ud_foundation)
   add_test(NAME json_document COMMAND test_json)
 endif()
 if(TARGET ud_columnar)
+  add_executable(test_sql_bulk sql_bulk.c)
+  target_link_libraries(test_sql_bulk PRIVATE ud_columnar)
+  add_test(NAME sql_bulk_streaming COMMAND test_sql_bulk)
   add_executable(test_columnar columnar.c)
   target_link_libraries(test_columnar PRIVATE ud_columnar)
   add_test(NAME columnar COMMAND test_columnar)
@@ -263,4 +266,31 @@ if(TARGET test_next_phase_queries AND TARGET ud_connector_sqlite)
     ${CMAKE_CURRENT_SOURCE_DIR}/advanced_metadata.py --query $<TARGET_FILE:test_next_phase_queries>
     --sqlite $<TARGET_FILE:ud_connector_sqlite>)
   set_tests_properties(advanced_catalog_ten_table_template PROPERTIES TIMEOUT 180)
+endif()
+
+# Advanced SQL/CDC are actual registered acceptance entries, not unregistered
+# binaries. No credential is stored in a CMake cache or echoed to CTest output.
+if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  foreach(driver postgresql mysql mariadb odbc oracle_oci)
+    if(TARGET ud_connector_${driver})
+      string(TOUPPER "${driver}" fixture)
+      foreach(suite sql cdc)
+        add_test(NAME integration_${driver}_${suite} COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
+          $<TARGET_FILE:test_advanced_${suite}> $<TARGET_FILE:ud_connector_${driver}>)
+        set_tests_properties(integration_${driver}_${suite} PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;${driver}"
+          RESOURCE_LOCK ud_integration_${driver})
+      endforeach()
+      if(driver MATCHES "^(postgresql|mysql|mariadb)$")
+        add_test(NAME integration_${driver}_native_bulk COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
+          $<TARGET_FILE:test_advanced_sql> $<TARGET_FILE:ud_connector_${driver}> native)
+        set_tests_properties(integration_${driver}_native_bulk PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;native-bulk;${driver}"
+          RESOURCE_LOCK ud_integration_${driver})
+      endif()
+    endif()
+  endforeach()
 endif()

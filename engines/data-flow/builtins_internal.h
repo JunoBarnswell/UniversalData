@@ -93,7 +93,7 @@ typedef struct builtin {
     uint64_t number, source_position, source_begin, source_end, written_rows, written_errors;
     uint32_t source_partitions, source_partition;
     uint32_t *keys, key_count, *write_indices, before_column;
-    int mode;
+    int mode, load_mode;
     struct ud_rule_delivery *delivery;
     ud_cursor *cursor;
     ud_batch *actual_schema, *write_schema, *parameters;

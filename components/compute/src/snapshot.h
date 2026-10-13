@@ -7,7 +7,9 @@ static inline ud_status ud_snapshot_batch(ud_context *ctx, const ud_bytes *bytes
     if (bytes->size > UINT32_MAX)
         return UD_RESOURCE;
     ud_field field = {.name = "nativeState", .name_length = 11, .type = UD_BINARY};
-    UD_TRY(ud_id_make(ctx, (ud_string){"native.state", 12}, (ud_string){"version9", 8},
+    UD_TRY(ud_id_make(ctx, (ud_string){"native.state", 12},
+                      (ud_string){"version" UD_PROTOCOL_VERSION_TEXT,
+                                  sizeof("version" UD_PROTOCOL_VERSION_TEXT) - 1},
                       &field.identity));
     ud_value value = {
         .type = UD_BINARY, .text = (const char *)bytes->data, .text_length = (uint32_t)bytes->size};

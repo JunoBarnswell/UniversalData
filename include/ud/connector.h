@@ -26,7 +26,8 @@ enum {
     UD_CONNECT_PREPARED = 32768,
     UD_CONNECT_BATCH_WRITE = 65536,
     UD_CONNECT_NATIVE_CDC = 131072,
-    UD_CONNECT_PROVISION = 262144
+    UD_CONNECT_PROVISION = 262144,
+    UD_CONNECT_NATIVE_BULK = 524288 /* Genuine native append transport; not parameter batching. */
 };
 enum { UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE };
 enum {
@@ -46,6 +47,7 @@ typedef struct ud_metadata_options {
     uint32_t limit;
 } ud_metadata_options;
 enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3, UD_WRITE_CHANGESET = 4 };
+enum { UD_LOAD_AUTO = 0, UD_LOAD_PARAMETERS = 1, UD_LOAD_NATIVE = 2 };
 enum { UD_CHANGE_INSERT = 1, UD_CHANGE_UPDATE = 2, UD_CHANGE_DELETE = 3, UD_CHANGE_UPSERT = 4 };
 enum {
     UD_ACCESS_OPEN = 1,
@@ -90,6 +92,8 @@ typedef struct ud_write_options {
     const ud_batch *before;    /* Optional exact preimages; same shape/count when supplied. */
     uint32_t
         current_column; /* UINT32_MAX for ordinary Changesets; SCD supplies its current BOOL. */
+    int32_t
+        load_mode; /* AUTO selects a proven native transport; explicit NATIVE never falls back. */
 } ud_write_options;
 typedef struct ud_commit_receipt {
     int32_t committed;
@@ -128,9 +132,9 @@ typedef struct ud_connector_api {
     int32_t metadata_dialect;       /* UD_SQL_*; provider declares its metadata grammar. */
     int32_t (*session_dialect)(void *);
     int32_t parameter_style;
-    ud_status (*cdc_open)(void *,const ud_cdc_options *);
-    ud_status (*cdc_next)(void *,ud_cdc_event *);
-    ud_status (*cdc_confirm)(void *,ud_string position);
+    ud_status (*cdc_open)(void *, const ud_cdc_options *);
+    ud_status (*cdc_next)(void *, ud_cdc_event *);
+    ud_status (*cdc_confirm)(void *, ud_string position);
     ud_status (*cdc_close)(void *);
 } ud_connector_api;
 UD_API ud_status ud_connection_open(ud_plugin *, const ud_connection_options *, ud_connection **);
@@ -144,9 +148,9 @@ UD_API ud_status ud_connection_begin(ud_connection *, int32_t isolation);
 UD_API ud_status ud_connection_commit(ud_connection *);
 UD_API ud_status ud_connection_rollback(ud_connection *);
 UD_API ud_status ud_connection_metadata(ud_connection *, const ud_metadata_options *, ud_batch **);
-UD_API ud_status ud_connection_cdc_open(ud_connection *,const ud_cdc_options *);
-UD_API ud_status ud_connection_cdc_next(ud_connection *,ud_cdc_event *);
-UD_API ud_status ud_connection_cdc_confirm(ud_connection *,ud_string);
+UD_API ud_status ud_connection_cdc_open(ud_connection *, const ud_cdc_options *);
+UD_API ud_status ud_connection_cdc_next(ud_connection *, ud_cdc_event *);
+UD_API ud_status ud_connection_cdc_confirm(ud_connection *, ud_string);
 UD_API ud_status ud_connection_cdc_close(ud_connection *);
 UD_API ud_status ud_connection_test(ud_connection *);
 UD_API ud_status ud_connection_schema(ud_connection *, ud_string table, ud_string name_space,
