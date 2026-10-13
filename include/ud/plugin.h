@@ -47,6 +47,8 @@ typedef struct ud_host_api {
     ud_status (*field_from_sql)(ud_string, int32_t, ud_field *);
     ud_status (*compile_write)(ud_context *,int32_t,int32_t,const ud_write_options *,const ud_batch *,uint32_t,uint32_t,ud_sql_statement *);
     void (*statement_clear)(ud_sql_statement *);
+    int32_t (*compare_value)(const ud_value *,const ud_value *);
+    ud_status (*compile_preimage)(ud_context *,int32_t,int32_t,const ud_write_options *,const ud_batch *,uint32_t,ud_sql_statement *);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;

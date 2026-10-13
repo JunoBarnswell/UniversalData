@@ -459,3 +459,15 @@ void ud_cache_reader_destroy(ud_cache_reader *reader) {
         ud_free(reader);
     }
 }
+
+ud_status ud_cache_scan_create(ud_cache *cache, ud_cache_reader **out) {
+    if (!cache || !out || !cache->sealed || cache->failed) return UD_INVALID;
+    *out = NULL; UD_TRY(check(cache));
+    ud_cache_reader *reader = ud_alloc(cache->ctx, sizeof(*reader)); if (!reader) return UD_RESOURCE;
+    ud_status status = ud_cache_retain(cache); if (status) { ud_free(reader); return status; }
+    reader->cache = cache; reader->end = cache->rows; *out = reader; return UD_OK;
+}
+ud_status ud_cache_read_at(ud_cache_reader *reader, uint64_t position, const ud_batch **batch, uint32_t *row) {
+    if (!reader || position >= reader->cache->rows) return UD_INVALID;
+    reader->next = position; reader->end = position + 1; return ud_cache_next(reader, batch, row);
+}

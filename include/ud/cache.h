@@ -41,6 +41,9 @@ UD_API ud_status ud_cache_reader_create(ud_cache *, const ud_batch *probe_schema
                                         ud_cache_reader **);
 UD_API ud_status ud_cache_probe(ud_cache_reader *, const ud_batch *, uint32_t);
 UD_API ud_status ud_cache_next(ud_cache_reader *, const ud_batch **, uint32_t *);
+/* Scan and random row access borrow the same bounded Buffer reader view. */
+UD_API ud_status ud_cache_scan_create(ud_cache *,ud_cache_reader **);
+UD_API ud_status ud_cache_read_at(ud_cache_reader *,uint64_t,const ud_batch **,uint32_t *);
 UD_API void ud_cache_reader_destroy(ud_cache_reader *);
 #ifdef __cplusplus
 }

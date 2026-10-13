@@ -211,6 +211,8 @@ ud_status ud_checkpoint_snapshot_read(ud_activation *, ud_string, uint64_t, ud_b
 ud_status ud_checkpoint_snapshot_write(ud_activation *, ud_string, uint64_t, const ud_batch *);
 ud_status ud_checkpoint_snapshot_info(ud_activation *, ud_string, ud_string, char **, uint32_t *);
 ud_status ud_checkpoint_snapshot_seal(ud_activation *, ud_string, ud_string);
+ud_status ud_checkpoint_epoch_info(ud_activation *,ud_string,char **,uint32_t *);
+ud_status ud_checkpoint_epoch_commit(ud_activation *,ud_string,ud_string);
 ud_status ud_checkpoint_cursor(ud_activation *, ud_string, ud_string);
 ud_status ud_checkpoint_schema(ud_activation *, ud_string, const ud_batch *);
 

@@ -5,6 +5,7 @@
 #include "error.h"
 #include "activation.h"
 #include "operator.h"
+#include "stream.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,16 +19,20 @@ enum {
     UD_COMPONENT_FUNCTION,
     UD_COMPONENT_ENUMERATOR
 };
-enum { UD_COMPONENT_DATA = 1, UD_COMPONENT_INPUT_END, UD_COMPONENT_POLL };
+enum {UD_COMPONENT_DATA=UD_STREAM_DATA,UD_COMPONENT_INPUT_END=UD_STREAM_END,UD_COMPONENT_POLL=UD_STREAM_POLL,UD_COMPONENT_WATERMARK=UD_STREAM_WATERMARK,UD_COMPONENT_CHECKPOINT_BARRIER=UD_STREAM_BARRIER,UD_COMPONENT_SCHEMA_CHANGE=UD_STREAM_SCHEMA_CHANGE};
 typedef struct ud_component_event {
     uint32_t struct_size, abi_version;
     int32_t kind;
     uint32_t input;
     const ud_batch *batch; /* Borrowed sealed Buffer during callback only. */
+    uint64_t epoch,schema_version;
+    int64_t watermark;
+    ud_string source_position;
 } ud_component_event;
 /* Successful emit retains a sealed reference; it does not take the caller's
  * reference. At most one Buffer per output per step. Only invoke in step. */
 typedef ud_status (*ud_component_emit)(void *, uint32_t output, ud_batch *);
+typedef ud_status (*ud_component_emit_event)(void *,uint32_t,const ud_component_event *);
 typedef struct ud_component_plan ud_component_plan;
 enum { UD_PORT_INPUT = 1, UD_PORT_OUTPUT = 2, UD_PORT_REQUIRED = 1, UD_PORT_ERROR = 2 };
 typedef struct ud_component_port {
@@ -60,6 +65,9 @@ typedef struct ud_component_context {
     uint64_t connected_outputs;            /* Binding knows which regular ports have edges. */
     const ud_batch *const *output_schemas; /* Resolved output identities at pure binding. */
     ud_error_context errors;
+    ud_component_emit_event emit_event;
+    uint64_t recovery_epoch;
+    ud_string recovery_position; /* Borrowed committed Source position, pure prepare input. */
 } ud_component_context;
 /* Task promises its effects may safely be replayed after an interrupted invoke.
  * This is a host/plugin contract, not a claim inferred by the runtime. */
@@ -138,6 +146,7 @@ typedef struct ud_component_descriptor {
      * Callback returns an owned sealed batch; restore borrows it. */
     ud_status (*checkpoint)(void *, ud_batch **);
     ud_status (*restore)(void *, const ud_batch *);
+    ud_status (*confirm_epoch)(void *,uint64_t,ud_string source_position);
 } ud_component_descriptor;
 UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
 /* Copies descriptor metadata, retains callback user by contract (host lifetime).

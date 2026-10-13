@@ -18,6 +18,7 @@ typedef struct ud_sql_statement {
 UD_API ud_status ud_sql_compile_write(ud_context *,int32_t dialect,int32_t parameter_style,
                                       const ud_write_options *,const ud_batch *,uint32_t first,
                                       uint32_t rows,ud_sql_statement *);
+UD_API ud_status ud_sql_compile_preimage(ud_context *,int32_t,int32_t,const ud_write_options *,const ud_batch *,uint32_t,ud_sql_statement *);
 UD_API void ud_sql_statement_clear(ud_sql_statement *);
 #ifdef __cplusplus
 }

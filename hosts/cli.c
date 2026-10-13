@@ -14,8 +14,8 @@ static ud_status authorize(void *user, ud_string tenant, ud_string resource, int
                : UD_AUTH;
 }
 int main(int argc, char **argv) {
-    if (argc < 3 || argc > 8 || (strcmp(argv[1], "execute") && strcmp(argv[1], "inspect"))) {
-        fprintf(stderr, "usage: ud_cli execute|inspect PACKAGE_JSON [PARAMETERS_JSON] [TENANT] "
+    if (argc < 3 || argc > 8 || (strcmp(argv[1], "execute") && strcmp(argv[1], "inspect") && strcmp(argv[1], "catalog"))) {
+        fprintf(stderr, "usage: ud_cli execute|inspect|catalog PACKAGE_JSON [PARAMETERS_JSON] [TENANT] "
                         "[EXECUTION_ID] [AUTHORIZED_ABSOLUTE_ROOT] [MAX_WORKERS]\n");
         return 2;
     }
@@ -69,11 +69,11 @@ int main(int argc, char **argv) {
     ud_execution *e = NULL;
     ud_status s = ud_execution_create_json((ud_string){text, (uint32_t)n}, &o, &e);
     free(text);
-    int inspect = !strcmp(argv[1], "inspect");
+    int inspect = !strcmp(argv[1], "inspect") || !strcmp(argv[1],"catalog");
     if (!s && inspect) {
         char *plan = NULL;
         uint32_t size = 0;
-        s = ud_execution_explain(e, &plan, &size);
+        s = !strcmp(argv[1],"catalog") ? ud_execution_component_catalog(e,&plan,&size) : ud_execution_explain(e, &plan, &size);
         if (!s)
             printf("%.*s\n", (int)size, plan);
         ud_free(plan);

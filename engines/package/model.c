@@ -196,7 +196,9 @@ ud_status ud_package_create(ud_context *c, ud_string json, ud_package **out) {
     if (!p)
         return UD_RESOURCE;
     p->ctx = c;
-    ud_status s = ud_json_parse(c, json.data, json.length, &p->document, NULL);
+    char *concrete=NULL;uint32_t length=0;
+    ud_status s=ud_package_instantiate(c,json,&concrete,&length);
+    if(!s)s=ud_json_parse(c,concrete,length,&p->document,NULL);ud_free(concrete);
     if (!s)
         s = ud_package_check(p);
     if (!s)

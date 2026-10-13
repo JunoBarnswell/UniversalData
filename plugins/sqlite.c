@@ -1,4 +1,4 @@
-#include "connector_common.h"
+#include "common.h"
 #include <sqlite3.h>
 #include <ctype.h>
 #include <stdatomic.h>
@@ -431,7 +431,10 @@ static ud_status validate_target(sqlite_state *p, ud_string table, const ud_batc
                            : f.type == UD_BINARY                        ? 3
                            : f.type == UD_FLOAT64                       ? 4
                                                                         : 1;
-            if (expected != affinity)
+            int temporal = (f.type == UD_TIMESTAMP && !strcmp(upper, "TIMESTAMP_UTC")) ||
+                           (f.type == UD_DATE32 && !strcmp(upper, "DATE32")) ||
+                           (f.type == UD_TIME64 && !strcmp(upper, "TIME64"));
+            if (expected != affinity && !temporal)
                 s = h->report(h->context, UD_SCHEMA,
                               "target SQLite affinity would coerce a typed value; use TEXT for "
                               "Decimal and INTEGER for UTC microseconds");
@@ -453,10 +456,11 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
     if (p->read || p->cursor_schema)
         return UD_BUSY;
     atomic_store(&p->cancelled, 0);
-    char *sql = NULL;
-    ud_status s = options->mode == UD_WRITE_CHANGESET
+    ud_sql_statement plan = {0};
+    ud_status s = options->mode == UD_WRITE_CHANGESET || !h->rows(batch)
                       ? UD_OK
-                      : connector_write_sql(h, options, batch, 0, &sql);
+                      : h->compile_write(h->context, UD_SQL_SQLITE, UD_SQL_PARAMETER_QUESTION,
+                                         options, batch, 0, 1, &plan);
     if (options->mode == UD_WRITE_CHANGESET && p->transaction)
         return UD_UNSUPPORTED;
     if (s)
@@ -464,7 +468,7 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
     int own = !p->transaction;
     int rc = own ? sqlite3_exec(p->db, "BEGIN IMMEDIATE", NULL, NULL, NULL) : SQLITE_OK;
     if (rc != SQLITE_OK) {
-        h->deallocate(sql);
+        h->statement_clear(&plan);
         return rc == SQLITE_BUSY || rc == SQLITE_LOCKED ? UD_TRANSIENT : failure(p, rc);
     }
     if (!s)
@@ -478,55 +482,35 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
                       "batch id was reused with a different payload / cursor / destination");
     h->deallocate((void *)receipt.source_position.data);
     sqlite3_stmt *stmt = NULL;
-    if (!s && !existing && options->mode != UD_WRITE_CHANGESET) {
-        rc = sqlite3_prepare_v2(p->db, sql, -1, &stmt, NULL);
+    if (!s && !existing && options->mode != UD_WRITE_CHANGESET && h->rows(batch)) {
+        rc = sqlite3_prepare_v2(p->db, plan.sql.data, -1, &stmt, NULL);
         if (rc != SQLITE_OK)
             s = failure(p, rc);
     }
-    uint32_t columns = options->mode == UD_WRITE_DELETE ? options->key_count : h->columns(batch);
     for (uint32_t r = 0; !s && !existing && r < h->rows(batch); r++) {
-        if (h->cancelled(h->context) || atomic_load(&p->cancelled)) {
-            s = UD_CANCELLED;
-            break;
-        }
+        s = control(p);
+        if (s) break;
         if (options->mode == UD_WRITE_CHANGESET) {
-            sqlite3_finalize(stmt);
-            stmt = NULL;
-            h->deallocate(sql);
-            sql = NULL;
-            s = connector_change_sql(h, options, batch, 0, options->operations[r], &sql);
-            if (!s && (rc = sqlite3_prepare_v2(p->db, sql, -1, &stmt, NULL)) != SQLITE_OK)
+            sqlite3_finalize(stmt); stmt = NULL;
+            h->statement_clear(&plan);
+            s = h->compile_write(h->context, UD_SQL_SQLITE, UD_SQL_PARAMETER_QUESTION,
+                                  options, batch, r, 1, &plan);
+            if (!s && (rc = sqlite3_prepare_v2(p->db, plan.sql.data, -1, &stmt, NULL)) != SQLITE_OK)
                 s = failure(p, rc);
-            if (s)
-                break;
         }
-        sqlite3_reset(stmt);
-        sqlite3_clear_bindings(stmt);
-        for (uint32_t j = 0; !s && j < options->key_count; j++) {
+        if (s) break;
+        sqlite3_reset(stmt); sqlite3_clear_bindings(stmt);
+        for (uint32_t j = 0; !s && j < plan.parameter_count; j++) {
+            ud_sql_parameter ref = plan.parameters[j];
+            const ud_batch *source = ref.source == UD_SQL_BEFORE ? options->before : batch;
             ud_value value;
-            h->get(batch, r, options->keys[j], &value);
-            if (value.is_null && options->mode != UD_WRITE_APPEND)
-                s = UD_SCHEMA;
+            s = h->get(source, options->mode == UD_WRITE_CHANGESET ? ref.row : r,
+                        ref.column, &value);
+            if (!s) s = bind_connector_value(p, stmt, (int)j + 1, &value);
         }
-        for (uint32_t j = 0; !s && j < columns; j++) {
-            ud_value value;
-            h->get(batch, r, options->mode == UD_WRITE_DELETE ? options->keys[j] : j, &value);
-            s = bind_connector_value(p, stmt, (int)j + 1, &value);
-        }
+        if (!s && (rc = sqlite3_step(stmt)) != SQLITE_DONE) s = failure(p, rc);
         if (!s && options->mode == UD_WRITE_CHANGESET &&
-            options->operations[r] != UD_CHANGE_INSERT) {
-            for (uint32_t j = 0; !s && j < columns; j++) {
-                ud_value value;
-                h->get(options->before, r, j, &value);
-                s = bind_connector_value(
-                    p, stmt,
-                    (int)(options->operations[r] == UD_CHANGE_UPDATE ? columns : 0) + (int)j + 1,
-                    &value);
-            }
-        }
-        if (!s && (rc = sqlite3_step(stmt)) != SQLITE_DONE)
-            s = failure(p, rc);
-        if (!s && options->mode == UD_WRITE_CHANGESET && sqlite3_changes(p->db) != 1)
+            options->operations[r] != UD_CHANGE_UPSERT && sqlite3_changes(p->db) != 1)
             s = h->report(h->context, UD_FENCED,
                           "changeset preimage or current business-key conflict");
     }
@@ -563,7 +547,7 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
             s = failure(p, rc);
     }
     sqlite3_finalize(stmt);
-    h->deallocate(sql);
+    h->statement_clear(&plan);
     if (!s && (h->cancelled(h->context) || atomic_load(&p->cancelled)))
         s = UD_CANCELLED;
     if (!s && own) {

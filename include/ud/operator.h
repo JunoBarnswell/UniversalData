@@ -72,6 +72,10 @@ typedef struct ud_operator_options {
     uint32_t input_count;
     const ud_expression_options *expression_bindings;
     ud_error_context errors;
+    const ud_batch *reference_schema; /* Pure CacheAsset shape; execution borrows reference. */
+    const uint32_t *reference_keys;
+    uint32_t reference_key_count;
+    int32_t record_state; /* Enable bounded checkpoint history for this root operator. */
 } ud_operator_options;
 typedef struct ud_physical_plan_info {
     uint32_t struct_size, abi_version, algorithm, input_count, output_count, partitions;
@@ -97,6 +101,9 @@ UD_API ud_status ud_operator_diagnostics(const ud_operator *, char **, uint32_t 
 UD_API ud_status ud_operator_push(ud_operator *, uint32_t port, const ud_batch *);
 UD_API ud_status ud_operator_finish_input(ud_operator *, uint32_t port);
 UD_API ud_status ud_operator_pull(ud_operator *, ud_batch **, uint32_t *output);
+UD_API ud_status ud_operator_checkpoint(ud_operator *,ud_batch **);
+/* Atomic replacement after replay and output-integrity checks succeed. */
+UD_API ud_status ud_operator_restore(ud_operator **,const ud_batch *);
 UD_API ud_status ud_operator_destroy(ud_operator *);
 #ifdef __cplusplus
 }

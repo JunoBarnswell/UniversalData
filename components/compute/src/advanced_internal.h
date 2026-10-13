@@ -5,6 +5,7 @@
 typedef struct advanced_field {
     uint32_t root,path[32],depth,flags,group;
     ud_field owned;
+    ud_string map_keys[32];
 } advanced_field;
 struct ud_advanced {
     ud_context *ctx;ud_operator_options options;ud_json *config;
@@ -40,6 +41,15 @@ ud_status ud_text_operator_row(ud_advanced *,ud_value *,uint32_t *,int *);
 ud_status ud_ordered_bind(ud_advanced *);
 ud_status ud_ordered_push(ud_advanced *,const ud_batch *);
 ud_status ud_ordered_pull(ud_advanced *,ud_batch **,uint32_t *);
+ud_status ud_matching_bind(ud_advanced *);
+ud_status ud_matching_push(ud_advanced *,const ud_batch *);
+ud_status ud_matching_row(ud_advanced *,ud_value *,uint32_t *,int *);
+ud_status ud_matching_pull(ud_advanced *,ud_batch **,uint32_t *);
+void ud_matching_clear(ud_advanced *);
+ud_status ud_profile_operator_bind(ud_advanced *);
+ud_status ud_profile_operator_push(ud_advanced *,const ud_batch *);
+ud_status ud_profile_operator_pull(ud_advanced *,ud_batch **,uint32_t *);
+void ud_profile_operator_clear(ud_advanced *);
 ud_status ud_multiway_bind(ud_advanced *);
 ud_status ud_multiway_push(ud_advanced *,uint32_t,const ud_batch *);
 ud_status ud_multiway_end(ud_advanced *,uint32_t);

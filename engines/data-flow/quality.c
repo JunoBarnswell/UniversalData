@@ -417,5 +417,7 @@ ud_status ud_quality_component_register(ud_registry *registry) {
                                  .finish = finish,
                                  .dispose = dispose,
                                  .diagnostics = diagnostics};
-    return ud_registry_register(registry, &d);
+    UD_TRY(ud_registry_register(registry,&d));
+    d.id=(ud_string){"assert",6};d.name=(ud_string){"Assertion",9};
+    return ud_registry_register(registry,&d);
 }

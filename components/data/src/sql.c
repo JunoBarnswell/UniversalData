@@ -16,7 +16,7 @@ static ud_status preimage(writer*w,uint32_t row){const ud_write_options*o=w->opt
  if(w->dialect==UD_SQL_ORACLE){if(t==UD_BINARY)return UD_UNSUPPORTED;UD_TRY(put(w,"DECODE("));UD_TRY(column(w,i,NULL));UD_TRY(put(w,","));UD_TRY(parameter(w,row,i,UD_SQL_BEFORE));UD_TRY(put(w,",1,0)=1"));}
  else if(w->dialect==UD_SQL_MYSQL||w->dialect==UD_SQL_MARIADB){if(t==UD_UTF8||t==UD_BINARY)UD_TRY(put(w,"BINARY "));UD_TRY(column(w,i,NULL));UD_TRY(put(w," <=> "));if(t==UD_UTF8||t==UD_BINARY)UD_TRY(put(w,"BINARY "));UD_TRY(parameter(w,row,i,UD_SQL_BEFORE));}
  else if(w->dialect==UD_SQL_SQLITE){UD_TRY(column(w,i,NULL));UD_TRY(put(w," COLLATE BINARY IS "));UD_TRY(parameter(w,row,i,UD_SQL_BEFORE));}
- else if(w->dialect==UD_SQL_POSTGRESQL||w->dialect==UD_SQL_DUCKDB){UD_TRY(column(w,i,NULL));UD_TRY(put(w," IS NOT DISTINCT FROM "));UD_TRY(parameter(w,row,i,UD_SQL_BEFORE));}
+ else if(w->dialect==UD_SQL_POSTGRESQL||w->dialect==UD_SQL_DUCKDB||w->dialect==UD_SQL_DB2){UD_TRY(column(w,i,NULL));UD_TRY(put(w," IS NOT DISTINCT FROM "));UD_TRY(parameter(w,row,i,UD_SQL_BEFORE));}
  else{UD_TRY(put(w,"(("));UD_TRY(column(w,i,NULL));if(t==UD_UTF8)UD_TRY(put(w," COLLATE Latin1_General_100_BIN2"));UD_TRY(put(w,"="));UD_TRY(parameter(w,row,i,UD_SQL_BEFORE));if(t==UD_UTF8||t==UD_BINARY){UD_TRY(put(w," AND DATALENGTH("));UD_TRY(column(w,i,NULL));UD_TRY(put(w,")=DATALENGTH("));UD_TRY(parameter(w,row,i,UD_SQL_BEFORE));UD_TRY(put(w,")"));}UD_TRY(put(w,") OR ("));UD_TRY(column(w,i,NULL));UD_TRY(put(w," IS NULL AND "));UD_TRY(parameter(w,row,i,UD_SQL_BEFORE));UD_TRY(put(w," IS NULL))"));}}
  return UD_OK;}
 static ud_status fields(writer*w,const char*prefix){for(uint32_t i=0;i<w->batch->columns;i++){if(i)UD_TRY(put(w,","));UD_TRY(column(w,i,prefix));}return UD_OK;}
@@ -46,7 +46,7 @@ static ud_status upsert(writer*w,uint32_t first,uint32_t rows){
 typedef struct row_key { uint64_t hash;uint32_t row,next; } row_key;
 static ud_status last_rows(writer *w,uint32_t first,uint32_t *count) {
     uint32_t rows=*count,capacity=16;
-    while(capacity<rows*2&&capacity<65536)capacity*=2;
+    while((uint64_t)capacity<(uint64_t)rows*2&&capacity<65536)capacity*=2;
     uint32_t *buckets=ud_alloc(w->ctx,(size_t)capacity*sizeof(*buckets));
     row_key *nodes=ud_alloc(w->ctx,(size_t)rows*sizeof(*nodes));
     uint32_t *selection=ud_alloc(w->ctx,(size_t)rows*sizeof(*selection));
@@ -69,8 +69,15 @@ static ud_status last_rows(writer *w,uint32_t first,uint32_t *count) {
 }
 ud_status ud_sql_compile_write(ud_context*ctx,int32_t dialect,int32_t style,const ud_write_options*o,
                                 const ud_batch*b,uint32_t first,uint32_t rows,ud_sql_statement*out){
- if(!ctx||!o||!b||!out||first>b->rows||rows>b->rows-first||dialect<UD_SQL_SQLITE||dialect>UD_SQL_DUCKDB||style<1||style>3)return UD_INVALID;
- memset(out,0,sizeof(*out));if(!rows)return UD_OK;writer w={.ctx=ctx,.text={.ctx=ctx,.limit=16u*1024u*1024u},.statement=out,.options=o,.batch=b,.dialect=dialect,.style=style};
+ if(!ctx||!o||!b||!out||ctx!=b->ctx||o->struct_size!=sizeof(*o)||o->abi_version!=UD_ABI_VERSION||first>b->rows||rows>b->rows-first||dialect<UD_SQL_SQLITE||dialect>UD_SQL_DUCKDB||style<1||style>3)return UD_INVALID;
+ memset(out,0,sizeof(*out));
+ if(o->mode<UD_WRITE_APPEND||o->mode>UD_WRITE_CHANGESET||!o->table.data||!o->table.length||o->key_count>b->columns||(o->key_count&&!o->keys))return UD_SCHEMA;
+ if(o->mode!=UD_WRITE_APPEND&&!o->key_count)return UD_SCHEMA;
+ for(uint32_t k=0;k<o->key_count;k++){if(o->keys[k]>=b->columns)return UD_SCHEMA;for(uint32_t j=0;j<k;j++)if(o->keys[j]==o->keys[k])return UD_SCHEMA;}
+ if(o->before&&(o->before->ctx!=ctx||o->before->rows!=b->rows||o->before->columns!=b->columns))return UD_SCHEMA;
+ if(o->mode==UD_WRITE_CHANGESET){if(!o->operations||rows!=1||o->operations[first]<UD_CHANGE_INSERT||o->operations[first]>UD_CHANGE_UPSERT)return UD_SCHEMA;if(o->current_column!=UINT32_MAX&&(o->current_column>=b->columns||b->column[o->current_column].field.type!=UD_BOOL))return UD_SCHEMA;}
+ for(uint32_t row=first;row<first+rows;row++)for(uint32_t k=0;k<o->key_count&&o->mode!=UD_WRITE_APPEND;k++){ud_value value;ud_status status=ud_batch_get(b,row,o->keys[k],&value);if(status)return status;if(value.is_null)return UD_SCHEMA;}
+ if(!rows)return UD_OK;writer w={.ctx=ctx,.text={.ctx=ctx,.limit=16u*1024u*1024u},.statement=out,.options=o,.batch=b,.dialect=dialect,.style=style};
  int mode=o->mode,action=0;if(mode==UD_WRITE_CHANGESET){if(rows!=1||!o->operations)return UD_INVALID;action=o->operations[first];if(action==UD_CHANGE_UPSERT)mode=UD_WRITE_UPSERT;else if(action==UD_CHANGE_INSERT)mode=UD_WRITE_APPEND;else if(action==UD_CHANGE_DELETE)mode=UD_WRITE_DELETE;}
  ud_status s=UD_OK;
  if(mode==UD_WRITE_UPSERT && rows>1)s=last_rows(&w,first,&rows);
@@ -84,3 +91,14 @@ ud_status ud_sql_compile_write(ud_context*ctx,int32_t dialect,int32_t style,cons
  ud_free(w.selection);ud_bytes_clear(&w.text);if(s)ud_sql_statement_clear(out);return s;
 }
 void ud_sql_statement_clear(ud_sql_statement*s){if(!s)return;ud_free((void*)s->sql.data);ud_free(s->parameters);memset(s,0,sizeof(*s));}
+
+ud_status ud_sql_compile_preimage(ud_context*ctx,int32_t dialect,int32_t style,
+                                  const ud_write_options*options,const ud_batch*batch,
+                                  uint32_t row,ud_sql_statement*out){
+    if(!ctx||!options||!batch||!out||row>=batch->rows||!options->key_count)return UD_INVALID;
+    memset(out,0,sizeof(*out));writer w={.ctx=ctx,.text={.ctx=ctx,.limit=16u*1024u*1024u},.statement=out,.options=options,.batch=batch,.dialect=dialect,.style=style};
+    ud_status status=put(&w,"SELECT ");if(!status)status=fields(&w,NULL);if(!status)status=put(&w," FROM ");if(!status)status=table(&w);if(!status)status=put(&w," WHERE ");
+    for(uint32_t k=0;!status&&k<options->key_count;k++){if(k)status=put(&w," AND ");if(!status)status=column(&w,options->keys[k],NULL);if(!status)status=put(&w,"=");if(!status)status=parameter(&w,row,options->keys[k],options->before?UD_SQL_BEFORE:UD_SQL_AFTER);}
+    if(!status&&dialect!=UD_SQL_SQLITE)status=put(&w," FOR UPDATE");
+    if(!status){out->sql.length=(uint32_t)w.text.size;status=ud_bytes_put(&w.text,"",1);}if(!status){out->sql.data=(const char*)w.text.data;w.text.data=NULL;}ud_bytes_clear(&w.text);if(status)ud_sql_statement_clear(out);return status;
+}

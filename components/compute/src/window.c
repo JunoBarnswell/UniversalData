@@ -30,7 +30,7 @@ ud_status ud_window_create(ud_context*ctx,const ud_operator_options*o,const ud_b
     int numeric=o->window_function==UD_WINDOW_RUNNING_SUM||o->window_function==UD_WINDOW_MOVING_SUM||o->window_function==UD_WINDOW_MOVING_AVERAGE;
     if(!s&&numeric&&spec.type!=UD_INT64&&spec.type!=UD_FLOAT64&&spec.type!=UD_DECIMAL128)s=UD_SCHEMA;
     if(!s&&o->window_function==UD_WINDOW_MOVING_AVERAGE&&spec.type!=UD_FLOAT64){spec.type=UD_DECIMAL128;spec.precision=38;spec.scale=input->column[o->window_column].field.type==UD_INT64?6:input->column[o->window_column].field.scale+6;if(spec.scale>38)spec.scale=38;}
-    if(!s&&o->frame_kind==UD_FRAME_RANGE){ud_type t=input->column[w->keys[o->partition_key_count]].field.type;if(t!=UD_INT64&&t!=UD_DATE32&&t!=UD_TIME64&&t!=UD_TIMESTAMP)s=UD_SCHEMA;}
+    if(!s&&o->frame_kind==UD_FRAME_RANGE){ud_type t=input->column[w->keys[o->partition_key_count]].field.type;if(t!=UD_INT64&&t!=UD_DATE32&&t!=UD_TIME64&&t!=UD_TIMESTAMP&&t!=UD_FLOAT64&&t!=UD_DECIMAL128)s=UD_SCHEMA;}
     ud_field*fields=!s?ud_alloc(ctx,(input->columns+1)*sizeof(*fields)):NULL;
     ud_id*lineage=NULL;uint32_t lineage_count=0;ud_field derived={0};ud_bytes signature={.ctx=ctx};
     if(!s&&!fields)s=UD_RESOURCE;
@@ -59,13 +59,16 @@ static ud_status frame(ud_window*w,uint64_t*begin,uint64_t*end){
     if(!w->options.frame_kind){*begin=0;*end=f==UD_WINDOW_RUNNING_SUM?pos+1:rows;return UD_OK;}
     if(w->options.frame_kind==UD_FRAME_ROWS){*begin=pos>w->options.frame_preceding?pos-w->options.frame_preceding:0;*end=w->options.frame_following>=rows-pos-1?rows:pos+w->options.frame_following+1;return UD_OK;}
     uint32_t key=w->keys[w->options.partition_key_count];ud_value v;UD_TRY(value_at(w,pos,key,&v));
-    int64_t min=INT64_MIN,max=INT64_MAX;
-    if(!v.is_null){uint64_t before=w->options.frame_preceding,after=w->options.frame_following;
-      if(before<=INT64_MAX && v.integer>=INT64_MIN+(int64_t)before)min=v.integer-(int64_t)before;
-      if(after<=INT64_MAX && v.integer<=INT64_MAX-(int64_t)after)max=v.integer+(int64_t)after;}
+    ud_value minimum=v,maximum=v;int lower_unbounded=0,upper_unbounded=0;
+    if(!v.is_null){
+        if(v.type==UD_FLOAT64){minimum.real=v.real-(double)w->options.frame_preceding;maximum.real=v.real+(double)w->options.frame_following;}
+        else if(v.type==UD_DECIMAL128){const ud_field*field=&w->input->column[key].field;uint64_t bounds[]={w->options.frame_preceding,w->options.frame_following};ud_value*outputs[]={&minimum,&maximum};
+            for(uint32_t i=0;i<2;i++){char text[32];int n=snprintf(text,sizeof(text),"%llu",(unsigned long long)bounds[i]);ud_value delta;ud_status status=ud_value_parse_field(w->ctx,field,text,(uint32_t)n,UD_ROUND_EXACT,&delta);if(!status)status=ud_value_numeric(i?UD_NUMERIC_ADD:UD_NUMERIC_SUBTRACT,&v,&delta,field,outputs[i]);if(status==UD_OVERFLOW){if(i)upper_unbounded=1;else lower_unbounded=1;}else if(status)return status;}
+        }else{uint64_t before=w->options.frame_preceding,after=w->options.frame_following;minimum.integer=INT64_MIN;maximum.integer=INT64_MAX;if(before<=INT64_MAX&&v.integer>=INT64_MIN+(int64_t)before)minimum.integer=v.integer-(int64_t)before;if(after<=INT64_MAX&&v.integer<=INT64_MAX-(int64_t)after)maximum.integer=v.integer+(int64_t)after;}
+    }
     uint64_t low=0,high=rows;
-    while(low<high){uint64_t mid=low+(high-low)/2;ud_value x;UD_TRY(value_at(w,mid,key,&x));int less=v.is_null?!x.is_null:(x.is_null||x.integer<min);if(v.is_null)less=0;if(less)low=mid+1;else high=mid;}*begin=low;
-    low=*begin;high=rows;while(low<high){uint64_t mid=low+(high-low)/2;ud_value x;UD_TRY(value_at(w,mid,key,&x));int within=v.is_null?x.is_null:!x.is_null&&x.integer<=max;if(within)low=mid+1;else high=mid;}*end=low;return UD_OK;
+    while(low<high){uint64_t mid=low+(high-low)/2;ud_value x;UD_TRY(value_at(w,mid,key,&x));int less=!v.is_null&&(x.is_null||(!lower_unbounded&&ud_value_compare(&x,&minimum)<0));if(less)low=mid+1;else high=mid;}*begin=low;
+    low=*begin;high=rows;while(low<high){uint64_t mid=low+(high-low)/2;ud_value x;UD_TRY(value_at(w,mid,key,&x));int within=v.is_null?x.is_null:!x.is_null&&(upper_unbounded||ud_value_compare(&x,&maximum)<=0);if(within)low=mid+1;else high=mid;}*end=low;return UD_OK;
 }
 static ud_status frame_sum(ud_window*w,uint64_t begin,uint64_t end,ud_value*out){
     int floating=w->input->column[w->options.window_column].field.type==UD_FLOAT64;

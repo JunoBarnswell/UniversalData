@@ -55,13 +55,14 @@ ud_status ud_text_terms(ud_context *ctx,ud_string input,uint32_t maximum,ud_batc
     UErrorCode error=U_ZERO_ERROR;UBreakIterator *it=ubrk_open(UBRK_WORD,"",data,n,&error);ud_status s=U_FAILURE(error)?UD_PARSE:UD_OK;
     const ud_field fields[]={{.name="term",.name_length=4,.type=UD_UTF8},{.name="offset",.name_length=6,.type=UD_INT64}};
     if(!s)s=ud_batch_create(ctx,fields,2,maximum,out);
-    int32_t begin=!s?ubrk_first(it):0;
+    int32_t begin=!s?ubrk_first(it):0; uint32_t byte_offset=0;
     for(int32_t end=!s?ubrk_next(it):UBRK_DONE;!s&&end!=UBRK_DONE;begin=end,end=ubrk_next(it)) {
         if(ud_is_cancelled(ctx)){s=UD_CANCELLED;break;}
-        if(ubrk_getRuleStatus(it)==UBRK_WORD_NONE)continue;
+        uint32_t offset=byte_offset; for(int32_t at=begin;at<end;){UChar32 cp;U16_NEXT(data,at,end,cp);byte_offset += cp<0x80?1:cp<0x800?2:cp<0x10000?3:4;}
+        if(ubrk_getRuleStatus(it)<UBRK_WORD_NONE_LIMIT)continue;
         if((*out)->rows==maximum){s=UD_RESOURCE;break;}
         char *term=NULL;uint32_t length=0;s=to_utf8(ctx,data+begin,end-begin,&term,&length);
-        if(!s){ud_value values[]={{.type=UD_UTF8,.text=term,.text_length=length},{.type=UD_INT64,.integer=begin}};s=ud_batch_append(*out,values,2);}ud_free(term);
+        if(!s){ud_value values[]={{.type=UD_UTF8,.text=term,.text_length=length},{.type=UD_INT64,.integer=offset}};s=ud_batch_append(*out,values,2);}ud_free(term);
     }
     if(it)ubrk_close(it);ud_free(data);if(!s)s=ud_batch_seal(*out);if(s){ud_batch_destroy(*out);*out=NULL;}return s;
 }

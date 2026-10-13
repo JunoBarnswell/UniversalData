@@ -135,6 +135,7 @@ typedef struct ud_row_info {
 } ud_row_info;
 /* Metadata is native, owned with the Batch and preserved by Wire/Spill. Zero ID
  * means unspecified direct-API provenance. Mutation requires an owned mutable batch. */
+UD_API ud_status ud_row_info_join(ud_context *,const ud_row_info *,const ud_row_info *,ud_row_info *);
 UD_API ud_status ud_batch_row_info(const ud_batch *, uint32_t, ud_row_info *);
 UD_API ud_status ud_batch_set_row_info(ud_batch *, uint32_t, const ud_row_info *);
 UD_API ud_status ud_batch_append_projected(ud_batch *,const ud_batch *,uint32_t row,const uint32_t *columns);

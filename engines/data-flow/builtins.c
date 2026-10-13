@@ -65,7 +65,7 @@ typedef struct builtin {
     int published, existing, temporary_owned;
     uint64_t number, source_position, source_begin, source_end, written_rows, written_errors;
     uint32_t source_partitions, source_partition;
-    uint32_t *keys, key_count;
+    uint32_t *keys, key_count, *write_indices, before_column;
     int mode;
     struct ud_rule_delivery *delivery;
     ud_cursor *cursor;
@@ -1137,6 +1137,7 @@ static void dispose(void *ptr, ud_status result) {
     ud_free(b->temporary);
     ud_free(b->job);
     ud_free(b->keys);
+    ud_free(b->write_indices);
     ud_rule_delivery_destroy(b->delivery);
     ud_cursor_destroy(b->cursor);
     ud_batch_destroy(b->actual_schema);
@@ -1246,19 +1247,42 @@ static ud_status sink_schema(builtin *b) {
     ud_batch_destroy(actual);
     return status;
 }
-static ud_status sink_batch(builtin *b, const ud_batch *input, ud_batch **out) {
-    uint32_t *indices = ud_alloc(b->context.memory, (size_t)b->columns * sizeof(*indices));
-    if (!indices)
-        return UD_RESOURCE;
-    for (uint32_t i = 0; i < b->columns; i++)
-        indices[i] = i;
-    ud_batch *bound = NULL;
-    ud_status status = ud_batch_project(b->context.memory, input, indices,
-                                        b->write_schema->schema->fields, b->columns, &bound);
-    if (!status)
-        status = ud_schema_map(b->context.memory, bound, b->actual_schema, b->schema_policy, out);
-    ud_batch_destroy(bound);
-    ud_free(indices);
+static ud_status sink_batch(builtin *b, const ud_batch *input, ud_batch **out, ud_batch **before) {
+    *out = NULL; *before = NULL;
+    ud_context *ctx = b->context.memory;
+    ud_batch *selected = NULL, *old = NULL, *bound = NULL;
+    ud_status status = ud_batch_create(ctx, b->schema->schema->fields, b->columns, input->rows, &selected);
+    if (!status && b->before_column != UINT32_MAX)
+        status = ud_batch_create(ctx, b->schema->schema->fields, b->columns, input->rows, &old);
+    ud_value *values = ud_alloc(ctx, b->columns * sizeof(*values));
+    uint32_t *indices = ud_alloc(ctx, b->columns * sizeof(*indices));
+    if (!values || !indices) status = UD_RESOURCE;
+    for (uint32_t col = 0; !status && col < b->columns; col++) indices[col] = col;
+    for (uint32_t row = 0; !status && row < input->rows; row++) {
+        ud_row_info info; status = ud_batch_row_info(input, row, &info);
+        if (!status && b->mode == UD_WRITE_CHANGESET && !info.operation) continue;
+        if (!status && b->mode == UD_WRITE_CHANGESET && info.operation > UD_CHANGE_UPSERT) status = UD_SCHEMA;
+        if (!status) status = ud_batch_append_projected(selected, input, row, b->write_indices);
+        if (!status && old) {
+            ud_value previous; status = ud_batch_get(input, row, b->before_column, &previous);
+            if (!status && previous.is_null && info.operation != UD_CHANGE_INSERT && info.operation != UD_CHANGE_UPSERT) status = UD_SCHEMA;
+            for (uint32_t col = 0; !status && col < b->columns; col++) {
+                if (previous.is_null) status = ud_batch_get(input, row, b->write_indices[col], values + col);
+                else values[col] = previous.children[col];
+            }
+            if (!status) status = ud_batch_append(old, values, b->columns);
+            if (!status) status = ud_batch_set_row_info(old, old->rows - 1, &info);
+        }
+    }
+    if (!status) status = ud_batch_seal(selected);
+    if (!status && old) status = ud_batch_seal(old);
+    if (!status) status = ud_batch_project(ctx, selected, indices, b->write_schema->schema->fields, b->columns, &bound);
+    if (!status) status = ud_schema_map(ctx, bound, b->actual_schema, b->schema_policy, out);
+    ud_batch_destroy(bound); bound = NULL;
+    if (!status && old) status = ud_batch_project(ctx, old, indices, b->write_schema->schema->fields, b->columns, &bound);
+    if (!status && old) status = ud_schema_map(ctx, bound, b->actual_schema, b->schema_policy, before);
+    ud_batch_destroy(bound); ud_batch_destroy(selected); ud_batch_destroy(old); ud_free(values); ud_free(indices);
+    if (status) { ud_batch_destroy(*out); *out = NULL; ud_batch_destroy(*before); *before = NULL; }
     return status;
 }
 static ud_status prepare(void *user, const ud_component_context *c, ud_string text,
@@ -1269,6 +1293,7 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         return UD_RESOURCE;
     b->kind = (int)(intptr_t)user;
     b->context = *c;
+    b->before_column = UINT32_MAX;
     ud_status s = parse(c, text, &b->config);
     int kind = b->kind;
     uint32_t inputs = c->input_count;
@@ -1282,6 +1307,33 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         s = clone_schema(c->memory, sink_kind(kind) ? in[0] : out[0], &b->schema);
     if (!s && (kind == CAST || kind == XLSX_SOURCE))
         s = clone_schema(c->memory, out[1], &b->errors);
+    if (!s && kind == SQL_SINK) {
+        ud_string mode = {0}; s = ud_json_string(ud_member(b->config, "mode"), &mode);
+        b->mode = ud_named(mode, "append") ? UD_WRITE_APPEND : ud_named(mode, "upsert") ? UD_WRITE_UPSERT
+                : ud_named(mode, "delete") ? UD_WRITE_DELETE : ud_named(mode, "changeset") ? UD_WRITE_CHANGESET : 0;
+        if (!s && !b->mode) s = UD_SCHEMA;
+        ud_string before = {"before", 6};
+        if (!s && ud_member(b->config, "beforeField")) s = ud_json_string(ud_member(b->config, "beforeField"), &before);
+        uint32_t n = in[0]->columns;
+        b->write_indices = ud_alloc(c->memory, n * sizeof(*b->write_indices));
+        ud_field *fields = ud_alloc(c->memory, n * sizeof(*fields));
+        if (!b->write_indices || !fields) s = UD_RESOURCE;
+        uint32_t count = 0;
+        for (uint32_t i = 0; !s && i < n; i++) {
+            ud_field f = in[0]->column[i].field;
+            if (b->mode == UD_WRITE_CHANGESET && f.name_length == before.length && !memcmp(f.name, before.data, before.length)) {
+                if (f.type != UD_STRUCT) s = UD_SCHEMA; else b->before_column = i;
+            } else { b->write_indices[count] = i; fields[count++] = f; }
+        }
+        if (!s && b->before_column != UINT32_MAX) {
+            const ud_field *f = &in[0]->column[b->before_column].field;
+            if (f->child_count != count) s = UD_SCHEMA;
+            for (uint32_t i = 0; !s && i < count; i++)
+                if (!ud_field_matches(f->children + i, fields + i, UD_FIELD_LAYOUT)) s = UD_SCHEMA;
+        }
+        if (!s) { ud_batch_destroy(b->schema); b->schema = NULL; s = ud_batch_create(c->memory, fields, count, 0, &b->schema); }
+        ud_free(fields);
+    }
     if (!s) {
         b->columns = b->schema->columns;
         b->fields = ud_alloc(c->memory, b->columns * sizeof(*b->fields));
@@ -1294,19 +1346,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         ud_string connection = {0};
         s = ud_json_string(ud_member(b->config, "connection"), &connection);
         uint64_t caps = source_kind(kind) ? UD_CONNECT_READ : UD_CONNECT_APPEND;
-        if (kind == SQL_SINK) {
-            ud_string mode = {0};
-            s = ud_json_string(ud_member(b->config, "mode"), &mode);
-            b->mode = ud_named(mode, "append")   ? UD_WRITE_APPEND
-                      : ud_named(mode, "upsert") ? UD_WRITE_UPSERT
-                      : ud_named(mode, "delete") ? UD_WRITE_DELETE
-                                                 : 0;
-            if (!b->mode)
-                s = UD_UNSUPPORTED;
-            caps = b->mode == UD_WRITE_APPEND   ? UD_CONNECT_APPEND
-                   : b->mode == UD_WRITE_UPSERT ? UD_CONNECT_UPSERT
-                                                : UD_CONNECT_DELETE;
-        }
+        if (kind == SQL_SINK) caps = b->mode == UD_WRITE_APPEND ? UD_CONNECT_APPEND
+                : b->mode == UD_WRITE_UPSERT ? UD_CONNECT_UPSERT : b->mode == UD_WRITE_DELETE ? UD_CONNECT_DELETE : UD_CONNECT_CHANGESET;
         if (kind == SQL_SINK)
             caps |= UD_CONNECT_METADATA;
         if (!s)
@@ -1710,7 +1751,8 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
     ud_free(identity);
     return s;
 }
-static ud_status sink_write(builtin *b, const ud_batch *input) {
+static ud_status sink_write(builtin *b, const ud_batch *input, const ud_batch *before) {
+    if (!input->rows) return UD_OK;
     ud_string table = {0};
     UD_TRY(ud_json_string(ud_member(b->config, "table"), &table));
     char id[32], position[96];
@@ -1733,7 +1775,15 @@ static ud_status sink_write(builtin *b, const ud_batch *input) {
                           {position, (uint32_t)strlen(position)},
                           b->keys,
                           b->key_count};
-    ud_status status = ud_pipeline_write(&b->context, b->lease, &o, input);
+    o.current_column = UINT32_MAX; o.before = before;
+    int32_t *operations = b->mode == UD_WRITE_CHANGESET ? ud_alloc(b->context.memory, input->rows * sizeof(*operations)) : NULL;
+    ud_status status = b->mode == UD_WRITE_CHANGESET && !operations ? UD_RESOURCE : UD_OK;
+    for (uint32_t row = 0; !status && operations && row < input->rows; row++) {
+        ud_row_info info; status = ud_batch_row_info(input, row, &info); operations[row] = (int32_t)info.operation;
+    }
+    o.operations = operations;
+    if (!status) status = ud_pipeline_write(&b->context, b->lease, &o, input);
+    ud_free(operations);
     if (!status)
         b->number++;
     return status;
@@ -1795,11 +1845,10 @@ static ud_status step(void *ptr, const ud_component_event *event) {
         return status;
     }
     if (kind == SQL_SINK) {
-        ud_batch *mapped = NULL;
-        ud_status status = sink_batch(b, event->batch, &mapped);
-        if (!status)
-            status = sink_write(b, mapped);
-        ud_batch_destroy(mapped);
+        ud_batch *mapped = NULL, *before = NULL;
+        ud_status status = sink_batch(b, event->batch, &mapped, &before);
+        if (!status) status = sink_write(b, mapped, before);
+        ud_batch_destroy(mapped); ud_batch_destroy(before);
         return status;
     }
     if (kind == SORT || kind == JOIN || kind == WINDOW || kind == AGGREGATE)
@@ -1947,7 +1996,7 @@ static const char *configuration_schema(int kind) {
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
     case SQL_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
-               "\"table\":{\"type\":\"string\"},\"mode\":{\"type\":\"string\"},\"keys\":{\"type\":"
+               "\"table\":{\"type\":\"string\"},\"mode\":{\"type\":\"string\",\"enum\":[\"append\",\"upsert\",\"delete\",\"changeset\"]},\"beforeField\":{\"type\":\"string\"},\"keys\":{\"type\":"
                "\"array\"},\"schemaPolicy\":{\"type\":\"object\"},\"provisionReceipts\":{\"type\":\"boolean\"}},\"required\":[\"connection\","
                "\"table\",\"mode\"],\"additionalProperties\":false}";
     case CAST:

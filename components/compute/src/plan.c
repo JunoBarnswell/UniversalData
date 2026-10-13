@@ -80,19 +80,29 @@ static ud_status bind(ud_plan *p, const ud_expression_options *bindings) {
     for (uint32_t i = 0; i < p->agg_n; i++) {
         const ud_json *def = ud_json_at(aggregates, i);
         ud_string function, column, name;
-        if (ud_json_kind(def) != UD_JSON_OBJECT || ud_json_size(def) != 3)
+        if (ud_json_kind(def) != UD_JSON_OBJECT)
             return UD_SCHEMA;
         UD_TRY(string(member(def, "function"), &function));
         UD_TRY(string(member(def, "column"), &column));
         UD_TRY(string(member(def, "name"), &name));
         if (!name.length || memchr(name.data, 0, name.length))
             return UD_SCHEMA;
+        static const char *allowed[]={"function","column","name","condition","distinct","maxDistinct","rounding"};
+        UD_TRY(ud_json_keys(def,allowed,7));
         ud_aggregate_def *a = p->aggs + i;
+        a->maximum_distinct=65536; a->rounding=UD_ROUND_HALF_EVEN;
+        const ud_json *flag=member(def,"distinct");
+        if(flag){ud_string t; if(ud_json_kind(flag)!=UD_JSON_BOOL)return UD_SCHEMA;UD_TRY(ud_json_text(flag,&t.data,&t.length));a->distinct=named(t,"true");}
+        const ud_json *maximum=member(def,"maxDistinct");if(maximum){ud_string t;UD_TRY(ud_json_text(maximum,&t.data,&t.length));uint64_t v=0;for(uint32_t k=0;k<t.length;k++){if(t.data[k]<'0'||t.data[k]>'9'||v>1000000)return UD_SCHEMA;v=v*10+(unsigned)(t.data[k]-'0');}if(!v||v>1000000)return UD_SCHEMA;a->maximum_distinct=(uint32_t)v;}
+        const ud_json *rounding=member(def,"rounding");if(rounding){ud_string t;UD_TRY(string(rounding,&t));if(named(t,"exact"))a->rounding=UD_ROUND_EXACT;else if(!named(t,"halfEven"))return UD_SCHEMA;}
+        const ud_json *condition=member(def,"condition");if(condition){char *json=NULL;uint32_t length;UD_TRY(ud_json_serialize(condition,&json,&length));ud_expression_options options={.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION};if(bindings)options=*bindings;options.schema=p->schema_owner;ud_status status=ud_expression_create(p->ctx,(ud_string){json,length},&options,&a->condition);ud_free(json);if(status)return status;if(ud_expression_type(a->condition)!=UD_BOOL)return UD_SCHEMA;}
+
         a->kind = named(function, "count") ? 0
                   : named(function, "sum") ? 1
                   : named(function, "min") ? 2
                   : named(function, "max") ? 3
-                                           : -1;
+                  : named(function, "avg") ? 4
+                  : named(function, "approxDistinct") ? 5 : -1;
         if (a->kind < 0)
             return UD_UNSUPPORTED;
         int at = index_of(p, column);
@@ -102,7 +112,9 @@ static ud_status bind(ud_plan *p, const ud_expression_options *bindings) {
             return UD_SCHEMA;
         else
             a->column = (uint32_t)at;
-        if (a->kind == 1 && p->fields[a->column].type != UD_INT64 &&
+        if (a->column==UINT32_MAX && a->distinct) return UD_SCHEMA;
+        if (a->kind==5 && a->distinct) return UD_SCHEMA;
+        if ((a->kind == 1 || a->kind == 4) && p->fields[a->column].type != UD_INT64 &&
             p->fields[a->column].type != UD_FLOAT64 && p->fields[a->column].type != UD_DECIMAL128)
             return UD_SCHEMA;
         a->name = ud_strdup_n(p->ctx, name.data, name.length);
@@ -144,8 +156,10 @@ static ud_status result_schema(ud_plan *p) {
             s = ud_field_copy(p->ctx, p->fields + at, (ud_id){0}, fields + i);
         } else {
             ud_aggregate_def *a = p->aggs + i - p->key_n;
-            ud_field field = a->kind ? p->fields[a->column] : (ud_field){.type = UD_INT64};
-            field.nullable = a->kind != 0;
+            ud_field field = a->kind && a->kind!=5 ? p->fields[a->column] : (ud_field){.type = UD_INT64};
+            field.nullable = a->kind != 0 && a->kind!=5;
+            if(a->kind==4 && field.type!=UD_FLOAT64){field.type=UD_DECIMAL128;field.precision=38;field.scale=p->fields[a->column].type==UD_DECIMAL128?p->fields[a->column].scale:0;field.scale=field.scale>32?38:field.scale+6;}
+            if(a->kind==5){field.lineage=p->fields[a->column].lineage;field.lineage_count=p->fields[a->column].lineage_count;}
             if (!a->kind && a->column != UINT32_MAX) {
                 field.lineage = p->fields[a->column].lineage;
                 field.lineage_count = p->fields[a->column].lineage_count;
@@ -226,8 +240,9 @@ void ud_plan_destroy(ud_plan *p) {
     if (!p || atomic_fetch_sub(&p->references, 1) != 1)
         return;
     ud_expression_destroy(p->predicate);
-    for (uint32_t i = 0; p->aggs && i < p->agg_n; i++)
-        ud_free(p->aggs[i].name);
+    for (uint32_t i = 0; p->aggs && i < p->agg_n; i++) {
+        ud_free(p->aggs[i].name); ud_expression_destroy(p->aggs[i].condition);
+    }
     ud_free(p->fields);
     ud_free(p->projection);
     ud_free(p->keys);

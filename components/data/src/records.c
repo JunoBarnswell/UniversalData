@@ -104,30 +104,25 @@ ud_status ud_batch_identify(ud_context *ctx, const ud_batch *input, ud_id scope,
     }
     return status;
 }
-ud_status ud_batch_join_row_info(ud_batch *out, uint32_t target, const ud_batch *left,
-                                 uint32_t lrow, const ud_batch *right, uint32_t rrow) {
-    ud_row_info a, b;
-    UD_TRY(ud_batch_row_info(left, lrow, &a));
-    UD_TRY(ud_batch_row_info(right, rrow, &b));
-    if (!a.id.high && !a.id.low)
-        return ud_batch_copy_row_info(out, target, right, rrow);
-    if (!b.id.high && !b.id.low)
-        return ud_batch_copy_row_info(out, target, left, lrow);
+ud_status ud_row_info_join(ud_context *ctx,const ud_row_info*a,const ud_row_info*b,ud_row_info*out){
+    if(!ctx||!a||!b||!out)return UD_INVALID;
+    if(!a->id.high&&!a->id.low){*out=*b;return UD_OK;}if(!b->id.high&&!b->id.low){*out=*a;return UD_OK;}
     uint8_t bytes[32], digest[32];
-    uint64_t ids[] = {a.id.high, a.id.low, b.id.high, b.id.low};
+    uint64_t ids[] = {a->id.high, a->id.low, b->id.high, b->id.low};
     for (uint32_t n = 0; n < 4; n++)
         for (uint32_t j = 0; j < 8; j++)
             bytes[n * 8 + j] = (uint8_t)(ids[n] >> (j * 8));
     ud_hash(bytes, sizeof(bytes), digest);
-    if(a.operation && b.operation && a.operation != b.operation) return UD_UNSUPPORTED;
-    ud_row_info info = {.flags = a.flags | b.flags, .rule = a.flags ? a.rule : b.rule,
-                       .operation = a.operation ? a.operation : b.operation};
+    if(a->operation && b->operation && a->operation != b->operation) return UD_UNSUPPORTED;
+    ud_row_info info = {.flags = a->flags | b->flags, .rule = a->flags ? a->rule : b->rule,
+                       .operation = a->operation ? a->operation : b->operation};
     for (uint32_t j = 0; j < 8; j++) {
         info.id.high = (info.id.high << 8) | digest[j];
         info.id.low = (info.id.low << 8) | digest[j + 8];
     }
-    return ud_batch_set_row_info(out, target, &info);
+    *out=info;return UD_OK;
 }
+ud_status ud_batch_join_row_info(ud_batch*out,uint32_t target,const ud_batch*left,uint32_t lrow,const ud_batch*right,uint32_t rrow){ud_row_info a,b,info;UD_TRY(ud_batch_row_info(left,lrow,&a));UD_TRY(ud_batch_row_info(right,rrow,&b));UD_TRY(ud_row_info_join(out->ctx,&a,&b,&info));return info.id.high||info.id.low?ud_batch_set_row_info(out,target,&info):UD_OK;}
 uint64_t ud_batch_error_rows(const ud_batch *batch) {
     uint64_t count = 0;
     if (batch)
@@ -159,7 +154,7 @@ ud_status ud_batch_hash_rows(const ud_batch *batch, ud_sha256 *hash) {
         for (uint32_t n = 0; n < 6; n++)
             for (uint32_t j = 0; j < 8; j++)
                 bytes[n * 8 + j] = (uint8_t)(parts[n] >> (8 * j));
-        ud_sha256_update(hash, bytes, 40);
+        ud_sha256_update(hash, bytes, sizeof(bytes));
     }
     return UD_OK;
 }

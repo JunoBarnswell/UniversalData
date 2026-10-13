@@ -31,7 +31,8 @@ ud_status ud_state_append(ud_state *s,const ud_batch *b,uint32_t row) {
 ud_status ud_state_seal(ud_state*s){if(!s)return UD_INVALID;if(s->sealed)return UD_OK;UD_TRY(flush(s));s->sealed=1;return UD_OK;}
 void ud_state_reader_clear(ud_state_reader*r){if(!r)return;ud_buffer_view_release(r->view);memset(r,0,sizeof(*r));}
 ud_status ud_state_row(ud_state_reader*r,const ud_state*s,uint64_t position,const ud_batch**batch,uint32_t*row) {
-    if(!r||!s||!s->sealed||!batch||!row)return UD_INVALID;if(position>=s->rows)return UD_END;
+    if(!r||!s||!batch||!row)return UD_INVALID;if(position>=s->rows)return UD_END;
+    if(s->chunk&&position>=s->rows-s->chunk->rows){ud_state_reader_clear(r);*batch=s->chunk;*row=(uint32_t)(position-(s->rows-s->chunk->rows));return UD_OK;}
     uint32_t low=0,high=s->count;while(low<high){uint32_t mid=low+(high-low)/2;if(s->pages[mid].first+s->pages[mid].rows<=position)low=mid+1;else high=mid;}
     if(low==s->count)return UD_CORRUPT;
     if(r->state!=s||!r->view||r->page!=low){ud_state_reader_clear(r);UD_TRY(ud_buffer_read(s->pages[low].block,&r->view));r->state=s;r->page=low;}

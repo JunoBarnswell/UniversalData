@@ -7,6 +7,8 @@
 extern "C" {
 #endif
 typedef struct ud_package ud_package;
+/* Pure Native template expansion; $template substitutes typed JSON values. */
+UD_API ud_status ud_package_instantiate(ud_context *,ud_string,char **,uint32_t *);
 enum {
     UD_EXEC_EVENT_STATE = 1,
     UD_EXEC_EVENT_BEFORE_CHECKPOINT,

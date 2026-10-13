@@ -2,6 +2,7 @@
 #include "relational.h"
 #include "window.h"
 #include "advanced.h"
+#include "replay.h"
 #include "../internal.h"
 #include "../../execution/executor.h"
 
@@ -23,6 +24,7 @@ struct ud_operator {
     ud_relational *relational;
     ud_window *window;
     ud_advanced *advanced;
+    ud_replay *replay;
     ud_context *ctx;
     ud_operator_options options;
     ud_batch *inputs[2], *schema;
@@ -273,22 +275,26 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
         return UD_RESOURCE;
     o->ctx = ctx;
     o->options = *options;
+    ud_status captured=ud_replay_create(ctx,options,inputs,&o->replay);
+    if(captured){ud_free(o);return captured;}
+    ud_operator_options execution_options=*options;execution_options.record_state=0;options=&execution_options;o->options.record_state=0;
+
     if (!o->options.partition_count)
         o->options.partition_count = 1;
     if (options->kind >= UD_OPERATOR_DEDUPLICATE && options->kind!=UD_OPERATOR_ASOF_JOIN &&
         options->kind!=UD_OPERATOR_TEMPORAL_JOIN && options->kind!=UD_OPERATOR_DIFF_COMPARE) {
         ud_status status=ud_advanced_create(ctx,options,inputs,&o->advanced);
-        if(status){ud_free(o);return status;}*out=o;return UD_OK;
+        if(status){ud_replay_destroy(o->replay);ud_free(o);return status;}*out=o;return UD_OK;
     }
     if (options->kind == UD_OPERATOR_WINDOW) {
         ud_status status = ud_window_create(ctx, options, inputs[0], &o->window);
-        if (status) { ud_free(o); return status; }
+        if (status) { ud_replay_destroy(o->replay); ud_free(o); return status; }
         *out = o; return UD_OK;
     }
     if (options->kind == UD_OPERATOR_JOIN || options->kind >= UD_OPERATOR_MERGE) {
         ud_status status = ud_relational_create(ctx, options, inputs, &o->relational);
         if (status) {
-            ud_free(o);
+            ud_replay_destroy(o->replay); ud_free(o);
             return status;
         }
         *out = o;
@@ -319,7 +325,7 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
         sort.aggregation = NULL;
         for (uint32_t i = 0; !s && i < options->aggregation->agg_n; i++) {
             ud_aggregate_def *a = options->aggregation->aggs + i;
-            if (a->kind == 1 && options->aggregation->fields[a->column].type == UD_FLOAT64)
+            if ((a->kind == 1 || a->kind == 4) && options->aggregation->fields[a->column].type == UD_FLOAT64)
                 o->raw_aggregation = 1;
         }
         if (o->raw_aggregation)
@@ -499,7 +505,7 @@ static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *in
     ud_free(work.results);
     return status;
 }
-ud_status ud_operator_push(ud_operator *o, uint32_t port, const ud_batch *input) {
+static ud_status operator_push(ud_operator *o, uint32_t port, const ud_batch *input) {
     if(o && o->advanced)return ud_advanced_push(o->advanced,port,input);
     if (o && o->window) {
         if(port || !input || !input->sealed || input->rows > o->options.max_batch_rows) return UD_INVALID;
@@ -524,7 +530,7 @@ ud_status ud_operator_push(ud_operator *o, uint32_t port, const ud_batch *input)
         o->failed = 1;
     return status;
 }
-ud_status ud_operator_finish_input(ud_operator *o, uint32_t port) {
+static ud_status operator_end(ud_operator *o, uint32_t port) {
     if(o && o->advanced)return ud_advanced_end(o->advanced,port);
     if (o && o->window) return port ? UD_INVALID : ud_window_end(o->window);
     if (o && o->relational)
@@ -634,7 +640,7 @@ static ud_status aggregate_pull(ud_operator *o, ud_batch **out) {
     return ud_batch_seal(*out);
 }
 
-ud_status ud_operator_pull(ud_operator *o, ud_batch **out, uint32_t *output) {
+static ud_status operator_pull(ud_operator *o, ud_batch **out, uint32_t *output) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
@@ -664,14 +670,19 @@ ud_status ud_operator_pull(ud_operator *o, ud_batch **out, uint32_t *output) {
         o->failed = 1;
     return s;
 }
+ud_status ud_operator_push(ud_operator*o,uint32_t port,const ud_batch*b){ud_status s=operator_push(o,port,b);if(!s)s=ud_replay_record(o->replay,1,port,b);return s;}
+ud_status ud_operator_finish_input(ud_operator*o,uint32_t port){ud_status s=operator_end(o,port);if(!s)s=ud_replay_record(o->replay,2,port,NULL);return s;}
+ud_status ud_operator_pull(ud_operator*o,ud_batch**b,uint32_t*port){uint32_t output=0;ud_status s=operator_pull(o,b,&output);if(!s)s=ud_replay_record(o->replay,3,output,*b);if(s&&s!=UD_BUSY&&s!=UD_END&&b){ud_batch_destroy(*b);*b=NULL;}if(port)*port=output;return s;}
+ud_status ud_operator_checkpoint(ud_operator*o,ud_batch**out){if(!o||!out)return UD_INVALID;return ud_replay_snapshot(o->replay,out);}
+ud_status ud_operator_restore(ud_operator**instance,const ud_batch*snapshot){if(!instance||!*instance)return UD_INVALID;ud_operator*old=*instance,*restored=NULL;ud_status s=ud_replay_restore(old->replay,snapshot,&restored);if(!s)s=ud_replay_rebase(old->replay,snapshot);if(s){ud_operator_destroy(restored);return s;}restored->replay=old->replay;old->replay=NULL;s=ud_operator_destroy(old);*instance=restored;return s;}
 ud_status ud_operator_destroy(ud_operator *o) {
     if (!o)
         return UD_OK;
-    if(o->advanced){ud_advanced_destroy(o->advanced);ud_free(o);return UD_OK;}
-    if (o->window) { ud_window_destroy(o->window); ud_free(o); return UD_OK; }
+    if(o->advanced){ud_advanced_destroy(o->advanced);ud_replay_destroy(o->replay);ud_free(o);return UD_OK;}
+    if (o->window) { ud_window_destroy(o->window); ud_replay_destroy(o->replay); ud_free(o); return UD_OK; }
     if (o->relational) {
         ud_relational_destroy(o->relational);
-        ud_free(o);
+        ud_replay_destroy(o->replay); ud_free(o);
         return UD_OK;
     }
     UD_TRY(ud_operator_destroy(o->group_sort));
@@ -698,7 +709,7 @@ ud_status ud_operator_destroy(ud_operator *o) {
     ud_batch_destroy(o->schema);
     ud_plan_destroy(o->options.aggregation);
     ud_free(o->keys);
-
+    ud_replay_destroy(o->replay);
     ud_free(o);
     return UD_OK;
 }

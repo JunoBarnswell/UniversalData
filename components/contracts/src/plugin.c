@@ -152,7 +152,7 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             NULL,
                             NULL, ud_json_parse, ud_json_destroy, ud_json_find, ud_json_text, ud_json_kind,
                             ud_json_size, ud_json_at, ud_json_keys, ud_json_bind_schema,
-                            ud_field_from_sql,ud_sql_compile_write,ud_sql_statement_clear};
+                            ud_field_from_sql,ud_sql_compile_write,ud_sql_statement_clear,ud_value_compare,ud_sql_compile_preimage};
     *out = p;
     return UD_OK;
 }

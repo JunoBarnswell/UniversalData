@@ -192,6 +192,8 @@ static ud_status finish(void *ptr) {
     (void)ptr;
     return UD_OK;
 }
+static ud_status checkpoint(void*instance,ud_batch**out){return ud_operator_checkpoint(((relational_component*)instance)->operator,out);}
+static ud_status restore_state(void*instance,const ud_batch*state){return ud_operator_restore(&((relational_component*)instance)->operator,state);}
 static ud_status diagnostics(void *ptr, char **out, uint32_t *n) {
     return ud_operator_diagnostics(((relational_component *)ptr)->operator, out, n);
 }
@@ -543,7 +545,7 @@ ud_status ud_relational_register(ud_registry *registry) {
             .dispose = dispose,
             .diagnostics = diagnostics,
             .describe_plan = describe,
-            .input_demand = demand};
+            .input_demand = demand, .state_version=1, .checkpoint=checkpoint, .restore=restore_state};
         UD_TRY(ud_registry_register(registry, &d));
     }
     ud_component_descriptor d = {.struct_size = sizeof(d),
@@ -569,6 +571,7 @@ ud_status ud_relational_register(ud_registry *registry) {
 }
 
 ud_status ud_component_operator_options(const ud_component_context *c,ud_operator_options *o) {
+    o->record_state=c->execution->journal!=NULL;
     ud_buffer_options limits = {0};
     UD_TRY(ud_execution_buffer_options(c->execution,&limits));
     uint32_t concurrency = ud_execution_concurrency(c->activation);
