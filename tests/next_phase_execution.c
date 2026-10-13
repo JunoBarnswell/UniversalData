@@ -40,6 +40,38 @@ static ud_status resolve(void *user, ud_context *ctx, ud_string tenant, ud_strin
                          ud_string reference, ud_string *out) {
     (void)user;
     (void)tenant;
+    if (reference.length > 5 && !memcmp(reference.data, "file:", 5)) {
+        char *path = ud_alloc(ctx, (size_t)reference.length - 4);
+        if (!path)
+            return UD_RESOURCE;
+        memcpy(path, reference.data + 5, reference.length - 5);
+        FILE *f = fopen(path, "rb");
+        ud_free(path);
+        if (!f)
+            return UD_IO;
+        if (fseek(f, 0, SEEK_END)) {
+            fclose(f);
+            return UD_IO;
+        }
+        long n = ftell(f);
+        if (n < 1 || n > 65536 || fseek(f, 0, SEEK_SET)) {
+            fclose(f);
+            return UD_SCHEMA;
+        }
+        char *text = ud_alloc(ctx, (size_t)n + 1);
+        if (!text) {
+            fclose(f);
+            return UD_RESOURCE;
+        }
+        size_t got = fread(text, 1, (size_t)n, f);
+        fclose(f);
+        if (got != (size_t)n) {
+            ud_free(text);
+            return UD_IO;
+        }
+        *out = (ud_string){text, (uint32_t)n};
+        return UD_OK;
+    }
     if (reference.length != 7 || memcmp(reference.data, "fixture", 7))
         return UD_AUTH;
     char *copy = ud_alloc(ctx, (size_t)resource.length + 1);
@@ -128,7 +160,8 @@ int main(int argc, char **argv) {
            (unsigned long long)m.error_rows, (unsigned long long)m.committed_error_rows,
            (unsigned long long)m.acknowledged_error_rows, (int)length, diagnostics);
     ud_free(diagnostics);
-    printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,m.tree_high_water,(unsigned long long)m.spill_bytes);
+    printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,
+           m.tree_high_water, (unsigned long long)m.spill_bytes);
     process_usage(stdout);
     printf("}\n");
     OK(ud_execution_destroy(execution));

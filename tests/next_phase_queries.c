@@ -114,7 +114,8 @@ int main(int argc, char **argv) {
                                   .authorize = authorize,
                                   .resolve = resolve};
         ud_status opened = ud_execution_create_json((ud_string){s, n}, &o, &e);
-        if (opened) fprintf(stderr, "Native binding: %s\n", ud_error(ctx));
+        if (opened)
+            fprintf(stderr, "Native binding: %s\n", ud_error(ctx));
         OK(opened);
         if (!strcmp(argv[1], "--catalog"))
             OK(ud_execution_component_catalog(e, &json, &length));
@@ -147,7 +148,8 @@ int main(int argc, char **argv) {
                                   .authorize = authorize,
                                   .resolve = resolve};
         ud_status opened = ud_execution_create_json((ud_string){s, n}, &o, &e);
-        if (opened) fprintf(stderr, "Native binding: %s\n", ud_error(ctx));
+        if (opened)
+            fprintf(stderr, "Native binding: %s\n", ud_error(ctx));
         OK(opened);
         OK(ud_execution_discover_schema(e, str(argv[3]), str(argv[4]), &json, &length));
         write_fixture(argv[5], json, length);

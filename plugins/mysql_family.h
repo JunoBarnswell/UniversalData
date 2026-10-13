@@ -16,5 +16,7 @@
  * own headers and client library. No connector adapts or loads another plugin. */
 ud_status ud_mysql_initialize(const ud_host_api *, const char *, uint32_t, void **);
 void ud_mysql_destroy(void *);
+ud_status ud_mysql_library_initialize(void);
+void ud_mysql_library_shutdown(void);
 extern const ud_connector_api ud_mysql_connector;
 #endif

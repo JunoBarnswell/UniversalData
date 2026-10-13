@@ -183,6 +183,9 @@ static void apply(ud_journal *journal, const ud_journal_record *records, journal
                   uint32_t count) {
     for (uint32_t i = 0; i < count; i++) {
         journal_entry *entry = entries[i];
+        /* A durable record transfers its prepared entry to apply exactly once,
+         * regardless of insertion, replacement or targeted retirement. */
+        entries[i] = NULL;
         if (!entry) {
             retire_owner(journal, records[i].owner);
             continue;
@@ -216,7 +219,6 @@ static void apply(ud_journal *journal, const ud_journal_record *records, journal
             entry->next->previous = entry;
         journal->entries = entry;
         journal->count++;
-        entries[i] = NULL;
     }
 }
 static ud_status encode_record(ud_bytes *bytes, const ud_journal_record *record) {

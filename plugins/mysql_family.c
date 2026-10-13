@@ -13,6 +13,13 @@ typedef bool ud_mysql_bool;
 typedef my_bool ud_mysql_bool;
 #endif
 #define UD_MYSQL_CELL_LIMIT (16u * 1024u * 1024u)
+ud_status ud_mysql_library_initialize(void) {
+    return mysql_library_init(0, NULL, NULL) ? UD_RESOURCE : UD_OK;
+}
+void ud_mysql_library_shutdown(void) {
+    mysql_thread_end();
+    mysql_library_end();
+}
 typedef struct mysql_cdc {
     MYSQL *stream;
     ud_binlog *decoder;

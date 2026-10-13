@@ -163,6 +163,16 @@ for name, source, assembly in [("package", "examples/dotnet/Program.cs", "Consum
                               "--no-restore", "--nologo", "--verbosity:minimal"])
     output = client / "bin/Release/net8.0"
     assert digest(output / runtime_path) == digest(library), "Consumer did not receive the packaged native asset."
+    if os.name != 'nt':
+        # These are the already copied and verified NuGet assets, not SDK
+        # loader paths. Share their exact bytes with the private package cache
+        # to bound this verification workspace on constrained runners.
+        package_native = work / 'nuget-cache' / 'universaldata' / version / pathlib.Path(runtime_path).parent
+        for asset in (output / pathlib.Path(runtime_path).parent).iterdir():
+            original = package_native / asset.name
+            assert original.is_file() and digest(asset) == digest(original)
+            asset.unlink()
+            os.link(original, asset)
     dotnet_outputs.append(output / (assembly + ".dll"))
 
 java_repository = work / "maven-repository"
