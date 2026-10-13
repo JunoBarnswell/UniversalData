@@ -1,70 +1,83 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "1.2.0",
-  "abi": 6,
+  "sdkVersion": "1.3.0",
+  "abi": 7,
   "scope": {
-    "name": "ETL four engines R0–R7 P0/P1",
+    "name": "ETL next phase R1–R5 only",
     "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
     "extensions": "Tracked independently; Planned/Partial remain incomplete",
     "windows": "Exempt — explicit current user instruction"
   },
   "baseline": {
-    "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
-    "merged": true
+    "mainCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+    "merged": true,
+    "mergeEvidence": {
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/4",
+      "mergedAt": "2026-10-12T20:33:45Z",
+      "headCommit": "45c1d056a3d771389b1e115d28cc7977bcd2541b"
+    }
   },
   "candidate": {
-    "branch": "codex/ssis-infrastructure-convergence",
-    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
-    "sourceCommit": null,
-    "sourceFingerprint": null,
+    "branch": "codex/etl-next-phase-r1-r5",
+    "state": "R1–R5 P0/P1 implemented and Linux verified; unmerged PR candidate",
+    "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
+    "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
     "mergeEvidence": null
   },
   "remoteCI": {
     "state": "Blocked",
-    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38270005891",
-    "sourceCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38305032129",
+    "sourceCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
     "startedSteps": 0,
-    "reason": "GitHub account payment/spending-limit restriction; no code steps ran"
+    "reason": "GitHub account payment/spending-limit restriction; no code steps ran. Current Linux local evidence is independent."
   },
-  "artifacts": null,
+  "artifacts": {
+    "archive": "artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip",
+    "manifest": "artifacts/1.3.0/linux-x64-sealed/manifest.json",
+    "sha256": "3e2292575c811d514caa2a9172bc0052bd3e2cd3cf2b88d61418a716bcbe8161",
+    "runtimeIdentifier": "linux-x64",
+    "configuration": "Release",
+    "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+    "status": "Built and consumed from actual ZIP; local unmerged candidate"
+  },
   "requiredGates": 18,
-  "passedGates": 0,
+  "passedGates": 18,
   "remediations": [
     {
       "id": "R01",
       "state": "Implemented",
       "name": "Registry and native module lifecycle",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R02",
       "state": "Implemented",
       "name": "Physical Block Store ownership",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R03",
       "state": "Implemented",
       "name": "Shared executor and physical Execution Trees",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R04",
       "state": "Implemented",
       "name": "Indexed segmented Journal and snapshots",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R05",
       "state": "Implemented",
       "name": "Task facts, durability metrics and events",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R06",
       "state": "Implemented",
       "name": "Single version and acceptance model",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     }
   ]
 }

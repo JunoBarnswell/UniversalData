@@ -1,0 +1,359 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
+  "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+  "platform": "Linux only; Windows Exempt",
+  "sealedAtUtc": "2026-10-13T00:07:34.332286+00:00",
+  "release": {
+    "tests": 40,
+    "passed": 40,
+    "build": "Release",
+    "jni": true,
+    "sqlite": true,
+    "postgresql": true,
+    "http": true
+  },
+  "sanitizers": {
+    "tests": 40,
+    "passed": 40,
+    "flags": "-fsanitize=address,undefined",
+    "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1"
+  },
+  "minimalComponents": {
+    "tests": 5,
+    "passed": 5
+  },
+  "artifact": {
+    "exitCode": 0,
+    "sdkVersion": "1.3.0",
+    "abiVersion": 7,
+    "configuration": "Release",
+    "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+    "archive": "/workspace/UniversalData/artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip",
+    "archiveSha256": "3e2292575c811d514caa2a9172bc0052bd3e2cd3cf2b88d61418a716bcbe8161",
+    "verifiedFiles": 53,
+    "unpackedDirectory": "/workspace/next-phase-sdk-sealed/bundle",
+    "logs": "/workspace/next-phase-sdk-sealed",
+    "nativeLibrary": {
+      "path": "/workspace/next-phase-sdk-sealed/bundle/sdk/lib/libud_data.so",
+      "sha256": "a20e822029904b5cc5781d09d9a9d5527ff79efb32a0a549df9f28503a6473cb"
+    },
+    "nuget": {
+      "path": "/workspace/next-phase-sdk-sealed/bundle/packages/UniversalData.1.3.0.nupkg",
+      "sha256": "968138be403c0ec400d1f5d5a0f5636b13710099272724c319f9b5fccda1071f",
+      "nativeFromPackage": true,
+      "sdkLoaderPath": false
+    },
+    "maven": {
+      "path": "/workspace/next-phase-sdk-sealed/bundle/packages/universal-data-1.3.0.jar",
+      "sha256": "6a7ca5966d7668bc217e43ed32e5fcdf9c0e1000f3b44addb1be87406511a1b2",
+      "nativeFromBundle": true
+    },
+    "c": {
+      "cmakeTarget": "UniversalData::Data",
+      "dynamicPackage": true,
+      "dynamicResources": true,
+      "installedHostPipeline": true,
+      "dynamicSQLite": true
+    },
+    "languageParity": "10003 rows / 20006 input and output / 8 tasks; Package/Project/child and scalar/nested/wire equality",
+    "nativeQueryParity": "C/.NET/Java SQLite discovery/refresh, three compatibility policies and row identity from identified Wire",
+    "commands": [
+      {
+        "step": "c-configure",
+        "command": [
+          "/workspace/.universaldata-tools/bin/cmake",
+          "-S",
+          "/workspace/next-phase-sdk-sealed/c-source",
+          "-B",
+          "/workspace/next-phase-sdk-sealed/c-build",
+          "-DCMAKE_PREFIX_PATH=/workspace/next-phase-sdk-sealed/bundle/sdk",
+          "-DCMAKE_BUILD_TYPE=Release"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "c-build",
+        "command": [
+          "/workspace/.universaldata-tools/bin/cmake",
+          "--build",
+          "/workspace/next-phase-sdk-sealed/c-build",
+          "--config",
+          "Release",
+          "--parallel",
+          "4"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "c-dynamic-resources",
+        "command": [
+          "/workspace/.universaldata-tools/bin/python3",
+          "/workspace/UniversalData/tests/core_runtime.py",
+          "/workspace/next-phase-sdk-sealed/c-build/consumer_resources"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "installed-host-pipeline",
+        "command": [
+          "/workspace/.universaldata-tools/bin/python3",
+          "/workspace/UniversalData/tests/core_pipeline.py",
+          "/workspace/next-phase-sdk-sealed/bundle/sdk/bin/ud_cli"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "c-dynamic-sqlite",
+        "command": [
+          "/workspace/.universaldata-tools/bin/python3",
+          "/workspace/UniversalData/tests/package_sql.py",
+          "/workspace/next-phase-sdk-sealed/c-build/consumer_sql",
+          "/workspace/next-phase-sdk-sealed/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "nuget-restore-package",
+        "command": [
+          "/workspace/.universaldata-tools/dotnet8/dotnet",
+          "restore",
+          "/workspace/next-phase-sdk-sealed/dotnet-package/Consumer.csproj",
+          "--source",
+          "/workspace/next-phase-sdk-sealed/bundle/packages",
+          "--packages",
+          "/workspace/next-phase-sdk-sealed/nuget-cache",
+          "--nologo",
+          "--verbosity:minimal"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "nuget-build-package",
+        "command": [
+          "/workspace/.universaldata-tools/dotnet8/dotnet",
+          "build",
+          "/workspace/next-phase-sdk-sealed/dotnet-package/Consumer.csproj",
+          "--configuration",
+          "Release",
+          "--no-restore",
+          "--nologo",
+          "--verbosity:minimal"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "nuget-restore-data",
+        "command": [
+          "/workspace/.universaldata-tools/dotnet8/dotnet",
+          "restore",
+          "/workspace/next-phase-sdk-sealed/dotnet-data/DataConsumer.csproj",
+          "--source",
+          "/workspace/next-phase-sdk-sealed/bundle/packages",
+          "--packages",
+          "/workspace/next-phase-sdk-sealed/nuget-cache",
+          "--nologo",
+          "--verbosity:minimal"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "nuget-build-data",
+        "command": [
+          "/workspace/.universaldata-tools/dotnet8/dotnet",
+          "build",
+          "/workspace/next-phase-sdk-sealed/dotnet-data/DataConsumer.csproj",
+          "--configuration",
+          "Release",
+          "--no-restore",
+          "--nologo",
+          "--verbosity:minimal"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "maven-install",
+        "command": [
+          "/workspace/.universaldata-tools/maven/bin/mvn",
+          "-B",
+          "-q",
+          "-f",
+          "/workspace/next-phase-sdk-sealed/bundle/packages/universal-data-1.3.0.pom",
+          "install:install-file",
+          "-Dfile=/workspace/next-phase-sdk-sealed/bundle/packages/universal-data-1.3.0.jar",
+          "-DpomFile=/workspace/next-phase-sdk-sealed/bundle/packages/universal-data-1.3.0.pom",
+          "-DlocalRepositoryPath=/workspace/next-phase-sdk-sealed/maven-repository"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "maven-consumer",
+        "command": [
+          "/workspace/.universaldata-tools/maven/bin/mvn",
+          "-B",
+          "-q",
+          "-f",
+          "/workspace/next-phase-sdk-sealed/java-consumer/pom.xml",
+          "-Dmaven.repo.local=/workspace/next-phase-sdk-sealed/java-cache",
+          "package"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "bundle-language-parity",
+        "command": [
+          "/workspace/.universaldata-tools/bin/python3",
+          "/workspace/UniversalData/tests/package_language_parity.py",
+          "/workspace/next-phase-sdk-sealed/c-build/consumer_package",
+          "/workspace/next-phase-sdk-sealed/c-build/consumer_data",
+          "/workspace/.universaldata-tools/dotnet8/dotnet",
+          "/workspace/next-phase-sdk-sealed/dotnet-package/bin/Release/net8.0/Consumer.dll",
+          "/workspace/next-phase-sdk-sealed/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+          "/workspace/.universaldata-tools/jdk17/bin/java",
+          "/workspace/next-phase-sdk-sealed/java-consumer/target/classes",
+          "/workspace/next-phase-sdk-sealed/maven-repository/org/universaldata/universal-data/1.3.0/universal-data-1.3.0.jar",
+          "/workspace/next-phase-sdk-sealed/bundle/sdk/lib",
+          "--managed-native-local"
+        ],
+        "exitCode": 0
+      },
+      {
+        "step": "bundle-native-query-parity",
+        "command": [
+          "/workspace/.universaldata-tools/bin/python3",
+          "/workspace/UniversalData/tests/next_phase_queries.py",
+          "--query",
+          "/workspace/next-phase-sdk-sealed/c-build/consumer_query",
+          "--data",
+          "/workspace/next-phase-sdk-sealed/c-build/consumer_data",
+          "--dotnet",
+          "/workspace/.universaldata-tools/dotnet8/dotnet",
+          "--data-dll",
+          "/workspace/next-phase-sdk-sealed/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+          "--java",
+          "/workspace/.universaldata-tools/jdk17/bin/java",
+          "--classes",
+          "/workspace/next-phase-sdk-sealed/java-consumer/target/classes",
+          "--jar",
+          "/workspace/next-phase-sdk-sealed/maven-repository/org/universaldata/universal-data/1.3.0/universal-data-1.3.0.jar",
+          "--native",
+          "/workspace/next-phase-sdk-sealed/bundle/sdk/lib",
+          "--sqlite",
+          "/workspace/next-phase-sdk-sealed/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so"
+        ],
+        "exitCode": 0
+      }
+    ]
+  },
+  "commands": [
+    "cmake --build build/next-phase-linux --parallel 4",
+    "ctest --test-dir build/next-phase-linux --output-on-failure --parallel 4",
+    "cmake --build build/next-phase-asan --parallel 4",
+    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/next-phase-asan --output-on-failure --parallel 4",
+    "python3 tests/four_engine_postgresql.py --bin /workspace/.universaldata-tools/postgresql-server/bin --build build/next-phase-linux",
+    "python3 scripts/static_check.py",
+    "cmake --preset core-only -B build/next-phase-core; cmake --build build/next-phase-core --parallel 4; ctest --test-dir build/next-phase-core --output-on-failure",
+    "python3 packaging/package-linux.py --build build/next-phase-linux --output artifacts/1.3.0/linux-x64-sealed",
+    "python3 tests/installed_sdk.py --bundle artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip --work /workspace/next-phase-sdk-sealed --evidence docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+    "python3 benchmarks/next_phase.py build/next-phase-linux/tests/test_next_phase_execution build/next-phase-linux/plugins/ud_connector_sqlite.so --rows 1000000 --references 100000 --output /workspace/next-phase-benchmark-sealed.json",
+    "python3 benchmarks/four_engines.py --cli build/next-phase-linux/hosts/ud_cli --rows 1000000 --output /workspace/next-phase-sort-sealed.json",
+    "python3 /workspace/next-phase-postgresql-vertical.py (exact orchestration copied to postgresql-vertical.py)"
+  ],
+  "historicalAttempts": {
+    "ABI6": "docs/acceptance/evidence/etl-four-engines-linux is historical. four-engine-tests.txt is a failed intermediate attempt; native-tests.txt and asan-tests.txt hold final 37/37 results. None certifies ABI7.",
+    "ABI7Initial": "Pre-seal attempts used hex-retained snapshots and lacked server cancellation or current C fixture setup; fixes precede current green evidence. Raw attempts remain under /workspace/next-phase-*.log; no failed attempt is used as a Passed gate."
+  },
+  "files": [
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+      "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/build-release.txt",
+      "sha256": "8c35b1682f73592d30612d7b0fabdb384fcfff35cb5a076cb48b85b1368aa794"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/build-sanitizers.txt",
+      "sha256": "fe7cc10c76ad6835af45585832100bd41e068ed7d05096c92b9404d9a51af5b3"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/bundle-build.txt",
+      "sha256": "e5dbc959736f6b0ebdefd783b817c7ada127b80bdd29da69f075e0ea9df33c32"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/bundle-manifest.json",
+      "sha256": "422b70f16c4810062a83e7c5c46befc399d6e42941701247cb19e78087555c90"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/contracts.txt",
+      "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/core-only.txt",
+      "sha256": "ecf8d4076d858ce4ac899c84f1c22419fc86357b24aa2b48265be1a24ad9605d"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-consumers.txt",
+      "sha256": "8d5afb781921527e8429a4c665d7216970398f9c2eaa5ade3e7b31e4fd01e71c"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+      "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+      "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+      "sha256": "51f926693a387aa45528116f8cf7a2b5bdb361a5a2144d0bedc554e76166ee82"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json",
+      "sha256": "d6b15b8b5375c51397d9e1c3389371ae6dc7b2fd2c9b87e4470cddc4114663c3"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.py",
+      "sha256": "3a67e4fb799bc6929d99cf82bb716af7bc3436b3ebe97f4c5e69f62de6b078a8"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.txt",
+      "sha256": "01916decc7ddf6396c5703bca26679b45747f860c13b0d4b1211d94406715391"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+      "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
+    },
+    {
+      "path": "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+      "sha256": "fd7a3adb67c37f13dfdeff4fb3b58b25a29a9352519c03585fb3adfda711937f"
+    }
+  ],
+  "benchmark": {
+    "samples": 19,
+    "facts": 1000000,
+    "references": 100000,
+    "errorRows": 100000,
+    "signatureAndCardinalityChecked": true,
+    "crashConfirmedRows": 6144,
+    "phases": "first capture + interruption; separate process resume; both CPU/RSS measured",
+    "file": "benchmark.json"
+  },
+  "postgresqlVertical": {
+    "rows": 1003,
+    "confirmedAtCrash": 254,
+    "singlePhysicalSession": true,
+    "schemaPreflight": true,
+    "exactTargetEquality": true,
+    "typedDomains": [
+      "Timestamp UTC",
+      "Composite Int64 PK",
+      "Decimal128(38,2)",
+      "Bool",
+      "Binary",
+      "UTF8"
+    ],
+    "record": "postgresql-vertical.json"
+  }
+}

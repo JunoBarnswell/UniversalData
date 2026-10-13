@@ -1,0 +1,1 @@
+PostgreSQL native composite source -> discovery/preflight -> snapshot -> SQL upsert, real process crash/resume and six typed domains passed
