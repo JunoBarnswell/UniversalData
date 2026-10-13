@@ -85,8 +85,8 @@ static ud_status bind_value(oracle *p, OCIStmt *stmt, uint32_t at, const ud_valu
     c->length = 0;
     sb8 size = 0;
     void *data = NULL;
-    if (v->type == UD_INT64 || v->type == UD_BOOL) {
-        c->type = SQLT_INT;
+    if (v->type == UD_INT64 || v->type == UD_UINT64 || v->type == UD_BOOL) {
+        c->type = v->type == UD_UINT64 ? SQLT_UIN : SQLT_INT;
         c->integer = v->integer;
         data = &c->integer;
         size = 8;
@@ -296,8 +296,8 @@ ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch
             OCIDescriptorFree(param, OCI_DTYPE_PARAM);
         void *data = NULL;
         sb8 size = 0;
-        if (c->field.type == UD_INT64 || c->field.type == UD_BOOL) {
-            c->type = SQLT_INT;
+        if (c->field.type == UD_INT64 || c->field.type == UD_UINT64 || c->field.type == UD_BOOL) {
+            c->type = c->field.type == UD_UINT64 ? SQLT_UIN : SQLT_INT;
             data = &c->integer;
             size = 8;
         } else if (c->field.type == UD_FLOAT64) {
@@ -405,7 +405,7 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
                 s = UD_SCHEMA;
                 break;
             }
-            if (v[i].type == UD_INT64 || v[i].type == UD_BOOL) {
+            if (v[i].type == UD_INT64 || v[i].type == UD_UINT64 || v[i].type == UD_BOOL) {
                 v[i].integer = c->integer;
                 if (v[i].type == UD_BOOL && c->integer != 0 && c->integer != 1)
                     s = UD_SCHEMA;
@@ -811,6 +811,8 @@ static ud_status verify_preimage(oracle *p, const ud_write_options *options, con
     for (uint32_t i = 0; !s && i < p->host.columns(b); i++) {
         ud_value expected, value;
         s = p->host.get(options->before, row, i, &expected);
+        if (!s && expected.is_absent)
+            continue;
         if (!s)
             s = p->host.get(actual, 0, i, &value);
         if (!s && p->host.compare_value(&expected, &value))
@@ -863,7 +865,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
                                               o->source_position.data, o->source_position.length))))
         s = UD_CORRUPT;
     p->host.deallocate((void *)previous.source_position.data);
-    uint32_t limit = p->host.columns(b) ? p->host.parameter_limit(UD_SQL_ORACLE) / p->host.columns(b) : 0;
+    uint32_t limit =
+        p->host.columns(b) ? p->host.parameter_limit(UD_SQL_ORACLE) / p->host.columns(b) : 0;
     if (!limit)
         s = UD_RESOURCE;
     if (limit > 128)

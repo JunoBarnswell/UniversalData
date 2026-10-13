@@ -163,8 +163,12 @@ static ud_status bind(ud_plan *p, const ud_expression_options *bindings) {
             return UD_SCHEMA;
         if (a->kind == 5 && a->distinct)
             return UD_SCHEMA;
+        if ((a->kind == 1 || a->kind == 4) && p->fields[a->column].dictionary_kind)
+            return UD_UNSUPPORTED;
         if ((a->kind == 1 || a->kind == 4) && p->fields[a->column].type != UD_INT64 &&
-            p->fields[a->column].type != UD_FLOAT64 && p->fields[a->column].type != UD_DECIMAL128)
+            p->fields[a->column].type != UD_UINT64 && p->fields[a->column].type != UD_DURATION &&
+            p->fields[a->column].type != UD_INTERVAL && p->fields[a->column].type != UD_FLOAT64 &&
+            p->fields[a->column].type != UD_DECIMAL128)
             return UD_SCHEMA;
         a->name = ud_strdup_n(p->ctx, name.data, name.length);
         if (!a->name)
@@ -208,7 +212,8 @@ static ud_status result_schema(ud_plan *p) {
             ud_field field =
                 a->kind && a->kind != 5 ? p->fields[a->column] : (ud_field){.type = UD_INT64};
             field.nullable = a->kind != 0 && a->kind != 5;
-            if (a->kind == 4 && field.type != UD_FLOAT64) {
+            if (a->kind == 4 && field.type != UD_FLOAT64 && field.type != UD_DURATION &&
+                field.type != UD_INTERVAL) {
                 field.type = UD_DECIMAL128;
                 field.precision = 38;
                 field.scale =

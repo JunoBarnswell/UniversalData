@@ -44,8 +44,8 @@ const char *ud_status_name(ud_status s) {
         "ok",          "end",      "invalid",   "io",        "resource",       "schema",
         "parse",       "overflow", "cancelled", "corrupt",   "incompatible",   "busy",
         "unsupported", "auth",     "quality",   "transient", "commit_unknown", "fenced",
-        "timeout",     "more"};
-    return s >= 0 && s < 20 ? names[s] : "unknown";
+        "timeout",     "more",     "truncated"};
+    return s >= 0 && s < 21 ? names[s] : "unknown";
 }
 const char *ud_error(const ud_context *ctx) {
     return !ctx ? "no context" : diagnostic_context == ctx ? diagnostic_text : "";
@@ -104,8 +104,8 @@ void *ud_alloc(ud_context *c, size_t n) {
     if (!c || n > SIZE_MAX - sizeof(allocation))
         return NULL;
     size_t total = n + sizeof(allocation);
-    ud_memory_domain *domain = allocation_domain && allocation_domain->ctx == c
-                                   ? allocation_domain : NULL;
+    ud_memory_domain *domain =
+        allocation_domain && allocation_domain->ctx == c ? allocation_domain : NULL;
     if (domain) {
         uint64_t owned = atomic_load(&domain->used);
         do {
@@ -116,7 +116,8 @@ void *ud_alloc(ud_context *c, size_t n) {
         } while (!atomic_compare_exchange_weak(&domain->used, &owned, owned + total));
         uint64_t peak = atomic_load(&domain->peak);
         while (peak < owned + total &&
-               !atomic_compare_exchange_weak(&domain->peak, &peak, owned + total)) {}
+               !atomic_compare_exchange_weak(&domain->peak, &peak, owned + total)) {
+        }
     }
     uint64_t old = atomic_load(&c->used);
     do {

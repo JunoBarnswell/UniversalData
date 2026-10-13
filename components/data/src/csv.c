@@ -8,35 +8,56 @@ struct ud_csv_reader {
     char *path, *null_marker;
     uint32_t null_length, batch_size, columns;
     ud_field *fields;
+    ud_batch *schema;
     uint64_t record;
+    uint32_t max_record_bytes;
+    ud_record_options records;
+    int poisoned;
 };
 typedef struct {
     char **text;
     uint32_t *length;
     uint32_t n;
+    uint32_t stored, bytes;
+    ud_bytes raw;
 } record;
 static void record_free(record *r) {
-    for (uint32_t i = 0; i < r->n; i++)
+    for (uint32_t i = 0; i < r->stored; i++)
         ud_free(r->text[i]);
     ud_free(r->text);
     ud_free(r->length);
+    ud_bytes_clear(&r->raw);
     memset(r, 0, sizeof(*r));
 }
 static ud_status finish_field(ud_csv_reader *r, record *row, ud_bytes *field) {
-    if (row->n == r->columns)
-        return UD_SCHEMA;
-    if (field->size > UINT32_MAX || !ud_utf8_valid((char *)field->data, field->size))
-        return UD_PARSE;
+    if (row->n == 65536 || field->size > UINT32_MAX)
+        return UD_RESOURCE;
+    if (row->n >= r->columns) {
+        row->n++;
+        field->size = 0;
+        return UD_OK;
+    }
     char *s = ud_strdup_n(r->ctx, field->data ? (char *)field->data : "", field->size);
     if (!s)
         return UD_RESOURCE;
     row->text[row->n] = s;
     row->length[row->n] = (uint32_t)field->size;
     row->n++;
+    row->stored++;
     field->size = 0;
     return UD_OK;
 }
+static ud_status record_byte(ud_csv_reader *reader, record *row, int value) {
+    if (row->bytes == reader->max_record_bytes)
+        return UD_RESOURCE;
+    row->bytes++;
+    if (!reader->records.include_input)
+        return UD_OK;
+    uint8_t byte = (uint8_t)value;
+    return ud_bytes_put(&row->raw, &byte, 1);
+}
 static ud_status next_record(ud_csv_reader *r, record *row) {
+    row->raw.ctx = r->ctx;
     row->text = ud_alloc(r->ctx, r->columns * sizeof(char *));
     row->length = ud_alloc(r->ctx, r->columns * sizeof(uint32_t));
     if (!row->text || !row->length) {
@@ -47,6 +68,10 @@ static ud_status next_record(ud_csv_reader *r, record *row) {
     int quoted = 0, closed = 0, start = 1, any = 0;
     ud_status s = UD_OK;
     for (;;) {
+        if (ud_is_cancelled(r->ctx)) {
+            s = UD_CANCELLED;
+            break;
+        }
         int ch = fgetc(r->file);
         if (ch == EOF) {
             if (ferror(r->file))
@@ -59,13 +84,18 @@ static ud_status next_record(ud_csv_reader *r, record *row) {
                 s = finish_field(r, row, &field);
             break;
         }
+        s = record_byte(r, row, ch);
+        if (s)
+            break;
         any = 1;
         if (quoted) {
             if (ch == '"') {
                 int next = fgetc(r->file);
                 if (next == '"') {
                     char q = '"';
-                    s = ud_bytes_put(&field, &q, 1);
+                    s = record_byte(r, row, next);
+                    if (!s)
+                        s = ud_bytes_put(&field, &q, 1);
                 } else {
                     quoted = 0;
                     closed = 1;
@@ -85,6 +115,8 @@ static ud_status next_record(ud_csv_reader *r, record *row) {
             if (ch != ',') {
                 if (ch == '\r') {
                     int next = fgetc(r->file);
+                    if (next == '\n')
+                        s = record_byte(r, row, next);
                     if (next != '\n' && next != EOF)
                         ungetc(next, r->file);
                 }
@@ -104,8 +136,6 @@ static ud_status next_record(ud_csv_reader *r, record *row) {
             break;
     }
     ud_bytes_clear(&field);
-    if (!s && row->n != r->columns)
-        s = UD_SCHEMA;
     if (s) {
         uint32_t col = row->n + 1;
         record_free(row);
@@ -113,6 +143,9 @@ static ud_status next_record(ud_csv_reader *r, record *row) {
             return ud_fail(r->ctx, s,
                            "%s: record %llu field %u: invalid CSV, encoding, or field count",
                            r->path, (unsigned long long)(r->record + 1), col);
+    } else if (r->record == UINT64_MAX) {
+        record_free(row);
+        return UD_OVERFLOW;
     } else
         r->record++;
     return s;
@@ -138,6 +171,17 @@ ud_status ud_csv_open(ud_context *c, const char *path, const ud_field *f, uint32
     r->ctx = c;
     r->columns = n;
     r->batch_size = o && o->batch_size ? o->batch_size : 4096;
+    r->max_record_bytes = o && o->max_record_bytes ? o->max_record_bytes : 16777216;
+    ud_status status = ud_record_options_validate(c, o ? o->records : NULL);
+    if (!status)
+        status = ud_batch_create(c, f, n, 0, &r->schema);
+    if (status) {
+        ud_csv_close(r);
+        return status;
+    }
+    r->fields = r->schema->schema->fields;
+    if (o && o->records)
+        r->records = *o->records;
     const char *marker = o && o->null_marker ? o->null_marker : "\\N";
     r->null_length = o && o->null_marker ? o->null_marker_length : 2;
     if (!r->null_length || memchr(marker, 0, r->null_length) ||
@@ -149,21 +193,9 @@ ud_status ud_csv_open(ud_context *c, const char *path, const ud_field *f, uint32
     }
     r->null_marker = ud_strdup_n(c, marker, r->null_length);
     r->path = ud_strdup_n(c, path, strlen(path));
-    r->fields = ud_alloc(c, n * sizeof(*f));
     if (!r->null_marker || !r->path || !r->fields) {
         ud_csv_close(r);
         return UD_RESOURCE;
-    }
-    for (uint32_t i = 0; i < n; i++) {
-        r->fields[i] = f[i];
-        r->fields[i].name = ud_strdup_n(c, f[i].name, f[i].name_length);
-        r->fields[i].timezone = NULL;
-        if (f[i].timezone_length)
-            r->fields[i].timezone = ud_strdup_n(c, f[i].timezone, f[i].timezone_length);
-        if (!r->fields[i].name || (f[i].timezone_length && !r->fields[i].timezone)) {
-            ud_csv_close(r);
-            return UD_RESOURCE;
-        }
     }
     r->file = ud_fopen(path, "rb");
     if (!r->file) {
@@ -183,6 +215,8 @@ ud_status ud_csv_open(ud_context *c, const char *path, const ud_field *f, uint32
     ud_status s = next_record(r, &header);
     if (s == UD_END)
         s = ud_fail(c, UD_SCHEMA, "missing CSV header: %s", path);
+    if (!s && header.n != n)
+        s = UD_SCHEMA;
     if (!s)
         for (uint32_t i = 0; i < n; i++)
             if (header.length[i] != f[i].name_length ||
@@ -203,12 +237,7 @@ void ud_csv_close(ud_csv_reader *r) {
         return;
     if (r->file)
         fclose(r->file);
-    if (r->fields)
-        for (uint32_t i = 0; i < r->columns; i++) {
-            ud_free((void *)r->fields[i].name);
-            ud_free((void *)r->fields[i].timezone);
-        }
-    ud_free(r->fields);
+    ud_batch_destroy(r->schema);
     ud_free(r->path);
     ud_free(r->null_marker);
     ud_free(r);
@@ -226,19 +255,32 @@ ud_status ud_csv_resume(ud_csv_reader *r, uint64_t offset, uint64_t record_numbe
     r->record = record_number;
     return UD_OK;
 }
-ud_status ud_csv_next(ud_csv_reader *r, ud_batch **out) {
-    if (!r || !out)
+ud_status ud_csv_next(ud_csv_reader *r, ud_batch **out, ud_batch **errors) {
+    if (!r || !out || (r->records.policy == UD_ERROR_REDIRECT && !errors))
         return UD_INVALID;
     *out = NULL;
+    if (errors)
+        *errors = NULL;
+    if (r->poisoned)
+        return UD_CORRUPT;
     ud_batch *b = NULL;
     UD_TRY(ud_batch_create(r->ctx, r->fields, r->columns, r->batch_size, &b));
+    ud_batch *rejected = NULL, *error_schema = NULL;
+    ud_status s = UD_OK;
+    if (r->records.policy == UD_ERROR_REDIRECT)
+        s = ud_error_schema(&r->records.errors, NULL, r->records.include_input, &error_schema);
+    if (!s && error_schema)
+        s = ud_batch_create(r->ctx, error_schema->schema->fields, error_schema->columns,
+                            r->batch_size, &rejected);
+    ud_batch_destroy(error_schema);
     ud_value *v = ud_alloc(r->ctx, r->columns * sizeof(*v));
     if (!v) {
         ud_batch_destroy(b);
+        ud_batch_destroy(rejected);
         return UD_RESOURCE;
     }
-    ud_status s = UD_OK;
-    while (b->rows < r->batch_size) {
+    uint32_t processed = 0;
+    while (!s && processed < r->batch_size) {
         if (ud_is_cancelled(r->ctx)) {
             s = UD_CANCELLED;
             break;
@@ -251,35 +293,65 @@ ud_status ud_csv_next(ud_csv_reader *r, ud_batch **out) {
         }
         if (s)
             break;
+        processed++;
+        ud_status conversion = row.n == r->columns ? UD_OK : UD_SCHEMA;
+        uint32_t bad = UINT32_MAX;
+        ud_row_info provenance = {0};
+        if (r->records.struct_size)
+            s = ud_row_info_source(r->records.source_scope, r->record - 2, &provenance);
         memset(v, 0, r->columns * sizeof(*v));
-        for (uint32_t i = 0; i < r->columns; i++) {
+        for (uint32_t i = 0; !s && !conversion && i < r->columns; i++) {
             v[i].type = r->fields[i].type;
             if (row.length[i] == r->null_length &&
                 !memcmp(row.text[i], r->null_marker, r->null_length)) {
                 v[i].is_null = 1;
                 if (!r->fields[i].nullable)
-                    s = UD_SCHEMA;
+                    conversion = UD_QUALITY;
             } else
-                s = ud_value_parse_field(r->ctx, r->fields + i, row.text[i], row.length[i],
-                                         UD_ROUND_EXACT, v + i);
-            if (s) {
-                ud_fail(r->ctx, s, "%s: record %llu field %u: invalid typed value", r->path,
-                        (unsigned long long)r->record, i + 1);
-                break;
-            }
+                conversion = ud_value_parse_field(r->ctx, r->fields + i, row.text[i], row.length[i],
+                                                  UD_ROUND_EXACT, v + i);
+            if (conversion)
+                bad = i;
         }
-        if (!s)
+        if (!s && !conversion) {
             s = ud_batch_append(b, v, r->columns);
+            if (!s && r->records.struct_size)
+                s = ud_batch_set_row_info(b, b->rows - 1, &provenance);
+        } else if (!s && (r->records.policy == UD_ERROR_FAIL ||
+                          !ud_record_error_recoverable(conversion))) {
+            s = ud_fail(r->ctx, conversion, "%s: record %llu field %u: invalid typed value",
+                        r->path, (unsigned long long)r->record, bad + 1);
+        } else if (!s && r->records.policy == UD_ERROR_REDIRECT) {
+            s = ud_error_append(&r->records.errors, rejected,
+                                &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                                   .abi_version = UD_ABI_VERSION,
+                                                   .source = provenance,
+                                                   .rule = {"csv.parse", 9},
+                                                   .rule_version = 1,
+                                                   .column = bad < r->columns
+                                                                 ? r->fields[bad].identity
+                                                                 : (ud_id){0},
+                                                   .code = conversion,
+                                                   .policy = r->records.policy,
+                                                   .input_format = {"CSV", 3},
+                                                   .raw = row.raw.data,
+                                                   .raw_length = (uint32_t)row.raw.size});
+        }
         record_free(&row);
         if (s)
             break;
     }
     ud_free(v);
-    if (s || !b->rows) {
+    if (s || !processed) {
+        if (s)
+            r->poisoned = 1;
         ud_batch_destroy(b);
+        ud_batch_destroy(rejected);
         return s ? s : UD_END;
     }
     *out = b;
+    if (errors)
+        *errors = rejected;
     return UD_OK;
 }
 static int write_field(FILE *f, const char *s, size_t n) {
@@ -336,6 +408,8 @@ ud_status ud_csv_writer_open(ud_context *c, const char *path, const ud_field *fi
     return UD_OK;
 }
 ud_status ud_csv_writer_append(ud_csv_writer *w, const ud_batch *b) {
+    if (b && ud_batch_has_absent(b))
+        return UD_INCOMPATIBLE;
     if (!w || !b || w->failed)
         return UD_INVALID;
     ud_context *c = w->ctx;

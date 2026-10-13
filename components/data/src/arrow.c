@@ -1,4 +1,5 @@
 #include "../internal.h"
+_Static_assert(sizeof(ud_interval) == 16, "Arrow Interval storage must retain 16-byte layout");
 #include <errno.h>
 static void release_schema(struct ArrowSchema *s) {
     if (!s || !s->release)
@@ -47,7 +48,8 @@ static ud_status export_metadata(ud_context *ctx, const ud_field *field, const c
     *out = NULL;
     ud_bytes metadata = {.ctx = ctx}, lineage = {.ctx = ctx};
     char id[33];
-    ud_status s = metadata_integer(&metadata, 2);
+    ud_status s = metadata_integer(&metadata, 2 + (field->type == UD_INTERVAL) +
+                                                  (field->dictionary_kind != 0));
     ud_id_format(field->identity, id);
     if (!s)
         s = metadata_pair(&metadata, "ud.column_id", id, 32);
@@ -61,6 +63,17 @@ static ud_status export_metadata(ud_context *ctx, const ud_field *field, const c
     if (!s)
         s = metadata_pair(&metadata, "ud.lineage", (const char *)lineage.data,
                           (uint32_t)lineage.size);
+    if (!s && field->type == UD_INTERVAL)
+        s = metadata_pair(&metadata, "ARROW:extension:name", "universaldata.interval.microsecond",
+                          sizeof("universaldata.interval.microsecond") - 1);
+    if (!s && field->dictionary_kind) {
+        ud_bytes dictionary = {.ctx = ctx};
+        s = ud_dictionary_json(&dictionary, field);
+        if (!s)
+            s = metadata_pair(&metadata, "ud.dictionary", (const char *)dictionary.data,
+                              (uint32_t)dictionary.size);
+        ud_bytes_clear(&dictionary);
+    }
     if (!s) {
         *out = (const char *)metadata.data;
         metadata.data = NULL;
@@ -79,17 +92,20 @@ static ud_status export_column(ud_context *ctx, const ud_column *c, const ud_fie
     a->offset = offset;
     s->flags = field->nullable ? 2 : 0;
     s->name = ud_strdup_n(ctx, field->name, field->name_length);
-    const char *format = field->type == UD_BOOL      ? "b"
-                         : field->type == UD_INT64   ? "l"
-                         : field->type == UD_FLOAT64 ? "g"
-                         : field->type == UD_UTF8    ? "u"
-                         : field->type == UD_BINARY  ? "z"
-                         : field->type == UD_DATE32  ? "tdD"
-                         : field->type == UD_TIME64  ? "ttu"
-                         : field->type == UD_STRUCT  ? "+s"
-                         : field->type == UD_LIST    ? "+l"
-                         : field->type == UD_MAP     ? "+m"
-                                                     : NULL;
+    const char *format = field->type == UD_BOOL       ? "b"
+                         : field->type == UD_INT64    ? "l"
+                         : field->type == UD_UINT64   ? "L"
+                         : field->type == UD_DURATION ? "tDu"
+                         : field->type == UD_INTERVAL ? "w:16"
+                         : field->type == UD_FLOAT64  ? "g"
+                         : field->type == UD_UTF8     ? "u"
+                         : field->type == UD_BINARY   ? "z"
+                         : field->type == UD_DATE32   ? "tdD"
+                         : field->type == UD_TIME64   ? "ttu"
+                         : field->type == UD_STRUCT   ? "+s"
+                         : field->type == UD_LIST     ? "+l"
+                         : field->type == UD_MAP      ? "+m"
+                                                      : NULL;
     char decimal[32];
     if (field->type == UD_DECIMAL128) {
         snprintf(decimal, sizeof(decimal), "d:%d,%d", field->precision, field->scale);
@@ -116,11 +132,12 @@ static ud_status export_column(ud_context *ctx, const ud_column *c, const ud_fie
         return UD_RESOURCE;
     size_t size_rows = (size_t)rows + offset;
     size_t sizes[3] = {(size_rows + 7) / 8,
-                       c->offsets                     ? (size_rows + 1) * sizeof(int32_t)
-                       : field->type == UD_BOOL       ? (size_rows + 7) / 8
-                       : field->type == UD_DATE32     ? size_rows * 4
-                       : field->type == UD_DECIMAL128 ? size_rows * 16
-                                                      : size_rows * 8,
+                       c->offsets                 ? (size_rows + 1) * sizeof(int32_t)
+                       : field->type == UD_BOOL   ? (size_rows + 7) / 8
+                       : field->type == UD_DATE32 ? size_rows * 4
+                       : (field->type == UD_DECIMAL128 || field->type == UD_INTERVAL)
+                           ? size_rows * 16
+                           : size_rows * 8,
                        c->string_bytes};
     const void *src[3] = {c->validity, c->offsets ? (const void *)c->offsets : c->values,
                           c->strings};
@@ -157,6 +174,8 @@ ud_status ud_batch_export_arrow(const ud_batch *b, struct ArrowArray *a, struct 
         return UD_INVALID;
     memset(a, 0, sizeof(*a));
     memset(s, 0, sizeof(*s));
+    if (ud_batch_has_absent(b))
+        return UD_INCOMPATIBLE;
     a->release = release_array;
     s->release = release_schema;
     a->length = b->rows;
@@ -251,6 +270,7 @@ static void clear_field_tree(ud_field *f) {
     ud_free((void *)f->lineage);
     f->lineage = NULL;
     f->lineage_count = 0;
+    ud_dictionary_clear(f);
 }
 static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *field) {
     if (!data)
@@ -281,7 +301,21 @@ static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *fi
             return UD_SCHEMA;
         const char *value = data + at;
         at += (uint32_t)value_length;
-        if (key_length == 12 && !memcmp(key, "ud.column_id", 12)) {
+        if (key_length == 20 && !memcmp(key, "ARROW:extension:name", 20)) {
+            const char *name = "universaldata.interval.microsecond";
+            if ((uint32_t)value_length == strlen(name) &&
+                !memcmp(value, name, (size_t)value_length))
+                field->type = UD_INTERVAL;
+        } else if (key_length == 13 && !memcmp(key, "ud.dictionary", 13)) {
+            if (field->dictionary_kind)
+                return UD_SCHEMA;
+            ud_json *dictionary = NULL;
+            ud_status status = ud_json_parse(ctx, value, (uint32_t)value_length, &dictionary, NULL);
+            if (!status)
+                status = ud_dictionary_parse(ctx, dictionary, field);
+            ud_json_destroy(dictionary);
+            UD_TRY(status);
+        } else if (key_length == 12 && !memcmp(key, "ud.column_id", 12)) {
             if (id_seen++)
                 return UD_SCHEMA;
             UD_TRY(ud_id_parse((ud_string){value, (uint32_t)value_length}, &field->identity));
@@ -328,12 +362,15 @@ static ud_status import_field(ud_context *ctx, const struct ArrowSchema *s, ud_f
     UD_TRY(import_metadata(ctx, s->metadata, f));
     f->type = !strcmp(s->format, "b")                                       ? UD_BOOL
               : (strlen(s->format) == 1 && strchr("cCsSiIl", s->format[0])) ? UD_INT64
-              : !strcmp(s->format, "L")                                     ? UD_DECIMAL128
-              : (!strcmp(s->format, "g") || !strcmp(s->format, "f"))        ? UD_FLOAT64
-              : (!strcmp(s->format, "u") || !strcmp(s->format, "U"))        ? UD_UTF8
-              : (!strcmp(s->format, "z") || !strcmp(s->format, "Z"))        ? UD_BINARY
-              : (!strcmp(s->format, "tdD") || !strcmp(s->format, "tdm"))    ? UD_DATE32
-              : !strncmp(s->format, "tt", 2)                                ? UD_TIME64
+              : !strcmp(s->format, "L")                                     ? UD_UINT64
+              : !strncmp(s->format, "tD", 2)                                ? UD_DURATION
+              : !strcmp(s->format, "tin") || (f->type == UD_INTERVAL && !strcmp(s->format, "w:16"))
+                  ? UD_INTERVAL
+              : (!strcmp(s->format, "g") || !strcmp(s->format, "f"))     ? UD_FLOAT64
+              : (!strcmp(s->format, "u") || !strcmp(s->format, "U"))     ? UD_UTF8
+              : (!strcmp(s->format, "z") || !strcmp(s->format, "Z"))     ? UD_BINARY
+              : (!strcmp(s->format, "tdD") || !strcmp(s->format, "tdm")) ? UD_DATE32
+              : !strncmp(s->format, "tt", 2)                             ? UD_TIME64
               : !strncmp(s->format, "ts", 2) && strlen(s->format) > 4 && s->format[3] == ':'
                   ? UD_TIMESTAMP
               : !strncmp(s->format, "d:", 2)                           ? UD_DECIMAL128
@@ -343,10 +380,7 @@ static ud_status import_field(ud_context *ctx, const struct ArrowSchema *s, ud_f
                                                                        : 0;
     if (!f->type)
         return UD_UNSUPPORTED;
-    if (f->type == UD_DECIMAL128 && !strcmp(s->format, "L")) {
-        f->precision = 20;
-        f->scale = 0;
-    } else if (f->type == UD_DECIMAL128) {
+    if (f->type == UD_DECIMAL128) {
         const char *comma = strchr(s->format + 2, ',');
         ud_value precision, scale;
         if (!comma)
@@ -462,12 +496,18 @@ static ud_status import_value(ud_context *ctx, const ud_field *f, const struct A
             v->integer = value / 86400000;
         } else
             v->integer = ((const int32_t *)a->buffers[1])[k];
+    } else if (f->type == UD_UINT64) {
+        v->unsigned_integer = ((const uint64_t *)a->buffers[1])[k];
+    } else if (f->type == UD_INTERVAL) {
+        const char *bytes = (const char *)a->buffers[1] + k * 16;
+        memcpy(&v->interval, bytes, 16);
+        if (!strcmp(schema->format, "tin")) {
+            if (v->interval.microseconds % 1000)
+                return UD_SCHEMA;
+            v->interval.microseconds /= 1000;
+        }
     } else if (f->type == UD_DECIMAL128) {
-        if (!strcmp(schema->format, "L")) {
-            v->decimal.low = ((const uint64_t *)a->buffers[1])[k];
-            v->decimal.high = 0;
-        } else
-            memcpy(&v->decimal, (const char *)a->buffers[1] + k * 16, 16);
+        memcpy(&v->decimal, (const char *)a->buffers[1] + k * 16, 16);
     } else if (f->type == UD_UTF8 || f->type == UD_BINARY) {
         int large = schema->format[0] == 'U' || schema->format[0] == 'Z';
         if (k == INT64_MAX)
@@ -538,7 +578,7 @@ static ud_status import_value(ud_context *ctx, const ud_field *f, const struct A
                     ? ((const int32_t *)a->buffers[1])[k]
                     : ((const int64_t *)a->buffers[1])[k];
         }
-        if (f->type == UD_TIME64 || f->type == UD_TIMESTAMP) {
+        if (f->type == UD_TIME64 || f->type == UD_TIMESTAMP || f->type == UD_DURATION) {
             char unit = format[2];
             if (unit == 'n') {
                 if (v->integer % 1000)

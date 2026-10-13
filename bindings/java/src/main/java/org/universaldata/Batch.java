@@ -14,6 +14,10 @@ public final class Batch implements AutoCloseable {
     public static Batch fromWire(byte[] wire, long memoryLimit) { return new Batch(nativeFromWire(Objects.requireNonNull(wire), memoryLimit)); }
     public synchronized long rows() { ensureOpen(); return nativeCount(handle, false); }
     public synchronized long columns() { ensureOpen(); return nativeCount(handle, true); }
+    public synchronized boolean hasAbsentFields() { ensureOpen(); return nativeHasAbsent(handle); }
+    public synchronized boolean isFieldPresent(int row, int column) { ensureOpen(); return nativePresent(handle, row, column); }
+    private static native boolean nativeHasAbsent(long handle);
+    private static native boolean nativePresent(long handle, int row, int column);
     public synchronized String toJson() { ensureOpen(); return nativeJson(handle, false); }
     public synchronized String schemaJson() { ensureOpen(); return nativeJson(handle, true); }
     public synchronized String rowInfoJson(int row) { ensureOpen(); return nativeRowInfo(handle,row); }

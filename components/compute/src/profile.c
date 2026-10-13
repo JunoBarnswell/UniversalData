@@ -8,7 +8,7 @@ typedef struct top_entry {
 } top_entry;
 typedef struct column_profile {
     uint64_t nulls, count, lengths[32], histogram[132], length_sum, length_min, length_max;
-    uint8_t distinct[UD_HLL_REGISTERS];
+    ud_value_set distinct;
     ud_value minimum, maximum;
     top_entry top[32];
     uint32_t top_count;
@@ -37,6 +37,7 @@ void ud_profile_destroy(ud_profile *p) {
         ud_clear_value(p->values + i);
     for (uint32_t i = 0; p->columns && i < p->column_count; i++) {
         column_profile *c = p->columns + i;
+        ud_value_set_clear(&c->distinct);
         ud_clear_value(&c->minimum);
         ud_clear_value(&c->maximum);
         for (uint32_t k = 0; k < c->top_count; k++)
@@ -123,7 +124,10 @@ static ud_status profile_value(ud_profile *p, const ud_batch *batch, uint32_t ro
         return UD_OK;
     }
     c->count++;
-    ud_hll_add(c->distinct, &v);
+    c->distinct.ctx = p->ctx;
+    c->distinct.maximum = p->maximum > UINT32_MAX ? UINT32_MAX : (uint32_t)p->maximum;
+    int added;
+    UD_TRY(ud_value_set_add(&c->distinct, &v, &added));
     if (c->count == 1 || ud_value_compare(&v, &c->minimum) < 0) {
         ud_clear_value(&c->minimum);
         UD_TRY(ud_copy_value(p->ctx, &v, &c->minimum, 0));
@@ -172,9 +176,22 @@ static ud_status profile_value(ud_profile *p, const ud_batch *batch, uint32_t ro
         c->top[at].error = error;
         c->top[at].count = error + 1;
     }
-    int numeric = v.type >= UD_INT64 && v.type <= UD_TIMESTAMP && v.type != UD_UTF8;
+    int numeric = (v.type >= UD_INT64 && v.type <= UD_TIMESTAMP && v.type != UD_UTF8) ||
+                  v.type == UD_UINT64 || v.type == UD_DURATION;
+    if (batch->column[column].field.dictionary_kind)
+        numeric = 0;
     if (numeric) {
-        double x = v.type == UD_FLOAT64 ? v.real : (double)v.integer;
+        double x = v.type == UD_FLOAT64  ? v.real
+                   : v.type == UD_UINT64 ? (double)v.unsigned_integer
+                                         : (double)v.integer;
+        if (v.type == UD_DECIMAL128) {
+            char text[160];
+            uint32_t length;
+            ud_value approximated;
+            UD_TRY(ud_value_format(&v, text, sizeof(text), &length));
+            UD_TRY(ud_value_parse(p->ctx, UD_FLOAT64, text, length - 1, &approximated));
+            x = approximated.real;
+        }
         if (v.type == UD_DECIMAL128) {
             char text[128];
             uint32_t n;
@@ -228,6 +245,8 @@ static ud_status profile_value(ud_profile *p, const ud_batch *batch, uint32_t ro
 ud_status ud_profile_add(ud_profile *p, const ud_batch *batch) {
     if (!p || !batch || p->failed)
         return UD_INVALID;
+    if (ud_batch_has_absent(batch))
+        return UD_INCOMPATIBLE;
     ud_status s = UD_OK;
     uint32_t columns = ud_batch_columns(batch), rows = ud_batch_rows(batch);
     if (columns != ud_batch_columns(p->schema))
@@ -264,7 +283,7 @@ ud_status ud_profile_add(ud_profile *p, const ud_batch *batch) {
                 continue;
             }
             if (stat->kind == UD_PROFILE_DISTINCT) {
-                result->integer = (int64_t)ud_hll_count(p->columns[stat->column].distinct);
+                result->integer = (int64_t)p->columns[stat->column].distinct.count;
                 continue;
             }
             if (value.is_null)
@@ -312,10 +331,10 @@ ud_status ud_profile_report(const ud_profile *p, uint32_t column, char **out, ui
     ud_bytes b = {.ctx = p->ctx, .limit = 16u * 1024u * 1024u};
     char header[400];
     int n = snprintf(header, sizeof(header),
-                     "{\"rows\":%llu,\"nulls\":%llu,\"distinct\":{\"estimate\":%llu,\"method\":"
-                     "\"HLL1024\",\"relativeStandardError\":0.0325},\"minimum\":",
+                     "{\"rows\":%llu,\"nulls\":%llu,\"distinct\":{\"count\":%llu,\"method\":"
+                     "\"ExactNativeValueSet\"},\"minimum\":",
                      (unsigned long long)p->rows, (unsigned long long)c->nulls,
-                     (unsigned long long)ud_hll_count(c->distinct));
+                     (unsigned long long)c->distinct.count);
     ud_status s = ud_bytes_put(&b, header, (size_t)n);
     if (!s)
         s = report_value(&b, f, &c->minimum, !c->count);

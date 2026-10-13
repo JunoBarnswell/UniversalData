@@ -206,6 +206,8 @@ static ud_status session_settings(postgres_state *p) {
         status = command(p, "SET DateStyle TO ISO, YMD");
     if (!status)
         status = command(p, "SET extra_float_digits TO 3");
+    if (!status)
+        status = command(p, "SET IntervalStyle TO iso_8601");
     return status;
 }
 static ud_status initialize(const ud_host_api *host, const char *config, uint32_t length,
@@ -376,16 +378,17 @@ static ud_status close_read(void *state) {
     return s;
 }
 static int compatible_oid(ud_type t, Oid oid) {
-    return t == UD_BOOL         ? oid == 16
-           : t == UD_INT64      ? oid == 20 || oid == 21 || oid == 23
-           : t == UD_FLOAT64    ? oid == 701
-           : t == UD_UTF8       ? oid == 25 || oid == 1043
-           : t == UD_DECIMAL128 ? oid == 1700
-           : t == UD_DATE32     ? oid == 1082
-           : t == UD_TIME64     ? oid == 1083
-           : t == UD_TIMESTAMP  ? oid == 1184
-           : t == UD_BINARY     ? oid == 17
-                                : 0;
+    return t == UD_BOOL                           ? oid == 16
+           : t == UD_INT64                        ? oid == 20 || oid == 21 || oid == 23
+           : t == UD_FLOAT64                      ? oid == 701
+           : t == UD_UTF8                         ? oid == 25 || oid == 1043
+           : t == UD_DECIMAL128 || t == UD_UINT64 ? oid == 1700
+           : t == UD_INTERVAL || t == UD_DURATION ? oid == 1186
+           : t == UD_DATE32                       ? oid == 1082
+           : t == UD_TIME64                       ? oid == 1083
+           : t == UD_TIMESTAMP                    ? oid == 1184
+           : t == UD_BINARY                       ? oid == 17
+                                                  : 0;
 }
 typedef struct pg_parameters {
     uint32_t count;
@@ -426,16 +429,17 @@ static ud_status parameters_allocate(postgres_state *p, uint32_t count, pg_param
 static ud_status parameter_value(postgres_state *p, const ud_value *value, pg_parameters *v,
                                  uint32_t i) {
     ud_host_api *h = &p->host;
-    v->types[i] = value->type == UD_BOOL         ? 16
-                  : value->type == UD_INT64      ? 20
-                  : value->type == UD_FLOAT64    ? 701
-                  : value->type == UD_DECIMAL128 ? 1700
-                  : value->type == UD_BINARY     ? 17
-                  : value->type == UD_DATE32     ? 1082
-                  : value->type == UD_TIME64     ? 1083
-                  : value->type == UD_TIMESTAMP  ? 1184
-                  : value->type == UD_UTF8       ? 25
-                                                 : 0;
+    v->types[i] = value->type == UD_BOOL                                     ? 16
+                  : value->type == UD_INT64                                  ? 20
+                  : value->type == UD_FLOAT64                                ? 701
+                  : value->type == UD_DECIMAL128 || value->type == UD_UINT64 ? 1700
+                  : value->type == UD_INTERVAL || value->type == UD_DURATION ? 1186
+                  : value->type == UD_BINARY                                 ? 17
+                  : value->type == UD_DATE32                                 ? 1082
+                  : value->type == UD_TIME64                                 ? 1083
+                  : value->type == UD_TIMESTAMP                              ? 1184
+                  : value->type == UD_UTF8                                   ? 25
+                                                                             : 0;
     if (!v->types[i])
         return UD_UNSUPPORTED;
     if (value->is_null)

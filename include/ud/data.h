@@ -15,15 +15,27 @@ enum {
     UD_TIME64 = 7,
     UD_TIMESTAMP = 8,
     UD_BINARY = 9,
-    UD_STRUCT = 10,
-    UD_LIST = 11,
-    UD_MAP = 12
+    UD_UINT64 = 10,
+    UD_DURATION = 11,
+    UD_INTERVAL = 12,
+    UD_STRUCT = 13,
+    UD_LIST = 14,
+    UD_MAP = 15
 };
 /* Signed two's-complement coefficient, independent of compiler __int128 support. */
 typedef struct ud_decimal128 {
     uint64_t low;
     int64_t high;
 } ud_decimal128;
+/* Calendar components are independent; never normalize months into days or
+ * days into microseconds. Tuple order is structural, not anchored chronology. */
+typedef struct ud_interval {
+    int32_t months, days;
+    int64_t microseconds;
+} ud_interval;
+enum { UD_DICTIONARY_NONE = 0, UD_DICTIONARY_ENUM = 1, UD_DICTIONARY_SET = 2 };
+UD_API const char *ud_type_name(ud_type);
+UD_API ud_status ud_type_parse(ud_string, ud_type *);
 /* Canonical 128-bit identity. Column IDs use logical schema namespaces;
  * record/rule IDs use their own explicit deterministic namespaces. */
 typedef struct ud_id {
@@ -51,6 +63,12 @@ typedef struct ud_field {
     const ud_id *lineage; /* Canonical sorted distinct origin identities. */
     uint32_t lineage_count;
     uint32_t key_order; /* 0: not a declared primary key; positive canonical order. */
+    /* Ordered provider vocabulary on UINT64. ENUM preserves ordinal 0 (the
+     * provider's invalid-value sentinel) and 1..count; SET preserves every bit,
+     * including empty/numeric labels. Strings never stand in for these values. */
+    int32_t dictionary_kind;
+    const ud_string *dictionary;
+    uint32_t dictionary_count;
 } ud_field;
 enum { UD_FIELD_VALUE_TYPE = 0, UD_FIELD_PORT = 1, UD_FIELD_LAYOUT = 2 };
 /* VALUE_TYPE ignores root display name, identity, lineage and nullability;
@@ -67,7 +85,10 @@ UD_API void ud_id_format(ud_id, char output[33]);
 typedef struct ud_value {
     ud_type type;
     int32_t is_null;
-    int64_t integer;
+    union {
+        int64_t integer;
+        uint64_t unsigned_integer;
+    };
     double real;
     const char *text;
     uint32_t text_length;
@@ -75,8 +96,14 @@ typedef struct ud_value {
     int32_t precision, scale;
     const struct ud_value *children; /* Struct fields, or List/Map items. Borrowed. */
     uint32_t child_count;
+    ud_interval interval;
+    /* CDC field omission is distinct from SQL NULL. An absent value carries
+     * is_null=1, cannot participate in expressions, and is preserved by Wire. */
+    int32_t is_absent;
 } ud_value;
 /* Date32 is days since 1970-01-01; Time64 is microseconds since midnight.
+ * Duration is signed microseconds (including negative/long SQL TIME).
+ * Interval preserves signed months, days and microseconds independently.
  * Timestamp is UTC microseconds since epoch. ISO input must include Z or an offset.
  * Returned UTF8/Binary data borrows input; other output is self-contained. */
 UD_API ud_status ud_value_parse_field(ud_context *, const ud_field *, const char *, uint32_t,
@@ -110,8 +137,17 @@ UD_API int32_t ud_truth_and(int32_t, int32_t);
 UD_API int32_t ud_truth_or(int32_t, int32_t);
 UD_API int32_t ud_truth_not(int32_t);
 typedef struct ud_batch ud_batch;
-enum { UD_SQL_CANONICAL = 0, UD_SQL_SQLITE = 1, UD_SQL_POSTGRESQL = 2,
-       UD_SQL_MYSQL, UD_SQL_MARIADB, UD_SQL_SQLSERVER, UD_SQL_ORACLE, UD_SQL_DB2, UD_SQL_DUCKDB };
+enum {
+    UD_SQL_CANONICAL = 0,
+    UD_SQL_SQLITE = 1,
+    UD_SQL_POSTGRESQL = 2,
+    UD_SQL_MYSQL,
+    UD_SQL_MARIADB,
+    UD_SQL_SQLSERVER,
+    UD_SQL_ORACLE,
+    UD_SQL_DB2,
+    UD_SQL_DUCKDB
+};
 /* Pure provider-specific type proof. Zone-free datetime declarations require an
  * explicit provider UTC annotation, never the machine's local timezone. */
 UD_API ud_status ud_field_from_sql(ud_string declaration, int32_t dialect, ud_field *);
@@ -130,17 +166,22 @@ UD_API ud_status ud_schema_map(ud_context *, const ud_batch *actual, const ud_ba
 enum { UD_ROW_ERROR = 1, UD_ROW_JOINED = 2 };
 enum { UD_ERROR_FAIL = 0, UD_ERROR_REDIRECT = 1, UD_ERROR_IGNORE = 2 };
 typedef struct ud_row_info {
-    ud_id id, rule, origins; /* Associative source-identity accumulator for Join. */
+    ud_id id, rule, origins;   /* Associative source-identity accumulator for Join. */
     uint32_t flags, operation; /* 0 ordinary row; UD_CHANGE_* for a Changeset. */
+    uint64_t source_position;
+    uint32_t has_source_position;
 } ud_row_info;
 /* Metadata is native, owned with the Batch and preserved by Wire/Spill. Zero ID
  * means unspecified direct-API provenance. Mutation requires an owned mutable batch. */
 /* Assign a frozen logical input role without changing source row IDs. */
 UD_API ud_status ud_batch_join_origin(ud_context *, const ud_batch *, ud_id, ud_batch **);
-UD_API ud_status ud_row_info_join(ud_context *,const ud_row_info *,const ud_row_info *,ud_row_info *);
+UD_API ud_status ud_row_info_join(ud_context *, const ud_row_info *, const ud_row_info *,
+                                  ud_row_info *);
+UD_API ud_status ud_row_info_source(ud_id source_scope, uint64_t physical_record, ud_row_info *);
 UD_API ud_status ud_batch_row_info(const ud_batch *, uint32_t, ud_row_info *);
 UD_API ud_status ud_batch_set_row_info(ud_batch *, uint32_t, const ud_row_info *);
-UD_API ud_status ud_batch_append_projected(ud_batch *,const ud_batch *,uint32_t row,const uint32_t *columns);
+UD_API ud_status ud_batch_append_projected(ud_batch *, const ud_batch *, uint32_t row,
+                                           const uint32_t *columns);
 UD_API ud_status ud_batch_append_from(ud_batch *, const ud_batch *, uint32_t);
 /* Returns a sealed column-sharing view with new deterministic source identities. */
 UD_API ud_status ud_batch_identify(ud_context *, const ud_batch *, ud_id scope, uint64_t first,
@@ -168,7 +209,7 @@ UD_API ud_status ud_batch_retain(ud_batch *);
 UD_API ud_status ud_batch_project(ud_context *, const ud_batch *, const uint32_t *source_columns,
                                   const ud_field *target_fields, uint32_t columns, ud_batch **);
 /* Owned immutable row slice shares buffers and preserves row provenance. */
-UD_API ud_status ud_batch_slice(ud_context *,const ud_batch *,uint32_t,uint32_t,ud_batch **);
+UD_API ud_status ud_batch_slice(ud_context *, const ud_batch *, uint32_t, uint32_t, ud_batch **);
 UD_API uint32_t ud_batch_rows(const ud_batch *batch);
 UD_API uint32_t ud_batch_columns(const ud_batch *batch);
 /* Canonical immutable field metadata borrows the retained schema tree and stays
@@ -187,6 +228,10 @@ UD_API ud_status ud_batch_cast(ud_context *, const ud_batch *, const ud_field *t
                                uint32_t columns, int32_t rounding, ud_batch **);
 /* Returned strings are borrowed until next append/destruction, NOT NUL terminated. */
 UD_API ud_status ud_batch_get(const ud_batch *batch, uint32_t row, uint32_t column, ud_value *out);
+/* Fast all-present path for ordinary batches. Recursive absence is considered.
+ * JSON/Arrow projections reject partial images instead of silently making NULL. */
+UD_API int32_t ud_batch_has_absent(const ud_batch *);
+UD_API ud_status ud_batch_cell_present(const ud_batch *, uint32_t, uint32_t, int32_t *);
 UD_API ud_status ud_value_parse(ud_context *ctx, ud_type type, const char *text, uint32_t length,
                                 ud_value *out);
 /* Arrow definitions retain the canonical guard and Apache-2.0 notice; see NOTICE. */

@@ -23,8 +23,10 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         s = ud_builtin_clone_schema(c->memory, in[i], b->inputs + i);
     if (!s)
         s = ud_builtin_clone_schema(c->memory, sink_kind(kind) ? in[0] : out[0], &b->schema);
-    if (!s && (kind == CAST || kind == XLSX_SOURCE))
-        s = ud_builtin_clone_schema(c->memory, out[1], &b->errors);
+    if (!s && (kind == CAST || kind == DERIVE || kind == SPLIT || kind == XLSX_SOURCE ||
+               kind == CSV_SOURCE || kind == JSON_SOURCE))
+        s = ud_builtin_clone_schema(c->memory, out[kind == SPLIT ? c->output_count - 1 : 1],
+                                    &b->errors);
     if (!s && (kind == SQL_SINK || kind == REST_SINK)) {
         ud_string mode = {0};
         s = ud_json_string(ud_member(b->config, "mode"), &mode);
@@ -149,48 +151,6 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         s = ud_checkpoint_source(c->activation, b->path);
     if (!s && (file_source(kind)))
         s = ud_connection_lease_authorize(b->lease, UD_ACCESS_READ);
-    if (!s && kind == CSV_SOURCE) {
-        ud_string null = {"\\N", 2};
-        if (ud_member(b->config, "nullMarker"))
-            s = ud_json_string(ud_member(b->config, "nullMarker"), &null);
-        ud_csv_options o = {sizeof(o), UD_ABI_VERSION, (uint32_t)batch, null.data, null.length};
-        if (!s)
-            s = ud_csv_open(c->memory, b->path, b->fields, b->columns, &o, &b->csv);
-    }
-    if (!s && kind == XLSX_SOURCE) {
-        char *configuration = NULL;
-        uint32_t length = 0;
-        s = ud_json_serialize(b->config, &configuration, &length);
-        ud_xlsx_options options = {.struct_size = sizeof(options),
-                                   .abi_version = UD_ABI_VERSION,
-                                   .batch_size = (uint32_t)batch,
-                                   .configuration = {configuration, length},
-                                   .buffers = c->execution->buffers,
-                                   .check = ud_builtin_operator_check,
-                                   .user = c->activation};
-        if (!s)
-            s = ud_xlsx_reader_open(c->memory, b->path, b->fields, b->columns, &options, &b->xlsx);
-        ud_free(configuration);
-    }
-#ifdef UD_WITH_ARROW_FILES
-    if (!s && (kind == PARQUET_SOURCE || kind == IPC_SOURCE || kind == IPC_STREAM_SOURCE)) {
-        ud_columnar_file_options options = {.struct_size = sizeof(options),
-                                            .abi_version = UD_ABI_VERSION,
-                                            .batch_rows = (uint32_t)batch,
-                                            .format = kind == PARQUET_SOURCE ? UD_FILE_PARQUET
-                                                      : kind == IPC_SOURCE   ? UD_FILE_ARROW_IPC
-                                                                             : UD_FILE_ARROW_STREAM,
-                                            .buffers = c->execution->buffers,
-                                            .check = ud_builtin_operator_check,
-                                            .user = c->activation};
-        s = ud_columnar_reader_open(c->memory, b->path, b->schema, &options, &b->columnar_reader);
-    }
-#endif
-    if (!s && kind == JSON_SOURCE) {
-        ud_json_options o = {sizeof(o), UD_CONFIG_VERSION, (uint32_t)batch, 1048576,
-                             UD_ROUND_EXACT};
-        s = ud_json_reader_open(c->memory, b->path, b->fields, b->columns, &o, &b->reader);
-    }
     if (!s && (file_sink(kind))) {
         size_t len = strlen(b->path);
         char *lock = ud_alloc(c->memory, len + 32);
@@ -361,16 +321,23 @@ static ud_status step(void *ptr, const ud_component_event *event) {
                 s = ud_batch_create(b->context.memory, b->errors->schema->fields,
                                     b->errors->columns, batch->rows, &errors);
                 for (uint32_t row = 0; !s && row < batch->rows; row++)
-                    s = ud_error_append(&b->context.errors, errors, batch, row,
-                                        (ud_string){"xlsx.cell", 9}, 1, (ud_id){0}, UD_PARSE,
-                                        UD_ERROR_REDIRECT);
+                    s = ud_error_append(&b->context.errors, errors,
+                                        &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                                           .abi_version = UD_ABI_VERSION,
+                                                           .input = batch,
+                                                           .row = row,
+                                                           .rule = (ud_string){"xlsx.cell", 9},
+                                                           .rule_version = 1,
+                                                           .column = (ud_id){0},
+                                                           .code = UD_PARSE,
+                                                           .policy = UD_ERROR_REDIRECT});
                 if (!s)
                     s = ud_batch_seal(errors);
                 if (!s)
                     s = b->context.emit(b->context.emit_user, 1, errors);
                 ud_batch_destroy(errors);
             } else if (!s && batch->rows)
-                s = b->context.emit(b->context.emit_user, 0, batch);
+                s = b->context.emit(b->context.emit_user, b->output_port, batch);
             else if (!s)
                 s = UD_MORE;
         }
@@ -469,7 +436,9 @@ static const char *configuration_schema(int kind) {
                "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
                "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
                "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
-               "\"table\":{\"type\":\"string\"},\"nullMarker\":{\"type\":\"string\"}},\"required\":"
+               "\"table\":{\"type\":\"string\"},\"nullMarker\":{\"type\":\"string\"},"
+               "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
+               "\"required\":"
                "[\"connection\",\"schema\"],\"additionalProperties\":false}";
     case JSON_SOURCE:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
@@ -477,7 +446,8 @@ static const char *configuration_schema(int kind) {
                "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
                "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
                "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
-               "\"table\":{\"type\":\"string\"}},\"required\":[\"connection\",\"schema\"],"
+               "\"table\":{\"type\":\"string\"},\"errorPolicy\":{\"type\":\"string\"},"
+               "\"includeInput\":{\"type\":\"boolean\"}},\"required\":[\"connection\",\"schema\"],"
                "\"additionalProperties\":false}";
     case SQL_SOURCE:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\","
@@ -515,11 +485,13 @@ static const char *configuration_schema(int kind) {
                "{\"type\":\"integer\"},\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{"
                "\"type\":\"boolean\"}},\"required\":[\"schema\"],\"additionalProperties\":false}";
     case DERIVE:
-        return "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"}},"
+        return "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"},"
+               "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
                "\"required\":[\"columns\"],\"additionalProperties\":false}";
     case SPLIT:
         return "{\"type\":\"object\",\"properties\":{\"condition\":{\"type\":\"object\"},"
-               "\"branches\":{\"type\":\"array\"},\"default\":{\"type\":\"string\"}},"
+               "\"branches\":{\"type\":\"array\"},\"default\":{\"type\":\"string\"},"
+               "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
                "\"additionalProperties\":false}";
     case SORT:
     case JOIN:
@@ -568,15 +540,15 @@ ud_status ud_builtin_register(ud_registry *registry) {
         int kind;
         uint32_t inputs, outputs;
         int sync, error;
-    } entries[] = {{"file.csv.source", CSV_SOURCE, 0, 1, -1, -1},
-                   {"file.ndjson.source", JSON_SOURCE, 0, 1, -1, -1},
+    } entries[] = {{"file.csv.source", CSV_SOURCE, 0, 2, -1, 1},
+                   {"file.ndjson.source", JSON_SOURCE, 0, 2, -1, 1},
                    {"sql.source", SQL_SOURCE, 0, 1, -1, -1},
                    {"file.csv.destination", CSV_SINK, 1, 0, -1, -1},
                    {"file.ndjson.destination", JSON_SINK, 1, 0, -1, -1},
                    {"sql.destination", SQL_SINK, 1, 0, -1, -1},
                    {"pass", PASS, 1, 1, 0, -1},
                    {"cast", CAST, 1, 2, -1, 1},
-                   {"derive", DERIVE, 1, 1, -1, -1},
+                   {"derive", DERIVE, 1, 2, -1, 1},
                    {"split", SPLIT, 1, 2, -1, -1},
                    {"multicast", MULTICAST, 1, 2, 0, -1},
                    {"unionAll", UNION_ALL, 2, 1, -1, -1},
@@ -620,7 +592,10 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .outputs = entries[i].outputs,
             .synchronous_input = entries[i].sync,
             .error_output = entries[i].error,
-            .optional_outputs = kind == CAST || kind == XLSX_SOURCE ? UINT64_C(2) : 0,
+            .optional_outputs = kind == CAST || kind == DERIVE || kind == XLSX_SOURCE ||
+                                        kind == CSV_SOURCE || kind == JSON_SOURCE
+                                    ? UINT64_C(2)
+                                    : 0,
             .user = (void *)(intptr_t)kind,
             .configure = ud_builtin_configure,
             .prepare = prepare,

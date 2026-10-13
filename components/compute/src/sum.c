@@ -11,7 +11,10 @@ ud_status ud_sum_wide_add(uint64_t target[4], const uint64_t input[4]) {
     return sign_a == sign_b && (target[3] >> 63) != sign_a ? UD_OVERFLOW : UD_OK;
 }
 void ud_sum_wide_value(const ud_value *v, uint64_t words[4]) {
-    if (v->type == UD_INT64) {
+    if (v->type == UD_UINT64) {
+        words[0] = v->unsigned_integer;
+        words[1] = words[2] = words[3] = 0;
+    } else if (v->type == UD_INT64 || v->type == UD_DURATION) {
         words[0] = (uint64_t)v->integer;
         words[1] = words[2] = words[3] = v->integer < 0 ? UINT64_MAX : 0;
     } else {
@@ -21,7 +24,13 @@ void ud_sum_wide_value(const ud_value *v, uint64_t words[4]) {
     }
 }
 ud_status ud_sum_wide_result(const ud_field *f, const uint64_t words[4], ud_value *out) {
-    if (f->type == UD_INT64) {
+    if (f->type == UD_UINT64) {
+        if (words[1] || words[2] || words[3])
+            return UD_OVERFLOW;
+        out->unsigned_integer = words[0];
+        return UD_OK;
+    }
+    if (f->type == UD_INT64 || f->type == UD_DURATION) {
         uint64_t sign = words[0] >> 63 ? UINT64_MAX : 0;
         if (words[1] != sign || words[2] != sign || words[3] != sign)
             return UD_OVERFLOW;
@@ -45,6 +54,8 @@ static void negate(uint64_t words[4]) {
 ud_status ud_sum_update(ud_sum_state *s, const ud_value *v, int32_t direction) {
     if (!s || !v || (direction != 1 && direction != -1))
         return UD_INVALID;
+    if (v->is_absent)
+        return UD_INCOMPATIBLE;
     if (v->is_null)
         return UD_OK;
     if ((direction > 0 && s->count == INT64_MAX) || (direction < 0 && !s->count))
@@ -56,7 +67,18 @@ ud_status ud_sum_update(ud_sum_state *s, const ud_value *v, int32_t direction) {
         if (isfinite(s->real) && isfinite(v->real) && !isfinite(next))
             return UD_OVERFLOW;
         s->real = next;
-    } else if (v->type == UD_INT64 || v->type == UD_DECIMAL128) {
+    } else if (v->type == UD_INTERVAL) {
+        int64_t values[3] = {v->interval.microseconds, v->interval.months, v->interval.days};
+        for (uint32_t i = 0; i < 3; i++) {
+            ud_value component = {.type = UD_INT64, .integer = values[i]};
+            uint64_t words[4];
+            ud_sum_wide_value(&component, words);
+            if (direction < 0)
+                negate(words);
+            UD_TRY(ud_sum_wide_add(i ? s->calendar[i - 1] : s->words, words));
+        }
+    } else if (v->type == UD_INT64 || v->type == UD_UINT64 || v->type == UD_DURATION ||
+               v->type == UD_DECIMAL128) {
         uint64_t words[4];
         ud_sum_wide_value(v, words);
         if (direction < 0)
@@ -70,6 +92,7 @@ ud_status ud_sum_update(ud_sum_state *s, const ud_value *v, int32_t direction) {
         s->count--;
     if (!s->count) {
         memset(s->words, 0, sizeof(s->words));
+        memset(s->calendar, 0, sizeof(s->calendar));
         s->real = 0;
     }
     return UD_OK;
@@ -115,6 +138,23 @@ ud_status ud_sum_result(const ud_sum_state *s, const ud_field *f, int average, i
         return UD_OK;
     if (f->type == UD_FLOAT64) {
         out->real = average ? s->real / (double)s->count : s->real;
+        return UD_OK;
+    }
+    if (f->type == UD_INTERVAL) {
+        ud_field component_field = {.type = UD_INT64};
+        int64_t values[3];
+        for (uint32_t i = 0; i < 3; i++) {
+            ud_sum_state component = *s;
+            ud_value result;
+            if (i)
+                memcpy(component.words, s->calendar[i - 1], sizeof(component.words));
+            UD_TRY(ud_sum_result(&component, &component_field, average, rounding, &result));
+            values[i] = result.integer;
+        }
+        if (values[1] < INT32_MIN || values[1] > INT32_MAX || values[2] < INT32_MIN ||
+            values[2] > INT32_MAX)
+            return UD_OVERFLOW;
+        out->interval = (ud_interval){(int32_t)values[1], (int32_t)values[2], values[0]};
         return UD_OK;
     }
     uint64_t words[4];

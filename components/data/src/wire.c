@@ -16,19 +16,17 @@ static ud_status put_field(ud_bytes *b, const ud_field *f, uint32_t depth) {
         UD_TRY(ud_put_u64(b, f->lineage[i].high));
         UD_TRY(ud_put_u64(b, f->lineage[i].low));
     }
+    UD_TRY(ud_put_u64(b, f->dictionary_kind));
+    UD_TRY(ud_put_u64(b, f->dictionary_count));
+    for (uint32_t i = 0; i < f->dictionary_count; i++)
+        UD_TRY(ud_put_string(b, f->dictionary[i].data, f->dictionary[i].length));
     UD_TRY(ud_put_u64(b, f->child_count));
     for (uint32_t i = 0; i < f->child_count; i++)
         UD_TRY(put_field(b, f->children + i, depth + 1));
     return UD_OK;
 }
 static void clear_field(ud_field *f) {
-    ud_free((void *)f->name);
-    ud_free((void *)f->timezone);
-    ud_free((void *)f->lineage);
-    for (uint32_t i = 0; i < f->child_count; i++)
-        clear_field((ud_field *)f->children + i);
-    ud_free((void *)f->children);
-    memset(f, 0, sizeof(*f));
+    ud_field_clear(f);
 }
 static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
     if (depth > 32)
@@ -89,6 +87,32 @@ static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
                 return UD_CORRUPT;
         }
     }
+    uint64_t dictionary_kind, dictionary_count;
+    UD_TRY(ud_get_u64(b, &dictionary_kind));
+    UD_TRY(ud_get_u64(b, &dictionary_count));
+    if (dictionary_kind > UD_DICTIONARY_SET || dictionary_count > 65535 ||
+        (!dictionary_kind && dictionary_count))
+        return UD_CORRUPT;
+    f->dictionary_kind = (int32_t)dictionary_kind;
+    if (dictionary_count) {
+        ud_string *labels = ud_alloc(b->ctx, (size_t)dictionary_count * sizeof(*labels));
+        if (!labels)
+            return UD_RESOURCE;
+        f->dictionary = labels;
+        f->dictionary_count = (uint32_t)dictionary_count;
+        for (uint32_t j = 0; j < dictionary_count; j++) {
+            uint64_t length;
+            UD_TRY(ud_get_u64(b, &length));
+            if (length > UINT32_MAX || length > b->size - b->pos)
+                return UD_CORRUPT;
+            labels[j] =
+                (ud_string){ud_strdup_n(b->ctx, (const char *)b->data + b->pos, (size_t)length),
+                            (uint32_t)length};
+            if (!labels[j].data)
+                return UD_RESOURCE;
+            b->pos += (size_t)length;
+        }
+    }
     UD_TRY(ud_get_u64(b, &children));
     if (children > 65536 || (f->type < UD_STRUCT && children) ||
         (f->type == UD_STRUCT && !children) || (f->type >= UD_LIST && children != 1))
@@ -106,6 +130,7 @@ static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
 static ud_status put_value(ud_bytes *b, const ud_value *v, uint32_t depth) {
     if (depth > 32)
         return UD_SCHEMA;
+    UD_TRY(ud_put_u64(b, (uint64_t)v->is_absent));
     UD_TRY(ud_put_u64(b, (uint64_t)v->is_null));
     if (v->is_null)
         return UD_OK;
@@ -115,6 +140,13 @@ static ud_status put_value(ud_bytes *b, const ud_value *v, uint32_t depth) {
         UD_TRY(ud_put_u64(b, v->decimal.low));
         return ud_put_u64(b, (uint64_t)v->decimal.high);
     }
+    if (v->type == UD_INTERVAL) {
+        UD_TRY(ud_put_u64(b, (uint64_t)(int64_t)v->interval.months));
+        UD_TRY(ud_put_u64(b, (uint64_t)(int64_t)v->interval.days));
+        return ud_put_u64(b, (uint64_t)v->interval.microseconds);
+    }
+    if (v->type == UD_UINT64)
+        return ud_put_u64(b, v->unsigned_integer);
     if (v->type >= UD_STRUCT) {
         UD_TRY(ud_put_u64(b, v->child_count));
         for (uint32_t j = 0; j < v->child_count; j++)
@@ -134,9 +166,13 @@ static ud_status get_value(ud_bytes *b, const ud_field *f, ud_value *v, uint32_t
     v->type = f->type;
     v->precision = f->precision;
     v->scale = f->scale;
-    uint64_t null;
+    uint64_t null, absent;
+    UD_TRY(ud_get_u64(b, &absent));
+    if (absent > 1)
+        return UD_CORRUPT;
+    v->is_absent = (int32_t)absent;
     UD_TRY(ud_get_u64(b, &null));
-    if (null > 1)
+    if (null > 1 || (absent && !null))
         return UD_CORRUPT;
     v->is_null = (int32_t)null;
     if (null)
@@ -156,6 +192,21 @@ static ud_status get_value(ud_bytes *b, const ud_field *f, ud_value *v, uint32_t
         UD_TRY(ud_get_u64(b, &v->decimal.low));
         UD_TRY(ud_get_u64(b, &hi));
         memcpy(&v->decimal.high, &hi, 8);
+    } else if (f->type == UD_INTERVAL) {
+        uint64_t months, days, micros;
+        UD_TRY(ud_get_u64(b, &months));
+        UD_TRY(ud_get_u64(b, &days));
+        UD_TRY(ud_get_u64(b, &micros));
+        int64_t m, d;
+        memcpy(&m, &months, 8);
+        memcpy(&d, &days, 8);
+        if (m < INT32_MIN || m > INT32_MAX || d < INT32_MIN || d > INT32_MAX)
+            return UD_CORRUPT;
+        v->interval.months = (int32_t)m;
+        v->interval.days = (int32_t)d;
+        memcpy(&v->interval.microseconds, &micros, 8);
+    } else if (f->type == UD_UINT64) {
+        UD_TRY(ud_get_u64(b, &v->unsigned_integer));
     } else if (f->type >= UD_STRUCT) {
         uint64_t count;
         UD_TRY(ud_get_u64(b, &count));
@@ -206,6 +257,8 @@ ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
         UD_TRY(ud_batch_row_info(table, row, &info));
         UD_TRY(ud_put_u64(b, info.id.high));
         UD_TRY(ud_put_u64(b, info.id.low));
+        UD_TRY(ud_put_u64(b, info.has_source_position));
+        UD_TRY(ud_put_u64(b, info.source_position));
         if (info.flags || info.operation || info.rule.high || info.rule.low)
             exceptional++;
     }
@@ -269,6 +322,14 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
         s = ud_get_u64(b, &info.id.high);
         if (!s)
             s = ud_get_u64(b, &info.id.low);
+        uint64_t has_position = 0;
+        if (!s)
+            s = ud_get_u64(b, &has_position);
+        if (!s && has_position > 1)
+            s = UD_CORRUPT;
+        info.has_source_position = (uint32_t)has_position;
+        if (!s)
+            s = ud_get_u64(b, &info.source_position);
         if (!s)
             s = ud_batch_set_row_info(*out, row, &info);
     }

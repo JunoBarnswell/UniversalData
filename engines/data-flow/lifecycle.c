@@ -56,6 +56,7 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
 #endif
     ud_rest_reader_close(b->rest_reader);
     ud_batch_destroy(b->output_pending);
+    ud_batch_destroy(b->source_errors);
     ud_expression_destroy(b->predicate);
     ud_free((void *)b->read_sql.data);
     if (b->xlsx_writer)
@@ -96,6 +97,7 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
     for (uint64_t i = b->snapshot_at; b->snapshot && i < b->snapshot_count; i++)
         ud_buffer_release(b->snapshot[i]);
     ud_free(b->snapshot);
+    ud_free(b->snapshot_ports);
     ud_free(b->schema_diff);
     ud_free((void *)b->schema_policy.data);
     ud_json_destroy(b->config);

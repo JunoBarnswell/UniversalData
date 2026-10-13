@@ -255,20 +255,21 @@ static ud_status parameters_bind(odbc_state *p, SQLHSTMT stmt, const ud_batch *b
             break;
         parameter *q = v + i;
         q->scale = (SQLSMALLINT)(f.type == UD_TIMESTAMP || f.type == UD_TIME64 ? 6 : f.scale);
-        q->precision = f.type == UD_DECIMAL128  ? (SQLULEN)f.precision
-                       : f.type == UD_TIMESTAMP ? 26
-                       : f.type == UD_TIME64    ? 15
-                                                : 0;
-        q->sql_type = f.type == UD_BOOL         ? SQL_BIT
-                      : f.type == UD_INT64      ? SQL_BIGINT
-                      : f.type == UD_FLOAT64    ? SQL_DOUBLE
-                      : f.type == UD_BINARY     ? SQL_VARBINARY
-                      : f.type == UD_DECIMAL128 ? SQL_DECIMAL
-                      : f.type == UD_DATE32     ? SQL_TYPE_DATE
-                      : f.type == UD_TIME64     ? SQL_TYPE_TIME
-                      : f.type == UD_TIMESTAMP  ? SQL_TYPE_TIMESTAMP
-                      : f.type == UD_UTF8       ? (p->ansi ? SQL_VARCHAR : SQL_WVARCHAR)
-                                                : 0;
+        q->precision = f.type == UD_UINT64       ? 20
+                       : f.type == UD_DECIMAL128 ? (SQLULEN)f.precision
+                       : f.type == UD_TIMESTAMP  ? 26
+                       : f.type == UD_TIME64     ? 15
+                                                 : 0;
+        q->sql_type = f.type == UD_BOOL                                  ? SQL_BIT
+                      : f.type == UD_INT64                               ? SQL_BIGINT
+                      : f.type == UD_FLOAT64                             ? SQL_DOUBLE
+                      : f.type == UD_BINARY                              ? SQL_VARBINARY
+                      : (f.type == UD_DECIMAL128 || f.type == UD_UINT64) ? SQL_DECIMAL
+                      : f.type == UD_DATE32                              ? SQL_TYPE_DATE
+                      : f.type == UD_TIME64                              ? SQL_TYPE_TIME
+                      : f.type == UD_TIMESTAMP                           ? SQL_TYPE_TIMESTAMP
+                      : f.type == UD_UTF8 ? (p->ansi ? SQL_VARCHAR : SQL_WVARCHAR)
+                                          : 0;
         if (!q->sql_type) {
             s = UD_UNSUPPORTED;
             break;

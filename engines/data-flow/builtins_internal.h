@@ -65,7 +65,10 @@ typedef struct builtin {
     uint32_t input_count;
     ud_operator *operator;
     ud_batch *output_pending;
+    ud_batch *source_errors;
     uint32_t output_at;
+    uint32_t output_port;
+    ud_record_options records;
     ud_expression *predicate;
     ud_string read_sql;
     int predicate_pushed;
@@ -99,8 +102,10 @@ typedef struct builtin {
     ud_batch *actual_schema, *write_schema, *parameters;
     ud_operator *source_sort;
     ud_buffer_block **snapshot;
+    uint32_t *snapshot_ports;
     uint32_t snapshot_capacity;
-    uint64_t snapshot_count, snapshot_at, snapshot_rows, source_identified, snapshot_read_ms;
+    uint64_t snapshot_count, snapshot_at, snapshot_rows, snapshot_error_rows, source_identified,
+        snapshot_read_ms;
     int materialized;
     uint8_t file_fingerprint[32];
     uint64_t file_hash_ms;
@@ -144,7 +149,7 @@ ud_status ud_builtin_sink_batch(builtin *b, const ud_batch *input, ud_batch **ou
                                 ud_batch **before);
 ud_status ud_builtin_sink_schema(builtin *b);
 ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input, const ud_batch *before);
-ud_status ud_builtin_snapshot_store(builtin *b, ud_batch *batch);
+ud_status ud_builtin_snapshot_store(builtin *b, ud_batch *batch, uint32_t port);
 ud_status ud_builtin_source_identity(builtin *b, ud_batch *input, ud_batch **out);
 ud_status ud_builtin_source_next(builtin *b, ud_batch **out);
 ud_status ud_builtin_source_partition(builtin *b, ud_batch *input, ud_batch **out);

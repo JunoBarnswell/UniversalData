@@ -134,9 +134,10 @@ static ud_status bind_value(bindings *b, uint32_t at, ud_value v) {
         bind->buffer_type = MYSQL_TYPE_NULL;
         return UD_OK;
     }
-    if (v.type == UD_INT64 || v.type == UD_BOOL) {
+    if (v.type == UD_INT64 || v.type == UD_UINT64 || v.type == UD_BOOL) {
         if (v.type == UD_BOOL && v.integer != 0 && v.integer != 1)
             return UD_SCHEMA;
+        bind->is_unsigned = v.type == UD_UINT64;
         bind->buffer_type = MYSQL_TYPE_LONGLONG;
         bind->buffer = &b->values[at].integer;
         bind->buffer_length = sizeof(int64_t);
@@ -156,8 +157,8 @@ static ud_status bind_value(bindings *b, uint32_t at, ud_value v) {
         bind->buffer_length = b->length[at] = v.text_length;
         return UD_OK;
     }
-    if (v.type == UD_DECIMAL128 || v.type == UD_DATE32 || v.type == UD_TIME64 ||
-        v.type == UD_TIMESTAMP) {
+    if (v.type == UD_DECIMAL128 || v.type == UD_DATE32 || v.type == UD_DURATION ||
+        v.type == UD_TIME64 || v.type == UD_TIMESTAMP) {
         char value[160];
         uint32_t n = 0;
         ud_status status = p->host.format_value(&v, value, sizeof(value), &n);
@@ -282,9 +283,12 @@ static ud_status read_open(void *state, const ud_read_options *o, const ud_batch
     if (!s)
         s = plugin_fields(&p->host, schema, &fields);
     for (uint32_t i = 0; !s && i < columns; i++) {
-        if (fields[i].type > UD_BINARY || fields[i].name_length != actual[i].name_length ||
+        if (fields[i].type >= UD_STRUCT || fields[i].name_length != actual[i].name_length ||
             memcmp(fields[i].name, actual[i].name, fields[i].name_length))
             s = UD_SCHEMA;
+        if (!s && fields[i].dictionary_kind &&
+            (actual[i].type != MYSQL_TYPE_LONGLONG || !(actual[i].flags & UNSIGNED_FLAG)))
+            s = UD_INCOMPATIBLE;
         if (!s && fields[i].type == UD_TIMESTAMP && !p->utc &&
             actual[i].type == MYSQL_TYPE_DATETIME)
             s = UD_UNSUPPORTED;
@@ -714,34 +718,29 @@ static ud_status prove_target(mysql_state *p, const ud_write_options *o, const u
     ud_batch *meta = NULL;
     if (!s)
         s = discover(p, o->table, &meta);
+    ud_batch *actual_schema = NULL;
+    if (!s)
+        s = p->host.schema_from_metadata(p->host.context, meta, o->table, UD_MYSQL_DIALECT,
+                                         &actual_schema);
     uint32_t columns = p->host.columns(batch);
     for (uint32_t i = 0; !s && i < columns; i++) {
         ud_field field;
         s = p->host.field(batch, i, &field);
         int found = 0;
-        for (uint32_t row = 0; !s && row < p->host.rows(meta); row++) {
-            ud_value name, type, key;
-            s = p->host.get(meta, row, 0, &name);
-            if (!s)
-                s = p->host.get(meta, row, 1, &type);
-            if (!s)
-                s = p->host.get(meta, row, 3, &key);
-            if (!s && field.name_length == name.text_length &&
-                !memcmp(field.name, name.text, field.name_length)) {
+        for (uint32_t row = 0; !s && row < p->host.columns(actual_schema); row++) {
+            ud_field actual;
+            s = p->host.field(actual_schema, row, &actual);
+            if (!s && field.name_length == actual.name_length &&
+                !memcmp(field.name, actual.name, field.name_length)) {
                 found = 1;
-                ud_field actual;
-                s = p->host.field_from_sql((ud_string){type.text, type.text_length},
-                                           UD_MYSQL_DIALECT, &actual);
-                if (!s && (actual.type != field.type ||
-                           (actual.type == UD_DECIMAL128 &&
-                            (actual.precision != field.precision || actual.scale != field.scale))))
+                if (!p->host.field_matches(&actual, &field, UD_FIELD_VALUE_TYPE))
                     s = UD_SCHEMA;
                 /* Boolean is an explicit value policy for integer 0/1, never a discovery inference.
                  */
                 if (s == UD_SCHEMA && actual.type == UD_INT64 && field.type == UD_BOOL)
                     s = UD_OK;
                 for (uint32_t k = 0; !s && k < o->key_count; k++)
-                    if (o->keys[k] == i && key.integer != (int64_t)k + 1)
+                    if (o->keys[k] == i && actual.key_order != k + 1)
                         s = UD_SCHEMA;
                 break;
             }
@@ -749,6 +748,7 @@ static ud_status prove_target(mysql_state *p, const ud_write_options *o, const u
         if (!s && !found)
             s = UD_SCHEMA;
     }
+    p->host.batch_destroy(actual_schema);
     p->host.batch_destroy(meta);
     return s;
 }
@@ -855,6 +855,14 @@ static ud_status native_load(mysql_state *p, const ud_write_options *o, const ud
     if (!status && (!p->bulk_requested || mysql_warning_count(p->db) ||
                     mysql_affected_rows(p->db) != p->host.rows(batch)))
         status = UD_SCHEMA; /* LOCAL INFILE may downgrade record failures to warnings. */
+    ud_string release = {0};
+    ud_status cleaned =
+        p->host.compile_bulk_release(p->host.context, UD_MYSQL_DIALECT, batch, &release);
+    if (!cleaned && release.length && mysql_real_query(p->db, release.data, release.length))
+        cleaned = failure(p, NULL);
+    p->host.deallocate((void *)release.data);
+    if (!status)
+        status = cleaned;
     p->host.deallocate((void *)sql.data);
     return status;
 }
@@ -1157,7 +1165,10 @@ static ud_status cdc_open(void *state, const ud_cdc_options *options) {
         status = failure(p, NULL);
     MYSQL_RES *probe = !status ? mysql_store_result(p->db) : NULL;
     MYSQL_ROW row = probe ? mysql_fetch_row(probe) : NULL;
-    if (!status && (!row || strcmp(row[0], "ROW") || strcmp(row[1], "FULL") || strcmp(row[2], "1")))
+    if (!status &&
+        (!row || !row[0] || !row[1] || !row[2] || strcmp(row[0], "ROW") ||
+         (strcmp(row[1], "FULL") && strcmp(row[1], "MINIMAL") && strcmp(row[1], "NOBLOB")) ||
+         strcmp(row[2], "1")))
         status = UD_UNSUPPORTED;
     if (!status) {
         c->checksum = row[3] && !strcmp(row[3], "CRC32");
@@ -1203,34 +1214,17 @@ static ud_status cdc_open(void *state, const ud_cdc_options *options) {
                 status = released;
         }
         if (!status) {
-            size_t size = options->table.length * 2 + 64;
-            char *query = p->host.allocate(p->host.context, size);
-            if (!query)
-                status = UD_RESOURCE;
-            else {
-                size_t n = 0;
-                memcpy(query, "SELECT * FROM `", 15);
-                n = 15;
-                for (uint32_t i = 0; i < options->table.length; i++) {
-                    char ch = options->table.data[i];
-                    if (ch == '.') {
-                        memcpy(query + n, "`.`", 3);
-                        n += 3;
-                    } else {
-                        if (ch == '`')
-                            query[n++] = '`';
-                        query[n++] = ch;
-                    }
-                }
-                query[n++] = '`';
-                query[n] = 0;
+            ud_string query = {0};
+            status = p->host.compile_scan(p->host.context, UD_MYSQL_DIALECT, options->table,
+                                          options->schema, &query);
+            if (!status) {
                 ud_read_options read = {.struct_size = sizeof(read),
                                         .abi_version = UD_ABI_VERSION,
                                         .batch_size = options->batch_rows,
-                                        .sql = {query, (uint32_t)n}};
+                                        .sql = query};
                 status = read_open(p, &read, options->schema);
-                p->host.deallocate(query);
             }
+            p->host.deallocate((void *)query.data);
         }
         if (!status)
             c->snapshot = 1;

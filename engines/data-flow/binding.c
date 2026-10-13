@@ -1,4 +1,21 @@
 #include "builtins_internal.h"
+static ud_status error_schema(const ud_component_context *context, const ud_json *config,
+                              const ud_batch *input, uint32_t port, ud_batch **output) {
+    int policy, include = 0;
+    UD_TRY(ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy));
+    const ud_json *flag = ud_member(config, "includeInput");
+    if (flag) {
+        const char *value;
+        uint32_t length;
+        if (ud_json_kind(flag) != UD_JSON_BOOL)
+            return UD_SCHEMA;
+        UD_TRY(ud_json_text(flag, &value, &length));
+        include = length == 4;
+    }
+    if (policy == UD_ERROR_REDIRECT && !(context->connected_outputs & (UINT64_C(1) << port)))
+        return UD_SCHEMA;
+    return ud_error_schema(&context->errors, input, include, output);
+}
 ud_status ud_builtin_clone_schema(ud_context *ctx, const ud_batch *in, ud_batch **out) {
     uint32_t count = ud_batch_columns(in);
     ud_field *fields = ud_alloc(ctx, count * sizeof(*fields));
@@ -186,26 +203,8 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
         if (!s)
             s = ud_batch_cast_schema(c->memory, in[0], schema, length, (int32_t)rounding, out);
         ud_free(schema);
-        ud_string policy = {"fail", 4};
-        if (!s && ud_member(config, "errorPolicy"))
-            s = ud_json_string(ud_member(config, "errorPolicy"), &policy);
-        if (!s && !ud_named(policy, "fail") && !ud_named(policy, "ignore") &&
-            !ud_named(policy, "redirect"))
-            s = UD_SCHEMA;
-        int include = 0;
-        const ud_json *flag = ud_member(config, "includeInput");
-        if (!s && flag) {
-            const char *p = NULL;
-            uint32_t n = 0;
-            if (ud_json_kind(flag) != UD_JSON_BOOL)
-                s = UD_SCHEMA;
-            else {
-                s = ud_json_text(flag, &p, &n);
-                include = n == 4 && !memcmp(p, "true", 4);
-            }
-        }
         if (!s)
-            s = ud_error_schema(&c->errors, in[0], include, out + 1);
+            s = error_schema(c, config, in[0], 1, out + 1);
     } else if (!s && kind == DERIVE) {
         const ud_json *columns = ud_member(config, "columns");
         uint32_t count = ud_json_size(columns), original = ud_batch_columns(in[0]);
@@ -304,6 +303,8 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
             s = UD_SCHEMA;
         ud_batch_destroy(params);
     }
+    if (!s && (kind == CSV_SOURCE || kind == JSON_SOURCE))
+        s = error_schema(c, config, out[0], 1, out + 1);
     if (!s && kind == SQL_SOURCE && ud_member(config, "where")) {
         ud_expression *predicate = NULL;
         s = ud_builtin_bind_expr(c, ud_member(config, "where"), out[0], &predicate);
@@ -327,8 +328,12 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
         }
     }
     if (!s && (kind == SPLIT || kind == MULTICAST))
-        for (uint32_t p = 1; !s && p < c->output_count; p++)
+        for (uint32_t p = 1; !s && p < c->output_count - (kind == SPLIT); p++)
             s = ud_builtin_clone_schema(c->memory, in[0], out + p);
+    if (!s && (kind == DERIVE || kind == SPLIT)) {
+        uint32_t port = kind == SPLIT ? c->output_count - 1 : 1;
+        s = error_schema(c, config, in[0], port, out + port);
+    }
     if (!s && kind == SPLIT) {
         const ud_json *branches = ud_member(config, "branches");
         uint32_t count = branches ? ud_json_size(branches) : 1;
@@ -425,7 +430,7 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
     uint32_t n = names ? ud_json_size(names) : 2;
     ud_status s = UD_OK;
     if (kind == SPLIT)
-        n = names ? ud_json_size(names) + 1 : 2;
+        n = names ? ud_json_size(names) + 2 : 3;
     if (n < 2 || n > 64 || (names && ud_json_kind(names) != UD_JSON_ARRAY))
         s = UD_SCHEMA;
     ports->input_count = kind == UNION_ALL ? n : 1;
@@ -446,15 +451,17 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
             if (names && ((kind == UNION_ALL && !direction) || (kind == MULTICAST && direction)))
                 value = ud_json_at(names, i);
             if (names && kind == SPLIT && direction) {
-                if (i + 1 < ports->output_count) {
+                if (i + 2 < ports->output_count) {
                     const ud_json *branch = ud_json_at(names, i);
                     static const char *allow[] = {"id", "condition"};
                     s = ud_json_keys(branch, allow, 2);
                     value = ud_member(branch, "id");
-                } else
+                } else if (i + 2 == ports->output_count)
                     value = ud_member(config, "default");
             }
-            if (!s && value)
+            if (!s && kind == SPLIT && direction && i + 1 == ports->output_count)
+                name = (ud_string){"error", 5};
+            else if (!s && value)
                 s = ud_json_string(value, &name);
             else if (!s) {
                 int length =
@@ -465,6 +472,8 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
                 port->name =
                     (ud_string){ud_strdup_n(c->memory, name.data, name.length), name.length};
                 port->flags = UD_PORT_REQUIRED;
+                if (kind == SPLIT && direction && i + 1 == ports->output_count)
+                    port->flags = UD_PORT_ERROR;
                 if (!port->name.data)
                     s = UD_RESOURCE;
             }

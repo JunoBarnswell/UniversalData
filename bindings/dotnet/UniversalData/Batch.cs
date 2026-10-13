@@ -46,6 +46,13 @@ public sealed class Batch : IDisposable
     { get { lock (execution) { EnsureOpen(); return Native.ud_batch_rows(batch); } } }
     public uint Columns
     { get { lock (execution) { EnsureOpen(); return Native.ud_batch_columns(batch); } } }
+    public bool HasAbsentFields
+    { get { lock (execution) { EnsureOpen(); return Native.ud_batch_has_absent(batch) != 0; } } }
+    public bool IsFieldPresent(uint row, uint column)
+    {
+        lock (execution) { EnsureOpen(); DataOwnership.Check(context,
+            Native.ud_batch_cell_present(batch, row, column, out var present)); return present != 0; }
+    }
 
     public string ToJson()
     {
@@ -170,6 +177,8 @@ internal sealed class BatchHandle : SafeHandleZeroOrMinusOneIsInvalid
 
 internal static partial class Native
 {
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_has_absent(BatchHandle batch);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_cell_present(BatchHandle batch, uint row, uint column, out int present);
     [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_batch_seal(BatchHandle batch);
     [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] private static extern int ud_pivot_discover_values(ContextHandle context,BatchHandle batch,uint column,StringValue prefix,uint maximum,out IntPtr text,out uint length);
     internal static int DiscoverPivot(ContextHandle context,BatchHandle batch,uint column,byte[] prefix,uint maximum,out IntPtr text,out uint length) {var pin=GCHandle.Alloc(prefix,GCHandleType.Pinned);try{return ud_pivot_discover_values(context,batch,column,new StringValue(pin.AddrOfPinnedObject(),checked((uint)prefix.Length)),maximum,out text,out length);}finally{pin.Free();}}

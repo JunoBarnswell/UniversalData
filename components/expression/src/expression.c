@@ -87,6 +87,8 @@ static ud_status eval(const ud_expression *e, const expression_node *n, const ud
     }
     if (n->kind == REFERENCE) {
         UD_TRY(e->resolve(e->user, n->name, out));
+        if (out->is_absent)
+            return UD_INCOMPATIBLE;
         if (out->type != n->type)
             return UD_SCHEMA;
         return n->type == UD_DECIMAL128 && !out->is_null &&
@@ -94,8 +96,10 @@ static ud_status eval(const ud_expression *e, const expression_node *n, const ud
                    ? UD_SCHEMA
                    : UD_OK;
     }
-    if (n->kind == COLUMN)
-        return ud_batch_get(b, row, n->column, out);
+    if (n->kind == COLUMN) {
+        UD_TRY(ud_batch_get(b, row, n->column, out));
+        return out->is_absent ? UD_INCOMPATIBLE : UD_OK;
+    }
     if (n->kind == FUNCTION) {
         ud_value arguments[16] = {{0}};
         for (uint32_t i = 0; i < n->argument_count; i++)
@@ -149,13 +153,14 @@ static void literal_origins(ud_field *field) {
 }
 static ud_status bind_literal(ud_expression *e, expression_node *n, const ud_json *json,
                               const ud_json *literal) {
-    static const char *keys[] = {"literal", "type", "precision", "scale", "timezone", "children"};
+    static const char *keys[] = {"literal",  "type",     "precision", "scale",
+                                 "timezone", "children", "dictionary"};
     for (uint32_t j = 0; j < ud_json_size(json); j++) {
         const char *key = NULL;
         uint32_t length = 0;
         UD_TRY(ud_json_key(json, j, &key, &length));
         int known = 0;
-        for (uint32_t k = 0; k < 6; k++)
+        for (uint32_t k = 0; k < 7; k++)
             if (length == strlen(keys[k]) && !memcmp(key, keys[k], length))
                 known = 1;
         if (!known)
@@ -165,7 +170,7 @@ static ud_status bind_literal(ud_expression *e, expression_node *n, const ud_jso
     const char *prefix = "{\"version\":" UD_PROTOCOL_VERSION_TEXT
                          ",\"fields\":[{\"name\":\"literal\",\"nullable\":true";
     ud_status s = ud_bytes_put(&schema, prefix, strlen(prefix));
-    for (uint32_t j = 1; !s && j < 6; j++) {
+    for (uint32_t j = 1; !s && j < 7; j++) {
         const ud_json *value = member(json, keys[j]);
         if (!value)
             continue;
@@ -585,7 +590,7 @@ static ud_status sql_put(sql_expression *s, const char *text) {
     return ud_bytes_put(&s->text, text, strlen(text));
 }
 static ud_status sql_node(sql_expression *s, const expression_node *n) {
-    if (n->type != UD_BOOL && n->type != UD_INT64)
+    if (n->type != UD_BOOL && n->type != UD_INT64 && n->type != UD_UINT64)
         return UD_UNSUPPORTED;
     if (n->constant) {
         if (s->count == 4096)

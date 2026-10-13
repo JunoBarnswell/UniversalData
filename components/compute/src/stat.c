@@ -10,6 +10,8 @@ static uint64_t get64(const uint8_t *p) {
     return n;
 }
 ud_status ud_stat_add(ud_aggregate_state *s, const ud_aggregate_def *d, const ud_value *v) {
+    if (v->is_absent)
+        return UD_INCOMPATIBLE;
     if (v->is_null)
         return UD_OK;
     if (d->distinct) {
@@ -83,14 +85,14 @@ ud_status ud_stat_encode(const ud_aggregate_state *s, const ud_aggregate_def *d,
     uint8_t *encoded = NULL;
     if (!status)
         status = ud_batch_serialize(payload, &encoded, &wire);
-    if (!status && wire > UINT32_MAX - 64 - UD_HLL_REGISTERS)
+    if (!status && wire > UINT32_MAX - 128 - UD_HLL_REGISTERS)
         status = UD_RESOURCE;
-    size_t offset = 64 + (d->kind == 5 ? UD_HLL_REGISTERS : 0);
+    size_t offset = 128 + (d->kind == 5 ? UD_HLL_REGISTERS : 0);
     uint8_t *bytes = !status ? ud_alloc(s->ctx, offset + wire) : NULL;
     if (!status && !bytes)
         status = UD_RESOURCE;
     if (!status) {
-        memcpy(bytes, "UDAGG9\0", 8);
+        memcpy(bytes, "UDAGG" UD_PROTOCOL_VERSION_TEXT, 8);
         bytes[8] = (uint8_t)d->kind;
         bytes[9] = (uint8_t)d->distinct;
         put64(bytes + 16, s->sum.count);
@@ -99,8 +101,11 @@ ud_status ud_stat_encode(const ud_aggregate_state *s, const ud_aggregate_def *d,
         uint64_t real;
         memcpy(&real, &s->sum.real, 8);
         put64(bytes + 56, real);
+        for (uint32_t lane = 0; lane < 2; lane++)
+            for (uint32_t word = 0; word < 4; word++)
+                put64(bytes + 64 + lane * 32 + word * 8, s->sum.calendar[lane][word]);
         if (s->hll)
-            memcpy(bytes + 64, s->hll, UD_HLL_REGISTERS);
+            memcpy(bytes + 128, s->hll, UD_HLL_REGISTERS);
         memcpy(bytes + offset, encoded, (size_t)wire);
     }
     ud_batch_destroy(payload);
@@ -115,11 +120,11 @@ ud_status ud_stat_encode(const ud_aggregate_state *s, const ud_aggregate_def *d,
 }
 ud_status ud_stat_merge(ud_aggregate_state *s, const ud_aggregate_def *d, const ud_field *f,
                         const ud_value *v) {
-    size_t offset = 64 + (d->kind == 5 ? UD_HLL_REGISTERS : 0);
+    size_t offset = 128 + (d->kind == 5 ? UD_HLL_REGISTERS : 0);
     if (v->type != UD_BINARY || v->is_null || v->text_length <= offset)
         return UD_CORRUPT;
     const uint8_t *b = (const uint8_t *)v->text;
-    if (memcmp(b, "UDAGG9\0", 8) || b[8] != d->kind || b[9] != d->distinct)
+    if (memcmp(b, "UDAGG" UD_PROTOCOL_VERSION_TEXT, 8) || b[8] != d->kind || b[9] != d->distinct)
         return UD_CORRUPT;
     for (uint32_t i = 10; i < 16; i++)
         if (b[i])
@@ -144,10 +149,10 @@ ud_status ud_stat_merge(ud_aggregate_state *s, const ud_aggregate_def *d, const 
                 status = UD_RESOURCE;
         }
         for (uint32_t i = 0; !status && i < UD_HLL_REGISTERS; i++)
-            if (b[64 + i] > 55)
+            if (b[128 + i] > 55)
                 status = UD_CORRUPT;
         if (!status)
-            ud_hll_merge(s->hll, b + 64);
+            ud_hll_merge(s->hll, b + 128);
     } else if (!status) {
         uint64_t count = get64(b + 16);
         if (count > INT64_MAX - s->sum.count)
@@ -168,6 +173,11 @@ ud_status ud_stat_merge(ud_aggregate_state *s, const ud_aggregate_def *d, const 
             for (uint32_t i = 0; i < 4; i++)
                 words[i] = get64(b + 24 + i * 8);
             status = ud_sum_wide_add(s->sum.words, words);
+            for (uint32_t lane = 0; !status && lane < 2; lane++) {
+                for (uint32_t word = 0; word < 4; word++)
+                    words[word] = get64(b + 64 + lane * 32 + word * 8);
+                status = ud_sum_wide_add(s->sum.calendar[lane], words);
+            }
             if (!status) {
                 uint64_t real = get64(b + 56);
                 double value;

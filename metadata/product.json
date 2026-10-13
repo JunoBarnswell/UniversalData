@@ -23,7 +23,7 @@
   },
   "candidate": {
     "branch": "codex/etl-ssis-product-alignment",
-    "state": "2.0 implementation in progress: identity, indexed Native Catalog and controlled remote bulk transports; acceptance NotRun",
+    "state": "2.0 implementation in progress: Native identity/Catalog/bulk foundation, unified type domains, CDC field presence and record error contracts; transaction/schema/product closure and acceptance remain pending",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,
@@ -93,7 +93,7 @@
       "phase": 2,
       "name": "Source record error ports",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -106,14 +106,15 @@
       "acceptance": "A recoverable CSV/NDJSON/SQL record contains invalid field content. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "CSV/NDJSON isolate bounded record errors through the shared native error schema and existing output ports. Normal/error Snapshot batches retain their output port and physical record identity. SQL source record isolation and commit/recovery closure remain pending."
     },
     {
       "id": "ETL-005",
       "phase": 2,
       "name": "Expression transform row errors",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -125,7 +126,8 @@
       "acceptance": "A Derived Column or Conditional Split expression fails for one record. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Cast, Derived Column and Conditional Split use one native status classification and error record writer. Execution failures cannot be ignored or redirected. Additional expression failure attribution and complete product acceptance remain pending."
     },
     {
       "id": "ETL-006",
@@ -151,7 +153,7 @@
       "phase": 1,
       "name": "Complete unsigned integer domain",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -164,14 +166,15 @@
       "acceptance": "A UINT64 value exceeds INT64_MAX. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "UINT64 storage, exact parsing/casts, comparison/hash, arithmetic, aggregation, Wire, Arrow, schema discovery and .NET/Java type projections are implemented. Provider-specific interval/type closure, domain expression coverage and behavioral acceptance remain pending."
     },
     {
       "id": "ETL-008",
       "phase": 1,
       "name": "Duration and calendar Interval",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -184,7 +187,8 @@
       "acceptance": "A negative/long SQL TIME or month/day/microsecond interval is read. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Signed microsecond Duration and month/day/microsecond Interval share native parsing, storage, arithmetic, aggregation, Wire/Arrow and language projections; MySQL negative/long TIME decodes as Duration. Complete provider mapping and acceptance remain pending."
     },
     {
       "id": "ETL-009",
@@ -502,7 +506,7 @@
       "phase": 1,
       "name": "Online Schema Change barrier",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -514,14 +518,15 @@
       "acceptance": "A compatible/incompatible runtime schema event reaches an epoch boundary. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "PostgreSQL pgoutput accepts default/index/full replication identity; key-only and unchanged TOAST fields retain presence separately from NULL. Native Changeset SQL skips absent fields and uses known old keys/preimages. Runtime schema rebinding, TRUNCATE and real recovery acceptance remain pending."
     },
     {
       "id": "ETL-026",
       "phase": 1,
       "name": "CDC field presence and key images",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -535,7 +540,8 @@
       "acceptance": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native binary JSON decoding retains full integer/opaque Decimal/temporal values. MySQL ENUM ordinals and SET bitmaps preserve ordered dictionaries, empty/numeric labels and sentinel zero across Schema/Wire/Arrow. MINIMAL/NOBLOB binlog images retain presence; SQL projections and controlled LOAD DATA use explicit unsigned conversion. Real integration and online schema evolution remain pending."
     },
     {
       "id": "ETL-027",
@@ -825,7 +831,7 @@
       "phase": 2,
       "name": "Exact Distinct profiling with shared Compute budget",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Implemented",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -837,7 +843,8 @@
       "acceptance": "Profiling requires exact distinct counts under memory and spill limits. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Profile exact Distinct uses the existing native Compute value set under context/row budgets; approximate HLL is retained only for explicitly named approxDistinct aggregation. Concentrated acceptance has not run."
     },
     {
       "id": "ETL-043",
@@ -7689,7 +7696,9 @@
           "Data owns UINT64/Duration/Interval and dictionary/presence semantics; all serialization/expressions/compute/bindings project the same contracts.",
           "Connection Manager owns transaction participants; Journal owns durable decisions and checkpoint epochs; Catalog indexes product/admin state only.",
           "Managed delegates, registry leases and instance handles remain alive until Native disposal; exceptions become Native errors.",
-          "ASP.NET Core 10 dispatches one independent Worker per execution; React Flow persists stable graph IDs/layout with package versions; Native validates configurations."
+          "ASP.NET Core 10 dispatches one independent Worker per execution; React Flow persists stable graph IDs/layout with package versions; Native validates configurations.",
+          "Bounded implementation review: preserve ENUM ordinal zero and SET bitmaps with ordered UINT64 dictionaries; string labels cannot distinguish empty/numeric labels and empty sets. Native SQL scans explicitly project unsigned values and controlled LOAD DATA explicitly assigns numeric values; session variables are cleared.",
+          "Bounded implementation review: record absence differs from NULL; Changesets preserve it in Native Batch/Wire and only assign present values. Operations unable to represent partial images reject them. Source normal/error batches share Snapshot storage with persisted output port and physical source position."
         ]
       },
       {

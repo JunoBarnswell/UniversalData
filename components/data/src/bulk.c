@@ -19,6 +19,8 @@ ud_status ud_sql_bulk_open(ud_context *ctx, const ud_batch *batch, int32_t diale
     *out = NULL;
     if (!ctx || !batch || batch->ctx != ctx || !batch->sealed)
         return UD_INVALID;
+    if (ud_batch_has_absent(batch))
+        return UD_INCOMPATIBLE;
     if (dialect != UD_SQL_POSTGRESQL && dialect != UD_SQL_MYSQL && dialect != UD_SQL_MARIADB)
         return UD_UNSUPPORTED;
     for (uint32_t i = 0; i < batch->columns; i++)

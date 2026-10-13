@@ -1,9 +1,6 @@
 #include "ud/format.h"
 #include "ud/json.h"
 #include "../internal.h"
-static const char *const type_names[] = {"bool",       "int64",  "float64", "utf8",
-                                         "decimal128", "date32", "time64",  "timestamp",
-                                         "binary",     "struct", "list",    "map"};
 static const ud_json *member(const ud_json *v, const char *name) {
     return ud_json_find(v, name, (uint32_t)strlen(name));
 }
@@ -34,6 +31,7 @@ static void clear_fields(ud_field *fields, uint32_t count) {
     for (uint32_t j = 0; j < count; j++) {
         clear_fields((ud_field *)fields[j].children, fields[j].child_count);
         ud_free((void *)fields[j].lineage);
+        ud_dictionary_clear(fields + j);
     }
     ud_free(fields);
 }
@@ -50,12 +48,13 @@ static ud_status parse_fields(ud_context *ctx, const ud_json *array, uint32_t de
         return UD_RESOURCE;
     *out = fields;
     *count = n;
-    static const char *allowed[] = {"name",     "type",     "nullable", "precision", "scale",
-                                    "timezone", "children", "identity", "lineage",   "keyOrder"};
+    static const char *allowed[] = {"name",    "type",     "nullable",  "precision",
+                                    "scale",   "timezone", "children",  "identity",
+                                    "lineage", "keyOrder", "dictionary"};
     for (uint32_t j = 0; j < n; j++) {
         const ud_json *v = ud_json_at(array, j);
         ud_field *f = fields + j;
-        UD_TRY(ud_json_keys(v, allowed, 10));
+        UD_TRY(ud_json_keys(v, allowed, 11));
         UD_TRY(text_value(member(v, "name"), &f->name, &f->name_length));
         const ud_json *id = member(v, "identity"), *lineage = member(v, "lineage");
         if (id) {
@@ -90,11 +89,9 @@ static ud_status parse_fields(ud_context *ctx, const ud_json *array, uint32_t de
         const char *type = NULL;
         uint32_t length = 0;
         UD_TRY(text_value(member(v, "type"), &type, &length));
-        for (uint32_t k = 0; k < 12; k++)
-            if (equals(type, length, type_names[k]))
-                f->type = (ud_type)k + 1;
-        if (!f->type)
-            return UD_UNSUPPORTED;
+        UD_TRY(ud_type_parse((ud_string){type, length}, &f->type));
+        if (member(v, "dictionary"))
+            UD_TRY(ud_dictionary_parse(ctx, member(v, "dictionary"), f));
         if (member(v, "keyOrder")) {
             int32_t order = 0;
             UD_TRY(integer(ctx, member(v, "keyOrder"), &order));
@@ -167,8 +164,8 @@ static ud_status emit_fields(ud_bytes *bytes, const ud_field *fields, uint32_t c
         UD_TRY(ud_bytes_put(bytes, "{\"name\":", 8));
         UD_TRY(ud_json_quote(bytes, f->name, f->name_length));
         UD_TRY(ud_bytes_put(bytes, ",\"type\":", 8));
-        UD_TRY(ud_json_quote(bytes, type_names[f->type - 1],
-                             (uint32_t)strlen(type_names[f->type - 1])));
+        UD_TRY(
+            ud_json_quote(bytes, ud_type_name(f->type), (uint32_t)strlen(ud_type_name(f->type))));
         if (f->key_order) {
             char key[40];
             int n = snprintf(key, sizeof(key), ",\"keyOrder\":%u", f->key_order);
@@ -188,6 +185,10 @@ static ud_status emit_fields(ud_bytes *bytes, const ud_field *fields, uint32_t c
             UD_TRY(ud_json_quote(bytes, identity, 32));
         }
         UD_TRY(ud_bytes_put(bytes, "]", 1));
+        if (f->dictionary_kind) {
+            UD_TRY(ud_bytes_put(bytes, ",\"dictionary\":", 14));
+            UD_TRY(ud_dictionary_json(bytes, f));
+        }
         if (f->type == UD_DECIMAL128) {
             char meta[100];
             int n = snprintf(meta, sizeof(meta), ",\"precision\":%d,\"scale\":%d", f->precision,

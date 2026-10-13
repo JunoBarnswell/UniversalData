@@ -11,14 +11,14 @@ int main(void) {
                          {.name = "text", .name_length = 4, .type = UD_UTF8, .nullable = 1}};
     ud_batch *batch = NULL;
     OK(ud_batch_create(ctx, fields, 2, 4, &batch));
-    ud_profile_statistic stats[6];
-    int kinds[] = {UD_PROFILE_ROWS,    UD_PROFILE_NULLS,   UD_PROFILE_MINIMUM,
-                   UD_PROFILE_MAXIMUM, UD_PROFILE_MINIMUM, UD_PROFILE_MAXIMUM};
-    for (int i = 0; i < 6; i++)
-        stats[i] =
-            (ud_profile_statistic){sizeof(stats[i]), UD_ABI_VERSION, kinds[i], i < 4 ? 0 : 1};
+    ud_profile_statistic stats[7];
+    int kinds[] = {UD_PROFILE_ROWS,    UD_PROFILE_NULLS,   UD_PROFILE_MINIMUM, UD_PROFILE_MAXIMUM,
+                   UD_PROFILE_MINIMUM, UD_PROFILE_MAXIMUM, UD_PROFILE_DISTINCT};
+    for (int i = 0; i < 7; i++)
+        stats[i] = (ud_profile_statistic){sizeof(stats[i]), UD_ABI_VERSION, kinds[i],
+                                          i < 4 || i == 6 ? 0 : 1};
     ud_profile *p = NULL;
-    OK(ud_profile_create(ctx, batch, stats, 6, 10, NULL, NULL, &p));
+    OK(ud_profile_create(ctx, batch, stats, 7, 10, NULL, NULL, &p));
     ud_value value;
     OK(ud_profile_get(p, 0, &value));
     CHECK(value.integer == 0 && !value.is_null);
@@ -47,6 +47,8 @@ int main(void) {
     CHECK(value.text_length == 1 && value.text[0] == 'a');
     OK(ud_profile_get(p, 5, &value));
     CHECK(value.text_length == 6 && !memcmp(value.text, "中文", 6));
+    OK(ud_profile_get(p, 6, &value));
+    CHECK(value.integer == 3 && !value.is_null);
     ud_profile_destroy(p);
     OK(ud_batch_create(ctx, fields, 2, 4, &batch));
     for (int i = 0; i < 4; i++)

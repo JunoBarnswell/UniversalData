@@ -4,6 +4,183 @@
 #include <errno.h>
 
 /* No compiler extensions, floating point or process locale in Decimal operations. */
+static const char *const type_names[] = {
+    "bool",   "int64",  "float64",  "utf8",     "decimal128", "date32", "time64", "timestamp",
+    "binary", "uint64", "duration", "interval", "struct",     "list",   "map"};
+const char *ud_type_name(ud_type type) {
+    return type >= UD_BOOL && type <= UD_MAP ? type_names[type - 1] : NULL;
+}
+ud_status ud_type_parse(ud_string name, ud_type *out) {
+    if (!out || !name.data || !name.length)
+        return UD_INVALID;
+    *out = 0;
+    for (ud_type type = UD_BOOL; type <= UD_MAP; type++)
+        if (strlen(type_names[type - 1]) == name.length &&
+            !memcmp(type_names[type - 1], name.data, name.length)) {
+            *out = type;
+            return UD_OK;
+        }
+    return UD_UNSUPPORTED;
+}
+static ud_status integral(const char *s, uint32_t n, uint64_t limit, uint64_t *out) {
+    if (!s || !n)
+        return UD_PARSE;
+    uint64_t value = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        unsigned digit = (unsigned char)s[i] - '0';
+        if (digit > 9)
+            return UD_PARSE;
+        if (value > (limit - digit) / 10)
+            return UD_OVERFLOW;
+        value = value * 10 + digit;
+    }
+    *out = value;
+    return UD_OK;
+}
+static int64_t signed_magnitude(uint64_t value, int negative) {
+    return negative ? (value == UINT64_C(0x8000000000000000) ? INT64_MIN : -(int64_t)value)
+                    : (int64_t)value;
+}
+static ud_status signed_part_inverse(const char *s, uint32_t n, int inverse, int64_t *out) {
+    if (!n)
+        return UD_PARSE;
+    int negative = s[0] == '-';
+    uint32_t at = negative || s[0] == '+' ? 1 : 0;
+    negative ^= inverse;
+    uint64_t value;
+    UD_TRY(integral(s + at, n - at, (uint64_t)INT64_MAX + negative, &value));
+    *out = signed_magnitude(value, negative);
+    return UD_OK;
+}
+static ud_status signed_part(const char *s, uint32_t n, int64_t *out) {
+    return signed_part_inverse(s, n, 0, out);
+}
+static ud_status seconds_part(const char *s, uint32_t n, int inverse, int64_t *out) {
+    int negative = n && s[0] == '-';
+    uint32_t at = n && (negative || s[0] == '+') ? 1 : 0, dot = at;
+    negative ^= inverse;
+    while (dot < n && s[dot] != '.')
+        dot++;
+    uint64_t seconds, fraction = 0, limit = (uint64_t)INT64_MAX + negative;
+    UD_TRY(integral(s + at, dot - at, limit / 1000000, &seconds));
+    if (dot < n) {
+        uint32_t digits = n - dot - 1;
+        if (!digits || digits > 6)
+            return UD_PARSE;
+        UD_TRY(integral(s + dot + 1, digits, 999999, &fraction));
+        while (digits++ < 6)
+            fraction *= 10;
+    }
+    if (seconds > (limit - fraction) / 1000000)
+        return UD_OVERFLOW;
+    *out = signed_magnitude(seconds * 1000000 + fraction, negative);
+    return UD_OK;
+}
+static ud_status duration_part(const char *s, uint32_t n, int64_t *out) {
+    const char *colon = memchr(s, ':', n);
+    if (!colon)
+        return signed_part(s, n, out);
+    int negative = n && s[0] == '-';
+    uint32_t at = n && (negative || s[0] == '+') ? 1 : 0;
+    uint32_t hours_size = (uint32_t)(colon - s) - at;
+    uint64_t hours, minutes;
+    uint64_t limit = (uint64_t)INT64_MAX + negative;
+    UD_TRY(integral(s + at, hours_size, limit / 3600000000ULL, &hours));
+    uint32_t minute_at = (uint32_t)(colon - s) + 1;
+    if (minute_at + 3 >= n || s[minute_at + 2] != ':')
+        return UD_PARSE;
+    UD_TRY(integral(s + minute_at, 2, 59, &minutes));
+    int64_t seconds;
+    uint32_t second_at = minute_at + 3;
+    if (n - second_at < 2 || (n - second_at > 2 && s[second_at + 2] != '.'))
+        return UD_PARSE;
+    UD_TRY(seconds_part(s + second_at, n - second_at, 0, &seconds));
+    if (seconds < 0 || seconds >= 60000000)
+        return UD_PARSE;
+    uint64_t tail = minutes * 60000000 + (uint64_t)seconds;
+    if (hours > (limit - tail) / 3600000000ULL)
+        return UD_OVERFLOW;
+    *out = signed_magnitude(hours * 3600000000ULL + tail, negative);
+    return UD_OK;
+}
+static ud_status checked_add(int64_t left, int64_t right, int64_t *out) {
+    if ((right > 0 && left > INT64_MAX - right) || (right < 0 && left < INT64_MIN - right))
+        return UD_OVERFLOW;
+    *out = left + right;
+    return UD_OK;
+}
+static ud_status interval_part(const char *s, uint32_t n, ud_interval *out) {
+    uint32_t at = 0;
+    int global_negative = n && s[0] == '-';
+    if (global_negative || (n && s[0] == '+'))
+        at++;
+    if (at == n || s[at++] != 'P')
+        return UD_PARSE;
+    int time = 0, previous = 0, components = 0;
+    int64_t months = 0, days = 0, microseconds = 0;
+    while (at < n) {
+        if (s[at] == 'T') {
+            if (time || at + 1 == n)
+                return UD_PARSE;
+            time = 1;
+            at++;
+            continue;
+        }
+        uint32_t start = at;
+        if (s[at] == '-' || s[at] == '+')
+            at++;
+        while (at < n && ((s[at] >= '0' && s[at] <= '9') || s[at] == '.'))
+            at++;
+        if (at == n)
+            return UD_PARSE;
+        char unit = s[at++];
+        int rank = !time ? (unit == 'Y'   ? 1
+                            : unit == 'M' ? 2
+                            : unit == 'D' ? 3
+                                          : 0)
+                         : (unit == 'H'   ? 4
+                            : unit == 'M' ? 5
+                            : unit == 'S' ? 6
+                                          : 0);
+        if (!rank || rank <= previous)
+            return UD_PARSE;
+        previous = rank;
+        components++;
+        int64_t value;
+        UD_TRY(rank == 6 ? seconds_part(s + start, at - start - 1, global_negative, &value)
+                         : signed_part_inverse(s + start, at - start - 1, global_negative, &value));
+        if (rank == 1 || rank == 4 || rank == 5) {
+            int64_t factor = rank == 1 ? 12 : rank == 4 ? 3600000000LL : 60000000;
+            if (value > INT64_MAX / factor || value < INT64_MIN / factor)
+                return UD_OVERFLOW;
+            value *= factor;
+        }
+        if (rank <= 2)
+            UD_TRY(checked_add(months, value, &months));
+        else if (rank == 3)
+            days = value;
+        else
+            UD_TRY(checked_add(microseconds, value, &microseconds));
+    }
+    if (!components)
+        return UD_PARSE;
+    if (months < INT32_MIN || months > INT32_MAX || days < INT32_MIN || days > INT32_MAX)
+        return UD_OVERFLOW;
+    *out = (ud_interval){(int32_t)months, (int32_t)days, microseconds};
+    return UD_OK;
+}
+static ud_status parse_duration(const char *text, uint32_t length, int64_t *out) {
+    uint32_t start = length && (text[0] == '-' || text[0] == '+') ? 1 : 0;
+    if (start < length && text[start] == 'P') {
+        ud_interval interval;
+        UD_TRY(interval_part(text, length, &interval));
+        if (interval.months || interval.days)
+            return UD_UNSUPPORTED;
+        *out = interval.microseconds;
+        return UD_OK;
+    }
+    return duration_part(text, length, out);
+}
 static int negative(ud_decimal128 x) {
     return x.high < 0;
 }
@@ -230,6 +407,14 @@ ud_status ud_value_parse_field(ud_context *ctx, const ud_field *f, const char *s
         out->text_length = n;
         return UD_OK;
     }
+    if (f->type == UD_UINT64) {
+        UD_TRY(ud_value_parse(ctx, UD_UINT64, s, n, out));
+        return ud_dictionary_validate(f, out);
+    }
+    if (f->type == UD_DURATION)
+        return parse_duration(s, n, &out->integer);
+    if (f->type == UD_INTERVAL)
+        return interval_part(s, n, &out->interval);
     if (f->type <= UD_UTF8)
         return ud_value_parse(ctx, f->type, s, n, out);
     if (f->type == UD_DECIMAL128) {
@@ -310,6 +495,8 @@ ud_status ud_value_parse_field(ud_context *ctx, const ud_field *f, const char *s
 ud_status ud_value_format(const ud_value *v, char *out, uint32_t cap, uint32_t *required) {
     if (!v || !required || (!out && cap))
         return UD_INVALID;
+    if (v->is_absent)
+        return UD_INCOMPATIBLE;
     char text[160];
     uint32_t n = 0;
     const char *p = text;
@@ -326,7 +513,24 @@ ud_status ud_value_format(const ud_value *v, char *out, uint32_t cap, uint32_t *
         n = (uint32_t)strlen(p);
     } else if (v->type == UD_INT64)
         n = (uint32_t)snprintf(text, sizeof(text), "%lld", (long long)v->integer);
-    else if (v->type == UD_FLOAT64) {
+    else if (v->type == UD_UINT64)
+        n = (uint32_t)snprintf(text, sizeof(text), "%llu", (unsigned long long)v->unsigned_integer);
+    else if (v->type == UD_DURATION || v->type == UD_INTERVAL) {
+        int64_t micros = v->type == UD_DURATION ? v->integer : v->interval.microseconds;
+        uint64_t magnitude = micros < 0 ? UINT64_C(0) - (uint64_t)micros : (uint64_t)micros;
+        if (v->type == UD_DURATION)
+            n = (uint32_t)snprintf(text, sizeof(text), "%s%02llu:%02llu:%02llu.%06llu",
+                                   micros < 0 ? "-" : "",
+                                   (unsigned long long)(magnitude / 3600000000ULL),
+                                   (unsigned long long)(magnitude / 60000000 % 60),
+                                   (unsigned long long)(magnitude / 1000000 % 60),
+                                   (unsigned long long)(magnitude % 1000000));
+        else
+            n = (uint32_t)snprintf(text, sizeof(text), "P%dM%dDT%s%llu.%06lluS", v->interval.months,
+                                   v->interval.days, micros < 0 ? "-" : "",
+                                   (unsigned long long)(magnitude / 1000000),
+                                   (unsigned long long)(magnitude % 1000000));
+    } else if (v->type == UD_FLOAT64) {
         if (!isfinite(v->real)) {
             p = isnan(v->real) ? "NaN" : v->real < 0 ? "-Infinity" : "Infinity";
             n = (uint32_t)strlen(p);
@@ -424,16 +628,14 @@ ud_status ud_value_format(const ud_value *v, char *out, uint32_t cap, uint32_t *
     return UD_OK;
 }
 static int temporal(ud_type t) {
-    return t == UD_DATE32 || t == UD_TIME64 || t == UD_TIMESTAMP;
+    return t == UD_DATE32 || t == UD_TIME64 || t == UD_TIMESTAMP || t == UD_DURATION;
 }
-static ud_status integer_to_float(int64_t value, int32_t rounding, double *out) {
-    int negative = value < 0;
-    uint64_t magnitude = negative ? UINT64_C(0) - (uint64_t)value : (uint64_t)value;
+static ud_status integer_to_float(uint64_t magnitude, int negative, int32_t rounding, double *out) {
     uint32_t bits = 0;
     for (uint64_t n = magnitude; n; n >>= 1)
         bits++;
     if (bits <= 53) {
-        *out = (double)value;
+        *out = negative ? -(double)magnitude : (double)magnitude;
         return UD_OK;
     }
     uint32_t shift = bits - 53;
@@ -486,6 +688,9 @@ ud_status ud_cast_value(ud_context *ctx, const ud_field *from, const ud_value *v
     out->is_null = v->is_null;
     out->precision = to->precision;
     out->scale = to->scale;
+    out->is_absent = v->is_absent;
+    if (v->is_absent)
+        return UD_OK;
     if (v->is_null)
         return to->nullable ? UD_OK : UD_SCHEMA;
     if (from->type >= UD_STRUCT || to->type >= UD_STRUCT) {
@@ -508,6 +713,48 @@ ud_status ud_cast_value(ud_context *ctx, const ud_field *from, const ud_value *v
         }
         return UD_OK;
     }
+    if (from->type == UD_UINT64 && to->type == UD_INT64) {
+        if (v->unsigned_integer > INT64_MAX)
+            return UD_OVERFLOW;
+        out->integer = (int64_t)v->unsigned_integer;
+        return UD_OK;
+    }
+    if (from->type == UD_INT64 && to->type == UD_UINT64) {
+        if (v->integer < 0)
+            return UD_OVERFLOW;
+        out->unsigned_integer = (uint64_t)v->integer;
+        return UD_OK;
+    }
+    if (from->type == UD_UINT64 && to->type == UD_DECIMAL128)
+        return ud_decimal_rescale((ud_decimal128){v->unsigned_integer, 0}, 0, to->precision,
+                                  to->scale, rounding, &out->decimal);
+    if (from->type == UD_DECIMAL128 && to->type == UD_UINT64) {
+        ud_decimal128 number;
+        UD_TRY(ud_decimal_rescale(v->decimal, from->scale, 20, 0, rounding, &number));
+        if (number.high)
+            return UD_OVERFLOW;
+        out->unsigned_integer = number.low;
+        return UD_OK;
+    }
+    if (from->type == UD_UINT64 && to->type == UD_FLOAT64)
+        return integer_to_float(v->unsigned_integer, 0, rounding, &out->real);
+    if (from->type == UD_FLOAT64 && to->type == UD_UINT64) {
+        double whole = trunc(v->real), fraction = v->real - whole;
+        if (!isfinite(v->real) || v->real < 0 || v->real >= 18446744073709551616.0)
+            return UD_OVERFLOW;
+        if (rounding == UD_ROUND_EXACT && fraction)
+            return UD_PARSE;
+        if (rounding == UD_ROUND_CEILING && fraction)
+            whole++;
+        if ((rounding == UD_ROUND_HALF_AWAY || rounding == UD_ROUND_HALF_EVEN) &&
+            (fraction > .5 ||
+             (fraction == .5 && (rounding == UD_ROUND_HALF_AWAY || fmod(whole, 2)))))
+            whole++;
+        if (whole >= 18446744073709551616.0)
+            return UD_OVERFLOW;
+        out->unsigned_integer = (uint64_t)whole;
+        return UD_OK;
+    }
     if (from->type == UD_DECIMAL128 && to->type == UD_DECIMAL128)
         return ud_decimal_rescale(v->decimal, from->scale, to->precision, to->scale, rounding,
                                   &out->decimal);
@@ -526,7 +773,9 @@ ud_status ud_cast_value(ud_context *ctx, const ud_field *from, const ud_value *v
         return UD_OVERFLOW;
     }
     if (from->type == UD_INT64 && to->type == UD_FLOAT64)
-        return integer_to_float(v->integer, rounding, &out->real);
+        return integer_to_float(v->integer < 0 ? UINT64_C(0) - (uint64_t)v->integer
+                                               : (uint64_t)v->integer,
+                                v->integer < 0, rounding, &out->real);
     if (from->type == UD_FLOAT64 && to->type == UD_INT64)
         return float_to_integer(v->real, rounding, &out->integer);
     if (from->type == to->type || ((from->type == UD_UTF8 || from->type == UD_BINARY) &&
@@ -635,24 +884,17 @@ ud_status ud_value_parse(ud_context *c, ud_type type, const char *text, uint32_t
             return ud_fail(c, UD_PARSE, "invalid boolean");
         return UD_OK;
     }
-    if (type == UD_INT64) {
-        uint32_t i = 0;
-        int neg = text[0] == '-';
-        if (neg || text[0] == '+')
-            i++;
-        if (i == n)
+    if (type == UD_INT64 || type == UD_UINT64 || type == UD_DURATION || type == UD_INTERVAL) {
+        if (type == UD_DURATION)
+            return parse_duration(text, n, &out->integer);
+        if (type == UD_INTERVAL)
+            return interval_part(text, n, &out->interval);
+        if (type == UD_INT64)
+            return signed_part(text, n, &out->integer);
+        if (text[0] == '-')
             return UD_PARSE;
-        uint64_t v = 0, limit = neg ? (uint64_t)INT64_MAX + 1 : INT64_MAX;
-        for (; i < n; i++) {
-            unsigned d = (unsigned char)text[i] - '0';
-            if (d > 9)
-                return ud_fail(c, UD_PARSE, "invalid int64");
-            if (v > (limit - d) / 10)
-                return ud_fail(c, UD_OVERFLOW, "int64 overflow");
-            v = v * 10 + d;
-        }
-        out->integer = neg ? (v == (uint64_t)INT64_MAX + 1 ? INT64_MIN : -(int64_t)v) : (int64_t)v;
-        return UD_OK;
+        uint32_t at = text[0] == '+' ? 1 : 0;
+        return integral(text + at, n - at, UINT64_MAX, &out->unsigned_integer);
     }
     if (type != UD_FLOAT64)
         return ud_fail(c, UD_UNSUPPORTED, "unsupported type %d", type);

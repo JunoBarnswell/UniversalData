@@ -1,5 +1,59 @@
 #include "builtins_internal.h"
 #include "ud/sql.h"
+static ud_status open_file_reader(builtin *b, uint32_t batch) {
+    const ud_component_context *c = &b->context;
+    int kind = b->kind;
+    ud_status s = UD_OK;
+    if (!s && kind == CSV_SOURCE) {
+        ud_string null = {"\\N", 2};
+        if (ud_member(b->config, "nullMarker"))
+            s = ud_json_string(ud_member(b->config, "nullMarker"), &null);
+        ud_csv_options o = {.struct_size = sizeof(o),
+                            .abi_version = UD_ABI_VERSION,
+                            .batch_size = batch,
+                            .null_marker = null.data,
+                            .null_marker_length = null.length,
+                            .max_record_bytes = 16777216,
+                            .records = &b->records};
+        if (!s)
+            s = ud_csv_open(c->memory, b->path, b->fields, b->columns, &o, &b->csv);
+    }
+    if (!s && kind == XLSX_SOURCE) {
+        char *configuration = NULL;
+        uint32_t length = 0;
+        s = ud_json_serialize(b->config, &configuration, &length);
+        ud_xlsx_options options = {.struct_size = sizeof(options),
+                                   .abi_version = UD_ABI_VERSION,
+                                   .batch_size = (uint32_t)batch,
+                                   .configuration = {configuration, length},
+                                   .buffers = c->execution->buffers,
+                                   .check = ud_builtin_operator_check,
+                                   .user = c->activation};
+        if (!s)
+            s = ud_xlsx_reader_open(c->memory, b->path, b->fields, b->columns, &options, &b->xlsx);
+        ud_free(configuration);
+    }
+#ifdef UD_WITH_ARROW_FILES
+    if (!s && (kind == PARQUET_SOURCE || kind == IPC_SOURCE || kind == IPC_STREAM_SOURCE)) {
+        ud_columnar_file_options options = {.struct_size = sizeof(options),
+                                            .abi_version = UD_ABI_VERSION,
+                                            .batch_rows = (uint32_t)batch,
+                                            .format = kind == PARQUET_SOURCE ? UD_FILE_PARQUET
+                                                      : kind == IPC_SOURCE   ? UD_FILE_ARROW_IPC
+                                                                             : UD_FILE_ARROW_STREAM,
+                                            .buffers = c->execution->buffers,
+                                            .check = ud_builtin_operator_check,
+                                            .user = c->activation};
+        s = ud_columnar_reader_open(c->memory, b->path, b->schema, &options, &b->columnar_reader);
+    }
+#endif
+    if (!s && kind == JSON_SOURCE) {
+        ud_json_options o = {sizeof(o), UD_CONFIG_VERSION, (uint32_t)batch,
+                             1048576,   UD_ROUND_EXACT,    &b->records};
+        s = ud_json_reader_open(c->memory, b->path, b->fields, b->columns, &o, &b->reader);
+    }
+    return s;
+}
 static ud_status filter_rows(builtin *b, ud_batch **input) {
     if (!b->predicate || b->predicate_pushed)
         return UD_OK;
@@ -105,8 +159,8 @@ ud_status ud_builtin_source_raw(builtin *b, ud_batch **out) {
         status = ud_columnar_reader_next(b->columnar_reader, &raw);
     else
 #endif
-        status = b->kind == CSV_SOURCE    ? ud_csv_next(b->csv, &raw)
-                 : b->kind == JSON_SOURCE ? ud_json_reader_next(b->reader, &raw)
+        status = b->kind == CSV_SOURCE    ? ud_csv_next(b->csv, &raw, &b->source_errors)
+                 : b->kind == JSON_SOURCE ? ud_json_reader_next(b->reader, &raw, &b->source_errors)
                  : b->kind == XLSX_SOURCE ? ud_xlsx_reader_next(b->xlsx, &raw, &b->xlsx_rejected)
                                           : ud_connection_lease_read_next(b->lease, &raw);
     if (!status && b->actual_schema) {
@@ -116,7 +170,17 @@ ud_status ud_builtin_source_raw(builtin *b, ud_batch **out) {
         *out = raw;
     if (!status && b->kind == SQL_SOURCE)
         status = filter_rows(b, out);
-    if (!status && b->kind != SQL_SOURCE && b->kind != REST_SOURCE && b->kind != XLSX_SOURCE) {
+    if (!status && b->source_errors) {
+        ud_batch *partitioned = NULL;
+        status = ud_builtin_source_partition(b, b->source_errors, &partitioned);
+        b->source_errors = partitioned;
+        if (!status && !b->source_errors->rows) {
+            ud_batch_destroy(b->source_errors);
+            b->source_errors = NULL;
+        }
+    }
+    if (!status && b->kind != SQL_SOURCE && b->kind != REST_SOURCE && b->kind != XLSX_SOURCE &&
+        b->kind != CSV_SOURCE && b->kind != JSON_SOURCE) {
         ud_batch *identified = NULL;
         status = ud_batch_seal(*out);
         if (!status)
@@ -144,42 +208,61 @@ ud_status ud_builtin_source_identity(builtin *b, ud_batch *input, ud_batch **out
     return status;
 }
 
-ud_status ud_builtin_snapshot_store(builtin *b, ud_batch *batch) {
-    ud_status status = b->cursor ? ud_cursor_validate(b->cursor, batch) : UD_OK;
-    ud_batch *identified = batch;
+ud_status ud_builtin_snapshot_store(builtin *b, ud_batch *batch, uint32_t port) {
+    const ud_component_context *context = &b->context;
+    ud_status status = port >= context->output_count ? UD_SCHEMA
+                       : !port && b->cursor          ? ud_cursor_validate(b->cursor, batch)
+                                                     : UD_OK;
     if (!status)
-        status = ud_batch_seal(identified);
-    if (!status)
-        status = ud_batch_hash_rows(identified, &b->snapshot_hash);
-    if (!status && b->context.execution->journal)
-        status = ud_checkpoint_snapshot_write(b->context.activation, b->context.component_id,
-                                              b->snapshot_count, identified);
-    else if (!status) {
-        if (b->snapshot_count == b->snapshot_capacity) {
-            uint32_t cap = b->snapshot_capacity ? b->snapshot_capacity * 2 : 32;
-            if (cap < b->snapshot_capacity)
-                status = UD_RESOURCE;
-            ud_buffer_block **items =
-                !status ? ud_alloc(b->context.memory, (size_t)cap * sizeof(*items)) : NULL;
-            if (!status && !items)
-                status = UD_RESOURCE;
-            if (!status) {
-                if (b->snapshot_count)
-                    memcpy(items, b->snapshot, (size_t)b->snapshot_count * sizeof(*items));
-                ud_free(b->snapshot);
-                b->snapshot = items;
-                b->snapshot_capacity = cap;
+        status = ud_batch_seal(batch);
+    if (!status && b->snapshot_count == b->snapshot_capacity) {
+        uint32_t capacity = b->snapshot_capacity ? b->snapshot_capacity * 2 : 32;
+        if (capacity < b->snapshot_capacity || (uint64_t)capacity * sizeof(uint32_t) > SIZE_MAX)
+            status = UD_RESOURCE;
+        uint32_t *ports =
+            !status ? ud_alloc(context->memory, (size_t)capacity * sizeof(*ports)) : NULL;
+        ud_buffer_block **blocks =
+            !status && !context->execution->journal
+                ? ud_alloc(context->memory, (size_t)capacity * sizeof(*blocks))
+                : NULL;
+        if (!status && (!ports || (!context->execution->journal && !blocks)))
+            status = UD_RESOURCE;
+        if (!status) {
+            if (b->snapshot_count) {
+                memcpy(ports, b->snapshot_ports, (size_t)b->snapshot_count * sizeof(*ports));
+                if (blocks)
+                    memcpy(blocks, b->snapshot, (size_t)b->snapshot_count * sizeof(*blocks));
             }
+            ud_free(b->snapshot_ports);
+            ud_free(b->snapshot);
+            b->snapshot_ports = ports;
+            b->snapshot = blocks;
+            b->snapshot_capacity = capacity;
+        } else {
+            ud_free(ports);
+            ud_free(blocks);
         }
-        if (!status)
-            status = ud_buffer_store(b->context.execution->buffers, identified,
-                                     b->snapshot + b->snapshot_count);
     }
     if (!status) {
-        b->snapshot_count++;
-        b->snapshot_rows += identified->rows;
+        uint8_t tag[8] = {0};
+        tag[0] = (uint8_t)port;
+        ud_sha256_update(&b->snapshot_hash, tag, sizeof(tag));
+        status = ud_batch_hash_rows(batch, &b->snapshot_hash);
     }
-    ud_batch_destroy(identified);
+    if (!status && context->execution->journal)
+        status = ud_checkpoint_snapshot_write(context->activation, context->component_id,
+                                              b->snapshot_count, batch);
+    else if (!status)
+        status =
+            ud_buffer_store(context->execution->buffers, batch, b->snapshot + b->snapshot_count);
+    if (!status) {
+        b->snapshot_ports[b->snapshot_count++] = port;
+        if (!port)
+            b->snapshot_rows += batch->rows;
+        else
+            b->snapshot_error_rows += batch->rows;
+    }
+    ud_batch_destroy(batch);
     return status;
 }
 
@@ -347,6 +430,26 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         }
     }
     ud_bytes_clear(&identity);
+    if (!status && (b->kind == CSV_SOURCE || b->kind == JSON_SOURCE)) {
+        b->records = (ud_record_options){.struct_size = sizeof(ud_record_options),
+                                         .abi_version = UD_ABI_VERSION,
+                                         .errors = c->errors,
+                                         .source_scope = b->source_scope};
+        status = ud_error_policy(b->config, "errorPolicy", UD_ERROR_FAIL, &b->records.policy);
+        const ud_json *flag = ud_member(b->config, "includeInput");
+        if (!status && flag) {
+            const char *value;
+            uint32_t length;
+            if (ud_json_kind(flag) != UD_JSON_BOOL)
+                status = UD_SCHEMA;
+            else {
+                status = ud_json_text(flag, &value, &length);
+                b->records.include_input = length == 4;
+            }
+        }
+    }
+    if (!status && file_source(b->kind))
+        status = open_file_reader(b, batch_rows);
     b->materialized = b->cursor != NULL || b->kind == SQL_SOURCE || b->kind == REST_SOURCE;
     ud_sha256_init(&b->snapshot_hash);
     if (!status) {
@@ -367,6 +470,28 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
                 status = ud_json_uint(ud_member(header, "batches"), &b->snapshot_count);
             if (!status)
                 status = ud_json_uint(ud_member(header, "rows"), &b->snapshot_rows);
+            if (!status)
+                status = ud_json_uint(ud_member(header, "errorRows"), &b->snapshot_error_rows);
+            const ud_json *ports = ud_member(header, "ports");
+            if (!status &&
+                (b->snapshot_count > UINT32_MAX || ud_json_kind(ports) != UD_JSON_ARRAY ||
+                 ud_json_size(ports) != b->snapshot_count))
+                status = UD_CORRUPT;
+            if (!status && b->snapshot_count) {
+                b->snapshot_ports =
+                    ud_alloc(c->memory, (size_t)b->snapshot_count * sizeof(*b->snapshot_ports));
+                if (!b->snapshot_ports)
+                    status = UD_RESOURCE;
+                b->snapshot_capacity = (uint32_t)b->snapshot_count;
+            }
+            for (uint32_t index = 0; !status && index < b->snapshot_count; index++) {
+                uint64_t port;
+                status = ud_json_uint(ud_json_at(ports, index), &port);
+                if (!status && (port > 1 || port >= c->output_count || (port && !b->errors)))
+                    status = UD_CORRUPT;
+                if (!status)
+                    b->snapshot_ports[index] = (uint32_t)port;
+            }
             if (!status) {
                 ud_string hash;
                 status = ud_json_string(ud_member(header, "fingerprint"), &hash);
@@ -431,11 +556,23 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
                 status = UD_OK;
                 break;
             }
+            if (!status && b->source_errors) {
+                ud_batch *errors = b->source_errors;
+                b->source_errors = NULL;
+                if (errors->rows)
+                    status = ud_builtin_snapshot_store(b, errors, 1);
+                else
+                    ud_batch_destroy(errors);
+            }
+            if (!status && !input->rows) {
+                ud_batch_destroy(input);
+                continue;
+            }
             if (!status && b->source_sort) {
                 status = ud_operator_push(b->source_sort, 0, input);
                 ud_batch_destroy(input);
             } else if (!status)
-                status = ud_builtin_snapshot_store(b, input);
+                status = ud_builtin_snapshot_store(b, input, 0);
             else
                 ud_batch_destroy(input);
             if (status)
@@ -453,7 +590,7 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
                     break;
                 }
                 if (!status)
-                    status = ud_builtin_snapshot_store(b, input);
+                    status = ud_builtin_snapshot_store(b, input, 0);
                 else
                     ud_batch_destroy(input);
             }
@@ -492,13 +629,29 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         }
         if (!status) {
             char header[384];
-            int n = snprintf(
-                header, sizeof(header),
-                "{\"policy\":\"%s\",\"fingerprint\":\"%s\",\"batches\":%llu,\"rows\":%llu}",
-                b->source_policy, fingerprint, (unsigned long long)b->snapshot_count,
-                (unsigned long long)b->snapshot_rows);
-            status = ud_checkpoint_snapshot_seal(c->activation, c->component_id,
-                                                 (ud_string){header, (uint32_t)n});
+            int n = snprintf(header, sizeof(header),
+                             "{\"policy\":\"%s\",\"fingerprint\":\"%s\",\"batches\":%llu,\"rows\":%"
+                             "llu,\"errorRows\":%llu,\"ports\":[",
+                             b->source_policy, fingerprint, (unsigned long long)b->snapshot_count,
+                             (unsigned long long)b->snapshot_rows,
+                             (unsigned long long)b->snapshot_error_rows);
+            ud_bytes document = {.ctx = c->memory};
+            status = ud_bytes_put(&document, header, (size_t)n);
+            for (uint64_t index = 0; !status && index < b->snapshot_count; index++) {
+                if (index)
+                    status = ud_bytes_put(&document, ",", 1);
+                if (!status)
+                    status = ud_bytes_put(&document, b->snapshot_ports[index] ? "1" : "0", 1);
+            }
+            if (!status)
+                status = ud_bytes_put(&document, "]}", 2);
+            if (!status && document.size > UINT32_MAX)
+                status = UD_RESOURCE;
+            if (!status)
+                status = ud_checkpoint_snapshot_seal(
+                    c->activation, c->component_id,
+                    (ud_string){(const char *)document.data, (uint32_t)document.size});
+            ud_bytes_clear(&document);
         }
     }
     if (!status && b->cursor)
@@ -511,9 +664,11 @@ static ud_status source_read_batch(builtin *b, ud_batch **out) {
     ud_batch *input = NULL;
     ud_status status = UD_OK;
     uint64_t started = ud_now_ms();
+    b->output_port = 0;
     if (b->materialized) {
         if (b->snapshot_at == b->snapshot_count)
             return UD_END;
+        b->output_port = b->snapshot_ports[b->snapshot_at];
         if (b->context.execution->journal) {
             status = ud_checkpoint_snapshot_read(b->context.activation, b->context.component_id,
                                                  b->snapshot_at, &input);
@@ -537,7 +692,7 @@ static ud_status source_read_batch(builtin *b, ud_batch **out) {
             b->snapshot_at++;
     } else
         status = ud_builtin_source_raw(b, &input);
-    if (!status && (b->kind == SQL_SOURCE || b->kind == REST_SOURCE)) {
+    if (!status && !b->output_port && (b->kind == SQL_SOURCE || b->kind == REST_SOURCE)) {
         ud_batch *identified = NULL;
         status = ud_builtin_source_identity(b, input, &identified);
         input = identified;
@@ -548,7 +703,7 @@ static ud_status source_read_batch(builtin *b, ud_batch **out) {
         status = ud_builtin_source_partition(b, input, &selected);
         input = selected;
     }
-    if (!status && b->cursor) {
+    if (!status && b->cursor && !b->output_port) {
         status = ud_cursor_filter(b->cursor, input, out);
         ud_batch_destroy(input);
     } else
@@ -612,9 +767,20 @@ ud_status ud_builtin_source_partition(builtin *b, ud_batch *input, ud_batch **ou
         *out = input;
         return UD_OK;
     }
-    ud_status status = ud_batch_create(b->context.memory, b->fields, b->columns, input->rows, out);
-    for (uint32_t row = 0; !status && row < input->rows; row++, b->source_position++) {
-        uint64_t position = b->source_position;
+    ud_status status =
+        ud_batch_create(b->context.memory, input->schema->fields, input->columns, input->rows, out);
+    for (uint32_t row = 0; !status && row < input->rows; row++) {
+        ud_row_info info;
+        status = ud_batch_row_info(input, row, &info);
+        if (status)
+            break;
+        uint64_t position = info.has_source_position ? info.source_position : b->source_position;
+        if (position == UINT64_MAX) {
+            status = UD_OVERFLOW;
+            break;
+        }
+        if (position >= b->source_position)
+            b->source_position = position + 1;
         if (position < b->source_begin || position >= b->source_end ||
             position % b->source_partitions != b->source_partition)
             continue;
@@ -643,7 +809,12 @@ ud_status ud_builtin_source_finish(builtin *b) {
 ud_status ud_builtin_source_next(builtin *b, ud_batch **out) {
     *out = NULL;
     if (!b->output_pending) {
-        UD_TRY(source_read_batch(b, &b->output_pending));
+        if (b->source_errors) {
+            b->output_pending = b->source_errors;
+            b->source_errors = NULL;
+            b->output_port = 1;
+        } else
+            UD_TRY(source_read_batch(b, &b->output_pending));
         b->output_at = 0;
     }
     uint32_t rows = b->output_pending->rows - b->output_at,

@@ -26,6 +26,7 @@ UD_API ud_status ud_sql_bulk_read(ud_bulk_reader *, void *, uint32_t capacity, u
 UD_API void ud_sql_bulk_close(ud_bulk_reader *);
 UD_API ud_status ud_sql_compile_bulk(ud_context *, int32_t dialect, const ud_write_options *,
                                      const ud_batch *, ud_string *);
+UD_API ud_status ud_sql_compile_bulk_release(ud_context *, int32_t, const ud_batch *, ud_string *);
 /* Same quoted one/two-part table identity used by prepared and bulk grammar. */
 UD_API ud_status ud_sql_table_identifier(ud_context *, int32_t dialect, ud_string, ud_string *);
 /* Single Native write grammar for every provider. A Changeset statement covers

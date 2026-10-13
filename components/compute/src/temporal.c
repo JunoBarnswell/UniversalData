@@ -118,9 +118,17 @@ static ud_status remember_row(ud_relational *r, const ud_batch *right, uint32_t 
     }
     ud_batch *error = NULL;
     UD_TRY(ud_rel_clone(r->ctx, r->schema[1], 1, &error));
-    s = ud_error_append(&r->options.errors, error, right, row, (ud_string){"temporal.interval", 17},
-                        1, r->inputs[1]->column[r->right_time].field.identity, UD_QUALITY,
-                        r->policy);
+    s = ud_error_append(
+        &r->options.errors, error,
+        &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                           .abi_version = UD_ABI_VERSION,
+                           .input = right,
+                           .row = row,
+                           .rule = (ud_string){"temporal.interval", 17},
+                           .rule_version = 1,
+                           .column = r->inputs[1]->column[r->right_time].field.identity,
+                           .code = UD_QUALITY,
+                           .policy = r->policy});
     if (!s)
         s = ud_batch_seal(error);
     if (s) {

@@ -57,13 +57,18 @@ ud_status ud_window_create(ud_context *ctx, const ud_operator_options *o, const 
     int numeric = o->window_function == UD_WINDOW_RUNNING_SUM ||
                   o->window_function == UD_WINDOW_MOVING_SUM ||
                   o->window_function == UD_WINDOW_MOVING_AVERAGE;
-    if (!s && numeric && spec.type != UD_INT64 && spec.type != UD_FLOAT64 &&
+    if (!s && numeric && spec.dictionary_kind)
+        s = UD_UNSUPPORTED;
+    if (!s && numeric && spec.type != UD_INT64 && spec.type != UD_UINT64 &&
+        spec.type != UD_DURATION && spec.type != UD_INTERVAL && spec.type != UD_FLOAT64 &&
         spec.type != UD_DECIMAL128)
         s = UD_SCHEMA;
-    if (!s && o->window_function == UD_WINDOW_MOVING_AVERAGE && spec.type != UD_FLOAT64) {
+    if (!s && o->window_function == UD_WINDOW_MOVING_AVERAGE && spec.type != UD_FLOAT64 &&
+        spec.type != UD_DURATION && spec.type != UD_INTERVAL) {
         spec.type = UD_DECIMAL128;
         spec.precision = 38;
-        spec.scale = input->column[o->window_column].field.type == UD_INT64
+        spec.scale = (input->column[o->window_column].field.type == UD_INT64 ||
+                      input->column[o->window_column].field.type == UD_UINT64)
                          ? 6
                          : input->column[o->window_column].field.scale + 6;
         if (spec.scale > 38)
@@ -71,8 +76,8 @@ ud_status ud_window_create(ud_context *ctx, const ud_operator_options *o, const 
     }
     if (!s && o->frame_kind == UD_FRAME_RANGE) {
         ud_type t = input->column[w->keys[o->partition_key_count]].field.type;
-        if (t != UD_INT64 && t != UD_DATE32 && t != UD_TIME64 && t != UD_TIMESTAMP &&
-            t != UD_FLOAT64 && t != UD_DECIMAL128)
+        if (t != UD_INT64 && t != UD_UINT64 && t != UD_DURATION && t != UD_DATE32 &&
+            t != UD_TIME64 && t != UD_TIMESTAMP && t != UD_FLOAT64 && t != UD_DECIMAL128)
             s = UD_SCHEMA;
     }
     ud_field *fields = !s ? ud_alloc(ctx, (input->columns + 1) * sizeof(*fields)) : NULL;
@@ -205,6 +210,16 @@ static ud_status frame(ud_window *w, uint64_t *begin, uint64_t *end) {
         if (v.type == UD_FLOAT64) {
             minimum.real = v.real - (double)w->options.frame_preceding;
             maximum.real = v.real + (double)w->options.frame_following;
+        } else if (v.type == UD_UINT64) {
+            uint64_t lower = w->options.frame_preceding, upper = w->options.frame_following;
+            if (lower > v.unsigned_integer)
+                lower_unbounded = 1;
+            else
+                minimum.unsigned_integer = v.unsigned_integer - lower;
+            if (upper > UINT64_MAX - v.unsigned_integer)
+                upper_unbounded = 1;
+            else
+                maximum.unsigned_integer = v.unsigned_integer + upper;
         } else if (v.type == UD_DECIMAL128) {
             const ud_field *field = &w->input->column[key].field;
             uint64_t bounds[] = {w->options.frame_preceding, w->options.frame_following};

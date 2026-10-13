@@ -158,6 +158,7 @@ void ud_field_clear(ud_field *f) {
     ud_free((void *)f->name);
     ud_free((void *)f->timezone);
     ud_free((void *)f->lineage);
+    ud_dictionary_clear(f);
     for (uint32_t j = 0; j < f->child_count; j++)
         ud_field_clear((ud_field *)f->children + j);
     ud_free((void *)f->children);
@@ -190,6 +191,8 @@ static ud_status copy_field(ud_context *ctx, const ud_field *f, ud_id parent, ud
     out->timezone = NULL;
     out->children = NULL;
     out->lineage = NULL;
+    out->dictionary = NULL;
+    out->dictionary_count = 0;
     out->child_count = 0;
     out->lineage_count = 0;
     out->name = ud_strdup_n(ctx, f->name, f->name_length);
@@ -199,6 +202,32 @@ static ud_status copy_field(ud_context *ctx, const ud_field *f, ud_id parent, ud
         out->timezone = ud_strdup_n(ctx, f->timezone, f->timezone_length);
         if (!out->timezone)
             return UD_RESOURCE;
+    }
+    if (f->dictionary_kind < UD_DICTIONARY_NONE || f->dictionary_kind > UD_DICTIONARY_SET ||
+        (f->dictionary_kind == UD_DICTIONARY_NONE && f->dictionary_count) ||
+        (f->dictionary_kind != UD_DICTIONARY_NONE &&
+         (f->type != UD_UINT64 || !f->dictionary || !f->dictionary_count ||
+          f->dictionary_count > (f->dictionary_kind == UD_DICTIONARY_SET ? 64u : 65535u))))
+        return UD_SCHEMA;
+    if (f->dictionary_count) {
+        ud_string *dictionary = ud_alloc(ctx, (size_t)f->dictionary_count * sizeof(*dictionary));
+        if (!dictionary)
+            return UD_RESOURCE;
+        out->dictionary = dictionary;
+        out->dictionary_count = f->dictionary_count;
+        for (uint32_t j = 0; j < f->dictionary_count; j++) {
+            ud_string label = f->dictionary[j];
+            if ((!label.data && label.length) || !ud_utf8_valid(label.data, label.length))
+                return UD_SCHEMA;
+            for (uint32_t k = 0; k < j; k++)
+                if (label.length == dictionary[k].length &&
+                    !memcmp(label.data, dictionary[k].data, label.length))
+                    return UD_SCHEMA;
+            dictionary[j].data = ud_strdup_n(ctx, label.data, label.length);
+            dictionary[j].length = label.length;
+            if (!dictionary[j].data)
+                return UD_RESOURCE;
+        }
     }
     ud_status s = UD_OK;
     if (id_empty(f->identity)) {
@@ -282,6 +311,14 @@ int32_t ud_field_matches(const ud_field *a, const ud_field *b, int32_t mode) {
     if (!a || !b || mode < UD_FIELD_VALUE_TYPE || mode > UD_FIELD_LAYOUT || a->type != b->type ||
         a->precision != b->precision || a->scale != b->scale || a->child_count != b->child_count)
         return 0;
+    if (a->dictionary_kind != b->dictionary_kind || a->dictionary_count != b->dictionary_count)
+        return 0;
+    if (a->dictionary_count && (!a->dictionary || !b->dictionary))
+        return 0;
+    for (uint32_t j = 0; j < a->dictionary_count; j++)
+        if (a->dictionary[j].length != b->dictionary[j].length ||
+            memcmp(a->dictionary[j].data, b->dictionary[j].data, a->dictionary[j].length))
+            return 0;
     if (mode != UD_FIELD_VALUE_TYPE &&
         (a->timezone_length != b->timezone_length ||
          (a->timezone_length && memcmp(a->timezone, b->timezone, a->timezone_length))))
@@ -307,6 +344,68 @@ int32_t ud_field_matches(const ud_field *a, const ud_field *b, int32_t mode) {
             return 0;
     }
     return 1;
+}
+ud_status ud_dictionary_validate(const ud_field *field, const ud_value *value) {
+    if (!field->dictionary_kind || value->is_null)
+        return UD_OK;
+    if (value->type != UD_UINT64)
+        return UD_SCHEMA;
+    if (field->dictionary_kind == UD_DICTIONARY_ENUM)
+        return value->unsigned_integer <= field->dictionary_count ? UD_OK : UD_QUALITY;
+    return field->dictionary_count == 64 || !(value->unsigned_integer >> field->dictionary_count)
+               ? UD_OK
+               : UD_QUALITY;
+}
+
+void ud_dictionary_clear(ud_field *field) {
+    for (uint32_t j = 0; j < field->dictionary_count; j++)
+        ud_free((void *)field->dictionary[j].data);
+    ud_free((void *)field->dictionary);
+    field->dictionary = NULL;
+    field->dictionary_count = 0;
+    field->dictionary_kind = UD_DICTIONARY_NONE;
+}
+ud_status ud_dictionary_parse(ud_context *ctx, const ud_json *json, ud_field *field) {
+    static const char *keys[] = {"kind", "values"};
+    UD_TRY(ud_json_keys(json, keys, 2));
+    const char *kind;
+    uint32_t length;
+    UD_TRY(ud_json_text(ud_json_find(json, "kind", 4), &kind, &length));
+    field->dictionary_kind = length == 4 && !memcmp(kind, "enum", 4)  ? UD_DICTIONARY_ENUM
+                             : length == 3 && !memcmp(kind, "set", 3) ? UD_DICTIONARY_SET
+                                                                      : -1;
+    const ud_json *values = ud_json_find(json, "values", 6);
+    if (field->dictionary_kind < 0 || ud_json_kind(values) != UD_JSON_ARRAY ||
+        !ud_json_size(values) || ud_json_size(values) > 65535)
+        return UD_SCHEMA;
+    ud_string *labels = ud_alloc(ctx, (size_t)ud_json_size(values) * sizeof(*labels));
+    if (!labels)
+        return UD_RESOURCE;
+    field->dictionary = labels;
+    field->dictionary_count = ud_json_size(values);
+    for (uint32_t j = 0; j < field->dictionary_count; j++) {
+        const char *text;
+        uint32_t n;
+        if (ud_json_kind(ud_json_at(values, j)) != UD_JSON_STRING)
+            return UD_SCHEMA;
+        UD_TRY(ud_json_text(ud_json_at(values, j), &text, &n));
+        labels[j] = (ud_string){ud_strdup_n(ctx, text, n), n};
+        if (!labels[j].data)
+            return UD_RESOURCE;
+    }
+    return UD_OK;
+}
+ud_status ud_dictionary_json(ud_bytes *bytes, const ud_field *field) {
+    const char *kind = field->dictionary_kind == UD_DICTIONARY_ENUM ? "enum" : "set";
+    UD_TRY(ud_bytes_put(bytes, "{\"kind\":", 8));
+    UD_TRY(ud_json_quote(bytes, kind, strlen(kind)));
+    UD_TRY(ud_bytes_put(bytes, ",\"values\":[", 11));
+    for (uint32_t j = 0; j < field->dictionary_count; j++) {
+        if (j)
+            UD_TRY(ud_bytes_put(bytes, ",", 1));
+        UD_TRY(ud_json_quote(bytes, field->dictionary[j].data, field->dictionary[j].length));
+    }
+    return ud_bytes_put(bytes, "]}", 2);
 }
 static ud_status cast_metadata(ud_context *ctx, const ud_field *source, const ud_field *target,
                                ud_field *out, uint32_t depth) {

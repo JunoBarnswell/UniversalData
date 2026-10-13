@@ -141,6 +141,26 @@ JNIEXPORT jlong JNICALL Java_org_universaldata_Batch_nativeCount(JNIEnv *e, jcla
     java_data *d = (java_data *)(intptr_t)handle;
     return columns ? ud_batch_columns(d->batch) : ud_batch_rows(d->batch);
 }
+JNIEXPORT jboolean JNICALL Java_org_universaldata_Batch_nativeHasAbsent(JNIEnv *e, jclass cls,
+                                                                        jlong handle) {
+    (void)e;
+    (void)cls;
+    java_data *data = (java_data *)(intptr_t)handle;
+    return ud_batch_has_absent(data->batch) ? JNI_TRUE : JNI_FALSE;
+}
+JNIEXPORT jboolean JNICALL Java_org_universaldata_Batch_nativePresent(JNIEnv *e, jclass cls,
+                                                                      jlong handle, jint row,
+                                                                      jint column) {
+    (void)cls;
+    java_data *data = (java_data *)(intptr_t)handle;
+    int32_t present = 0;
+    ud_status status = row < 0 || column < 0 ? UD_INVALID
+                                             : ud_batch_cell_present(data->batch, (uint32_t)row,
+                                                                     (uint32_t)column, &present);
+    if (status)
+        fail(e, status, ud_status_name(status));
+    return !status && present ? JNI_TRUE : JNI_FALSE;
+}
 JNIEXPORT jstring JNICALL Java_org_universaldata_Batch_nativeJson(JNIEnv *e, jclass cls,
                                                                   jlong handle, jboolean schema) {
     (void)cls;

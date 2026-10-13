@@ -60,6 +60,10 @@ typedef struct ud_host_api {
     ud_status (*compile_bulk)(ud_context *, int32_t, const ud_write_options *, const ud_batch *,
                               ud_string *);
     ud_status (*table_identifier)(ud_context *, int32_t, ud_string, ud_string *);
+    ud_status (*mysql_json_decode)(ud_context *, const uint8_t *, uint32_t, char **, uint32_t *);
+    int32_t (*field_matches)(const ud_field *, const ud_field *, int32_t);
+    ud_status (*compile_scan)(ud_context *, int32_t, ud_string, const ud_batch *, ud_string *);
+    ud_status (*compile_bulk_release)(ud_context *, int32_t, const ud_batch *, ud_string *);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;

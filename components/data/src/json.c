@@ -66,7 +66,7 @@ static ud_status parse_value(ud_context *ctx, const ud_field *field, const ud_js
     out->scale = field->scale;
     if (!json || ud_json_kind(json) == UD_JSON_NULL) {
         out->is_null = 1;
-        return field->nullable ? UD_OK : UD_SCHEMA;
+        return field->nullable ? UD_OK : UD_QUALITY;
     }
     int32_t kind = ud_json_kind(json);
     if (field->type >= UD_STRUCT) {
@@ -93,13 +93,14 @@ static ud_status parse_value(ud_context *ctx, const ud_field *field, const ud_js
     }
     if (field->type == UD_BOOL && kind != UD_JSON_BOOL)
         return UD_SCHEMA;
-    if ((field->type == UD_INT64 || field->type == UD_DECIMAL128) && kind != UD_JSON_NUMBER &&
-        kind != UD_JSON_STRING)
+    if ((field->type == UD_INT64 || field->type == UD_UINT64 || field->type == UD_DURATION ||
+         field->type == UD_DECIMAL128) &&
+        kind != UD_JSON_NUMBER && kind != UD_JSON_STRING)
         return UD_SCHEMA;
     if (field->type == UD_FLOAT64 && kind != UD_JSON_NUMBER && kind != UD_JSON_STRING)
         return UD_SCHEMA;
     if ((field->type == UD_UTF8 || field->type == UD_BINARY || field->type == UD_DATE32 ||
-         field->type == UD_TIME64 || field->type == UD_TIMESTAMP) &&
+         field->type == UD_TIME64 || field->type == UD_TIMESTAMP || field->type == UD_INTERVAL) &&
         kind != UD_JSON_STRING)
         return UD_SCHEMA;
     const char *text = NULL;
@@ -113,7 +114,10 @@ static ud_status parse_value(ud_context *ctx, const ud_field *field, const ud_js
         return UD_SCHEMA;
     return ud_copy_value(ctx, &parsed, out, 0);
 }
-static ud_status append_object(ud_batch *batch, const ud_json *object, int32_t rounding) {
+static ud_status append_object(ud_batch *batch, const ud_json *object, int32_t rounding,
+                               ud_id *bad_column) {
+    if (bad_column)
+        *bad_column = (ud_id){0};
     ud_field *fields = ud_alloc(batch->ctx, batch->columns * sizeof(*fields));
     ud_value *values = ud_alloc(batch->ctx, batch->columns * sizeof(*values));
     if (!fields || !values) {
@@ -124,10 +128,13 @@ static ud_status append_object(ud_batch *batch, const ud_json *object, int32_t r
     for (uint32_t j = 0; j < batch->columns; j++)
         fields[j] = batch->column[j].field;
     ud_status s = known_members(object, fields, batch->columns);
-    for (uint32_t j = 0; !s && j < batch->columns; j++)
+    for (uint32_t j = 0; !s && j < batch->columns; j++) {
         s = parse_value(batch->ctx, fields + j,
                         ud_json_find(object, fields[j].name, fields[j].name_length), rounding,
                         values + j, 0);
+        if (s && bad_column)
+            *bad_column = fields[j].identity;
+    }
     if (!s)
         s = ud_batch_append(batch, values, batch->columns);
     for (uint32_t j = 0; j < batch->columns; j++)
@@ -159,7 +166,7 @@ ud_status ud_batch_from_json(ud_context *ctx, const ud_field *fields, uint32_t c
     if (!s)
         s = ud_batch_create(ctx, fields, columns, ud_json_size(json), out);
     for (uint32_t j = 0; !s && j < ud_json_size(json); j++)
-        s = append_object(*out, ud_json_at(json, j), rounding);
+        s = append_object(*out, ud_json_at(json, j), rounding, NULL);
     ud_json_destroy(json);
     if (s) {
         ud_batch_destroy(*out);
@@ -217,8 +224,9 @@ static ud_status emit_value(ud_bytes *bytes, const ud_field *field, const ud_val
         return UD_RESOURCE;
     s = ud_value_format(value, text, required, &required);
     if (!s)
-        s = field->type == UD_DECIMAL128 || field->type == UD_DATE32 || field->type == UD_TIME64 ||
-                    field->type == UD_TIMESTAMP ||
+        s = field->type == UD_UINT64 || field->type == UD_DURATION || field->type == UD_INTERVAL ||
+                    field->type == UD_DECIMAL128 || field->type == UD_DATE32 ||
+                    field->type == UD_TIME64 || field->type == UD_TIMESTAMP ||
                     (field->type == UD_FLOAT64 && !isfinite(value->real))
                 ? ud_json_quote(bytes, text, required - 1)
                 : ud_bytes_put(bytes, text, required - 1);
@@ -230,6 +238,8 @@ ud_status ud_batch_to_json(const ud_batch *batch, char **out, uint32_t *length) 
         return UD_INVALID;
     *out = NULL;
     *length = 0;
+    if (ud_batch_has_absent(batch))
+        return UD_INCOMPATIBLE;
     ud_bytes bytes = {0};
     bytes.ctx = batch->ctx;
     ud_status s = ud_bytes_put(&bytes, "[", 1);
@@ -281,6 +291,7 @@ struct ud_json_reader {
     FILE *file;
     ud_batch *schema;
     ud_json_options options;
+    ud_record_options records;
     uint64_t record;
     int poisoned, finished;
 };
@@ -310,7 +321,12 @@ ud_status ud_json_reader_open(ud_context *ctx, const char *path, const ud_field 
         return UD_RESOURCE;
     r->ctx = ctx;
     r->options = *options;
-    ud_status s = ud_batch_create(ctx, fields, columns, 0, &r->schema);
+    r->options.records = NULL;
+    ud_status s = ud_record_options_validate(ctx, options->records);
+    if (!s && options->records)
+        r->records = *options->records;
+    if (!s)
+        s = ud_batch_create(ctx, fields, columns, 0, &r->schema);
     if (!s) {
         r->file = ud_fopen(path, "rb");
         if (!r->file)
@@ -322,12 +338,9 @@ ud_status ud_json_reader_open(ud_context *ctx, const char *path, const ud_field 
         *out = r;
     return s;
 }
-static ud_status read_record(ud_json_reader *reader, ud_json **out) {
-    *out = NULL;
+static ud_status read_record(ud_json_reader *reader, ud_bytes *line) {
     if (reader->finished)
         return UD_END;
-    ud_bytes line = {0};
-    line.ctx = reader->ctx;
     ud_status s = UD_OK;
     for (;;) {
         if (ud_is_cancelled(reader->ctx)) {
@@ -340,31 +353,30 @@ static ud_status read_record(ud_json_reader *reader, ud_json **out) {
                 s = UD_IO;
             else {
                 reader->finished = 1;
-                if (!line.size)
+                if (!line->size)
                     s = UD_END;
             }
             break;
         }
-        if (ch == '\n')
-            break;
-        if (line.size == reader->options.max_record_bytes) {
+        if (line->size == reader->options.max_record_bytes) {
             s = UD_RESOURCE;
             break;
         }
         unsigned char c = (unsigned char)ch;
-        s = ud_bytes_put(&line, &c, 1);
+        s = ud_bytes_put(line, &c, 1);
         if (s)
             break;
+        if (ch == '\n')
+            break;
     }
-    if (!s)
-        s = ud_json_parse(reader->ctx, (const char *)line.data, (uint32_t)line.size, out, NULL);
-    ud_bytes_clear(&line);
     return s;
 }
-ud_status ud_json_reader_next(ud_json_reader *reader, ud_batch **out) {
-    if (!reader || !out)
+ud_status ud_json_reader_next(ud_json_reader *reader, ud_batch **out, ud_batch **errors) {
+    if (!reader || !out || (reader->records.policy == UD_ERROR_REDIRECT && !errors))
         return UD_INVALID;
     *out = NULL;
+    if (errors)
+        *errors = NULL;
     if (reader->poisoned)
         return UD_CORRUPT;
     if (reader->finished)
@@ -377,24 +389,73 @@ ud_status ud_json_reader_next(ud_json_reader *reader, ud_batch **out) {
     ud_status s = ud_batch_create(reader->ctx, fields, reader->schema->columns,
                                   reader->options.batch_size, out);
     ud_free(fields);
-    while (!s && (*out)->rows < reader->options.batch_size) {
+    ud_batch *rejected = NULL, *error_schema = NULL;
+    if (!s && reader->records.policy == UD_ERROR_REDIRECT)
+        s = ud_error_schema(&reader->records.errors, NULL, reader->records.include_input,
+                            &error_schema);
+    if (!s && error_schema)
+        s = ud_batch_create(reader->ctx, error_schema->schema->fields, error_schema->columns,
+                            reader->options.batch_size, &rejected);
+    ud_batch_destroy(error_schema);
+    uint32_t processed = 0;
+    while (!s && processed < reader->options.batch_size) {
         ud_json *json = NULL;
-        s = read_record(reader, &json);
+        ud_bytes raw = {.ctx = reader->ctx};
+        s = read_record(reader, &raw);
         if (s == UD_END) {
-            s = (*out)->rows ? UD_OK : UD_END;
+            s = processed ? UD_OK : UD_END;
+            ud_bytes_clear(&raw);
             break;
         }
-        if (!s)
-            s = append_object(*out, json, reader->options.rounding);
+        if (!s && reader->record == UINT64_MAX)
+            s = UD_OVERFLOW;
+        if (s) {
+            ud_bytes_clear(&raw);
+            break;
+        }
+        uint64_t position = reader->record++;
+        processed++;
+        ud_row_info provenance = {0};
+        if (reader->records.struct_size)
+            s = ud_row_info_source(reader->records.source_scope, position, &provenance);
+        ud_id column = {0};
+        ud_status conversion =
+            !s ? ud_json_parse(reader->ctx, (const char *)raw.data, (uint32_t)raw.size, &json, NULL)
+               : UD_OK;
+        if (!s && !conversion)
+            conversion = append_object(*out, json, reader->options.rounding, &column);
+        if (!s && !conversion && reader->records.struct_size)
+            s = ud_batch_set_row_info(*out, (*out)->rows - 1, &provenance);
+        else if (!s && conversion) {
+            if (reader->records.policy == UD_ERROR_FAIL || !ud_record_error_recoverable(conversion))
+                s = conversion;
+            else if (reader->records.policy == UD_ERROR_REDIRECT)
+                s = ud_error_append(&reader->records.errors, rejected,
+                                    &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                                       .abi_version = UD_ABI_VERSION,
+                                                       .source = provenance,
+                                                       .rule = {"json.parse", 10},
+                                                       .rule_version = 1,
+                                                       .column = column,
+                                                       .code = conversion,
+                                                       .policy = reader->records.policy,
+                                                       .input_format = {"NDJSON", 6},
+                                                       .raw = raw.data,
+                                                       .raw_length = reader->records.include_input
+                                                                         ? (uint32_t)raw.size
+                                                                         : 0});
+        }
         ud_json_destroy(json);
-        if (!s)
-            reader->record++;
+        ud_bytes_clear(&raw);
     }
     if (s) {
         if (s != UD_END)
             reader->poisoned = 1;
         ud_batch_destroy(*out);
+        ud_batch_destroy(rejected);
         *out = NULL;
+    } else if (errors) {
+        *errors = rejected;
     }
     return s;
 }
@@ -485,6 +546,8 @@ ud_status ud_json_writer_open(ud_context *ctx, const char *path, const ud_field 
 ud_status ud_json_writer_append(ud_json_writer *writer, const ud_batch *batch) {
     if (!writer || !batch || writer->failed || batch->columns != writer->schema->columns)
         return UD_INVALID;
+    if (ud_batch_has_absent(batch))
+        return UD_INCOMPATIBLE;
     for (uint32_t j = 0; j < batch->columns; j++)
         if (!ud_field_matches(&batch->column[j].field, &writer->schema->column[j].field, 1))
             return UD_SCHEMA;

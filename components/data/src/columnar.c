@@ -4,7 +4,7 @@ static int variable(ud_type t) {
     return t == UD_UTF8 || t == UD_BINARY;
 }
 static size_t width(ud_type t) {
-    return t == UD_DATE32 ? 4 : t == UD_DECIMAL128 ? 16 : 8;
+    return t == UD_DATE32 ? 4 : (t == UD_DECIMAL128 || t == UD_INTERVAL) ? 16 : 8;
 }
 static ud_status create_depth(ud_context *ctx, ud_schema_owner *schema, const ud_field *fields,
                               uint32_t columns, uint32_t capacity, ud_batch **out, uint32_t depth) {
@@ -100,6 +100,7 @@ void ud_batch_destroy(ud_batch *b) {
             ud_free(v->views);
             ud_batch_destroy(v->nested);
             ud_free(v->validity);
+            ud_free(v->absence);
             ud_free(v->values);
             ud_free(v->offsets);
             ud_free(v->strings);
@@ -216,6 +217,7 @@ ud_status ud_batch_get(const ud_batch *b, uint32_t row, uint32_t col, ud_value *
     out->type = v->field.type;
     out->precision = v->field.precision;
     out->scale = v->field.scale;
+    out->is_absent = v->absence && (v->absence[row / 8] & (1u << (row % 8))) ? 1 : 0;
     out->is_null = !(v->validity[row / 8] & (1u << (row % 8)));
     if (out->is_null)
         return UD_OK;
@@ -237,7 +239,14 @@ ud_status ud_batch_get(const ud_batch *b, uint32_t row, uint32_t col, ud_value *
     case UD_BOOL:
         out->integer = !!(((uint8_t *)v->values)[row / 8] & (1u << (row % 8)));
         break;
+    case UD_UINT64:
+        out->unsigned_integer = ((uint64_t *)v->values)[row];
+        break;
+    case UD_INTERVAL:
+        out->interval = ((ud_interval *)v->values)[row];
+        break;
     case UD_INT64:
+    case UD_DURATION:
     case UD_TIME64:
     case UD_TIMESTAMP:
         out->integer = ((int64_t *)v->values)[row];
@@ -257,6 +266,42 @@ ud_status ud_batch_get(const ud_batch *b, uint32_t row, uint32_t col, ud_value *
         out->text_length = (uint32_t)(v->offsets[row + 1] - v->offsets[row]);
         break;
     }
+    return UD_OK;
+}
+static int32_t value_has_absent(const ud_value *value) {
+    if (value->is_absent)
+        return 1;
+    if (!value->is_null)
+        for (uint32_t child = 0; child < value->child_count; child++)
+            if (value_has_absent(value->children + child))
+                return 1;
+    return 0;
+}
+int32_t ud_batch_has_absent(const ud_batch *batch) {
+    if (!batch)
+        return 0;
+    for (uint32_t j = 0; j < batch->columns; j++) {
+        const ud_column *column = batch->column + j;
+        if (column->absence)
+            for (uint32_t row = batch->row_offset; row < batch->row_offset + batch->rows; row++)
+                if (column->absence[row / 8] & (1u << (row % 8)))
+                    return 1;
+        if (column->nested)
+            for (uint32_t row = 0; row < batch->rows; row++) {
+                ud_value value;
+                if (ud_batch_get(batch, row, j, &value) || value_has_absent(&value))
+                    return 1;
+            }
+    }
+    return 0;
+}
+ud_status ud_batch_cell_present(const ud_batch *batch, uint32_t row, uint32_t column,
+                                int32_t *present) {
+    if (!present)
+        return UD_INVALID;
+    ud_value value;
+    UD_TRY(ud_batch_get(batch, row, column, &value));
+    *present = !value.is_absent;
     return UD_OK;
 }
 static void truncate_batch(ud_batch *b, uint32_t rows) {
@@ -311,11 +356,15 @@ static ud_status grow_nested(ud_column *c, uint32_t need) {
     return UD_OK;
 }
 static ud_status validate_value(const ud_field *f, const ud_value *v, uint32_t depth, int masked) {
-    if (depth > 32 || f->type != v->type || v->is_null < 0 || v->is_null > 1 ||
-        (v->is_null && !f->nullable && !masked) || (f->type < UD_STRUCT && v->child_count))
+    if (depth > 32 || f->type != v->type || v->is_null < 0 || v->is_null > 1 || v->is_absent < 0 ||
+        v->is_absent > 1 || (v->is_absent && !v->is_null) ||
+        (v->is_null && !f->nullable && !masked && !v->is_absent) ||
+        (f->type < UD_STRUCT && v->child_count))
         return UD_SCHEMA;
     if (v->is_null)
         return UD_OK;
+    if (f->dictionary_kind)
+        UD_TRY(ud_dictionary_validate(f, v));
     if (f->type >= UD_STRUCT) {
         if ((v->child_count && !v->children) ||
             (f->type == UD_STRUCT && v->child_count != f->child_count))
@@ -337,6 +386,11 @@ static ud_status append_core(ud_batch *b, const ud_value *v, uint32_t n, int mas
         ud_status validated = validate_value(&c->field, v + i, 0, masked);
         if (validated)
             return ud_fail(b->ctx, validated, "column %u type or nullability mismatch", i);
+        if (v[i].is_absent && !c->absence) {
+            c->absence = ud_alloc(b->ctx, ((size_t)b->capacity + 7) / 8 + 1);
+            if (!c->absence)
+                return UD_RESOURCE;
+        }
         if (v[i].is_null)
             continue;
         if (v[i].type == UD_BOOL && v[i].integer != 0 && v[i].integer != 1)
@@ -431,6 +485,11 @@ static ud_status append_core(ud_batch *b, const ud_value *v, uint32_t n, int mas
     for (uint32_t i = 0; i < n; i++) {
         ud_column *c = b->column + i;
         c->validity[r / 8] &= (uint8_t)~(1u << (r % 8));
+        if (c->absence) {
+            c->absence[r / 8] &= (uint8_t)~(1u << (r % 8));
+            if (v[i].is_absent)
+                c->absence[r / 8] |= (uint8_t)(1u << (r % 8));
+        }
         if (!v[i].is_null) {
             c->validity[r / 8] |= (uint8_t)(1u << (r % 8));
             switch (v[i].type) {
@@ -439,7 +498,14 @@ static ud_status append_core(ud_batch *b, const ud_value *v, uint32_t n, int mas
                 if (v[i].integer)
                     ((uint8_t *)c->values)[r / 8] |= (uint8_t)(1u << (r % 8));
                 break;
+            case UD_UINT64:
+                ((uint64_t *)c->values)[r] = v[i].unsigned_integer;
+                break;
+            case UD_INTERVAL:
+                ((ud_interval *)c->values)[r] = v[i].interval;
+                break;
             case UD_INT64:
+            case UD_DURATION:
             case UD_TIME64:
             case UD_TIMESTAMP:
                 ((int64_t *)c->values)[r] = v[i].integer;

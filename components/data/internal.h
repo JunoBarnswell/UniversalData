@@ -2,11 +2,13 @@
 #define UD_COLUMNAR_INTERNAL_H
 #include "ud/data.h"
 #include "ud/json.h"
+#include "ud/error.h"
 #include "../foundation/internal.h"
 #include <stdatomic.h>
 typedef struct ud_column {
     ud_field field;
     uint8_t *validity;
+    uint8_t *absence; /* Optional bitmap, all cells present when NULL. */
     void *values;
     int32_t *offsets;
     char *strings;
@@ -24,11 +26,11 @@ struct ud_batch {
     atomic_uint references;
     int sealed;
     ud_context *ctx;
-    uint32_t columns, rows, capacity,row_offset,owner_first;
+    uint32_t columns, rows, capacity, row_offset, owner_first;
     ud_column *column;
     ud_schema_owner *schema;
     ud_row_info *row_info;
-    ud_value *append_values; /* Mutable batch-local workspace; released on seal. */
+    ud_value *append_values;     /* Mutable batch-local workspace; released on seal. */
     struct ud_batch *data_owner; /* Sealed projection retains original buffers. */
 };
 typedef ud_status (*ud_storage_visit)(void *, const void *allocation, uint64_t bytes);
@@ -39,6 +41,11 @@ ud_status ud_schema_owner_retain(ud_schema_owner *);
 void ud_schema_owner_release(ud_schema_owner *);
 ud_status ud_field_copy(ud_context *, const ud_field *, ud_id parent, ud_field *);
 void ud_field_clear(ud_field *);
+ud_status ud_dictionary_validate(const ud_field *, const ud_value *);
+ud_status ud_dictionary_parse(ud_context *, const ud_json *, ud_field *);
+ud_status ud_dictionary_json(ud_bytes *, const ud_field *);
+void ud_dictionary_clear(ud_field *);
+ud_status ud_record_options_validate(ud_context *, const ud_record_options *);
 ud_status ud_field_derive(ud_context *, const ud_field *, ud_string name_space,
                           ud_string output_name, ud_field *);
 ud_status ud_field_cast_metadata(ud_context *, const ud_field *, const ud_field *, ud_field *);
@@ -58,6 +65,7 @@ ud_status ud_copy_value(ud_context *, const ud_value *, ud_value *, uint32_t dep
 void ud_clear_value(ud_value *);
 ud_status ud_cast_value(ud_context *, const ud_field *, const ud_value *, const ud_field *,
                         int32_t rounding, ud_value *, uint32_t depth);
-ud_status ud_value_canonical(const ud_value *, ud_status (*)(void *,const void *,size_t), void *,uint32_t);
+ud_status ud_value_canonical(const ud_value *, ud_status (*)(void *, const void *, size_t), void *,
+                             uint32_t);
 ud_status ud_batch_hash_rows(const ud_batch *, ud_sha256 *);
 #endif

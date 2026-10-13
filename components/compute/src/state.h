@@ -32,7 +32,7 @@ void ud_state_reader_clear(ud_state_reader *);
 void ud_state_destroy(ud_state *);
 /* Canonical exact signed 256-bit SUM is shared by aggregate and window. */
 typedef struct ud_sum_state {
-    uint64_t words[4], count;
+    uint64_t words[4], calendar[2][4], count;
     double real;
     int32_t scale;
 } ud_sum_state;

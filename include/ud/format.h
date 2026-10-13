@@ -1,10 +1,10 @@
 #ifndef UD_FORMAT_H
 #define UD_FORMAT_H
-#include "data.h"
+#include "error.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Versioned schema JSON: {"version":7,"fields":[...]}. Each field has name,
+/* Versioned schema JSON uses UD_CONFIG_VERSION. Each field has name,
  * type and nullable; Decimal also precision/scale, Timestamp timezone, and
  * nested types children. Optional namespace binds omitted column identities;
  * bound fields emit identity (32 lowercase hex) and canonical lineage array.
@@ -30,15 +30,21 @@ UD_API ud_status ud_batch_from_json(ud_context *, const ud_field *, uint32_t col
                                     uint32_t length, int32_t rounding, ud_batch **);
 /* Owned compact JSON; length excludes final NUL. Caller uses ud_free. */
 UD_API ud_status ud_batch_to_json(const ud_batch *, char **, uint32_t *length);
+/* MySQL binary JSON -> lossless JSON text. Integer and opaque Decimal values
+ * retain exact lexemes; calendar/time payloads retain their native meaning.
+ * Other opaque values preserve type/bytes using MySQL base64 notation. Owned
+ * output, native context budget/cancellation. Unknown JSON types are rejected. */
+UD_API ud_status ud_mysql_json_decode(ud_context *, const uint8_t *, uint32_t, char **, uint32_t *);
 /* NDJSON cursor with bounded rows / record bytes, immutable file offsets. */
 typedef struct ud_json_reader ud_json_reader;
 typedef struct ud_json_options {
     uint32_t struct_size, version, batch_size, max_record_bytes;
     int32_t rounding;
+    const ud_record_options *records;
 } ud_json_options;
 UD_API ud_status ud_json_reader_open(ud_context *, const char *path, const ud_field *,
                                      uint32_t columns, const ud_json_options *, ud_json_reader **);
-UD_API ud_status ud_json_reader_next(ud_json_reader *, ud_batch **);
+UD_API ud_status ud_json_reader_next(ud_json_reader *, ud_batch **accepted, ud_batch **errors);
 UD_API uint64_t ud_json_reader_offset(const ud_json_reader *);
 UD_API uint64_t ud_json_reader_record(const ud_json_reader *);
 /* Requires offset/record from this unchanged input at a line boundary. */

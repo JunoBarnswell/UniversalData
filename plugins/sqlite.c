@@ -110,7 +110,7 @@ static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char 
     ud_field *fields = NULL;
     ud_status s = plugin_fields(h, schema, &fields);
     for (uint32_t i = 0; !s && i < columns; i++)
-        if (fields[i].type > UD_BINARY ||
+        if (fields[i].type >= UD_STRUCT ||
             strcmp(fields[i].name, sqlite3_column_name(p->read, (int)i)))
             s = UD_SCHEMA;
     if (!s)
@@ -149,12 +149,15 @@ static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char 
             } else if (x->type == UD_BINARY && type == SQLITE_BLOB) {
                 x->text = (const char *)sqlite3_column_blob(p->read, (int)i);
                 x->text_length = (uint32_t)sqlite3_column_bytes(p->read, (int)i);
-            } else if (x->type == UD_DECIMAL128 && type == SQLITE_TEXT) {
+            } else if ((x->type == UD_DECIMAL128 || x->type == UD_UINT64 ||
+                        x->type == UD_INTERVAL) &&
+                       type == SQLITE_TEXT) {
                 s = h->parse_field(
                     h->context, fields + i, (const char *)sqlite3_column_text(p->read, (int)i),
                     (uint32_t)sqlite3_column_bytes(p->read, (int)i), UD_ROUND_EXACT, x);
             } else if ((x->type == UD_INT64 || x->type == UD_BOOL || x->type == UD_DATE32 ||
-                        x->type == UD_TIME64 || x->type == UD_TIMESTAMP) &&
+                        x->type == UD_TIME64 || x->type == UD_TIMESTAMP ||
+                        x->type == UD_DURATION) &&
                        type == SQLITE_INTEGER)
                 x->integer = sqlite3_column_int64(p->read, (int)i);
             else if (x->type == UD_FLOAT64 && type == SQLITE_FLOAT)
@@ -299,7 +302,7 @@ static ud_status connector_read_open(void *state, const ud_read_options *options
     if (!s)
         s = plugin_fields(h, schema, &fields);
     for (uint32_t j = 0; !s && j < columns; j++)
-        if (fields[j].type > UD_BINARY ||
+        if (fields[j].type >= UD_STRUCT ||
             strcmp(fields[j].name, sqlite3_column_name(p->read, (int)j)))
             s = UD_SCHEMA;
     if (!s)
@@ -381,7 +384,7 @@ static ud_status bind_connector_value(sqlite_state *p, sqlite3_stmt *stmt, int i
     else if (v->type == UD_BINARY)
         rc = sqlite3_bind_blob64(stmt, index, v->text ? v->text : "", v->text_length,
                                  SQLITE_TRANSIENT);
-    else if (v->type == UD_DECIMAL128) {
+    else if (v->type == UD_DECIMAL128 || v->type == UD_UINT64 || v->type == UD_INTERVAL) {
         char text[160];
         uint32_t length;
         ud_status s = p->host.format_value(v, text, sizeof(text), &length);
@@ -394,7 +397,7 @@ static ud_status bind_connector_value(sqlite_state *p, sqlite3_stmt *stmt, int i
                 p->host.context, UD_UNSUPPORTED,
                 "SQLite cannot preserve Float64 NaN; refusing SQL NULL conversion");
         rc = sqlite3_bind_double(stmt, index, v->real);
-    } else if (v->type <= UD_TIMESTAMP)
+    } else if (v->type <= UD_TIMESTAMP || v->type == UD_DURATION)
         rc = sqlite3_bind_int64(stmt, index, v->integer);
     else
         return UD_UNSUPPORTED;
@@ -435,15 +438,18 @@ static ud_status validate_target(sqlite_state *p, ud_string table, const ud_batc
             if (strcmp(name, f.name))
                 continue;
             seen[j] = 1;
-            int expected = f.type == UD_UTF8 || f.type == UD_DECIMAL128 ? 2
-                           : f.type == UD_BINARY                        ? 3
-                           : f.type == UD_FLOAT64                       ? 4
-                                                                        : 1;
+            int expected = f.type == UD_UTF8 || f.type == UD_DECIMAL128 || f.type == UD_UINT64 ||
+                                   f.type == UD_INTERVAL
+                               ? 2
+                           : f.type == UD_BINARY  ? 3
+                           : f.type == UD_FLOAT64 ? 4
+                                                  : 1;
             int temporal = (f.type == UD_TIMESTAMP && !strcmp(upper, "TIMESTAMP_UTC")) ||
                            (f.type == UD_DATE32 && !strcmp(upper, "DATE32")) ||
-                           (f.type == UD_TIME64 && !strcmp(upper, "TIME64"));
-            int boolean = f.type == UD_BOOL &&
-                          (!strcmp(upper, "BOOLEAN") || !strcmp(upper, "BOOL"));
+                           (f.type == UD_TIME64 && !strcmp(upper, "TIME64")) ||
+                           (f.type == UD_DURATION && !strcmp(upper, "DURATION"));
+            int boolean =
+                f.type == UD_BOOL && (!strcmp(upper, "BOOLEAN") || !strcmp(upper, "BOOL"));
             if (expected != affinity && !temporal && !boolean)
                 s = h->report(h->context, UD_SCHEMA,
                               "target SQLite affinity would coerce a typed value; use TEXT for "
@@ -499,26 +505,32 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
     }
     for (uint32_t r = 0; !s && !existing && r < h->rows(batch); r++) {
         s = control(p);
-        if (s) break;
+        if (s)
+            break;
         if (options->mode == UD_WRITE_CHANGESET) {
-            sqlite3_finalize(stmt); stmt = NULL;
+            sqlite3_finalize(stmt);
+            stmt = NULL;
             h->statement_clear(&plan);
-            s = h->compile_write(h->context, UD_SQL_SQLITE, UD_SQL_PARAMETER_QUESTION,
-                                  options, batch, r, 1, &plan);
+            s = h->compile_write(h->context, UD_SQL_SQLITE, UD_SQL_PARAMETER_QUESTION, options,
+                                 batch, r, 1, &plan);
             if (!s && (rc = sqlite3_prepare_v2(p->db, plan.sql.data, -1, &stmt, NULL)) != SQLITE_OK)
                 s = failure(p, rc);
         }
-        if (s) break;
-        sqlite3_reset(stmt); sqlite3_clear_bindings(stmt);
+        if (s)
+            break;
+        sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
         for (uint32_t j = 0; !s && j < plan.parameter_count; j++) {
             ud_sql_parameter ref = plan.parameters[j];
             const ud_batch *source = ref.source == UD_SQL_BEFORE ? options->before : batch;
             ud_value value;
-            s = h->get(source, options->mode == UD_WRITE_CHANGESET ? ref.row : r,
-                        ref.column, &value);
-            if (!s) s = bind_connector_value(p, stmt, (int)j + 1, &value);
+            s = h->get(source, options->mode == UD_WRITE_CHANGESET ? ref.row : r, ref.column,
+                       &value);
+            if (!s)
+                s = bind_connector_value(p, stmt, (int)j + 1, &value);
         }
-        if (!s && (rc = sqlite3_step(stmt)) != SQLITE_DONE) s = failure(p, rc);
+        if (!s && (rc = sqlite3_step(stmt)) != SQLITE_DONE)
+            s = failure(p, rc);
         if (!s && options->mode == UD_WRITE_CHANGESET &&
             options->operations[r] != UD_CHANGE_UPSERT && sqlite3_changes(p->db) != 1)
             s = h->report(h->context, UD_FENCED,
@@ -780,9 +792,30 @@ static ud_status provision(void *state) {
     return rc == SQLITE_OK ? UD_OK : failure(p, rc);
 }
 static const ud_connector_api connector = {
- .struct_size=sizeof(connector),.abi_version=UD_PLUGIN_ABI,
- .capabilities=UD_CONNECT_READ|UD_CONNECT_APPEND|UD_CONNECT_UPSERT|UD_CONNECT_DELETE|UD_CONNECT_RECEIPTS|UD_CONNECT_EXECUTE_SQL|UD_CONNECT_TRANSACTION|UD_CONNECT_METADATA|UD_CONNECT_POOL|UD_CONNECT_CHANGESET|UD_CONNECT_PREPARED|UD_CONNECT_BATCH_WRITE|UD_CONNECT_PROVISION,
- .test=connector_test,.discover=connector_discover,.read_open=connector_read_open,.read_next=connector_read_next,.read_close=connector_read_close,.write=connector_write,.receipt=connector_receipt,.cancel=connector_cancel,.execute=connector_execute_command,.begin=begin_transaction,.commit=commit_transaction,.rollback=rollback_transaction,.metadata=metadata,.set_control=set_control,.reset_session=reset_session,.provision=provision,.metadata_dialect=UD_SQL_SQLITE,.parameter_style=UD_SQL_PARAMETER_QUESTION};
+    .struct_size = sizeof(connector),
+    .abi_version = UD_PLUGIN_ABI,
+    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
+                    UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
+                    UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
+                    UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
+    .test = connector_test,
+    .discover = connector_discover,
+    .read_open = connector_read_open,
+    .read_next = connector_read_next,
+    .read_close = connector_read_close,
+    .write = connector_write,
+    .receipt = connector_receipt,
+    .cancel = connector_cancel,
+    .execute = connector_execute_command,
+    .begin = begin_transaction,
+    .commit = commit_transaction,
+    .rollback = rollback_transaction,
+    .metadata = metadata,
+    .set_control = set_control,
+    .reset_session = reset_session,
+    .provision = provision,
+    .metadata_dialect = UD_SQL_SQLITE,
+    .parameter_style = UD_SQL_PARAMETER_QUESTION};
 
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))

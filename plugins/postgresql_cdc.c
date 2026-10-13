@@ -21,6 +21,7 @@ struct ud_pg_cdc {
     uint32_t relation, batch_rows, phase, timeline;
     char system_id[32];
     uint32_t *oids;
+    uint8_t *key_columns;
     int snapshot_mode, streaming;
     atomic_int cancelled;
 };
@@ -152,7 +153,11 @@ static ud_status preflight(ud_pg_cdc *p, const ud_cdc_options *o, int managed) {
     const char *values[] = {p->table, p->publication};
     PGresult *r = PQexecParams(
         p->snapshot,
-        "SELECT c.relreplident='f' AND c.relkind='r' AND NOT c.relrowsecurity AND pub.pubinsert "
+        "SELECT (c.relreplident='f' OR (c.relreplident IN ('d','i') AND EXISTS(SELECT 1 "
+        "FROM pg_index ri WHERE ri.indrelid=c.oid AND "
+        "((c.relreplident='d' AND ri.indisprimary) OR (c.relreplident='i' AND "
+        "ri.indisreplident))))) "
+        "AND c.relkind='r' AND NOT c.relrowsecurity AND pub.pubinsert "
         "AND pub.pubupdate AND pub.pubdelete AND (pub.puballtables OR (pr.prrelid IS NOT NULL AND "
         "pr.prqual IS NULL AND pr.prattrs IS NULL)) FROM pg_class c JOIN pg_namespace n ON "
         "n.oid=c.relnamespace CROSS JOIN pg_publication pub LEFT JOIN pg_publication_rel pr ON "
@@ -167,8 +172,12 @@ static ud_status preflight(ud_pg_cdc *p, const ud_cdc_options *o, int managed) {
     if (status)
         return status;
     r = PQexecParams(p->snapshot,
-                     "SELECT atttypid FROM pg_attribute WHERE attrelid=to_regclass($1) AND "
-                     "attnum>0 AND NOT attisdropped ORDER BY attnum",
+                     "SELECT a.atttypid,EXISTS(SELECT 1 FROM pg_index i JOIN pg_class c "
+                     "ON c.oid=i.indrelid WHERE i.indrelid=a.attrelid AND a.attnum=ANY(i.indkey) "
+                     "AND ((c.relreplident='i' AND i.indisreplident) OR "
+                     "(c.relreplident IN ('d','f') AND i.indisprimary))) FROM pg_attribute a "
+                     "WHERE a.attrelid=to_regclass($1) AND a.attnum>0 AND NOT a.attisdropped "
+                     "ORDER BY a.attnum",
                      1, NULL, values, NULL, NULL, 0);
     if (!r || PQresultStatus(r) != PGRES_TUPLES_OK ||
         PQntuples(r) != (int)p->host.columns(p->schema)) {
@@ -177,7 +186,8 @@ static ud_status preflight(ud_pg_cdc *p, const ud_cdc_options *o, int managed) {
         return status;
     }
     p->oids = p->host.allocate(p->host.context, p->host.columns(p->schema) * sizeof(*p->oids));
-    if (!p->oids) {
+    p->key_columns = p->host.allocate(p->host.context, p->host.columns(p->schema));
+    if (!p->oids || !p->key_columns) {
         PQclear(r);
         return UD_RESOURCE;
     }
@@ -189,6 +199,7 @@ static ud_status preflight(ud_pg_cdc *p, const ud_cdc_options *o, int managed) {
             break;
         }
         p->oids[i] = (uint32_t)oid;
+        p->key_columns[i] = !strcmp(PQgetvalue(r, (int)i, 1), "t");
     }
     PQclear(r);
     if (status)
@@ -384,7 +395,8 @@ static int string(packet *p, const char **out, uint32_t *n) {
     p->at += (size_t)*n + 1;
     return 1;
 }
-static ud_status tuple(ud_pg_cdc *p, packet *input, ud_value *values, const ud_value *prior) {
+static ud_status tuple(ud_pg_cdc *p, packet *input, ud_value *values, const ud_value *prior,
+                       int key_only) {
     uint64_t columns;
     if (!integer(input, 2, &columns) || columns != p->host.columns(p->schema))
         return UD_SCHEMA;
@@ -398,12 +410,19 @@ static ud_status tuple(ud_pg_cdc *p, packet *input, ud_value *values, const ud_v
             return s;
         values[i] = (ud_value){
             .type = field.type, .precision = field.precision, .scale = field.scale, .is_null = 1};
+        if (key_only && !p->key_columns[i]) {
+            if (kind != 'n')
+                return UD_CORRUPT;
+            values[i].is_absent = 1;
+            continue;
+        }
         if (kind == 'n')
             continue;
         if (kind == 'u') {
-            if (!prior)
-                return UD_UNSUPPORTED;
-            values[i] = prior[i];
+            if (prior && !prior[i].is_absent)
+                values[i] = prior[i];
+            else
+                values[i].is_absent = 1;
             continue;
         }
         uint64_t n;
@@ -469,7 +488,8 @@ static ud_status decode(ud_pg_cdc *p, packet *input, ud_cdc_event *out) {
         p->host.deallocate(qualified);
         if (!match)
             return UD_BUSY;
-        if (columns != p->host.columns(p->schema) || identity != 'f')
+        if (columns != p->host.columns(p->schema) ||
+            (identity != 'f' && identity != 'd' && identity != 'i'))
             return UD_INCOMPATIBLE;
         for (uint32_t i = 0; i < columns; i++) {
             uint64_t flags, oid, modifier;
@@ -484,16 +504,20 @@ static ud_status decode(ud_pg_cdc *p, packet *input, ud_cdc_event *out) {
                 return s;
             if (field.name_length != n || memcmp(field.name, name, n))
                 return UD_INCOMPATIBLE;
+            if ((flags & ~UINT64_C(1)) || (identity != 'f' && !!(flags & 1) != p->key_columns[i]))
+                return UD_INCOMPATIBLE;
             int compatible = field.type == UD_BOOL         ? oid == 16
                              : field.type == UD_INT64      ? oid == 20 || oid == 21 || oid == 23
                              : field.type == UD_FLOAT64    ? oid == 700 || oid == 701
                              : field.type == UD_UTF8       ? oid == 25 || oid == 1043
                              : field.type == UD_BINARY     ? oid == 17
                              : field.type == UD_DECIMAL128 ? oid == 1700
-                             : field.type == UD_DATE32     ? oid == 1082
-                             : field.type == UD_TIME64     ? oid == 1083
-                             : field.type == UD_TIMESTAMP  ? oid == 1184
-                                                           : 0;
+                             : field.type == UD_UINT64     ? oid == 1700
+                             : field.type == UD_INTERVAL || field.type == UD_DURATION ? oid == 1186
+                             : field.type == UD_DATE32                                ? oid == 1082
+                             : field.type == UD_TIME64                                ? oid == 1083
+                             : field.type == UD_TIMESTAMP                             ? oid == 1184
+                                                                                      : 0;
             if (!compatible || (p->oids && p->oids[i] != oid))
                 return UD_INCOMPATIBLE;
             if (field.type == UD_DECIMAL128) {
@@ -516,12 +540,12 @@ static ud_status decode(ud_pg_cdc *p, packet *input, ud_cdc_event *out) {
         ud_value *before = p->host.allocate(p->host.context, columns * sizeof(*before)),
                  *after = p->host.allocate(p->host.context, columns * sizeof(*after));
         ud_status s = !before || !after ? UD_RESOURCE : UD_OK;
-        int has_before = kind != 'I';
+        int has_before = kind != 'I' && tag != 'N';
         if (!s && has_before) {
-            if (tag != 'O')
-                s = UD_UNSUPPORTED;
+            if (tag != 'O' && tag != 'K')
+                s = UD_CORRUPT;
             else
-                s = tuple(p, input, before, NULL);
+                s = tuple(p, input, before, NULL, tag == 'K');
             if (!s && kind == 'U' && !integer(input, 1, &tag))
                 s = UD_CORRUPT;
         }
@@ -529,10 +553,29 @@ static ud_status decode(ud_pg_cdc *p, packet *input, ud_cdc_event *out) {
             if (tag != 'N')
                 s = UD_CORRUPT;
             else
-                s = tuple(p, input, after, has_before ? before : NULL);
+                s = tuple(p, input, after, has_before ? before : NULL, 0);
         }
         if (!s && kind == 'D')
             memcpy(after, before, columns * sizeof(*after));
+        if (!s && kind == 'U' && !has_before) {
+            for (uint32_t i = 0; !s && i < columns; i++) {
+                ud_field field;
+                s = p->host.field(p->schema, i, &field);
+                if (!s)
+                    before[i] = (ud_value){.type = field.type,
+                                           .precision = field.precision,
+                                           .scale = field.scale,
+                                           .is_null = 1,
+                                           .is_absent = 1};
+                if (!s && p->key_columns[i]) {
+                    if (after[i].is_null)
+                        s = UD_SCHEMA;
+                    else
+                        before[i] = after[i];
+                }
+            }
+            has_before = 1;
+        }
         if (!s)
             s = plugin_fields(&p->host, p->schema, &fields);
         if (!s)
@@ -741,7 +784,7 @@ ud_status ud_pg_cdc_open(const ud_host_api *h, const char *config, const ud_cdc_
     if (!s)
         s = sql(p, p->snapshot,
                 "SET TIME ZONE 'UTC'; SET DateStyle TO ISO,YMD; SET extra_float_digits=3; SET "
-                "bytea_output=hex");
+                "bytea_output=hex; SET IntervalStyle TO iso_8601");
     if (!s)
         s = preflight(p, o, managed);
     if (!s && o->mode == UD_CDC_SNAPSHOT_STREAM) {
@@ -871,6 +914,7 @@ ud_status ud_pg_cdc_close(ud_pg_cdc *p) {
     p->host.deallocate(p->position);
     p->host.deallocate(p->transaction);
     p->host.deallocate(p->oids);
+    p->host.deallocate(p->key_columns);
     p->host.deallocate(p);
     return UD_OK;
 }

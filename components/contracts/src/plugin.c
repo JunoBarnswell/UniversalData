@@ -171,7 +171,11 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_sql_bulk_read,
                             ud_sql_bulk_close,
                             ud_sql_compile_bulk,
-                            ud_sql_table_identifier};
+                            ud_sql_table_identifier,
+                            ud_mysql_json_decode,
+                            ud_field_matches,
+                            ud_sql_compile_scan,
+                            ud_sql_compile_bulk_release};
     *out = p;
     return UD_OK;
 }

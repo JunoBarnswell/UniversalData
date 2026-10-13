@@ -2,6 +2,7 @@
 import argparse
 import json
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -35,6 +36,18 @@ def projections(model):
     version, abi, protocol = product["sdkVersion"], product["abiVersion"], product["protocolVersion"]
     marker = "metadata/product.json"
     history = model["history"]
+    native_types = re.findall(r"UD_(\w+)\s*=\s*(\d+)",
+        (ROOT / "include/ud/data.h").read_text().split("} ud_decimal128;", 1)[0])
+    type_names = {"BOOL":"Bool", "INT64":"Int64", "FLOAT64":"Float64", "UTF8":"Utf8",
+        "DECIMAL128":"Decimal128", "DATE32":"Date32", "TIME64":"Time64", "TIMESTAMP":"Timestamp",
+        "BINARY":"Binary", "UINT64":"UInt64", "DURATION":"Duration", "INTERVAL":"Interval",
+        "STRUCT":"Struct", "LIST":"List", "MAP":"Map"}
+    cs_types = "// Generated from include/ud/data.h; Native owns value semantics.\nnamespace UniversalData;\npublic enum DataType\n{\n"
+    cs_types += ",\n".join("    " + type_names[name] + " = " + number for name,number in native_types) + "\n}\n"
+    cs_types += "public readonly record struct Duration(long Microseconds);\npublic readonly record struct Interval(int Months, int Days, long Microseconds);\n"
+    java_types = "// Generated from include/ud/data.h; Native owns value semantics.\npackage org.universaldata;\npublic enum DataType {\n"
+    java_types += ",\n".join("    " + name + "(" + number + ")" for name,number in native_types)
+    java_types += ";\n    public final int nativeCode;\n    DataType(int code) { nativeCode = code; }\n}\n"
     header = "/* Generated from metadata/product.json. */\n#ifndef UD_VERSION_H\n#define UD_VERSION_H\n"
     header += '#define UD_SDK_VERSION "' + version + '"\n'
     header += "#define UD_ABI_VERSION " + str(abi) + "u\n"
@@ -87,6 +100,10 @@ def projections(model):
     for item in history["advancedWorkItems"]:
         advanced_trace+="| "+item["id"]+" | "+item["name"]+" | "+item["state"]+" | "+item["verification"]+" |\n"
     return {
+        "bindings/dotnet/UniversalData/DataType.cs": cs_types,
+        "bindings/java/src/main/java/org/universaldata/DataType.java": java_types,
+        "bindings/java/src/main/java/org/universaldata/Duration.java": "package org.universaldata;\n/** Signed native microseconds, without narrowing to nanoseconds. */\npublic record Duration(long microseconds) {}\n",
+        "bindings/java/src/main/java/org/universaldata/Interval.java": "package org.universaldata;\n/** Independent native calendar components. */\npublic record Interval(int months, int days, long microseconds) {}\n",
         "docs/acceptance/pr5-advanced-traceability.md":advanced_trace,
         "docs/acceptance/etl-next-phase-traceability.md": next_trace,
         "docs/acceptance/etl-four-engine-traceability.md": trace,

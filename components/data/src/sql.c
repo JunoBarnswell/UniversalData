@@ -6,10 +6,20 @@ typedef struct writer {
     ud_sql_statement *statement;
     const ud_write_options *options;
     const ud_batch *batch;
+    const ud_batch *parameter_batch;
     int dialect, style;
     uint32_t capacity;
     uint32_t *selection;
+    int filter_absent;
+    uint32_t presence_row;
 } writer;
+static int included(const writer *w, uint32_t column) {
+    if (!w->filter_absent)
+        return 1;
+    uint32_t row = w->presence_row + w->batch->row_offset;
+    const uint8_t *absence = w->batch->column[column].absence;
+    return !absence || !(absence[row / 8] & (1u << (row % 8)));
+}
 static ud_status put(writer *w, const char *s) {
     return ud_bytes_put(&w->text, s, strlen(s));
 }
@@ -45,6 +55,15 @@ static ud_status column(writer *w, uint32_t index, const char *prefix) {
     return quote(w, (ud_string){f->name, f->name_length});
 }
 static ud_status parameter(writer *w, uint32_t row, uint32_t col, uint32_t source) {
+    const ud_batch *image = source == UD_SQL_BEFORE ? w->options->before
+                            : w->parameter_batch    ? w->parameter_batch
+                                                    : w->batch;
+    ud_value value;
+    if (!image)
+        return UD_SCHEMA;
+    UD_TRY(ud_batch_get(image, row, col, &value));
+    if (value.is_absent)
+        return UD_INCOMPATIBLE;
     uint32_t maximum = ud_sql_parameter_limit(w->dialect);
     if (!maximum || w->statement->parameter_count >= maximum)
         return UD_RESOURCE;
@@ -94,8 +113,13 @@ static ud_status preimage(writer *w, uint32_t row) {
     const ud_write_options *o = w->options;
     if (!o->before)
         return keys_where(w, row, NULL, NULL);
+    uint32_t count = 0;
     for (uint32_t i = 0; i < w->batch->columns; i++) {
-        if (i)
+        ud_value value;
+        UD_TRY(ud_batch_get(o->before, row, i, &value));
+        if (value.is_absent)
+            continue;
+        if (count++)
             UD_TRY(put(w, " AND "));
         ud_type t = w->batch->column[i].field.type;
         if (w->dialect == UD_SQL_ORACLE) {
@@ -144,23 +168,50 @@ static ud_status preimage(writer *w, uint32_t row) {
             UD_TRY(put(w, " IS NULL))"));
         }
     }
-    return UD_OK;
+    return count ? UD_OK : UD_SCHEMA;
 }
 static ud_status fields(writer *w, const char *prefix) {
+    uint32_t count = 0;
     for (uint32_t i = 0; i < w->batch->columns; i++) {
-        if (i)
+        if (!included(w, i))
+            continue;
+        if (count++)
             UD_TRY(put(w, ","));
         UD_TRY(column(w, i, prefix));
     }
     return UD_OK;
+}
+static ud_status scan_fields(writer *w) {
+    for (uint32_t i = 0; i < w->batch->columns; i++) {
+        if (i)
+            UD_TRY(put(w, ","));
+        int dictionary = w->batch->column[i].field.dictionary_kind &&
+                         (w->dialect == UD_SQL_MYSQL || w->dialect == UD_SQL_MARIADB);
+        if (dictionary)
+            UD_TRY(put(w, "CAST("));
+        UD_TRY(column(w, i, NULL));
+        if (dictionary) {
+            UD_TRY(put(w, " AS UNSIGNED) AS "));
+            UD_TRY(column(w, i, NULL));
+        }
+    }
+    return UD_OK;
+}
+static ud_status bulk_variable(writer *w, uint32_t index) {
+    char text[40];
+    int length = snprintf(text, sizeof(text), "@ud_bulk_%u", index);
+    return ud_bytes_put(&w->text, text, (size_t)length);
 }
 static uint32_t row_at(const writer *w, uint32_t first, uint32_t row) {
     return w->selection ? w->selection[row] : first + row;
 }
 static ud_status tuple(writer *w, uint32_t row) {
     UD_TRY(put(w, "("));
+    uint32_t count = 0;
     for (uint32_t i = 0; i < w->batch->columns; i++) {
-        if (i)
+        if (!included(w, i))
+            continue;
+        if (count++)
             UD_TRY(put(w, ","));
         UD_TRY(parameter(w, row, i, UD_SQL_AFTER));
     }
@@ -174,8 +225,11 @@ static ud_status insert(writer *w, uint32_t first, uint32_t rows, int guard) {
     UD_TRY(put(w, ") "));
     if (guard) {
         UD_TRY(put(w, "SELECT "));
+        uint32_t count = 0;
         for (uint32_t i = 0; i < w->batch->columns; i++) {
-            if (i)
+            if (!included(w, i))
+                continue;
+            if (count++)
                 UD_TRY(put(w, ","));
             UD_TRY(parameter(w, first, i, UD_SQL_AFTER));
         }
@@ -195,8 +249,11 @@ static ud_status insert(writer *w, uint32_t first, uint32_t rows, int guard) {
             if (r)
                 UD_TRY(put(w, " UNION ALL "));
             UD_TRY(put(w, "SELECT "));
+            uint32_t count = 0;
             for (uint32_t i = 0; i < w->batch->columns; i++) {
-                if (i)
+                if (!included(w, i))
+                    continue;
+                if (count++)
                     UD_TRY(put(w, ","));
                 UD_TRY(parameter(w, row_at(w, first, r), i, UD_SQL_AFTER));
             }
@@ -441,6 +498,12 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
             ud_status status = ud_batch_get(b, row, o->keys[k], &value);
             if (status)
                 return status;
+            if (value.is_absent && o->mode == UD_WRITE_CHANGESET && o->before && o->operations &&
+                o->operations[row] == UD_CHANGE_UPDATE) {
+                status = ud_batch_get(o->before, row, o->keys[k], &value);
+                if (status)
+                    return status;
+            }
             if (value.is_null)
                 return UD_SCHEMA;
         }
@@ -465,6 +528,12 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
         else if (action == UD_CHANGE_DELETE)
             mode = UD_WRITE_DELETE;
     }
+    w.filter_absent = action == UD_CHANGE_INSERT;
+    w.presence_row = first;
+    if (o->mode != UD_WRITE_CHANGESET && ud_batch_has_absent(b))
+        return UD_INCOMPATIBLE;
+    if (action == UD_CHANGE_UPSERT && ud_batch_has_absent(b))
+        return UD_INCOMPATIBLE;
     ud_status s = UD_OK;
     if (mode == UD_WRITE_UPSERT && rows > 1)
         s = last_rows(&w, first, &rows);
@@ -495,8 +564,13 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
             s = table(&w);
         if (!s)
             s = put(&w, " SET ");
+        uint32_t count = 0;
         for (uint32_t i = 0; !s && i < b->columns; i++) {
-            if (i)
+            ud_value value;
+            s = ud_batch_get(b, first, i, &value);
+            if (s || value.is_absent)
+                continue;
+            if (count++)
                 s = put(&w, ",");
             if (!s)
                 s = column(&w, i, NULL);
@@ -505,6 +579,8 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
             if (!s)
                 s = parameter(&w, first, i, UD_SQL_AFTER);
         }
+        if (!s && !count)
+            s = UD_SCHEMA;
         if (!s)
             s = put(&w, " WHERE ");
         if (!s)
@@ -548,7 +624,7 @@ ud_status ud_sql_compile_preimage(ud_context *ctx, int32_t dialect, int32_t styl
                 .style = style};
     ud_status status = put(&w, "SELECT ");
     if (!status)
-        status = fields(&w, NULL);
+        status = scan_fields(&w);
     if (!status)
         status = put(&w, " FROM ");
     if (!status)
@@ -602,6 +678,9 @@ ud_status ud_write_validate(const ud_write_options *o, const ud_batch *b) {
         for (uint32_t row = 0; row < b->rows && o->mode != UD_WRITE_APPEND; row++) {
             ud_value v;
             UD_TRY(ud_batch_get(b, row, o->keys[i], &v));
+            if (v.is_absent && o->mode == UD_WRITE_CHANGESET && o->before && o->operations &&
+                o->operations[row] == UD_CHANGE_UPDATE)
+                UD_TRY(ud_batch_get(o->before, row, o->keys[i], &v));
             if (v.is_null)
                 return UD_SCHEMA;
         }
@@ -622,6 +701,16 @@ ud_status ud_write_validate(const ud_write_options *o, const ud_batch *b) {
         for (uint32_t row = 0; row < b->rows; row++)
             if (o->operations[row] < UD_CHANGE_INSERT || o->operations[row] > UD_CHANGE_UPSERT)
                 return UD_SCHEMA;
+        for (uint32_t row = 0; o->before && row < b->rows; row++)
+            if (o->operations[row] == UD_CHANGE_UPDATE || o->operations[row] == UD_CHANGE_DELETE)
+                for (uint32_t key = 0; key < o->key_count; key++) {
+                    ud_value value;
+                    UD_TRY(ud_batch_get(o->before, row, o->keys[key], &value));
+                    if (value.is_null)
+                        return UD_SCHEMA;
+                }
+    } else if (ud_batch_has_absent(b)) {
+        return UD_INCOMPATIBLE;
     }
     return UD_OK;
 }
@@ -691,6 +780,7 @@ ud_status ud_sql_compile_lookup(ud_context *ctx, int32_t dialect, int32_t style,
                 .statement = out,
                 .options = &options,
                 .batch = reference,
+                .parameter_batch = probe,
                 .dialect = dialect,
                 .style = style};
     ud_status status = UD_OK;
@@ -702,7 +792,7 @@ ud_status ud_sql_compile_lookup(ud_context *ctx, int32_t dialect, int32_t style,
     if (!status)
         status = put(&w, "SELECT ");
     if (!status)
-        status = fields(&w, NULL);
+        status = scan_fields(&w);
     if (!status)
         status = put(&w, " FROM ");
     if (!status)
@@ -756,7 +846,7 @@ ud_status ud_sql_compile_scan(ud_context *ctx, int32_t dialect, ud_string table_
                 .dialect = dialect};
     ud_status status = put(&w, "SELECT ");
     if (!status)
-        status = fields(&w, NULL);
+        status = scan_fields(&w);
     if (!status)
         status = put(&w, " FROM ");
     if (!status)
@@ -795,12 +885,35 @@ ud_status ud_sql_compile_bulk(ud_context *ctx, int32_t dialect, const ud_write_o
                     "TERMINATED BY X'0A' ");
     if (!s)
         s = put(&w, "(");
-    if (!s)
+    if (!s && dialect == UD_SQL_POSTGRESQL)
         s = fields(&w, NULL);
+    else if (!s)
+        for (uint32_t index = 0; !s && index < batch->columns; index++) {
+            if (index)
+                s = put(&w, ",");
+            if (!s)
+                s = batch->column[index].field.dictionary_kind ? bulk_variable(&w, index)
+                                                               : column(&w, index, NULL);
+        }
     if (!s)
         s = put(&w, ")");
     if (!s && dialect == UD_SQL_POSTGRESQL)
         s = put(&w, " FROM STDIN WITH (FORMAT text)");
+    uint32_t dictionaries = 0;
+    for (uint32_t index = 0; !s && dialect != UD_SQL_POSTGRESQL && index < batch->columns;
+         index++) {
+        if (!batch->column[index].field.dictionary_kind)
+            continue;
+        s = put(&w, dictionaries++ ? "," : " SET ");
+        if (!s)
+            s = column(&w, index, NULL);
+        if (!s)
+            s = put(&w, "=CAST(");
+        if (!s)
+            s = bulk_variable(&w, index);
+        if (!s)
+            s = put(&w, " AS UNSIGNED)");
+    }
     if (!s)
         s = ud_bytes_put(&w.text, "", 1);
     if (!s && w.text.size > UINT32_MAX)
@@ -811,6 +924,34 @@ ud_status ud_sql_compile_bulk(ud_context *ctx, int32_t dialect, const ud_write_o
     }
     ud_bytes_clear(&w.text);
     return s;
+}
+ud_status ud_sql_compile_bulk_release(ud_context *ctx, int32_t dialect, const ud_batch *batch,
+                                      ud_string *out) {
+    if (!ctx || !batch || !out)
+        return UD_INVALID;
+    *out = (ud_string){0};
+    if (dialect != UD_SQL_MYSQL && dialect != UD_SQL_MARIADB)
+        return UD_UNSUPPORTED;
+    writer w = {.ctx = ctx, .text = {.ctx = ctx}, .batch = batch, .dialect = dialect};
+    ud_status status = UD_OK;
+    uint32_t count = 0;
+    for (uint32_t index = 0; !status && index < batch->columns; index++)
+        if (batch->column[index].field.dictionary_kind) {
+            status = put(&w, count++ ? "," : "SET ");
+            if (!status)
+                status = bulk_variable(&w, index);
+            if (!status)
+                status = put(&w, "=NULL");
+        }
+    if (!status && count) {
+        status = ud_bytes_put(&w.text, "", 1);
+        if (!status) {
+            *out = (ud_string){(const char *)w.text.data, (uint32_t)w.text.size - 1};
+            w.text.data = NULL;
+        }
+    }
+    ud_bytes_clear(&w.text);
+    return status;
 }
 ud_status ud_sql_table_identifier(ud_context *ctx, int32_t dialect, ud_string name,
                                   ud_string *out) {

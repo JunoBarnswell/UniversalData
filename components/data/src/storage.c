@@ -12,6 +12,9 @@ static ud_status fields(const ud_field *metadata, uint32_t count, ud_storage_vis
         UD_TRY(allocation(field->name, visit, user));
         UD_TRY(allocation(field->timezone, visit, user));
         UD_TRY(allocation(field->lineage, visit, user));
+        UD_TRY(allocation(field->dictionary, visit, user));
+        for (uint32_t j = 0; j < field->dictionary_count; j++)
+            UD_TRY(allocation(field->dictionary[j].data, visit, user));
         if (field->child_count)
             UD_TRY(fields(field->children, field->child_count, visit, user));
     }
@@ -30,6 +33,7 @@ ud_status ud_batch_visit_storage(const ud_batch *batch, ud_storage_visit visit, 
     for (uint32_t i = 0; i < batch->columns; i++) {
         const ud_column *column = batch->column + i;
         UD_TRY(allocation(column->validity, visit, user));
+        UD_TRY(allocation(column->absence, visit, user));
         UD_TRY(allocation(column->values, visit, user));
         UD_TRY(allocation(column->offsets, visit, user));
         UD_TRY(allocation(column->strings, visit, user));
