@@ -50,6 +50,8 @@ ud_status ud_distinct_directories(ud_context *, const char *, const char *);
 uint64_t ud_now_ms(void);
 uint64_t ud_monotonic_ns(void);
 uint64_t ud_thread_cpu_ns(void);
+/* OS entropy only. Never synthesize persistent identity from clocks/counters. */
+ud_status ud_random_bytes(ud_context *, void *, uint32_t);
 void ud_sleep_ms(uint32_t);
 int ud_seek(FILE *, uint64_t);
 int64_t ud_tell(FILE *);

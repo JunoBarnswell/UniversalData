@@ -6,6 +6,7 @@
 #include <time.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <bcrypt.h>
 #include <io.h>
 static wchar_t *wide(const char *s) {
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, NULL, 0);
@@ -38,6 +39,31 @@ FILE *ud_fopen(const char *p, const char *mode) {
     return fopen(p, mode);
 }
 #endif
+ud_status ud_random_bytes(ud_context *ctx, void *out, uint32_t length) {
+    if (!out || !length)
+        return UD_INVALID;
+#ifdef _WIN32
+    if (BCryptGenRandom(NULL, out, length, BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0)
+        return ud_fail(ctx, UD_IO, "Cannot obtain execution identity entropy");
+#else
+    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return ud_fail(ctx, UD_IO, "Cannot obtain execution identity entropy");
+    uint32_t used = 0;
+    while (used < length) {
+        ssize_t n = read(fd, (uint8_t *)out + used, length - used);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0) {
+            close(fd);
+            return ud_fail(ctx, UD_IO, "Cannot obtain execution identity entropy");
+        }
+        used += (uint32_t)n;
+    }
+    close(fd);
+#endif
+    return UD_OK;
+}
 ud_status ud_join_path(ud_context *c, const char *a, const char *b, char **out) {
     size_t n = strlen(a), m = strlen(b);
     if (n > SIZE_MAX - m - 2)

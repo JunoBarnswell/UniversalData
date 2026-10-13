@@ -8,7 +8,7 @@ extern "C" {
 #endif
 typedef struct ud_package ud_package;
 /* Pure Native template expansion; $template substitutes typed JSON values. */
-UD_API ud_status ud_package_instantiate(ud_context *,ud_string,char **,uint32_t *);
+UD_API ud_status ud_package_instantiate(ud_context *, ud_string, char **, uint32_t *);
 enum {
     UD_EXEC_EVENT_STATE = 1,
     UD_EXEC_EVENT_BEFORE_CHECKPOINT,
@@ -36,7 +36,8 @@ typedef struct ud_execution_options {
     ud_context_options context;
     uint32_t edge_capacity, max_batch_rows, max_depth;
     uint64_t timeout_ms;
-    ud_string parameters, tenant, execution_id;
+    ud_string parameters, tenant,
+        execution_id;      /* Empty new ID: Native generates once. Resume requires original ID. */
     ud_registry *registry; /* Optional host registry, leased for Execution lifetime. */
     ud_authorize_fn authorize;
     void *authorize_user;
@@ -65,6 +66,9 @@ UD_API void ud_package_destroy(ud_package *);
 UD_API ud_status ud_execution_create(const ud_package *, const ud_execution_options *,
                                      ud_execution **);
 UD_API ud_status ud_execution_create_json(ud_string, const ud_execution_options *, ud_execution **);
+/* Immutable identity borrowed until Execution destruction; available in every state.
+ * UUID v4 for an omitted new ID, otherwise the exact validated host-supplied ID. */
+UD_API ud_status ud_execution_id(const ud_execution *, ud_string *);
 /* Owned JSON, released with ud_free. Both use the bound native model; neither
  * acquires external resources. Diagnostics are available after execution joins. */
 UD_API ud_status ud_activation_raise(ud_activation *, int32_t event_kind,

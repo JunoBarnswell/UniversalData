@@ -10,12 +10,16 @@ MODEL = ROOT / "metadata/product.json"
 
 def read_model():
     model = json.loads(MODEL.read_text(encoding="utf-8"))
-    if model["modelVersion"] != 1 or len(model["goals"]) != 70:
+    if model["modelVersion"] != 2 or len(model["goals"]) != 52:
         raise ValueError("Unsupported product model or changed goal inventory.")
+    if {item["id"] for item in model["goals"]} != {f"ETL-{n:03d}" for n in range(1, 53)}:
+        raise ValueError("All 52 audit IDs must be tracked in the existing goal inventory.")
+    if {item["id"] for item in model["goals"] if not item["requiredThisDelivery"]} != {"ETL-039", "ETL-040"}:
+        raise ValueError("Only DQS and SSAS Data Mining are NotApplicable.")
     if (model["product"]["abiVersion"] != model["product"]["protocolVersion"]
             or not 0 < model["product"]["abiVersion"] <= 4294967295):
         raise ValueError("ABI and all protocol epochs must be one positive uint32 version.")
-    for key in ("goals", "gates", "remediations", "fourEngineWorkItems", "nextPhaseWorkItems", "nativeFeatureWorkItems", "fullEnhancementWorkItems", "advancedWorkItems"):
+    for key in ("goals", "gates"):
         identifiers = [item["id"] for item in model[key]]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Duplicate identifiers in " + key)
@@ -30,6 +34,7 @@ def projections(model):
     product = model["product"]
     version, abi, protocol = product["sdkVersion"], product["abiVersion"], product["protocolVersion"]
     marker = "metadata/product.json"
+    history = model["history"]
     header = "/* Generated from metadata/product.json. */\n#ifndef UD_VERSION_H\n#define UD_VERSION_H\n"
     header += '#define UD_SDK_VERSION "' + version + '"\n'
     header += "#define UD_ABI_VERSION " + str(abi) + "u\n"
@@ -43,18 +48,18 @@ def projections(model):
              "remoteCI": model["remoteCI"], "artifacts": model["artifacts"]}
     passed = [gate for gate in model["gates"] if gate["status"] == "Passed"]
     progress = dict(facts, requiredGates=sum(gate["status"] != "Exempt" for gate in model["gates"]), passedGates=len(passed),
-                    remediations=model["remediations"])
+                    items=model["goals"], designReviews=model["productAlignment"]["designReviews"])
     status = dict(facts, components="docs/product/component-catalog.md",
-                  remediations=model["remediations"], workItems=model.get("fourEngineWorkItems",[]), nextPhaseWorkItems=model.get("nextPhaseWorkItems",[]), nativeFeatureWorkItems=model.get("nativeFeatureWorkItems", []), limitations=model["limitations"])
+                  items=model["goals"], limitations=model["limitations"])
     goals = {"generatedFrom": marker, "goalVersion": protocol,
-             "completionRule": "Current core/infrastructure gates are required; extensions retain their actual status.",
+             "completionRule": "All 50 applicable items require current source and behavior evidence; ETL-039/040 are NotApplicable. Missing environments are Blocked.",
              "automaticMergeOrReleaseAuthorized": False, "items": model["goals"]}
     gates = {"generatedFrom": marker, "version": protocol, "sdkVersion": version, "abi": abi,
              "sourceFingerprint": model["candidate"]["sourceFingerprint"],
              "linux": model["scope"]["linux"], "windows": model["scope"].get("windows"), "gates": model["gates"],
              "delivery": model["artifacts"]}
     catalog = "# 当前组件清单与 SSIS 映射\n\n<!-- Generated from metadata/product.json. -->\n\n"
-    catalog += "SDK " + version + "，唯一 ABI/协议 " + str(abi) + "。本轮范围：统一架构与原生核心。验收事实见 metadata/product.json；本轮 Linux 集中验收，Windows 豁免。\n\n"
+    catalog += "SDK " + version + "，唯一 ABI/协议 " + str(abi) + "。Linux 与 Windows 均须验收。下列目录是 main 基线已有组件的入口与边界，不能代替 2.0 当前验收；50 项适用整改状态见 metadata/product.json 的 goals。\n\n"
     catalog += "| SSIS 职责 | 实际入口/ID | 实现与边界 |\n|---|---|---|\n"
     for row in model["componentCatalog"]:
         catalog += "| " + row["ssis"] + " | " + row["entries"] + " | " + row["contract"] + " |\n"
@@ -62,21 +67,24 @@ def projections(model):
     catalog += "Arrow C Data Interface 与原生内存数据模型不等同于 Parquet driver。Microsoft .dtsx/COM/SSISDB/MSDTC 专属兼容不承诺；没有占位注册或旧 generic operation 路径。\n"
     progress_md = "# 当前实施与验收进度\n\n<!-- Generated from metadata/product.json. -->\n\n"
     progress_md += "SDK " + version + " / ABI " + str(abi) + "；" + model["candidate"]["state"] + "。\n\n"
-    progress_md += "门禁通过 " + str(len(passed)) + "/" + str(sum(gate["status"] != "Exempt" for gate in model["gates"])) + "；Linux 本轮必验，Windows 豁免；远程 CI 使用实际运行状态。\n\n"
+    progress_md += "门禁通过 " + str(len(passed)) + "/" + str(len(model["gates"])) + "；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。\n\n"
     progress_md += "| 整改 | 当前状态 |\n|---|---|\n"
-    for item in model["remediations"]:
-        progress_md += "| " + item["id"] + " | " + item["state"] + " / " + item["verification"] + " |\n"
+    for item in model["goals"]:
+        progress_md += "| " + item["id"] + " " + item["name"] + " | " + item["code"] + " / " + item["verification"] + " |\n"
+    progress_md += "\n三轮有界设计复核：\n\n"
+    for review in model["productAlignment"]["designReviews"]:
+        progress_md += str(review["round"]) + ". " + review["scope"] + "（" + review["result"] + "）：" + "；".join(review["decisions"]) + "\n"
     trace = "# 四引擎需求与验收追踪\n\n<!-- Generated from metadata/product.json. -->\n\n"
-    trace += "保留 G00–G68，并新增 G69 Sampling，共 70 项目标；下表是附件 78 项工作项的同源投影。Implemented 与 Verified 分开，能力组合边界见权威模型 limitations。\n\n"
+    trace += "历史 ABI 9 工作项投影，保留旧证据供追溯，不计入 SDK 2.0 验收。当前 52 项审查以现有 completion-goal.json 与 metadata/product.json 为准。\n\n"
     trace += "| ID | 优先级 | 阶段 | 能力 | 代码 | 验收 | 69 项目标映射 |\n|---|---|---|---|---|---|---|\n"
-    for row in model["fourEngineWorkItems"]:
+    for row in history["fourEngineWorkItems"]:
         trace += "| " + row["id"] + " | " + row["priority"] + " | " + row["phase"] + " | " + row["name"] + " | " + row["state"] + " | " + row["verification"] + " | " + ", ".join(row["goals"]) + " |\n"
     next_trace = "# R1–R5 主分支整改追踪\n\n<!-- Generated from metadata/product.json. -->\n\n"
-    next_trace += "仅本轮五阶段；OBS 是 R5 六项测量要求的内部追踪 ID。历史 ABI 验收不代替当前版本验收。\n\n| ID | 阶段 | 能力 | 代码 | 验收 | 证据 |\n|---|---|---|---|---|---|\n"
-    for row in model["nextPhaseWorkItems"]:
+    next_trace += "历史五阶段工作项，不计入 SDK 2.0 当前验收。OBS 是历史 R5 测量要求的内部 ID。\n\n| ID | 阶段 | 能力 | 代码 | 验收 | 证据 |\n|---|---|---|---|---|---|\n"
+    for row in history["nextPhaseWorkItems"]:
         next_trace += "| " + row["id"] + " | " + row["phase"] + " | " + row["name"] + " | " + row["state"] + " | " + row["verification"] + " | " + ", ".join(row["evidence"]) + " |\n"
-    advanced_trace="# PR #5 基础与高级能力追踪\n\n<!-- Generated from metadata/product.json. -->\n\n实现状态与验收状态分别记录；当前 ABI 9 的 Linux 验收尚未启动，历史记录不作为当前证明。Windows 豁免。\n\n| ID | 能力 | 实现状态 | 验收 |\n|---|---|---|---|\n"
-    for item in model["advancedWorkItems"]:
+    advanced_trace="# PR #5 历史基础与高级能力追踪\n\n<!-- Generated from metadata/product.json history. -->\n\n以下是 main 基线之前的历史事实，不计入 SDK 2.0 验收。当前 Linux 与 Windows 均须验收。\n\n| ID | 能力 | 实现状态 | 验收 |\n|---|---|---|---|\n"
+    for item in history["advancedWorkItems"]:
         advanced_trace+="| "+item["id"]+" | "+item["name"]+" | "+item["state"]+" | "+item["verification"]+" |\n"
     return {
         "docs/acceptance/pr5-advanced-traceability.md":advanced_trace,

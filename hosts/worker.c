@@ -1,14 +1,15 @@
 #include "ud/package.h"
+#include "output.h"
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef _WIN32
 #include <io.h>
 #include <fcntl.h>
 #endif
-/* Protocol 4: LE u32 byte length + one Package JSON document. Each frame owns a
+/* Current UD_WORKER_VERSION: LE u32 byte length + one Package JSON document. Each frame owns a
  * native Execution. No credentials/authorization are inferred from input. A
  * privileged embedding host must provide its policy through the SDK instead.
- * Reply is LE u32 length + JSON {version,state,result}. */
+ * Reply is LE u32 length + JSON {version,executionId,state,result}. */
 int main(void) {
 #ifdef _WIN32
     _setmode(_fileno(stdin), _O_BINARY);
@@ -49,12 +50,19 @@ int main(void) {
             .struct_size = sizeof(m), .abi_version = UD_ABI_VERSION, .state = UD_EXEC_FAILED};
         if (e)
             ud_execution_get_metrics(e, &m);
+        ud_string identity = {0};
+        char encoded_id[513];
+        if (e)
+            ud_execution_id(e, &identity);
+        host_identity_json(identity, encoded_id);
         ud_status clean = ud_execution_destroy(e);
         if (!s)
             s = clean;
-        char reply[128];
-        int bytes = snprintf(reply, sizeof(reply), "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"state\":%d,\"result\":%d}",
-                             m.state, s);
+        char reply[1024];
+        int bytes = snprintf(reply, sizeof(reply),
+                             "{\"version\":" UD_PROTOCOL_VERSION_TEXT
+                             ",\"executionId\":\"%s\",\"state\":%d,\"result\":%d}",
+                             encoded_id, m.state, s);
         uint32_t length = (uint32_t)bytes;
         for (int i = 0; i < 4; i++)
             h[i] = (unsigned char)(length >> (8 * i));

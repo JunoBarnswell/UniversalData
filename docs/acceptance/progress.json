@@ -1,79 +1,1077 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "1.5.0",
-  "abi": 9,
+  "sdkVersion": "2.0.0",
+  "abi": 10,
   "scope": {
-    "name": "PR #5 Native foundation, extension platform and advanced ETL",
-    "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
-    "extensions": "Tracked independently; Planned/Partial remain incomplete",
-    "windows": "Exempt — explicit current user instruction"
+    "name": "UniversalData 2.0 SSIS current capabilities and complete ETL product",
+    "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
+    "windows": "Required — complete driver build, native/language/install and platform acceptance",
+    "extensions": "50 applicable audit items require current source and behavior evidence; ETL-039/040 NotApplicable"
   },
   "baseline": {
-    "mainCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+    "mainCommit": "7e706d28e18676975b6d5da22bf1d29bdacc74b9",
     "merged": true,
+    "sdkVersion": "1.5.0",
+    "abiVersion": 9,
     "mergeEvidence": {
-      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/4",
-      "mergedAt": "2026-10-12T20:33:45Z",
-      "headCommit": "45c1d056a3d771389b1e115d28cc7977bcd2541b"
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
     }
   },
   "candidate": {
-    "branch": "codex/etl-next-phase-r1-r5",
-    "state": "PR #5 advanced ETL implementation in progress; ABI 9 verification pending",
-    "sourceCommit": "fd03e6508b0a13c4e418225c91bd60e56c547418",
+    "branch": "codex/etl-ssis-product-alignment",
+    "state": "2.0 architecture reviewed; unified contract implementation in progress",
+    "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,
-    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
+    "pullRequest": null
   },
   "remoteCI": {
-    "state": "Blocked",
-    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38325912089",
-    "sourceCommit": "a698129fff37349d6e29b51dcd47ebc8583b4e80",
+    "state": "NotRun",
+    "run": null,
+    "sourceCommit": null,
     "startedSteps": 0,
-    "reason": "Blocked before code execution: GitHub account payment/spending-limit restriction",
-    "evidence": "docs/acceptance/evidence/etl-next-phase-linux/remote-ci.json"
+    "reason": "New branch has not requested a CI run; historical PR #5 CI is retained in history"
   },
   "artifacts": {
-    "status": "Pending ABI 8 Linux build and installed consumers"
+    "status": "NotRun — ABI 10 coherent implementation precedes concentrated build and acceptance; original artifacts retained"
   },
-  "requiredGates": 18,
+  "requiredGates": 11,
   "passedGates": 0,
-  "remediations": [
+  "items": [
     {
-      "id": "R01",
-      "state": "Implemented",
-      "name": "Registry and native module lifecycle",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
+      "id": "ETL-001",
+      "phase": 4,
+      "name": "Complete product dependency closure",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "CMakeLists.txt",
+        "plugins/CMakeLists.txt"
+      ],
+      "trigger": "A complete product build is requested with a missing dependency.",
+      "baselineFinding": "Drivers, HTTP and Arrow file support currently default OFF; full product profile is absent.",
+      "acceptance": "A complete product build is requested with a missing dependency. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
     },
     {
-      "id": "R02",
-      "state": "Implemented",
-      "name": "Physical Block Store ownership",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
+      "id": "ETL-002",
+      "phase": 4,
+      "name": "SQL parameter arrays and truthful bulk capabilities",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/odbc.c",
+        "include/ud/connector.h"
+      ],
+      "trigger": "A bulk destination binds a driver or requests a native loading guarantee.",
+      "baselineFinding": "ODBC is the sole SQL Server path; array batching and native BCP must be distinguished.",
+      "acceptance": "A bulk destination binds a driver or requests a native loading guarantee. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
     },
     {
-      "id": "R03",
-      "state": "Implemented",
-      "name": "Shared executor and physical Execution Trees",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
+      "id": "ETL-003",
+      "phase": 3,
+      "name": "Native execution identity",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/package/runtime.c",
+        "include/ud/package.h"
+      ],
+      "trigger": "A new execution omits its ID or resume omits the original ID.",
+      "baselineFinding": "runtime.c copies an empty options.execution_id; CLI substitutes constant cli; no identity getter exists.",
+      "acceptance": "A new execution omits its ID or resume omits the original ID. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "Unified current contract implementation exists; concentrated ABI 10 compile/behavior validation has not run."
     },
     {
-      "id": "R04",
-      "state": "Implemented",
-      "name": "Indexed segmented Journal and snapshots",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
+      "id": "ETL-004",
+      "phase": 2,
+      "name": "Source record error ports",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "components/data/src/csv.c",
+        "components/data/src/json.c",
+        "engines/data-flow/source.c"
+      ],
+      "trigger": "A recoverable CSV/NDJSON/SQL record contains invalid field content.",
+      "baselineFinding": "Data cursors return field parse errors and SQL source has no unified per-record error channel.",
+      "acceptance": "A recoverable CSV/NDJSON/SQL record contains invalid field content. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
     },
     {
-      "id": "R05",
-      "state": "Implemented",
-      "name": "Task facts, durability metrics and events",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
+      "id": "ETL-005",
+      "phase": 2,
+      "name": "Expression transform row errors",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/row_transform.c",
+        "components/expression"
+      ],
+      "trigger": "A Derived Column or Conditional Split expression fails for one record.",
+      "baselineFinding": "Expression row evaluation can fail an activation; recoverable row attribution must share Data error metadata.",
+      "acceptance": "A Derived Column or Conditional Split expression fails for one record. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
     },
     {
-      "id": "R06",
-      "state": "Implemented",
-      "name": "Single version and acceptance model",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
+      "id": "ETL-006",
+      "phase": 2,
+      "name": "Destination isolation and error barrier",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/destination.c",
+        "engines/data-flow/error.c"
+      ],
+      "trigger": "Normal and rejected rows share a batch or a SQL statement fails for a record.",
+      "baselineFinding": "Destination ordinary failures stop flow; both error and regular target confirmation must remain one barrier.",
+      "acceptance": "Normal and rejected rows share a batch or a SQL statement fails for a record. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-007",
+      "phase": 1,
+      "name": "Complete unsigned integer domain",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/data.h",
+        "components/data",
+        "bindings"
+      ],
+      "trigger": "A UINT64 value exceeds INT64_MAX.",
+      "baselineFinding": "ud_type has no UINT64 and all integral scalar storage uses signed int64.",
+      "acceptance": "A UINT64 value exceeds INT64_MAX. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-008",
+      "phase": 1,
+      "name": "Duration and calendar Interval",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/data.h",
+        "components/data",
+        "plugins"
+      ],
+      "trigger": "A negative/long SQL TIME or month/day/microsecond interval is read.",
+      "baselineFinding": "TIME64 is microseconds since midnight; negative/long duration and calendar interval have no domain.",
+      "acceptance": "A negative/long SQL TIME or month/day/microsecond interval is read. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-009",
+      "phase": 1,
+      "name": "JSON and dictionary fidelity",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/mysql.c",
+        "plugins/mariadb.c",
+        "components/data"
+      ],
+      "trigger": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata.",
+      "baselineFinding": "No schema dictionary annotation exists in ud_field.",
+      "acceptance": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-010",
+      "phase": 3,
+      "name": "CDC TRUNCATE semantics",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/cdc.c",
+        "include/ud/connector.h"
+      ],
+      "trigger": "A source transaction truncates a captured table.",
+      "baselineFinding": "ud_cdc_event has no TRUNCATE event.",
+      "acceptance": "A source transaction truncates a captured table. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-011",
+      "phase": 3,
+      "name": "Recoverable transaction participants",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c"
+      ],
+      "trigger": "A required transaction includes multiple connections.",
+      "baselineFinding": "ud_transaction owns a single lease; required transaction rejects another connection.",
+      "acceptance": "A required transaction includes multiple connections. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-012",
+      "phase": 3,
+      "name": "Durable coordinator decisions",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/package/checkpoint.c",
+        "components/execution/src/journal.c"
+      ],
+      "trigger": "The process stops before/after prepare, decision or participant commit.",
+      "baselineFinding": "Required transactions reject a state directory; no durable prepare/decision/recover protocol exists.",
+      "acceptance": "The process stops before/after prepare, decision or participant commit. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-013",
+      "phase": 4,
+      "name": "PostgreSQL COPY loading",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/postgresql.c"
+      ],
+      "trigger": "A high-volume PostgreSQL destination is bound.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A high-volume PostgreSQL destination is bound. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-014",
+      "phase": 4,
+      "name": "MySQL and MariaDB native loading",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/mysql.c",
+        "plugins/mariadb.c"
+      ],
+      "trigger": "A native bulk destination receives controlled input bytes.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A native bulk destination receives controlled input bytes. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-015",
+      "phase": 4,
+      "name": "SQL Server BCP loading",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/odbc.c"
+      ],
+      "trigger": "A SQL Server driver declares the native BCP loading capability.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A SQL Server driver declares the native BCP loading capability. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-016",
+      "phase": 4,
+      "name": "OCI staged Direct Path loading",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/oracle_oci.c"
+      ],
+      "trigger": "Direct Path independently commits staging before transactional business writes.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "Direct Path independently commits staging before transactional business writes. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-017",
+      "phase": 4,
+      "name": "Enterprise file layouts and publication",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "components/data/src/csv.c",
+        "engines/data-flow/destination.c",
+        "engines/package/checkpoint.c"
+      ],
+      "trigger": "Encoding/layout settings or append/overwrite requires restart-safe publication.",
+      "baselineFinding": "Publication facts and file checksums exist but enterprise format/append generation rules are incomplete.",
+      "acceptance": "Encoding/layout settings or append/overwrite requires restart-safe publication. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-018",
+      "phase": 3,
+      "name": "Incremental overlap target capability proof",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/binding.c",
+        "engines/data-flow/source.c"
+      ],
+      "trigger": "An overlapping incremental source binds to an idempotent/receipted destination.",
+      "baselineFinding": "Incremental binding currently depends on SQL upsert configuration rather than an explicit target guarantee.",
+      "acceptance": "An overlapping incremental source binds to an idempotent/receipted destination. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-019",
+      "phase": 1,
+      "name": "Unified file and database discovery",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/source.c",
+        "components/data/src/schema_json.c",
+        "connectors/manager.c"
+      ],
+      "trigger": "A designer/SDK discovers a file or database schema.",
+      "baselineFinding": "Database metadata maps to Data Schema; file inference is not unified.",
+      "acceptance": "A designer/SDK discovers a file or database schema. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-020",
+      "phase": 6,
+      "name": "One SDK and protocol family",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "metadata/product.json",
+        "scripts/product_model.py",
+        "include/ud/version.h"
+      ],
+      "trigger": "A package/plugin/wire/checkpoint built for the old epoch is consumed.",
+      "baselineFinding": "The baseline product authority reports SDK 1.5.0 / ABI 9; old document versions are strictly checked.",
+      "acceptance": "A package/plugin/wire/checkpoint built for the old epoch is consumed. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "Unified current contract implementation exists; concentrated ABI 10 compile/behavior validation has not run."
+    },
+    {
+      "id": "ETL-021",
+      "phase": 6,
+      "name": "SQLite indexed Native Catalog",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog/catalog.c",
+        "include/ud/catalog.h"
+      ],
+      "trigger": "Catalog versions, executions or events are queried with concurrent workers.",
+      "baselineFinding": "ud_catalog_list enumerates every .udc file, parses and validates all envelopes.",
+      "acceptance": "Catalog versions, executions or events are queried with concurrent workers. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-022",
+      "phase": 6,
+      "name": "Durable execution logs",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog/history.c",
+        "engines/package/runtime.c"
+      ],
+      "trigger": "An execution produces task/component/error events or logs are paginated.",
+      "baselineFinding": "Native observer events are versioned/sequenced but persistent indexed query/retention is absent.",
+      "acceptance": "An execution produces task/component/error events or logs are paginated. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-023",
+      "phase": 6,
+      "name": "Deployment and execution management",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog/deployment.c",
+        "hosts"
+      ],
+      "trigger": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered.",
+      "baselineFinding": "Immutable deployment binding exists; process manager and enable/disable state are absent.",
+      "acceptance": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-024",
+      "phase": 5,
+      "name": "CLI resource policy",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "hosts/cli.c",
+        "connectors/manager.c"
+      ],
+      "trigger": "CLI resolves authorized resources and credential references.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "CLI resolves authorized resources and credential references. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-025",
+      "phase": 1,
+      "name": "Online Schema Change barrier",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/pipeline.c",
+        "components/data/src/schema_evolution.c"
+      ],
+      "trigger": "A compatible/incompatible runtime schema event reaches an epoch boundary.",
+      "baselineFinding": "Pipeline routes SCHEMA_CHANGE but returns incompatible instead of rebinding at a barrier.",
+      "acceptance": "A compatible/incompatible runtime schema event reaches an epoch boundary. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-026",
+      "phase": 1,
+      "name": "CDC field presence and key images",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/connector.h",
+        "plugins/postgresql.c",
+        "plugins/mysql.c",
+        "plugins/mariadb.c"
+      ],
+      "trigger": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded.",
+      "baselineFinding": "CDC batches carry before/after values but no explicit field-presence or key-image contract.",
+      "acceptance": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-027",
+      "phase": 3,
+      "name": "Plain REST and receipt guarantees",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors/rest.c",
+        "engines/data-flow/destination.c"
+      ],
+      "trigger": "A normal HTTP response is lost after the server may have committed.",
+      "baselineFinding": "REST destination requires receiptUrl, so plain response acknowledgement is unavailable.",
+      "acceptance": "A normal HTTP response is lost after the server may have committed. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-028",
+      "phase": 5,
+      "name": "Row SQL command parameter binding",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/sql_task.c",
+        "include/ud/connector.h"
+      ],
+      "trigger": "Each input row invokes a parameterized external SQL command.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "Each input row invokes a parameterized external SQL command. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-029",
+      "phase": 5,
+      "name": "Public managed Registry and native callback ownership",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "bindings/dotnet/UniversalData",
+        "include/ud/component.h"
+      ],
+      "trigger": "A managed component/task is registered and an exception escapes its callback.",
+      "baselineFinding": ".NET ExecutionOptions carries registry/observer pointers internally but public APIs do not expose them.",
+      "acceptance": "A managed component/task is registered and an exception escapes its callback. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-030",
+      "phase": 5,
+      "name": "Deployment-compiled C# scripts",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "bindings/dotnet/UniversalData",
+        "hosts"
+      ],
+      "trigger": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry.",
+      "baselineFinding": "No common managed deployment assembly loader exists for Native hosts.",
+      "acceptance": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-031",
+      "phase": 5,
+      "name": "Balanced batch dispatch",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/transforms.c"
+      ],
+      "trigger": "A batch is distributed to exactly one output while Multicast retains replication.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A batch is distributed to exactly one output while Multicast retains replication. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-032",
+      "phase": 5,
+      "name": "Import and Export Column",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow",
+        "connectors/manager.c"
+      ],
+      "trigger": "A row reads/writes an authorized external column resource.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A row reads/writes an authorized external column resource. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-033",
+      "phase": 5,
+      "name": "XML Source",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "components/data"
+      ],
+      "trigger": "XML records are parsed into the canonical Data Schema.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "XML records are parsed into the canonical Data Schema. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-034",
+      "phase": 5,
+      "name": "XPath XSLT and XSD tasks",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow",
+        "connectors/manager.c"
+      ],
+      "trigger": "An XML task applies a query, stylesheet or schema validation.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An XML task applies a query, stylesheet or schema validation. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-035",
+      "phase": 7,
+      "name": "SMTP task",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow",
+        "connectors/manager.c"
+      ],
+      "trigger": "An authorized mail connection sends a message with cancellation handling.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized mail connection sends a message with cancellation handling. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-036",
+      "phase": 7,
+      "name": "Windows WMI tasks",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow"
+      ],
+      "trigger": "A Windows host invokes a WMI query/event task.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A Windows host invokes a WMI query/event task. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-037",
+      "phase": 5,
+      "name": "FTP and SFTP resources",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "connectors/manager.c"
+      ],
+      "trigger": "An authorized remote file transfer participates in cancellation/publication.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized remote file transfer participates in cancellation/publication. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-038",
+      "phase": 7,
+      "name": "Avro IO",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "components/data"
+      ],
+      "trigger": "An Avro schema and records are imported/exported without lossy type coercion.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An Avro schema and records are imported/exported without lossy type coercion. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-039",
+      "phase": 0,
+      "name": "DQS removed by Microsoft",
+      "priority": "P1",
+      "code": "NotApplicable",
+      "verification": "NotApplicable",
+      "requiredThisDelivery": false,
+      "implementation": [],
+      "trigger": "The historical DQS capability is compared with current SSIS support.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "The historical DQS capability is compared with current SSIS support. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "officialEvidence": [
+        "https://learn.microsoft.com/en-us/sql/data-quality-services/data-quality-services?view=sql-server-ver16"
+      ]
+    },
+    {
+      "id": "ETL-040",
+      "phase": 0,
+      "name": "SSAS Data Mining no longer supported",
+      "priority": "P1",
+      "code": "NotApplicable",
+      "verification": "NotApplicable",
+      "requiredThisDelivery": false,
+      "implementation": [],
+      "trigger": "The historical Data Mining capability is compared with current SSIS support.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "The historical Data Mining capability is compared with current SSIS support. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "officialEvidence": [
+        "https://learn.microsoft.com/en-us/analysis-services/data-mining/data-mining-ssas"
+      ]
+    },
+    {
+      "id": "ETL-041",
+      "phase": 7,
+      "name": "SQL Server maintenance Agent and SSAS XMLA",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow",
+        "connectors/manager.c"
+      ],
+      "trigger": "A specialized database/Agent/XMLA task is deployed.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A specialized database/Agent/XMLA task is deployed. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-042",
+      "phase": 2,
+      "name": "Exact Distinct profiling with shared Compute budget",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "components/compute/src/profile.c",
+        "components/compute/src/stat.c"
+      ],
+      "trigger": "Profiling requires exact distinct counts under memory and spill limits.",
+      "baselineFinding": "profile.c uses approximate HLL while exact value_set is already owned by Compute.",
+      "acceptance": "Profiling requires exact distinct counts under memory and spill limits. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-043",
+      "phase": 6,
+      "name": "Durable job queue and schedules",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog",
+        "hosts"
+      ],
+      "trigger": "A timer enqueues work, service restarts or a worker fails with unknown commit.",
+      "baselineFinding": "No durable scheduler/queue exists in the Catalog.",
+      "acceptance": "A timer enqueues work, service restarts or a worker fails with unknown commit. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-044",
+      "phase": 4,
+      "name": "Proven filter pushdown and streaming JSON array",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/source.c",
+        "components/data/src/json.c",
+        "components/expression"
+      ],
+      "trigger": "A provider filter needs semantic proof or a large JSON array must stream.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A provider filter needs semantic proof or a large JSON array must stream. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-045",
+      "phase": 5,
+      "name": "Azure Blob and ADLS Gen2",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "connectors/manager.c"
+      ],
+      "trigger": "An authorized Azure object resource is read/published/recovered.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized Azure object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-046",
+      "phase": 5,
+      "name": "S3 and MinIO",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "connectors/manager.c"
+      ],
+      "trigger": "An authorized S3 object resource is read/published/recovered.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized S3 object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-047",
+      "phase": 6,
+      "name": "ASP.NET Core 10 management and isolated workers",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "hosts",
+        "bindings/dotnet"
+      ],
+      "trigger": "A management request creates/queries/controls an independent native execution process.",
+      "baselineFinding": "No ASP.NET management product or execution process ownership exists.",
+      "acceptance": "A management request creates/queries/controls an independent native execution process. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-048",
+      "phase": 7,
+      "name": "React Flow package designer",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "hosts"
+      ],
+      "trigger": "A user edits control/data flow, ports, mappings, connections, metadata or package layout.",
+      "baselineFinding": "No React/TypeScript/React Flow package designer exists.",
+      "acceptance": "A user edits control/data flow, ports, mappings, connections, metadata or package layout. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-049",
+      "phase": 7,
+      "name": "Safe native runtime debugging",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/package.h",
+        "engines/package/runtime.c",
+        "engines/data-flow/pipeline.c"
+      ],
+      "trigger": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary.",
+      "baselineFinding": "Execution exposes cancel/wait but no native debug controller.",
+      "acceptance": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-050",
+      "phase": 6,
+      "name": "Full Linux and Windows driver CI",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "metadata/ci.yml.in",
+        "tests/CMakeLists.txt"
+      ],
+      "trigger": "CI must compile every declared driver and register SQL/CDC real integrations.",
+      "baselineFinding": "Current CI is Linux-centric; Windows exemptions and advanced integration registration need removal.",
+      "acceptance": "CI must compile every declared driver and register SQL/CDC real integrations. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-051",
+      "phase": 6,
+      "name": "Independent release consumers and capability manifests",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "packaging",
+        "tests/installed_sdk.py"
+      ],
+      "trigger": "An independent directory consumes C, .NET, Java, CLI and Web release products.",
+      "baselineFinding": "1.5 artifacts are historical and must remain preserved; no ABI 10 consumer validation exists.",
+      "acceptance": "An independent directory consumes C, .NET, Java, CLI and Web release products. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-052",
+      "phase": 5,
+      "name": "HTTP response variable mappings",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow/http.c"
+      ],
+      "trigger": "HTTP status/body/header output is bound to a declared native variable.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "HTTP status/body/header output is bound to a declared native variable. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    }
+  ],
+  "designReviews": [
+    {
+      "round": 1,
+      "scope": "Evidence and trigger conditions",
+      "result": "Closed",
+      "decisions": [
+        "Track exactly 52 items in the existing goals inventory; 039/040 NotApplicable, other 50 require current evidence.",
+        "Keep prior product model and evidence under history; no inherited pass/exemption in ABI 10.",
+        "Native driver claims must distinguish COPY, controlled native load, BCP, OCI staged Direct Path and generic ODBC arrays.",
+        "A missing external environment is Blocked, never Passed or silently downgraded."
+      ]
+    },
+    {
+      "round": 2,
+      "scope": "Public contracts and ownership",
+      "result": "Closed",
+      "decisions": [
+        "Native C17 alone owns Package, Execution, Component, Connector, schema/type semantics, row errors, resource authorization and execution IDs.",
+        "Clean-break all public ABI/protocols to 10. No bridge, migration-on-read or alternate evaluator/executor.",
+        "Data owns UINT64/Duration/Interval and dictionary/presence semantics; all serialization/expressions/compute/bindings project the same contracts.",
+        "Connection Manager owns transaction participants; Journal owns durable decisions and checkpoint epochs; Catalog indexes product/admin state only.",
+        "Managed delegates, registry leases and instance handles remain alive until Native disposal; exceptions become Native errors.",
+        "ASP.NET Core 10 dispatches one independent Worker per execution; React Flow persists stable graph IDs/layout with package versions; Native validates configurations."
+      ]
+    },
+    {
+      "round": 3,
+      "scope": "Crash recovery and delivery scenarios",
+      "result": "Closed",
+      "decisions": [
+        "Acquire and capability-check every participant before effects; durably identify participants before prepare; persist commit/rollback decision before phase-two commands.",
+        "Recovery follows the durable decision; no source cursor acknowledgement before ordinary/error destinations, transaction outcome and epoch state are jointly confirmed.",
+        "Plain REST unknown submission is RecoveryRequired and cannot be automatically replayed; explicit idempotent/receipt modes declare only proven guarantees.",
+        "Compatible schema change drains at the epoch barrier, maps stable field identities, rebinds affected components and persists schema version; incompatible changes preserve position/event without confirming cursor.",
+        "File append/overwrite uses controlled generations, original checksum and atomic publish; recovery checks publication facts rather than overwriting old artifacts.",
+        "Catalog uses SQLite transactions/WAL/indexes for multi-process management; execution correctness remains in Journal, not service memory or Catalog inference.",
+        "Durable queued jobs survive restart; concurrent limits and retry bounds are enforced, and unknown commit disables automatic retry.",
+        "Concentrated compile/test gates follow coherent implementation. Windows and Linux are required; missing acceptance resources remain Blocked."
+      ]
     }
   ]
 }

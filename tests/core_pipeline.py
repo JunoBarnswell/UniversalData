@@ -5,12 +5,12 @@ with tempfile.TemporaryDirectory(prefix="ud-core-pipeline-") as folder:
     spill=root/"spill";spill.mkdir()
     source=root/"source.ndjson"
     source.write_text('\n'.join(json.dumps(r) for r in [dict(x=3,t=" a "),dict(x=None,t=" b "),dict(x=1,t=" c "),dict(x=2,t=" d ")])+"\n")
-    package={"version":9,"id":"core-pipeline","variables":{"rows":{"type":"int64","default":0}},
+    package={"version":10,"id":"core-pipeline","variables":{"rows":{"type":"int64","default":0}},
         "policy":{"buffers":{"connection":"spill","residentBytes":1,"spillBytes":10000000,"maxBlocks":256}},
         "connections":[dict(id=id,driver="file",resource=str(path)) for id,path in [("in",source),("ok",root/"ok.csv"),("bad",root/"bad.ndjson"),("spill",spill)]],
         "controlFlow":{"tasks":[dict(id="flow",kind="dataFlow",config=dict(pipeline="p"))],"constraints":[]},
         "dataFlows":[{"id":"p","components":[
-            dict(id="source",component="file.ndjson.source",config=dict(connection="in",schema={"version":9,"fields":[dict(name="x",type="int64",nullable=True),dict(name="t",type="utf8",nullable=False)]},batchSize=1)),
+            dict(id="source",component="file.ndjson.source",config=dict(connection="in",schema={"version":10,"fields":[dict(name="x",type="int64",nullable=True),dict(name="t",type="utf8",nullable=False)]},batchSize=1)),
             dict(id="quality",component="quality",config={"errorPolicy":"redirect","includeInput":True,"rules":[dict(id="required",kind="notNull",columns=["x"])]}),
             dict(id="chars",component="characterMap",config={"columns":[dict(column="t",function="trim")]}),
             dict(id="copy",component="copyColumn",config={"columns":[dict(column="t",name="copied")]}),

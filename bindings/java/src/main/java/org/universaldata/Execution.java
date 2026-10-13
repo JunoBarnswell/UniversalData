@@ -29,6 +29,7 @@ public final class Execution implements AutoCloseable {
     public void start() { control();synchronized(controller) { lifetime.readLock().lock();try { open();nativeExecute(handle,true); }finally { lifetime.readLock().unlock(); } } }
     public boolean await(int timeout) { control();if(timeout<0)throw new IllegalArgumentException("Negative timeout");synchronized(controller) { lifetime.readLock().lock();try { open();return nativeWait(handle,timeout); }finally { lifetime.readLock().unlock(); } } }
     public void cancel() { lifetime.readLock().lock();try { if(handle!=0)nativeCancel(handle); }finally { lifetime.readLock().unlock(); } }
+    public String id() { lifetime.readLock().lock(); try { open(); return nativeId(handle); } finally { lifetime.readLock().unlock(); } }
     public Metrics metrics() {
         lifetime.readLock().lock();try { open();long[] m=nativeMetrics(handle);return new Metrics(State.values()[(int)m[0]],StatusCode.fromNumber((int)m[1]),m[2],m[3],m[4],m[5],m[6],m[7],m[8],m[9],m[10],m[11],m[12],m[13],m[14],m[15],m[16],m[17],m[18],m[19],m[20],m[21],m[22]); }finally { lifetime.readLock().unlock(); }
     }
@@ -61,6 +62,7 @@ public final class Execution implements AutoCloseable {
     private static native void nativeExecute(long handle,boolean async);
     private static native boolean nativeWait(long handle,int timeout);
     private static native void nativeCancel(long handle);
+    private static native String nativeId(long handle);
     private static native long[] nativeMetrics(long handle);
     private static native void nativeClose(long handle);
 }

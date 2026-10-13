@@ -1,156 +1,80 @@
 {
   "generatedFrom": "metadata/product.json",
-  "version": 9,
-  "sdkVersion": "1.5.0",
-  "abi": 9,
+  "version": 10,
+  "sdkVersion": "2.0.0",
+  "abi": 10,
   "sourceFingerprint": null,
-  "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
-  "windows": "Exempt — explicit current user instruction",
+  "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
+  "windows": "Required — complete driver build, native/language/install and platform acceptance",
   "gates": [
     {
-      "id": "windows-msvc",
-      "status": "Exempt",
-      "command": "packaging/package.ps1 -BuildDirectory build/windows; Release C17/JNI/SQLite",
-      "evidence": [],
-      "reason": "Current user requires Linux only; Windows exempt"
-    },
-    {
-      "id": "windows-native",
-      "status": "Exempt",
-      "command": "ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure",
-      "evidence": [],
-      "reason": "Current user requires Linux only; Windows exempt"
-    },
-    {
-      "id": "windows-asan",
-      "status": "Exempt",
-      "command": "ctest --test-dir build/abi4-asan-msvc -C Debug --parallel 4 --output-on-failure",
-      "evidence": [],
-      "runtimeOptions": "halt_on_error=1:abort_on_error=1",
-      "reason": "Current user requires Linux only; Windows exempt"
-    },
-    {
-      "id": "sqlite-transactions-recovery",
-      "status": "Pending",
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "id": "linux-full-build",
+      "status": "NotRun",
+      "scope": "Linux complete dependency/driver profile",
       "evidence": []
     },
     {
-      "id": "memory-quota-spill-concurrency",
-      "status": "Pending",
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "id": "windows-full-build",
+      "status": "NotRun",
+      "scope": "Windows complete dependency/driver profile",
+      "evidence": []
+    },
+    {
+      "id": "correctness",
+      "status": "NotRun",
+      "scope": "Types/schema/mixed records/execution identity",
+      "evidence": []
+    },
+    {
+      "id": "recovery",
+      "status": "NotRun",
+      "scope": "Real killed-process transaction/epoch/file/CDC recovery",
+      "evidence": []
+    },
+    {
+      "id": "external-integration",
+      "status": "NotRun",
+      "scope": "All real drivers/protocol resources; missing environments Blocked",
       "evidence": []
     },
     {
       "id": "language-parity",
-      "status": "Pending",
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "status": "NotRun",
+      "scope": "C/.NET/Java public contract parity",
       "evidence": []
     },
     {
-      "id": "installed-c",
-      "status": "Pending",
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "id": "web",
+      "status": "NotRun",
+      "scope": "Typecheck/lint/build/real browser flow",
       "evidence": []
     },
     {
-      "id": "installed-nuget",
-      "status": "Pending",
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "id": "performance",
+      "status": "NotRun",
+      "scope": "1M facts/100k lookup keys/100k errors, all six workloads",
       "evidence": []
     },
     {
-      "id": "installed-maven",
-      "status": "Pending",
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "id": "installed-consumers",
+      "status": "NotRun",
+      "scope": "Independent C/.NET/Java/CLI/Web Windows/Linux release consumers",
       "evidence": []
     },
     {
       "id": "source-contracts",
-      "status": "Pending",
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "status": "NotRun",
+      "scope": "Single ownership path; unused code removed; versioned product model",
       "evidence": []
     },
     {
-      "id": "windows-release",
-      "status": "Exempt",
-      "command": "packaging/package.ps1; ctest -C Release",
-      "evidence": [],
-      "reason": "Current user requires Linux only; Windows exempt"
-    },
-    {
-      "id": "distributable-bundle",
-      "status": "Pending",
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "id": "release-integrity",
+      "status": "NotRun",
+      "scope": "Capability inventory, dependency closure, checksums and same-source versions",
       "evidence": []
-    },
-    {
-      "id": "block-store-ownership",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
-    },
-    {
-      "id": "pipeline-tree-parallelism",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
-    },
-    {
-      "id": "journal-indexed-recovery",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
-    },
-    {
-      "id": "task-facts",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
-    },
-    {
-      "id": "single-product-model",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
-    },
-    {
-      "id": "linux-release",
-      "name": "Linux Release native/JNI build",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
-    },
-    {
-      "id": "linux-native",
-      "name": "Linux native end-to-end cases",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
-    },
-    {
-      "id": "linux-sanitizers",
-      "name": "Linux ASan/UBSan",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
-    },
-    {
-      "id": "four-engines",
-      "name": "Four-engine completion scheduling, partition semantics and transactions",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
-    },
-    {
-      "id": "million-row-benchmark",
-      "name": "1/2/4/8/16 workers, million rows and spill",
-      "status": "Pending",
-      "evidence": [],
-      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     }
   ],
   "delivery": {
-    "status": "Pending ABI 8 Linux build and installed consumers"
+    "status": "NotRun — ABI 10 coherent implementation precedes concentrated build and acceptance; original artifacts retained"
   }
 }

@@ -159,8 +159,17 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     if (!options->edge_capacity || options->edge_capacity > 65536 || !options->max_batch_rows ||
         options->max_batch_rows > 65536 || !options->max_depth || options->max_depth > 64 ||
         options->resume < 0 || options->resume > 1 ||
-        (options->resume && !options->state_directory.length) || options->max_concurrency > 64)
+        (options->resume && (!options->state_directory.length || !options->execution_id.length)) ||
+        options->execution_id.length > 255 ||
+        (options->execution_id.length &&
+         (!options->execution_id.data ||
+          !ud_utf8_valid(options->execution_id.data, options->execution_id.length))) ||
+        options->max_concurrency > 64)
         return UD_INVALID;
+    for (uint32_t i = 0; i < options->execution_id.length; i++)
+        if ((unsigned char)options->execution_id.data[i] < 32 ||
+            (unsigned char)options->execution_id.data[i] == 127)
+            return UD_INVALID;
     ud_context *ctx = NULL;
     UD_TRY(ud_context_create(&options->context, &ctx));
     ud_execution *e = ud_alloc(ctx, sizeof(*e));
@@ -224,8 +233,27 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     ud_status s = ud_executor_create(ctx, e->options.max_concurrency, &e->executor);
     if (!s)
         s = copy_string(ctx, options->tenant, &e->options.tenant);
-    if (!s)
+    if (!s && options->execution_id.length)
         s = copy_string(ctx, options->execution_id, &e->options.execution_id);
+    else if (!s) {
+        uint8_t random[16];
+        s = ud_random_bytes(ctx, random, sizeof(random));
+        if (!s) {
+            random[6] = (uint8_t)((random[6] & 15) | 64);
+            random[8] = (uint8_t)((random[8] & 63) | 128);
+            static const char digits[] = "0123456789abcdef";
+            char id[37];
+            uint32_t at = 0;
+            for (uint32_t i = 0; i < 16; i++) {
+                if (i == 4 || i == 6 || i == 8 || i == 10)
+                    id[at++] = '-';
+                id[at++] = digits[random[i] >> 4];
+                id[at++] = digits[random[i] & 15];
+            }
+            id[at] = 0;
+            s = copy_string(ctx, (ud_string){id, at}, &e->options.execution_id);
+        }
+    }
     if (!s)
         s = copy_string(ctx, options->state_directory, &e->options.state_directory);
     if (!s)
@@ -305,6 +333,12 @@ ud_status ud_execution_create(const ud_package *p, const ud_execution_options *o
     ud_status s = ud_execution_create_json((ud_string){json, n}, o, out);
     ud_free(json);
     return s;
+}
+ud_status ud_execution_id(const ud_execution *e, ud_string *out) {
+    if (!e || !out)
+        return UD_INVALID;
+    *out = e->options.execution_id;
+    return UD_OK;
 }
 ud_status ud_activation_run_definition(ud_activation *e) {
     const ud_json *handlers = ud_member(e->package->document, "eventHandlers");
@@ -824,6 +858,7 @@ ud_status ud_schema_report(ud_activation *a, ud_string diff, ud_status result) {
 }
 
 ud_status ud_execution_component_catalog(ud_execution *e, char **out, uint32_t *length) {
-    if (!e) return UD_INVALID;
+    if (!e)
+        return UD_INVALID;
     return ud_registry_describe(e->registry, out, length);
 }

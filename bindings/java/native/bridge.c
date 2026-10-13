@@ -442,6 +442,18 @@ JNIEXPORT void JNICALL Java_org_universaldata_Execution_nativeExecute(JNIEnv *e,
     if (s)
         fail(e, s, ud_status_name(s));
 }
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeId(JNIEnv *e, jclass cls,
+                                                                    jlong handle) {
+    (void)cls;
+    java_execution *j = (java_execution *)(intptr_t)handle;
+    ud_string id = {0};
+    ud_status s = ud_execution_id(j->execution, &id);
+    if (s) {
+        fail(e, s, ud_status_name(s));
+        return NULL;
+    }
+    return utf8(e, id.data);
+}
 JNIEXPORT jboolean JNICALL Java_org_universaldata_Execution_nativeWait(JNIEnv *e, jclass cls,
                                                                        jlong handle, jint timeout) {
     (void)cls;

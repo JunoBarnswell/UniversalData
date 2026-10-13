@@ -82,6 +82,11 @@ public sealed class Execution : IDisposable
     private static void Control()
     { if (callbackDepth != 0) throw new InvalidOperationException("Execution callbacks cannot start, wait or dispose an execution"); }
 
+    public string Id
+    {
+        get { lock (controller) { Open(); Check(Native.ud_execution_id(execution, out var value)); return Text(value); } }
+    }
+
     public void Execute()
     { Control(); lock (controller) { Open(); Check(Native.ud_execution_execute(execution)); } }
 
@@ -173,6 +178,7 @@ internal static partial class Native
     { internal uint Size, Abi; internal int State, Result; internal ulong Input, Output, Rejected, Batches, Queued, HighWater, Memory, Executed, Durable, Recovery, Resumed, Spill, Trees, TreeHighWater, WorkerHighWater, Committed, Acknowledged, Errors, ErrorRows, CommittedErrors, AcknowledgedErrors; }
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_create_json(StringValue json, ref ExecutionOptions options, out IntPtr execution);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_id(ExecutionHandle execution, out StringValue id);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_execute(ExecutionHandle execution);
 

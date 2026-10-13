@@ -1,1505 +1,1002 @@
 {
   "generatedFrom": "metadata/product.json",
-  "goalVersion": 9,
-  "completionRule": "Current core/infrastructure gates are required; extensions retain their actual status.",
+  "goalVersion": 10,
+  "completionRule": "All 50 applicable items require current source and behavior evidence; ETL-039/040 are NotApplicable. Missing environments are Blocked.",
   "automaticMergeOrReleaseAuthorized": false,
   "items": [
     {
-      "id": "G00",
-      "phase": 0,
-      "name": "产品/架构/SSIS 证据及破坏性矩阵",
+      "id": "ETL-001",
+      "phase": 4,
+      "name": "Complete product dependency closure",
       "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "设计文件无矛盾；真实源码职责和官方证据可追溯；所有权/迁移标准明确",
-      "implementation": [
-        "docs/product",
-        "docs/architecture",
-        "docs/adr",
-        "docs/roadmap.md"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
+      "code": "Planned",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G01",
-      "phase": 1,
-      "name": "唯一执行器和主版本切换",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "仅 Package/Execution 启停；无 Job/Dag/Run/桥接导出；全部消费端 current ABI",
       "implementation": [
-        "include/ud/package.h",
-        "engines/package",
-        "docs/breaking-changes.md"
+        "CMakeLists.txt",
+        "plugins/CMakeLists.txt"
       ],
+      "trigger": "A complete product build is requested with a missing dependency.",
+      "baselineFinding": "Drivers, HTTP and Arrow file support currently default OFF; full product profile is absent.",
+      "acceptance": "A complete product build is requested with a missing dependency. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-002",
+      "phase": 4,
+      "name": "SQL parameter arrays and truthful bulk capabilities",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G02",
-      "phase": 1,
-      "name": "统一 Schema 和列 identity/lineage",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "重命名/派生/Join/Arrow/Wire 保持或明确生成列 identity 和来源；ETL/Query 使用相同字段规范",
       "implementation": [
-        "components/data",
-        "include/ud/data.h"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G03",
-      "phase": 1,
-      "name": "sealed Batch/Buffer 所有权",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "扇出无悬空引用；修改 sealed Buffer 拒绝；同步共享、异步独立；配额/销毁/Arrow 释放正确",
-      "implementation": [
-        "components/data/src/columnar.c",
-        "tests/architecture_foundation.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G04",
-      "phase": 1,
-      "name": "统一类型/转换/NULL/Compare/Hash",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "Decimal/UTC/NUL/嵌套/NaN/NULL 在表达式、ETL、Query、spill 中一致；同值 hash 相同",
-      "implementation": [
-        "components/data",
-        "components/compute"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true
-    },
-    {
-      "id": "G05",
-      "phase": 1,
-      "name": "统一表达式 AST/Binder/函数 Registry",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "参数/变量/列、类型推断、常量折叠、向量评估、函数目录与权限上下文；Control/Derived/Split 共用语义",
-      "implementation": [
-        "components/expression",
-        "include/ud/expression.h"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G06",
-      "phase": 1,
-      "name": "唯一状态/错误/诊断模型",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "状态迁移合法；END 不冒充成功；CommitUnknown/取消/失败分类一致；终态结果可并发安全读取",
-      "implementation": [
-        "components/execution/src/state.c",
-        "engines/package/runtime.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G07",
-      "phase": 1,
-      "name": "统一组件/插件 Registry",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "Task/Source/Transform/Destination/Connection/Enumerator/LogProvider 均走同一版本化注册和卸载租用规则",
-      "implementation": [
-        "components/contracts",
-        "include/ud/component.h",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true
-    },
-    {
-      "id": "G08",
-      "phase": 2,
-      "name": "Project/Package/Environment 与作用域",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "Project→Package→Container→Task 遮蔽和只读参数规则；共享连接/环境绑定；一个 JSON 产品模型",
-      "implementation": [
-        "include/ud/project.h",
-        "engines/package/project.c",
-        "engines/package/model.c",
-        "connectors/manager.c",
-        "catalog/deployment.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G09",
-      "phase": 2,
-      "name": "Package 定义/绑定/运行生命周期",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "定义严格版本化；未知成员/依赖/端口/能力提前拒绝；一个执行资源上下文",
-      "implementation": [
-        "engines/package/model.c",
-        "engines/package/runtime.c",
-        "tests/package_execution.py"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G10",
-      "phase": 2,
-      "name": "Sequence/For/Foreach 控制流",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "嵌套/局部作用域、循环变量/边界/上限、退出/取消/错误传播均实际验证",
-      "implementation": [
-        "engines/control-flow/control.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G11",
-      "phase": 2,
-      "name": "Success/Failure/Completion + expression + AND/OR",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "不同约束组合、Skipped 前驱、失败分支、循环体按明确控制语义执行",
-      "implementation": [
-        "engines/control-flow/control.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G12",
-      "phase": 2,
-      "name": "受限并发/任务超时/事件处理器",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "任务预算与 Pipeline 预算共享；超时取消；处理器不抹除原错误；多个事件的防重入",
-      "implementation": [
-        "engines/control-flow",
-        "engines/package"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G13",
-      "phase": 2,
-      "name": "DataFlow Task",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "通过正式 Pipeline 接口承载独立数据流，不调用旧 executor",
-      "implementation": [
-        "engines/control-flow/control.c",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G14",
-      "phase": 2,
-      "name": "Execute SQL Task",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "SQL Task 与 Source/Sink 使用同一 Manager；参数化、失败分类和恢复副作用清晰",
-      "implementation": [
-        "engines/control-flow",
-        "engines/data-flow/builtins.c",
-        "components/contracts"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G15",
-      "phase": 2,
-      "name": "File System Task",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "明确操作范围/权限策略；路径/覆盖/失败/原子性与取消实际验证",
-      "implementation": [
-        "engines/control-flow/filesystem.c",
-        "connectors/manager.c",
-        "components/foundation/src/platform.c",
-        "tests/filesystem_task.c",
-        "tests/filesystem_task.py"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G16",
-      "phase": 2,
-      "name": "Execute Process Task",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "默认禁用、显式宿主授权；退出码/超时/取消/资源清理；不承诺权限沙箱",
-      "implementation": [
-        "engines/control-flow/process.c",
-        "connectors/manager.c",
-        "include/ud/connector.h",
-        "tests/process_task.c",
-        "tests/process_task.py"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G17",
-      "phase": 2,
-      "name": "Execute Package Task",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "真正子 Package 的参数/作用域/错误/取消/资源传递；非另一运行时或 Sequence 别名",
-      "implementation": [
-        "engines/package/child.c",
-        "engines/package/runtime.c",
-        "engines/control-flow/control.c",
-        "tests/child_package.c",
-        "tests/child_package.py"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G18",
-      "phase": 2,
-      "name": "HTTP Task",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "同一连接和宿主授权；TLS/超时/取消/HTTP 失败/重试边界",
-      "implementation": [
-        "engines/control-flow/http.c",
-        "connectors/manager.c",
-        "engines/data-flow/builtins.c",
+        "plugins/odbc.c",
         "include/ud/connector.h"
       ],
+      "trigger": "A bulk destination binds a driver or requests a native loading guarantee.",
+      "baselineFinding": "ODBC is the sole SQL Server path; array batching and native BCP must be distinguished.",
+      "acceptance": "A bulk destination binds a driver or requests a native loading guarantee. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": false,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
+      "evidence": []
     },
     {
-      "id": "G19",
+      "id": "ETL-003",
+      "phase": 3,
+      "name": "Native execution identity",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/package/runtime.c",
+        "include/ud/package.h"
+      ],
+      "trigger": "A new execution omits its ID or resume omits the original ID.",
+      "baselineFinding": "runtime.c copies an empty options.execution_id; CLI substitutes constant cli; no identity getter exists.",
+      "acceptance": "A new execution omits its ID or resume omits the original ID. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "Unified current contract implementation exists; concentrated ABI 10 compile/behavior validation has not run."
+    },
+    {
+      "id": "ETL-004",
       "phase": 2,
-      "name": "Check/Data Profiling Task",
+      "name": "Source record error ports",
       "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "实际统计和规则结果、失败和资源预算；不以空检查伪装完成",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
       "implementation": [
-        "include/ud/profile.h",
-        "components/compute/src/profile.c",
-        "engines/control-flow/profile.c"
+        "components/data/src/csv.c",
+        "components/data/src/json.c",
+        "engines/data-flow/source.c"
       ],
+      "trigger": "A recoverable CSV/NDJSON/SQL record contains invalid field content.",
+      "baselineFinding": "Data cursors return field parse errors and SQL source has no unified per-record error channel.",
+      "acceptance": "A recoverable CSV/NDJSON/SQL record contains invalid field content. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
+      "evidence": []
     },
     {
-      "id": "G20",
+      "id": "ETL-005",
       "phase": 2,
-      "name": "Native Custom Task",
+      "name": "Expression transform row errors",
       "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "公开版本化回调/生命周期/默认授权/不能访问私有结构，插件卸载和错误传播",
-      "implementation": [
-        "include/ud/component.h",
-        "include/ud/plugin.h",
-        "components/contracts/src/registry.c",
-        "components/contracts/src/plugin.c",
-        "examples/plugins/custom_task.c",
-        "engines/control-flow/control.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "code": "Planned",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G21",
-      "phase": 3,
-      "name": "组件 metadata/设计时与运行时生命周期",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "端口/外部列/配置 schema/权限/错误输出/资源和版本 metadata 可检索；Configure 无副作用，失败反序 Dispose",
       "implementation": [
-        "include/ud/component.h",
-        "engines/data-flow"
+        "engines/data-flow/row_transform.c",
+        "components/expression"
       ],
+      "trigger": "A Derived Column or Conditional Split expression fails for one record.",
+      "baselineFinding": "Expression row evaluation can fail an activation; recoverable row attribution must share Data error metadata.",
+      "acceptance": "A Derived Column or Conditional Split expression fails for one record. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true
+      "evidence": []
     },
     {
-      "id": "G22",
-      "phase": 3,
-      "name": "多输入/输出 Path/End/backpressure",
+      "id": "ETL-006",
+      "phase": 2,
+      "name": "Destination isolation and error barrier",
       "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "多 Source/Join/Union/Multicast/Error Output 同一 scheduler；公平轮询；队列上界和每端口 End 契约",
-      "implementation": [
-        "engines/data-flow/pipeline.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
+      "code": "Planned",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G23",
-      "phase": 3,
-      "name": "Execution Trees/Buffer Pool/资源调度",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "同步/异步树和两级并发共享预算；CPU/队列/内存/Spill 上限，所有取消路径释放资源",
       "implementation": [
-        "engines/data-flow",
-        "components/execution"
+        "engines/data-flow/destination.c",
+        "engines/data-flow/error.c"
       ],
+      "trigger": "Normal and rejected rows share a batch or a SQL statement fails for a record.",
+      "baselineFinding": "Destination ordinary failures stop flow; both error and regular target confirmation must remain one barrier.",
+      "acceptance": "Normal and rejected rows share a batch or a SQL statement fails for a record. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
+      "evidence": []
+    },
+    {
+      "id": "ETL-007",
+      "phase": 1,
+      "name": "Complete unsigned integer domain",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G24",
-      "phase": 3,
-      "name": "阻塞 Sort/Aggregate/Join 的 Pipeline spill",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "不只是内存算子或外部文件 API；管道状态、分区、偏斜、稳定排序和恢复受统一预算",
       "implementation": [
-        "engines/data-flow/builtins.c",
-        "components/compute"
+        "include/ud/data.h",
+        "components/data",
+        "bindings"
       ],
+      "trigger": "A UINT64 value exceeds INT64_MAX.",
+      "baselineFinding": "ud_type has no UINT64 and all integral scalar storage uses signed int64.",
+      "acceptance": "A UINT64 value exceeds INT64_MAX. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true
+      "evidence": []
     },
     {
-      "id": "G25",
-      "phase": 4,
-      "name": "逻辑 Connection Manager 与物理 Driver",
+      "id": "ETL-008",
+      "phase": 1,
+      "name": "Duration and calendar Interval",
       "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "定义/作用域/凭据引用/授权/租用/能力/释放统一；Source/Sink/SQL Task 无全局密钥旁路",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/data.h",
+        "components/data",
+        "plugins"
+      ],
+      "trigger": "A negative/long SQL TIME or month/day/microsecond interval is read.",
+      "baselineFinding": "TIME64 is microseconds since midnight; negative/long duration and calendar interval have no domain.",
+      "acceptance": "A negative/long SQL TIME or month/day/microsecond interval is read. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-009",
+      "phase": 1,
+      "name": "JSON and dictionary fidelity",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/mysql.c",
+        "plugins/mariadb.c",
+        "components/data"
+      ],
+      "trigger": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata.",
+      "baselineFinding": "No schema dictionary annotation exists in ud_field.",
+      "acceptance": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-010",
+      "phase": 3,
+      "name": "CDC TRUNCATE semantics",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/cdc.c",
+        "include/ud/connector.h"
+      ],
+      "trigger": "A source transaction truncates a captured table.",
+      "baselineFinding": "ud_cdc_event has no TRUNCATE event.",
+      "acceptance": "A source transaction truncates a captured table. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-011",
+      "phase": 3,
+      "name": "Recoverable transaction participants",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
       "implementation": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c"
       ],
+      "trigger": "A required transaction includes multiple connections.",
+      "baselineFinding": "ud_transaction owns a single lease; required transaction rejects another connection.",
+      "acceptance": "A required transaction includes multiple connections. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G26",
-      "phase": 4,
-      "name": "CSV Source/Destination",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "严格 CSV、Schema/null marker/UTF8/跨行、源位置、目标发布，全部经 Manager",
-      "implementation": [
-        "components/data/src/csv.c",
-        "engines/data-flow/builtins.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G27",
-      "phase": 4,
-      "name": "JSON/NDJSON Source/Destination",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "严格 JSON、递归 Schema/UTC/Decimal、输入错误、分页/恢复/原子文件提交",
-      "implementation": [
-        "components/data/src/json.c",
-        "engines/data-flow/builtins.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G28",
-      "phase": 4,
-      "name": "SQLite Source/Destination",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "有界游标、能力/权限、Append/Upsert/Delete、schema/事务/receipt 和 Pipeline 恢复",
-      "implementation": [
-        "plugins/sqlite.c",
-        "tests/package_sql.py"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G29",
-      "phase": 4,
-      "name": "PostgreSQL Source/Destination",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "真实 PostgreSQL 的类型、游标、权限、事务/回执、增量/恢复，含 Package 路径",
-      "implementation": [
-        "plugins/postgresql.c",
-        "engines/data-flow/builtins.c"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "libpq >=17 for bounded nonblocking query/cancellation",
-        "Disposable local PostgreSQL >=17 integration fixture"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": false,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G30",
-      "phase": 4,
-      "name": "Data Conversion",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "统一显式转换、精度/舍入/NULL/非法值和错误输出",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G31",
-      "phase": 4,
-      "name": "Derived Column",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "统一 AST/函数、保留原列、精度/NULL/lineage 和错误输出",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G32",
-      "phase": 4,
-      "name": "Copy Column",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "identity/lineage 规则、Buffer 共享正确",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G33",
-      "phase": 4,
-      "name": "Character Map",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "字符策略明确、Unicode/ASCII 边界和配置校验",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G34",
-      "phase": 4,
-      "name": "Conditional Split",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "多条件、默认输出、三值逻辑、命中规则和生命周期",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G35",
-      "phase": 4,
-      "name": "Multicast",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "同 Buffer 引用多输出，无深复制语义差异，背压/取消/释放",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G36",
-      "phase": 4,
-      "name": "Union All",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "多输入同 Schema、End 顺序、公平轮询、不重复或丢行",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G37",
-      "phase": 4,
-      "name": "Merge/Merge Join",
-      "priority": "P0",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "有序输入契约、重复键/NULL、偏斜和 End/背压",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G38",
-      "phase": 4,
-      "name": "Aggregate",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "统一 NULL/Decimal/分组，async/spill 和状态恢复",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G39",
-      "phase": 4,
-      "name": "Sort",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "统一 Compare、稳定顺序、NULL/NaN、async/spill 和状态恢复",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G40",
-      "phase": 4,
-      "name": "Lookup/Cache Transform",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "缓存/缺失/重复键策略和一致类型、配额/错误输出",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G41",
-      "phase": 4,
-      "name": "Pivot/Unpivot",
-      "priority": "P0",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "Schema/重复/聚合/NULL/资源契约和组合行为",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G42",
-      "phase": 4,
-      "name": "Error Output/Reject/Quarantine",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "质量错误在同一 Pipeline Path 和提交链路；隔离失败不推进状态",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G43",
-      "phase": 4,
-      "name": "Null/Unique/Range/Regex/Reference",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "统一规则状态与跨批次验证；失败分类；正常/错误输出",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G44",
-      "phase": 4,
-      "name": "Row Count/Audit",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "可核对输入/输出/拒绝/隔离和提交计数，不记录秘密",
-      "implementation": [
-        "engines/data-flow",
-        "components/compute",
-        "plugins"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G45",
-      "phase": 5,
-      "name": "统一任务/批次 Checkpoint Journal",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "一个版本化、校验、独占、原子发布日志；任务/循环/变量/源位置/算子/目标回执记录",
-      "implementation": [
-        "engines/package/checkpoint.c"
-      ],
-      "dependsOn": [
-        "G25"
-      ],
-      "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G46",
-      "phase": 5,
-      "name": "CommitUnknown/事务和故障恢复",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "真实进程终止：提交前/后/日志前/后；不推进未确认源；回执核实；无伪成功/重复写/资源泄漏",
-      "implementation": [
-        "engines/package",
-        "connectors",
-        "plugins"
-      ],
-      "dependsOn": [
-        "G45"
-      ],
-      "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G47",
-      "phase": 5,
-      "name": "Catalog/Deployment/Environment/Version",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "可嵌入可选持久实现或 repository ABI；版本、环境、参数、发布、运行历史分离，非 Web 服务",
-      "implementation": [
-        "catalog",
-        "include/ud/catalog.h"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true,
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "G48",
-      "phase": 5,
-      "name": "结构化 Events/Logs/Trace/Metrics/Lineage/Audit",
-      "priority": "P0",
-      "code": "Partial",
-      "verification": "Outside R1–R5 delivery; retain actual Partial status",
-      "acceptance": "Package/Execution/Task/Pipeline/Component ID 完整；行数/重试/spill/等待/峰值；秘密不进入日志",
-      "implementation": [
-        "engines/package",
-        "catalog"
-      ],
-      "dependsOn": [
-        "G02"
-      ],
-      "externalPrerequisites": [],
-      "progress": "No new completion claim in this delivery; Partial scope retained.",
-      "requiredThisDelivery": true,
       "evidence": []
     },
     {
-      "id": "G49",
-      "phase": 6,
-      "name": "薄 C/.NET/Java Package/Execution 绑定",
+      "id": "ETL-012",
+      "phase": 3,
+      "name": "Durable coordinator decisions",
       "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "仅 ABI 投影；无旧类/业务引擎；生命周期/编码/回调/错误/取消/并发一致",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
       "implementation": [
-        "bindings",
-        "hosts",
-        "examples"
+        "engines/package/checkpoint.c",
+        "components/execution/src/journal.c"
       ],
+      "trigger": "The process stops before/after prepare, decision or participant commit.",
+      "baselineFinding": "Required transactions reject a state directory; no durable prepare/decision/recover protocol exists.",
+      "acceptance": "The process stops before/after prepare, decision or participant commit. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-013",
+      "phase": 4,
+      "name": "PostgreSQL COPY loading",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      "implementation": [
+        "plugins/postgresql.c"
+      ],
+      "trigger": "A high-volume PostgreSQL destination is bound.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A high-volume PostgreSQL destination is bound. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-014",
+      "phase": 4,
+      "name": "MySQL and MariaDB native loading",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/mysql.c",
+        "plugins/mariadb.c"
+      ],
+      "trigger": "A native bulk destination receives controlled input bytes.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A native bulk destination receives controlled input bytes. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-015",
+      "phase": 4,
+      "name": "SQL Server BCP loading",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/odbc.c"
+      ],
+      "trigger": "A SQL Server driver declares the native BCP loading capability.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A SQL Server driver declares the native BCP loading capability. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-016",
+      "phase": 4,
+      "name": "OCI staged Direct Path loading",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/oracle_oci.c"
+      ],
+      "trigger": "Direct Path independently commits staging before transactional business writes.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "Direct Path independently commits staging before transactional business writes. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-017",
+      "phase": 4,
+      "name": "Enterprise file layouts and publication",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "components/data/src/csv.c",
+        "engines/data-flow/destination.c",
+        "engines/package/checkpoint.c"
+      ],
+      "trigger": "Encoding/layout settings or append/overwrite requires restart-safe publication.",
+      "baselineFinding": "Publication facts and file checksums exist but enterprise format/append generation rules are incomplete.",
+      "acceptance": "Encoding/layout settings or append/overwrite requires restart-safe publication. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-018",
+      "phase": 3,
+      "name": "Incremental overlap target capability proof",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/binding.c",
+        "engines/data-flow/source.c"
+      ],
+      "trigger": "An overlapping incremental source binds to an idempotent/receipted destination.",
+      "baselineFinding": "Incremental binding currently depends on SQL upsert configuration rather than an explicit target guarantee.",
+      "acceptance": "An overlapping incremental source binds to an idempotent/receipted destination. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-019",
+      "phase": 1,
+      "name": "Unified file and database discovery",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/source.c",
+        "components/data/src/schema_json.c",
+        "connectors/manager.c"
+      ],
+      "trigger": "A designer/SDK discovers a file or database schema.",
+      "baselineFinding": "Database metadata maps to Data Schema; file inference is not unified.",
+      "acceptance": "A designer/SDK discovers a file or database schema. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-020",
+      "phase": 6,
+      "name": "One SDK and protocol family",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "metadata/product.json",
+        "scripts/product_model.py",
+        "include/ud/version.h"
+      ],
+      "trigger": "A package/plugin/wire/checkpoint built for the old epoch is consumed.",
+      "baselineFinding": "The baseline product authority reports SDK 1.5.0 / ABI 9; old document versions are strictly checked.",
+      "acceptance": "A package/plugin/wire/checkpoint built for the old epoch is consumed. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "progress": "Unified current contract implementation exists; concentrated ABI 10 compile/behavior validation has not run."
+    },
+    {
+      "id": "ETL-021",
+      "phase": 6,
+      "name": "SQLite indexed Native Catalog",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog/catalog.c",
+        "include/ud/catalog.h"
+      ],
+      "trigger": "Catalog versions, executions or events are queried with concurrent workers.",
+      "baselineFinding": "ud_catalog_list enumerates every .udc file, parses and validates all envelopes.",
+      "acceptance": "Catalog versions, executions or events are queried with concurrent workers. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-022",
+      "phase": 6,
+      "name": "Durable execution logs",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog/history.c",
+        "engines/package/runtime.c"
+      ],
+      "trigger": "An execution produces task/component/error events or logs are paginated.",
+      "baselineFinding": "Native observer events are versioned/sequenced but persistent indexed query/retention is absent.",
+      "acceptance": "An execution produces task/component/error events or logs are paginated. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-023",
+      "phase": 6,
+      "name": "Deployment and execution management",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog/deployment.c",
+        "hosts"
+      ],
+      "trigger": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered.",
+      "baselineFinding": "Immutable deployment binding exists; process manager and enable/disable state are absent.",
+      "acceptance": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-024",
+      "phase": 5,
+      "name": "CLI resource policy",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "hosts/cli.c",
+        "connectors/manager.c"
+      ],
+      "trigger": "CLI resolves authorized resources and credential references.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "CLI resolves authorized resources and credential references. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-025",
+      "phase": 1,
+      "name": "Online Schema Change barrier",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/pipeline.c",
+        "components/data/src/schema_evolution.c"
+      ],
+      "trigger": "A compatible/incompatible runtime schema event reaches an epoch boundary.",
+      "baselineFinding": "Pipeline routes SCHEMA_CHANGE but returns incompatible instead of rebinding at a barrier.",
+      "acceptance": "A compatible/incompatible runtime schema event reaches an epoch boundary. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-026",
+      "phase": 1,
+      "name": "CDC field presence and key images",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/connector.h",
+        "plugins/postgresql.c",
+        "plugins/mysql.c",
+        "plugins/mariadb.c"
+      ],
+      "trigger": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded.",
+      "baselineFinding": "CDC batches carry before/after values but no explicit field-presence or key-image contract.",
+      "acceptance": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-027",
+      "phase": 3,
+      "name": "Plain REST and receipt guarantees",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors/rest.c",
+        "engines/data-flow/destination.c"
+      ],
+      "trigger": "A normal HTTP response is lost after the server may have committed.",
+      "baselineFinding": "REST destination requires receiptUrl, so plain response acknowledgement is unavailable.",
+      "acceptance": "A normal HTTP response is lost after the server may have committed. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-028",
+      "phase": 5,
+      "name": "Row SQL command parameter binding",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/sql_task.c",
+        "include/ud/connector.h"
+      ],
+      "trigger": "Each input row invokes a parameterized external SQL command.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "Each input row invokes a parameterized external SQL command. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-029",
+      "phase": 5,
+      "name": "Public managed Registry and native callback ownership",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "bindings/dotnet/UniversalData",
+        "include/ud/component.h"
+      ],
+      "trigger": "A managed component/task is registered and an exception escapes its callback.",
+      "baselineFinding": ".NET ExecutionOptions carries registry/observer pointers internally but public APIs do not expose them.",
+      "acceptance": "A managed component/task is registered and an exception escapes its callback. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-030",
+      "phase": 5,
+      "name": "Deployment-compiled C# scripts",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "bindings/dotnet/UniversalData",
+        "hosts"
+      ],
+      "trigger": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry.",
+      "baselineFinding": "No common managed deployment assembly loader exists for Native hosts.",
+      "acceptance": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-031",
+      "phase": 5,
+      "name": "Balanced batch dispatch",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/transforms.c"
+      ],
+      "trigger": "A batch is distributed to exactly one output while Multicast retains replication.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A batch is distributed to exactly one output while Multicast retains replication. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-032",
+      "phase": 5,
+      "name": "Import and Export Column",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow",
+        "connectors/manager.c"
+      ],
+      "trigger": "A row reads/writes an authorized external column resource.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A row reads/writes an authorized external column resource. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-033",
+      "phase": 5,
+      "name": "XML Source",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "components/data"
+      ],
+      "trigger": "XML records are parsed into the canonical Data Schema.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "XML records are parsed into the canonical Data Schema. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-034",
+      "phase": 5,
+      "name": "XPath XSLT and XSD tasks",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow",
+        "connectors/manager.c"
+      ],
+      "trigger": "An XML task applies a query, stylesheet or schema validation.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An XML task applies a query, stylesheet or schema validation. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-035",
+      "phase": 7,
+      "name": "SMTP task",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow",
+        "connectors/manager.c"
+      ],
+      "trigger": "An authorized mail connection sends a message with cancellation handling.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized mail connection sends a message with cancellation handling. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-036",
+      "phase": 7,
+      "name": "Windows WMI tasks",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow"
+      ],
+      "trigger": "A Windows host invokes a WMI query/event task.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A Windows host invokes a WMI query/event task. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-037",
+      "phase": 5,
+      "name": "FTP and SFTP resources",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "connectors/manager.c"
+      ],
+      "trigger": "An authorized remote file transfer participates in cancellation/publication.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized remote file transfer participates in cancellation/publication. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-038",
+      "phase": 7,
+      "name": "Avro IO",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "components/data"
+      ],
+      "trigger": "An Avro schema and records are imported/exported without lossy type coercion.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An Avro schema and records are imported/exported without lossy type coercion. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-039",
+      "phase": 0,
+      "name": "DQS removed by Microsoft",
+      "priority": "P1",
+      "code": "NotApplicable",
+      "verification": "NotApplicable",
+      "requiredThisDelivery": false,
+      "implementation": [],
+      "trigger": "The historical DQS capability is compared with current SSIS support.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "The historical DQS capability is compared with current SSIS support. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "officialEvidence": [
+        "https://learn.microsoft.com/en-us/sql/data-quality-services/data-quality-services?view=sql-server-ver16"
       ]
     },
     {
-      "id": "G50",
-      "phase": 6,
-      "name": "独立 C/Native/NuGet/Maven 安装消费",
+      "id": "ETL-040",
+      "phase": 0,
+      "name": "SSAS Data Mining no longer supported",
+      "priority": "P1",
+      "code": "NotApplicable",
+      "verification": "NotApplicable",
+      "requiredThisDelivery": false,
+      "implementation": [],
+      "trigger": "The historical Data Mining capability is compared with current SSIS support.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "The historical Data Mining capability is compared with current SSIS support. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "officialEvidence": [
+        "https://learn.microsoft.com/en-us/analysis-services/data-mining/data-mining-ssas"
+      ]
+    },
+    {
+      "id": "ETL-041",
+      "phase": 7,
+      "name": "SQL Server maintenance Agent and SSAS XMLA",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow",
+        "connectors/manager.c"
+      ],
+      "trigger": "A specialized database/Agent/XMLA task is deployed.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A specialized database/Agent/XMLA task is deployed. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-042",
+      "phase": 2,
+      "name": "Exact Distinct profiling with shared Compute budget",
       "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "安装后的同 ABI native/Java/.NET 组件与同 Package 实际运行；不能把纯托管包当双平台 native 发布",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "components/compute/src/profile.c",
+        "components/compute/src/stat.c"
+      ],
+      "trigger": "Profiling requires exact distinct counts under memory and spill limits.",
+      "baselineFinding": "profile.c uses approximate HLL while exact value_set is already owned by Compute.",
+      "acceptance": "Profiling requires exact distinct counts under memory and spill limits. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-043",
+      "phase": 6,
+      "name": "Durable job queue and schedules",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog",
+        "hosts"
+      ],
+      "trigger": "A timer enqueues work, service restarts or a worker fails with unknown commit.",
+      "baselineFinding": "No durable scheduler/queue exists in the Catalog.",
+      "acceptance": "A timer enqueues work, service restarts or a worker fails with unknown commit. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-044",
+      "phase": 4,
+      "name": "Proven filter pushdown and streaming JSON array",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/source.c",
+        "components/data/src/json.c",
+        "components/expression"
+      ],
+      "trigger": "A provider filter needs semantic proof or a large JSON array must stream.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A provider filter needs semantic proof or a large JSON array must stream. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-045",
+      "phase": 5,
+      "name": "Azure Blob and ADLS Gen2",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "connectors/manager.c"
+      ],
+      "trigger": "An authorized Azure object resource is read/published/recovered.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized Azure object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-046",
+      "phase": 5,
+      "name": "S3 and MinIO",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors",
+        "connectors/manager.c"
+      ],
+      "trigger": "An authorized S3 object resource is read/published/recovered.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized S3 object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-047",
+      "phase": 6,
+      "name": "ASP.NET Core 10 management and isolated workers",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "hosts",
+        "bindings/dotnet"
+      ],
+      "trigger": "A management request creates/queries/controls an independent native execution process.",
+      "baselineFinding": "No ASP.NET management product or execution process ownership exists.",
+      "acceptance": "A management request creates/queries/controls an independent native execution process. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-048",
+      "phase": 7,
+      "name": "React Flow package designer",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "hosts"
+      ],
+      "trigger": "A user edits control/data flow, ports, mappings, connections, metadata or package layout.",
+      "baselineFinding": "No React/TypeScript/React Flow package designer exists.",
+      "acceptance": "A user edits control/data flow, ports, mappings, connections, metadata or package layout. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-049",
+      "phase": 7,
+      "name": "Safe native runtime debugging",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/package.h",
+        "engines/package/runtime.c",
+        "engines/data-flow/pipeline.c"
+      ],
+      "trigger": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary.",
+      "baselineFinding": "Execution exposes cancel/wait but no native debug controller.",
+      "acceptance": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-050",
+      "phase": 6,
+      "name": "Full Linux and Windows driver CI",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "metadata/ci.yml.in",
+        "tests/CMakeLists.txt"
+      ],
+      "trigger": "CI must compile every declared driver and register SQL/CDC real integrations.",
+      "baselineFinding": "Current CI is Linux-centric; Windows exemptions and advanced integration registration need removal.",
+      "acceptance": "CI must compile every declared driver and register SQL/CDC real integrations. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": []
+    },
+    {
+      "id": "ETL-051",
+      "phase": 6,
+      "name": "Independent release consumers and capability manifests",
+      "priority": "P0",
+      "code": "Planned",
+      "verification": "NotRun",
+      "requiredThisDelivery": true,
       "implementation": [
         "packaging",
-        "cmake",
-        "tests/package_language_parity.py"
+        "tests/installed_sdk.py"
       ],
+      "trigger": "An independent directory consumes C, .NET, Java, CLI and Web release products.",
+      "baselineFinding": "1.5 artifacts are historical and must remain preserved; no ABI 10 consumer validation exists.",
+      "acceptance": "An independent directory consumes C, .NET, Java, CLI and Web release products. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
+      "evidence": []
+    },
+    {
+      "id": "ETL-052",
+      "phase": 5,
+      "name": "HTTP response variable mappings",
+      "priority": "P1",
+      "code": "Planned",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G51",
-      "phase": 6,
-      "name": "Linux 原生与 ABI 门禁；Windows 本轮豁免",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "Linux 编译/关键验收；Windows Exempt，不继承历史通过证据",
       "implementation": [
-        ".github/workflows/ci.yml",
-        "tests"
+        "engines/control-flow/http.c"
       ],
+      "trigger": "HTTP status/body/header output is bound to a declared native variable.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "HTTP status/body/header output is bound to a declared native variable. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
-      "requiredThisDelivery": true
-    },
-    {
-      "id": "G52",
-      "phase": 6,
-      "name": "内存安全/线程竞态/资源故障门禁",
-      "priority": "P0",
-      "code": "Implemented",
-      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
-      "acceptance": "ASan/UBSan、引用/卸载/跨线程取消、内存/磁盘/超时/拒绝访问，无伪成功",
-      "implementation": [
-        "tests",
-        "engines",
-        "components"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ],
-      "requiredThisDelivery": true,
-      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
-    },
-    {
-      "id": "G53",
-      "phase": 6,
-      "name": "九项附件核心集成验收",
-      "priority": "P0",
-      "code": "Partial",
-      "verification": "Outside R1–R5 delivery; retain actual Partial status",
-      "acceptance": "附件 §10 九项全部有当前代码、实际用例和日志；不能用旧用例通过替代新模型",
-      "implementation": [
-        "tests",
-        "docs/acceptance"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": true,
-      "progress": "No new completion claim in this delivery; Partial scope retained."
-    },
-    {
-      "id": "G54",
-      "phase": 7,
-      "name": "Slowly Changing Dimension",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "版本化 SCD 配置、键/属性/生效期和目标事务；Type 范围明确",
-      "implementation": [
-        "components/compute",
-        "engines/query",
-        "plugins",
-        "connectors"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G55",
-      "phase": 7,
-      "name": "Fuzzy Lookup/Fuzzy Grouping",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "公开独立算法/相似度/阈值/Unicode、确定性和资源边界，不复制微软专有实现",
-      "implementation": [
-        "components/compute",
-        "engines/query",
-        "plugins",
-        "connectors"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G56",
-      "phase": 7,
-      "name": "Term Extraction/Lookup",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "可组合文本算子、编码/词法/配置/资源/结果验收",
-      "implementation": [
-        "components/compute",
-        "engines/query",
-        "plugins",
-        "connectors"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G57",
-      "phase": 7,
-      "name": "CDC",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "PostgreSQL slot/快照/事务/LSN/ack/Schema 变化/故障重放与权限；目标确认后才推进",
-      "implementation": [
-        "components/compute",
-        "engines/query",
-        "plugins",
-        "connectors"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G58",
-      "phase": 7,
-      "name": "并行分区/Window/BI Dataset/Query",
-      "priority": "P1/P2",
-      "code": "Partial",
-      "verification": "Outside R1–R5 delivery; retain actual Partial status",
-      "acceptance": "共用 Compute/Expression/Planner/资源；新 API 不建立第二套语义或运行时",
-      "implementation": [
-        "components/compute",
-        "engines/query",
-        "plugins",
-        "connectors"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Partial scope retained."
-    },
-    {
-      "id": "G59",
-      "phase": 7,
-      "name": "ODBC/SQL Server",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "真实驱动/DSN、类型/事务/失败/权限/Package 消费；SQLite ODBC 驱动不代表 SQL Server 已验收",
-      "implementation": [
-        "plugins",
-        "connectors",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "可用 SQL Server 测试实例/ODBC 驱动；安全配置的权限/凭据"
-      ],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G60",
-      "phase": 7,
-      "name": "MySQL",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "真实驱动、schema/NULL/Decimal/UTC、事务/游标/恢复和 Package 消费",
-      "implementation": [
-        "plugins",
-        "connectors",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "MySQL 测试实例和驱动"
-      ],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G61",
-      "phase": 7,
-      "name": "HTTP 集成",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "Source/Destination/task 的连接、分页、TLS/权限/限流/取消/幂等语义",
-      "implementation": [
-        "plugins",
-        "connectors",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "可受控 HTTP 测试端点"
-      ],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G62",
-      "phase": 7,
-      "name": "SFTP",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "连接/凭据引用、主机身份校验、原子交付/恢复/取消",
-      "implementation": [
-        "plugins",
-        "connectors",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "SFTP 测试服务和安全配置"
-      ],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G63",
-      "phase": 7,
-      "name": "Kafka",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "有界输入/分区/offset/事务、ack/重放/背压和授权",
-      "implementation": [
-        "plugins",
-        "connectors",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "Kafka 测试服务"
-      ],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G64",
-      "phase": 7,
-      "name": "RabbitMQ",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "确认/重投递/背压/失败与资源释放",
-      "implementation": [
-        "plugins",
-        "connectors",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "RabbitMQ 测试服务"
-      ],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G65",
-      "phase": 7,
-      "name": "Cloud Object Storage",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "对象版本/分页/条件发布/重试/权限/提交不确定性",
-      "implementation": [
-        "plugins",
-        "connectors",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "选定 provider 的受控测试服务或可用仿真服务"
-      ],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G66",
-      "phase": 7,
-      "name": "Excel",
-      "priority": "P1/P2",
-      "code": "Planned",
-      "verification": "Outside R1–R5 delivery; retain actual Planned status",
-      "acceptance": "格式/Schema/编码/类型/NULL/边界和资源限制；支持范围明确",
-      "implementation": [
-        "plugins",
-        "connectors",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "可校验来源的第三方库/格式 fixture"
-      ],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Planned scope retained."
-    },
-    {
-      "id": "G67",
-      "phase": 7,
-      "name": "Parquet/Arrow",
-      "priority": "P1/P2",
-      "code": "Partial",
-      "verification": "Outside R1–R5 delivery; retain actual Partial status",
-      "acceptance": "批次/类型/Schema/所有权、平台相关库和 Pipeline 往返",
-      "implementation": [
-        "plugins",
-        "connectors",
-        "engines/data-flow"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [
-        "锁定格式库及可验证 artifacts"
-      ],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Partial scope retained."
-    },
-    {
-      "id": "G68",
-      "phase": 7,
-      "name": "Microsoft 专属扩展和兼容边界",
-      "priority": "Optional-contract",
-      "code": "Documented boundary",
-      "verification": "Outside R1–R5 delivery; retain actual Documented boundary status",
-      "acceptance": "定义 WMI/SMO/SSAS/Agent/OLEDB/dtsx 插件类别与范围；无未验证兼容声明。不强制复制 Windows 专属实现。",
-      "implementation": [
-        "docs/product/component-catalog.md",
-        "docs/architecture/ssis-reference-matrix.md"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "No new completion claim in this delivery; Documented boundary scope retained."
-    },
-    {
-      "id": "G69",
-      "phase": 7,
-      "name": "Deterministic Row and Percentage Sampling",
-      "priority": "Optional-contract",
-      "code": "Documented boundary",
-      "verification": "Pending N3 acceptance",
-      "acceptance": "定义 WMI/SMO/SSAS/Agent/OLEDB/dtsx 插件类别与范围；无未验证兼容声明。不强制复制 Windows 专属实现。",
-      "implementation": [
-        "docs/product/component-catalog.md",
-        "docs/architecture/ssis-reference-matrix.md"
-      ],
-      "dependsOn": [],
-      "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "Native global sampling with stable source row identity",
-      "status": "Planned"
+      "evidence": []
     }
   ]
 }

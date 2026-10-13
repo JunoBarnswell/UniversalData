@@ -136,7 +136,7 @@ static int buffers_and_operators(const char *directory) {
     OK(ud_operator_destroy(op));
     ud_plan *plan = NULL;
     const char *definition =
-        "{\"version\":9,\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
+        "{\"version\":10,\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
     OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1, text(definition), NULL, &plan));
     spec.kind = UD_OPERATOR_AGGREGATE;
     spec.aggregation = plan;
@@ -286,7 +286,7 @@ static int activations(void) {
                               .observe = observe,
                               .observe_user = &f};
     const char *package =
-        "{\"version\":9,\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
+        "{\"version\":10,\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
         "{\"id\":\"deadline\",\"kind\":\"test.delay\",\"timeoutMs\":1000,\"config\":{}},"
         "{\"id\":\"sibling\",\"kind\":\"test.delay\",\"config\":{}}],\"constraints\":[]},"
         "\"dataFlows\":[]}";
@@ -303,7 +303,7 @@ static int activations(void) {
     o.max_concurrency = 1;
     f.sequence = 0;
     package =
-        "{\"version\":9,\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":"
+        "{\"version\":10,\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":"
         "0}},"
         "\"eventHandlers\":{\"after\":{\"tasks\":[{\"id\":\"after\",\"kind\":\"set\",\"config\":{"
         "\"name\":\"n\",\"value\":{\"literal\":3,\"type\":\"int64\"}}}],\"constraints\":[]}},"
