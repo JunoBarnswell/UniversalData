@@ -16,6 +16,7 @@ struct ud_oracle_cdc {
     oracle *owner;
     ud_batch *schema, *log_schema, *chunk;
     char *table, *schema_name, *table_name, *transaction;
+    uint8_t *temporal;
     uint64_t dbid, incarnation, position, confirmed, floor, next_floor, high, transaction_scn;
     char xid[17], confirmed_xid[17];
     uint32_t batch_rows, row;
@@ -182,6 +183,46 @@ static ud_status preflight(struct ud_oracle_cdc *c) {
     if (!status && (value.is_null || value.integer))
         status = UD_UNSUPPORTED;
     p->host.batch_destroy(proof);
+    proof = NULL;
+    uint32_t columns = p->host.columns(c->schema);
+    c->temporal = p->host.allocate(p->host.context, columns);
+    if (!c->temporal && !status)
+        status = UD_RESOURCE;
+    ud_field facts[] = {{.name = "name", .name_length = 4, .type = UD_UTF8},
+                        {.name = "type", .name_length = 4, .type = UD_UTF8}};
+    if (!status)
+        status =
+            ud_oci_query(p,
+                         "SELECT column_name AS \"name\",data_type AS \"type\" FROM "
+                         "all_tab_columns WHERE owner=:p1 AND table_name=:p2 ORDER BY column_id",
+                         args, 2, facts, 2, &proof);
+    if (!status && p->host.rows(proof) != columns)
+        status = UD_SCHEMA;
+    for (uint32_t i = 0; !status && i < columns; i++) {
+        ud_field expected;
+        ud_value name, type;
+        status = p->host.field(c->schema, i, &expected);
+        if (!status)
+            status = p->host.get(proof, i, 0, &name);
+        if (!status)
+            status = p->host.get(proof, i, 1, &type);
+        if (!status && (name.is_null || type.is_null || name.text_length != expected.name_length ||
+                        memcmp(name.text, expected.name, name.text_length)))
+            status = UD_SCHEMA;
+        if (!status && (expected.type == UD_TIMESTAMP || expected.type == UD_DATE32)) {
+            if (type.text_length == 4 && !memcmp(type.text, "DATE", 4))
+                c->temporal[i] = 1;
+            else if (type.text_length >= 9 && !memcmp(type.text, "TIMESTAMP", 9)) {
+                int timezone = 0;
+                for (uint32_t j = 0; j + 9 <= type.text_length; j++)
+                    if (!memcmp(type.text + j, "TIME ZONE", 9))
+                        timezone = 1;
+                c->temporal[i] = timezone ? 3 : 2;
+            } else
+                status = UD_SCHEMA;
+        }
+    }
+    p->host.batch_destroy(proof);
     return status;
 }
 static ud_status start_window(struct ud_oracle_cdc *c) {
@@ -262,29 +303,22 @@ static ud_status start_window(struct ud_oracle_cdc *c) {
  * and undo. Repeated placeholders have distinct positional binds in OCI. */
 static ud_status projection(struct ud_oracle_cdc *c, char **sql_out, ud_batch **parameters) {
     oracle *p = c->owner;
-    uint32_t columns = p->host.columns(c->schema), count = 6 + columns * 6;
+    uint32_t columns = p->host.columns(c->schema), count = 8 + columns * 7;
+    size_t capacity = 4096 + (size_t)columns * 2000;
     ud_value *values = p->host.allocate(p->host.context, count * sizeof(*values));
-    size_t capacity = 1024;
-    for (uint32_t i = 0; i < columns; i++) {
-        ud_field f;
-        TRY(p->host.field(c->schema, i, &f));
-        capacity += (size_t)f.name_length * 2 + 1800;
-    }
-    char *sql = p->host.allocate(p->host.context, capacity);
-    if (!values || !sql) {
+    char *text = p->host.allocate(p->host.context, capacity);
+    if (!values || !text) {
         p->host.deallocate(values);
-        p->host.deallocate(sql);
+        p->host.deallocate(text);
         return UD_RESOURCE;
     }
-    size_t at = (size_t)snprintf(
-        sql, capacity,
-        "SELECT COMMIT_SCN AS \"commitScn\",RAWTOHEX(XID) AS \"xid\",OPERATION_CODE AS "
-        "\"operation\",STATUS AS \"status\",CSF AS \"continued\"");
-    uint32_t parameter = 0;
     ud_status status = UD_OK;
+    uint32_t made = 0;
     for (uint32_t i = 0; !status && i < columns; i++) {
         ud_field field;
         status = p->host.field(c->schema, i, &field);
+        if (status)
+            break;
         size_t n = strlen(c->schema_name) + strlen(c->table_name) + field.name_length + 3;
         char *path = p->host.allocate(p->host.context, n);
         if (!path) {
@@ -293,57 +327,112 @@ static ud_status projection(struct ud_oracle_cdc *c, char **sql_out, ud_batch **
         }
         snprintf(path, n, "%s.%s.%.*s", c->schema_name, c->table_name, (int)field.name_length,
                  field.name);
+        values[i] =
+            (ud_value){.type = UD_UTF8, .text = path, .text_length = (uint32_t)strlen(path)};
         for (uint32_t j = 0; j < 6; j++)
-            values[parameter + j] =
-                (ud_value){.type = UD_UTF8, .text = path, .text_length = (uint32_t)strlen(path)};
-        const char *conversion = field.type == UD_BOOL || field.type == UD_INT64 ||
-                                         field.type == UD_DECIMAL128 || field.type == UD_FLOAT64
-                                     ? "TO_NUMBER"
-                                 : field.type == UD_BINARY    ? "HEXTORAW"
-                                 : field.type == UD_DATE32    ? "TO_DATE"
-                                 : field.type == UD_TIMESTAMP ? "TO_TIMESTAMP_TZ"
-                                                              : "";
-        const char *format = field.type == UD_DATE32 ? ",'YYYY-MM-DD\"T\"HH24:MI:SS'"
-                             : field.type == UD_TIMESTAMP
-                                 ? ",'YYYY-MM-DD\"T\"HH24:MI:SS.FF6TZH:TZM'"
-                                 : "";
-        if (field.type == UD_TIME64 || field.type > UD_TIMESTAMP) {
+            values[columns + i * 6 + j] = values[i];
+        made++;
+    }
+    size_t at = 0;
+    if (!status)
+        at = (size_t)snprintf(text, capacity,
+                              "SELECT CASE WHEN OPERATION_CODE=5 THEN SCN ELSE COMMIT_SCN END AS "
+                              "\"commitScn\",NVL(RAWTOHEX(XID),'0000000000000000') AS "
+                              "\"xid\",OPERATION_CODE AS \"operation\",STATUS AS \"status\",CSF AS "
+                              "\"continued\",CASE WHEN OPERATION_CODE IN(2,3) THEN (");
+    for (uint32_t i = 0; !status && i < columns; i++) {
+        int n =
+            snprintf(text + at, capacity - at,
+                     "%sCASE WHEN DBMS_LOGMNR.COLUMN_PRESENT(UNDO_VALUE,:p%u)=1 THEN 0 ELSE 1 END",
+                     i ? "+" : "", i + 1);
+        if (n < 0 || (size_t)n >= capacity - at)
+            status = UD_RESOURCE;
+        else
+            at += (size_t)n;
+    }
+    if (!status) {
+        int n = snprintf(text + at, capacity - at, ") ELSE 0 END AS \"missingColumns\"");
+        if (n < 0 || (size_t)n >= capacity - at)
+            status = UD_RESOURCE;
+        else
+            at += (size_t)n;
+    }
+    for (uint32_t i = 0; !status && i < columns; i++) {
+        ud_field f;
+        status = p->host.field(c->schema, i, &f);
+        if (status)
+            break;
+        const char *convert = f.type == UD_BOOL || f.type == UD_INT64 || f.type == UD_DECIMAL128 ||
+                                      f.type == UD_FLOAT64
+                                  ? "TO_NUMBER"
+                              : f.type == UD_BINARY    ? "HEXTORAW"
+                              : f.type == UD_DATE32    ? "TO_DATE"
+                              : f.type == UD_TIMESTAMP ? c->temporal[i] == 1   ? "TO_DATE"
+                                                         : c->temporal[i] == 2 ? "TO_TIMESTAMP"
+                                                                               : "TO_TIMESTAMP_TZ"
+                                                       : "";
+        const char *format = f.type == UD_DATE32 || (f.type == UD_TIMESTAMP && c->temporal[i] == 1)
+                                 ? ",'YYYY-MM-DD\"T\"HH24:MI:SS'"
+                             : f.type == UD_TIMESTAMP && c->temporal[i] == 2
+                                 ? ",'YYYY-MM-DD\"T\"HH24:MI:SS.FF6'"
+                             : f.type == UD_TIMESTAMP ? ",'YYYY-MM-DD\"T\"HH24:MI:SS.FF6TZH:TZM'"
+                                                      : "";
+        if (f.type == UD_TIME64 || f.type > UD_BINARY) {
             status = UD_UNSUPPORTED;
             break;
         }
-        uint32_t p1 = parameter + 1;at+=(size_t)snprintf(sql+at,capacity-at,",CASE WHEN OPERATION_CODE IN(1,2,3) THEN %s%sCASE WHEN DBMS_LOGMNR.COLUMN_PRESENT(REDO_VALUE,:p%u)=1 THEN DBMS_LOGMNR.MINE_VALUE(REDO_VALUE,:p%u) ELSE DBMS_LOGMNR.MINE_VALUE(UNDO_VALUE,:p%u) END%s%s END AS \"after%u\",CASE WHEN OPERATION_CODE IN(2,3) THEN %s%sCASE WHEN DBMS_LOGMNR.COLUMN_PRESENT(UNDO_VALUE,:p%u)=1 THEN DBMS_LOGMNR.MINE_VALUE(UNDO_VALUE,:p%u) ELSE DBMS_LOGMNR.MINE_VALUE(REDO_VALUE,:p%u) END%s%s END AS \"before%u\",conversion,*conversion?"(":"",p1,p1+1,p1+2,format,*conversion?")":"",i,conversion,*conversion?"(":"",p1+3,p1+4,p1+5,format,*conversion?")":"",i);parameter+=6;if(at>=capacity){status=UD_RESOURCE;break;}
+        uint32_t base = columns + i * 6 + 1;
+        int n = snprintf(text + at, capacity - at,
+                         ",CASE WHEN OPERATION_CODE IN(1,2,3) THEN %s%sCASE WHEN "
+                         "DBMS_LOGMNR.COLUMN_PRESENT(REDO_VALUE,:p%u)=1 THEN "
+                         "DBMS_LOGMNR.MINE_VALUE(REDO_VALUE,:p%u) ELSE "
+                         "DBMS_LOGMNR.MINE_VALUE(UNDO_VALUE,:p%u) END%s%s END AS \"after%u\","
+                         "CASE WHEN OPERATION_CODE IN(2,3) THEN %s%sCASE WHEN "
+                         "DBMS_LOGMNR.COLUMN_PRESENT(UNDO_VALUE,:p%u)=1 THEN "
+                         "DBMS_LOGMNR.MINE_VALUE(UNDO_VALUE,:p%u) ELSE "
+                         "DBMS_LOGMNR.MINE_VALUE(REDO_VALUE,:p%u) END%s%s END AS \"before%u\"",
+                         convert, *convert ? "(" : "", base, base + 1, base + 2, format,
+                         *convert ? ")" : "", i, convert, *convert ? "(" : "", base + 3, base + 4,
+                         base + 5, format, *convert ? ")" : "", i);
+        if (n < 0 || (size_t)n >= capacity - at)
+            status = UD_RESOURCE;
+        else
+            at += (size_t)n;
     }
     if (!status) {
-        values[parameter++] = (ud_value){.type = UD_INT64, .integer = (int64_t)c->position};
-        values[parameter++] = (ud_value){.type = UD_INT64, .integer = (int64_t)c->position};
-        values[parameter++] = (ud_value){.type = UD_UTF8, .text = c->xid, .text_length = 16};
-        values[parameter++] = (ud_value){.type = UD_INT64, .integer = (int64_t)c->high};
-        values[parameter++] = (ud_value){.type = UD_UTF8,
-                                         .text = c->schema_name,
-                                         .text_length = (uint32_t)strlen(c->schema_name)};
-        values[parameter++] = (ud_value){
+        uint32_t base = columns * 7;
+        values[base] = (ud_value){.type = UD_INT64, .integer = (int64_t)c->position};
+        values[base + 1] = values[base];
+        values[base + 2] = (ud_value){.type = UD_UTF8, .text = c->xid, .text_length = 16};
+        values[base + 3] = (ud_value){.type = UD_INT64, .integer = (int64_t)c->high};
+        values[base + 4] = values[base];
+        values[base + 5] = values[base + 3];
+        values[base + 6] = (ud_value){.type = UD_UTF8,
+                                      .text = c->schema_name,
+                                      .text_length = (uint32_t)strlen(c->schema_name)};
+        values[base + 7] = (ud_value){
             .type = UD_UTF8, .text = c->table_name, .text_length = (uint32_t)strlen(c->table_name)};
-        uint32_t base = columns * 6 + 1;
-        at +=
-            (size_t)snprintf(sql + at, capacity - at,
-                             " FROM V$LOGMNR_CONTENTS WHERE ((COMMIT_SCN>:p%u) OR (COMMIT_SCN=:p%u "
-                             "AND RAWTOHEX(XID)>:p%u)) AND COMMIT_SCN<=:p%u AND SEG_OWNER=:p%u AND "
-                             "TABLE_NAME=:p%u ORDER BY COMMIT_SCN,RAWTOHEX(XID),SCN,RS_ID,SSN",
-                             base, base + 1, base + 2, base + 3, base + 4, base + 5);
-        if (at >= capacity)
+        base++;
+        int n =
+            snprintf(text + at, capacity - at,
+                     " FROM V$LOGMNR_CONTENTS WHERE (((COMMIT_SCN>:p%u OR (COMMIT_SCN=:p%u AND "
+                     "RAWTOHEX(XID)>:p%u)) AND COMMIT_SCN<=:p%u) OR (OPERATION_CODE=5 AND SCN>:p%u "
+                     "AND SCN<=:p%u)) AND SEG_OWNER=:p%u AND TABLE_NAME=:p%u ORDER BY "
+                     "\"commitScn\",\"xid\",SCN,RS_ID,SSN",
+                     base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7);
+        if (n < 0 || (size_t)n >= capacity - at)
             status = UD_RESOURCE;
         if (!status)
             status = params(p, values, count, parameters);
     }
-    for (uint32_t i = 0; i < columns; i++)
-        if (i * 6 < parameter && values[i * 6].type == UD_UTF8)
-            p->host.deallocate((void *)values[i * 6].text);
+    for (uint32_t i = 0; i < made; i++)
+        p->host.deallocate((void *)values[i].text);
     p->host.deallocate(values);
     if (status) {
-        p->host.deallocate(sql);
+        p->host.deallocate(text);
         return status;
     }
-    *sql_out = sql;
+    *sql_out = text;
     return UD_OK;
 }
 static ud_status log_open(struct ud_oracle_cdc *c) {
@@ -383,11 +472,13 @@ static ud_status append_change(struct ud_oracle_cdc *c, ud_batch *after, ud_batc
                                uint32_t row, int32_t *action) {
     oracle *p = c->owner;
     uint32_t columns = p->host.columns(c->schema);
-    ud_value operation, status, continued;
+    ud_value operation, validity, continued, missing;
     TRY(p->host.get(c->chunk, row, 2, &operation));
-    TRY(p->host.get(c->chunk, row, 3, &status));
+    TRY(p->host.get(c->chunk, row, 3, &validity));
     TRY(p->host.get(c->chunk, row, 4, &continued));
-    if (status.is_null || continued.is_null || status.integer || continued.integer)
+    TRY(p->host.get(c->chunk, row, 5, &missing));
+    if (validity.is_null || continued.is_null || missing.is_null || validity.integer ||
+        continued.integer || missing.integer)
         return UD_UNSUPPORTED;
     if (operation.integer == 5)
         return UD_INCOMPATIBLE;
@@ -398,9 +489,9 @@ static ud_status append_change(struct ud_oracle_cdc *c, ud_batch *after, ud_batc
         return UD_RESOURCE;
     ud_status result = UD_OK;
     for (uint32_t i = 0; !result && i < columns; i++) {
-        result = p->host.get(c->chunk, row, 5 + i * 2, values + i);
+        result = p->host.get(c->chunk, row, 6 + i * 2, values + i);
         if (!result)
-            result = p->host.get(c->chunk, row, 6 + i * 2, values + columns + i);
+            result = p->host.get(c->chunk, row, 7 + i * 2, values + columns + i);
         if (!result && operation.integer == 2)
             values[i] = values[columns + i];
         if (!result && operation.integer == 1)
@@ -453,7 +544,7 @@ ud_status ud_oracle_cdc_open(void *state, const ud_cdc_options *o) {
     ud_status status = c->table ? plugin_fields(&p->host, o->schema, &fields) : UD_RESOURCE;
     if (!status)
         status = p->host.batch_create(p->host.context, fields, columns, 0, &c->schema);
-    ud_field *log = p->host.allocate(p->host.context, (5 + columns * 2) * sizeof(*log));
+    ud_field *log = p->host.allocate(p->host.context, (6 + columns * 2) * sizeof(*log));
     if (!log && !status)
         status = UD_RESOURCE;
     if (!status) {
@@ -462,6 +553,7 @@ ud_status ud_oracle_cdc_open(void *state, const ud_cdc_options *o) {
         log[2] = (ud_field){.name = "operation", .name_length = 9, .type = UD_INT64};
         log[3] = (ud_field){.name = "status", .name_length = 6, .type = UD_INT64};
         log[4] = (ud_field){.name = "continued", .name_length = 9, .type = UD_INT64};
+        log[5] = (ud_field){.name = "missingColumns", .name_length = 14, .type = UD_INT64};
         for (uint32_t i = 0; i < columns; i++) {
             if (fields[i].type == UD_TIMESTAMP && !p->utc) {
                 status = UD_UNSUPPORTED;
@@ -470,22 +562,22 @@ ud_status ud_oracle_cdc_open(void *state, const ud_cdc_options *o) {
             for (uint32_t side = 0; side < 2; side++) {
                 char name[24];
                 int n = snprintf(name, sizeof(name), side ? "before%u" : "after%u", i);
-                log[5 + i * 2 + side] = fields[i];
-                log[5 + i * 2 + side].name = plugin_string(&p->host, name, (uint32_t)n);
-                log[5 + i * 2 + side].name_length = (uint32_t)n;
-                log[5 + i * 2 + side].identity = (ud_id){0};
-                log[5 + i * 2 + side].lineage = NULL;
-                log[5 + i * 2 + side].lineage_count = 0;
-                log[5 + i * 2 + side].key_order = 0;
-                log[5 + i * 2 + side].nullable = 1;
-                if (!log[5 + i * 2 + side].name)
+                log[6 + i * 2 + side] = fields[i];
+                log[6 + i * 2 + side].name = plugin_string(&p->host, name, (uint32_t)n);
+                log[6 + i * 2 + side].name_length = (uint32_t)n;
+                log[6 + i * 2 + side].identity = (ud_id){0};
+                log[6 + i * 2 + side].lineage = NULL;
+                log[6 + i * 2 + side].lineage_count = 0;
+                log[6 + i * 2 + side].key_order = 0;
+                log[6 + i * 2 + side].nullable = 1;
+                if (!log[6 + i * 2 + side].name)
                     status = UD_RESOURCE;
             }
         }
         if (!status)
-            status = p->host.batch_create(p->host.context, log, 5 + columns * 2, 0, &c->log_schema);
+            status = p->host.batch_create(p->host.context, log, 6 + columns * 2, 0, &c->log_schema);
     }
-    for (uint32_t i = 5; log && i < 5 + columns * 2; i++)
+    for (uint32_t i = 6; log && i < 6 + columns * 2; i++)
         p->host.deallocate((void *)log[i].name);
     p->host.deallocate(log);
     p->host.deallocate(fields);
@@ -640,6 +732,7 @@ ud_status ud_oracle_cdc_next(void *state, ud_cdc_event *out) {
         c->in_transaction = 1;
         c->transaction_scn = (uint64_t)scn.integer;
         p->host.deallocate(c->transaction);
+        p->host.deallocate(c->temporal);
         c->transaction = plugin_string(&p->host, xid.text, 16);
         out->kind = UD_CDC_BEGIN;
         out->transaction_id = (ud_string){plugin_string(&p->host, xid.text, 16), 16};
@@ -715,6 +808,7 @@ ud_status ud_oracle_cdc_close(void *state) {
     p->host.deallocate(c->table_name);
     p->host.deallocate(c->table);
     p->host.deallocate(c->transaction);
+    p->host.deallocate(c->temporal);
     p->host.deallocate(c);
     return status;
 }

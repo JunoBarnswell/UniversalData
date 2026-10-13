@@ -73,6 +73,13 @@ public sealed class Batch : IDisposable
         lock (execution) { EnsureOpen(); DataOwnership.Check(context, Native.ud_batch_row_info_json(batch, row, out var text, out var length)); return DataOwnership.Text(text, length); }
     }
 
+    public string DiscoverPivotValues(uint column, string prefix = "pivot", uint maximum = 4096)
+    {
+        var name=Utf8.Bytes(prefix);
+        lock(execution) { EnsureOpen();DataOwnership.Check(context,Native.ud_batch_seal(batch));
+            DataOwnership.Check(context,Native.DiscoverPivot(context,batch,column,name,maximum,out var text,out var length));return DataOwnership.Text(text,length); }
+    }
+
     public byte[] ToWire()
     {
         lock (execution)
@@ -163,6 +170,9 @@ internal sealed class BatchHandle : SafeHandleZeroOrMinusOneIsInvalid
 
 internal static partial class Native
 {
+    [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_batch_seal(BatchHandle batch);
+    [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] private static extern int ud_pivot_discover_values(ContextHandle context,BatchHandle batch,uint column,StringValue prefix,uint maximum,out IntPtr text,out uint length);
+    internal static int DiscoverPivot(ContextHandle context,BatchHandle batch,uint column,byte[] prefix,uint maximum,out IntPtr text,out uint length) {var pin=GCHandle.Alloc(prefix,GCHandleType.Pinned);try{return ud_pivot_discover_values(context,batch,column,new StringValue(pin.AddrOfPinnedObject(),checked((uint)prefix.Length)),maximum,out text,out length);}finally{pin.Free();}}
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr ud_status_name(int status);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_from_json_schema(ContextHandle ctx, byte[] schema, uint schemaLength, byte[] rows, uint length, int rounding, out IntPtr batch);

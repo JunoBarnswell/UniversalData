@@ -291,8 +291,8 @@ ud_status ud_component_bind_configuration(ud_context *ctx, const ud_component_de
         return UD_INCOMPATIBLE;
     *out = NULL;
     ud_json *schema = NULL;
-    ud_status s = ud_json_parse(ctx, d->configuration_schema.data,
-                                d->configuration_schema.length, &schema, NULL);
+    ud_status s = ud_json_parse(ctx, d->configuration_schema.data, d->configuration_schema.length,
+                                &schema, NULL);
     if (!s)
         s = ud_json_bind_schema(ctx, schema, config, out);
     ud_json_destroy(schema);
@@ -308,16 +308,17 @@ static ud_status describe_entry(ud_bytes *bytes, const ud_component_descriptor *
     UD_TRY(ud_bytes_put(bytes, ",\"configurationSchema\":", 23));
     UD_TRY(ud_bytes_put(bytes, d->configuration_schema.data, d->configuration_schema.length));
     char info[768];
-    int n = snprintf(info, sizeof(info),
-        ",\"category\":%d,\"inputs\":%u,\"outputs\":%u,\"dynamicPorts\":%s,"
-        "\"errorOutput\":%d,\"synchronousInput\":%d,\"capabilities\":%llu,"
-        "\"optionalInputs\":%llu,\"optionalOutputs\":%llu,\"stateVersion\":%u,"
-        "\"effects\":%u,\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s}",
-        d->category, d->inputs, d->outputs, d->bind_ports ? "true" : "false", d->error_output,
-        d->synchronous_input, (unsigned long long)d->capabilities,
-        (unsigned long long)d->optional_inputs, (unsigned long long)d->optional_outputs,
-        d->state_version, d->effects, d->checkpoint ? "true" : "false",
-        d->restore ? "true" : "false", d->describe_plan ? "true" : "false");
+    int n =
+        snprintf(info, sizeof(info),
+                 ",\"category\":%d,\"inputs\":%u,\"outputs\":%u,\"dynamicPorts\":%s,"
+                 "\"errorOutput\":%d,\"synchronousInput\":%d,\"capabilities\":%llu,"
+                 "\"optionalInputs\":%llu,\"optionalOutputs\":%llu,\"stateVersion\":%u,"
+                 "\"effects\":%u,\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s}",
+                 d->category, d->inputs, d->outputs, d->bind_ports ? "true" : "false",
+                 d->error_output, d->synchronous_input, (unsigned long long)d->capabilities,
+                 (unsigned long long)d->optional_inputs, (unsigned long long)d->optional_outputs,
+                 d->state_version, d->effects, d->checkpoint ? "true" : "false",
+                 d->restore ? "true" : "false", d->describe_plan ? "true" : "false");
     return n < 0 || (size_t)n >= sizeof(info) ? UD_RESOURCE : ud_bytes_put(bytes, info, (size_t)n);
 }
 ud_status ud_registry_describe(const ud_registry *r, char **out, uint32_t *length) {
@@ -351,4 +352,25 @@ ud_status ud_registry_describe(const ud_registry *r, char **out, uint32_t *lengt
     return s;
 }
 
-void ud_component_plan_clear(ud_component_plan*plan){if(!plan)return;ud_free((void*)plan->physical_tree.data);plan->physical_tree=(ud_string){0};}
+void ud_component_plan_clear(ud_component_plan *plan) {
+    if (!plan)
+        return;
+    ud_free((void *)plan->physical_tree.data);
+    plan->physical_tree = (ud_string){0};
+}
+
+ud_status ud_component_plan_copy(ud_context *ctx, const ud_component_plan *source,
+                                 ud_component_plan *out) {
+    if (!ctx || !source || !out)
+        return UD_INVALID;
+    *out = *source;
+    out->physical_tree = (ud_string){0};
+    if (source->physical_tree.length) {
+        out->physical_tree =
+            (ud_string){ud_strdup_n(ctx, source->physical_tree.data, source->physical_tree.length),
+                        source->physical_tree.length};
+        if (!out->physical_tree.data)
+            return UD_RESOURCE;
+    }
+    return UD_OK;
+}

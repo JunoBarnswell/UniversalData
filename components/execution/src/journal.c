@@ -155,6 +155,24 @@ static ud_status prepare_entry(ud_journal *journal, const ud_journal_record *rec
                            ? UD_RESOURCE
                            : ud_json_parse(journal->ctx, record->payload.data,
                                            record->payload.length, &entry->payload, NULL);
+    if (!status && record->kind == UINT64_MAX) {
+        const char *text = NULL;
+        uint32_t n = 0;
+        uint64_t value = 0;
+        status = ud_json_text(entry->payload, &text, &n);
+        if (!status && (ud_json_kind(entry->payload) != UD_JSON_NUMBER || !n || n > 20 ||
+                        record->owner.length))
+            status = UD_CORRUPT;
+        for (uint32_t i = 0; !status && i < n; i++) {
+            if (text[i] < '0' || text[i] > '9' ||
+                value > (UINT64_MAX - (unsigned)(text[i] - '0')) / 10)
+                status = UD_CORRUPT;
+            else
+                value = value * 10 + (unsigned)(text[i] - '0');
+        }
+        if (!status && (!value || value == UINT64_MAX))
+            status = UD_CORRUPT;
+    }
     if (status)
         destroy_entry(entry);
     else
@@ -167,6 +185,19 @@ static void apply(ud_journal *journal, const ud_journal_record *records, journal
         journal_entry *entry = entries[i];
         if (!entry) {
             retire_owner(journal, records[i].owner);
+            continue;
+        }
+        if (entry->kind == UINT64_MAX) {
+            const char *text = NULL;
+            uint32_t n = 0;
+            uint64_t kind = 0;
+            ud_json_text(entry->payload, &text, &n);
+            for (uint32_t j = 0; j < n; j++)
+                kind = kind * 10 + (uint64_t)(text[j] - '0');
+            journal_entry *old = lookup(journal, kind, entry->key);
+            if (old)
+                remove_entry(journal, old);
+            destroy_entry(entry);
             continue;
         }
         journal_entry *old = lookup(journal, entry->kind, entry->key);
@@ -806,4 +837,68 @@ void ud_journal_close(ud_journal *journal) {
     ud_free(journal->index);
     ud_free(journal->owners);
     ud_free(journal);
+}
+
+ud_status ud_journal_forget(ud_journal *j, uint64_t kind, ud_string key) {
+    if (!j || !kind || kind == UINT64_MAX)
+        return UD_INVALID;
+    if (!ud_journal_find(j, kind, key))
+        return UD_OK;
+    char payload[24];
+    int n = snprintf(payload, sizeof(payload), "%llu", (unsigned long long)kind);
+    ud_journal_record record = {UINT64_MAX, key, {0}, {payload, (uint32_t)n}};
+    return ud_journal_append(j, &record, 1);
+}
+static int blob_compare(const void *a, const void *b) {
+    return memcmp(a, b, 64);
+}
+ud_status ud_journal_collect_blobs(ud_journal *j) {
+    if (!j)
+        return UD_INVALID;
+    if (j->failed)
+        return UD_COMMIT_UNKNOWN;
+    char(*live)[65] = ud_alloc(j->ctx, (size_t)(j->count ? j->count : 1) * 65);
+    if (!live)
+        return UD_RESOURCE;
+    uint32_t used = 0;
+    ud_status status = UD_OK;
+    for (journal_entry *e = j->entries; !status && e; e = e->next) {
+        const ud_json *blob = ud_json_find(e->payload, "blob", 4);
+        if (!blob)
+            continue;
+        const char *text;
+        uint32_t n;
+        status = ud_json_text(blob, &text, &n);
+        if (!status && (ud_json_kind(blob) != UD_JSON_STRING || n != 64))
+            status = UD_CORRUPT;
+        if (!status) {
+            memcpy(live[used], text, 64);
+            live[used++][64] = 0;
+        }
+    }
+    if (!status)
+        qsort(live, used, 65, blob_compare);
+    char **names = NULL;
+    uint32_t count = 0;
+    if (!status)
+        status = ud_list(j->ctx, j->directory, ".udb", &names, &count);
+    for (uint32_t i = 0; !status && i < count; i++) {
+        if (strlen(names[i]) != 73 || memcmp(names[i], "blob-", 5)) {
+            status = UD_CORRUPT;
+            break;
+        }
+        char digest[65];
+        memcpy(digest, names[i] + 5, 64);
+        digest[64] = 0;
+        if (bsearch(digest, live, used, 65, blob_compare))
+            continue;
+        char *path = NULL;
+        status = ud_join_path(j->ctx, j->directory, names[i], &path);
+        if (!status)
+            status = ud_remove_file(j->ctx, path);
+        ud_free(path);
+    }
+    ud_list_free(names, count);
+    ud_free(live);
+    return status;
 }

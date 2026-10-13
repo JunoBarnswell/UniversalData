@@ -255,8 +255,8 @@ static ud_status prepare_merge(ud_operator *o) {
         o->merge[o->merge_count++].next = r->head;
     return UD_OK;
 }
-ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options,
-                             const ud_batch *const *inputs, ud_operator **out) {
+static ud_status create_bound(ud_context *ctx, const ud_operator_options *options,
+                              const ud_batch *const *inputs, ud_operator **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
@@ -944,5 +944,33 @@ ud_status ud_operator_explain(const ud_operator *o, char **out, uint32_t *length
         bytes.data = NULL;
     }
     ud_bytes_clear(&bytes);
+    return status;
+}
+
+ud_status ud_operator_bind_options(ud_context *, const ud_operator_options *, const ud_batch *,
+                                   ud_operator_options *, ud_json **, char **, uint32_t[16],
+                                   ud_plan **);
+ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options,
+                             const ud_batch *const *inputs, ud_operator **out) {
+    if (!options || !options->configuration.length ||
+        (options->kind != UD_OPERATOR_SORT && options->kind != UD_OPERATOR_WINDOW &&
+         options->kind != UD_OPERATOR_AGGREGATE))
+        return create_bound(ctx, options, inputs, out);
+    if (!ctx || !inputs || !inputs[0] || !out || options->struct_size != sizeof(*options) ||
+        options->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    *out = NULL;
+    ud_operator_options bound;
+    ud_json *document = NULL;
+    char *configuration = NULL;
+    uint32_t keys[16];
+    ud_plan *plan = NULL;
+    ud_status status = ud_operator_bind_options(ctx, options, inputs[0], &bound, &document,
+                                                &configuration, keys, &plan);
+    if (!status)
+        status = create_bound(ctx, &bound, inputs, out);
+    ud_plan_destroy(plan);
+    ud_free(configuration);
+    ud_json_destroy(document);
     return status;
 }

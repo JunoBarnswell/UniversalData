@@ -39,6 +39,7 @@ UD_API uint32_t ud_buffer_block_views(const ud_buffer_block *);
 UD_API ud_status ud_buffer_manager_metrics(const ud_buffer_manager *, ud_buffer_metrics *);
 /* State indexes share the same bounded working domain as Wire/rehydration. */
 UD_API ud_status ud_buffer_working_allocate(ud_buffer_manager *, size_t, void **);
+UD_API ud_status ud_buffer_working_copy_value(ud_buffer_manager *, const ud_value *, ud_value *);
 UD_API ud_status ud_buffer_manager_limits(const ud_buffer_manager *, ud_buffer_options *);
 /* Native format staging shares the manager's disk budget and cleanup lifetime. */
 UD_API ud_status ud_buffer_reserve_external(ud_buffer_manager *, uint64_t);

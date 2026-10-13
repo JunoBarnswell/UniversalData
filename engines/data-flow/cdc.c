@@ -1,3 +1,5 @@
+#include "ud/connection_manager.h"
+#include "ud/engine.h"
 #include "../package/internal.h"
 #include "ud/cdc.h"
 #include "ud/format.h"
@@ -23,7 +25,15 @@ static ud_status schema(const ud_component_context *c, const ud_json *config, ud
     char *json = NULL;
     uint32_t n;
     UD_TRY(ud_json_serialize(ud_member(config, "schema"), &json, &n));
-    ud_status s = ud_schema_from_json(c->memory, json, n, (ud_string){"native.cdc", 10}, input);
+    ud_string connection = {0}, table = {0};
+    char scope[33];
+    ud_status s = ud_json_string(ud_member(config, "connection"), &connection);
+    if (!s)
+        s = ud_json_string(ud_member(config, "table"), &table);
+    if (!s)
+        s = ud_connection_field_namespace(c->activation, connection, table, scope);
+    if (!s)
+        s = ud_schema_from_json(c->memory, json, n, (ud_string){scope, 32}, input);
     ud_free(json);
     ud_field *fields = !s ? ud_alloc(c->memory, ((*input)->columns + 1) * sizeof(*fields)) : NULL;
     if (!s && !fields)
@@ -37,8 +47,8 @@ static ud_status schema(const ud_component_context *c, const ud_json *config, ud
                            .nullable = 1,
                            .children = (*input)->schema->fields,
                            .child_count = (*input)->columns};
-        s = ud_field_derive(c->memory, &before, (ud_string){"native.cdc", 10},
-                            (ud_string){"before", 6}, fields + (*input)->columns);
+        s = ud_field_derive(c->memory, &before, (ud_string){scope, 32}, (ud_string){"before", 6},
+                            fields + (*input)->columns);
         if (!s)
             s = ud_batch_create(c->memory, fields, (*input)->columns + 1, 0, out);
         ud_field_clear(fields + (*input)->columns);
@@ -201,6 +211,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     (void)in;
     (void)out;
     *instance = NULL;
+    if (!c->execution->journal)
+        return UD_SCHEMA;
     cdc_source *s = ud_alloc(c->memory, sizeof(*s));
     if (!s)
         return UD_RESOURCE;
@@ -553,9 +565,13 @@ static ud_status confirm_epoch(void *instance, uint64_t epoch, ud_string positio
     if (epoch != s->epoch || !s->barrier || !ud_same(position, s->position))
         return UD_FENCED;
     UD_TRY(ud_connection_lease_cdc_confirm(s->lease, position));
+    for (uint32_t i = 0; i < s->count; i++)
+        UD_TRY(
+            ud_checkpoint_snapshot_forget(s->context.activation, (ud_string){s->intent, 64}, i, 1));
+    UD_TRY(ud_checkpoint_snapshot_forget(s->context.activation, (ud_string){s->intent, 64}, 0, 0));
     s->count = s->at = 0;
     s->begun = s->committed = s->barrier = 0;
-    return UD_OK;
+    return ud_checkpoint_collect(s->context.activation);
 }
 static ud_status finish(void *instance) {
     cdc_source *s = instance;

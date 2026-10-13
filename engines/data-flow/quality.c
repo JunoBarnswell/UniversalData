@@ -130,7 +130,8 @@ static ud_status bind(const ud_component_context *c, const ud_json *config,
                                   .abi_version = UD_ABI_VERSION,
                                   .max_batch_rows = c->max_batch_rows,
                                   .max_violations = c->max_batch_rows * count,
-                                  .policy = policy,.record_state=c->execution->journal!=NULL,
+                                  .policy = policy,
+                                  .record_state = c->execution->journal != NULL,
                                   .buffers = c->execution->buffers,
                                   .check = check,
                                   .user = c->activation};
@@ -248,8 +249,9 @@ static ud_status drain(quality_component *q) {
             if (!status && ud_member(rule, "version"))
                 status = ud_json_uint(ud_member(rule, "version"), &version);
             if (!status)
-                status = ud_error_append(&q->context.errors, errors, q->pending_input, v->input_row, id,
-                                         (uint32_t)version, v->column_id, UD_QUALITY, v->policy);
+                status =
+                    ud_error_append(&q->context.errors, errors, q->pending_input, v->input_row, id,
+                                    (uint32_t)version, v->column_id, UD_QUALITY, v->policy);
         }
         if (!status && errors->rows)
             status = q->context.emit(q->context.emit_user, 1, errors);
@@ -383,8 +385,21 @@ static ud_status diagnostics(void *ptr, char **out, uint32_t *length) {
     ud_bytes_clear(&json);
     return status;
 }
-static ud_status checkpoint(void*ptr,ud_batch**out){quality_component*q=ptr;if(q->pending_input||q->violation_at<q->violation_count||q->fact_at<q->fact_count)return UD_BUSY;return ud_quality_checkpoint(q->quality,out);}
-static ud_status restore_state(void*ptr,const ud_batch*state){quality_component*q=ptr;ud_status status=ud_quality_restore(&q->quality,state);if(!status)q->reference_ready=1;return status;}
+static ud_status checkpoint(void *ptr, ud_batch **out) {
+    quality_component *q = ptr;
+    if (q->pending_input || q->violation_at < q->violation_count || q->fact_at < q->fact_count)
+        return UD_BUSY;
+    return ud_quality_checkpoint(q->quality, out);
+}
+static ud_status restore_state(void *ptr, const ud_batch *state) {
+    quality_component *q = ptr;
+    ud_status status = ud_quality_restore(&q->quality, state);
+    if (!status) {
+        q->reference_ready = ud_quality_reference_ready(q->quality);
+        q->ended = ud_quality_is_finished(q->quality);
+    }
+    return status;
+}
 ud_status ud_quality_component_register(ud_registry *registry) {
     static const char schema[] =
         "{\"type\":\"object\",\"properties\":{\"rules\":{\"type\":\"array\",\"items\":{\"type\":"
@@ -418,8 +433,12 @@ ud_status ud_quality_component_register(ud_registry *registry) {
                                  .step = step,
                                  .finish = finish,
                                  .dispose = dispose,
-                                 .diagnostics = diagnostics,.state_version=1,.checkpoint=checkpoint,.restore=restore_state};
-    UD_TRY(ud_registry_register(registry,&d));
-    d.id=(ud_string){"assert",6};d.name=(ud_string){"Assertion",9};
-    return ud_registry_register(registry,&d);
+                                 .diagnostics = diagnostics,
+                                 .state_version = 1,
+                                 .checkpoint = checkpoint,
+                                 .restore = restore_state};
+    UD_TRY(ud_registry_register(registry, &d));
+    d.id = (ud_string){"assert", 6};
+    d.name = (ud_string){"Assertion", 9};
+    return ud_registry_register(registry, &d);
 }

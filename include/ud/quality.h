@@ -46,7 +46,7 @@ typedef struct ud_quality_metrics {
 } ud_quality_metrics;
 typedef struct ud_quality_options {
     uint32_t struct_size, abi_version, max_batch_rows, max_violations;
-    int32_t policy,record_state;
+    int32_t policy, record_state;
     ud_buffer_manager *buffers;
     ud_status (*check)(void *);
     void *user;
@@ -70,8 +70,10 @@ UD_API ud_status ud_quality_create(ud_context *, const ud_field *, uint32_t colu
 UD_API ud_status ud_quality_schema(const ud_quality *, ud_batch **);
 UD_API ud_status ud_quality_apply(ud_quality *, const ud_batch *, ud_batch **accepted,
                                   ud_batch **rejected, ud_quality_violation **, uint32_t *);
-UD_API ud_status ud_quality_checkpoint(ud_quality *,ud_batch **);
-UD_API ud_status ud_quality_restore(ud_quality **,const ud_batch *);
+UD_API int32_t ud_quality_reference_ready(const ud_quality *);
+UD_API int32_t ud_quality_is_finished(const ud_quality *);
+UD_API ud_status ud_quality_checkpoint(ud_quality *, ud_batch **);
+UD_API ud_status ud_quality_restore(ud_quality **, const ud_batch *);
 UD_API ud_status ud_quality_finish(ud_quality *);
 UD_API void ud_quality_get_metrics(const ud_quality *, ud_quality_metrics *);
 UD_API void ud_quality_destroy(ud_quality *);

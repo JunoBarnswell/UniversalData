@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(prefix='ud-package-sql-') as folder:
  'dataFlows':[{'id':'p','components':[{'id':'source','component':'sql.source','config':{'connection':'sourceDB','schema':{'version':9,'fields':[{'name':'x','type':'int64','nullable':True}]},'batchSize':11,'sql':'SELECT x FROM src ORDER BY x'}},
  {'id':'derive','component':'derive','config':{'columns':[{'name':'twice','expression':{'op':'mul','args':[{'column':'x'},lit(2)]}}]}},
  {'id':'split','component':'split','config':{'condition':{'op':'lt','args':[{'column':'x'},lit(20)]}}},
- {'id':'target','component':'sql.destination','config':{'connection':'targetDB','table':'dest','mode':'append','keys':[]}},
+ {'id':'target','component':'sql.destination','config':{'connection':'targetDB','table':'dest','mode':'append','keys':[],'provisionReceipts':True}},
  {'id':'reject','component':'file.ndjson.destination','config':{'connection':'rejected'}}],
  'paths':[{'from':a,'output':port,'to':b,'input':0} for a,port,b in [('source',0,'derive'),('derive',0,'split'),('split',0,'target'),('split',1,'reject')]]}]}
  p=r/'package.json';p.write_text(json.dumps(package));subprocess.run([sys.argv[1],str(p),str(source),str(target)],check=True)

@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
     run(folder, doc, defaults, status=4)
     folder, doc, expected = fixture("memory-budget", [{"x": 1, "t": "x" * 100000}])
     run(folder, doc, {}, status=4, mode=6)
-    for name, change, status in (("wrong-variable-type", "type", 5), ("readonly", "readonly", 13), ("duplicate-output", "duplicate", 5), ("bad-column", "column", 5), ("unknown-statistic", "kind", 12), ("empty-checks", "empty", 5), ("bad-rule-type", "rule", 5), ("duplicate-rule", "duplicate-rule", 5), ("side-effect-destination", "sink", 5), ("result-collision", "collision", 5)):
+    for name, change, status in (("wrong-variable-type", "type", 5), ("readonly", "readonly", 13), ("duplicate-output", "duplicate", 5), ("bad-column", "column", 5), ("unknown-statistic", "kind", 5), ("empty-checks", "empty", 5), ("bad-rule-type", "rule", 5), ("duplicate-rule", "duplicate-rule", 5), ("side-effect-destination", "sink", 5), ("result-collision", "collision", 5)):
         folder, doc, expected = fixture(name)
         sink = doc["dataFlows"][0]["components"][1]["config"]["statistics"]
         task = doc["controlFlow"]["tasks"][0]["config"]

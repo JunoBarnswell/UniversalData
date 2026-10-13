@@ -1,8 +1,11 @@
 #include "relational_internal.h"
 ud_status ud_rel_join_row(ud_relational *r, ud_batch *out, const ud_batch *a, uint32_t ar,
                           const ud_batch *b, uint32_t br) {
-    if(!out->append_values)out->append_values=ud_alloc(r->ctx,(size_t)out->columns*sizeof(*out->append_values));
-    ud_value *v=out->append_values;if(!v)return UD_RESOURCE;
+    if (!out->append_values)
+        out->append_values = ud_alloc(r->ctx, (size_t)out->columns * sizeof(*out->append_values));
+    ud_value *v = out->append_values;
+    if (!v)
+        return UD_RESOURCE;
     ud_status s = UD_OK;
     for (uint32_t i = 0; !s && i < r->inputs[0]->columns; i++)
         if (a)
@@ -54,8 +57,8 @@ ud_status ud_rel_merge_pull(ud_relational *r, ud_batch **out) {
                         continue;
                     }
                     if (!r->chunk[p])
-                        status =
-                            ud_rel_clone(r->ctx, r->inputs[p], r->options.max_batch_rows, r->chunk + p);
+                        status = ud_rel_clone(r->ctx, r->inputs[p], r->options.max_batch_rows,
+                                              r->chunk + p);
                     if (!status)
                         status = ud_batch_append_from(r->chunk[p], b, row);
                     if (!status)
@@ -109,7 +112,7 @@ ud_status ud_rel_merge_pull(ud_relational *r, ud_batch **out) {
                 break;
             }
             status = ud_rel_join_row(r, *out, r->scans[0].batch, r->scans[0].row, r->scans[1].batch,
-                              r->scans[1].row++);
+                                     r->scans[1].row++);
             continue;
         }
         const ud_batch *a = NULL, *b = NULL;
@@ -163,47 +166,48 @@ ud_status ud_rel_merge_pull(ud_relational *r, ud_batch **out) {
 }
 
 ud_status ud_rel_join_schema(ud_relational *r) {
-    ud_status s=UD_OK;
-            const ud_json *aliases = ud_rel_member(r->config, "rightAliases");
-            ud_field *right = ud_alloc(r->ctx, r->inputs[1]->columns * sizeof(*right));
-            ud_batch *aliased = NULL;
-            if (!right)
-                s = UD_RESOURCE;
-            for (uint32_t i = 0; !s && i < r->inputs[1]->columns; i++) {
-                right[i] = r->inputs[1]->column[i].field;
-                const ud_json *alias = ud_json_find(aliases, right[i].name, right[i].name_length);
-                if (alias) {
-                    ud_string n;
-                    s = ud_rel_text(alias, &n);
-                    right[i].name = n.data;
-                    right[i].name_length = n.length;
-                }
-            }
-            if (!s)
-                s = ud_batch_create(r->ctx, right, r->inputs[1]->columns, 0, &aliased);
-            if (!s)
-                s = r->join_type >= 4 ? ud_rel_clone(r->ctx, r->inputs[0], 0, &r->schema[0])
-                                      : ud_compute_join_schema(r->ctx, r->inputs[0], aliased, &r->schema[0]);
-            ud_free(right);
-            ud_batch_destroy(aliased);
-            if (!s && r->join_type >= 1 && r->join_type <= 3) {
-                ud_field *f = ud_alloc(r->ctx, r->schema[0]->columns * sizeof(*f));
-                if (!f)
-                    s = UD_RESOURCE;
-                for (uint32_t i = 0; !s && i < r->schema[0]->columns; i++) {
-                    f[i] = r->schema[0]->column[i].field;
-                    if ((i >= r->inputs[0]->columns && (r->join_type == 1 || r->join_type == 2)) ||
-                        (i < r->inputs[0]->columns && (r->join_type == 2 || r->join_type == 3)))
-                        f[i].nullable = 1;
-                }
-                ud_batch *nullable = NULL;
-                if (!s)
-                    s = ud_batch_create(r->ctx, f, r->schema[0]->columns, 0, &nullable);
-                ud_free(f);
-                if (!s) {
-                    ud_batch_destroy(r->schema[0]);
-                    r->schema[0] = nullable;
-                }
-            }
+    ud_status s = UD_OK;
+    const ud_json *aliases = ud_rel_member(r->config, "rightAliases");
+    ud_field *right = ud_alloc(r->ctx, r->inputs[1]->columns * sizeof(*right));
+    ud_batch *aliased = NULL;
+    if (!right)
+        s = UD_RESOURCE;
+    for (uint32_t i = 0; !s && i < r->inputs[1]->columns; i++) {
+        right[i] = r->inputs[1]->column[i].field;
+        const ud_json *alias = ud_json_find(aliases, right[i].name, right[i].name_length);
+        if (alias) {
+            ud_string n;
+            s = ud_rel_text(alias, &n);
+            right[i].name = n.data;
+            right[i].name_length = n.length;
+        }
+    }
+    if (!s)
+        s = ud_batch_create(r->ctx, right, r->inputs[1]->columns, 0, &aliased);
+    if (!s)
+        s = r->join_type >= 4
+                ? ud_rel_clone(r->ctx, r->inputs[0], 0, &r->schema[0])
+                : ud_compute_join_schema(r->ctx, r->inputs[0], aliased, &r->schema[0]);
+    ud_free(right);
+    ud_batch_destroy(aliased);
+    if (!s && r->join_type >= 1 && r->join_type <= 3) {
+        ud_field *f = ud_alloc(r->ctx, r->schema[0]->columns * sizeof(*f));
+        if (!f)
+            s = UD_RESOURCE;
+        for (uint32_t i = 0; !s && i < r->schema[0]->columns; i++) {
+            f[i] = r->schema[0]->column[i].field;
+            if ((i >= r->inputs[0]->columns && (r->join_type == 1 || r->join_type == 2)) ||
+                (i < r->inputs[0]->columns && (r->join_type == 2 || r->join_type == 3)))
+                f[i].nullable = 1;
+        }
+        ud_batch *nullable = NULL;
+        if (!s)
+            s = ud_batch_create(r->ctx, f, r->schema[0]->columns, 0, &nullable);
+        ud_free(f);
+        if (!s) {
+            ud_batch_destroy(r->schema[0]);
+            r->schema[0] = nullable;
+        }
+    }
     return s;
 }

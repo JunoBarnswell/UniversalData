@@ -33,7 +33,8 @@ ud_status ud_rel_scd_bind(ud_relational *r) {
         return UD_SCHEMA;
     r->value_column = UINT32_MAX;
     if (ud_rel_member(r->config, "surrogateSource"))
-        UD_TRY(ud_rel_selector(r->inputs[0], ud_rel_member(r->config, "surrogateSource"), &r->value_column));
+        UD_TRY(ud_rel_selector(r->inputs[0], ud_rel_member(r->config, "surrogateSource"),
+                               &r->value_column));
     if (r->value_column == UINT32_MAX && r->inputs[1]->column[r->surrogate].field.type != UD_UTF8)
         return UD_SCHEMA;
     if (r->value_column != UINT32_MAX &&
@@ -69,7 +70,7 @@ ud_status ud_rel_scd_bind(ud_relational *r) {
                                : ud_rel_named(ud_rel_member(m, "change"), "type1") ? 1
                                : ud_rel_named(ud_rel_member(m, "change"), "type2") ? 2
                                : ud_rel_named(ud_rel_member(m, "change"), "fixed") ? 3
-                                                                     : -1;
+                                                                                   : -1;
         if (!s && (r->attribute_kind[i] < 0 || covered[r->attributes[i]]))
             s = UD_SCHEMA;
         if (!s &&

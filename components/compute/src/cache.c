@@ -46,7 +46,8 @@ struct ud_cache_reader {
     ud_cache *cache;
     uint32_t *keys, count, page;
     ud_buffer_view *view;
-    uint64_t next, end;
+    uint64_t next, end, probe_time;
+    int fixed_time;
 };
 static ud_status check(const ud_cache *cache) {
     if (ud_is_cancelled(cache->ctx))
@@ -614,7 +615,8 @@ ud_status ud_cache_partial_put(ud_cache *c, const ud_batch *key_batch, uint32_t 
                               &c->schema->column[c->keys[k]].field, UD_FIELD_VALUE_TYPE))
             return UD_SCHEMA;
     if (values) {
-        if(values->ctx!=c->ctx||values->rows>c->options.max_batch_rows)return UD_SCHEMA;
+        if (values->ctx != c->ctx || values->rows > c->options.max_batch_rows)
+            return UD_SCHEMA;
         if (!values->sealed || values->columns != c->schema->columns)
             return UD_SCHEMA;
         for (uint32_t k = 0; k < values->columns; k++)
@@ -622,7 +624,14 @@ ud_status ud_cache_partial_put(ud_cache *c, const ud_batch *key_batch, uint32_t 
                                   UD_FIELD_PORT))
                 return UD_SCHEMA;
     }
-    for(uint32_t vr=0;values&&vr<values->rows;vr++)for(uint32_t k=0;k<c->options.key_count;k++){ud_value probe,result;UD_TRY(ud_batch_get(key_batch,row,keys[k],&probe));UD_TRY(ud_batch_get(values,vr,c->keys[k],&result));if(probe.is_null||result.is_null||ud_value_compare(&probe,&result))return UD_SCHEMA;}
+    for (uint32_t vr = 0; values && vr < values->rows; vr++)
+        for (uint32_t k = 0; k < c->options.key_count; k++) {
+            ud_value probe, result;
+            UD_TRY(ud_batch_get(key_batch, row, keys[k], &probe));
+            UD_TRY(ud_batch_get(values, vr, c->keys[k], &result));
+            if (probe.is_null || result.is_null || ud_value_compare(&probe, &result))
+                return UD_SCHEMA;
+        }
     ud_value *owned = ud_alloc(c->ctx, c->options.key_count * sizeof(*owned));
     if (!owned)
         return UD_RESOURCE;
@@ -682,7 +691,7 @@ ud_status ud_cache_partial_put(ud_cache *c, const ud_batch *key_batch, uint32_t 
                 ud_clear_value(e->keys + k);
             ud_free(e->keys);
         }
-        c->rows=c->rows-e->rows+(values?values->rows:0);
+        c->rows = c->rows - e->rows + (values ? values->rows : 0);
         if (!e->occupied)
             p->count++;
         uint64_t now = ud_now_ms();
@@ -720,7 +729,10 @@ ud_status ud_cache_partial_probe(ud_cache_reader *r, const ud_batch *b, uint32_t
     ud_cache *c = r->cache;
     partial_index *p = c->partial;
     for (uint32_t k = 0; k < r->count; k++) {
-        if(r->keys[k]>=b->columns||!ud_field_matches(&b->column[r->keys[k]].field,&c->schema->column[c->keys[k]].field,UD_FIELD_VALUE_TYPE))return UD_SCHEMA;
+        if (r->keys[k] >= b->columns ||
+            !ud_field_matches(&b->column[r->keys[k]].field, &c->schema->column[c->keys[k]].field,
+                              UD_FIELD_VALUE_TYPE))
+            return UD_SCHEMA;
         ud_value value;
         UD_TRY(ud_batch_get(b, row, r->keys[k], &value));
         if (value.is_null) {
@@ -734,8 +746,8 @@ ud_status ud_cache_partial_probe(ud_cache_reader *r, const ud_batch *b, uint32_t
     uint32_t slot = (uint32_t)(hash & (p->bucket_count - 1));
     for (uint32_t i = p->buckets[slot]; i != UINT32_MAX; i = p->entries[i].next) {
         partial_entry *e = p->entries + i;
-        if (!e->occupied || e->expires < ud_now_ms() || e->hash != hash ||
-            !key_equal(c, e, b, row, r->keys))
+        if (!e->occupied || e->expires < (r->fixed_time ? r->probe_time : ud_now_ms()) ||
+            e->hash != hash || !key_equal(c, e, b, row, r->keys))
             continue;
         *cached = 1;
         e->used = ++p->clock;
@@ -793,7 +805,7 @@ ud_status ud_cache_checkpoint(ud_cache *c, ud_batch **out) {
         ud_mutex_lock(&p->mutex);
         uint64_t now = ud_now_ms(), count = 0;
         for (uint32_t i = 0; i < p->maximum; i++)
-            if (p->entries[i].occupied && p->entries[i].expires >= now)
+            if (p->entries[i].occupied)
                 count++;
         status = ud_put_u64(&bytes, count);
         ud_field *fields = ud_alloc(c->ctx, c->options.key_count * sizeof(*fields));
@@ -803,7 +815,7 @@ ud_status ud_cache_checkpoint(ud_cache *c, ud_batch **out) {
             fields[k] = c->schema->column[c->keys[k]].field;
         for (uint32_t i = 0; !status && i < p->maximum; i++) {
             partial_entry *entry = p->entries + i;
-            if (!entry->occupied || entry->expires < now)
+            if (!entry->occupied)
                 continue;
             ud_batch *key = NULL;
             status = ud_batch_create(c->ctx, fields, c->options.key_count, 1, &key);
@@ -815,7 +827,7 @@ ud_status ud_cache_checkpoint(ud_cache *c, ud_batch **out) {
                 status = ud_encode_batch(&bytes, key);
             ud_batch_destroy(key);
             if (!status)
-                status = ud_put_u64(&bytes, entry->expires - now);
+                status = ud_put_u64(&bytes, entry->expires >= now ? entry->expires - now : 0);
             if (!status)
                 status = ud_put_u64(&bytes, entry->block != NULL);
             if (!status && entry->block) {
@@ -980,4 +992,11 @@ uint32_t ud_cache_entry_limit(const ud_cache *c) {
 }
 int32_t ud_cache_is_sealed(const ud_cache *c) {
     return c && c->sealed;
+}
+
+void ud_cache_reader_begin(ud_cache_reader *r, int32_t frozen) {
+    if (r) {
+        r->fixed_time = 1;
+        r->probe_time = frozen ? 0 : ud_now_ms();
+    }
 }

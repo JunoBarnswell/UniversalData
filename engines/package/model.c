@@ -196,9 +196,12 @@ ud_status ud_package_create(ud_context *c, ud_string json, ud_package **out) {
     if (!p)
         return UD_RESOURCE;
     p->ctx = c;
-    char *concrete=NULL;uint32_t length=0;
-    ud_status s=ud_package_instantiate(c,json,&concrete,&length);
-    if(!s)s=ud_json_parse(c,concrete,length,&p->document,NULL);ud_free(concrete);
+    char *concrete = NULL;
+    uint32_t length = 0;
+    ud_status s = ud_package_instantiate(c, json, &concrete, &length);
+    if (!s)
+        s = ud_json_parse(c, concrete, length, &p->document, NULL);
+    ud_free(concrete);
     if (!s)
         s = ud_package_check(p);
     if (!s)
@@ -250,7 +253,7 @@ ud_status ud_definition_box(ud_context *ctx, ud_string name_space, ud_string nam
     if (!value && required)
         return UD_SCHEMA;
     ud_bytes schema = {.ctx = ctx};
-    const char *prefix = "{\"version\":7,\"fields\":[{\"name\":";
+    const char *prefix = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":";
     ud_status s = ud_bytes_put(&schema, prefix, strlen(prefix));
     if (!s)
         s = ud_json_quote(&schema, name.data, name.length);

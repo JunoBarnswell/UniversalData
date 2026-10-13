@@ -63,7 +63,7 @@ with tempfile.TemporaryDirectory(prefix="ud-file-task-") as temporary:
     assert target.is_dir()
     folder, target, doc = make("unknown-operation")
     doc["controlFlow"]["tasks"][0]["config"]["operation"] = "recursiveDelete"
-    run(folder, doc, status=12)
+    run(folder, doc, status=5)
     assert not (folder / "state").exists()
     folder, target, doc = make("unknown-connection")
     doc["controlFlow"]["tasks"][0]["config"]["source"] = "absent"

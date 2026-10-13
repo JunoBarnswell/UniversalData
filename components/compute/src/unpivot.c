@@ -9,7 +9,8 @@ ud_status ud_rel_unpivot_bind(ud_relational *r) {
     r->pivot_values = ud_alloc(r->ctx, r->cell_count * sizeof(ud_value));
     if (!r->unpivot_columns || !r->pivot_values)
         return UD_RESOURCE;
-    UD_TRY(ud_rel_selectors(r, r->inputs[0], ud_rel_member(r->config, "retain"), &r->retain, &r->retain_count));
+    UD_TRY(ud_rel_selectors(r, r->inputs[0], ud_rel_member(r->config, "retain"), &r->retain,
+                            &r->retain_count));
     ud_field *deps = ud_alloc(r->ctx, r->cell_count * sizeof(ud_field));
     if (!deps)
         return UD_RESOURCE;

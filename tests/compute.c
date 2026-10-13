@@ -1,5 +1,6 @@
 #include "check.h"
 #include "ud/compute.h"
+#include "ud/operator.h"
 #include "ud/engine.h"
 #include <string.h>
 int main(void) {
@@ -68,9 +69,39 @@ int main(void) {
     v[1].is_null = 0;
     v[1].integer = 99;
     OK(ud_batch_append(right, v, 2));
-    OK(ud_compute_inner_join(c, input, 0, right, 0, &joined));
+    ud_buffer_manager *join_buffers = NULL;
+    OK(ud_buffer_manager_create(c,
+                                &(ud_buffer_options){.struct_size = sizeof(ud_buffer_options),
+                                                     .abi_version = UD_ABI_VERSION,
+                                                     .max_blocks = 100,
+                                                     .resident_limit = 1048576,
+                                                     .working_limit = 1048576},
+                                &join_buffers));
+    uint32_t join_key = 0;
+    const ud_batch *join_inputs[] = {input, right};
+    ud_operator *join_op = NULL;
+    OK(ud_operator_create(c,
+                          &(ud_operator_options){.struct_size = sizeof(ud_operator_options),
+                                                 .abi_version = UD_ABI_VERSION,
+                                                 .kind = UD_OPERATOR_JOIN,
+                                                 .max_batch_rows = 8,
+                                                 .keys = &join_key,
+                                                 .right_keys = &join_key,
+                                                 .key_count = 1,
+                                                 .buffers = join_buffers},
+                          join_inputs, &join_op));
+    OK(ud_batch_seal(input));
+    OK(ud_batch_seal(right));
+    OK(ud_operator_push(join_op, 1, right));
+    OK(ud_operator_finish_input(join_op, 1));
+    OK(ud_operator_push(join_op, 0, input));
+    OK(ud_operator_finish_input(join_op, 0));
+    OK(ud_operator_pull(join_op, &joined, NULL));
     CHECK(ud_batch_rows(joined) == 4 && ud_batch_columns(joined) == 4);
     ud_batch_destroy(joined);
+    CHECK(ud_operator_pull(join_op, &joined, NULL) == UD_END);
+    OK(ud_operator_destroy(join_op));
+    OK(ud_buffer_manager_destroy(join_buffers));
     ud_batch_destroy(right);
     ud_buffer_options options = {.struct_size = sizeof(options),
                                  .abi_version = UD_ABI_VERSION,

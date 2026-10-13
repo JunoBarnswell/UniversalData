@@ -28,7 +28,8 @@ static ud_status failure(oracle *p, sword rc) {
     sb4 code = 0;
     OraText text[2];
     OCIErrorGet(p->error, 1, NULL, &code, text, sizeof(text), OCI_HTYPE_ERROR);
-    if(code==1291||code==1284||code==1327||code==1555)return UD_FENCED;
+    if (code == 1291 || code == 1284 || code == 1327 || code == 1555)
+        return UD_FENCED;
     if (code == 1013)
         return UD_CANCELLED;
     if (code == 1017 || code == 1031 || code == 28000)
@@ -119,21 +120,28 @@ static ud_status bind_value(oracle *p, OCIStmt *stmt, uint32_t at, const ud_valu
         }
         data = &c->descriptor;
         size = sizeof(void *);
-    } else if (v->type == UD_BINARY && v->text_length > 32767) {
-        c->type = SQLT_BLOB;
+    } else if ((v->type == UD_BINARY && (c->type == SQLT_BLOB || v->text_length > 32767)) ||
+               (v->type == UD_UTF8 && c->type == SQLT_CLOB)) {
+        c->type = v->type == UD_BINARY ? SQLT_BLOB : SQLT_CLOB;
         OCI_TRY(failure(p, OCIDescriptorAlloc(p->env, &c->descriptor, OCI_DTYPE_LOB, 0, NULL)));
         if (!v->is_null) {
-            OCI_TRY(failure(p, OCILobCreateTemporary(p->service, p->error, c->descriptor, 0,
-                                                     SQLCS_IMPLICIT, OCI_TEMP_BLOB, FALSE,
-                                                     OCI_DURATION_SESSION)));
-            oraub8 bytes = v->text_length, chars = 0;
-            OCI_TRY(failure(p, OCILobWrite2(p->service, p->error, c->descriptor, &bytes, &chars, 1,
+            OCI_TRY(failure(
+                p, OCILobCreateTemporary(p->service, p->error, c->descriptor, 0, SQLCS_IMPLICIT,
+                                         c->type == SQLT_BLOB ? OCI_TEMP_BLOB : OCI_TEMP_CLOB,
+                                         FALSE, OCI_DURATION_SESSION)));
+            if (v->text_length) {
+                oraub8 bytes = v->text_length, chars = 0;
+                OCI_TRY(
+                    failure(p, OCILobWrite2(p->service, p->error, c->descriptor, &bytes, &chars, 1,
                                             (void *)v->text, v->text_length, OCI_ONE_PIECE, NULL,
-                                            NULL, 0, SQLCS_IMPLICIT)));
+                                            NULL, c->type == SQLT_CLOB ? 873 : 0, SQLCS_IMPLICIT)));
+            }
         }
         data = &c->descriptor;
         size = sizeof(void *);
     } else if (v->type == UD_UTF8 || v->type == UD_BINARY || v->type == UD_DECIMAL128) {
+        if (!v->is_null && (v->type == UD_UTF8 || v->type == UD_BINARY) && !v->text_length)
+            return UD_UNSUPPORTED;
         c->type = v->type == UD_BINARY ? SQLT_BIN : SQLT_CHR;
         char formatted[128];
         const char *text = v->text;
@@ -182,6 +190,8 @@ static ud_status bind(oracle *p, OCIStmt *stmt, const ud_batch *b, uint32_t row,
             r = ref.row;
         }
         s = p->host.get(source, r, column, &value);
+        if (!s && options && column < p->write_count)
+            c[i].type = p->write_types[column];
         if (!s)
             s = bind_value(p, stmt, i, &value, c + i);
     }
@@ -693,6 +703,12 @@ static ud_status execute(void *state, const ud_read_options *o, uint64_t *affect
 static ud_status validate_target(oracle *p, const ud_write_options *o, const ud_batch *b) {
     ud_batch *metadata = NULL;
     ud_status s = discover(p, o->table, &metadata);
+    p->host.deallocate(p->write_types);
+    p->write_types =
+        p->host.allocate(p->host.context, p->host.columns(b) * sizeof(*p->write_types));
+    p->write_count = p->host.columns(b);
+    if (!p->write_types && !s)
+        s = UD_RESOURCE;
     for (uint32_t i = 0; !s && i < p->host.columns(b); i++) {
         ud_field field;
         s = p->host.field(b, i, &field);
@@ -705,6 +721,11 @@ static ud_status validate_target(oracle *p, const ud_write_options *o, const ud_
             if (!s && name.text_length == field.name_length &&
                 !memcmp(name.text, field.name, name.text_length)) {
                 found = 1;
+                if (type.text_length == 4 && !memcmp(type.text, "BLOB", 4))
+                    p->write_types[i] = SQLT_BLOB;
+                else if ((type.text_length == 4 && !memcmp(type.text, "CLOB", 4)) ||
+                         (type.text_length == 5 && !memcmp(type.text, "NCLOB", 5)))
+                    p->write_types[i] = SQLT_CLOB;
                 ud_field actual = {0};
                 s = p->host.field_from_sql((ud_string){type.text, type.text_length}, UD_SQL_ORACLE,
                                            &actual);
@@ -814,13 +835,30 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         return UD_UNSUPPORTED;
     int own = !p->transaction;
     ud_status s = own ? begin(p, UD_ISOLATION_SERIALIZABLE) : UD_OK;
+    if (!s && o->mode == UD_WRITE_CHANGESET && o->current_column != UINT32_MAX) {
+        char *table = plugin_identifier(&p->host, o->table);
+        size_t n = table ? strlen(table) + 40 : 0;
+        char *sql = n ? p->host.allocate(p->host.context, n) : NULL;
+        if (!table || !sql)
+            s = UD_RESOURCE;
+        else {
+            snprintf(sql, n, "LOCK TABLE %s IN EXCLUSIVE MODE", table);
+            s = literal(p, sql);
+        }
+        p->host.deallocate(table);
+        p->host.deallocate(sql);
+    }
     if (!s)
         s = validate_target(p, o, b);
     ud_commit_receipt previous = {0};
     if (!s)
         s = receipt(p, tenant, o->job, o->batch_id, &previous);
     int exists = previous.committed;
-    if (!s && exists && memcmp(previous.digest, digest, 32))
+    if (!s && exists &&
+        (memcmp(previous.digest, digest, 32) ||
+         previous.source_position.length != o->source_position.length ||
+         (o->source_position.length && memcmp(previous.source_position.data,
+                                              o->source_position.data, o->source_position.length))))
         s = UD_CORRUPT;
     p->host.deallocate((void *)previous.source_position.data);
     uint32_t limit = p->host.columns(b) ? 65535 / p->host.columns(b) : 0;
@@ -905,6 +943,9 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         else if (rollback(p))
             s = UD_COMMIT_UNKNOWN;
     }
+    p->host.deallocate(p->write_types);
+    p->write_types = NULL;
+    p->write_count = 0;
     return s;
 }
 static ud_status test(void *state) {
@@ -925,7 +966,9 @@ static void cancel(void *state) {
 static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     oracle *p = state;
     p->user = user;
-    p->check = check;p->host.control_user=user;p->host.check_io=check;
+    p->check = check;
+    p->host.control_user = user;
+    p->host.check_io = check;
     atomic_store(&p->cancelled, 0);
 }
 static ud_status session_policy(oracle *p) {
@@ -971,6 +1014,7 @@ void ud_oci_destroy(void *state) {
     if (p->env)
         OCIHandleFree(p->env, OCI_HTYPE_ENV);
     pthread_mutex_destroy(&p->ownership);
+    p->host.deallocate(p->write_types);
     p->host.deallocate(p);
 }
 static ud_status initialize(const ud_host_api *h, const char *text, uint32_t length, void **out) {

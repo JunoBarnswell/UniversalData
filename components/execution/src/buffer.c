@@ -549,29 +549,65 @@ ud_status ud_buffer_manager_destroy(ud_buffer_manager *manager) {
     return UD_OK;
 }
 
-ud_status ud_buffer_reserve_external(ud_buffer_manager *m,uint64_t bytes) {
-    if(!m)return UD_INVALID;
-    ud_mutex_lock(&m->lock);
-    ud_status status=bytes>m->options.spill_limit-m->metrics.spill_bytes?UD_RESOURCE:UD_OK;
-    if(!status){m->metrics.spill_bytes+=bytes;m->metrics.total_spill_bytes+=bytes;
-        if(m->metrics.spill_bytes>m->metrics.spill_high_water)m->metrics.spill_high_water=m->metrics.spill_bytes;}
-    ud_mutex_unlock(&m->lock);return status;
+ud_status ud_buffer_reserve_external(ud_buffer_manager *m, uint64_t bytes) {
+    if (!m)
+        return UD_INVALID;
+    ud_mutex_lock(&m->mutex);
+    ud_status status =
+        bytes > m->options.spill_limit - m->metrics.spill_bytes ? UD_RESOURCE : UD_OK;
+    if (!status) {
+        m->metrics.spill_bytes += bytes;
+        m->metrics.total_spill_bytes += bytes;
+        if (m->metrics.spill_bytes > m->metrics.spill_high_water)
+            m->metrics.spill_high_water = m->metrics.spill_bytes;
+    }
+    ud_mutex_unlock(&m->mutex);
+    return status;
 }
-void ud_buffer_release_external(ud_buffer_manager *m,uint64_t bytes) {
-    if(!m)return;ud_mutex_lock(&m->lock);if(bytes<=m->metrics.spill_bytes)m->metrics.spill_bytes-=bytes;ud_mutex_unlock(&m->lock);
+void ud_buffer_release_external(ud_buffer_manager *m, uint64_t bytes) {
+    if (!m)
+        return;
+    ud_mutex_lock(&m->mutex);
+    if (bytes <= m->metrics.spill_bytes)
+        m->metrics.spill_bytes -= bytes;
+    ud_mutex_unlock(&m->mutex);
 }
 
-ud_status ud_buffer_working_allocate(ud_buffer_manager *manager,size_t bytes,void **out) {
-    if(!manager||!out||!bytes)return UD_INVALID;
-    *out=NULL;UD_TRY(check(manager));ud_memory_scope scope;
-    ud_memory_domain_enter(manager->working,&scope);
-    *out=ud_alloc(manager->ctx,bytes);ud_memory_domain_leave(&scope);
-    return *out?UD_OK:UD_RESOURCE;
+ud_status ud_buffer_working_allocate(ud_buffer_manager *manager, size_t bytes, void **out) {
+    if (!manager || !out || !bytes)
+        return UD_INVALID;
+    *out = NULL;
+    UD_TRY(check(manager));
+    ud_memory_scope scope;
+    ud_memory_domain_enter(manager->working, &scope);
+    *out = ud_alloc(manager->ctx, bytes);
+    ud_memory_domain_leave(&scope);
+    return *out ? UD_OK : UD_RESOURCE;
 }
-ud_status ud_buffer_manager_limits(const ud_buffer_manager *manager,ud_buffer_options *out) {
-    if(!manager||!out)return UD_INVALID;
-    if(out->struct_size!=sizeof(*out)||out->abi_version!=UD_ABI_VERSION)return UD_INCOMPATIBLE;
-    *out=manager->options;return UD_OK;
+ud_status ud_buffer_manager_limits(const ud_buffer_manager *manager, ud_buffer_options *out) {
+    if (!manager || !out)
+        return UD_INVALID;
+    *out = manager->options;
+    return UD_OK;
 }
 
-uint32_t ud_buffer_block_views(const ud_buffer_block*b){if(!b)return 0;ud_buffer_manager*m=b->manager;ud_mutex_lock(&m->mutex);uint32_t count=b->readers;ud_mutex_unlock(&m->mutex);return count;}
+uint32_t ud_buffer_block_views(const ud_buffer_block *b) {
+    if (!b)
+        return 0;
+    ud_buffer_manager *m = b->manager;
+    ud_mutex_lock(&m->mutex);
+    uint32_t count = b->readers;
+    ud_mutex_unlock(&m->mutex);
+    return count;
+}
+
+ud_status ud_buffer_working_copy_value(ud_buffer_manager *m, const ud_value *value, ud_value *out) {
+    if (!m || !value || !out)
+        return UD_INVALID;
+    UD_TRY(check(m));
+    ud_memory_scope scope;
+    ud_memory_domain_enter(m->working, &scope);
+    ud_status status = ud_copy_value(m->ctx, value, out, 0);
+    ud_memory_domain_leave(&scope);
+    return status;
+}

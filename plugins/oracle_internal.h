@@ -25,7 +25,8 @@ typedef struct oracle {
     OCIStmt *cursor;
     ud_batch *schema;
     cell *columns;
-    uint32_t count, batch;
+    uint32_t count, batch, write_count;
+    ub2 *write_types;
     int utc, transaction, broken;
     atomic_int cancelled;
     pthread_mutex_t ownership;

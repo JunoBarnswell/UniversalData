@@ -300,7 +300,12 @@ ud_status ud_relational_create(ud_context *ctx, const ud_operator_options *o,
         return UD_RESOURCE;
     r->ctx = ctx;
     r->options = *o;
-    if(!r->options.errors.memory){r->options.errors=(ud_error_context){.struct_size=sizeof(ud_error_context),.abi_version=UD_ABI_VERSION,.memory=ctx};ud_id_make(ctx,(ud_string){"native.compute",14},(ud_string){"errors",6},&r->options.errors.field_scope);}
+    if (!r->options.errors.memory) {
+        r->options.errors = (ud_error_context){
+            .struct_size = sizeof(ud_error_context), .abi_version = UD_ABI_VERSION, .memory = ctx};
+        ud_id_make(ctx, (ud_string){"native.compute", 14}, (ud_string){"errors", 6},
+                   &r->options.errors.field_scope);
+    }
     r->ports = o->kind == UD_OPERATOR_JOIN || o->kind == UD_OPERATOR_MERGE ||
                        o->kind == UD_OPERATOR_MERGE_JOIN || o->kind == UD_OPERATOR_ASOF_JOIN ||
                        o->kind == UD_OPERATOR_TEMPORAL_JOIN || o->kind == UD_OPERATOR_DIFF_COMPARE
@@ -334,12 +339,18 @@ ud_status ud_relational_create(ud_context *ctx, const ud_operator_options *o,
     ud_bytes_clear(&definition);
     ud_string declared = {0};
     ud_json *schema = NULL, *bound = NULL;
-    if (!s) s = ud_operator_configuration_schema(o->kind, &declared);
-    if (!s) s = ud_json_parse(ctx, declared.data, declared.length, &schema, NULL);
-    if (!s) s = ud_json_bind_schema(ctx, schema, r->config, &bound);
+    if (!s)
+        s = ud_operator_configuration_schema(o->kind, &declared);
+    if (!s)
+        s = ud_json_parse(ctx, declared.data, declared.length, &schema, NULL);
+    if (!s)
+        s = ud_json_bind_schema(ctx, schema, r->config, &bound);
     ud_json_destroy(schema);
-    if (!s) { ud_json_destroy(r->config); r->config = bound; }
-    else ud_json_destroy(bound);
+    if (!s) {
+        ud_json_destroy(r->config);
+        r->config = bound;
+    } else
+        ud_json_destroy(bound);
 
     for (uint32_t p = 0; !s && p < r->ports; p++) {
         if (!in[p])
@@ -355,36 +366,44 @@ ud_status ud_relational_create(ud_context *ctx, const ud_operator_options *o,
     r->policy = !policy || ud_rel_named(policy, "fail") ? UD_ERROR_FAIL
                 : ud_rel_named(policy, "redirect")      ? UD_ERROR_REDIRECT
                 : ud_rel_named(policy, "ignore")        ? UD_ERROR_IGNORE
-                                                 : -1;
+                                                        : -1;
     if (r->policy < 0)
         s = UD_SCHEMA;
     if (!s && (o->kind == UD_OPERATOR_JOIN || o->kind == UD_OPERATOR_MERGE ||
                o->kind == UD_OPERATOR_MERGE_JOIN)) {
         if (!s)
-            s = ud_rel_keys(r, 0, ud_rel_member(r->config, o->kind == UD_OPERATOR_MERGE ? "keys" : "leftKeys"));
+            s = ud_rel_keys(
+                r, 0, ud_rel_member(r->config, o->kind == UD_OPERATOR_MERGE ? "keys" : "leftKeys"));
         if (!s)
-            s = ud_rel_keys(r, 1, ud_rel_member(r->config, o->kind == UD_OPERATOR_MERGE ? "keys" : "rightKeys"));
+            s = ud_rel_keys(
+                r, 1,
+                ud_rel_member(r->config, o->kind == UD_OPERATOR_MERGE ? "keys" : "rightKeys"));
         r->algorithm = UD_PHYSICAL_MERGE;
         if (!s && o->kind == UD_OPERATOR_JOIN) {
             int ordered = 1;
             for (uint32_t p = 0; p < 2; p++) {
                 ordered &= r->order[p].count >= r->key_count && r->order[p].stable;
                 for (uint32_t k = 0; ordered && k < r->key_count; k++)
-                    ordered &= !ud_id_compare(r->order[p].keys[k].field, r->inputs[p]->column[r->keys[p][k]].field.identity)
-                               && !r->order[p].keys[k].descending && r->order[p].keys[k].nulls_first;
+                    ordered &= !ud_id_compare(r->order[p].keys[k].field,
+                                              r->inputs[p]->column[r->keys[p][k]].field.identity) &&
+                               !r->order[p].keys[k].descending && r->order[p].keys[k].nulls_first;
             }
             const ud_json *strategy = ud_rel_member(r->config, "strategy");
             uint64_t budget = o->memory_budget ? o->memory_budget : 16u * 1024u * 1024u;
             uint64_t rows = o->estimated_rows[1];
-            r->algorithm = ud_rel_named(strategy, "merge") ? UD_PHYSICAL_MERGE :
-                           ud_rel_named(strategy, "hash") ? UD_PHYSICAL_HASH :
-                           ud_rel_named(strategy, "graceHash") ? UD_PHYSICAL_GRACE_HASH :
-                           ordered ? UD_PHYSICAL_MERGE : rows && rows <= budget / 64 ? UD_PHYSICAL_HASH : UD_PHYSICAL_GRACE_HASH;
+            r->algorithm = ud_rel_named(strategy, "merge")       ? UD_PHYSICAL_MERGE
+                           : ud_rel_named(strategy, "hash")      ? UD_PHYSICAL_HASH
+                           : ud_rel_named(strategy, "graceHash") ? UD_PHYSICAL_GRACE_HASH
+                           : ordered                             ? UD_PHYSICAL_MERGE
+                           : rows && rows <= budget / 64         ? UD_PHYSICAL_HASH
+                                                                 : UD_PHYSICAL_GRACE_HASH;
         }
         for (uint32_t p = 0; !s && p < 2; p++) {
             if (r->algorithm != UD_PHYSICAL_MERGE) {
-                r->order[p] = (ud_sort_contract){.count=r->key_count,.stable=0};
-                for (uint32_t k=0;k<r->key_count;k++) r->order[p].keys[k]=(ud_sort_key){r->inputs[p]->column[r->keys[p][k]].field.identity,0,1};
+                r->order[p] = (ud_sort_contract){.count = r->key_count, .stable = 0};
+                for (uint32_t k = 0; k < r->key_count; k++)
+                    r->order[p].keys[k] =
+                        (ud_sort_key){r->inputs[p]->column[r->keys[p][k]].field.identity, 0, 1};
                 continue;
             }
             int sorted = r->order[p].count >= r->key_count && r->order[p].stable;
@@ -435,10 +454,11 @@ ud_status ud_relational_create(ud_context *ctx, const ud_operator_options *o,
                            : ud_rel_named(type, "right")        ? 3
                            : ud_rel_named(type, "semi")         ? 4
                            : ud_rel_named(type, "anti")         ? 5
-                                                         : -1;
+                                                                : -1;
             if (r->join_type < 0)
                 s = UD_SCHEMA;
-            if(!s)s=ud_rel_join_schema(r);
+            if (!s)
+                s = ud_rel_join_schema(r);
         }
         if (!s) {
             r->output_order = r->order[0];
@@ -448,10 +468,10 @@ ud_status ud_relational_create(ud_context *ctx, const ud_operator_options *o,
             if (r->join_type == 2 || r->join_type == 3)
                 memset(&r->output_order, 0, sizeof(r->output_order));
         }
-    } else if(!s && (o->kind==UD_OPERATOR_ASOF_JOIN || o->kind==UD_OPERATOR_TEMPORAL_JOIN))
-        s=ud_temporal_bind(r);
-    else if(!s && o->kind==UD_OPERATOR_DIFF_COMPARE)
-        s=ud_diff_bind(r);
+    } else if (!s && (o->kind == UD_OPERATOR_ASOF_JOIN || o->kind == UD_OPERATOR_TEMPORAL_JOIN))
+        s = ud_temporal_bind(r);
+    else if (!s && o->kind == UD_OPERATOR_DIFF_COMPARE)
+        s = ud_diff_bind(r);
     else if (!s && o->kind == UD_OPERATOR_PIVOT)
         s = ud_rel_pivot_bind(r);
     else if (!s && o->kind == UD_OPERATOR_UNPIVOT)
@@ -480,7 +500,8 @@ ud_status ud_relational_order(const ud_relational *r, ud_sort_contract *out) {
     return UD_OK;
 }
 uint64_t ud_relational_demand(const ud_relational *r) {
-    if (r->hash_join) return (r->in[0].ended ? 0 : 1) | (r->in[1].ended ? 0 : 2);
+    if (r->hash_join)
+        return (r->in[0].ended ? 0 : 1) | (r->in[1].ended ? 0 : 2);
     uint64_t mask = 0;
     if (r->options.kind == UD_OPERATOR_ROW_SAMPLING)
         return r->in[0].ended ? 0 : 1;
@@ -501,7 +522,8 @@ uint64_t ud_relational_demand(const ud_relational *r) {
 ud_status ud_relational_push(ud_relational *r, uint32_t p, const ud_batch *b) {
     if (p >= r->ports || r->in[p].ended || !r->options.buffers)
         return UD_INVALID;
-    if (r->hash_join) return ud_hash_join_push(r, p, b);
+    if (r->hash_join)
+        return ud_hash_join_push(r, p, b);
     if (r->input_sort[p])
         return ud_operator_push(r->input_sort[p], 0, b);
     if (r->in[p].block)
@@ -512,8 +534,9 @@ ud_status ud_relational_push(ud_relational *r, uint32_t p, const ud_batch *b) {
     return ud_buffer_store(r->options.buffers, b, &r->in[p].block);
 }
 ud_status ud_relational_end(ud_relational *r, uint32_t p) {
-    if (r->hash_join) return ud_hash_join_end(r, p);
-    if (p >= r->ports || r->in[p].ended || (!r->input_sort[p] && r->in[p].block))
+    if (r->hash_join)
+        return ud_hash_join_end(r, p);
+    if (p >= r->ports || r->in[p].ended)
         return UD_INVALID;
     r->in[p].ended = 1;
     if (r->input_sort[p])
@@ -528,9 +551,11 @@ ud_status ud_relational_pull(ud_relational *r, ud_batch **out, uint32_t *port) {
         switch (r->options.kind) {
         case UD_OPERATOR_ASOF_JOIN:
         case UD_OPERATOR_TEMPORAL_JOIN:
-            s=ud_temporal_pull(r,out,&p);break;
+            s = ud_temporal_pull(r, out, &p);
+            break;
         case UD_OPERATOR_DIFF_COMPARE:
-            s=ud_diff_pull(r,out,&p);break;
+            s = ud_diff_pull(r, out, &p);
+            break;
         case UD_OPERATOR_JOIN:
             s = r->hash_join ? ud_hash_join_pull(r, out) : ud_rel_merge_pull(r, out);
             break;
@@ -634,12 +659,14 @@ void ud_relational_destroy(ud_relational *r) {
     ud_free(r);
 }
 
-ud_status ud_compute_field_index(const ud_batch *schema,const ud_json *field,uint32_t *out) {
-    return ud_rel_selector(schema,field,out);
+ud_status ud_compute_field_index(const ud_batch *schema, const ud_json *field, uint32_t *out) {
+    return ud_rel_selector(schema, field, out);
 }
 
 uint32_t ud_relational_algorithm(const ud_relational *r) {
     return r->algorithm ? r->algorithm : r->rank_sort ? UD_PHYSICAL_SORT : UD_PHYSICAL_STREAM;
 }
 
-uint32_t ud_relational_output_count(const ud_relational *r){return r->outputs;}
+uint32_t ud_relational_output_count(const ud_relational *r) {
+    return r->outputs;
+}

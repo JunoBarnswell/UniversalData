@@ -18,6 +18,9 @@ public final class Batch implements AutoCloseable {
     public synchronized String schemaJson() { ensureOpen(); return nativeJson(handle, true); }
     public synchronized String rowInfoJson(int row) { ensureOpen(); return nativeRowInfo(handle,row); }
     private static native String nativeRowInfo(long handle,int row);
+    public synchronized String discoverPivotValues(int column,String prefix,int maximum) {ensureOpen();return nativePivotValues(handle,column,Utf8.bytes(prefix),maximum);}
+    public String discoverPivotValues(int column) {return discoverPivotValues(column,"pivot",4096);}
+    private static native String nativePivotValues(long handle,int column,byte[] prefix,int maximum);
     public synchronized byte[] toWire() { ensureOpen(); return nativeWire(handle); }
     public synchronized Batch cast(String schemaJson, Rounding rounding, long memoryLimit) {
         ensureOpen(); return new Batch(nativeCast(handle, Utf8.bytes(schemaJson), Objects.requireNonNull(rounding).code, memoryLimit));

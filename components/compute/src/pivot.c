@@ -3,7 +3,8 @@ ud_status ud_rel_pivot_bind(ud_relational *r) {
     UD_TRY(ud_rel_keys(r, 0, ud_rel_member(r->config, "setKeys")));
     UD_TRY(ud_rel_require_order(r, 0, 0));
     UD_TRY(ud_rel_selector(r->inputs[0], ud_rel_member(r->config, "pivotKey"), &r->pivot_key));
-    UD_TRY(ud_rel_selector(r->inputs[0], ud_rel_member(r->config, "valueColumn"), &r->value_column));
+    UD_TRY(
+        ud_rel_selector(r->inputs[0], ud_rel_member(r->config, "valueColumn"), &r->value_column));
     const ud_json *vals = ud_rel_member(r->config, "values");
     r->cell_count = ud_json_size(vals);
     if (ud_json_kind(vals) != UD_JSON_ARRAY || !r->cell_count || r->cell_count > 4096)
@@ -16,7 +17,7 @@ ud_status ud_rel_pivot_bind(ud_relational *r) {
                    : ud_rel_named(dup, "max")          ? 4
                    : ud_rel_named(dup, "first")        ? 5
                    : ud_rel_named(dup, "last")         ? 6
-                                                : -1;
+                                                       : -1;
     if (r->duplicate < 0)
         return UD_SCHEMA;
     if (r->duplicate >= 5)
@@ -50,7 +51,8 @@ ud_status ud_rel_pivot_bind(ud_relational *r) {
             s = ud_rel_text(ud_rel_member(v, "name"), &name);
         if (!s)
             s = ud_json_value_decode(r->ctx, &r->inputs[0]->column[r->pivot_key].field,
-                                     ud_rel_member(v, "value"), UD_ROUND_EXACT, r->pivot_values + i);
+                                     ud_rel_member(v, "value"), UD_ROUND_EXACT,
+                                     r->pivot_values + i);
         for (uint32_t k = 0; !s && k < i; k++)
             if (!ud_value_compare(r->pivot_values + i, r->pivot_values + k))
                 s = UD_SCHEMA;
@@ -65,8 +67,9 @@ ud_status ud_rel_pivot_bind(ud_relational *r) {
     if (!s && r->duplicate >= 1 && r->duplicate <= 4) {
         const char *fn[] = {"", "sum", "count", "min", "max"};
         ud_bytes j = {.ctx = r->ctx};
-        s = ud_bytes_put(&j, "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"aggregates\":[{\"function\":",
-                         sizeof("{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"aggregates\":[{\"function\":") - 1);
+        s = ud_bytes_put(
+            &j, "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"aggregates\":[{\"function\":",
+            sizeof("{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"aggregates\":[{\"function\":") - 1);
         if (!s)
             s = ud_json_quote(&j, fn[r->duplicate], (uint32_t)strlen(fn[r->duplicate]));
         if (!s)

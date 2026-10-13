@@ -45,10 +45,11 @@ static void hex(const uint8_t hash[32], char out[65]) {
 }
 static ud_status append(checkpoint_journal *j, ud_activation *e, uint64_t kind, ud_string key,
                         ud_string payload) {
-    ud_string owner =
-        kind == RECORD_TASK_BEGIN || kind == RECORD_BATCH_INTENT || kind == RECORD_BATCH_DONE
-            ? e->task_id
-            : (ud_string){0};
+    ud_string owner = kind == RECORD_TASK_BEGIN || kind == RECORD_BATCH_INTENT ||
+                              kind == RECORD_BATCH_DONE || kind == RECORD_SNAPSHOT_BATCH ||
+                              kind == RECORD_SNAPSHOT_DONE
+                          ? e->task_id
+                          : (ud_string){0};
     ud_journal_record records[2] = {{kind, key, owner, payload}, {0, {0}, e->task_id, {0}}};
     return ud_journal_append(j->store, records, kind == RECORD_TASK_DONE ? 2 : 1);
 }
@@ -739,5 +740,67 @@ ud_status ud_checkpoint_schema(ud_activation *a, ud_string component, const ud_b
     return status;
 }
 
-ud_status ud_checkpoint_epoch_info(ud_activation*a,ud_string pipeline,char**out,uint32_t*length){if(!a||!out||!length)return UD_INVALID;*out=NULL;*length=0;checkpoint_journal*j=a->execution->journal;if(!j)return UD_END;ud_bytes key={.ctx=a->execution->ctx};ud_status s=snapshot_key(a,pipeline,0,0,&key);ud_mutex_lock(&a->execution->journal_lock);const ud_json*entry=!s?find(j,RECORD_EPOCH,(ud_string){(char*)key.data,(uint32_t)key.size}):NULL;if(!s)s=entry?ud_json_serialize(entry,out,length):UD_END;ud_mutex_unlock(&a->execution->journal_lock);ud_bytes_clear(&key);return s;}
-ud_status ud_checkpoint_epoch_commit(ud_activation*a,ud_string pipeline,ud_string payload){checkpoint_journal*j=a->execution->journal;if(!j)return UD_UNSUPPORTED;UD_TRY(checkpoint_before(a,NULL));ud_bytes key={.ctx=a->execution->ctx};ud_status s=snapshot_key(a,pipeline,0,0,&key);ud_mutex_lock(&a->execution->journal_lock);if(!s)s=append(j,a,RECORD_EPOCH,(ud_string){(char*)key.data,(uint32_t)key.size},payload);ud_mutex_unlock(&a->execution->journal_lock);ud_bytes_clear(&key);checkpoint_after(a,s);return s;}
+ud_status ud_checkpoint_epoch_info(ud_activation *a, ud_string pipeline, char **out,
+                                   uint32_t *length) {
+    if (!a || !out || !length)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    checkpoint_journal *j = a->execution->journal;
+    if (!j)
+        return UD_END;
+    ud_bytes key = {.ctx = a->execution->ctx};
+    ud_status s = snapshot_key(a, pipeline, 0, 0, &key);
+    ud_mutex_lock(&a->execution->journal_lock);
+    const ud_json *entry =
+        !s ? find(j, RECORD_EPOCH, (ud_string){(char *)key.data, (uint32_t)key.size}) : NULL;
+    if (!s)
+        s = entry ? ud_json_serialize(entry, out, length) : UD_END;
+    ud_mutex_unlock(&a->execution->journal_lock);
+    ud_bytes_clear(&key);
+    return s;
+}
+ud_status ud_checkpoint_epoch_commit(ud_activation *a, ud_string pipeline, ud_string payload) {
+    checkpoint_journal *j = a->execution->journal;
+    if (!j)
+        return UD_UNSUPPORTED;
+    UD_TRY(checkpoint_before(a, NULL));
+    ud_bytes key = {.ctx = a->execution->ctx};
+    ud_status s = snapshot_key(a, pipeline, 0, 0, &key);
+    ud_mutex_lock(&a->execution->journal_lock);
+    if (!s)
+        s = append(j, a, RECORD_EPOCH, (ud_string){(char *)key.data, (uint32_t)key.size}, payload);
+    ud_mutex_unlock(&a->execution->journal_lock);
+    ud_bytes_clear(&key);
+    checkpoint_after(a, s);
+    return s;
+}
+
+ud_status ud_checkpoint_snapshot_forget(ud_activation *a, ud_string component, uint64_t index,
+                                        int indexed) {
+    checkpoint_journal *j = a->execution->journal;
+    if (!j)
+        return UD_OK;
+    UD_TRY(checkpoint_before(a, NULL));
+    ud_bytes key = {.ctx = a->execution->ctx};
+    ud_status status = snapshot_key(a, component, index, indexed, &key);
+    ud_mutex_lock(&a->execution->journal_lock);
+    if (!status)
+        status = ud_journal_forget(j->store, indexed ? RECORD_SNAPSHOT_BATCH : RECORD_SNAPSHOT_DONE,
+                                   (ud_string){(char *)key.data, (uint32_t)key.size});
+    ud_mutex_unlock(&a->execution->journal_lock);
+    ud_bytes_clear(&key);
+    checkpoint_after(a, status);
+    return status;
+}
+ud_status ud_checkpoint_collect(ud_activation *a) {
+    checkpoint_journal *j = a->execution->journal;
+    if (!j)
+        return UD_OK;
+    UD_TRY(checkpoint_before(a, NULL));
+    ud_mutex_lock(&a->execution->journal_lock);
+    ud_status status = ud_journal_collect_blobs(j->store);
+    ud_mutex_unlock(&a->execution->journal_lock);
+    checkpoint_after(a, status);
+    return status;
+}

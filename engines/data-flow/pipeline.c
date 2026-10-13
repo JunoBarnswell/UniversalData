@@ -493,6 +493,11 @@ static uint32_t recommended_rows(void *user) {
     emit_target *target = user;
     node *n = target->node;
     physical_plan *p = target->plan;
+    /* Receipt digests bind logical delivery boundaries. Recoverable executions
+     * keep their declared chunk size so retries cannot reuse a batch ID with a
+     * different row set; ephemeral executions adapt to live pressure. */
+    if (p->execution->execution->journal)
+        return n->context.max_batch_rows;
     uint64_t rows = n->context.max_batch_rows,
              width = n->binding.row_width ? n->binding.row_width : 64;
     uint32_t capacity = p->execution->execution->options.edge_capacity, free_slots = capacity;
@@ -551,7 +556,7 @@ static ud_status route_identified(void *user, uint32_t port, ud_batch *b) {
         ud_status s = ud_queue_push(v->queue, &frame);
         if (s) {
             atomic_fetch_sub(&e->execution->queued, 1);
-            ud_status cleanup = ud_stream_event_clear(&received);
+            ud_status cleanup = ud_buffer_release(block);
             return cleanup ? cleanup : s;
         }
         atomic_fetch_add(&v->produced, b->rows);
@@ -815,7 +820,21 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                             .transaction_serial = e->transaction_serial,
                             .transaction_connection = e->transaction_connection};
         atomic_init(&n->activation.cancelled, 0);
-        n->context=(ud_component_context){.struct_size=sizeof(n->context),.abi_version=UD_ABI_VERSION,.memory=e->execution->ctx,.execution=e->execution,.activation=&n->activation,.task_id=e->task_id,.pipeline_id=p->id,.component_id=n->id,.max_batch_rows=e->execution->options.max_batch_rows,.recommended_batch_rows=recommended_rows,.emit=route,.emit_user=targets+index,.resolve=ud_resolve_value,.resolve_user=&n->activation,.resolve_field=ud_resolve_field};
+        n->context = (ud_component_context){.struct_size = sizeof(n->context),
+                                            .abi_version = UD_ABI_VERSION,
+                                            .memory = e->execution->ctx,
+                                            .execution = e->execution,
+                                            .activation = &n->activation,
+                                            .task_id = e->task_id,
+                                            .pipeline_id = p->id,
+                                            .component_id = n->id,
+                                            .max_batch_rows = e->execution->options.max_batch_rows,
+                                            .recommended_batch_rows = recommended_rows,
+                                            .emit = route,
+                                            .emit_user = targets + index,
+                                            .resolve = ud_resolve_value,
+                                            .resolve_user = &n->activation,
+                                            .resolve_field = ud_resolve_field};
 
         char error_scope[33];
         UD_TRY(ud_pipeline_field_namespace(&n->context, error_scope));
@@ -881,7 +900,8 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                                          .partitions = 1,
                                          .ordering = UD_ORDER_UNORDERED};
         if (!s && !n->descriptor.describe_plan && n->descriptor.synchronous_input >= 0) {
-            n->binding = n->input_plans[n->descriptor.synchronous_input];
+            s = ud_component_plan_copy(
+                e->execution->ctx, n->input_plans + n->descriptor.synchronous_input, &n->binding);
         }
         if (!s && n->descriptor.describe_plan)
             s = n->descriptor.describe_plan(n->descriptor.user, &n->context,
@@ -1214,7 +1234,17 @@ static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
         status = ud_checkpoint_epoch_commit(
             p->execution, p->id, (ud_string){(char *)payload.data, (uint32_t)payload.size});
     if (!status) {
+        uint64_t previous = atomic_load(&p->confirmed_epoch);
         atomic_store(&p->confirmed_epoch, epoch);
+        if (previous)
+            for (uint32_t i = 0; !status && i < p->count; i++)
+                if (p->nodes[i].descriptor.checkpoint) {
+                    char key[65];
+                    status = epoch_component_key(p, p->nodes + i, key);
+                    if (!status)
+                        status = ud_checkpoint_snapshot_forget(p->execution, (ud_string){key, 64},
+                                                               previous, 1);
+                }
         for (uint32_t i = 0; i < p->tree_count; i++)
             ud_work_group_ready(p->group, i);
     }
@@ -1291,7 +1321,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     uint64_t confirmed = atomic_load(&p->confirmed_epoch);
     if (n->barrier_mask && n->barrier_epoch <= confirmed)
         n->barrier_mask = 0;
-    if (n->descriptor.category == UD_COMPONENT_SOURCE && n->barrier_epoch) {
+    if (n->descriptor.confirm_epoch && n->barrier_epoch) {
         if (n->barrier_epoch > confirmed)
             return UD_OK;
         if (n->acknowledged_epoch < n->barrier_epoch) {

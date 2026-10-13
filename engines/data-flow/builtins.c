@@ -644,18 +644,26 @@ ud_status ud_builtin_register(ud_registry *registry) {
         }
         UD_TRY(ud_registry_register(registry, &d));
     }
-    ud_component_descriptor task = {.struct_size = sizeof(task),
-                                    .abi_version = UD_ABI_VERSION,
-                                    .id = {"sql.execute", 11},
-                                    .name = {"Execute SQL", 11},
-                                    .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
-                                    .configuration_schema = {"{\"type\":\"object\"}", 17},
-                                    .category = UD_COMPONENT_TASK,
-                                    .synchronous_input = -1,
-                                    .error_output = -1,
-                                    .configure = ud_builtin_sql_task_configure,
-                                    .capabilities = UD_COMPONENT_THREAD_SAFE,
-                                    .invoke = ud_builtin_sql_task};
+    static const char sql_task_schema[] =
+        "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\",\"minLength\":1,"
+        "\"x-role\":\"resource-reference\"},\"statement\":{\"type\":\"string\"},\"parameters\":{"
+        "\"type\":\"object\",\"properties\":{\"schema\":{\"type\":\"object\"},\"rows\":{\"type\":"
+        "\"array\",\"minItems\":1,\"maxItems\":65536}},\"required\":[\"schema\",\"rows\"],"
+        "\"additionalProperties\":false}},\"required\":[\"connection\",\"statement\"],"
+        "\"additionalProperties\":false}";
+    ud_component_descriptor task = {
+        .struct_size = sizeof(task),
+        .abi_version = UD_ABI_VERSION,
+        .id = {"sql.execute", 11},
+        .name = {"Execute SQL", 11},
+        .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
+        .configuration_schema = {sql_task_schema, sizeof(sql_task_schema) - 1},
+        .category = UD_COMPONENT_TASK,
+        .synchronous_input = -1,
+        .error_output = -1,
+        .configure = ud_builtin_sql_task_configure,
+        .capabilities = UD_COMPONENT_THREAD_SAFE,
+        .invoke = ud_builtin_sql_task};
     UD_TRY(ud_registry_register(registry, &task));
     UD_TRY(ud_transforms_register(registry));
     UD_TRY(ud_quality_component_register(registry));

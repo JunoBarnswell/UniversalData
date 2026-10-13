@@ -2,7 +2,7 @@
 import argparse, collections, copy, hashlib, json, pathlib, sqlite3, subprocess, tempfile, time, zipfile
 P=argparse.ArgumentParser();P.add_argument('runner');P.add_argument('sqlite');P.add_argument('--evidence');P.add_argument('--million',action='store_true');A=P.parse_args();results=[]
 def field(name,type='int64',nullable=False,**extra):return dict(name=name,type=type,nullable=nullable,**extra)
-def schema(*fields):return dict(version=8,fields=list(fields))
+def schema(*fields):return dict(version=9,fields=list(fields))
 def node(id,component,**config):return dict(id=id,component=component,config=config)
 def edge(a,b,output=0,input=0):return dict(**{'from':a,'to':b,'output':output,'input':input})
 def rows(path):return [json.loads(l) for l in path.read_text().splitlines()]
@@ -12,7 +12,7 @@ def source(root,name,records,s,batch=37,ordering=None):
  return n,dict(id=name,driver='file',resource=str(p))
 def package(root,nodes,paths,connections):
  (root/'spill').mkdir(exist_ok=True);(root/'state').mkdir(exist_ok=True)
- return dict(version=8,id='ssis-native',policy=dict(maxConcurrency=8,buffers=dict(connection='spill',residentBytes=8192,workingBytes=4194304,spillBytes=1000000000,maxBlocks=20000)),connections=connections+[dict(id='spill',driver='file',resource=str(root/'spill'))],controlFlow=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='flow'))],constraints=[]),dataFlows=[dict(id='flow',components=nodes,paths=paths)])
+ return dict(version=9,id='ssis-native',policy=dict(maxConcurrency=8,buffers=dict(connection='spill',residentBytes=8192,workingBytes=4194304,spillBytes=1000000000,maxBlocks=20000)),connections=connections+[dict(id='spill',driver='file',resource=str(root/'spill'))],controlFlow=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='flow'))],constraints=[]),dataFlows=[dict(id='flow',components=nodes,paths=paths)])
 def sink(root,id):return node(id,'file.ndjson.destination',connection=id),dict(id=id,driver='file',resource=str(root/(id+'.ndjson')))
 def run(root,p,name,expected=0,workers=4,resume=False,kill=0,after=1,component='',memory=67108864):
  path=root/'package.json';path.write_text(json.dumps(p));start=time.monotonic();command=[A.runner,str(path),str(root/'state'),str(int(resume)),str(workers),str(kill),str(after),component,str(memory)]

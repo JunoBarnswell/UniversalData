@@ -138,8 +138,9 @@ ud_status ud_rule_facts_restore(ud_execution *e, const ud_json *array, int subtr
     }
     return UD_OK;
 }
-ud_status ud_rule_token(const ud_component_context *c,ud_string rule,uint32_t version,ud_id *out) {
-    return ud_error_rule_token(&c->errors,rule,version,out);
+ud_status ud_rule_token(const ud_component_context *c, ud_string rule, uint32_t version,
+                        ud_id *out) {
+    return ud_error_rule_token(&c->errors, rule, version, out);
 }
 ud_status ud_rule_statistics(ud_execution *e, ud_id token, uint64_t *committed, uint64_t *ack,
                              uint64_t *unknown) {

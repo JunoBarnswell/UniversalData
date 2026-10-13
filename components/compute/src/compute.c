@@ -52,8 +52,19 @@ static void clear_values(ud_value *v, uint32_t n) {
         ud_clear_value(v + i);
     ud_free(v);
 }
-static ud_field input_field(const ud_plan *p,uint32_t i){return p->aggs[i].column==UINT32_MAX?(ud_field){.name="value",.name_length=5,.type=UD_INT64}:p->fields[p->aggs[i].column];}
-static void state_field(const ud_plan*p,uint32_t column,ud_field*field){*field=p->output_schema->column[column].field;if(column>=p->key_n){field->type=UD_BINARY;field->precision=field->scale=0;field->nullable=0;}}
+static ud_field input_field(const ud_plan *p, uint32_t i) {
+    return p->aggs[i].column == UINT32_MAX
+               ? (ud_field){.name = "value", .name_length = 5, .type = UD_INT64}
+               : p->fields[p->aggs[i].column];
+}
+static void state_field(const ud_plan *p, uint32_t column, ud_field *field) {
+    *field = p->output_schema->column[column].field;
+    if (column >= p->key_n) {
+        field->type = UD_BINARY;
+        field->precision = field->scale = 0;
+        field->nullable = 0;
+    }
+}
 ud_status ud_accumulator_state_schema(const ud_plan *p, ud_batch **out) {
     uint32_t n = p->output_schema->columns;
     ud_field *fields = ud_alloc(p->ctx, (size_t)n * sizeof(*fields));
@@ -100,7 +111,9 @@ static ud_status new_group(ud_accumulator *a, const ud_batch *b, uint32_t row, u
     g->states = ud_alloc(p->ctx, (size_t)p->agg_n * sizeof(*g->states));
     if (!g->values || !g->states) {
         ud_free(g->values);
-        for(uint32_t k=0;g->states&&k<p->agg_n;k++)ud_stat_clear(g->states+k); ud_free(g->states);
+        for (uint32_t k = 0; g->states && k < p->agg_n; k++)
+            ud_stat_clear(g->states + k);
+        ud_free(g->states);
         ud_free(g);
         return UD_RESOURCE;
     }
@@ -110,17 +123,26 @@ static ud_status new_group(ud_accumulator *a, const ud_batch *b, uint32_t row, u
         ud_status s = own_value(p->ctx, g->values + i, &v);
         if (s) {
             clear_values(g->values, n);
-            for(uint32_t k=0;g->states&&k<p->agg_n;k++)ud_stat_clear(g->states+k); ud_free(g->states);
+            for (uint32_t k = 0; g->states && k < p->agg_n; k++)
+                ud_stat_clear(g->states + k);
+            ud_free(g->states);
             ud_free(g);
             return s;
         }
     }
-    for(uint32_t i=0;i<p->agg_n;i++){g->states[i].ctx=p->ctx;g->values[p->key_n+i]=(ud_value){.type=p->output_schema->column[p->key_n+i].field.type,.is_null=p->aggs[i].kind!=0&&p->aggs[i].kind!=5};}
+    for (uint32_t i = 0; i < p->agg_n; i++) {
+        g->states[i].ctx = p->ctx;
+        g->values[p->key_n + i] =
+            (ud_value){.type = p->output_schema->column[p->key_n + i].field.type,
+                       .is_null = p->aggs[i].kind != 0 && p->aggs[i].kind != 5};
+    }
     g->hash = hash;
     ud_status indexed = index_group(a, g);
     if (indexed) {
         clear_values(g->values, n);
-        for(uint32_t k=0;g->states&&k<p->agg_n;k++)ud_stat_clear(g->states+k); ud_free(g->states);
+        for (uint32_t k = 0; g->states && k < p->agg_n; k++)
+            ud_stat_clear(g->states + k);
+        ud_free(g->states);
         ud_free(g);
         return indexed;
     }
@@ -164,7 +186,9 @@ void ud_accumulator_destroy(ud_accumulator *a) {
     while (g) {
         group *next = g->next;
         clear_values(g->values, a->plan->key_n + a->plan->agg_n);
-        for(uint32_t k=0;g->states&&k<a->plan->agg_n;k++)ud_stat_clear(g->states+k); ud_free(g->states);
+        for (uint32_t k = 0; g->states && k < a->plan->agg_n; k++)
+            ud_stat_clear(g->states + k);
+        ud_free(g->states);
         ud_free(g);
         g = next;
     }
@@ -211,11 +235,18 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, 
         g->flags |= provenance.flags;
         if (provenance.flags)
             g->rule = provenance.rule;
-        for(uint32_t i=0;i<p->agg_n;i++){
-            const ud_aggregate_def *def=p->aggs+i;
-            if(def->condition){ud_value condition;UD_TRY(ud_expression_evaluate(def->condition,b,r,&condition));if(condition.is_null||!condition.integer)continue;}
-            ud_value input={.type=UD_INT64};if(def->column!=UINT32_MAX)UD_TRY(ud_batch_get(b,r,def->column,&input));
-            UD_TRY(ud_stat_add(g->states+i,def,&input));
+        for (uint32_t i = 0; i < p->agg_n; i++) {
+            const ud_aggregate_def *def = p->aggs + i;
+            if (def->condition) {
+                ud_value condition;
+                UD_TRY(ud_expression_evaluate(def->condition, b, r, &condition));
+                if (condition.is_null || !condition.integer)
+                    continue;
+            }
+            ud_value input = {.type = UD_INT64};
+            if (def->column != UINT32_MAX)
+                UD_TRY(ud_batch_get(b, r, def->column, &input));
+            UD_TRY(ud_stat_add(g->states + i, def, &input));
         }
     }
     return UD_OK;
@@ -229,15 +260,6 @@ ud_status ud_accumulator_add(ud_accumulator *a, const ud_batch *b) {
     return s;
 }
 
-static ud_status output_fields(const ud_plan *p, ud_field **out, uint32_t *n) {
-    *n = p->output_schema->columns;
-    *out = ud_alloc(p->ctx, *n * sizeof(**out));
-    if (!*out)
-        return UD_RESOURCE;
-    for (uint32_t i = 0; i < *n; i++)
-        (*out)[i] = p->output_schema->column[i].field;
-    return UD_OK;
-}
 ud_status ud_accumulator_add_accepted(ud_accumulator *a, const ud_batch *b, uint32_t row) {
     if (!a || a->failed)
         return UD_INVALID;
@@ -293,7 +315,12 @@ ud_status ud_accumulator_merge_row(ud_accumulator *a, const ud_batch *b, uint32_
     g->flags |= provenance.flags;
     if (provenance.flags)
         g->rule = provenance.rule;
-    for(uint32_t i=0;i<p->agg_n;i++){ud_value input;UD_TRY(ud_batch_get(b,row,p->key_n+i,&input));ud_field field=input_field(p,i);UD_TRY(ud_stat_merge(g->states+i,p->aggs+i,&field,&input));}
+    for (uint32_t i = 0; i < p->agg_n; i++) {
+        ud_value input;
+        UD_TRY(ud_batch_get(b, row, p->key_n + i, &input));
+        ud_field field = input_field(p, i);
+        UD_TRY(ud_stat_merge(g->states + i, p->aggs + i, &field, &input));
+    }
     return UD_OK;
 }
 ud_status ud_accumulator_merge(ud_accumulator *a, const ud_batch *snapshot) {
@@ -328,13 +355,20 @@ static ud_status accumulator_snapshot(const ud_accumulator *a, ud_batch **out, i
         status = ud_batch_create(p->ctx, fields, n, a->groups, out);
     for (group *g = a->head; !status && g; g = g->next) {
         memcpy(values, g->values, (size_t)n * sizeof(*values));
-        for(uint32_t i=0;!status&&i<p->agg_n;i++){
-            ud_field field=input_field(p,i);
-            if(partial){status=ud_stat_encode(g->states+i,p->aggs+i,&field,encoded+i);values[p->key_n+i]=encoded[i];}
-            else status=ud_stat_result(g->states+i,p->aggs+i,&p->output_schema->column[p->key_n+i].field,values+p->key_n+i);
+        for (uint32_t i = 0; !status && i < p->agg_n; i++) {
+            ud_field field = input_field(p, i);
+            if (partial) {
+                status = ud_stat_encode(g->states + i, p->aggs + i, &field, encoded + i);
+                values[p->key_n + i] = encoded[i];
+            } else
+                status = ud_stat_result(g->states + i, p->aggs + i,
+                                        &p->output_schema->column[p->key_n + i].field,
+                                        values + p->key_n + i);
         }
-        if(!status)status=ud_batch_append(*out,values,n);
-        for(uint32_t i=0;i<p->agg_n;i++)ud_clear_value(encoded+i);
+        if (!status)
+            status = ud_batch_append(*out, values, n);
+        for (uint32_t i = 0; i < p->agg_n; i++)
+            ud_clear_value(encoded + i);
     }
     if (!status) {
         uint8_t fingerprint[32];
@@ -386,20 +420,79 @@ ud_status ud_accumulator_snapshot(const ud_accumulator *a, ud_batch **out) {
 ud_status ud_accumulator_partial_snapshot(const ud_accumulator *a, ud_batch **out) {
     return accumulator_snapshot(a, out, 1);
 }
-ud_status ud_accumulator_restore(ud_accumulator*a,const ud_batch*b){
-    if(!a||!b||a->failed||a->groups>(a->plan->key_n?0u:1u))return UD_INVALID;
-    const ud_plan*p=a->plan;uint32_t n=p->key_n+p->agg_n;if(b->columns!=n)return UD_CORRUPT;
-    int partial=1;
-    for(uint32_t i=0;i<n;i++){ud_field expected;state_field(p,i,&expected);if(!ud_field_matches(&b->column[i].field,&expected,UD_FIELD_PORT))partial=0;}
-    if(!partial){for(uint32_t i=0;i<p->agg_n;i++)if(p->aggs[i].kind>3||p->aggs[i].distinct)return UD_UNSUPPORTED;for(uint32_t i=0;i<n;i++)if(!ud_field_matches(&b->column[i].field,&p->output_schema->column[i].field,UD_FIELD_PORT))return UD_CORRUPT;}
-    if(a->head){clear_values(a->head->values,n);for(uint32_t i=0;i<p->agg_n;i++)ud_stat_clear(a->head->states+i);ud_free(a->head->states);ud_free(a->head);a->head=a->tail=NULL;a->groups=0;}
-    ud_free(a->buckets);a->buckets=NULL;a->bucket_count=0;
-    if(partial)return ud_accumulator_merge(a,b);
-    for(uint32_t row=0;row<b->rows;row++){
-        group*g=NULL;uint64_t hash=UD_VALUE_HASH_SEED;for(uint32_t k=0;k<p->key_n;k++){ud_value v;UD_TRY(ud_batch_get(b,row,k,&v));hash=ud_value_hash(&v,hash);}
-        for(group*prior=a->head;prior;prior=prior->next){int same=prior->hash==hash;for(uint32_t k=0;same&&k<p->key_n;k++){ud_value v;UD_TRY(ud_batch_get(b,row,k,&v));same=!ud_value_compare(&v,prior->values+k);}if(same)return UD_CORRUPT;}
-        UD_TRY(new_group(a,NULL,0,hash,&g));for(uint32_t k=0;k<p->key_n;k++){ud_value v;UD_TRY(ud_batch_get(b,row,k,&v));UD_TRY(own_value(p->ctx,g->values+k,&v));}
-        for(uint32_t i=0;i<p->agg_n;i++){ud_value v;UD_TRY(ud_batch_get(b,row,p->key_n+i,&v));if(p->aggs[i].kind==0){if(v.is_null||v.integer<0)return UD_CORRUPT;g->states[i].sum.count=(uint64_t)v.integer;}else UD_TRY(ud_stat_add(g->states+i,p->aggs+i,&v));}
+ud_status ud_accumulator_restore(ud_accumulator *a, const ud_batch *b) {
+    if (!a || !b || a->failed || a->groups > (a->plan->key_n ? 0u : 1u))
+        return UD_INVALID;
+    const ud_plan *p = a->plan;
+    uint32_t n = p->key_n + p->agg_n;
+    if (b->columns != n)
+        return UD_CORRUPT;
+    int partial = 1;
+    for (uint32_t i = 0; i < n; i++) {
+        ud_field expected;
+        state_field(p, i, &expected);
+        if (!ud_field_matches(&b->column[i].field, &expected, UD_FIELD_PORT))
+            partial = 0;
+    }
+    if (!partial) {
+        for (uint32_t i = 0; i < p->agg_n; i++)
+            if (p->aggs[i].kind > 3 || p->aggs[i].distinct)
+                return UD_UNSUPPORTED;
+        for (uint32_t i = 0; i < n; i++)
+            if (!ud_field_matches(&b->column[i].field, &p->output_schema->column[i].field,
+                                  UD_FIELD_PORT))
+                return UD_CORRUPT;
+    }
+    if (a->head) {
+        clear_values(a->head->values, n);
+        for (uint32_t i = 0; i < p->agg_n; i++)
+            ud_stat_clear(a->head->states + i);
+        ud_free(a->head->states);
+        ud_free(a->head);
+        a->head = a->tail = NULL;
+        a->groups = 0;
+    }
+    ud_free(a->buckets);
+    a->buckets = NULL;
+    a->bucket_count = 0;
+    if (partial)
+        return ud_accumulator_merge(a, b);
+    for (uint32_t row = 0; row < b->rows; row++) {
+        group *g = NULL;
+        uint64_t hash = UD_VALUE_HASH_SEED;
+        for (uint32_t k = 0; k < p->key_n; k++) {
+            ud_value v;
+            UD_TRY(ud_batch_get(b, row, k, &v));
+            hash = ud_value_hash(&v, hash);
+        }
+        for (group *prior = a->head; prior; prior = prior->next) {
+            int same = prior->hash == hash;
+            for (uint32_t k = 0; same && k < p->key_n; k++) {
+                ud_value v;
+                UD_TRY(ud_batch_get(b, row, k, &v));
+                same = !ud_value_compare(&v, prior->values + k);
+            }
+            if (same) {
+                a->failed = 1;
+                return UD_CORRUPT;
+            }
+        }
+        UD_TRY(new_group(a, NULL, 0, hash, &g));
+        for (uint32_t k = 0; k < p->key_n; k++) {
+            ud_value v;
+            UD_TRY(ud_batch_get(b, row, k, &v));
+            UD_TRY(own_value(p->ctx, g->values + k, &v));
+        }
+        for (uint32_t i = 0; i < p->agg_n; i++) {
+            ud_value v;
+            UD_TRY(ud_batch_get(b, row, p->key_n + i, &v));
+            if (p->aggs[i].kind == 0) {
+                if (v.is_null || v.integer < 0)
+                    return UD_CORRUPT;
+                g->states[i].sum.count = (uint64_t)v.integer;
+            } else
+                UD_TRY(ud_stat_add(g->states + i, p->aggs + i, &v));
+        }
     }
     return UD_OK;
 }
@@ -428,12 +521,18 @@ ud_status ud_compute_apply(const ud_plan *p, const ud_batch *b, ud_batch **out) 
     for (uint32_t i = 0; i < n; i++)
         f[i] = p->fields[p->project_n ? p->projection[i] : i];
     ud_status s = ud_batch_create(p->ctx, f, n, ud_batch_rows(b), out);
-    ud_batch *mask=NULL;
-    if(!s&&p->predicate)s=ud_expression_evaluate_batch(p->predicate,b,(ud_string){"accepted",8},&mask);
+    ud_batch *mask = NULL;
+    if (!s && p->predicate)
+        s = ud_expression_evaluate_batch(p->predicate, b, (ud_string){"accepted", 8}, &mask);
     for (uint32_t r = 0; !s && r < ud_batch_rows(b); r++) {
-        int accept=1;
-        if(ud_is_cancelled(p->ctx))s=UD_CANCELLED;
-        if(!s&&mask){ud_value flag;s=ud_batch_get(mask,r,0,&flag);accept=!flag.is_null&&flag.integer;}
+        int accept = 1;
+        if (ud_is_cancelled(p->ctx))
+            s = UD_CANCELLED;
+        if (!s && mask) {
+            ud_value flag;
+            s = ud_batch_get(mask, r, 0, &flag);
+            accept = !flag.is_null && flag.integer;
+        }
 
         if (s || !accept)
             continue;

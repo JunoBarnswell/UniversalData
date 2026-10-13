@@ -276,7 +276,11 @@ struct ud_connection {
     ud_connection_options options;
     const ud_connector_api *api;
     uint64_t capabilities;
-    int cursor, transaction, cdc;
+    int cursor, transaction, cdc, cdc_transaction, io_action, cleanup;
+    uint32_t cdc_batch_rows;
+    uint64_t cdc_version;
+    ud_batch *cdc_schema;
+    ud_context *ctx;
     int32_t dialect;
 };
 static int valid_string(ud_string s, int required) {
@@ -294,8 +298,15 @@ static ud_status authorize_connection(ud_connection *c, int32_t action) {
         return UD_OK;
     if (c->options.check)
         UD_TRY(c->options.check(c->options.authorize_user));
-    return ud_fail(c->instance->plugin->ctx, UD_AUTH,
-                   "connector operation denied by authorization callback");
+    return ud_fail(c->ctx, UD_AUTH, "connector operation denied by authorization callback");
+}
+static ud_status connection_check(void *user) {
+    ud_connection *c = user;
+    if (c->cleanup)
+        return UD_OK;
+    if (c->options.check)
+        UD_TRY(c->options.check(c->options.authorize_user));
+    return c->io_action ? authorize_connection(c, c->io_action) : UD_OK;
 }
 static ud_status connection_enter(ud_connection *c, int32_t action) {
     if (!c)
@@ -308,6 +319,8 @@ static ud_status connection_enter(ud_connection *c, int32_t action) {
         atomic_store(&c->instance->busy, 0);
         return UD_CANCELLED;
     }
+    c->io_action = action;
+    c->api->set_control(c->instance->state, c, connection_check);
     atomic_fetch_add(&c->instance->plugin->active, 1);
     return UD_OK;
 }
@@ -364,16 +377,17 @@ ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options 
     if (!c)
         return UD_RESOURCE;
     c->options = *options;
+    c->ctx = p->ctx;
+    c->io_action = UD_ACCESS_OPEN;
     c->options.tenant.data = ud_strdup_n(p->ctx, options->tenant.data, options->tenant.length);
     c->options.resource.data =
         ud_strdup_n(p->ctx, options->resource.data, options->resource.length);
     c->options.credential_reference = (ud_string){0};
     c->api = p->api.connector;
-    ud_status status =
-        !c->options.tenant.data || !c->options.resource.data
-            ? UD_RESOURCE
-            : connection_instance_create(p, configuration.data, configuration.length, &c->instance,
-                                         options->authorize_user, options->check);
+    ud_status status = !c->options.tenant.data || !c->options.resource.data
+                           ? UD_RESOURCE
+                           : connection_instance_create(p, configuration.data, configuration.length,
+                                                        &c->instance, c, connection_check);
     if (status) {
         ud_free((void *)c->options.tenant.data);
         ud_free((void *)c->options.resource.data);
@@ -438,11 +452,13 @@ ud_status ud_connection_bind_lease(ud_connection *c, void *user, ud_authorize_fn
         return UD_BUSY;
     c->options.authorize_user = user;
     c->options.authorize = authorize;
-    c->api->set_control(c->instance->state, user, check);
+    c->options.check = check;
+    c->io_action = 0;
+    c->api->set_control(c->instance->state, c, connection_check);
     return UD_OK;
 }
 ud_status ud_connection_begin(ud_connection *c, int32_t isolation) {
-    if (!c || c->transaction || c->cursor || isolation < UD_ISOLATION_READ_COMMITTED ||
+    if (!c || c->transaction || c->cursor || c->cdc || isolation < UD_ISOLATION_READ_COMMITTED ||
         isolation > UD_ISOLATION_SERIALIZABLE)
         return UD_INVALID;
     if (!(c->capabilities & UD_CONNECT_TRANSACTION))
@@ -486,6 +502,8 @@ ud_status ud_connection_metadata(ud_connection *c, const ud_metadata_options *op
     if (!c || !options || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
+    if (c->cdc)
+        return UD_BUSY;
     if (!(c->capabilities & UD_CONNECT_METADATA))
         return UD_UNSUPPORTED;
     if (!options->limit || options->limit > 65536 || options->kind < UD_METADATA_CATALOGS ||
@@ -504,12 +522,16 @@ uint64_t ud_connection_capabilities(const ud_connection *c) {
     return c ? c->capabilities : 0;
 }
 ud_status ud_connection_test(ud_connection *c) {
+    if (c && c->cdc)
+        return UD_BUSY;
     UD_TRY(connection_enter(c, UD_ACCESS_OPEN));
     ud_status s = c->api->test(c->instance->state);
     connection_leave(c);
     return s;
 }
 ud_status ud_connection_discover(ud_connection *c, ud_string table, ud_batch **out) {
+    if (c && c->cdc)
+        return UD_BUSY;
     if (!out || !valid_string(table, 1))
         return UD_INVALID;
     *out = NULL;
@@ -540,6 +562,8 @@ ud_status ud_connection_read_open(ud_connection *c, const ud_read_options *optio
     if (!c || !options || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
+    if (c->cdc)
+        return UD_BUSY;
     if (!schema || !valid_string(options->sql, 1) || !options->batch_size ||
         options->batch_size > INT32_MAX || c->cursor)
         return UD_INVALID;
@@ -560,6 +584,8 @@ ud_status ud_connection_read_next(ud_connection *c, ud_batch **out) {
         return UD_INVALID;
     UD_TRY(connection_enter(c, UD_ACCESS_READ));
     ud_status s = c->api->read_next(c->instance->state, out);
+    if (!s)
+        s = ud_batch_seal(*out);
     connection_leave(c);
     if (s) {
         ud_batch_destroy(*out);
@@ -588,7 +614,7 @@ ud_status ud_connection_write(ud_connection *c, const ud_write_options *options,
     if (!c || !options || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    if (c->cursor)
+    if (c->cursor || c->cdc)
         return UD_BUSY;
     UD_TRY(ud_write_validate(options, batch));
     uint64_t cap = options->mode == UD_WRITE_APPEND   ? UD_CONNECT_APPEND
@@ -642,9 +668,15 @@ ud_status ud_connection_close(ud_connection *c) {
     UD_TRY(ud_connection_read_close(c));
     if (c->transaction)
         UD_TRY(ud_connection_rollback(c));
-    UD_TRY(connection_instance_destroy(c->instance));
+    c->cleanup = 1;
+    ud_status destroyed = connection_instance_destroy(c->instance);
+    if (destroyed) {
+        c->cleanup = 0;
+        return destroyed;
+    }
     ud_free((void *)c->options.tenant.data);
     ud_free((void *)c->options.resource.data);
+    ud_batch_destroy(c->cdc_schema);
     ud_free(c);
     return UD_OK;
 }
@@ -703,27 +735,100 @@ ud_status ud_connection_cdc_open(ud_connection *c, const ud_cdc_options *options
         return s;
     if (c->dialect == UD_SQL_SQLSERVER && options->mode == UD_CDC_SNAPSHOT_STREAM)
         UD_TRY(authorize_connection(c, UD_ACCESS_WRITE));
-    UD_TRY(connection_enter(c, UD_ACCESS_READ));
+    UD_TRY(ud_batch_create(c->ctx, options->schema->schema->fields, options->schema->columns, 0,
+                           &c->cdc_schema));
+    c->cdc_batch_rows = options->batch_rows;
+    c->cdc_version = 0;
+    c->cdc_transaction = 0;
+    s = connection_enter(c,
+                         c->dialect == UD_SQL_SQLSERVER && options->mode == UD_CDC_SNAPSHOT_STREAM
+                             ? UD_ACCESS_WRITE
+                             : UD_ACCESS_READ);
+    if (s) {
+        ud_batch_destroy(c->cdc_schema);
+        c->cdc_schema = NULL;
+        return s;
+    }
     s = c->api->cdc_open(c->instance->state, options);
     if (!s)
         c->cdc = 1;
+    else {
+        ud_batch_destroy(c->cdc_schema);
+        c->cdc_schema = NULL;
+    }
     connection_leave(c);
     return s;
+}
+static ud_status cdc_shape(ud_connection *c, ud_batch *b) {
+    if (!b || b->ctx != c->ctx || b->columns != c->cdc_schema->columns ||
+        b->rows > c->cdc_batch_rows)
+        return UD_INCOMPATIBLE;
+    for (uint32_t i = 0; i < b->columns; i++) {
+        const ud_field *a = &b->column[i].field, *expected = &c->cdc_schema->column[i].field;
+        if (!ud_field_matches(a, expected, UD_FIELD_VALUE_TYPE) ||
+            a->name_length != expected->name_length ||
+            memcmp(a->name, expected->name, a->name_length))
+            return UD_INCOMPATIBLE;
+    }
+    return ud_batch_seal(b);
 }
 ud_status ud_connection_cdc_next(ud_connection *c, ud_cdc_event *out) {
     if (!c || !out || !c->cdc)
         return UD_INVALID;
     memset(out, 0, sizeof(*out));
     UD_TRY(connection_enter(c, UD_ACCESS_READ));
-    ud_status s = c->api->cdc_next(c->instance->state, out);
+    ud_status status = c->api->cdc_next(c->instance->state, out);
     connection_leave(c);
-    if (s)
-        ud_cdc_event_clear(out);
-    else if (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION) {
-        ud_cdc_event_clear(out);
-        s = UD_INCOMPATIBLE;
+    if (!status && (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION))
+        status = UD_INCOMPATIBLE;
+    if (!status && (out->kind < UD_CDC_BEGIN || out->kind > UD_CDC_HEARTBEAT ||
+                    !out->schema_version || out->schema_version < c->cdc_version))
+        status = UD_CORRUPT;
+    if (!status) {
+        switch (out->kind) {
+        case UD_CDC_BEGIN:
+            if (c->cdc_transaction || !valid_string(out->transaction_id, 1))
+                status = UD_CORRUPT;
+            else
+                c->cdc_transaction = 1;
+            break;
+        case UD_CDC_ROWS:
+            if (!c->cdc_transaction || !out->operations || !valid_string(out->position, 1))
+                status = UD_CORRUPT;
+            if (!status)
+                status = cdc_shape(c, out->after);
+            if (!status && out->before) {
+                status = cdc_shape(c, out->before);
+                if (!status && out->before->rows != out->after->rows)
+                    status = UD_CORRUPT;
+            }
+            for (uint32_t i = 0; !status && i < out->after->rows; i++)
+                if (out->operations[i] < UD_CHANGE_INSERT ||
+                    out->operations[i] > UD_CHANGE_DELETE ||
+                    (out->operations[i] != UD_CHANGE_INSERT && !out->before))
+                    status = UD_CORRUPT;
+            break;
+        case UD_CDC_COMMIT:
+            if (!c->cdc_transaction || !valid_string(out->position, 1))
+                status = UD_CORRUPT;
+            else
+                c->cdc_transaction = 0;
+            break;
+        case UD_CDC_SCHEMA_CHANGE:
+            if (!out->after || out->schema_version <= c->cdc_version)
+                status = UD_INCOMPATIBLE;
+            else
+                status = ud_batch_seal(out->after);
+            break;
+        case UD_CDC_HEARTBEAT:
+            break;
+        }
     }
-    return s;
+    if (!status)
+        c->cdc_version = out->schema_version;
+    else
+        ud_cdc_event_clear(out);
+    return status;
 }
 ud_status ud_connection_cdc_confirm(ud_connection *c, ud_string position) {
     if (!c || !c->cdc || !valid_string(position, 1))
@@ -734,14 +839,26 @@ ud_status ud_connection_cdc_confirm(ud_connection *c, ud_string position) {
     return s;
 }
 ud_status ud_connection_cdc_close(ud_connection *c) {
-    if (!c || !c->cdc)
+    if (!c)
         return UD_INVALID;
-    UD_TRY(connection_enter(c, UD_ACCESS_READ));
-    ud_status s = c->api->cdc_close(c->instance->state);
-    if (!s)
+    if (!c->cdc)
+        return UD_OK;
+    int expected = 0;
+    if (!atomic_compare_exchange_strong(&c->instance->busy, &expected, 1))
+        return UD_BUSY;
+    atomic_fetch_add(&c->instance->plugin->active, 1);
+    c->cleanup = 1;
+    c->api->set_control(c->instance->state, c, connection_check);
+    ud_status status = c->api->cdc_close(c->instance->state);
+    c->cleanup = 0;
+    if (!status) {
         c->cdc = 0;
+        c->cdc_transaction = 0;
+        ud_batch_destroy(c->cdc_schema);
+        c->cdc_schema = NULL;
+    }
     connection_leave(c);
-    return s;
+    return status;
 }
 
 int32_t ud_connection_dialect(const ud_connection *c) {

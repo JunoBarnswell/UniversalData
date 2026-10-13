@@ -1,3 +1,5 @@
+#include "ud/connection_manager.h"
+#include "ud/engine.h"
 #include "../package/internal.h"
 #include "ud/compute.h"
 #include "ud/sql.h"
@@ -16,6 +18,8 @@ typedef struct cache_component {
     uint32_t *mapping, *keys, key_count, row;
     const ud_batch *input;
     uint64_t duplicates_position;
+    char (*observations)[65];
+    uint32_t observation_count, observation_capacity;
     int build, database, policy, ended, sealed;
 } cache_component;
 static ud_status parse_indices(ud_context *ctx, const ud_json *array, uint32_t columns,
@@ -121,6 +125,7 @@ static void dispose(void *ptr, ud_status result) {
     ud_batch_destroy((ud_batch *)c->input);
     ud_free(c->mapping);
     ud_free(c->keys);
+    ud_free(c->observations);
     ud_json_destroy(c->config);
     ud_free(c);
 }
@@ -153,6 +158,8 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
     if (!status && c->build && c->mode != UD_CACHE_FULL)
         status = UD_SCHEMA;
     if (!status && c->database && c->mode != UD_CACHE_PARTIAL)
+        status = UD_SCHEMA;
+    if (!status && !c->build && !c->database && c->mode != UD_CACHE_FULL)
         status = UD_SCHEMA;
     if (!status && c->database) {
         ud_string connection;
@@ -198,7 +205,8 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
         status = c->build ? ud_asset_build(context->activation, c->asset, &c->cache)
                           : ud_asset_acquire(context->activation, c->asset, &c->cache);
     if (!status && !c->build) {
-        status = ud_cache_reader_create(c->cache, in[0], c->keys, c->key_count, &c->reader);
+        if (c->database)
+            status = ud_cache_reader_create(c->cache, in[0], c->keys, c->key_count, &c->reader);
         ud_operator_options options = {.struct_size = sizeof(options),
                                        .abi_version = UD_ABI_VERSION,
                                        .kind = UD_OPERATOR_CACHE_LOOKUP,
@@ -433,6 +441,67 @@ static ud_status fill_misses(cache_component *c, const ud_batch *input) {
         status = ud_cache_reader_create(c->cache, input, c->keys, c->key_count, &c->reader);
     return status;
 }
+static ud_status observe(cache_component *c, const ud_batch *input) {
+    if (!c->context.execution->journal)
+        return fill_misses(c, input);
+    uint8_t digest[32];
+    UD_TRY(ud_batch_fingerprint(input, digest));
+    ud_bytes identity = {.ctx = c->context.memory};
+    ud_status status =
+        ud_put_string(&identity, c->context.component_id.data, c->context.component_id.length);
+    if (!status)
+        status = ud_bytes_put(&identity, digest, 32);
+    if (!status)
+        ud_hash(identity.data, identity.size, digest);
+    ud_bytes_clear(&identity);
+    if (status)
+        return status;
+    char key[65];
+    for (uint32_t i = 0; i < 32; i++)
+        snprintf(key + i * 2, 3, "%02x", digest[i]);
+    ud_batch *state = NULL;
+    status = ud_checkpoint_snapshot_read(c->context.activation, (ud_string){key, 64}, 0, &state);
+    if (!status) {
+        ud_cache_reader_destroy(c->reader);
+        c->reader = NULL;
+        status = ud_cache_restore(c->cache, state);
+        if (!status)
+            status = ud_cache_reader_create(c->cache, input, c->keys, c->key_count, &c->reader);
+    } else if (status == UD_END) {
+        status = fill_misses(c, input);
+        if (!status)
+            status = ud_cache_checkpoint(c->cache, &state);
+        if (!status)
+            status =
+                ud_checkpoint_snapshot_write(c->context.activation, (ud_string){key, 64}, 0, state);
+    }
+    ud_batch_destroy(state);
+    if (!status) {
+        if (c->observation_count == c->observation_capacity) {
+            uint32_t cap = c->observation_capacity ? c->observation_capacity * 2 : 16;
+            char(*keys)[65] = ud_alloc(c->context.memory, (size_t)cap * 65);
+            if (!keys)
+                return UD_RESOURCE;
+            if (c->observation_count)
+                memcpy(keys, c->observations, (size_t)c->observation_count * 65);
+            ud_free(c->observations);
+            c->observations = keys;
+            c->observation_capacity = cap;
+        }
+        memcpy(c->observations[c->observation_count++], key, 65);
+    }
+    return status;
+}
+static ud_status confirm_epoch(void *ptr, uint64_t epoch, ud_string position) {
+    (void)epoch;
+    (void)position;
+    cache_component *c = ptr;
+    for (uint32_t i = 0; i < c->observation_count; i++)
+        UD_TRY(ud_checkpoint_snapshot_forget(c->context.activation,
+                                             (ud_string){c->observations[i], 64}, 0, 1));
+    c->observation_count = 0;
+    return UD_OK;
+}
 static ud_status lookup_drain(cache_component *c) {
     ud_batch *batch = NULL;
     uint32_t port = 0;
@@ -482,7 +551,7 @@ static ud_status step(void *ptr, const ud_component_event *event) {
         return status;
     }
     if (c->database) {
-        UD_TRY(fill_misses(c, event->batch));
+        UD_TRY(observe(c, event->batch));
         UD_TRY(ud_batch_retain((ud_batch *)event->batch));
         c->input = event->batch;
     }
@@ -586,6 +655,7 @@ ud_status ud_cache_components_register(ud_registry *registry) {
             .state_version = 1,
             .checkpoint = checkpoint,
             .restore = restore_state,
+            .confirm_epoch = i == 2 ? confirm_epoch : NULL,
             .effects = i == 2 ? UD_EFFECT_EXTERNAL_READ : 0};
         UD_TRY(ud_registry_register(registry, &d));
     }

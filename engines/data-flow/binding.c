@@ -92,197 +92,41 @@ ud_status ud_builtin_create_operator(const ud_component_context *c, int kind, co
                                      const ud_batch *const *inputs, ud_operator **out) {
     ud_operator_options options = {.struct_size = sizeof(options),
                                    .abi_version = UD_ABI_VERSION,
+                                   .kind = kind == JOIN     ? UD_OPERATOR_JOIN
+                                           : kind == SORT   ? UD_OPERATOR_SORT
+                                           : kind == WINDOW ? UD_OPERATOR_WINDOW
+                                                            : UD_OPERATOR_AGGREGATE,
                                    .max_batch_rows = c->max_batch_rows,
                                    .buffers = c->execution->buffers,
                                    .check = ud_builtin_operator_check,
-                                   .user = c->activation};
+                                   .user = c->activation,
+                                   .executor = c->execution->executor};
     UD_TRY(ud_component_operator_options(c, &options));
-    if (kind == JOIN) {
-        char *json = NULL;
-        uint32_t length = 0;
-        ud_status status = ud_json_serialize(config, &json, &length);
-        ud_sort_contract orders[2] = {{0}};
-        if (c->input_plans) {
-            orders[0] = c->input_plans[0].sort;
+    ud_sort_contract orders[2] = {{0}};
+    if (c->input_plans) {
+        orders[0] = c->input_plans[0].sort;
+        if (kind == JOIN)
             orders[1] = c->input_plans[1].sort;
-        }
-        options.kind = UD_OPERATOR_JOIN;
-        options.configuration = (ud_string){json, length};
-        options.input_order = orders;
-        if (!status)
-            status = ud_operator_create(c->memory, &options, inputs, out);
-        ud_free(json);
-        return status;
     }
-    ud_status s = UD_OK;
-    uint64_t partitions = 1, maximum = 64;
-    if (ud_member(config, "partitions"))
-        s = ud_json_uint(ud_member(config, "partitions"), &partitions);
-    const ud_json *policy = ud_member(c->activation->package->document, "policy");
-    if (!s && ud_member(policy, "maxPartitions"))
-        s = ud_json_uint(ud_member(policy, "maxPartitions"), &maximum);
-    if (!s && (!partitions || partitions > 64 || partitions > maximum))
-        s = UD_RESOURCE;
-    options.partition_count = (uint32_t)partitions;
-    options.executor = c->execution->executor;
-    uint32_t *left_keys = NULL, *right_keys = NULL;
-    ud_plan *plan = NULL;
-    uint32_t *window_keys = NULL;
-    if (!s && kind == WINDOW) {
-        const ud_json *keys = ud_member(config, "keys");
-        options.key_count = ud_json_size(keys);
-        if (ud_json_kind(keys) != UD_JSON_ARRAY || options.key_count > inputs[0]->columns)
-            s = UD_SCHEMA;
-        window_keys =
-            !s ? ud_alloc(c->memory, (options.key_count + 1) * sizeof(*window_keys)) : NULL;
-        if (!s && !window_keys)
-            s = UD_RESOURCE;
-        for (uint32_t i = 0; !s && i < options.key_count; i++) {
-            uint64_t index = 0;
-            uint32_t selected = 0;
-            s = ud_compute_field_index(inputs[0], ud_json_at(keys, i), &selected);
-            index = selected;
-            if (!s)
-                window_keys[i] = (uint32_t)index;
-        }
-        uint64_t partition = 0, column = 0;
-        ud_string function = {0};
-        if (!s)
-            s = ud_json_uint(ud_member(config, "partitionKeys"), &partition);
-        if (!s && partition > options.key_count)
-            s = UD_SCHEMA;
-        if (!s)
-            s = ud_json_string(ud_member(config, "function"), &function);
-        if (!s)
-            s = ud_json_string(ud_member(config, "name"), &options.window_name);
-        static const char *functions[] = {"rowNumber", "runningSum",   "rank",  "denseRank",
-                                          "lag",       "lead",         "first", "last",
-                                          "movingSum", "movingAverage"};
-        for (uint32_t i = 0; i < sizeof(functions) / sizeof(*functions); i++)
-            if (ud_named(function, functions[i]))
-                options.window_function = (int32_t)i + 1;
-        if (!s && !options.window_function)
-            s = UD_UNSUPPORTED;
-        if (!s && (options.window_function == UD_WINDOW_RUNNING_SUM ||
-                   options.window_function >= UD_WINDOW_LAG)) {
-            uint32_t selected = 0;
-            s = ud_compute_field_index(inputs[0], ud_member(config, "column"), &selected);
-            column = selected;
-        }
-        uint64_t offset = 1;
-        if (!s && ud_member(config, "offset"))
-            s = ud_json_uint(ud_member(config, "offset"), &offset);
-        if (!s && offset > 65536)
-            s = UD_SCHEMA;
-        options.window_offset = (uint32_t)offset;
-        const ud_json *frame = ud_member(config, "frame");
-        if (!s && frame) {
-            ud_string type = {0};
-            s = ud_json_string(ud_member(frame, "type"), &type);
-            if (!s)
-                s = ud_json_uint(ud_member(frame, "preceding"), &options.frame_preceding);
-            if (!s)
-                s = ud_json_uint(ud_member(frame, "following"), &options.frame_following);
-            options.frame_kind = ud_named(type, "rows")    ? UD_FRAME_ROWS
-                                 : ud_named(type, "range") ? UD_FRAME_RANGE
-                                                           : 0;
-            if (!options.frame_kind)
-                s = UD_SCHEMA;
-        }
-        if (!s && !frame && options.window_function >= UD_WINDOW_MOVING_SUM)
-            s = UD_SCHEMA;
-        options.average_rounding = UD_ROUND_HALF_EVEN;
-        if (!s && ud_member(config, "averageRounding")) {
-            ud_string mode = {0};
-            s = ud_json_string(ud_member(config, "averageRounding"), &mode);
-            if (!s)
-                options.average_rounding =
-                    ud_named(mode, "exact") ? UD_ROUND_EXACT : UD_ROUND_HALF_EVEN;
-        }
-        options.kind = UD_OPERATOR_WINDOW;
-        options.keys = window_keys;
-        options.partition_key_count = (uint32_t)partition;
-        options.window_column = (uint32_t)column;
-    } else if (!s && kind == AGGREGATE) {
-        char *json = NULL;
-        uint32_t length = 0;
-        s = ud_json_serialize(ud_member(config, "plan"), &json, &length);
-        ud_field *fields = ud_alloc(c->memory, inputs[0]->columns * sizeof(*fields));
-        if (!fields)
-            s = UD_RESOURCE;
-        for (uint32_t i = 0; !s && i < inputs[0]->columns; i++)
-            fields[i] = inputs[0]->column[i].field;
-        ud_expression_options bindings = {sizeof(bindings),
-                                          UD_ABI_VERSION,
-                                          inputs[0],
-                                          c->resolve,
-                                          c->resolve_user,
-                                          c->resolve_field,
-                                          c->execution->registry,
+    options.input_order = orders;
+    ud_expression_options bindings = {.struct_size = sizeof(bindings),
+                                      .abi_version = UD_ABI_VERSION,
+                                      .schema = inputs[0],
+                                      .resolve = c->resolve,
+                                      .user = c->resolve_user,
+                                      .resolve_field = c->resolve_field,
+                                      .registry = c->execution->registry,
+                                      .function_capabilities =
                                           c->activation->parallel ? UD_COMPONENT_THREAD_SAFE : 0};
-        if (!s)
-            s = ud_plan_create_fields(c->memory, UD_PLAN_VERSION, fields, inputs[0]->columns,
-                                      (ud_string){json, length}, &bindings, &plan);
-        ud_free(fields);
-        ud_free(json);
-        options.kind = UD_OPERATOR_AGGREGATE;
-        options.aggregation = plan;
-    } else if (!s) {
-        const ud_json *keys = ud_member(config, kind == SORT ? "keys" : "leftKeys");
-        options.key_count = ud_json_size(keys);
-        if (ud_json_kind(keys) != UD_JSON_ARRAY || !options.key_count ||
-            options.key_count > inputs[0]->columns)
-            s = UD_SCHEMA;
-        left_keys = !s ? ud_alloc(c->memory, (size_t)options.key_count * sizeof(*left_keys)) : NULL;
-        if (!s && !left_keys)
-            s = UD_RESOURCE;
-        if (!s && kind != SORT) {
-            const ud_json *right = ud_member(config, "rightKeys");
-            if (ud_json_kind(right) != UD_JSON_ARRAY || ud_json_size(right) != options.key_count)
-                s = UD_SCHEMA;
-            right_keys =
-                !s ? ud_alloc(c->memory, (size_t)options.key_count * sizeof(*right_keys)) : NULL;
-            if (!s && !right_keys)
-                s = UD_RESOURCE;
-            for (uint32_t i = 0; !s && i < options.key_count; i++) {
-                uint64_t index;
-                s = ud_json_uint(ud_json_at(right, i), &index);
-                if (!s && index >= inputs[1]->columns)
-                    s = UD_SCHEMA;
-                if (!s)
-                    right_keys[i] = (uint32_t)index;
-            }
-        }
-        for (uint32_t i = 0; !s && i < options.key_count; i++) {
-            uint64_t index;
-            s = ud_json_uint(ud_json_at(keys, i), &index);
-            if (!s && index >= inputs[0]->columns)
-                s = UD_SCHEMA;
-            if (!s)
-                left_keys[i] = (uint32_t)index;
-        }
-        if (!s && kind == SORT && ud_member(config, "descending")) {
-            const ud_json *v = ud_member(config, "descending");
-            const char *p = NULL;
-            uint32_t n = 0;
-            if (ud_json_kind(v) != UD_JSON_BOOL)
-                s = UD_SCHEMA;
-            else {
-                s = ud_json_text(v, &p, &n);
-                options.descending = n == 4 && !memcmp(p, "true", 4);
-            }
-        }
-        options.keys = left_keys;
-        options.right_keys = right_keys;
-        options.kind = kind == SORT ? UD_OPERATOR_SORT : UD_OPERATOR_JOIN;
-    }
-    if (!s)
-        s = ud_operator_create(c->memory, &options, inputs, out);
-    ud_free(window_keys);
-    ud_free(left_keys);
-    ud_free(right_keys);
-    ud_plan_destroy(plan);
-    return s;
+    options.expression_bindings = &bindings;
+    char *json = NULL;
+    uint32_t length = 0;
+    ud_status status = ud_json_serialize(config, &json, &length);
+    options.configuration = (ud_string){json, length};
+    if (!status)
+        status = ud_operator_create(c->memory, &options, inputs, out);
+    ud_free(json);
+    return status;
 }
 
 ud_status ud_builtin_describe_operator(void *user, const ud_component_context *c, ud_string text,

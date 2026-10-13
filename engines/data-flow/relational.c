@@ -264,9 +264,6 @@ static ud_status index(const ud_batch *b, const ud_json *j, uint32_t *out) {
     return UD_SCHEMA;
 }
 static ud_status sink_bind(relational_component *r, const ud_batch *const *in) {
-    static const char *allow[] = {"connection", "table", "businessKeys", "current",
-                                  "provisionReceipts"};
-    UD_TRY(ud_json_keys(r->config, allow, 5));
     if (!in[0] || in[0]->columns < 5)
         return UD_SCHEMA;
     uint32_t n = in[0]->columns - 4;
@@ -585,25 +582,37 @@ ud_status ud_relational_register(ud_registry *registry) {
             .restore = restore_state};
         UD_TRY(ud_registry_register(registry, &d));
     }
-    ud_component_descriptor d = {.struct_size = sizeof(d),
-                                 .abi_version = UD_ABI_VERSION,
-                                 .id = {"scd.destination", 15},
-                                 .name = {"Atomic SCD Destination", 22},
-                                 .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
-                                 .configuration_schema = {"{\"type\":\"object\"}", 17},
-                                 .category = UD_COMPONENT_DESTINATION,
-                                 .inputs = 4,
-                                 .synchronous_input = -1,
-                                 .error_output = -1,
-                                 .capabilities = UD_COMPONENT_THREAD_SAFE |
-                                                 UD_COMPONENT_REPLAY_SAFE | UD_COMPONENT_STATEFUL |
-                                                 UD_COMPONENT_BLOCKING,
-                                 .configure = sink_configure,
-                                 .prepare = sink_prepare,
-                                 .step = sink_step,
-                                 .finish = finish,
-                                 .dispose = dispose,
-                                 .diagnostics = sink_diagnostics};
+    ud_component_descriptor d = {
+        .struct_size = sizeof(d),
+        .abi_version = UD_ABI_VERSION,
+        .id = {"scd.destination", 15},
+        .name = {"Atomic SCD Destination", 22},
+        .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
+        .configuration_schema =
+            {"{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\","
+             "\"minLength\":1,\"x-role\":\"resource-reference\"},\"table\":{\"type\":\"string\","
+             "\"minLength\":1},\"businessKeys\":{\"type\":\"array\",\"items\":{\"anyOf\":[{"
+             "\"type\":\"integer\",\"minimum\":0},{\"type\":\"string\",\"minLength\":1}],\"x-"
+             "role\":\"field-selector\"},\"minItems\":1,\"maxItems\":16,\"uniqueItems\":true},"
+             "\"current\":{\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":\"string\","
+             "\"minLength\":1}],\"x-role\":\"field-selector\"},\"provisionReceipts\":{\"type\":"
+             "\"boolean\",\"default\":false}},\"required\":[\"connection\",\"table\","
+             "\"businessKeys\",\"current\"],\"additionalProperties\":false}",
+             588},
+        .category = UD_COMPONENT_DESTINATION,
+        .inputs = 4,
+        .synchronous_input = -1,
+        .error_output = -1,
+        .capabilities = UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_REPLAY_SAFE |
+                        UD_COMPONENT_STATEFUL | UD_COMPONENT_BLOCKING,
+        .configure = sink_configure,
+        .prepare = sink_prepare,
+        .step = sink_step,
+        .finish = finish,
+        .dispose = dispose,
+        .diagnostics = sink_diagnostics,
+        .effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_TRANSACTIONAL | UD_EFFECT_RECEIPTED |
+                   UD_EFFECT_COMMIT_UNKNOWN};
     return ud_registry_register(registry, &d);
 }
 

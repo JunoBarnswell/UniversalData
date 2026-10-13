@@ -1203,7 +1203,9 @@ void ud_odbc_cancel(void *state) {
 static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     odbc_state *p = state;
     p->check_user = user;
-    p->check = check;p->host.control_user=user;p->host.check_io=check;
+    p->check = check;
+    p->host.control_user = user;
+    p->host.check_io = check;
     atomic_store(&p->cancelled, 0);
 }
 static ud_status reset(void *state) {
@@ -1211,9 +1213,14 @@ static ud_status reset(void *state) {
     if (p->cursor || p->transaction || p->cdc || p->broken)
         return UD_CORRUPT;
     atomic_store(&p->cancelled, 0);
-    return p->dialect == DIALECT_POSTGRES ? ud_odbc_command(p, "DISCARD ALL")
-           : p->dialect == DIALECT_MSSQL  ? ud_odbc_command(p, "EXEC sys.sp_reset_connection")
-                                          : UD_UNSUPPORTED;
+    if (p->dialect == DIALECT_POSTGRES)
+        return ud_odbc_command(p, "DISCARD ALL");
+    if (p->dialect == DIALECT_MSSQL) {
+        SQLRETURN rc = SQLSetConnectAttr(p->connection, SQL_ATTR_RESET_CONNECTION,
+                                         (SQLPOINTER)(uintptr_t)SQL_RESET_CONNECTION_YES, 0);
+        return SQL_SUCCEEDED(rc) ? UD_OK : failure(p, SQL_HANDLE_DBC, p->connection);
+    }
+    return UD_UNSUPPORTED;
 }
 static uint64_t capabilities(void *state) {
     return ((odbc_state *)state)->capabilities;
@@ -1393,7 +1400,8 @@ static const ud_connector_api connector = {
     .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
                     UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS |
                     UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_PREPARED |
-                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION | UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT,
+                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION | UD_CONNECT_CHANGESET |
+                    UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT,
     .test = test,
     .discover = ud_odbc_discover,
     .read_open = ud_odbc_read_open,

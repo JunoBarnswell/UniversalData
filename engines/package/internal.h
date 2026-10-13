@@ -138,7 +138,8 @@ ud_status ud_builtin_register(ud_registry *);
 ud_status ud_cdc_register(ud_registry *);
 ud_status ud_advanced_register(ud_registry *);
 ud_status ud_relational_register(ud_registry *);
-ud_status ud_pipeline_write(const ud_component_context *, struct ud_connection_lease *, const ud_write_options *, const ud_batch *);
+ud_status ud_pipeline_write(const ud_component_context *, struct ud_connection_lease *,
+                            const ud_write_options *, const ud_batch *);
 ud_status ud_component_lookup(ud_activation *, ud_string, ud_component_descriptor *);
 void ud_activation_notify_kind(ud_activation *, int32_t kind, ud_execution_state, ud_status);
 void ud_activation_notify(ud_activation *, ud_execution_state, ud_status);
@@ -202,18 +203,20 @@ ud_status ud_checkpoint_batch(ud_activation *, ud_string identity, const uint8_t
                               int committed);
 
 void ud_checkpoint_close(ud_execution *);
-ud_status ud_execution_buffer_options(ud_execution *,ud_buffer_options *);
-ud_status ud_component_operator_options(const ud_component_context *,ud_operator_options *);
-ud_status ud_component_operator_plan(const ud_operator *,ud_component_plan *);
+ud_status ud_execution_buffer_options(ud_execution *, ud_buffer_options *);
+ud_status ud_component_operator_options(const ud_component_context *, ud_operator_options *);
+ud_status ud_component_operator_plan(const ud_operator *, ud_component_plan *);
 ud_status ud_execution_prepare_buffers(ud_execution *);
 ud_status ud_execution_release_buffers(ud_execution *);
 /* Persistent Source snapshots and cursor facts share the existing journal owner. */
 ud_status ud_checkpoint_snapshot_read(ud_activation *, ud_string, uint64_t, ud_batch **);
 ud_status ud_checkpoint_snapshot_write(ud_activation *, ud_string, uint64_t, const ud_batch *);
+ud_status ud_checkpoint_snapshot_forget(ud_activation *, ud_string, uint64_t, int indexed);
+ud_status ud_checkpoint_collect(ud_activation *);
 ud_status ud_checkpoint_snapshot_info(ud_activation *, ud_string, ud_string, char **, uint32_t *);
 ud_status ud_checkpoint_snapshot_seal(ud_activation *, ud_string, ud_string);
-ud_status ud_checkpoint_epoch_info(ud_activation *,ud_string,char **,uint32_t *);
-ud_status ud_checkpoint_epoch_commit(ud_activation *,ud_string,ud_string);
+ud_status ud_checkpoint_epoch_info(ud_activation *, ud_string, char **, uint32_t *);
+ud_status ud_checkpoint_epoch_commit(ud_activation *, ud_string, ud_string);
 ud_status ud_checkpoint_cursor(ud_activation *, ud_string, ud_string);
 ud_status ud_checkpoint_schema(ud_activation *, ud_string, const ud_batch *);
 
@@ -225,8 +228,8 @@ ud_status ud_asset_schema(ud_activation *, ud_string, ud_batch **, int *, int *)
 ud_status ud_asset_source(ud_activation *, ud_string, ud_string *);
 ud_status ud_asset_keys(ud_activation *, ud_string, const uint32_t **, uint32_t *);
 ud_status ud_asset_build(ud_activation *, ud_string, ud_cache **);
-ud_status ud_asset_mode(ud_activation *,ud_string,uint32_t *,ud_string *);
-ud_status ud_asset_partial(ud_activation *,ud_string,struct ud_connection_lease *,ud_cache **);
+ud_status ud_asset_mode(ud_activation *, ud_string, uint32_t *, ud_string *);
+ud_status ud_asset_partial(ud_activation *, ud_string, struct ud_connection_lease *, ud_cache **);
 ud_status ud_assets_bind_source(ud_activation *, ud_string, struct ud_connection_lease *);
 ud_status ud_asset_publish(ud_activation *, ud_string, ud_cache *);
 ud_status ud_asset_acquire(ud_activation *, ud_string, ud_cache **);

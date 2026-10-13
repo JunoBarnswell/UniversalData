@@ -162,6 +162,8 @@ typedef struct ud_component_descriptor {
     ud_status (*restore)(void *, const ud_batch *);
     ud_status (*confirm_epoch)(void *, uint64_t, ud_string source_position);
 } ud_component_descriptor;
+UD_API ud_status ud_component_plan_copy(ud_context *, const ud_component_plan *,
+                                        ud_component_plan *);
 UD_API void ud_component_plan_clear(ud_component_plan *);
 UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
 /* Copies descriptor metadata, retains callback user by contract (host lifetime).

@@ -16,10 +16,10 @@
 struct ud_mssql_cdc {
     odbc_state *owner, *peer;
     ud_batch *schema, *log_schema, *chunk, *old;
-    char *table, *capture;
+    char *table, *capture, *identity;
     uint8_t position[10], confirmed[10], transaction[10], upper[10], old_sequence[10];
     uint32_t batch_rows, row, phase;
-    int snapshot, reading, transaction_open, snapshot_done;
+    int snapshot, reading, transaction_open;
 };
 static ud_status scalar(odbc_state *p, const char *sql, const ud_batch *params, ud_type type,
                         ud_value *out) {
@@ -94,17 +94,16 @@ static char *table_name(odbc_state *p, ud_string name) {
     p->host.deallocate(b);
     return out;
 }
-static ud_status parse_position(ud_string text, uint8_t out[10]) {
+static ud_status parse_lsn(ud_string text, uint8_t out[10]) {
     if (text.length != 20)
         return UD_SCHEMA;
     for (uint32_t i = 0; i < 10; i++) {
-        uint32_t byte = 0;
+        unsigned byte = 0;
         for (uint32_t j = 0; j < 2; j++) {
-            unsigned char c = (unsigned char)text.data[i * 2 + j];
-            int digit = c >= '0' && c <= '9'   ? c - '0'
-                        : c >= 'a' && c <= 'f' ? c - 'a' + 10
-                        : c >= 'A' && c <= 'F' ? c - 'A' + 10
-                                               : -1;
+            char ch = text.data[i * 2 + j];
+            int digit = ch >= '0' && ch <= '9'   ? ch - '0'
+                        : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10
+                                                 : -1;
             if (digit < 0)
                 return UD_SCHEMA;
             byte = byte * 16 + (unsigned)digit;
@@ -113,13 +112,61 @@ static ud_status parse_position(ud_string text, uint8_t out[10]) {
     }
     return UD_OK;
 }
-static ud_status event_position(struct ud_mssql_cdc *c, ud_cdc_event *out,
-                                const uint8_t position[10]) {
-    char text[21];
+static ud_status parse_position(struct ud_mssql_cdc *c, ud_string text, uint8_t out[10]) {
+    odbc_state *p = c->owner;
+    ud_json *doc = NULL;
+    ud_status status = p->host.json_parse(p->host.context, text.data, text.length, &doc, NULL);
+    const char *keys[] = {"identity", "lsn"};
+    if (!status)
+        status = p->host.json_keys(doc, keys, 2);
+    const char *value = NULL;
+    uint32_t length = 0;
+    if (!status)
+        status = p->host.json_text(p->host.json_find(doc, "identity", 8), &value, &length);
+    if (!status && (length != strlen(c->identity) || memcmp(value, c->identity, length)))
+        status = UD_FENCED;
+    if (!status)
+        status = p->host.json_text(p->host.json_find(doc, "lsn", 3), &value, &length);
+    if (!status)
+        status = parse_lsn((ud_string){value, length}, out);
+    p->host.json_destroy(doc);
+    return status;
+}
+static ud_status event_position(struct ud_mssql_cdc *c, ud_cdc_event *out, const uint8_t lsn[10]) {
+    char value[21];
     for (uint32_t i = 0; i < 10; i++)
-        snprintf(text + 2 * i, 3, "%02x", position[i]);
-    out->position = (ud_string){plugin_string(&c->owner->host, text, 20), 20};
-    return out->position.data ? UD_OK : UD_RESOURCE;
+        snprintf(value + i * 2, 3, "%02x", lsn[i]);
+    size_t capacity = strlen(c->identity) + 80;
+    char *text = c->owner->host.allocate(c->owner->host.context, capacity);
+    if (!text)
+        return UD_RESOURCE;
+    int n = snprintf(text, capacity, "{\"identity\":\"%s\",\"lsn\":\"%s\"}", c->identity, value);
+    if (n < 0 || (size_t)n >= capacity) {
+        c->owner->host.deallocate(text);
+        return UD_RESOURCE;
+    }
+    out->position = (ud_string){text, (uint32_t)n};
+    return UD_OK;
+}
+static ud_status source_identity(struct ud_mssql_cdc *c) {
+    char sql[640];
+    snprintf(sql, sizeof(sql),
+             "SELECT "
+             "CONVERT(varchar(36),r.database_guid)+':'+CONVERT(varchar(36),r.recovery_fork_guid)+':"
+             "'+CONVERT(varchar(20),t.object_id)+':'+CONVERT(varchar(33),t.create_date,126) AS "
+             "[value] FROM sys.database_recovery_status r CROSS JOIN cdc.change_tables t WHERE "
+             "r.database_id=DB_ID() AND t.capture_instance=N'%s'",
+             c->capture);
+    ud_value value = {0};
+    ud_status status = scalar(c->owner, sql, NULL, UD_UTF8, &value);
+    if (!status && (value.is_null || !value.text_length))
+        status = UD_FENCED;
+    if (!status) {
+        c->identity = (char *)value.text;
+        value.text = NULL;
+    }
+    c->owner->host.deallocate((void *)value.text);
+    return status;
 }
 static ud_status source_fields(struct ud_mssql_cdc *c, char **out) {
     odbc_state *p = c->owner;
@@ -180,7 +227,11 @@ static ud_status fence(struct ud_mssql_cdc *c) {
     odbc_state *p = c->owner;
     void *peer = NULL;
     TRY(ud_odbc_initialize(&p->host, p->configuration, p->configuration_length, &peer));
+    pthread_mutex_lock(&p->handles_lock);
     c->peer = peer;
+    if (atomic_load(&p->cancelled))
+        ud_odbc_cancel(c->peer);
+    pthread_mutex_unlock(&p->handles_lock);
     TRY(ud_odbc_begin(p, UD_ISOLATION_SERIALIZABLE));
     char *sql = p->host.allocate(p->host.context, strlen(c->table) + 160);
     if (!sql)
@@ -246,8 +297,21 @@ static ud_status fence(struct ud_mssql_cdc *c) {
     memcpy(c->confirmed, c->position, 10);
     return UD_OK;
 }
+static ud_status retained(struct ud_mssql_cdc *c, odbc_state *session) {
+    ud_value value = {0};
+    char sql[256];
+    snprintf(sql, sizeof(sql), "SELECT sys.fn_cdc_get_min_lsn(N'%s') AS [value]", c->capture);
+    ud_status status = scalar(session, sql, NULL, UD_BINARY, &value);
+    if (!status &&
+        (value.is_null || value.text_length != 10 || memcmp(c->position, value.text, 10) < 0))
+        status = UD_FENCED;
+    if (value.type == UD_BINARY && !value.is_null)
+        session->host.deallocate((void *)value.text);
+    return status;
+}
 static ud_status log_open(struct ud_mssql_cdc *c) {
     odbc_state *p = c->owner;
+    TRY(retained(c, p));
     ud_value upper;
     TRY(scalar(p, "SELECT sys.fn_cdc_get_max_lsn() AS [value]", NULL, UD_BINARY, &upper));
     if (upper.is_null || upper.text_length != 10) {
@@ -333,8 +397,10 @@ ud_status ud_mssql_cdc_open(void *state, const ud_cdc_options *o) {
     struct ud_mssql_cdc *c = p->host.allocate(p->host.context, sizeof(*c));
     if (!c)
         return UD_RESOURCE;
-    p->cdc = c;
     c->owner = p;
+    pthread_mutex_lock(&p->handles_lock);
+    p->cdc = c;
+    pthread_mutex_unlock(&p->handles_lock);
     c->batch_rows = o->batch_rows;
     c->table = table_name(p, o->table);
     c->capture = plugin_string(&p->host, o->slot.data, o->slot.length);
@@ -375,6 +441,8 @@ ud_status ud_mssql_cdc_open(void *state, const ud_cdc_options *o) {
             status = UD_SCHEMA;
         p->host.batch_destroy(parameter);
     }
+    if (!status)
+        status = source_identity(c);
     if (!status && o->mode == UD_CDC_SNAPSHOT_STREAM) {
         status = fence(c);
         if (!status) {
@@ -398,21 +466,12 @@ ud_status ud_mssql_cdc_open(void *state, const ud_cdc_options *o) {
                 c->snapshot = 1;
         }
     } else if (!status) {
-        status = parse_position(o->position, c->position);
+        status = parse_position(c, o->position, c->position);
         if (!status)
             memcpy(c->confirmed, c->position, 10);
     }
-    if (!status) {
-        ud_value retained;
-        char sql[256];
-        snprintf(sql, sizeof(sql), "SELECT sys.fn_cdc_get_min_lsn(N'%s') AS [value]", c->capture);
-        status = scalar(p, sql, NULL, UD_BINARY, &retained);
-        if (!status && (retained.is_null || retained.text_length != 10 ||
-                        memcmp(c->position, retained.text, 10) < 0))
-            status = UD_FENCED;
-        if (retained.type == UD_BINARY && !retained.is_null)
-            p->host.deallocate((void *)retained.text);
-    }
+    if (!status)
+        status = retained(c, c->snapshot ? c->peer : p);
     if (status) {
         ud_mssql_cdc_close(p);
         return status;
@@ -605,7 +664,7 @@ ud_status ud_mssql_cdc_confirm(void *state, ud_string position) {
     if (!c)
         return UD_INVALID;
     uint8_t lsn[10];
-    TRY(parse_position(position, lsn));
+    TRY(parse_position(c, position, lsn));
     if (memcmp(lsn, c->confirmed, 10) < 0 || memcmp(lsn, c->position, 10) > 0)
         return UD_FENCED;
     memcpy(c->confirmed, lsn, 10);
@@ -634,6 +693,7 @@ ud_status ud_mssql_cdc_close(void *state) {
     p->host.batch_destroy(c->old);
     p->host.deallocate(c->table);
     p->host.deallocate(c->capture);
+    p->host.deallocate(c->identity);
     p->host.deallocate(c);
     return UD_OK;
 }

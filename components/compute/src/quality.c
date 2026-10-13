@@ -343,6 +343,8 @@ static ud_status record_one_key(ud_quality *q, quality_rule *rule, const ud_batc
     }
     if (null)
         return UD_OK;
+    if (!q->options.buffers)
+        return UD_SCHEMA;
     int absent = 0;
     UD_TRY(check_rule(q, rule, input, row, &absent));
     if (!absent)
@@ -351,9 +353,9 @@ static ud_status record_one_key(ud_quality *q, quality_rule *rule, const ud_batc
         uint32_t capacity = rule->bucket_count ? rule->bucket_count * 2 : 64;
         if (capacity < rule->bucket_count)
             return UD_RESOURCE;
-        seen_key **buckets = ud_alloc(q->ctx, (size_t)capacity * sizeof(*buckets));
-        if (!buckets)
-            return UD_RESOURCE;
+        seen_key **buckets = NULL;
+        UD_TRY(ud_buffer_working_allocate(q->options.buffers, (size_t)capacity * sizeof(*buckets),
+                                          (void **)&buckets));
         for (seen_key *key = rule->seen; key; key = key->next) {
             uint32_t at = (uint32_t)key->hash & (capacity - 1);
             key->bucket_next = buckets[at];
@@ -363,20 +365,21 @@ static ud_status record_one_key(ud_quality *q, quality_rule *rule, const ud_batc
         rule->buckets = buckets;
         rule->bucket_count = capacity;
     }
-    seen_key *key = ud_alloc(q->ctx, sizeof(*key));
-    if (!key)
-        return UD_RESOURCE;
-    key->values = ud_alloc(q->ctx, rule->config.column_count * sizeof(*key->values));
-    if (!key->values) {
+    seen_key *key = NULL;
+    UD_TRY(ud_buffer_working_allocate(q->options.buffers, sizeof(*key), (void **)&key));
+    ud_status allocation = ud_buffer_working_allocate(
+        q->options.buffers, rule->config.column_count * sizeof(*key->values),
+        (void **)&key->values);
+    if (allocation) {
         ud_free(key);
-        return UD_RESOURCE;
+        return allocation;
     }
     key->next = rule->seen;
     rule->seen = key;
     for (uint32_t j = 0; j < rule->config.column_count; j++) {
         ud_value value;
         UD_TRY(ud_batch_get(input, row, rule->config.columns[j], &value));
-        UD_TRY(ud_copy_value(q->ctx, &value, key->values + j, 0));
+        UD_TRY(ud_buffer_working_copy_value(q->options.buffers, &value, key->values + j));
     }
     UD_TRY(key_hash(input, row, rule->config.columns, rule->config.column_count, &key->hash));
     key->bucket_next = rule->buckets[key->hash & (rule->bucket_count - 1)];
@@ -820,4 +823,11 @@ ud_status ud_quality_restore(ud_quality **owner, const ud_batch *state) {
     ud_free(references);
     ud_free(rules);
     return status;
+}
+
+int32_t ud_quality_reference_ready(const ud_quality *q) {
+    return q ? q->reference_ready : 0;
+}
+int32_t ud_quality_is_finished(const ud_quality *q) {
+    return q ? q->finished : 0;
 }

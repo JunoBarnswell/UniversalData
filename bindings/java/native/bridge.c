@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "ud/package.h"
 #include "ud/format.h"
+#include "ud/compute.h"
 #include <stdlib.h>
 #include <string.h>
 JNIEXPORT jint JNICALL Java_org_universaldata_ProductVersion_nativeAbi(JNIEnv *e, jclass cls) {
@@ -597,8 +598,42 @@ JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeCatalog(JNIEnv 
                                                                          jlong handle) {
     (void)cls;
     java_execution *j = (java_execution *)(intptr_t)handle;
-    char *text = NULL; uint32_t size = 0;
+    char *text = NULL;
+    uint32_t size = 0;
     ud_status status = ud_execution_component_catalog(j->execution, &text, &size);
-    if (status) { fail(env, status, ud_status_name(status)); return NULL; }
-    jstring result = utf8(env, text); ud_free(text); return result;
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        return NULL;
+    }
+    jstring result = utf8(env, text);
+    ud_free(text);
+    return result;
+}
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Batch_nativePivotValues(JNIEnv *env, jclass cls,
+                                                                         jlong handle, jint column,
+                                                                         jbyteArray prefix,
+                                                                         jint maximum) {
+    (void)cls;
+    java_data *d = (java_data *)(intptr_t)handle;
+    uint32_t size = 0;
+    char *name = copy_data(env, d->ctx, prefix, &size);
+    if (!name)
+        return NULL;
+    char *text = NULL;
+    uint32_t length = 0;
+    ud_status status = column < 0 || maximum < 1 ? UD_INVALID : ud_batch_seal(d->batch);
+    if (!status)
+        status =
+            ud_pivot_discover_values(d->ctx, d->batch, (uint32_t)column, (ud_string){name, size},
+                                     (uint32_t)maximum, &text, &length);
+    ud_free(name);
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        ud_free(text);
+        return NULL;
+    }
+    jstring result = utf8(env, text);
+    ud_free(text);
+    return result;
 }

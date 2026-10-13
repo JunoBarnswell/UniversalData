@@ -201,6 +201,8 @@ ud_status ud_advanced_push(ud_advanced *a, uint32_t port, const ud_batch *b) {
         return UD_BUSY;
     UD_TRY(ud_batch_retain((ud_batch *)b));
     a->pending = (ud_batch *)b;
+    if (a->options.kind == UD_OPERATOR_CACHE_LOOKUP)
+        ud_cache_reader_begin(a->cache_reader, 1);
     a->row = 0;
     return UD_OK;
 }
