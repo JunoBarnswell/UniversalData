@@ -43,12 +43,12 @@ with tempfile.TemporaryDirectory(prefix='ud-four-connections-') as directory:
  # A full pool may retire idle sessions for other resources; active leases remain pinned.
  q=copy.deepcopy(p);q['policy']['connections']={'maxSessions':1}
  q['connections'].append(dict(q['connections'][0],id='other',resource='other'))
- q['controlFlow']={'tasks':[{'id':str(i),'kind':'sql.execute','config':{'connection':id,'statement':'SELECT 1'}} for i,id in enumerate(['db','other','db','db'])],
+ q['controlFlow']={'tasks':[{'id':str(i),'kind':'sql.execute','config':{'connection':id,'statement':'UPDATE data SET id=id WHERE 0'}} for i,id in enumerate(['db','other','db','db'])],
    'constraints':[{'from':str(i),'to':str(i+1),'on':'success'} for i in range(3)]}
  result=run(q);assert result['connections']['sessions']==1 and result['connections']['activeLeases']==0 and result['connections']['poolHits']==1
  q['variables']['id']={'type':'int64','default':0}
  q['controlFlow']={'tasks':[{'id':'pinned','kind':'foreach','config':{'variable':'id','enumerator':'core.query','connection':'db','query':'SELECT id FROM data ORDER BY id'},
-   'children':{'tasks':[{'id':'other','kind':'sql.execute','config':{'connection':'other','statement':'SELECT 1'}}],'constraints':[]}}],'constraints':[]}
+   'children':{'tasks':[{'id':'other','kind':'sql.execute','config':{'connection':'other','statement':'UPDATE data SET id=id WHERE 0'}}],'constraints':[]}}],'constraints':[]}
  result=run(q,15);assert result['connections']['activeLeases']==0 and result['connections']['sessions']==1
  q=copy.deepcopy(p);q['variables']['id']={'type':'int64','default':0};add['config']['value']['args'][1]={'ref':'id'}
  q['controlFlow']['tasks']=[{'id':'query','kind':'foreach','config':{'variable':'id','enumerator':'core.query','connection':'db','query':'SELECT id FROM data ORDER BY id'},'children':{'tasks':[add],'constraints':[]}}];run(q,total=3)

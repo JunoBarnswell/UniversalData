@@ -7,14 +7,14 @@ with tempfile.TemporaryDirectory(prefix='ud-package-recovery-') as folder:
   r=root/name;r.mkdir();source=r/'source.ndjson';source.write_text(''.join(json.dumps({'x':i})+'\n' for i in range(31)))
   database=r/'target.db';c=sqlite3.connect(database);c.execute('CREATE TABLE dest(x INTEGER UNIQUE)');c.commit();c.close()
   lit=lambda v:{'literal':v,'type':'int64'}
-  p={'version':6,'id':'recovery','variables':{'i':{'type':'int64','default':0},'n':{'type':'int64','default':0}},
+  p={'version':9,'id':'recovery','variables':{'i':{'type':'int64','default':0},'n':{'type':'int64','default':0}},
    'connections':[{'id':'source','driver':'file','resource':str(source)},{'id':'target','driver':plugin,'resource':'target-db','credentialReference':'target'},
                   {'id':'file','driver':'file','resource':str(r/'out.ndjson')}],
    'controlFlow':{'tasks':[{'id':'loop','kind':'for','config':{'initialize':{'name':'i','value':lit(0)},'condition':{'op':'lt','args':[{'ref':'i'},lit(4)]},'increment':{'name':'i','value':{'op':'add','args':[{'ref':'i'},lit(1)]}},'maxIterations':4},
                'children':{'tasks':[{'id':'increment','kind':'set','config':{'name':'n','value':{'op':'add','args':[{'ref':'n'},lit(1)]}}}],'constraints':[]}},
                {'id':'flow','kind':'dataFlow','config':{'pipeline':'p'}}], 'constraints':[{'from':'loop','to':'flow','on':'success'}]},
-   'dataFlows':[{'id':'p','components':[{'id':'source','component':'file.ndjson.source','config':{'connection':'source','schema':{'version':6,'fields':[{'name':'x','type':'int64','nullable':False}]},'batchSize':7}},
-              {'id':'multicast','component':'multicast','config':{}},{'id':'db','component':'sql.destination','config':{'connection':'target','table':'dest','mode':'append','keys':[]}},
+   'dataFlows':[{'id':'p','components':[{'id':'source','component':'file.ndjson.source','config':{'connection':'source','schema':{'version':9,'fields':[{'name':'x','type':'int64','nullable':False}]},'batchSize':7}},
+              {'id':'multicast','component':'multicast','config':{}},{'id':'db','component':'sql.destination','config':{'connection':'target','table':'dest','mode':'append','keys':[],'provisionReceipts':True}},
               {'id':'file','component':'file.ndjson.destination','config':{'connection':'file'}}],
               'paths':[{'from':a,'output':port,'to':b,'input':0} for a,port,b in [('source',0,'multicast'),('multicast',0,'db'),('multicast',1,'file')]]}]}
   path=r/'package.json';path.write_text(json.dumps(p));return r,p
@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='ud-package-recovery-') as folder:
  for part in range(2):
   partition=copy.deepcopy(source);partition['id']=f'source{part}';partition['config'].update(partitionCount=2,partitionId=part);components.insert(part,partition)
  components.insert(2,{'id':'union','component':'unionAll','config':{}})
- components.insert(3,{'id':'sort','component':'sort','config':{'key':0,'partitions':2}})
+ components.insert(3,{'id':'sort','component':'sort','config':{"keys":[0],'partitions':2}})
  paths=p['dataFlows'][0]['paths'];paths.pop(0)
  paths[:0]=[{'from':f'source{part}','output':0,'to':'union','input':part} for part in range(2)]+[{'from':'union','output':0,'to':'sort','input':0},{'from':'sort','output':0,'to':'multicast','input':0}]
  (r/'package.json').write_text(json.dumps(p))

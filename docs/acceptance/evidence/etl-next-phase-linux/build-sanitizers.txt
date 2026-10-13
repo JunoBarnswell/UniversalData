@@ -1,0 +1,17 @@
+[1/2] Building C object tests/CMakeFiles/test_next_phase_execution.dir/next_phase_execution.c.o
+/workspace/UniversalData/tests/next_phase_execution.c: In function ‘observe’:
+/workspace/UniversalData/tests/next_phase_execution.c:62:21: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 6 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+   62 |                     "{\"committed\":%llu,\"memoryUsed\":%llu,\"spillBytes\":%llu,"
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+......
+   65 |                     (unsigned long long)m.spill_bytes, m.worker_high_water);
+      |                                                        ~~~~~~~~~~~~~~~~~~~
+      |                                                         |
+      |                                                         uint64_t {aka long unsigned int}
+/workspace/UniversalData/tests/next_phase_execution.c:63:43: note: format string is defined here
+   63 |                     "\"workerHighWater\":%u",
+      |                                          ~^
+      |                                           |
+      |                                           unsigned int
+      |                                          %lu
+[2/2] Linking C executable tests/test_next_phase_execution

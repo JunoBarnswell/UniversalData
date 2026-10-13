@@ -1,69 +1,78 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "1.2.0",
-  "abi": 6,
+  "sdkVersion": "1.5.0",
+  "abi": 9,
   "scope": {
-    "name": "ETL four engines R0–R7 P0/P1",
+    "name": "PR #5 Native foundation, extension platform and advanced ETL",
     "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
     "extensions": "Tracked independently; Planned/Partial remain incomplete",
     "windows": "Exempt — explicit current user instruction"
   },
   "baseline": {
-    "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
-    "merged": true
+    "mainCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+    "merged": true,
+    "mergeEvidence": {
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/4",
+      "mergedAt": "2026-10-12T20:33:45Z",
+      "headCommit": "45c1d056a3d771389b1e115d28cc7977bcd2541b"
+    }
   },
   "candidate": {
-    "branch": "codex/ssis-infrastructure-convergence",
-    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
-    "sourceCommit": null,
+    "branch": "codex/etl-next-phase-r1-r5",
+    "state": "PR #5 advanced ETL implementation in progress; ABI 9 verification pending",
+    "sourceCommit": "fd03e6508b0a13c4e418225c91bd60e56c547418",
     "sourceFingerprint": null,
-    "mergeEvidence": null
+    "mergeEvidence": null,
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
   },
   "remoteCI": {
     "state": "Blocked",
-    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38270005891",
-    "sourceCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38325912089",
+    "sourceCommit": "a698129fff37349d6e29b51dcd47ebc8583b4e80",
     "startedSteps": 0,
-    "reason": "GitHub account payment/spending-limit restriction; no code steps ran"
+    "reason": "Blocked before code execution: GitHub account payment/spending-limit restriction",
+    "evidence": "docs/acceptance/evidence/etl-next-phase-linux/remote-ci.json"
   },
-  "artifacts": null,
+  "artifacts": {
+    "status": "Pending ABI 8 Linux build and installed consumers"
+  },
   "components": "docs/product/component-catalog.md",
   "remediations": [
     {
       "id": "R01",
       "state": "Implemented",
       "name": "Registry and native module lifecycle",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R02",
       "state": "Implemented",
       "name": "Physical Block Store ownership",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R03",
       "state": "Implemented",
       "name": "Shared executor and physical Execution Trees",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R04",
       "state": "Implemented",
       "name": "Indexed segmented Journal and snapshots",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R05",
       "state": "Implemented",
       "name": "Task facts, durability metrics and events",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R06",
       "state": "Implemented",
       "name": "Single version and acceptance model",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     }
   ],
   "workItems": [
@@ -72,7 +81,7 @@
       "name": "ExecutableDefinition",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -90,14 +99,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-02",
       "name": "Task Host",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -115,14 +128,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-03",
       "name": "Control Graph Binder",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -141,14 +158,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-04",
       "name": "Precedence Evaluator",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -166,14 +187,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-05",
       "name": "Task State / Outcome",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -192,14 +217,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-06",
       "name": "Ready Scheduler",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -217,14 +246,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-07",
       "name": "Sequence Container",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -243,14 +276,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-08",
       "name": "For Loop",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -268,14 +305,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-09",
       "name": "Foreach Loop",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -293,14 +334,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-10",
       "name": "Enumerator Registry",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/enumerator.c",
         "components/contracts/src/registry.c"
@@ -318,14 +363,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-11",
       "name": "Scoped Variables",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -344,14 +393,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-12",
       "name": "Event Handlers",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -369,14 +422,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-13",
       "name": "Failure Propagation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -394,14 +451,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-14",
       "name": "Transaction Policy",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -419,14 +480,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-15",
       "name": "Deadline / Cancel",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -446,14 +511,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-16",
       "name": "Retry Semantics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -471,14 +540,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-17",
       "name": "Child Package",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -496,14 +569,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-18",
       "name": "Control Diagnostics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -520,14 +597,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-01",
       "name": "Pipeline Definition",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -546,14 +627,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-02",
       "name": "Component Metadata",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -571,14 +656,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-03",
       "name": "Schema Binder",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -598,14 +687,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-04",
       "name": "Physical Planner",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -622,14 +715,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-05",
       "name": "Synchronous Execution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -649,14 +746,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-06",
       "name": "Asynchronous Execution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -674,14 +775,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-07",
       "name": "Component Lifecycle",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -699,14 +804,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-08",
       "name": "Multiport Routing",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -727,14 +836,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-09",
       "name": "Error Policies",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -752,14 +865,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-10",
       "name": "Backpressure",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -777,14 +894,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-11",
       "name": "Buffer Ownership",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -802,14 +923,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-12",
       "name": "Buffer Layout",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -828,14 +953,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-13",
       "name": "Spill",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -854,14 +983,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-14",
       "name": "Shared Compute",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -883,14 +1016,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-15",
       "name": "Early Validation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -910,14 +1047,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-16",
       "name": "Explain / Inspector",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -935,14 +1076,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-17",
       "name": "Detailed Metrics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -959,14 +1104,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-18",
       "name": "Recoverable Pipeline",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -984,14 +1133,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-01",
       "name": "Connection Definition",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1012,14 +1165,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-02",
       "name": "Scope Resolution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1041,14 +1198,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-03",
       "name": "Registry Consistency",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1069,14 +1230,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-04",
       "name": "Factory",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1096,14 +1261,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-05",
       "name": "Lease",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1124,14 +1293,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-06",
       "name": "Capabilities",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1153,14 +1326,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-07",
       "name": "Credentials",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1181,14 +1358,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-08",
       "name": "Authorization",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1211,14 +1392,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-09",
       "name": "Pool",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1238,14 +1423,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-10",
       "name": "Session Isolation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1266,14 +1455,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-11",
       "name": "Thread Affinity",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1294,14 +1487,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-12",
       "name": "Transaction Enlistment",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1322,14 +1519,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-13",
       "name": "Metadata Discovery",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1351,14 +1552,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-14",
       "name": "Schema Evolution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1381,14 +1586,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-15",
       "name": "Bulk Reader / Writer",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1410,14 +1619,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-16",
       "name": "Retry / Reconnect",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1438,14 +1651,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-17",
       "name": "Error Normalization",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1467,14 +1684,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-18",
       "name": "Metrics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1495,14 +1716,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-19",
       "name": "Resource Unification",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1526,14 +1751,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-20",
       "name": "Native Driver Plugin",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -1556,14 +1785,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-01",
       "name": "Execution Tree Builder",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1582,14 +1815,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-02",
       "name": "Tree Graph",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1609,14 +1846,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-03",
       "name": "Shared Worker Pool",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1636,14 +1877,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-04",
       "name": "Unified Work Scheduling",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1665,14 +1910,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-05",
       "name": "Work Item Identity",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1694,14 +1943,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-06",
       "name": "Event-driven Ready Queue",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1721,14 +1974,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-07",
       "name": "Cross-Tree Backpressure",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1748,14 +2005,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-08",
       "name": "Source Partitioning",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1777,14 +2038,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-09",
       "name": "Partition Strategies",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1804,14 +2069,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-10",
       "name": "Parallel Aggregate",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1832,14 +2101,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-11",
       "name": "Parallel Join",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1860,14 +2133,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-12",
       "name": "Parallel Sort",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1888,14 +2165,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-13",
       "name": "Ordering Contract",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1916,14 +2197,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-14",
       "name": "Component Concurrency",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1943,14 +2228,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-15",
       "name": "Driver Concurrency",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1971,14 +2260,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-16",
       "name": "Shared Resource Budget",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -1999,14 +2292,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-17",
       "name": "Cancellation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -2027,14 +2324,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-18",
       "name": "Checkpoint Barrier",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -2055,14 +2356,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-19",
       "name": "Deterministic Semantics",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -2083,14 +2388,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-20",
       "name": "Detailed Scheduler Metrics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -2110,14 +2419,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-21",
       "name": "Adaptive Scheduling",
       "priority": "P2",
       "state": "Planned",
-      "verification": "Not in P0/P1 delivery (P2)",
+      "verification": "P2 — not in R1–R5 scope",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -2137,7 +2450,7 @@
       "name": "Benchmark Harness",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "benchmarks/four_engines.py"
       ],
@@ -2157,7 +2470,839 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
+    }
+  ],
+  "nextPhaseWorkItems": [
+    {
+      "id": "DQ-01",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "完成 `foreignKey` 规则的 Pipeline 配置绑定，支持独立 Reference 输入和快照/元数据校验；拒绝无一致性证明的 Resume"
+    },
+    {
+      "id": "DQ-02",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "保留已有 NotNull、Unique、PrimaryKey、Range、Regex、RowCount；统一 Rule ID/Version/Schema 约束"
+    },
+    {
+      "id": "DQ-03",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "对每规则明确 Fail/Redirect/Ignore 语义；现有 `ud_quality` 只有 Abort/Reject，可按严格规则扩展**唯一政策模型**，不要将 ignore 当成 committed"
+    },
+    {
+      "id": "DQ-04",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "多规则命中同一行时明确：保留一条数据、多个 Violation，或每规则独立错误行；协议必须定义确定性，避免行号错位"
+    },
+    {
+      "id": "DQ-05",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "正规错误记录含 `executionId`, `taskId`, `pipelineId`, `componentId`, `ruleId`, `ruleVersion`, `columnId`, `sourceRowId`, `errorCode`, `policy`；错误数据内容受权限/脱敏限制"
+    },
+    {
+      "id": "DQ-06",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "持久隔离写入复用 File/SQL Destination、Connection Lease、Journal 与 Receipt；普通与错误目标的部分提交不得误判为事务原子性"
+    },
+    {
+      "id": "DQ-07",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "规则级统计区分 evaluated、matched/failed、rejected、committed、acknowledged、unknown"
+    },
+    {
+      "id": "DQ-08",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "资源有界：大 Reference 集合允许使用统一 Buffer/Spill，支持取消清理；不新增私有文件格式"
+    },
+    {
+      "id": "DQ-09",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "对外公开规则描述、端口信息、错误列元数据，使后续设计器按 Registry discovery 自动识别"
+    },
+    {
+      "id": "INC-01",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Source Capability/Incremental Policy 描述"
+    },
+    {
+      "id": "INC-02",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "规范化 Cursor 数据模型"
+    },
+    {
+      "id": "INC-03",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Watermark / Composite Cursor Binder"
+    },
+    {
+      "id": "INC-04",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "SQLite/PostgreSQL 在支持范围内提供确定性增量游标"
+    },
+    {
+      "id": "INC-05",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "对 CSV/NDJSON 使用已有文件身份、位置、稳定边界"
+    },
+    {
+      "id": "INC-06",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "`ReadBatch → receipt → Journal → cursor advancement` 同一确认语义"
+    },
+    {
+      "id": "INC-07",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Replay 与 Resume"
+    },
+    {
+      "id": "INC-08",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Late Arrival / Overlap Policy"
+    },
+    {
+      "id": "INC-09",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Snapshot/Schema/Policy Change Detection"
+    },
+    {
+      "id": "INC-10",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Cursor Diagnostics"
+    },
+    {
+      "id": "SD-01",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Connector Metadata → Canonical `ud_field`"
+    },
+    {
+      "id": "SD-02",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Canonical Schema Fingerprint"
+    },
+    {
+      "id": "SD-03",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Schema Diff"
+    },
+    {
+      "id": "SD-04",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "三种兼容策略"
+    },
+    {
+      "id": "SD-05",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Binder Preflight"
+    },
+    {
+      "id": "SD-06",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "恢复绑定"
+    },
+    {
+      "id": "SD-07",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "元数据发现"
+    },
+    {
+      "id": "SD-08",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "C / .NET / Java 查询能力"
+    },
+    {
+      "id": "LC-01",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Cache Transform 正式组件"
+    },
+    {
+      "id": "LC-02",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "复合键、NULL、Decimal、UTF-8、Date、Nested 规则"
+    },
+    {
+      "id": "LC-03",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "重复键政策"
+    },
+    {
+      "id": "LC-04",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Cache Scope"
+    },
+    {
+      "id": "LC-05",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Cache Quota/Spill"
+    },
+    {
+      "id": "LC-06",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Snapshot/Fingerprint"
+    },
+    {
+      "id": "LC-07",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Lookup Miss / Error Paths"
+    },
+    {
+      "id": "LC-08",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Metrics"
+    },
+    {
+      "id": "OBS-01",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "Tree ready/running/blocked/end 时间"
+    },
+    {
+      "id": "OBS-02",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "Scheduler wakeup、quantum、Batch/rows"
+    },
+    {
+      "id": "OBS-03",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "Buffer 峰值、codec 与读写量"
+    },
+    {
+      "id": "OBS-04",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "Source/Operator/Destination CPU 与 I/O"
+    },
+    {
+      "id": "OBS-05",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "分区源扫描归因与恢复"
+    },
+    {
+      "id": "OBS-06",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "六负载并发矩阵与一致性"
+    }
+  ],
+  "nativeFeatureWorkItems": [
+    {
+      "id": "N1",
+      "priority": "P1",
+      "name": "Sorted Merge and Merge Join",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G37"
+      ]
+    },
+    {
+      "id": "N2",
+      "priority": "P1",
+      "name": "Pivot and Unpivot",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G41"
+      ]
+    },
+    {
+      "id": "N3",
+      "priority": "P1",
+      "name": "Row and Percentage Sampling",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G69"
+      ]
+    },
+    {
+      "id": "N4",
+      "priority": "P1",
+      "name": "Native XLSX source and destination",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G66"
+      ]
+    },
+    {
+      "id": "N5",
+      "priority": "P2",
+      "name": "Atomic SCD Type 1 and Type 2",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G54"
+      ]
     }
   ],
   "limitations": [
@@ -2173,6 +3318,11 @@
     "PostgreSQL module requires libpq >=17 for nonblocking cancellation; tested against a disposable local server, without production connections",
     "Float64 SUM preserves serial input order and reports effective partition count 1; integer/Decimal SUM uses exact private 256-bit partial state and checks the public range only at final output",
     "Runtime task/pipeline diagnostic records are bounded at 1024/256 and report dropped counts; callback events remain the complete optional host stream",
-    "Windows is exempt by explicit user instruction; no Windows compilation, runtime or binary certification is claimed"
+    "Windows is exempt by explicit user instruction; no Windows compilation, runtime or binary certification is claimed",
+    "Execution caches require one builder and do not publish from an active transaction; cross-execution reuse is not implicit.",
+    "Incremental confirmation is a whole-DataFlow receipt barrier; active-transaction incremental sources are explicitly Unsupported.",
+    "Canonical SQLite exact NUMERIC/Decimal and PostgreSQL unbounded numeric or timestamp without time zone require a supported declared domain instead of guessed conversions.",
+    "Immutable journal Wire payloads remain owned by the state directory through resume; the host retires that directory after retention requirements are met.",
+    "ABI 7 row identity/rule metadata increases sort spill traffic. The matching CSV workload regressed against the historical ABI 6 baseline; six workload results do not imply a universal speedup."
   ]
 }

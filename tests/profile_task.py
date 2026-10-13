@@ -21,10 +21,10 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
         variables.update({"textMin": {"type": "utf8", "default": None}, "textMax": {"type": "utf8", "default": None}, "passed": {"type": "bool", "default": False}, "handled": {"type": "bool", "default": False}})
         statistics = [{"kind": "rows", "variable": "rows"}, {"kind": "nulls", "column": 0, "variable": "nulls"}, {"kind": "min", "column": 0, "variable": "min"}, {"kind": "max", "column": 0, "variable": "max"}, {"kind": "min", "column": 1, "variable": "textMin"}, {"kind": "max", "column": 1, "variable": "textMax"}]
         checks = [{"id": "rows", "expression": expr("eq", ref("rows"), lit(len(records)))}, {"id": "range", "expression": expr("ge", ref("min"), lit(-1))}]
-        doc = {"version": 6, "id": "profile", "variables": variables,
+        doc = {"version": 9, "id": "profile", "variables": variables,
                "connections": [{"id": "input", "driver": "file", "resource": str(source)}],
                "controlFlow": {"tasks": [{"id": "profile", "kind": "data.profile", "config": {"pipeline": "p", "checks": checks, "passedVariable": "passed", "failedChecksVariable": "failures"}}], "constraints": []},
-               "dataFlows": [{"id": "p", "components": [{"id": "source", "component": "file.ndjson.source", "config": {"connection": "input", "schema": {"version": 6, "fields": [{"name": "x", "type": "int64", "nullable": True}, {"name": "t", "type": "utf8", "nullable": True}]}, "batchSize": 3}}, {"id": "stats", "component": "profile.statistics", "config": {"statistics": statistics}}], "paths": [{"from": "source", "output": 0, "to": "stats", "input": 0}]}]}
+               "dataFlows": [{"id": "p", "components": [{"id": "source", "component": "file.ndjson.source", "config": {"connection": "input", "schema": {"version": 9, "fields": [{"name": "x", "type": "int64", "nullable": True}, {"name": "t", "type": "utf8", "nullable": True}]}, "batchSize": 3}}, {"id": "stats", "component": "profile.statistics", "config": {"statistics": statistics}}], "paths": [{"from": "source", "output": 0, "to": "stats", "input": 0}]}]}
         expected = {"rows": len(records), "nulls": sum(row["x"] is None for row in records), "min": min((r["x"] for r in records if r["x"] is not None), default=None), "max": max((r["x"] for r in records if r["x"] is not None), default=None), "textMin": min((r["t"] for r in records if r["t"] is not None), default=None), "textMax": max((r["t"] for r in records if r["t"] is not None), default=None), "passed": True, "failures": 0}
         return folder, doc, expected
     def run(folder, doc, expected, status=0, mode=0, checkpoint=False, resume=0, exit=0):
@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
     run(folder, doc, defaults, status=4)
     folder, doc, expected = fixture("memory-budget", [{"x": 1, "t": "x" * 100000}])
     run(folder, doc, {}, status=4, mode=6)
-    for name, change, status in (("wrong-variable-type", "type", 5), ("readonly", "readonly", 13), ("duplicate-output", "duplicate", 5), ("bad-column", "column", 5), ("unknown-statistic", "kind", 12), ("empty-checks", "empty", 5), ("bad-rule-type", "rule", 5), ("duplicate-rule", "duplicate-rule", 5), ("side-effect-destination", "sink", 5), ("result-collision", "collision", 5)):
+    for name, change, status in (("wrong-variable-type", "type", 5), ("readonly", "readonly", 13), ("duplicate-output", "duplicate", 5), ("bad-column", "column", 5), ("unknown-statistic", "kind", 5), ("empty-checks", "empty", 5), ("bad-rule-type", "rule", 5), ("duplicate-rule", "duplicate-rule", 5), ("side-effect-destination", "sink", 5), ("result-collision", "collision", 5)):
         folder, doc, expected = fixture(name)
         sink = doc["dataFlows"][0]["components"][1]["config"]["statistics"]
         task = doc["controlFlow"]["tasks"][0]["config"]
@@ -99,8 +99,8 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
         source["component"] = "sql.source"
         source["config"]["sql"] = "SELECT x,t FROM input"
         run(folder, doc, expected)
-        run(folder, doc, {}, status=12, checkpoint=True)
-        print("Profiling SQL Source: same scoped Connection Manager/resolver, real bounded SQLite cursor and read-only statistics passed; persistent SQL snapshot explicitly Unsupported")
+        run(folder, doc, expected, checkpoint=True)
+        print("Profiling SQL Source: same scoped Connection Manager/resolver, real bounded SQLite cursor and read-only statistics passed; persistent SQL snapshot/replay verified")
     folder, doc, expected = fixture("after-statistics-crash")
     run(folder, doc, {}, mode=3, checkpoint=True, exit=91)
     run(folder, doc, expected, checkpoint=True, resume=1)

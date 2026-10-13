@@ -13,7 +13,7 @@ public delegate bool PackageAuthorizer(string tenant, string resource, Connectio
 
 public delegate string PackageCredentialResolver(string tenant, string resource, string reference);
 
-public sealed record ExecutionMetrics(ExecutionState State, StatusCode Result, ulong InputRows, ulong OutputRows, ulong RejectedRows, ulong Batches, ulong QueuedBatches, ulong QueueHighWater, ulong MemoryUsed, ulong ExecutedTasks, ulong DurableTasks, ulong RecoveryTasks, ulong ResumedTasks, ulong SpillBytes, ulong PipelineTrees, ulong TreeHighWater, ulong WorkerHighWater, ulong CommittedRows, ulong AcknowledgedRows, ulong ErrorCount);
+public sealed record ExecutionMetrics(ExecutionState State, StatusCode Result, ulong InputRows, ulong OutputRows, ulong RejectedRows, ulong Batches, ulong QueuedBatches, ulong QueueHighWater, ulong MemoryUsed, ulong ExecutedTasks, ulong DurableTasks, ulong RecoveryTasks, ulong ResumedTasks, ulong SpillBytes, ulong PipelineTrees, ulong TreeHighWater, ulong WorkerHighWater, ulong CommittedRows, ulong AcknowledgedRows, ulong ErrorCount, ulong ErrorRows, ulong CommittedErrorRows, ulong AcknowledgedErrorRows);
 
 /// <summary>Thin projection of the only native Package execution lifecycle.</summary>
 public sealed class Execution : IDisposable
@@ -96,7 +96,26 @@ public sealed class Execution : IDisposable
 
     public ExecutionMetrics Metrics
     {
-        get { Open(); var m = new Native.ExecutionMetricsValue { Size = (uint)Marshal.SizeOf<Native.ExecutionMetricsValue>(), Abi = ProductVersion.Abi }; Check(Native.ud_execution_get_metrics(execution, ref m)); return new((ExecutionState)m.State, (StatusCode)m.Result, m.Input, m.Output, m.Rejected, m.Batches, m.Queued, m.HighWater, m.Memory, m.Executed, m.Durable, m.Recovery, m.Resumed, m.Spill, m.Trees, m.TreeHighWater, m.WorkerHighWater, m.Committed, m.Acknowledged, m.Errors); }
+        get { Open(); var m = new Native.ExecutionMetricsValue { Size = (uint)Marshal.SizeOf<Native.ExecutionMetricsValue>(), Abi = ProductVersion.Abi }; Check(Native.ud_execution_get_metrics(execution, ref m)); return new((ExecutionState)m.State, (StatusCode)m.Result, m.Input, m.Output, m.Rejected, m.Batches, m.Queued, m.HighWater, m.Memory, m.Executed, m.Durable, m.Recovery, m.Resumed, m.Spill, m.Trees, m.TreeHighWater, m.WorkerHighWater, m.Committed, m.Acknowledged, m.Errors, m.ErrorRows, m.CommittedErrors, m.AcknowledgedErrors); }
+    }
+
+    public string DiscoverSchema(string connection, string table)
+    {
+        Control(); lock (controller)
+        {
+            Open(); using var inputs = new NativeStrings(connection, table);
+            Check(Native.ud_execution_discover_schema(execution, inputs[0], inputs[1], out var text, out var length));
+            return DataOwnership.Text(text, length);
+        }
+    }
+
+    public string ComponentCatalog()
+    {
+        Control(); lock (controller)
+        {
+            Open(); Check(Native.ud_execution_component_catalog(execution, out var text, out var length));
+            return DataOwnership.Text(text, length);
+        }
     }
 
     public string Explain() => Inspect(false);
@@ -151,7 +170,7 @@ internal static partial class Native
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct ExecutionMetricsValue
-    { internal uint Size, Abi; internal int State, Result; internal ulong Input, Output, Rejected, Batches, Queued, HighWater, Memory, Executed, Durable, Recovery, Resumed, Spill, Trees, TreeHighWater, WorkerHighWater, Committed, Acknowledged, Errors; }
+    { internal uint Size, Abi; internal int State, Result; internal ulong Input, Output, Rejected, Batches, Queued, HighWater, Memory, Executed, Durable, Recovery, Resumed, Spill, Trees, TreeHighWater, WorkerHighWater, Committed, Acknowledged, Errors, ErrorRows, CommittedErrors, AcknowledgedErrors; }
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_create_json(StringValue json, ref ExecutionOptions options, out IntPtr execution);
 
@@ -169,6 +188,7 @@ internal static partial class Native
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_execution_wait")] internal static extern int ud_execution_wait_raw(IntPtr execution, uint timeout);
 
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_component_catalog(ExecutionHandle execution, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_explain(ExecutionHandle execution, out IntPtr text, out uint length);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_diagnostics(ExecutionHandle execution, out IntPtr text, out uint length);

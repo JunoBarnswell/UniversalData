@@ -2,26 +2,32 @@
   "modelVersion": 1,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "1.2.0",
-    "abiVersion": 6,
-    "protocolVersion": 6
+    "sdkVersion": "1.5.0",
+    "abiVersion": 9,
+    "protocolVersion": 9
   },
   "scope": {
-    "name": "ETL four engines R0–R7 P0/P1",
+    "name": "PR #5 Native foundation, extension platform and advanced ETL",
     "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
     "extensions": "Tracked independently; Planned/Partial remain incomplete",
     "windows": "Exempt — explicit current user instruction"
   },
   "baseline": {
-    "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
-    "merged": true
+    "mainCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+    "merged": true,
+    "mergeEvidence": {
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/4",
+      "mergedAt": "2026-10-12T20:33:45Z",
+      "headCommit": "45c1d056a3d771389b1e115d28cc7977bcd2541b"
+    }
   },
   "candidate": {
-    "branch": "codex/ssis-infrastructure-convergence",
-    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
-    "sourceCommit": null,
+    "branch": "codex/etl-next-phase-r1-r5",
+    "state": "PR #5 advanced ETL implementation in progress; ABI 9 verification pending",
+    "sourceCommit": "fd03e6508b0a13c4e418225c91bd60e56c547418",
     "sourceFingerprint": null,
-    "mergeEvidence": null
+    "mergeEvidence": null,
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
   },
   "goals": [
     {
@@ -30,7 +36,7 @@
       "name": "产品/架构/SSIS 证据及破坏性矩阵",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "设计文件无矛盾；真实源码职责和官方证据可追溯；所有权/迁移标准明确",
       "implementation": [
         "docs/product",
@@ -41,7 +47,11 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G01",
@@ -49,7 +59,7 @@
       "name": "唯一执行器和主版本切换",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "仅 Package/Execution 启停；无 Job/Dag/Run/桥接导出；全部消费端 current ABI",
       "implementation": [
         "include/ud/package.h",
@@ -59,7 +69,11 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G02",
@@ -67,7 +81,7 @@
       "name": "统一 Schema 和列 identity/lineage",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "重命名/派生/Join/Arrow/Wire 保持或明确生成列 identity 和来源；ETL/Query 使用相同字段规范",
       "implementation": [
         "components/data",
@@ -75,9 +89,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G03",
@@ -85,7 +102,7 @@
       "name": "sealed Batch/Buffer 所有权",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "扇出无悬空引用；修改 sealed Buffer 拒绝；同步共享、异步独立；配额/销毁/Arrow 释放正确",
       "implementation": [
         "components/data/src/columnar.c",
@@ -94,7 +111,11 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G04",
@@ -102,7 +123,7 @@
       "name": "统一类型/转换/NULL/Compare/Hash",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "Decimal/UTC/NUL/嵌套/NaN/NULL 在表达式、ETL、Query、spill 中一致；同值 hash 相同",
       "implementation": [
         "components/data",
@@ -110,8 +131,11 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
       "requiredThisDelivery": true
     },
     {
@@ -120,7 +144,7 @@
       "name": "统一表达式 AST/Binder/函数 Registry",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "参数/变量/列、类型推断、常量折叠、向量评估、函数目录与权限上下文；Control/Derived/Split 共用语义",
       "implementation": [
         "components/expression",
@@ -128,9 +152,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G06",
@@ -138,7 +165,7 @@
       "name": "唯一状态/错误/诊断模型",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "状态迁移合法；END 不冒充成功；CommitUnknown/取消/失败分类一致；终态结果可并发安全读取",
       "implementation": [
         "components/execution/src/state.c",
@@ -147,7 +174,11 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G07",
@@ -155,7 +186,7 @@
       "name": "统一组件/插件 Registry",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "Task/Source/Transform/Destination/Connection/Enumerator/LogProvider 均走同一版本化注册和卸载租用规则",
       "implementation": [
         "components/contracts",
@@ -164,8 +195,11 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
       "requiredThisDelivery": true
     },
     {
@@ -174,7 +208,7 @@
       "name": "Project/Package/Environment 与作用域",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "Project→Package→Container→Task 遮蔽和只读参数规则；共享连接/环境绑定；一个 JSON 产品模型",
       "implementation": [
         "include/ud/project.h",
@@ -185,8 +219,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": true,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G09",
@@ -194,7 +232,7 @@
       "name": "Package 定义/绑定/运行生命周期",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "定义严格版本化；未知成员/依赖/端口/能力提前拒绝；一个执行资源上下文",
       "implementation": [
         "engines/package/model.c",
@@ -204,7 +242,11 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G10",
@@ -212,16 +254,19 @@
       "name": "Sequence/For/Foreach 控制流",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "嵌套/局部作用域、循环变量/边界/上限、退出/取消/错误传播均实际验证",
       "implementation": [
         "engines/control-flow/control.c"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G11",
@@ -229,16 +274,19 @@
       "name": "Success/Failure/Completion + expression + AND/OR",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "不同约束组合、Skipped 前驱、失败分支、循环体按明确控制语义执行",
       "implementation": [
         "engines/control-flow/control.c"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G12",
@@ -246,7 +294,7 @@
       "name": "受限并发/任务超时/事件处理器",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "任务预算与 Pipeline 预算共享；超时取消；处理器不抹除原错误；多个事件的防重入",
       "implementation": [
         "engines/control-flow",
@@ -254,9 +302,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G13",
@@ -264,7 +315,7 @@
       "name": "DataFlow Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "通过正式 Pipeline 接口承载独立数据流，不调用旧 executor",
       "implementation": [
         "engines/control-flow/control.c",
@@ -273,7 +324,11 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G14",
@@ -281,7 +336,7 @@
       "name": "Execute SQL Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "SQL Task 与 Source/Sink 使用同一 Manager；参数化、失败分类和恢复副作用清晰",
       "implementation": [
         "engines/control-flow",
@@ -291,7 +346,11 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G15",
@@ -299,7 +358,7 @@
       "name": "File System Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "明确操作范围/权限策略；路径/覆盖/失败/原子性与取消实际验证",
       "implementation": [
         "engines/control-flow/filesystem.c",
@@ -310,8 +369,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": true,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G16",
@@ -319,7 +382,7 @@
       "name": "Execute Process Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "默认禁用、显式宿主授权；退出码/超时/取消/资源清理；不承诺权限沙箱",
       "implementation": [
         "engines/control-flow/process.c",
@@ -330,8 +393,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": true,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G17",
@@ -339,7 +406,7 @@
       "name": "Execute Package Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "真正子 Package 的参数/作用域/错误/取消/资源传递；非另一运行时或 Sequence 别名",
       "implementation": [
         "engines/package/child.c",
@@ -350,8 +417,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": true,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G18",
@@ -359,7 +430,7 @@
       "name": "HTTP Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "同一连接和宿主授权；TLS/超时/取消/HTTP 失败/重试边界",
       "implementation": [
         "engines/control-flow/http.c",
@@ -369,8 +440,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": false
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": false,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G19",
@@ -378,7 +453,7 @@
       "name": "Check/Data Profiling Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "实际统计和规则结果、失败和资源预算；不以空检查伪装完成",
       "implementation": [
         "include/ud/profile.h",
@@ -387,8 +462,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": true,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G20",
@@ -396,7 +475,7 @@
       "name": "Native Custom Task",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "公开版本化回调/生命周期/默认授权/不能访问私有结构，插件卸载和错误传播",
       "implementation": [
         "include/ud/component.h",
@@ -408,8 +487,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": true,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G21",
@@ -417,7 +500,7 @@
       "name": "组件 metadata/设计时与运行时生命周期",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "端口/外部列/配置 schema/权限/错误输出/资源和版本 metadata 可检索；Configure 无副作用，失败反序 Dispose",
       "implementation": [
         "include/ud/component.h",
@@ -425,8 +508,11 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
       "requiredThisDelivery": true
     },
     {
@@ -435,16 +521,19 @@
       "name": "多输入/输出 Path/End/backpressure",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "多 Source/Join/Union/Multicast/Error Output 同一 scheduler；公平轮询；队列上界和每端口 End 契约",
       "implementation": [
         "engines/data-flow/pipeline.c"
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G23",
@@ -452,7 +541,7 @@
       "name": "Execution Trees/Buffer Pool/资源调度",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "同步/异步树和两级并发共享预算；CPU/队列/内存/Spill 上限，所有取消路径释放资源",
       "implementation": [
         "engines/data-flow",
@@ -460,9 +549,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G24",
@@ -470,7 +562,7 @@
       "name": "阻塞 Sort/Aggregate/Join 的 Pipeline spill",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "不只是内存算子或外部文件 API；管道状态、分区、偏斜、稳定排序和恢复受统一预算",
       "implementation": [
         "engines/data-flow/builtins.c",
@@ -478,8 +570,11 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
       "requiredThisDelivery": true
     },
     {
@@ -488,7 +583,7 @@
       "name": "逻辑 Connection Manager 与物理 Driver",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "定义/作用域/凭据引用/授权/租用/能力/释放统一；Source/Sink/SQL Task 无全局密钥旁路",
       "implementation": [
         "connectors/manager.c",
@@ -496,9 +591,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G26",
@@ -506,7 +604,7 @@
       "name": "CSV Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "严格 CSV、Schema/null marker/UTF8/跨行、源位置、目标发布，全部经 Manager",
       "implementation": [
         "components/data/src/csv.c",
@@ -514,9 +612,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G27",
@@ -524,7 +625,7 @@
       "name": "JSON/NDJSON Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "严格 JSON、递归 Schema/UTC/Decimal、输入错误、分页/恢复/原子文件提交",
       "implementation": [
         "components/data/src/json.c",
@@ -533,7 +634,11 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G28",
@@ -541,7 +646,7 @@
       "name": "SQLite Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "有界游标、能力/权限、Append/Upsert/Delete、schema/事务/receipt 和 Pipeline 恢复",
       "implementation": [
         "plugins/sqlite.c",
@@ -549,9 +654,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G29",
@@ -559,7 +667,7 @@
       "name": "PostgreSQL Source/Destination",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "真实 PostgreSQL 的类型、游标、权限、事务/回执、增量/恢复，含 Package 路径",
       "implementation": [
         "plugins/postgresql.c",
@@ -570,9 +678,12 @@
         "libpq >=17 for bounded nonblocking query/cancellation",
         "Disposable local PostgreSQL >=17 integration fixture"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G30",
@@ -580,7 +691,7 @@
       "name": "Data Conversion",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "统一显式转换、精度/舍入/NULL/非法值和错误输出",
       "implementation": [
         "engines/data-flow",
@@ -589,9 +700,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G31",
@@ -599,7 +713,7 @@
       "name": "Derived Column",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "统一 AST/函数、保留原列、精度/NULL/lineage 和错误输出",
       "implementation": [
         "engines/data-flow",
@@ -608,9 +722,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G32",
@@ -618,7 +735,7 @@
       "name": "Copy Column",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "identity/lineage 规则、Buffer 共享正确",
       "implementation": [
         "engines/data-flow",
@@ -627,9 +744,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G33",
@@ -637,7 +757,7 @@
       "name": "Character Map",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "字符策略明确、Unicode/ASCII 边界和配置校验",
       "implementation": [
         "engines/data-flow",
@@ -646,9 +766,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G34",
@@ -656,7 +779,7 @@
       "name": "Conditional Split",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "多条件、默认输出、三值逻辑、命中规则和生命周期",
       "implementation": [
         "engines/data-flow",
@@ -665,9 +788,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G35",
@@ -675,7 +801,7 @@
       "name": "Multicast",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "同 Buffer 引用多输出，无深复制语义差异，背压/取消/释放",
       "implementation": [
         "engines/data-flow",
@@ -684,9 +810,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G36",
@@ -694,7 +823,7 @@
       "name": "Union All",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "多输入同 Schema、End 顺序、公平轮询、不重复或丢行",
       "implementation": [
         "engines/data-flow",
@@ -703,9 +832,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G37",
@@ -713,7 +845,7 @@
       "name": "Merge/Merge Join",
       "priority": "P0",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "有序输入契约、重复键/NULL、偏斜和 End/背压",
       "implementation": [
         "engines/data-flow",
@@ -724,7 +856,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G38",
@@ -732,7 +864,7 @@
       "name": "Aggregate",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "统一 NULL/Decimal/分组，async/spill 和状态恢复",
       "implementation": [
         "engines/data-flow",
@@ -741,9 +873,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G39",
@@ -751,7 +886,7 @@
       "name": "Sort",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "统一 Compare、稳定顺序、NULL/NaN、async/spill 和状态恢复",
       "implementation": [
         "engines/data-flow",
@@ -760,17 +895,20 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G40",
       "phase": 4,
       "name": "Lookup/Cache Transform",
       "priority": "P0",
-      "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "code": "Implemented",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "缓存/缺失/重复键策略和一致类型、配额/错误输出",
       "implementation": [
         "engines/data-flow",
@@ -779,9 +917,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
-      "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
+      "requiredThisDelivery": true,
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G41",
@@ -789,7 +930,7 @@
       "name": "Pivot/Unpivot",
       "priority": "P0",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "Schema/重复/聚合/NULL/资源契约和组合行为",
       "implementation": [
         "engines/data-flow",
@@ -800,15 +941,15 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G42",
       "phase": 4,
       "name": "Error Output/Reject/Quarantine",
       "priority": "P0",
-      "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "code": "Implemented",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "质量错误在同一 Pipeline Path 和提交链路；隔离失败不推进状态",
       "implementation": [
         "engines/data-flow",
@@ -817,17 +958,20 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G43",
       "phase": 4,
       "name": "Null/Unique/Range/Regex/Reference",
       "priority": "P0",
-      "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "code": "Implemented",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "统一规则状态与跨批次验证；失败分类；正常/错误输出",
       "implementation": [
         "engines/data-flow",
@@ -836,9 +980,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G44",
@@ -846,7 +993,7 @@
       "name": "Row Count/Audit",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "可核对输入/输出/拒绝/隔离和提交计数，不记录秘密",
       "implementation": [
         "engines/data-flow",
@@ -855,9 +1002,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G45",
@@ -865,7 +1015,7 @@
       "name": "统一任务/批次 Checkpoint Journal",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "一个版本化、校验、独占、原子发布日志；任务/循环/变量/源位置/算子/目标回执记录",
       "implementation": [
         "engines/package/checkpoint.c"
@@ -874,8 +1024,12 @@
         "G25"
       ],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": true,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G46",
@@ -883,7 +1037,7 @@
       "name": "CommitUnknown/事务和故障恢复",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "真实进程终止：提交前/后/日志前/后；不推进未确认源；回执核实；无伪成功/重复写/资源泄漏",
       "implementation": [
         "engines/package",
@@ -894,8 +1048,12 @@
         "G45"
       ],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": true,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G47",
@@ -903,7 +1061,7 @@
       "name": "Catalog/Deployment/Environment/Version",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "可嵌入可选持久实现或 repository ABI；版本、环境、参数、发布、运行历史分离，非 Web 服务",
       "implementation": [
         "catalog",
@@ -911,8 +1069,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
-      "requiredThisDelivery": true
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "requiredThisDelivery": true,
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G48",
@@ -920,7 +1082,7 @@
       "name": "结构化 Events/Logs/Trace/Metrics/Lineage/Audit",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Partial status",
       "acceptance": "Package/Execution/Task/Pipeline/Component ID 完整；行数/重试/spill/等待/峰值；秘密不进入日志",
       "implementation": [
         "engines/package",
@@ -930,8 +1092,9 @@
         "G02"
       ],
       "externalPrerequisites": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。",
-      "requiredThisDelivery": true
+      "progress": "No new completion claim in this delivery; Partial scope retained.",
+      "requiredThisDelivery": true,
+      "evidence": []
     },
     {
       "id": "G49",
@@ -939,7 +1102,7 @@
       "name": "薄 C/.NET/Java Package/Execution 绑定",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "仅 ABI 投影；无旧类/业务引擎；生命周期/编码/回调/错误/取消/并发一致",
       "implementation": [
         "bindings",
@@ -949,7 +1112,11 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "G50",
@@ -957,7 +1124,7 @@
       "name": "独立 C/Native/NuGet/Maven 安装消费",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "安装后的同 ABI native/Java/.NET 组件与同 Package 实际运行；不能把纯托管包当双平台 native 发布",
       "implementation": [
         "packaging",
@@ -966,9 +1133,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G51",
@@ -976,7 +1146,7 @@
       "name": "Linux 原生与 ABI 门禁；Windows 本轮豁免",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "Linux 编译/关键验收；Windows Exempt，不继承历史通过证据",
       "implementation": [
         ".github/workflows/ci.yml",
@@ -984,8 +1154,11 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。",
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained.",
       "requiredThisDelivery": true
     },
     {
@@ -994,7 +1167,7 @@
       "name": "内存安全/线程竞态/资源故障门禁",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Verified on ABI 7 Linux within documented supported scope; Windows Exempt",
       "acceptance": "ASan/UBSan、引用/卸载/跨线程取消、内存/磁盘/超时/拒绝访问，无伪成功",
       "implementation": [
         "tests",
@@ -1003,9 +1176,12 @@
       ],
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。"
+      "progress": "Current Linux core regression and real installed SDK consumers passed; supported capability boundaries retained."
     },
     {
       "id": "G53",
@@ -1013,7 +1189,7 @@
       "name": "九项附件核心集成验收",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Partial status",
       "acceptance": "附件 §10 九项全部有当前代码、实际用例和日志；不能用旧用例通过替代新模型",
       "implementation": [
         "tests",
@@ -1023,7 +1199,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": true,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+      "progress": "No new completion claim in this delivery; Partial scope retained."
     },
     {
       "id": "G54",
@@ -1031,7 +1207,7 @@
       "name": "Slowly Changing Dimension",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "版本化 SCD 配置、键/属性/生效期和目标事务；Type 范围明确",
       "implementation": [
         "components/compute",
@@ -1043,7 +1219,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G55",
@@ -1051,7 +1227,7 @@
       "name": "Fuzzy Lookup/Fuzzy Grouping",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "公开独立算法/相似度/阈值/Unicode、确定性和资源边界，不复制微软专有实现",
       "implementation": [
         "components/compute",
@@ -1063,7 +1239,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G56",
@@ -1071,7 +1247,7 @@
       "name": "Term Extraction/Lookup",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "可组合文本算子、编码/词法/配置/资源/结果验收",
       "implementation": [
         "components/compute",
@@ -1083,7 +1259,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G57",
@@ -1091,7 +1267,7 @@
       "name": "CDC",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "PostgreSQL slot/快照/事务/LSN/ack/Schema 变化/故障重放与权限；目标确认后才推进",
       "implementation": [
         "components/compute",
@@ -1103,7 +1279,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G58",
@@ -1111,7 +1287,7 @@
       "name": "并行分区/Window/BI Dataset/Query",
       "priority": "P1/P2",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Partial status",
       "acceptance": "共用 Compute/Expression/Planner/资源；新 API 不建立第二套语义或运行时",
       "implementation": [
         "components/compute",
@@ -1123,7 +1299,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+      "progress": "No new completion claim in this delivery; Partial scope retained."
     },
     {
       "id": "G59",
@@ -1131,7 +1307,7 @@
       "name": "ODBC/SQL Server",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "真实驱动/DSN、类型/事务/失败/权限/Package 消费；SQLite ODBC 驱动不代表 SQL Server 已验收",
       "implementation": [
         "plugins",
@@ -1144,7 +1320,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G60",
@@ -1152,7 +1328,7 @@
       "name": "MySQL",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "真实驱动、schema/NULL/Decimal/UTC、事务/游标/恢复和 Package 消费",
       "implementation": [
         "plugins",
@@ -1165,7 +1341,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G61",
@@ -1173,7 +1349,7 @@
       "name": "HTTP 集成",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "Source/Destination/task 的连接、分页、TLS/权限/限流/取消/幂等语义",
       "implementation": [
         "plugins",
@@ -1186,7 +1362,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G62",
@@ -1194,7 +1370,7 @@
       "name": "SFTP",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "连接/凭据引用、主机身份校验、原子交付/恢复/取消",
       "implementation": [
         "plugins",
@@ -1207,7 +1383,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G63",
@@ -1215,7 +1391,7 @@
       "name": "Kafka",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "有界输入/分区/offset/事务、ack/重放/背压和授权",
       "implementation": [
         "plugins",
@@ -1228,7 +1404,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G64",
@@ -1236,7 +1412,7 @@
       "name": "RabbitMQ",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "确认/重投递/背压/失败与资源释放",
       "implementation": [
         "plugins",
@@ -1249,7 +1425,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G65",
@@ -1257,7 +1433,7 @@
       "name": "Cloud Object Storage",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "对象版本/分页/条件发布/重试/权限/提交不确定性",
       "implementation": [
         "plugins",
@@ -1270,7 +1446,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G66",
@@ -1278,7 +1454,7 @@
       "name": "Excel",
       "priority": "P1/P2",
       "code": "Planned",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Planned status",
       "acceptance": "格式/Schema/编码/类型/NULL/边界和资源限制；支持范围明确",
       "implementation": [
         "plugins",
@@ -1291,7 +1467,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Planned。"
+      "progress": "No new completion claim in this delivery; Planned scope retained."
     },
     {
       "id": "G67",
@@ -1299,7 +1475,7 @@
       "name": "Parquet/Arrow",
       "priority": "P1/P2",
       "code": "Partial",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Partial status",
       "acceptance": "批次/类型/Schema/所有权、平台相关库和 Pipeline 往返",
       "implementation": [
         "plugins",
@@ -1312,7 +1488,7 @@
       ],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Partial。"
+      "progress": "No new completion claim in this delivery; Partial scope retained."
     },
     {
       "id": "G68",
@@ -1320,7 +1496,7 @@
       "name": "Microsoft 专属扩展和兼容边界",
       "priority": "Optional-contract",
       "code": "Documented boundary",
-      "verification": "Pending current infrastructure delivery; prior evidence is historical",
+      "verification": "Outside R1–R5 delivery; retain actual Documented boundary status",
       "acceptance": "定义 WMI/SMO/SSAS/Agent/OLEDB/dtsx 插件类别与范围；无未验证兼容声明。不强制复制 Windows 专属实现。",
       "implementation": [
         "docs/product/component-catalog.md",
@@ -1330,7 +1506,26 @@
       "externalPrerequisites": [],
       "evidence": [],
       "requiredThisDelivery": false,
-      "progress": "当前基础设施整批实施中；本轮尚未集中编译或验收。扩展状态保持 Documented boundary。"
+      "progress": "No new completion claim in this delivery; Documented boundary scope retained."
+    },
+    {
+      "id": "G69",
+      "phase": 7,
+      "name": "Deterministic Row and Percentage Sampling",
+      "priority": "Optional-contract",
+      "code": "Documented boundary",
+      "verification": "Pending N3 acceptance",
+      "acceptance": "定义 WMI/SMO/SSAS/Agent/OLEDB/dtsx 插件类别与范围；无未验证兼容声明。不强制复制 Windows 专属实现。",
+      "implementation": [
+        "docs/product/component-catalog.md",
+        "docs/architecture/ssis-reference-matrix.md"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "Native global sampling with stable source row identity",
+      "status": "Planned"
     }
   ],
   "remediations": [
@@ -1338,37 +1533,37 @@
       "id": "R01",
       "state": "Implemented",
       "name": "Registry and native module lifecycle",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R02",
       "state": "Implemented",
       "name": "Physical Block Store ownership",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R03",
       "state": "Implemented",
       "name": "Shared executor and physical Execution Trees",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R04",
       "state": "Implemented",
       "name": "Indexed segmented Journal and snapshots",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R05",
       "state": "Implemented",
       "name": "Task facts, durability metrics and events",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R06",
       "state": "Implemented",
       "name": "Single version and acceptance model",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     }
   ],
   "gates": [
@@ -1397,43 +1592,43 @@
     {
       "id": "sqlite-transactions-recovery",
       "status": "Pending",
-      "command": "sqlite_receipts_upsert/package_sql_integration/package_durable_recovery/child_package_execution/project_environment_deployment",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "memory-quota-spill-concurrency",
       "status": "Pending",
-      "command": "shared_value_semantics/core_runtime_resources/core_pipeline_components/package_failure_boundaries/process_task_execution",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "language-parity",
       "status": "Pending",
-      "command": "tests/installed_sdk.py: actual ZIP, dynamic C Data target, native NuGet without SDK PATH, Maven/JNI from bundle",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "installed-c",
       "status": "Pending",
-      "command": "ZIP-extracted SDK -> external CMake UniversalData::Data -> Package/resource/SQLite/Pipeline and datatype/wire execution",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "installed-nuget",
       "status": "Pending",
-      "command": "ZIP-extracted native-containing nupkg -> fresh external cache/clients; Package and typed data without SDK loader PATH",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "installed-maven",
       "status": "Pending",
-      "command": "ZIP-extracted JAR/POM -> fresh external Maven repository/client -> JNI/native from same bundle",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "source-contracts",
       "status": "Pending",
-      "command": "python scripts/static_check.py; git diff --check; removed ABI/API reference audit",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
@@ -1446,82 +1641,90 @@
     {
       "id": "distributable-bundle",
       "status": "Pending",
-      "command": "python tests/installed_sdk.py --bundle artifacts/UniversalData-1.1.0-win-x64.zip --work external-fresh-directory --evidence bundle-consumers.json",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "block-store-ownership",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "pipeline-tree-parallelism",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "journal-indexed-recovery",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "task-facts",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "single-product-model",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "linux-release",
       "name": "Linux Release native/JNI build",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "linux-native",
       "name": "Linux native end-to-end cases",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "linux-sanitizers",
       "name": "Linux ASan/UBSan",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "four-engines",
       "name": "Four-engine completion scheduling, partition semantics and transactions",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "million-row-benchmark",
       "name": "1/2/4/8/16 workers, million rows and spill",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     }
   ],
-  "artifacts": null,
+  "artifacts": {
+    "status": "Pending ABI 8 Linux build and installed consumers"
+  },
   "remoteCI": {
     "state": "Blocked",
-    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38270005891",
-    "sourceCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38325912089",
+    "sourceCommit": "a698129fff37349d6e29b51dcd47ebc8583b4e80",
     "startedSteps": 0,
-    "reason": "GitHub account payment/spending-limit restriction; no code steps ran"
+    "reason": "Blocked before code execution: GitHub account payment/spending-limit restriction",
+    "evidence": "docs/acceptance/evidence/etl-next-phase-linux/remote-ci.json"
   },
   "historicalEvidence": {
     "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
     "location": "docs/acceptance/evidence/ssis-core-windows",
-    "note": "Historical ABI 4 Windows evidence; does not certify this ABI 6 Linux delivery"
+    "note": "Historical ABI 4 Windows evidence; does not certify the ABI 7 Linux delivery"
   },
   "limitations": [
     "No arbitrary global distributed transaction or general exactly-once guarantee",
@@ -1536,7 +1739,12 @@
     "PostgreSQL module requires libpq >=17 for nonblocking cancellation; tested against a disposable local server, without production connections",
     "Float64 SUM preserves serial input order and reports effective partition count 1; integer/Decimal SUM uses exact private 256-bit partial state and checks the public range only at final output",
     "Runtime task/pipeline diagnostic records are bounded at 1024/256 and report dropped counts; callback events remain the complete optional host stream",
-    "Windows is exempt by explicit user instruction; no Windows compilation, runtime or binary certification is claimed"
+    "Windows is exempt by explicit user instruction; no Windows compilation, runtime or binary certification is claimed",
+    "Execution caches require one builder and do not publish from an active transaction; cross-execution reuse is not implicit.",
+    "Incremental confirmation is a whole-DataFlow receipt barrier; active-transaction incremental sources are explicitly Unsupported.",
+    "Canonical SQLite exact NUMERIC/Decimal and PostgreSQL unbounded numeric or timestamp without time zone require a supported declared domain instead of guessed conversions.",
+    "Immutable journal Wire payloads remain owned by the state directory through resume; the host retires that directory after retention requirements are met.",
+    "ABI 7 row identity/rule metadata increases sort spill traffic. The matching CSV workload regressed against the historical ABI 6 baseline; six workload results do not imply a universal speedup."
   ],
   "componentCatalog": [
     {
@@ -1601,8 +1809,8 @@
     },
     {
       "ssis": "Lookup",
-      "entries": "`lookup`",
-      "contract": "确定性首个匹配、inner lookup；无匹配不输出；独立 Cache Transform 尚未实现"
+      "entries": "`cacheBuild`, `cacheLookup`",
+      "contract": "Execution 内只读缓存；复合 typed key，First/Error/All；默认 First + miss Ignore（inner）；显式 Redirect 走普通错误目标。旧 inline lookup 删除。"
     },
     {
       "ssis": "Window",
@@ -1617,7 +1825,7 @@
     {
       "ssis": "Error Output / Data Quality",
       "entries": "`quality` 普通端口 0、错误端口 1",
-      "contract": "NotNull/Unique/PrimaryKey/Range/Regex/RowCount；错误行携带 rule、source row、code；目标负责持久化"
+      "contract": "Foreign Key 双输入、完整规则版本/政策、多 Violation、正规错误端口；分类与实际提交/确认分开。"
     },
     {
       "ssis": "Connection Manager",
@@ -1640,7 +1848,7 @@
       "contract": "当前版本索引式分段 Journal、原子快照/manifest、目标 receipt、不可变 artifacts/history；不提供跨任意目标的分布式事务"
     }
   ],
-  "deferredComponents": "Merge/Merge Join、Pivot/Unpivot、完整 Cache Transform、Pipeline ForeignKey reference input、SCD、Fuzzy、Term、CDC、并行分区、BI planner、ODBC/SQL Server、MySQL、HTTP Source/Destination、SFTP、Kafka、RabbitMQ、Cloud、Excel、Parquet",
+  "deferredComponents": "Merge/Merge Join、Pivot/Unpivot、SCD、Fuzzy、Term、Full CDC、Adaptive Scheduling、BI planner、ODBC/SQL Server、MySQL、HTTP Source/Destination、SFTP、Kafka、RabbitMQ、Cloud、Excel、Parquet",
   "historicalGoalEvidence": [
     {
       "id": "G00",
@@ -1850,7 +2058,7 @@
       "name": "ExecutableDefinition",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1868,14 +2076,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-02",
       "name": "Task Host",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1893,14 +2105,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-03",
       "name": "Control Graph Binder",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1919,14 +2135,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-04",
       "name": "Precedence Evaluator",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1944,14 +2164,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-05",
       "name": "Task State / Outcome",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1970,14 +2194,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-06",
       "name": "Ready Scheduler",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -1995,14 +2223,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-07",
       "name": "Sequence Container",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2021,14 +2253,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-08",
       "name": "For Loop",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2046,14 +2282,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-09",
       "name": "Foreach Loop",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2071,14 +2311,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-10",
       "name": "Enumerator Registry",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/enumerator.c",
         "components/contracts/src/registry.c"
@@ -2096,14 +2340,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-11",
       "name": "Scoped Variables",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2122,14 +2370,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-12",
       "name": "Event Handlers",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2147,14 +2399,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-13",
       "name": "Failure Propagation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2172,14 +2428,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-14",
       "name": "Transaction Policy",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2197,14 +2457,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-15",
       "name": "Deadline / Cancel",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2224,14 +2488,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-16",
       "name": "Retry Semantics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2249,14 +2517,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-17",
       "name": "Child Package",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2274,14 +2546,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CF-18",
       "name": "Control Diagnostics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/control-flow/control.c",
         "engines/control-flow/enumerator.c",
@@ -2298,14 +2574,18 @@
         "package_durable_recovery",
         "child_package_execution"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-01",
       "name": "Pipeline Definition",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2324,14 +2604,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-02",
       "name": "Component Metadata",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2349,14 +2633,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-03",
       "name": "Schema Binder",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2376,14 +2664,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-04",
       "name": "Physical Planner",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2400,14 +2692,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-05",
       "name": "Synchronous Execution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2427,14 +2723,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-06",
       "name": "Asynchronous Execution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2452,14 +2752,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-07",
       "name": "Component Lifecycle",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2477,14 +2781,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-08",
       "name": "Multiport Routing",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2505,14 +2813,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-09",
       "name": "Error Policies",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2530,14 +2842,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-10",
       "name": "Backpressure",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2555,14 +2871,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-11",
       "name": "Buffer Ownership",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2580,14 +2900,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-12",
       "name": "Buffer Layout",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2606,14 +2930,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-13",
       "name": "Spill",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2632,14 +2960,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-14",
       "name": "Shared Compute",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2661,14 +2993,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-15",
       "name": "Early Validation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2688,14 +3024,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-16",
       "name": "Explain / Inspector",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2713,14 +3053,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-17",
       "name": "Detailed Metrics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2737,14 +3081,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "DF-18",
       "name": "Recoverable Pipeline",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "engines/data-flow/pipeline.c",
         "engines/data-flow/builtins.c",
@@ -2762,14 +3110,18 @@
         "value_semantics_pipeline",
         "package_durable_recovery"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-01",
       "name": "Connection Definition",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2790,14 +3142,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-02",
       "name": "Scope Resolution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2819,14 +3175,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-03",
       "name": "Registry Consistency",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2847,14 +3207,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-04",
       "name": "Factory",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2874,14 +3238,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-05",
       "name": "Lease",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2902,14 +3270,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-06",
       "name": "Capabilities",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2931,14 +3303,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-07",
       "name": "Credentials",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2959,14 +3335,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-08",
       "name": "Authorization",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -2989,14 +3369,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-09",
       "name": "Pool",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3016,14 +3400,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-10",
       "name": "Session Isolation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3044,14 +3432,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-11",
       "name": "Thread Affinity",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3072,14 +3464,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-12",
       "name": "Transaction Enlistment",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3100,14 +3496,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-13",
       "name": "Metadata Discovery",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3129,14 +3529,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-14",
       "name": "Schema Evolution",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3159,14 +3563,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-15",
       "name": "Bulk Reader / Writer",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3188,14 +3596,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-16",
       "name": "Retry / Reconnect",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3216,14 +3628,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-17",
       "name": "Error Normalization",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3245,14 +3661,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-18",
       "name": "Metrics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3273,14 +3693,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-19",
       "name": "Resource Unification",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3304,14 +3728,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "CM-20",
       "name": "Native Driver Plugin",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "connectors/manager.c",
         "components/contracts/src/plugin.c",
@@ -3334,14 +3762,18 @@
         "process_task_execution",
         "four_engine_postgresql.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-01",
       "name": "Execution Tree Builder",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3360,14 +3792,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-02",
       "name": "Tree Graph",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3387,14 +3823,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-03",
       "name": "Shared Worker Pool",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3414,14 +3854,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-04",
       "name": "Unified Work Scheduling",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3443,14 +3887,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-05",
       "name": "Work Item Identity",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3472,14 +3920,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-06",
       "name": "Event-driven Ready Queue",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3499,14 +3951,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-07",
       "name": "Cross-Tree Backpressure",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3526,14 +3982,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-08",
       "name": "Source Partitioning",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3555,14 +4015,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-09",
       "name": "Partition Strategies",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3582,14 +4046,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-10",
       "name": "Parallel Aggregate",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3610,14 +4078,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-11",
       "name": "Parallel Join",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3638,14 +4110,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-12",
       "name": "Parallel Sort",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3666,14 +4142,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-13",
       "name": "Ordering Contract",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3694,14 +4174,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-14",
       "name": "Component Concurrency",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3721,14 +4205,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-15",
       "name": "Driver Concurrency",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3749,14 +4237,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-16",
       "name": "Shared Resource Budget",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3777,14 +4269,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-17",
       "name": "Cancellation",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3805,14 +4301,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-18",
       "name": "Checkpoint Barrier",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3833,14 +4333,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-19",
       "name": "Deterministic Semantics",
       "priority": "P0",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3861,14 +4365,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-20",
       "name": "Detailed Scheduler Metrics",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3888,14 +4396,18 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
     },
     {
       "id": "PP-21",
       "name": "Adaptive Scheduling",
       "priority": "P2",
       "state": "Planned",
-      "verification": "Not in P0/P1 delivery (P2)",
+      "verification": "P2 — not in R1–R5 scope",
       "owner": [
         "components/execution/src/executor.c",
         "engines/data-flow/pipeline.c",
@@ -3915,7 +4427,7 @@
       "name": "Benchmark Harness",
       "priority": "P1",
       "state": "Implemented",
-      "verification": "Pending final Linux evidence sealing",
+      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
       "owner": [
         "benchmarks/four_engines.py"
       ],
@@ -3935,7 +4447,1455 @@
         "logical_durable_task_facts",
         "benchmarks/four_engines.py"
       ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+      ]
+    }
+  ],
+  "previousDeliveries": [
+    {
+      "sdkVersion": "1.2.0",
+      "abiVersion": 6,
+      "sourceCommit": "45c1d056a3d771389b1e115d28cc7977bcd2541b",
+      "mainCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/4",
+      "mergedAt": "2026-10-12T20:33:45Z",
+      "sourceFingerprint": "0230c67a45b32339ce258bd4021f4007517c2d6eb26c2a187e6d598e783edab5",
+      "nativeTests": "37/37",
+      "sanitizerTests": "37/37",
+      "installedConsumers": "docs/acceptance/evidence/etl-four-engines-linux/installed-consumers.json",
+      "status": "Historical ABI 6 Linux evidence; Windows Exempt"
+    }
+  ],
+  "nextPhaseWorkItems": [
+    {
+      "id": "DQ-01",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "完成 `foreignKey` 规则的 Pipeline 配置绑定，支持独立 Reference 输入和快照/元数据校验；拒绝无一致性证明的 Resume"
+    },
+    {
+      "id": "DQ-02",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "保留已有 NotNull、Unique、PrimaryKey、Range、Regex、RowCount；统一 Rule ID/Version/Schema 约束"
+    },
+    {
+      "id": "DQ-03",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "对每规则明确 Fail/Redirect/Ignore 语义；现有 `ud_quality` 只有 Abort/Reject，可按严格规则扩展**唯一政策模型**，不要将 ignore 当成 committed"
+    },
+    {
+      "id": "DQ-04",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "多规则命中同一行时明确：保留一条数据、多个 Violation，或每规则独立错误行；协议必须定义确定性，避免行号错位"
+    },
+    {
+      "id": "DQ-05",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "正规错误记录含 `executionId`, `taskId`, `pipelineId`, `componentId`, `ruleId`, `ruleVersion`, `columnId`, `sourceRowId`, `errorCode`, `policy`；错误数据内容受权限/脱敏限制"
+    },
+    {
+      "id": "DQ-06",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "持久隔离写入复用 File/SQL Destination、Connection Lease、Journal 与 Receipt；普通与错误目标的部分提交不得误判为事务原子性"
+    },
+    {
+      "id": "DQ-07",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "规则级统计区分 evaluated、matched/failed、rejected、committed、acknowledged、unknown"
+    },
+    {
+      "id": "DQ-08",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "资源有界：大 Reference 集合允许使用统一 Buffer/Spill，支持取消清理；不新增私有文件格式"
+    },
+    {
+      "id": "DQ-09",
+      "phase": "R1",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute/src/quality.c",
+        "engines/data-flow/quality.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "对外公开规则描述、端口信息、错误列元数据，使后续设计器按 Registry discovery 自动识别"
+    },
+    {
+      "id": "INC-01",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Source Capability/Incremental Policy 描述"
+    },
+    {
+      "id": "INC-02",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "规范化 Cursor 数据模型"
+    },
+    {
+      "id": "INC-03",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Watermark / Composite Cursor Binder"
+    },
+    {
+      "id": "INC-04",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "SQLite/PostgreSQL 在支持范围内提供确定性增量游标"
+    },
+    {
+      "id": "INC-05",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "对 CSV/NDJSON 使用已有文件身份、位置、稳定边界"
+    },
+    {
+      "id": "INC-06",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "`ReadBatch → receipt → Journal → cursor advancement` 同一确认语义"
+    },
+    {
+      "id": "INC-07",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Replay 与 Resume"
+    },
+    {
+      "id": "INC-08",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Late Arrival / Overlap Policy"
+    },
+    {
+      "id": "INC-09",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Snapshot/Schema/Policy Change Detection"
+    },
+    {
+      "id": "INC-10",
+      "phase": "R2",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "engines/data-flow/builtins.c",
+        "engines/package/checkpoint.c",
+        "components/data"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Cursor Diagnostics"
+    },
+    {
+      "id": "SD-01",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Connector Metadata → Canonical `ud_field`"
+    },
+    {
+      "id": "SD-02",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Canonical Schema Fingerprint"
+    },
+    {
+      "id": "SD-03",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Schema Diff"
+    },
+    {
+      "id": "SD-04",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "三种兼容策略"
+    },
+    {
+      "id": "SD-05",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "Binder Preflight"
+    },
+    {
+      "id": "SD-06",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "恢复绑定"
+    },
+    {
+      "id": "SD-07",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "元数据发现"
+    },
+    {
+      "id": "SD-08",
+      "phase": "R3",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/data",
+        "connectors/manager.c",
+        "plugins"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+      ],
+      "name": "C / .NET / Java 查询能力"
+    },
+    {
+      "id": "LC-01",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Cache Transform 正式组件"
+    },
+    {
+      "id": "LC-02",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "复合键、NULL、Decimal、UTF-8、Date、Nested 规则"
+    },
+    {
+      "id": "LC-03",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "重复键政策"
+    },
+    {
+      "id": "LC-04",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Cache Scope"
+    },
+    {
+      "id": "LC-05",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Cache Quota/Spill"
+    },
+    {
+      "id": "LC-06",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Snapshot/Fingerprint"
+    },
+    {
+      "id": "LC-07",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Lookup Miss / Error Paths"
+    },
+    {
+      "id": "LC-08",
+      "phase": "R4",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/compute",
+        "engines/data-flow",
+        "engines/package"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
+      ],
+      "name": "Metrics"
+    },
+    {
+      "id": "OBS-01",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "Tree ready/running/blocked/end 时间"
+    },
+    {
+      "id": "OBS-02",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "Scheduler wakeup、quantum、Batch/rows"
+    },
+    {
+      "id": "OBS-03",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "Buffer 峰值、codec 与读写量"
+    },
+    {
+      "id": "OBS-04",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "Source/Operator/Destination CPU 与 I/O"
+    },
+    {
+      "id": "OBS-05",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "分区源扫描归因与恢复"
+    },
+    {
+      "id": "OBS-06",
+      "phase": "R5",
+      "priority": "P1",
+      "state": "Implemented",
+      "verification": "Verified on Linux; documented supported scope",
+      "owner": [
+        "components/execution",
+        "engines/data-flow/pipeline.c",
+        "benchmarks"
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
+      ],
+      "name": "六负载并发矩阵与一致性"
+    }
+  ],
+  "deliveryHistory": [
+    {
+      "sdkVersion": "1.3.0",
+      "abiVersion": 7,
+      "candidate": {
+        "branch": "codex/etl-next-phase-r1-r5",
+        "state": "R1–R5 P0/P1 implemented and Linux verified; unmerged PR candidate",
+        "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
+        "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+        "mergeEvidence": null,
+        "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
+      },
+      "gates": [
+        {
+          "id": "windows-msvc",
+          "status": "Exempt",
+          "command": "packaging/package.ps1 -BuildDirectory build/windows; Release C17/JNI/SQLite",
+          "evidence": [],
+          "reason": "Current user requires Linux only; Windows exempt"
+        },
+        {
+          "id": "windows-native",
+          "status": "Exempt",
+          "command": "ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure",
+          "evidence": [],
+          "reason": "Current user requires Linux only; Windows exempt"
+        },
+        {
+          "id": "windows-asan",
+          "status": "Exempt",
+          "command": "ctest --test-dir build/abi4-asan-msvc -C Debug --parallel 4 --output-on-failure",
+          "evidence": [],
+          "runtimeOptions": "halt_on_error=1:abort_on_error=1",
+          "reason": "Current user requires Linux only; Windows exempt"
+        },
+        {
+          "id": "sqlite-transactions-recovery",
+          "status": "Passed",
+          "command": "sqlite_receipts_upsert/package_sql_integration/package_durable_recovery/child_package_execution/project_environment_deployment",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
+              "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
+            }
+          ]
+        },
+        {
+          "id": "memory-quota-spill-concurrency",
+          "status": "Passed",
+          "command": "shared_value_semantics/core_runtime_resources/core_pipeline_components/package_failure_boundaries/process_task_execution",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+              "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+              "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
+            }
+          ]
+        },
+        {
+          "id": "language-parity",
+          "status": "Passed",
+          "command": "tests/installed_sdk.py: actual ZIP, dynamic C Data target, native NuGet without SDK PATH, Maven/JNI from bundle",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-consumers.txt",
+              "sha256": "8d5afb781921527e8429a4c665d7216970398f9c2eaa5ade3e7b31e4fd01e71c"
+            }
+          ]
+        },
+        {
+          "id": "installed-c",
+          "status": "Passed",
+          "command": "ZIP-extracted SDK -> external CMake UniversalData::Data -> Package/resource/SQLite/Pipeline and datatype/wire execution",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            }
+          ]
+        },
+        {
+          "id": "installed-nuget",
+          "status": "Passed",
+          "command": "ZIP-extracted native-containing nupkg -> fresh external cache/clients; Package and typed data without SDK loader PATH",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            }
+          ]
+        },
+        {
+          "id": "installed-maven",
+          "status": "Passed",
+          "command": "ZIP-extracted JAR/POM -> fresh external Maven repository/client -> JNI/native from same bundle",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            }
+          ]
+        },
+        {
+          "id": "source-contracts",
+          "status": "Passed",
+          "command": "python scripts/static_check.py; git diff --check; removed ABI/API reference audit",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/contracts.txt",
+              "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+            }
+          ]
+        },
+        {
+          "id": "windows-release",
+          "status": "Exempt",
+          "command": "packaging/package.ps1; ctest -C Release",
+          "evidence": [],
+          "reason": "Current user requires Linux only; Windows exempt"
+        },
+        {
+          "id": "distributable-bundle",
+          "status": "Passed",
+          "command": "python3 tests/installed_sdk.py --bundle artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip --work /workspace/next-phase-sdk-sealed --evidence docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/bundle-manifest.json",
+              "sha256": "422b70f16c4810062a83e7c5c46befc399d6e42941701247cb19e78087555c90"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/bundle-build.txt",
+              "sha256": "e5dbc959736f6b0ebdefd783b817c7ada127b80bdd29da69f075e0ea9df33c32"
+            }
+          ]
+        },
+        {
+          "id": "block-store-ownership",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+              "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "pipeline-tree-parallelism",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+              "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "journal-indexed-recovery",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+              "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "task-facts",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
+              "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "single-product-model",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/contracts.txt",
+              "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
+              "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "linux-release",
+          "name": "Linux Release native/JNI build",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
+              "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/build-release.txt",
+              "sha256": "8c35b1682f73592d30612d7b0fabdb384fcfff35cb5a076cb48b85b1368aa794"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        },
+        {
+          "id": "linux-native",
+          "name": "Linux native end-to-end cases",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        },
+        {
+          "id": "linux-sanitizers",
+          "name": "Linux ASan/UBSan",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+              "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/build-sanitizers.txt",
+              "sha256": "fe7cc10c76ad6835af45585832100bd41e068ed7d05096c92b9404d9a51af5b3"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        },
+        {
+          "id": "four-engines",
+          "name": "Four-engine completion scheduling, partition semantics and transactions",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+              "sha256": "51f926693a387aa45528116f8cf7a2b5bdb361a5a2144d0bedc554e76166ee82"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json",
+              "sha256": "d6b15b8b5375c51397d9e1c3389371ae6dc7b2fd2c9b87e4470cddc4114663c3"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        },
+        {
+          "id": "million-row-benchmark",
+          "name": "1/2/4/8/16 workers, million rows and spill",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+              "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+              "sha256": "fd7a3adb67c37f13dfdeff4fb3b58b25a29a9352519c03585fb3adfda711937f"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        }
+      ],
+      "artifacts": {
+        "archive": "artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip",
+        "manifest": "artifacts/1.3.0/linux-x64-sealed/manifest.json",
+        "sha256": "3e2292575c811d514caa2a9172bc0052bd3e2cd3cf2b88d61418a716bcbe8161",
+        "runtimeIdentifier": "linux-x64",
+        "configuration": "Release",
+        "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+        "status": "Built and consumed from actual ZIP; local unmerged candidate"
+      }
+    }
+  ],
+  "nativeFeatureWorkItems": [
+    {
+      "id": "N1",
+      "priority": "P1",
+      "name": "Sorted Merge and Merge Join",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G37"
+      ]
+    },
+    {
+      "id": "N2",
+      "priority": "P1",
+      "name": "Pivot and Unpivot",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G41"
+      ]
+    },
+    {
+      "id": "N3",
+      "priority": "P1",
+      "name": "Row and Percentage Sampling",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G69"
+      ]
+    },
+    {
+      "id": "N4",
+      "priority": "P1",
+      "name": "Native XLSX source and destination",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G66"
+      ]
+    },
+    {
+      "id": "N5",
+      "priority": "P2",
+      "name": "Atomic SCD Type 1 and Type 2",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G54"
+      ]
+    }
+  ],
+  "fullEnhancementWorkItems": [
+    {
+      "id": "E01",
+      "state": "Pending",
+      "verification": "NotRun",
       "evidence": []
+    },
+    {
+      "id": "E02",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E03",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E04",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E05",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E06",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E07",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E08",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E09",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E10",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E11",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E12",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E13",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E14",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E15",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N01",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N02",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N03",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N04",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N05",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N06",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N07",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N08",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N09",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N10",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N11",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D01",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D02",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D03",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D04",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D05",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D06",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D07",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D08",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D09",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D10",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D11",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D12",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    }
+  ],
+  "advancedWorkItems": [
+    {
+      "id": "A0",
+      "state": "InProgress",
+      "verification": "NotRun",
+      "name": "Unified declaration, configuration, types and effects"
+    },
+    {
+      "id": "A1",
+      "state": "InProgress",
+      "verification": "NotRun",
+      "name": "Native MySQL / MariaDB / ODBC / OCI drivers"
+    },
+    {
+      "id": "A2",
+      "state": "InProgress",
+      "verification": "NotRun",
+      "name": "Parquet / Arrow IPC / REST formats"
+    },
+    {
+      "id": "A3",
+      "state": "InProgress",
+      "verification": "NotRun",
+      "name": "Bounded physical operators and performance"
+    },
+    {
+      "id": "B1",
+      "state": "InProgress",
+      "verification": "NotRun",
+      "name": "Metadata extension platform and templates"
+    },
+    {
+      "id": "B2",
+      "state": "InProgress",
+      "verification": "NotRun",
+      "name": "Advanced relational operators"
+    },
+    {
+      "id": "B3",
+      "state": "InProgress",
+      "verification": "NotRun",
+      "name": "Quality, text and fuzzy matching"
+    },
+    {
+      "id": "B4",
+      "state": "InProgress",
+      "verification": "NotRun",
+      "name": "Nested fields, changes and CDC"
     }
   ]
 }

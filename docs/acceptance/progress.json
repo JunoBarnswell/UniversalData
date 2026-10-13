@@ -1,32 +1,41 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "1.2.0",
-  "abi": 6,
+  "sdkVersion": "1.5.0",
+  "abi": 9,
   "scope": {
-    "name": "ETL four engines R0–R7 P0/P1",
+    "name": "PR #5 Native foundation, extension platform and advanced ETL",
     "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
     "extensions": "Tracked independently; Planned/Partial remain incomplete",
     "windows": "Exempt — explicit current user instruction"
   },
   "baseline": {
-    "mainCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
-    "merged": true
+    "mainCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+    "merged": true,
+    "mergeEvidence": {
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/4",
+      "mergedAt": "2026-10-12T20:33:45Z",
+      "headCommit": "45c1d056a3d771389b1e115d28cc7977bcd2541b"
+    }
   },
   "candidate": {
-    "branch": "codex/ssis-infrastructure-convergence",
-    "state": "R0–R6 implemented; pending concentrated Linux acceptance",
-    "sourceCommit": null,
+    "branch": "codex/etl-next-phase-r1-r5",
+    "state": "PR #5 advanced ETL implementation in progress; ABI 9 verification pending",
+    "sourceCommit": "fd03e6508b0a13c4e418225c91bd60e56c547418",
     "sourceFingerprint": null,
-    "mergeEvidence": null
+    "mergeEvidence": null,
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
   },
   "remoteCI": {
     "state": "Blocked",
-    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38270005891",
-    "sourceCommit": "ce72a2ce6ba41c4ee0a3b33a95a36ae59b7d3a39",
+    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38325912089",
+    "sourceCommit": "a698129fff37349d6e29b51dcd47ebc8583b4e80",
     "startedSteps": 0,
-    "reason": "GitHub account payment/spending-limit restriction; no code steps ran"
+    "reason": "Blocked before code execution: GitHub account payment/spending-limit restriction",
+    "evidence": "docs/acceptance/evidence/etl-next-phase-linux/remote-ci.json"
   },
-  "artifacts": null,
+  "artifacts": {
+    "status": "Pending ABI 8 Linux build and installed consumers"
+  },
   "requiredGates": 18,
   "passedGates": 0,
   "remediations": [
@@ -34,37 +43,37 @@
       "id": "R01",
       "state": "Implemented",
       "name": "Registry and native module lifecycle",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R02",
       "state": "Implemented",
       "name": "Physical Block Store ownership",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R03",
       "state": "Implemented",
       "name": "Shared executor and physical Execution Trees",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R04",
       "state": "Implemented",
       "name": "Indexed segmented Journal and snapshots",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R05",
       "state": "Implemented",
       "name": "Task facts, durability metrics and events",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     },
     {
       "id": "R06",
       "state": "Implemented",
       "name": "Single version and acceptance model",
-      "verification": "Pending"
+      "verification": "Verified on ABI 7 Linux; Windows Exempt"
     }
   ]
 }

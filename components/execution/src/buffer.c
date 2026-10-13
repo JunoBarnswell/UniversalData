@@ -64,8 +64,8 @@ static uint32_t bucket(const void *address, uint32_t capacity) {
 static allocation_owner *find(const ud_buffer_manager *manager, const void *address) {
     if (!manager->capacity)
         return NULL;
-    for (allocation_owner *owner = manager->index[bucket(address, manager->capacity)];
-         owner; owner = owner->next)
+    for (allocation_owner *owner = manager->index[bucket(address, manager->capacity)]; owner;
+         owner = owner->next)
         if (owner->address == address)
             return owner;
     return NULL;
@@ -194,6 +194,34 @@ static void release_storage(ud_buffer_manager *manager, const ud_buffer_block *b
         ud_free(owner);
     }
 }
+static ud_status reclaim_orphans(ud_buffer_manager *manager) {
+    /* Writer lock owns the entire canonical temporary namespace. Durable data
+     * is in Journal; these Buffer pages never survive their controller. */
+    char **names = NULL;
+    uint32_t count = 0;
+    ud_status status = ud_list(manager->ctx, manager->directory, ".udw", &names, &count);
+    for (uint32_t i = 0; !status && i < count; i++) {
+        const char *name = names[i];
+        if (strlen(name) != 34 || memcmp(name, "ud-buffer-", 10) || strcmp(name + 30, ".udw"))
+            continue;
+        int canonical = 1;
+        for (uint32_t j = 10; j < 30; j++)
+            canonical &= name[j] >= '0' && name[j] <= '9';
+        if (!canonical)
+            continue;
+        char *path = NULL;
+        status = check(manager);
+        if (!status)
+            status = ud_join_path(manager->ctx, manager->directory, name, &path);
+        if (!status)
+            status = ud_path_no_symlinks(manager->ctx, path);
+        if (!status)
+            status = ud_remove_file(manager->ctx, path);
+        ud_free(path);
+    }
+    ud_list_free(names, count);
+    return status;
+}
 ud_status ud_buffer_manager_create(ud_context *ctx, const ud_buffer_options *options,
                                    ud_buffer_manager **out) {
     if (!out)
@@ -235,6 +263,8 @@ ud_status ud_buffer_manager_create(ud_context *ctx, const ud_buffer_options *opt
         if (!status)
             status = ud_lock(ctx, path, &manager->writer);
         ud_free(path);
+        if (!status)
+            status = reclaim_orphans(manager);
     }
     if (status) {
         ud_unlock(manager->writer);
@@ -247,7 +277,8 @@ ud_status ud_buffer_manager_create(ud_context *ctx, const ud_buffer_options *opt
     *out = manager;
     return UD_OK;
 }
-ud_status ud_buffer_store(ud_buffer_manager *manager, const ud_batch *batch, ud_buffer_block **out) {
+ud_status ud_buffer_store(ud_buffer_manager *manager, const ud_batch *batch,
+                          ud_buffer_block **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
@@ -289,7 +320,11 @@ ud_status ud_buffer_store(ud_buffer_manager *manager, const ud_batch *batch, ud_
             ud_memory_scope scope;
             ud_memory_domain_enter(manager->working, &scope);
             manager->metrics.wire_encodes++;
+            uint64_t cpu = ud_thread_cpu_ns();
             status = ud_batch_serialize(batch, &wire, &length);
+            manager->metrics.encode_cpu_ns += ud_thread_cpu_ns() - cpu;
+            if (!status)
+                manager->metrics.encoded_bytes += length;
             ud_memory_domain_leave(&scope);
         }
         if (!status && length > manager->options.spill_limit - manager->metrics.spill_bytes)
@@ -307,13 +342,20 @@ ud_status ud_buffer_store(ud_buffer_manager *manager, const ud_batch *batch, ud_
         if (!status)
             status = ud_reserve_file(manager->ctx, block->path);
         int owned = !status;
-        if (!status)
+        if (!status) {
+            uint64_t started = ud_now_ms();
             status = ud_write_file(manager->ctx, block->path, wire, (size_t)length);
+            manager->metrics.write_ms += ud_now_ms() - started;
+            if (!status)
+                manager->metrics.write_bytes += length;
+        }
         if (!status) {
             block->wire_bytes = length;
             ud_hash(wire, (size_t)length, block->digest);
             manager->metrics.spill_bytes += length;
             manager->metrics.total_spill_bytes += length;
+            if (manager->metrics.spill_bytes > manager->metrics.spill_high_water)
+                manager->metrics.spill_high_water = manager->metrics.spill_bytes;
         } else if (owned) {
             ud_status cleanup = ud_remove_file(manager->ctx, block->path);
             if (cleanup) {
@@ -373,16 +415,29 @@ ud_status ud_buffer_read(ud_buffer_block *block, ud_buffer_view **out) {
         else {
             status = ud_path_no_symlinks(manager->ctx, block->path);
             ud_bytes wire = {.ctx = manager->ctx, .limit = (size_t)block->wire_bytes};
-            if (!status)
+            if (!status) {
+                uint64_t started = ud_now_ms();
                 status = ud_read_file(manager->ctx, block->path, &wire);
+                ud_mutex_lock(&manager->mutex);
+                manager->metrics.read_ms += ud_now_ms() - started;
+                if (!status)
+                    manager->metrics.read_bytes += wire.size;
+                ud_mutex_unlock(&manager->mutex);
+            }
             uint8_t digest[32];
             if (!status) {
                 ud_hash(wire.data, wire.size, digest);
                 if (wire.size != block->wire_bytes || memcmp(digest, block->digest, 32))
                     status = UD_CORRUPT;
             }
-            if (!status)
+            if (!status) {
+                uint64_t cpu = ud_thread_cpu_ns();
                 status = ud_batch_deserialize(manager->ctx, wire.data, wire.size, &view->owned);
+                ud_mutex_lock(&manager->mutex);
+                manager->metrics.wire_decodes++;
+                manager->metrics.decode_cpu_ns += ud_thread_cpu_ns() - cpu;
+                ud_mutex_unlock(&manager->mutex);
+            }
             if (!status)
                 status = ud_batch_seal(view->owned);
             ud_bytes_clear(&wire);
@@ -492,4 +547,67 @@ ud_status ud_buffer_manager_destroy(ud_buffer_manager *manager) {
     ud_mutex_destroy(&manager->mutex);
     ud_free(manager);
     return UD_OK;
+}
+
+ud_status ud_buffer_reserve_external(ud_buffer_manager *m, uint64_t bytes) {
+    if (!m)
+        return UD_INVALID;
+    ud_mutex_lock(&m->mutex);
+    ud_status status =
+        bytes > m->options.spill_limit - m->metrics.spill_bytes ? UD_RESOURCE : UD_OK;
+    if (!status) {
+        m->metrics.spill_bytes += bytes;
+        m->metrics.total_spill_bytes += bytes;
+        if (m->metrics.spill_bytes > m->metrics.spill_high_water)
+            m->metrics.spill_high_water = m->metrics.spill_bytes;
+    }
+    ud_mutex_unlock(&m->mutex);
+    return status;
+}
+void ud_buffer_release_external(ud_buffer_manager *m, uint64_t bytes) {
+    if (!m)
+        return;
+    ud_mutex_lock(&m->mutex);
+    if (bytes <= m->metrics.spill_bytes)
+        m->metrics.spill_bytes -= bytes;
+    ud_mutex_unlock(&m->mutex);
+}
+
+ud_status ud_buffer_working_allocate(ud_buffer_manager *manager, size_t bytes, void **out) {
+    if (!manager || !out || !bytes)
+        return UD_INVALID;
+    *out = NULL;
+    UD_TRY(check(manager));
+    ud_memory_scope scope;
+    ud_memory_domain_enter(manager->working, &scope);
+    *out = ud_alloc(manager->ctx, bytes);
+    ud_memory_domain_leave(&scope);
+    return *out ? UD_OK : UD_RESOURCE;
+}
+ud_status ud_buffer_manager_limits(const ud_buffer_manager *manager, ud_buffer_options *out) {
+    if (!manager || !out)
+        return UD_INVALID;
+    *out = manager->options;
+    return UD_OK;
+}
+
+uint32_t ud_buffer_block_views(const ud_buffer_block *b) {
+    if (!b)
+        return 0;
+    ud_buffer_manager *m = b->manager;
+    ud_mutex_lock(&m->mutex);
+    uint32_t count = b->readers;
+    ud_mutex_unlock(&m->mutex);
+    return count;
+}
+
+ud_status ud_buffer_working_copy_value(ud_buffer_manager *m, const ud_value *value, ud_value *out) {
+    if (!m || !value || !out)
+        return UD_INVALID;
+    UD_TRY(check(m));
+    ud_memory_scope scope;
+    ud_memory_domain_enter(m->working, &scope);
+    ud_status status = ud_copy_value(m->ctx, value, out, 0);
+    ud_memory_domain_leave(&scope);
+    return status;
 }

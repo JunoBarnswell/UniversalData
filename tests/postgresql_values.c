@@ -57,17 +57,14 @@ int main(int argc, char **argv) {
     o.authorize = grant;
     OK(ud_connection_open(p, &o, &db));
     OK(ud_connection_test(db));
-    OK(ud_connection_execute_sql(
-        db,
-        str("CREATE TEMP TABLE ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT NULL,batch_id "
+    OK(ud_connection_execute_command(db, &(ud_read_options){.struct_size=sizeof(ud_read_options),.abi_version=UD_ABI_VERSION,.sql=str("CREATE TEMP TABLE ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT NULL,batch_id "
             "TEXT NOT NULL,digest BYTEA NOT NULL CHECK(octet_length(digest)=32),source_position "
-            "TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))")));
-    OK(ud_connection_execute_sql(
-        db, str("CREATE TEMP TABLE ud_value_semantics(id BIGINT PRIMARY KEY,b BOOLEAN NOT NULL,f "
+            "TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))")}, NULL));
+    OK(ud_connection_execute_command(db, &(ud_read_options){.struct_size=sizeof(ud_read_options),.abi_version=UD_ABI_VERSION,.sql=str("CREATE TEMP TABLE ud_value_semantics(id BIGINT PRIMARY KEY,b BOOLEAN NOT NULL,f "
                 "DOUBLE PRECISION,s TEXT,d NUMERIC(38,2),date DATE,time TIME,at TIMESTAMPTZ,raw "
-                "BYTEA)")));
+                "BYTEA)")}, NULL));
     const char *schema =
-        "{\"version\":6,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false},{"
+        "{\"version\":9,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false},{"
         "\"name\":\"b\",\"type\":\"bool\",\"nullable\":false},{\"name\":\"f\",\"type\":\"float64\","
         "\"nullable\":true},{\"name\":\"s\",\"type\":\"utf8\",\"nullable\":true},{\"name\":\"d\","
         "\"type\":\"decimal128\",\"precision\":38,\"scale\":2,\"nullable\":true},{\"name\":"
@@ -137,13 +134,20 @@ int main(int argc, char **argv) {
     CHECK(ud_connection_read_next(db, &fields) == UD_END && !fields);
     OK(ud_connection_read_close(db));
     ud_batch_destroy(batch);
-    for (int kind=UD_METADATA_CATALOGS;kind<=UD_METADATA_INDEXES;kind++) {
-        ud_metadata_options metadata_options={.struct_size=sizeof(metadata_options),.abi_version=UD_ABI_VERSION,
-            .kind=kind,.parent={"ud_value_semantics",18},.limit=1};
-        ud_batch *page=NULL;OK(ud_connection_metadata(db,&metadata_options,&page));
-        CHECK(ud_batch_rows(page)<=1 && ud_batch_columns(page)==8);ud_batch_destroy(page);
-        metadata_options.offset=1;OK(ud_connection_metadata(db,&metadata_options,&page));
-        CHECK(ud_batch_rows(page)<=1);ud_batch_destroy(page);
+    for (int kind = UD_METADATA_CATALOGS; kind <= UD_METADATA_INDEXES; kind++) {
+        ud_metadata_options metadata_options = {.struct_size = sizeof(metadata_options),
+                                                .abi_version = UD_ABI_VERSION,
+                                                .kind = kind,
+                                                .parent = {"ud_value_semantics", 18},
+                                                .limit = 1};
+        ud_batch *page = NULL;
+        OK(ud_connection_metadata(db, &metadata_options, &page));
+        CHECK(ud_batch_rows(page) <= 1 && ud_batch_columns(page) == 8);
+        ud_batch_destroy(page);
+        metadata_options.offset = 1;
+        OK(ud_connection_metadata(db, &metadata_options, &page));
+        CHECK(ud_batch_rows(page) <= 1);
+        ud_batch_destroy(page);
     }
     allowed = 0;
     CHECK(ud_connection_test(db) == UD_AUTH);

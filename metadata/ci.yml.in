@@ -37,8 +37,8 @@ jobs:
         run: |
           python packaging/package-linux.py --build build/full --output build/delivery
           python tests/installed_sdk.py --bundle build/UniversalData-@UD_SDK_VERSION@-linux-x64.zip --work "$RUNNER_TEMP/ud-sdk-$GITHUB_RUN_ID" --evidence build/sdk-consumers.json
-      - name: Million rows, spill and 1/2/4/8/16 worker comparison
-        run: python benchmarks/four_engines.py --cli build/full/hosts/ud_cli --output build/four-engine-benchmark.json
+      - name: Six workloads, million rows and bounded spill
+        run: python benchmarks/next_phase.py build/full/tests/test_next_phase_execution build/full/plugins/ud_connector_sqlite.so --output build/next-phase-benchmark.json
       - name: Public contracts and removed legacy exports
         run: python scripts/static_check.py
       - uses: actions/upload-artifact@v4
@@ -48,7 +48,7 @@ jobs:
             build/delivery
             build/UniversalData-@UD_SDK_VERSION@-linux-x64.zip
             build/sdk-consumers.json
-            build/four-engine-benchmark.json
+            build/next-phase-benchmark.json
   minimal-components:
     runs-on: ubuntu-24.04
     steps:

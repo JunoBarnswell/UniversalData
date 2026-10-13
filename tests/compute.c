@@ -1,16 +1,22 @@
 #include "check.h"
 #include "ud/compute.h"
+#include "ud/operator.h"
 #include "ud/engine.h"
 #include <string.h>
 int main(void) {
     ud_context *c = NULL;
     OK(ud_context_create(NULL, &c));
-    ud_field schema[]={{.name="key",.name_length=3,.type=UD_UTF8,.nullable=1},
-                       {.name="amount",.name_length=6,.type=UD_INT64,.nullable=1}};
-    const char *definition="{\"version\":6,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,\"type\":\"int64\"}]},\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\",\"column\":\"amount\",\"name\":\"total\"},{\"function\":\"count\",\"column\":\"*\",\"name\":\"rows\"},{\"function\":\"min\",\"column\":\"amount\",\"name\":\"smallest\"},{\"function\":\"max\",\"column\":\"amount\",\"name\":\"largest\"}]}";
-    ud_plan *p=NULL;
-    OK(ud_plan_create_fields(c,UD_PLAN_VERSION,schema,2,
-                              (ud_string){definition,(uint32_t)strlen(definition)},NULL,&p));
+    ud_field schema[] = {{.name = "key", .name_length = 3, .type = UD_UTF8, .nullable = 1},
+                         {.name = "amount", .name_length = 6, .type = UD_INT64, .nullable = 1}};
+    const char *definition =
+        "{\"version\":9,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,"
+        "\"type\":\"int64\"}]},\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\","
+        "\"column\":\"amount\",\"name\":\"total\"},{\"function\":\"count\",\"column\":\"*\","
+        "\"name\":\"rows\"},{\"function\":\"min\",\"column\":\"amount\",\"name\":\"smallest\"},{"
+        "\"function\":\"max\",\"column\":\"amount\",\"name\":\"largest\"}]}";
+    ud_plan *p = NULL;
+    OK(ud_plan_create_fields(c, UD_PLAN_VERSION, schema, 2,
+                             (ud_string){definition, (uint32_t)strlen(definition)}, NULL, &p));
     const ud_field *f;
     uint32_t n;
     OK(ud_plan_schema(p, &f, &n));
@@ -63,22 +69,66 @@ int main(void) {
     v[1].is_null = 0;
     v[1].integer = 99;
     OK(ud_batch_append(right, v, 2));
-    OK(ud_compute_inner_join(c, input, 0, right, 0, &joined));
+    ud_buffer_manager *join_buffers = NULL;
+    OK(ud_buffer_manager_create(c,
+                                &(ud_buffer_options){.struct_size = sizeof(ud_buffer_options),
+                                                     .abi_version = UD_ABI_VERSION,
+                                                     .max_blocks = 100,
+                                                     .resident_limit = 1048576,
+                                                     .working_limit = 1048576},
+                                &join_buffers));
+    uint32_t join_key = 0;
+    const ud_batch *join_inputs[] = {input, right};
+    ud_operator *join_op = NULL;
+    OK(ud_operator_create(c,
+                          &(ud_operator_options){.struct_size = sizeof(ud_operator_options),
+                                                 .abi_version = UD_ABI_VERSION,
+                                                 .kind = UD_OPERATOR_JOIN,
+                                                 .max_batch_rows = 8,
+                                                 .keys = &join_key,
+                                                 .right_keys = &join_key,
+                                                 .key_count = 1,
+                                                 .buffers = join_buffers},
+                          join_inputs, &join_op));
+    OK(ud_batch_seal(input));
+    OK(ud_batch_seal(right));
+    OK(ud_operator_push(join_op, 1, right));
+    OK(ud_operator_finish_input(join_op, 1));
+    OK(ud_operator_push(join_op, 0, input));
+    OK(ud_operator_finish_input(join_op, 0));
+    OK(ud_operator_pull(join_op, &joined, NULL));
     CHECK(ud_batch_rows(joined) == 4 && ud_batch_columns(joined) == 4);
     ud_batch_destroy(joined);
+    CHECK(ud_operator_pull(join_op, &joined, NULL) == UD_END);
+    OK(ud_operator_destroy(join_op));
+    OK(ud_buffer_manager_destroy(join_buffers));
     ud_batch_destroy(right);
-    ud_buffer_options options = {.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,
-        .max_blocks=4,.resident_limit=1048576,.working_limit=1048576};
-    ud_buffer_manager *buffers=NULL;OK(ud_buffer_manager_create(c,&options,&buffers));
+    ud_buffer_options options = {.struct_size = sizeof(options),
+                                 .abi_version = UD_ABI_VERSION,
+                                 .max_blocks = 4,
+                                 .resident_limit = 1048576,
+                                 .working_limit = 1048576};
+    ud_buffer_manager *buffers = NULL;
+    OK(ud_buffer_manager_create(c, &options, &buffers));
     OK(ud_batch_seal(input));
-    ud_buffer_block *block=NULL,*got=NULL;OK(ud_buffer_store(buffers,input,&block));
+    ud_buffer_block *block = NULL;
+    ud_stream_event got = {0};
+    OK(ud_buffer_store(buffers, input, &block));
     ud_queue *q = NULL;
     OK(ud_queue_create(c, 1, &q));
-    OK(ud_queue_push(q, block));CHECK(ud_queue_count(q)==1);
-    CHECK(ud_queue_push(q, block) == UD_BUSY);
-    OK(ud_queue_pop(q, &got));CHECK(got==block);OK(ud_buffer_release(got));
+    ud_stream_event event = {.struct_size = sizeof(event),
+                             .abi_version = UD_ABI_VERSION,
+                             .kind = UD_STREAM_DATA,
+                             .block = block};
+    OK(ud_queue_push(q, &event));
+    CHECK(ud_queue_count(q) == 1);
+    CHECK(ud_queue_push(q, &event) == UD_BUSY);
+    OK(ud_queue_pop(q, &got));
+    CHECK(got.block == block && got.kind == UD_STREAM_DATA);
+    OK(ud_stream_event_clear(&got));
     CHECK(ud_queue_pop(q, &got) == UD_END);
-    OK(ud_queue_destroy(q));OK(ud_buffer_manager_destroy(buffers));
+    OK(ud_queue_destroy(q));
+    OK(ud_buffer_manager_destroy(buffers));
     CHECK(ud_truth_and(-1, 0) == 0 && ud_truth_and(-1, 1) == -1 && ud_truth_or(-1, 1) == 1 &&
           ud_truth_not(-1) == -1);
     ud_batch_destroy(input);

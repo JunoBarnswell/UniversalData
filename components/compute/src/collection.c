@@ -16,10 +16,36 @@ ud_status ud_compute_join_schema(ud_context *ctx, const ud_batch *left, const ud
         const ud_field *source =
             j < left->columns ? &left->column[j].field : &right->column[j - left->columns].field;
         char id[33], scope[48];
-        ud_column_id_format(source->identity, id);
+        ud_id_format(source->identity, id);
         snprintf(scope, sizeof(scope), "join.%s.%s", j < left->columns ? "left" : "right", id);
-        s = ud_field_derive(ctx, source, (ud_string){scope, (uint32_t)strlen(scope)},
-                            (ud_string){source->name, source->name_length}, fields + j);
+        ud_string name = {source->name, source->name_length};
+        ud_bytes renamed = {.ctx = ctx};
+        if (j >= left->columns) {
+            int collision = 0;
+            for (uint32_t k = 0; k < j; k++)
+                if (fields[k].name_length == name.length &&
+                    !memcmp(fields[k].name, name.data, name.length))
+                    collision = 1;
+            if (collision) {
+                char suffix[48];
+                int n = snprintf(suffix, sizeof(suffix), "right.%u.", j - left->columns);
+                s = ud_bytes_put(&renamed, suffix, (size_t)n);
+                if (!s)
+                    s = ud_bytes_put(&renamed, name.data, name.length);
+                name = (ud_string){(char *)renamed.data, (uint32_t)renamed.size};
+            }
+        }
+        int duplicate = 0;
+        for (uint32_t k = 0; k < j; k++)
+            duplicate |= !ud_id_compare(source->identity, fields[k].identity);
+        if (!s && (duplicate || renamed.size))
+            s = ud_field_derive(ctx, source, (ud_string){scope, (uint32_t)strlen(scope)}, name,
+                                fields + j);
+        else if (!s)
+            s = ud_field_copy(ctx, source, (ud_id){0}, fields + j);
+        if (!s)
+            fields[j].key_order = 0;
+        ud_bytes_clear(&renamed);
     }
     if (!s)
         s = ud_batch_create(ctx, fields, count, 0, out);
@@ -35,7 +61,7 @@ static ud_status union_field(ud_context *ctx, const ud_field *left, const ud_fie
         memcmp(left->name, right->name, left->name_length))
         return UD_SCHEMA;
     ud_field parents[2] = {*left, *right}, spec = *left;
-    ud_column_id *origins = NULL;
+    ud_id *origins = NULL;
     uint32_t count = 0;
     UD_TRY(ud_lineage_merge(ctx, parents, 2, &origins, &count));
     spec.lineage = origins;
@@ -46,7 +72,7 @@ static ud_status union_field(ud_context *ctx, const ud_field *left, const ud_fie
     ud_free(origins);
     char nested[33];
     if (!s)
-        ud_column_id_format(out->identity, nested);
+        ud_id_format(out->identity, nested);
     for (uint32_t j = 0; !s && j < left->child_count; j++) {
         ud_field child = {0};
         s = union_field(ctx, left->children + j, right->children + j, (ud_string){nested, 32},
@@ -72,8 +98,8 @@ ud_status ud_compute_union_schema(ud_context *ctx, const ud_batch *left, const u
     ud_status s = UD_OK;
     for (uint32_t j = 0; !s && j < left->columns; j++) {
         char a[33], b[33], scope[80];
-        ud_column_id_format(left->column[j].field.identity, a);
-        ud_column_id_format(right->column[j].field.identity, b);
+        ud_id_format(left->column[j].field.identity, a);
+        ud_id_format(right->column[j].field.identity, b);
         snprintf(scope, sizeof(scope), "union.%s.%s", a, b);
         s = union_field(ctx, &left->column[j].field, &right->column[j].field,
                         (ud_string){scope, (uint32_t)strlen(scope)}, fields + j, 0);
@@ -98,7 +124,8 @@ static ud_status append_row(ud_batch *out, const ud_batch *in, uint32_t row, ud_
     uint32_t n = ud_batch_columns(in);
     for (uint32_t i = 0; i < n; i++)
         UD_TRY(ud_batch_get(in, row, i, v + i));
-    return ud_batch_append(out, v, n);
+    UD_TRY(ud_batch_append(out, v, n));
+    return ud_batch_copy_row_info(out, out->rows - 1, in, row);
 }
 ud_status ud_compute_slice(ud_context *c, const ud_batch *b, uint64_t offset, uint64_t limit,
                            ud_batch **out) {
@@ -186,111 +213,6 @@ ud_status ud_compute_sort(ud_context *c, const ud_batch *b, uint32_t key, int32_
     ud_free(order);
     ud_free(scratch);
     if (s && *out) {
-        ud_batch_destroy(*out);
-        *out = NULL;
-    }
-    return s;
-}
-ud_status ud_compute_inner_join(ud_context *ctx, const ud_batch *left, uint32_t lk,
-                                const ud_batch *right, uint32_t rk, ud_batch **out) {
-    if (!out)
-        return UD_INVALID;
-    *out = NULL;
-    if (!ctx || !left || !right)
-        return UD_INVALID;
-    const ud_batch *schemas[] = {left, right};
-    ud_buffer_manager *buffers = NULL;
-    ud_operator *operator = NULL;
-    ud_buffer_options budget = {.struct_size = sizeof(budget),
-                                .abi_version = UD_ABI_VERSION,
-                                .max_blocks = 16384,
-                                .resident_limit = UINT64_C(67108864),
-                                .working_limit = UINT64_C(67108864)};
-    ud_status s = ud_buffer_manager_create(ctx, &budget, &buffers);
-    ud_operator_options options = {.struct_size = sizeof(options),
-                                   .abi_version = UD_ABI_VERSION,
-                                   .kind = UD_OPERATOR_INNER_JOIN,
-                                   .max_batch_rows = 4096,
-                                   .keys = &lk,
-                                   .key_count = 1,
-                                   .right_key = rk,
-                                   .buffers = buffers};
-    if (!s)
-        s = ud_operator_create(ctx, &options, schemas, &operator);
-    ud_batch *schema = NULL;
-    if (!s)
-        s = ud_operator_schema(operator, &schema);
-    for (uint32_t port = 0; !s && port < 2; port++) {
-        const ud_batch *input = schemas[port];
-        for (uint32_t row = 0; !s && row < input->rows; row += 4096) {
-            ud_batch *batch = NULL;
-            s = ud_compute_slice(ctx, input, row, 4096, &batch);
-            if (!s)
-                s = ud_batch_seal(batch);
-            if (!s)
-                s = ud_operator_push(operator, port, batch);
-            ud_batch_destroy(batch);
-        }
-        if (!s)
-            s = ud_operator_finish_input(operator, port);
-    }
-    ud_batch **parts = NULL;
-    uint32_t count = 0;
-    uint64_t rows = 0;
-    while (!s) {
-        ud_batch *batch = NULL;
-        s = ud_operator_pull(operator, &batch);
-        if (s == UD_END) {
-            s = UD_OK;
-            break;
-        }
-        if (s)
-            break;
-        if (rows > INT32_MAX - batch->rows) {
-            ud_batch_destroy(batch);
-            s = UD_RESOURCE;
-            break;
-        }
-        ud_batch **next = ud_alloc(ctx, (size_t)(count + 1) * sizeof(*next));
-        if (!next) {
-            ud_batch_destroy(batch);
-            s = UD_RESOURCE;
-            break;
-        }
-        if (count)
-            memcpy(next, parts, count * sizeof(*next));
-        ud_free(parts);
-        parts = next;
-        parts[count++] = batch;
-        rows += batch->rows;
-    }
-    ud_field *fields = NULL;
-    ud_value *values = NULL;
-    if (!s)
-        s = fields_of(ctx, schema, &fields);
-    if (!s)
-        s = ud_batch_create(ctx, fields, schema->columns, (uint32_t)rows, out);
-    if (!s) {
-        values = ud_alloc(ctx, schema->columns * sizeof(*values));
-        if (!values)
-            s = UD_RESOURCE;
-    }
-    for (uint32_t i = 0; !s && i < count; i++)
-        for (uint32_t row = 0; !s && row < parts[i]->rows; row++)
-            s = append_row(*out, parts[i], row, values);
-    for (uint32_t i = 0; i < count; i++)
-        ud_batch_destroy(parts[i]);
-    ud_free(parts);
-    ud_free(fields);
-    ud_free(values);
-    ud_batch_destroy(schema);
-    ud_status cleanup = ud_operator_destroy(operator);
-    if (!s && cleanup)
-        s = cleanup;
-    cleanup = ud_buffer_manager_destroy(buffers);
-    if (!s && cleanup)
-        s = cleanup;
-    if (s) {
         ud_batch_destroy(*out);
         *out = NULL;
     }

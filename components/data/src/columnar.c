@@ -104,6 +104,8 @@ void ud_batch_destroy(ud_batch *b) {
             ud_free(v->offsets);
             ud_free(v->strings);
         }
+    ud_free(b->append_values);
+    ud_free(b->row_info);
     ud_free(b->column);
     ud_batch_destroy(b->data_owner);
     ud_schema_owner_release(b->schema);
@@ -123,6 +125,8 @@ ud_status ud_batch_seal(ud_batch *b) {
             UD_TRY(ud_batch_get(b, row, j, &value));
         }
     }
+    ud_free(b->append_values);
+    b->append_values = NULL;
     b->sealed = 1;
     return UD_OK;
 }
@@ -173,6 +177,7 @@ ud_status ud_batch_project(ud_context *ctx, const ud_batch *input, const uint32_
     b->schema = schema;
     b->columns = columns;
     b->rows = b->capacity = input->rows;
+    b->row_offset = input->row_offset;
     b->sealed = 1;
     b->column = ud_alloc(ctx, columns * sizeof(*b->column));
     ud_status s = b->column ? ud_batch_retain((ud_batch *)input) : UD_RESOURCE;
@@ -205,6 +210,7 @@ ud_status ud_batch_field(const ud_batch *b, uint32_t col, ud_field *out) {
 ud_status ud_batch_get(const ud_batch *b, uint32_t row, uint32_t col, ud_value *out) {
     if (!b || !out || row >= b->rows || col >= b->columns)
         return UD_INVALID;
+    row += b->row_offset;
     const ud_column *v = b->column + col;
     memset(out, 0, sizeof(*out));
     out->type = v->field.type;
@@ -540,6 +546,8 @@ ud_status ud_batch_clone(const ud_batch *b, ud_batch **out) {
         for (uint32_t i = 0; i < b->columns; i++)
             ud_batch_get(b, r, i, v + i);
         s = ud_batch_append(*out, v, b->columns);
+        if (!s)
+            s = ud_batch_copy_row_info(*out, (*out)->rows - 1, b, r);
     }
     ud_free(fields);
     ud_free(v);
@@ -548,4 +556,23 @@ ud_status ud_batch_clone(const ud_batch *b, ud_batch **out) {
         *out = NULL;
     }
     return s;
+}
+ud_status ud_batch_slice(ud_context *ctx, const ud_batch *input, uint32_t first, uint32_t rows,
+                         ud_batch **out) {
+    if (!input || first > input->rows || rows > input->rows - first || !input->sealed)
+        return UD_INVALID;
+    uint32_t *columns = ud_alloc(ctx, input->columns * sizeof(*columns));
+    if (!columns)
+        return UD_RESOURCE;
+    for (uint32_t i = 0; i < input->columns; i++)
+        columns[i] = i;
+    ud_status status =
+        ud_batch_project(ctx, input, columns, input->schema->fields, input->columns, out);
+    ud_free(columns);
+    if (!status) {
+        (*out)->row_offset = input->row_offset + first;
+        (*out)->owner_first = first;
+        (*out)->rows = (*out)->capacity = rows;
+    }
+    return status;
 }

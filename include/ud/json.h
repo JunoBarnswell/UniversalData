@@ -27,7 +27,16 @@ UD_API ud_status ud_json_text(const ud_json *, const char **, uint32_t *length);
 UD_API uint32_t ud_json_size(const ud_json *);
 UD_API const ud_json *ud_json_at(const ud_json *, uint32_t index);
 UD_API const ud_json *ud_json_find(const ud_json *, const char *key, uint32_t length);
+/* Exact object allowlist validation, shared by all native binders. */
+UD_API ud_status ud_json_keys(const ud_json *, const char *const *, uint32_t);
 UD_API ud_status ud_json_key(const ud_json *, uint32_t index, const char **, uint32_t *);
+/* Native declarative configuration binding. Supports type, properties,
+ * required, enum/const, anyOf/oneOf/allOf, additionalProperties, defaults,
+ * numeric bounds and array/string bounds. Unknown validation keywords reject;
+ * x-* annotations carry field/resource design hints without executing I/O.
+ * The returned document owns materialized defaults. No input values are logged. */
+UD_API ud_status ud_json_bind_schema(ud_context *, const ud_json *schema,
+                                    const ud_json *configuration, ud_json **bound);
 /* Compact UTF8 JSON. Caller releases with ud_free. Output is NUL terminated;
  * length excludes terminator. Key insertion order is preserved. */
 UD_API ud_status ud_json_serialize(const ud_json *, char **, uint32_t *length);

@@ -1,0 +1,60 @@
+-- Install configuration: "Release"
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_foundation.a
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_columnar.a
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_plugins.a
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_expression.a
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_runtime.a
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_compute.a
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_package.a
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_data.so.1.3.0
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_data.so.7
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_data.so
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/UniversalData/plugins/ud_connector_postgresql.so
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/bin/ud_cli
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/bin/ud_worker
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_java.so
+-- Set non-toolchain portion of runtime path of "/workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/libud_java.so" to ""
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/activation.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/buffer.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/catalog.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/component.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/compute.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/connection_manager.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/connector.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/csv.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/data.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/engine.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/execution.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/expression.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/format.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/json.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/memory.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/operator.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/package.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/plugin.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/profile.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/project.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/quality.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/regex.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/status.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/partition.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/version.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/cache.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/include/ud/cursor.h
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/share/UniversalData/LICENSE
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/share/UniversalData/NOTICE
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/share/UniversalData/licenses
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/share/UniversalData/licenses/Apache-2.0.txt
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/share/UniversalData/licenses/DuckDB-MIT.txt
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/cmake/UniversalData/UniversalDataTargets.cmake
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/cmake/UniversalData/UniversalDataTargets-release.cmake
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/cmake/UniversalData/UniversalDataConfig.cmake
+-- Installing: /workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/sdk/lib/cmake/UniversalData/UniversalDataConfigVersion.cmake
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/UniversalData/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  The package UniversalData.1.3.0 is missing a readme. Go to https://aka.ms/nuget/authoring-best-practices/readme to learn why package readmes are important.
+  Successfully created package '/workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/packages/UniversalData.1.3.0.nupkg'.
+{"archive": "/workspace/UniversalData/artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip", "sha256": "3e2292575c811d514caa2a9172bc0052bd3e2cd3cf2b88d61418a716bcbe8161", "manifest": "/workspace/UniversalData/artifacts/1.3.0/linux-x64-sealed/manifest.json", "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696"}

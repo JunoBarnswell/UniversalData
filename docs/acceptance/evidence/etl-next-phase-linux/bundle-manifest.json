@@ -1,0 +1,278 @@
+{
+  "schemaVersion": 1,
+  "sdkVersion": "1.3.0",
+  "abiVersion": 7,
+  "configuration": "Release",
+  "runtimeIdentifier": "linux-x64",
+  "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+  "capabilities": {
+    "sqlite": true
+  },
+  "files": [
+    {
+      "path": "packages/UniversalData.1.3.0.nupkg",
+      "bytes": 311675,
+      "sha256": "968138be403c0ec400d1f5d5a0f5636b13710099272724c319f9b5fccda1071f"
+    },
+    {
+      "path": "packages/universal-data-1.3.0.jar",
+      "bytes": 16424,
+      "sha256": "6a7ca5966d7668bc217e43ed32e5fcdf9c0e1000f3b44addb1be87406511a1b2"
+    },
+    {
+      "path": "packages/universal-data-1.3.0.pom",
+      "bytes": 921,
+      "sha256": "fa1d53904baf0db137bae2e6dd6ec979e6cb8ba51815d6fa2f28e9bd6555d878"
+    },
+    {
+      "path": "sdk/bin/ud_cli",
+      "bytes": 556144,
+      "sha256": "3844bf816bed77e9eaada7e0f134706ae36ff53f8678602f6b2d9ea3580b0d91"
+    },
+    {
+      "path": "sdk/bin/ud_worker",
+      "bytes": 556024,
+      "sha256": "a99b8c14388e13083d2eb5d1c90d6930606c8001b48a20083f610d3a2d366efd"
+    },
+    {
+      "path": "sdk/include/ud/activation.h",
+      "bytes": 747,
+      "sha256": "d962f0a9148df1c61ac55f10509b68cd223ec9fa1b6e4d6457cf65eecdde8d13"
+    },
+    {
+      "path": "sdk/include/ud/buffer.h",
+      "bytes": 2269,
+      "sha256": "df8d0baaba44cc4ca82ac3c19eccf4c03b12f7b89564cf62c44776d62e6be636"
+    },
+    {
+      "path": "sdk/include/ud/cache.h",
+      "bytes": 2259,
+      "sha256": "ff8fa6cf3720c1063c082c210e57010e21cfa20757befbdf57b5dc85adb6eb19"
+    },
+    {
+      "path": "sdk/include/ud/catalog.h",
+      "bytes": 3054,
+      "sha256": "1ebdf00d745d417aebbad5a34968fee7f68c66d8fcc08fae97a9eeb9bb1f66c7"
+    },
+    {
+      "path": "sdk/include/ud/component.h",
+      "bytes": 6872,
+      "sha256": "dc4fa41c17e017ffafc986d754cc800f7ad9b2911c7b437900e48f81b9d3b246"
+    },
+    {
+      "path": "sdk/include/ud/compute.h",
+      "bytes": 3776,
+      "sha256": "886e6b7f034726d2c472ce0688a832939e4a2e72ec4334afa714653577915050"
+    },
+    {
+      "path": "sdk/include/ud/connection_manager.h",
+      "bytes": 2721,
+      "sha256": "84f5f53f7aef3bd045fd133c38848e987fe9f033b2394b9d293cdc8e2080436a"
+    },
+    {
+      "path": "sdk/include/ud/connector.h",
+      "bytes": 6369,
+      "sha256": "b73a5f9a6f550acab59b948d2b0095aa258530568adf16e2d25b32253df9382d"
+    },
+    {
+      "path": "sdk/include/ud/csv.h",
+      "bytes": 1439,
+      "sha256": "32acebfdaddd64ac408b2b5df8b29774133d652e4a2c9d19c5d3d14cbe20bcf8"
+    },
+    {
+      "path": "sdk/include/ud/cursor.h",
+      "bytes": 927,
+      "sha256": "41ea49595a4e44638490001356445b45c3c5a23c4823b2a3916a24c9c8911a00"
+    },
+    {
+      "path": "sdk/include/ud/data.h",
+      "bytes": 11528,
+      "sha256": "37703e545ddf2b4f9f1f99d42ddfdae38373c7d26360959dfc47060c05ee0e32"
+    },
+    {
+      "path": "sdk/include/ud/engine.h",
+      "bytes": 818,
+      "sha256": "409eb5a1e4449ce78819b14f7df3deac1aabe938bc30066d32fa12245c4c07f4"
+    },
+    {
+      "path": "sdk/include/ud/execution.h",
+      "bytes": 628,
+      "sha256": "8bf2ac7bd4b36073b105967ffa383d8e1615dbfce365d3b44d926ab68b903b90"
+    },
+    {
+      "path": "sdk/include/ud/expression.h",
+      "bytes": 2703,
+      "sha256": "a6afbe8e1d2c903c5ab07dd10fd1acc16610d6c3e131b1a8e9427377ed7697f0"
+    },
+    {
+      "path": "sdk/include/ud/format.h",
+      "bytes": 3731,
+      "sha256": "fa5c5ad92517ddc6309b0b139c253e340d52b85560ecc2953b1a082561d4c606"
+    },
+    {
+      "path": "sdk/include/ud/json.h",
+      "bytes": 1761,
+      "sha256": "e91a166c1dd21467b6091b09795ddc2645f3fa6fa1c9345ffbe0b5f3e61077e0"
+    },
+    {
+      "path": "sdk/include/ud/memory.h",
+      "bytes": 1200,
+      "sha256": "552e5aa8cdeb4f00f4611394348242b46f157308e5e2906d60e6e10c4c691719"
+    },
+    {
+      "path": "sdk/include/ud/operator.h",
+      "bytes": 2075,
+      "sha256": "1395b0724f76841fe65f674e44c78de9861957915d7ffc958ca0eb21402dca4a"
+    },
+    {
+      "path": "sdk/include/ud/package.h",
+      "bytes": 4409,
+      "sha256": "940eb3eac35fec6287eec7988de75ab85ebadbeb306b5ec563518fc0c70c25aa"
+    },
+    {
+      "path": "sdk/include/ud/partition.h",
+      "bytes": 930,
+      "sha256": "2e9c3f031656cdf0f540661de2d176c220e3cd221bdee023a289483e66599e27"
+    },
+    {
+      "path": "sdk/include/ud/plugin.h",
+      "bytes": 3298,
+      "sha256": "6822160ff841d25f0a87865736ce7d29d0c78c4b5f5a3dfcde183f850996e536"
+    },
+    {
+      "path": "sdk/include/ud/profile.h",
+      "bytes": 1273,
+      "sha256": "d9241a3d817a59cadb277613e7ff80e44e20edc339a4c2c4741d6295a2a0e085"
+    },
+    {
+      "path": "sdk/include/ud/project.h",
+      "bytes": 1434,
+      "sha256": "f97404cf78ec2bb05981674c90d02bc38135cd89e2c364a9f327bc16282c3775"
+    },
+    {
+      "path": "sdk/include/ud/quality.h",
+      "bytes": 3300,
+      "sha256": "01cdb0dd0215a5038e9360eba5c90f90629f6e2e200c6b6a4454f4b1921a6d47"
+    },
+    {
+      "path": "sdk/include/ud/regex.h",
+      "bytes": 961,
+      "sha256": "9b204fa061ce8d6aa2b653630dc671a04aa29116ce6904001da0f6e2e92e647f"
+    },
+    {
+      "path": "sdk/include/ud/status.h",
+      "bytes": 1218,
+      "sha256": "e811399f4797c7bdc3e208b11aa9adc39d58ffa0128edb9c005e975919b3f14d"
+    },
+    {
+      "path": "sdk/include/ud/version.h",
+      "bytes": 387,
+      "sha256": "4f4d303f6c563c3656350594fddca8f00261ea2e7e3bbe7a17dbb456d51520ac"
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_postgresql.so",
+      "bytes": 46992,
+      "sha256": "86b53d2b0c6ec5a2e474083c86110e3a8f15d16cc814e683eae25887283ea494"
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_sqlite.so",
+      "bytes": 1511480,
+      "sha256": "be096406828bdd32eb133b3b4bc8e1eb4e344b3559715ceb99e71c89b0c43f9c"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/UniversalDataConfig.cmake",
+      "bytes": 1551,
+      "sha256": "5bea1abbf94f64ea905596b3fec39c7bac8b17c653446a93466e44b0346960f1"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/UniversalDataConfigVersion.cmake",
+      "bytes": 3675,
+      "sha256": "f2549aaf1f9a3a3ed727c7effade1da862f855bcaa748464b900f815d4ed6084"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/UniversalDataTargets-release.cmake",
+      "bytes": 4504,
+      "sha256": "3ba8a0ac0d09217a4eb6dab376aff79ca071b89603220c57dcf84b10a5a096df"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/UniversalDataTargets.cmake",
+      "bytes": 7411,
+      "sha256": "11ca95530f7dba257c5251bc6dcc1c4bf2f6f14693a6a24e41fd99bccd48c4d7"
+    },
+    {
+      "path": "sdk/lib/libud_columnar.a",
+      "bytes": 211092,
+      "sha256": "118dd1327dcb56489acd34c35f338170f957e97cb14d078bb53521cb3415a423"
+    },
+    {
+      "path": "sdk/lib/libud_compute.a",
+      "bytes": 134882,
+      "sha256": "8a5b9777b420e5c3378ed41705ffe405c77e2ffc3b0dfeb4c1894d379c9eb95a"
+    },
+    {
+      "path": "sdk/lib/libud_data.so",
+      "bytes": 624592,
+      "sha256": "a20e822029904b5cc5781d09d9a9d5527ff79efb32a0a549df9f28503a6473cb"
+    },
+    {
+      "path": "sdk/lib/libud_data.so.1.3.0",
+      "bytes": 624592,
+      "sha256": "a20e822029904b5cc5781d09d9a9d5527ff79efb32a0a549df9f28503a6473cb"
+    },
+    {
+      "path": "sdk/lib/libud_data.so.7",
+      "bytes": 624592,
+      "sha256": "a20e822029904b5cc5781d09d9a9d5527ff79efb32a0a549df9f28503a6473cb"
+    },
+    {
+      "path": "sdk/lib/libud_expression.a",
+      "bytes": 26668,
+      "sha256": "886117ec0513459d65f9157564307923a419348f15ba052448ee39ca581ddd29"
+    },
+    {
+      "path": "sdk/lib/libud_foundation.a",
+      "bytes": 44692,
+      "sha256": "65b301f06b72ebe8fd9afa32b5773c527c6ef02ed1183f0377b67aa44062496b"
+    },
+    {
+      "path": "sdk/lib/libud_java.so",
+      "bytes": 30784,
+      "sha256": "836c6a9fb35f506a12b86b37db0ca0061c320baf4a9c72bd053a956a7a4d75e3"
+    },
+    {
+      "path": "sdk/lib/libud_package.a",
+      "bytes": 511768,
+      "sha256": "403c114169048871c70a88df1079fb0ff78a47bf4fbeaebfa56a070351b83f85"
+    },
+    {
+      "path": "sdk/lib/libud_plugins.a",
+      "bytes": 28738,
+      "sha256": "0c7df9652b1e5050cdc21f764fce01e612c62dcbda50d6e007fd2363175c5572"
+    },
+    {
+      "path": "sdk/lib/libud_runtime.a",
+      "bytes": 56806,
+      "sha256": "27bdb9957a8476a314d3e4ee7638c90599705e62c12ca0c8ff75a7eeef5537fe"
+    },
+    {
+      "path": "sdk/share/UniversalData/LICENSE",
+      "bytes": 1083,
+      "sha256": "e8b5b5709fb92363cf899f297f800622c29cd22414c4306914e919f90012ef2e"
+    },
+    {
+      "path": "sdk/share/UniversalData/NOTICE",
+      "bytes": 597,
+      "sha256": "6c2be4ba20608051b1888fff2a5907744f935b9a1382283f883b0b629fe3bc35"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/Apache-2.0.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/DuckDB-MIT.txt",
+      "bytes": 1072,
+      "sha256": "7e17fd31249fa875cb3b1c5e05c6c3e99b75509f6a2804ca176c217834de1dcb"
+    }
+  ]
+}

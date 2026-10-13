@@ -1,14 +1,22 @@
 #ifndef UD_PLUGIN_H
 #define UD_PLUGIN_H
 #include "data.h"
+#include "json.h"
+#include "sql.h"
 #include "connector.h"
 #include "component.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
 enum { UD_PLUGIN_CONNECTOR = 1, UD_PLUGIN_COMPONENTS = 2 };
-enum { UD_CAP_READ = 1, UD_CAP_WRITE = 2, UD_CAP_SQL = 8, UD_CAP_TRANSACTION = 32,
-       UD_CAP_THREAD_SAFE = 64, UD_CAP_THREAD_AFFINE = 128 };
+enum {
+    UD_CAP_READ = 1,
+    UD_CAP_WRITE = 2,
+    UD_CAP_SQL = 8,
+    UD_CAP_TRANSACTION = 32,
+    UD_CAP_THREAD_SAFE = 64,
+    UD_CAP_THREAD_AFFINE = 128
+};
 typedef struct ud_host_api {
     uint32_t struct_size, abi_version;
     ud_context *context;
@@ -27,6 +35,25 @@ typedef struct ud_host_api {
     ud_status (*format_value)(const ud_value *, char *, uint32_t, uint32_t *);
     void *control_user;
     ud_status (*check_io)(void *);
+    ud_status (*json_parse)(ud_context *, const char *, uint32_t, ud_json **, uint32_t *);
+    void (*json_destroy)(ud_json *);
+    const ud_json *(*json_find)(const ud_json *, const char *, uint32_t);
+    ud_status (*json_text)(const ud_json *, const char **, uint32_t *);
+    int32_t (*json_kind)(const ud_json *);
+    uint32_t (*json_size)(const ud_json *);
+    const ud_json *(*json_at)(const ud_json *, uint32_t);
+    ud_status (*json_keys)(const ud_json *, const char *const *, uint32_t);
+    ud_status (*json_bind_schema)(ud_context *, const ud_json *, const ud_json *, ud_json **);
+    ud_status (*field_from_sql)(ud_string, int32_t, ud_field *);
+    uint32_t (*parameter_limit)(int32_t);
+    ud_status (*compile_write)(ud_context *, int32_t, int32_t, const ud_write_options *,
+                               const ud_batch *, uint32_t, uint32_t, ud_sql_statement *);
+    void (*statement_clear)(ud_sql_statement *);
+    int32_t (*compare_value)(const ud_value *, const ud_value *);
+    ud_status (*compile_preimage)(ud_context *, int32_t, int32_t, const ud_write_options *,
+                                  const ud_batch *, uint32_t, ud_sql_statement *);
+    ud_status (*schema_from_metadata)(ud_context *, const ud_batch *, ud_string, int32_t,
+                                      ud_batch **);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;

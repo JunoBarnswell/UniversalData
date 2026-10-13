@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix="ud-file-task-") as temporary:
         folder = root / name
         folder.mkdir()
         target = folder / "目标.bin"
-        doc = {"version": 6, "id": "filesystem", "connections": [{"id": "source", "driver": "file", "resource": str(source_path)}, {"id": "target", "driver": "file", "resource": str(target)}], "controlFlow": {"tasks": [{"id": "operation", "kind": "file.system", "config": {"operation": operation, **({"source": "source"} if operation != "mkdir" else {}), **({"target": "target"} if operation != "delete" else {})}}], "constraints": []}, "dataFlows": []}
+        doc = {"version": 9, "id": "filesystem", "connections": [{"id": "source", "driver": "file", "resource": str(source_path)}, {"id": "target", "driver": "file", "resource": str(target)}], "controlFlow": {"tasks": [{"id": "operation", "kind": "file.system", "config": {"operation": operation, **({"source": "source"} if operation != "mkdir" else {}), **({"target": "target"} if operation != "delete" else {})}}], "constraints": []}, "dataFlows": []}
         return folder, target, doc
     def run(folder, doc, mode=0, resume=0, status=0, tasks=1, exit=0):
         path = folder / "package.json"
@@ -63,7 +63,7 @@ with tempfile.TemporaryDirectory(prefix="ud-file-task-") as temporary:
     assert target.is_dir()
     folder, target, doc = make("unknown-operation")
     doc["controlFlow"]["tasks"][0]["config"]["operation"] = "recursiveDelete"
-    run(folder, doc, status=12)
+    run(folder, doc, status=5)
     assert not (folder / "state").exists()
     folder, target, doc = make("unknown-connection")
     doc["controlFlow"]["tasks"][0]["config"]["source"] = "absent"

@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "ud/package.h"
 #include "ud/format.h"
+#include "ud/compute.h"
 #include <stdlib.h>
 #include <string.h>
 JNIEXPORT jint JNICALL Java_org_universaldata_ProductVersion_nativeAbi(JNIEnv *e, jclass cls) {
@@ -485,10 +486,16 @@ JNIEXPORT jlongArray JNICALL Java_org_universaldata_Execution_nativeMetrics(JNIE
                  (jlong)m.spill_bytes,
                  (jlong)m.pipeline_trees,
                  (jlong)m.tree_high_water,
-                 (jlong)m.worker_high_water,(jlong)m.committed_rows,(jlong)m.acknowledged_rows,(jlong)m.error_count};
-    jlongArray result = (*e)->NewLongArray(e, 20);
+                 (jlong)m.worker_high_water,
+                 (jlong)m.committed_rows,
+                 (jlong)m.acknowledged_rows,
+                 (jlong)m.error_count,
+                 (jlong)m.error_rows,
+                 (jlong)m.committed_error_rows,
+                 (jlong)m.acknowledged_error_rows};
+    jlongArray result = (*e)->NewLongArray(e, 23);
     if (result)
-        (*e)->SetLongArrayRegion(e, result, 0, 20, v);
+        (*e)->SetLongArrayRegion(e, result, 0, 23, v);
     return result;
 }
 JNIEXPORT void JNICALL Java_org_universaldata_Execution_nativeClose(JNIEnv *e, jclass cls,
@@ -499,11 +506,134 @@ JNIEXPORT void JNICALL Java_org_universaldata_Execution_nativeClose(JNIEnv *e, j
         fail(e, s, ud_status_name(s));
 }
 
-JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeInspect(JNIEnv *env,jclass cls,jlong handle,jboolean diagnostics) {
-    (void)cls;java_execution *j=(java_execution *)(intptr_t)handle;
-    char *text=NULL;uint32_t size=0;
-    ud_status status=diagnostics ? ud_execution_diagnostics(j->execution,&text,&size) :
-                                 ud_execution_explain(j->execution,&text,&size);
-    if (status) { fail(env,status,ud_status_name(status));return NULL; }
-    jstring result=utf8(env,text);ud_free(text);return result;
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeInspect(JNIEnv *env, jclass cls,
+                                                                         jlong handle,
+                                                                         jboolean diagnostics) {
+    (void)cls;
+    java_execution *j = (java_execution *)(intptr_t)handle;
+    char *text = NULL;
+    uint32_t size = 0;
+    ud_status status = diagnostics ? ud_execution_diagnostics(j->execution, &text, &size)
+                                   : ud_execution_explain(j->execution, &text, &size);
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        return NULL;
+    }
+    jstring result = utf8(env, text);
+    ud_free(text);
+    return result;
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_Schema_nativeCompare(JNIEnv *env, jclass cls,
+                                                                      jbyteArray expected,
+                                                                      jbyteArray actual,
+                                                                      jbyteArray policy) {
+    (void)cls;
+    java_data *d = data_create(env, 268435456);
+    if (!d)
+        return NULL;
+    uint32_t a = 0, b = 0, c = 0;
+    char *left = copy_data(env, d->ctx, expected, &a), *right = copy_data(env, d->ctx, actual, &b),
+         *options = copy_data(env, d->ctx, policy, &c), *text = NULL;
+    uint32_t length = 0;
+    ud_status status =
+        left && right && options
+            ? ud_schema_compare_json(d->ctx, (ud_string){left, a}, (ud_string){right, b},
+                                     (ud_string){options, c}, &text, &length)
+            : UD_INVALID;
+    jstring result = NULL;
+    if (!status)
+        result = utf8(env, text);
+    else
+        fail(env, status, ud_status_name(status));
+    ud_free(left);
+    ud_free(right);
+    ud_free(options);
+    ud_free(text);
+    ud_status closed = data_destroy(d);
+    if (closed)
+        fail(env, closed, ud_status_name(closed));
+    return result;
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_Batch_nativeRowInfo(JNIEnv *env, jclass cls,
+                                                                     jlong handle, jint row) {
+    (void)cls;
+    java_data *d = (java_data *)(intptr_t)handle;
+    char *text = NULL;
+    uint32_t length = 0;
+    ud_status status =
+        row < 0 ? UD_INVALID : ud_batch_row_info_json(d->batch, (uint32_t)row, &text, &length);
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        return NULL;
+    }
+    jstring result = utf8(env, text);
+    ud_free(text);
+    return result;
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeDiscover(JNIEnv *env, jclass cls,
+                                                                          jlong handle,
+                                                                          jbyteArray connection,
+                                                                          jbyteArray table) {
+    (void)cls;
+    java_execution *e = (java_execution *)(intptr_t)handle;
+    uint32_t a = 0, b = 0, length = 0;
+    char *id = copy_data(env, e->ctx, connection, &a), *name = copy_data(env, e->ctx, table, &b),
+         *text = NULL;
+    ud_status status = id && name
+                           ? ud_execution_discover_schema(e->execution, (ud_string){id, a},
+                                                          (ud_string){name, b}, &text, &length)
+                           : UD_INVALID;
+    jstring result = NULL;
+    if (status)
+        fail(env, status, ud_status_name(status));
+    else
+        result = utf8(env, text);
+    ud_free(id);
+    ud_free(name);
+    ud_free(text);
+    return result;
+}
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeCatalog(JNIEnv *env, jclass cls,
+                                                                         jlong handle) {
+    (void)cls;
+    java_execution *j = (java_execution *)(intptr_t)handle;
+    char *text = NULL;
+    uint32_t size = 0;
+    ud_status status = ud_execution_component_catalog(j->execution, &text, &size);
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        return NULL;
+    }
+    jstring result = utf8(env, text);
+    ud_free(text);
+    return result;
+}
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Batch_nativePivotValues(JNIEnv *env, jclass cls,
+                                                                         jlong handle, jint column,
+                                                                         jbyteArray prefix,
+                                                                         jint maximum) {
+    (void)cls;
+    java_data *d = (java_data *)(intptr_t)handle;
+    uint32_t size = 0;
+    char *name = copy_data(env, d->ctx, prefix, &size);
+    if (!name)
+        return NULL;
+    char *text = NULL;
+    uint32_t length = 0;
+    ud_status status = column < 0 || maximum < 1 ? UD_INVALID : ud_batch_seal(d->batch);
+    if (!status)
+        status =
+            ud_pivot_discover_values(d->ctx, d->batch, (uint32_t)column, (ud_string){name, size},
+                                     (uint32_t)maximum, &text, &length);
+    ud_free(name);
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        ud_free(text);
+        return NULL;
+    }
+    jstring result = utf8(env, text);
+    ud_free(text);
+    return result;
 }

@@ -1,432 +1,8 @@
-#include "../package/internal.h"
-#include "ud/connection_manager.h"
-#include "ud/compute.h"
-#include "ud/operator.h"
-#include "ud/format.h"
-#include "ud/csv.h"
-#include <errno.h>
-#include <sys/stat.h>
-enum {
-    CSV_SOURCE = 1,
-    JSON_SOURCE,
-    SQL_SOURCE,
-    CSV_SINK,
-    JSON_SINK,
-    SQL_SINK,
-    PASS,
-    CAST,
-    DERIVE,
-    SPLIT,
-    MULTICAST,
-    UNION_ALL,
-    SORT,
-    JOIN,
-    AGGREGATE,
-    LOOKUP,
-    WINDOW
-};
-typedef struct builtin {
-    int kind;
-    ud_component_context context;
-    ud_json *config;
-    ud_batch *schema, *inputs[2], *errors;
-    ud_operator *operator;
-    ud_field *fields;
-    uint32_t columns;
-    ud_expression **expressions;
-    uint32_t expression_count;
-    ud_connection_lease *lease;
-    ud_csv_reader *csv;
-    ud_csv_writer *csv_writer;
-    ud_json_reader *reader;
-    ud_json_writer *writer;
-    char *path, *temporary, *job;
-    void *lock;
-    int published, existing, temporary_owned;
-    uint64_t number, source_position, source_begin, source_end, written_rows;
-    uint32_t source_partitions, source_partition;
-    uint32_t *keys, key_count;
-    int mode;
-} builtin;
-static ud_status clone_schema(ud_context *ctx, const ud_batch *in, ud_batch **out) {
-    uint32_t count = ud_batch_columns(in);
-    ud_field *fields = ud_alloc(ctx, count * sizeof(*fields));
-    if (!fields)
-        return UD_RESOURCE;
-    ud_status s = UD_OK;
-    for (uint32_t i = 0; !s && i < count; i++)
-        s = ud_batch_field(in, i, fields + i);
-    if (!s)
-        s = ud_batch_create(ctx, fields, count, 0, out);
-    ud_free(fields);
-    return s;
-}
-static ud_status schema_config(const ud_component_context *c, const ud_json *config,
-                               ud_batch **out) {
-    const ud_json *s = ud_member(config, "schema");
-    char *json = NULL;
-    uint32_t n = 0;
-    UD_TRY(ud_json_serialize(s, &json, &n));
-    char scope[33];
-    ud_status status = ud_pipeline_field_namespace(c, scope);
-    if (!status)
-        status = ud_schema_from_json(c->memory, json, n, (ud_string){scope, 32}, out);
-    ud_free(json);
-    return status;
-}
-static ud_status parse(const ud_component_context *c, ud_string config, ud_json **out) {
-    return ud_json_parse(c->memory, config.data, config.length, out, NULL);
-}
-static ud_status bind_expr(const ud_component_context *c, const ud_json *value,
-                           const ud_batch *schema, ud_expression **out) {
-    char *json;
-    uint32_t n = 0;
-    UD_TRY(ud_json_serialize(value, &json, &n));
-    ud_expression_options o = {sizeof(o),
-                               UD_ABI_VERSION,
-                               schema,
-                               c->resolve,
-                               c->resolve_user,
-                               c->resolve_field,
-                               c->execution->registry,
-                               c->activation->parallel ? UD_COMPONENT_THREAD_SAFE : 0};
-    ud_status s = ud_expression_create(c->memory, (ud_string){json, n}, &o, out);
-    ud_free(json);
-    return s;
-}
-static ud_status connection_defined(const ud_component_context *ctx, ud_string id) {
-    const ud_json *definition = NULL;
-    int project_scope = 0;
-    return ud_connection_definition(ctx->activation, id, &definition, &project_scope);
-}
-static ud_status check_config(int kind, const ud_json *config) {
-    static const char *source[] = {"connection", "schema", "batchSize", "sql", "partitionCount", "partitionId", "partitionBegin", "partitionEnd"};
-    static const char *sink[] = {"connection", "table", "mode", "keys"};
-    static const char *cast[] = {"schema", "rounding", "errorPolicy"}, *derive[] = {"columns"},
-                      *split[] = {"condition"}, *sort[] = {"key", "descending", "partitions"},
-                      *join[] = {"leftKey", "rightKey", "partitions"}, *aggregate[] = {"plan", "partitions"};
-    if (kind == CSV_SOURCE) {
-        static const char *keys[] = {"connection", "schema", "batchSize", "nullMarker", "partitionCount", "partitionId", "partitionBegin", "partitionEnd"};
-        return ud_json_keys(config, keys, 8);
-    }
-    if (kind == JSON_SOURCE) {
-        static const char *keys[] = {"connection","schema","batchSize","partitionCount","partitionId","partitionBegin","partitionEnd"};
-        return ud_json_keys(config,keys,7);
-    }
-    if (kind == SQL_SOURCE)
-        return ud_json_keys(config, source, 8);
-    if (kind == CSV_SINK || kind == JSON_SINK)
-        return ud_json_keys(config, sink, 1);
-    if (kind == SQL_SINK)
-        return ud_json_keys(config, sink, 4);
-    if (kind == CAST)
-        return ud_json_keys(config, cast, 3);
-    if (kind == DERIVE)
-        return ud_json_keys(config, derive, 1);
-    if (kind == SPLIT)
-        return ud_json_keys(config, split, 1);
-    if (kind == SORT)
-        return ud_json_keys(config, sort, 3);
-    if (kind == JOIN || kind == LOOKUP)
-        return ud_json_keys(config, join, 3);
-    if (kind == AGGREGATE)
-        return ud_json_keys(config, aggregate, 2);
-    if (kind == WINDOW) {
-        static const char *keys[] = {"keys", "partitionKeys", "function", "column", "name"};
-        return ud_json_keys(config, keys, 5);
-    }
-    return ud_json_size(config) == 0 ? UD_OK : UD_SCHEMA;
-}
-static ud_status operator_check(void *user) {
-    return ud_activation_check(user);
-}
-static ud_status create_operator(const ud_component_context *c, int kind, const ud_json *config,
-                                 const ud_batch *const *inputs, ud_operator **out) {
-    uint64_t left = 0, right = 0;
-    ud_operator_options options = {.struct_size = sizeof(options),
-                                   .abi_version = UD_ABI_VERSION,
-                                   .max_batch_rows = c->max_batch_rows,
-                                   .buffers = c->execution->buffers,
-                                   .check = operator_check,
-                                   .user = c->activation};
-    ud_status s = UD_OK;
-    uint64_t partitions=1,maximum=64;
-    if (ud_member(config,"partitions")) s=ud_json_uint(ud_member(config,"partitions"),&partitions);
-    const ud_json *policy=ud_member(c->activation->package->document,"policy");
-    if (!s && ud_member(policy,"maxPartitions")) s=ud_json_uint(ud_member(policy,"maxPartitions"),&maximum);
-    if (!s && (!partitions || partitions>64 || partitions>maximum)) s=UD_RESOURCE;
-    options.partition_count=(uint32_t)partitions;
-    options.executor=c->execution->executor;
-    uint32_t key = 0;
-    ud_plan *plan = NULL;
-    uint32_t *window_keys = NULL;
-    if (!s && kind == WINDOW) {
-        const ud_json *keys = ud_member(config, "keys");
-        options.key_count = ud_json_size(keys);
-        if (ud_json_kind(keys) != UD_JSON_ARRAY || options.key_count > inputs[0]->columns)
-            s = UD_SCHEMA;
-        window_keys =
-            !s ? ud_alloc(c->memory, (options.key_count + 1) * sizeof(*window_keys)) : NULL;
-        if (!s && !window_keys)
-            s = UD_RESOURCE;
-        for (uint32_t i = 0; !s && i < options.key_count; i++) {
-            uint64_t index = 0;
-            s = ud_json_uint(ud_json_at(keys, i), &index);
-            if (!s && index >= inputs[0]->columns)
-                s = UD_SCHEMA;
-            if (!s)
-                window_keys[i] = (uint32_t)index;
-        }
-        uint64_t partition = 0, column = 0;
-        ud_string function = {0};
-        if (!s)
-            s = ud_json_uint(ud_member(config, "partitionKeys"), &partition);
-        if (!s && partition > options.key_count)
-            s = UD_SCHEMA;
-        if (!s)
-            s = ud_json_string(ud_member(config, "function"), &function);
-        if (!s)
-            s = ud_json_string(ud_member(config, "name"), &options.window_name);
-        options.window_function = ud_named(function, "rowNumber")    ? UD_WINDOW_ROW_NUMBER
-                                  : ud_named(function, "runningSum") ? UD_WINDOW_RUNNING_SUM
-                                                                     : 0;
-        if (!s && !options.window_function)
-            s = UD_UNSUPPORTED;
-        if (!s && options.window_function == UD_WINDOW_RUNNING_SUM)
-            s = ud_json_uint(ud_member(config, "column"), &column);
-        if (!s && column >= inputs[0]->columns)
-            s = UD_SCHEMA;
-        options.kind = UD_OPERATOR_WINDOW;
-        options.keys = window_keys;
-        options.partition_key_count = (uint32_t)partition;
-        options.window_column = (uint32_t)column;
-    } else if (!s && kind == AGGREGATE) {
-        char *json = NULL;
-        uint32_t length = 0;
-        s = ud_json_serialize(ud_member(config, "plan"), &json, &length);
-        ud_field *fields = ud_alloc(c->memory, inputs[0]->columns * sizeof(*fields));
-        if (!fields)
-            s = UD_RESOURCE;
-        for (uint32_t i = 0; !s && i < inputs[0]->columns; i++)
-            fields[i] = inputs[0]->column[i].field;
-        ud_expression_options bindings = {sizeof(bindings),
-                                          UD_ABI_VERSION,
-                                          inputs[0],
-                                          c->resolve,
-                                          c->resolve_user,
-                                          c->resolve_field,
-                                          c->execution->registry,
-                                          c->activation->parallel ? UD_COMPONENT_THREAD_SAFE : 0};
-        if (!s)
-            s = ud_plan_create_fields(c->memory, UD_PLAN_VERSION, fields, inputs[0]->columns,
-                                      (ud_string){json, length}, &bindings, &plan);
-        ud_free(fields);
-        ud_free(json);
-        options.kind = UD_OPERATOR_AGGREGATE;
-        options.aggregation = plan;
-    } else if (!s) {
-        s = ud_json_uint(ud_member(config, kind == SORT ? "key" : "leftKey"), &left);
-        if (!s && left >= inputs[0]->columns)
-            s = UD_SCHEMA;
-        if (!s && kind != SORT)
-            s = ud_json_uint(ud_member(config, "rightKey"), &right);
-        if (!s && kind != SORT && right >= inputs[1]->columns)
-            s = UD_SCHEMA;
-        if (!s && kind == SORT && ud_member(config, "descending")) {
-            const ud_json *v = ud_member(config, "descending");
-            ud_string text = {0};
-            if (ud_json_kind(v) != UD_JSON_BOOL)
-                s = UD_SCHEMA;
-            else {
-                s = ud_json_text(v, &text.data, &text.length);
-                options.descending = ud_named(text, "true");
-            }
-        }
-        key = (uint32_t)left;
-        options.keys = &key;
-        options.key_count = 1;
-        options.right_key = (uint32_t)right;
-        options.kind = kind == SORT     ? UD_OPERATOR_SORT
-                       : kind == LOOKUP ? UD_OPERATOR_LOOKUP
-                                        : UD_OPERATOR_INNER_JOIN;
-    }
-    if (!s)
-        s = ud_operator_create(c->memory, &options, inputs, out);
-    ud_free(window_keys);
-    ud_plan_destroy(plan);
-    return s;
-}
-static ud_status describe_operator(void *user,const ud_component_context *c,ud_string text,
-                                   const ud_batch *const *inputs,ud_component_plan *out) {
-    if (!out || out->struct_size!=sizeof(*out) || out->abi_version!=UD_ABI_VERSION) return UD_INCOMPATIBLE;
-    int kind=(int)(intptr_t)user;ud_json *config=NULL;ud_operator *op=NULL;
-    ud_status status=parse(c,text,&config);
-    if (!status) status=create_operator(c,kind,config,inputs,&op);
-    if (!status) { out->partitions=ud_operator_partition_count(op);
-        out->ordering=kind==SORT || kind==AGGREGATE || kind==WINDOW ? UD_ORDER_GLOBAL : UD_ORDER_PARTITION; }
-    ud_status released=ud_operator_destroy(op);if (!status) status=released;
-    ud_json_destroy(config);return status;
-}
-static ud_status configure(void *user, const ud_component_context *c, ud_string text,
-                           const ud_batch *const *in, ud_batch **out) {
-    int kind = (int)(intptr_t)user;
-    ud_json *config = NULL;
-    ud_status s = parse(c, text, &config);
-    if (!s)
-        s = check_config(kind, config);
-    if (!s && kind<=SQL_SOURCE) {
-        uint64_t count=1,id=0,begin=0,end=UINT64_MAX;
-        if (ud_member(config,"partitionCount")) s=ud_json_uint(ud_member(config,"partitionCount"),&count);
-        if (!s && ud_member(config,"partitionId")) s=ud_json_uint(ud_member(config,"partitionId"),&id);
-        if (!s && ud_member(config,"partitionBegin")) s=ud_json_uint(ud_member(config,"partitionBegin"),&begin);
-        if (!s && ud_member(config,"partitionEnd")) s=ud_json_uint(ud_member(config,"partitionEnd"),&end);
-        uint64_t maximum=64;
-        const ud_json *policy=ud_member(c->activation->package->document,"policy");
-        if (!s && ud_member(policy,"maxPartitions")) s=ud_json_uint(ud_member(policy,"maxPartitions"),&maximum);
-        if (!s && (!count || count>64 || count>maximum || id>=count || begin>end)) s=UD_SCHEMA;
-        if (!s && kind==SQL_SOURCE && count>1) s=UD_UNSUPPORTED;
-    }
-    if (!s && (kind <= SQL_SOURCE))
-        s = schema_config(c, config, out);
-    else if (!s &&
-             (kind == CSV_SINK || kind == JSON_SINK || kind == SQL_SINK)) { /* No output schemas. */
-    } else if (!s && kind == CAST) {
-        char *schema = NULL;
-        uint32_t length = 0;
-        uint64_t rounding = 0;
-        s = ud_json_serialize(ud_member(config, "schema"), &schema, &length);
-        if (!s && ud_member(config, "rounding"))
-            s = ud_json_uint(ud_member(config, "rounding"), &rounding);
-        if (!s && rounding > UD_ROUND_CEILING)
-            s = UD_SCHEMA;
-        if (!s)
-            s = ud_batch_cast_schema(c->memory, in[0], schema, length, (int32_t)rounding, out);
-        ud_free(schema);
-        ud_string policy={"fail",4};
-        if (!s && ud_member(config,"errorPolicy")) s=ud_json_string(ud_member(config,"errorPolicy"),&policy);
-        if (!s && !ud_named(policy,"fail") && !ud_named(policy,"ignore") && !ud_named(policy,"redirect")) s=UD_SCHEMA;
-        ud_field *errors=!s ? ud_alloc(c->memory,(in[0]->columns+3)*sizeof(*errors)) : NULL;
-        if (!s && !errors) s=UD_RESOURCE;
-        for (uint32_t i=0;!s && i<in[0]->columns;i++) errors[i]=in[0]->column[i].field;
-        if (!s) {
-            errors[in[0]->columns]=(ud_field){.name="__ud_error_code",.name_length=15,.type=UD_INT64};
-            errors[in[0]->columns+1]=(ud_field){.name="__ud_error_column",.name_length=17,.type=UD_UTF8};
-            errors[in[0]->columns+2]=(ud_field){.name="__ud_source_row",.name_length=15,.type=UD_INT64};
-            s=ud_batch_create(c->memory,errors,in[0]->columns+3,0,out+1);
-        }
-        ud_free(errors);
-    } else if (!s && kind == DERIVE) {
-        const ud_json *columns = ud_member(config, "columns");
-        uint32_t count = ud_json_size(columns), original = ud_batch_columns(in[0]);
-        if (ud_json_kind(columns) != UD_JSON_ARRAY || !count || count > 65536 - original)
-            s = UD_SCHEMA;
-        ud_field *fields = !s ? ud_alloc(c->memory, (original + count) * sizeof(*fields)) : NULL;
-        ud_expression **bound = !s ? ud_alloc(c->memory, count * sizeof(*bound)) : NULL;
-        ud_field *derived = !s ? ud_alloc(c->memory, count * sizeof(*derived)) : NULL;
-        if (!s && (!fields || !bound || !derived))
-            s = UD_RESOURCE;
-        char scope[33];
-        if (!s)
-            s = ud_pipeline_field_namespace(c, scope);
-        for (uint32_t i = 0; !s && i < original; i++)
-            s = ud_batch_field(in[0], i, fields + i);
-        for (uint32_t i = 0; !s && i < count; i++) {
-            const ud_json *col = ud_json_at(columns, i);
-            static const char *keys[] = {"name", "expression"};
-            s = ud_json_keys(col, keys, 2);
-            ud_string name = {0};
-            if (!s)
-                s = ud_json_string(ud_member(col, "name"), &name);
-            if (!s)
-                s = bind_expr(c, ud_member(col, "expression"), in[0], bound + i);
-            if (!s)
-                s = ud_expression_field(bound[i], fields + original + i);
-            if (!s) {
-                s = ud_field_derive(c->memory, fields + original + i, (ud_string){scope, 32}, name,
-                                    derived + i);
-                if (!s)
-                    fields[original + i] = derived[i];
-            }
-        }
-        if (!s)
-            s = ud_batch_create(c->memory, fields, original + count, 0, out);
-        for (uint32_t i = 0; bound && i < count; i++)
-            ud_expression_destroy(bound[i]);
-        ud_free(bound);
-        if (derived)
-            for (uint32_t i = 0; i < count; i++)
-                ud_field_clear(derived + i);
-        ud_free(derived);
-        ud_free(fields);
-    } else if (!s && (kind == SORT || kind == JOIN || kind == LOOKUP || kind == WINDOW ||
-                      kind == AGGREGATE)) {
-        ud_operator *operator = NULL;
-        s = create_operator(c, kind, config, in, &operator);
-        if (!s)
-            s = ud_operator_schema(operator, out);
-        ud_status cleanup = ud_operator_destroy(operator);
-        if (!s)
-            s = cleanup;
-    } else if (!s && kind == UNION_ALL)
-        s = ud_compute_union_schema(c->memory, in[0], in[1], out);
-    else if (!s)
-        s = clone_schema(c->memory, in[0], out);
-    if (!s && (kind == SPLIT || kind == MULTICAST))
-        s = clone_schema(c->memory, in[0], out + 1);
-    if (!s && kind == SPLIT) {
-        ud_expression *expr = NULL;
-        s = bind_expr(c, ud_member(config, "condition"), in[0], &expr);
-        if (!s && ud_expression_type(expr) != UD_BOOL)
-            s = UD_SCHEMA;
-        ud_expression_destroy(expr);
-    }
-    if (!s && kind <= SQL_SOURCE) {
-        ud_string name = {0};
-        s = ud_json_string(ud_member(config, "connection"), &name);
-        if (!s)
-            s = connection_defined(c, name);
-    }
-    if (!s && (kind == CSV_SINK || kind == JSON_SINK || kind == SQL_SINK)) {
-        ud_string name = {0};
-        s = ud_json_string(ud_member(config, "connection"), &name);
-        if (!s)
-            s = connection_defined(c, name);
-    }
-    ud_json_destroy(config);
-    return s;
-}
-static void dispose(void *ptr, ud_status result) {
-    (void)result;
-    builtin *b = ptr;
-    if (!b)
-        return;
-    ud_csv_close(b->csv);
-    ud_json_reader_close(b->reader);
-    if (b->writer)
-        (void)ud_json_writer_close(b->writer);
-    if (b->csv_writer)
-        (void)ud_csv_writer_close(b->csv_writer);
-    if (b->temporary && b->temporary_owned && !b->published)
-        (void)ud_remove_file(b->context.memory, b->temporary);
-    ud_unlock(b->lock);
-    (void)ud_connection_lease_release(b->lease);
-    for (uint32_t i = 0; i < b->expression_count; i++)
-        ud_expression_destroy(b->expressions[i]);
-    ud_free(b->expressions);
-    ud_batch_destroy(b->schema);
-    ud_batch_destroy(b->errors);
-    for (int i = 0; i < 2; i++) {
-        ud_batch_destroy(b->inputs[i]);
-    }
-    (void)ud_operator_destroy(b->operator);
-    ud_free(b->fields);
-    ud_free(b->path);
-    ud_free(b->temporary);
-    ud_free(b->job);
-    ud_free(b->keys);
-    ud_json_destroy(b->config);
-    ud_free(b);
-}
+#include "builtins_internal.h"
+
+/* Destination binding uses the same native comparison and cast as Source.
+ * Storage fields belong to the target namespace; row identity remains the source's. */
+
 static ud_status prepare(void *user, const ud_component_context *c, ud_string text,
                          const ud_batch *const *in, const ud_batch *const *out, void **instance) {
     *instance = NULL;
@@ -435,18 +11,67 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         return UD_RESOURCE;
     b->kind = (int)(intptr_t)user;
     b->context = *c;
-    ud_status s = parse(c, text, &b->config);
+    b->before_column = UINT32_MAX;
+    ud_status s = ud_builtin_parse(c, text, &b->config);
     int kind = b->kind;
-    uint32_t inputs = kind <= SQL_SOURCE                                    ? 0
-                      : kind == JOIN || kind == LOOKUP || kind == UNION_ALL ? 2
-                                                                            : 1;
+    uint32_t inputs = c->input_count;
+    b->input_count = inputs;
+    b->inputs = ud_alloc(c->memory, (inputs + 1) * sizeof(*b->inputs));
+    if (!b->inputs)
+        s = UD_RESOURCE;
     for (uint32_t i = 0; !s && i < inputs; i++)
-        s = clone_schema(c->memory, in[i], b->inputs + i);
+        s = ud_builtin_clone_schema(c->memory, in[i], b->inputs + i);
     if (!s)
-        s = clone_schema(c->memory,
-                         kind == CSV_SINK || kind == JSON_SINK || kind == SQL_SINK ? in[0] : out[0],
-                         &b->schema);
-    if (!s && kind==CAST) s=clone_schema(c->memory,out[1],&b->errors);
+        s = ud_builtin_clone_schema(c->memory, sink_kind(kind) ? in[0] : out[0], &b->schema);
+    if (!s && (kind == CAST || kind == XLSX_SOURCE))
+        s = ud_builtin_clone_schema(c->memory, out[1], &b->errors);
+    if (!s && (kind == SQL_SINK || kind == REST_SINK)) {
+        ud_string mode = {0};
+        s = ud_json_string(ud_member(b->config, "mode"), &mode);
+        b->mode = ud_named(mode, "append")      ? UD_WRITE_APPEND
+                  : ud_named(mode, "upsert")    ? UD_WRITE_UPSERT
+                  : ud_named(mode, "delete")    ? UD_WRITE_DELETE
+                  : ud_named(mode, "changeset") ? UD_WRITE_CHANGESET
+                                                : 0;
+        if (!s && !b->mode)
+            s = UD_SCHEMA;
+        ud_string before = {"before", 6};
+        if (!s && ud_member(b->config, "beforeField"))
+            s = ud_json_string(ud_member(b->config, "beforeField"), &before);
+        uint32_t n = in[0]->columns;
+        b->write_indices = ud_alloc(c->memory, n * sizeof(*b->write_indices));
+        ud_field *fields = ud_alloc(c->memory, n * sizeof(*fields));
+        if (!b->write_indices || !fields)
+            s = UD_RESOURCE;
+        uint32_t count = 0;
+        for (uint32_t i = 0; !s && i < n; i++) {
+            ud_field f = in[0]->column[i].field;
+            if (b->mode == UD_WRITE_CHANGESET && f.name_length == before.length &&
+                !memcmp(f.name, before.data, before.length)) {
+                if (f.type != UD_STRUCT)
+                    s = UD_SCHEMA;
+                else
+                    b->before_column = i;
+            } else {
+                b->write_indices[count] = i;
+                fields[count++] = f;
+            }
+        }
+        if (!s && b->before_column != UINT32_MAX) {
+            const ud_field *f = &in[0]->column[b->before_column].field;
+            if (f->child_count != count)
+                s = UD_SCHEMA;
+            for (uint32_t i = 0; !s && i < count; i++)
+                if (!ud_field_matches(f->children + i, fields + i, UD_FIELD_LAYOUT))
+                    s = UD_SCHEMA;
+        }
+        if (!s) {
+            ud_batch_destroy(b->schema);
+            b->schema = NULL;
+            s = ud_batch_create(c->memory, fields, count, 0, &b->schema);
+        }
+        ud_free(fields);
+    }
     if (!s) {
         b->columns = b->schema->columns;
         b->fields = ud_alloc(c->memory, b->columns * sizeof(*b->fields));
@@ -455,33 +80,28 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         for (uint32_t i = 0; !s && i < b->columns; i++)
             s = ud_batch_field(b->schema, i, b->fields + i);
     }
-    if (!s && (kind <= SQL_SOURCE || kind == CSV_SINK || kind == JSON_SINK || kind == SQL_SINK)) {
+    if (!s && (source_kind(kind) || sink_kind(kind))) {
         ud_string connection = {0};
         s = ud_json_string(ud_member(b->config, "connection"), &connection);
-        uint64_t caps = kind <= SQL_SOURCE ? UD_CONNECT_READ : UD_CONNECT_APPEND;
-        if (kind == SQL_SINK) {
-            ud_string mode = {0};
-            s = ud_json_string(ud_member(b->config, "mode"), &mode);
-            b->mode = ud_named(mode, "append")   ? UD_WRITE_APPEND
-                      : ud_named(mode, "upsert") ? UD_WRITE_UPSERT
-                      : ud_named(mode, "delete") ? UD_WRITE_DELETE
-                                                 : 0;
-            if (!b->mode)
-                s = UD_UNSUPPORTED;
+        uint64_t caps = source_kind(kind) ? UD_CONNECT_READ : UD_CONNECT_APPEND;
+        if (kind == SQL_SINK || kind == REST_SINK)
             caps = b->mode == UD_WRITE_APPEND   ? UD_CONNECT_APPEND
                    : b->mode == UD_WRITE_UPSERT ? UD_CONNECT_UPSERT
-                                                : UD_CONNECT_DELETE;
-        }
+                   : b->mode == UD_WRITE_DELETE ? UD_CONNECT_DELETE
+                                                : UD_CONNECT_CHANGESET;
+        if (kind == SQL_SINK)
+            caps |= UD_CONNECT_METADATA | UD_CONNECT_RECEIPTS;
         if (!s)
-            s = ud_activation_acquire_connection(c->activation, connection, caps, &b->lease);
+            s = kind == REST_SOURCE || kind == REST_SINK
+                    ? ud_acquire_http_connection(c->activation, connection, &b->lease)
+                    : ud_activation_acquire_connection(c->activation, connection, caps, &b->lease);
     }
     uint64_t batch = c->max_batch_rows;
     if (!s && ud_member(b->config, "batchSize"))
         s = ud_json_uint(ud_member(b->config, "batchSize"), &batch);
     if (!s && (!batch || batch > c->max_batch_rows))
         s = UD_SCHEMA;
-    if (!s &&
-        (kind == CSV_SOURCE || kind == JSON_SOURCE || kind == CSV_SINK || kind == JSON_SINK)) {
+    if (!s && (file_source(kind) || file_sink(kind))) {
         ud_string path = {0};
         s = ud_connection_lease_path(b->lease, &path);
         if (!s) {
@@ -490,17 +110,31 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                 s = UD_RESOURCE;
         }
     }
-    if (!s && kind<=SQL_SOURCE) {
-        uint64_t count=1,id=0,begin=0,end=UINT64_MAX;
-        if (ud_member(b->config,"partitionCount")) s=ud_json_uint(ud_member(b->config,"partitionCount"),&count);
-        if (!s && ud_member(b->config,"partitionId")) s=ud_json_uint(ud_member(b->config,"partitionId"),&id);
-        if (!s && ud_member(b->config,"partitionBegin")) s=ud_json_uint(ud_member(b->config,"partitionBegin"),&begin);
-        if (!s && ud_member(b->config,"partitionEnd")) s=ud_json_uint(ud_member(b->config,"partitionEnd"),&end);
-        if (!s && (!count || count>64 || id>=count || begin>end)) s=UD_SCHEMA;
-        b->source_partitions=(uint32_t)count;b->source_partition=(uint32_t)id;b->source_begin=begin;b->source_end=end;
+    if (!s && source_kind(kind)) {
+        uint64_t count = 1, id = 0, begin = 0, end = UINT64_MAX;
+        if (ud_member(b->config, "partitionCount"))
+            s = ud_json_uint(ud_member(b->config, "partitionCount"), &count);
+        if (!s && ud_member(b->config, "partitionId"))
+            s = ud_json_uint(ud_member(b->config, "partitionId"), &id);
+        if (!s && ud_member(b->config, "partitionBegin"))
+            s = ud_json_uint(ud_member(b->config, "partitionBegin"), &begin);
+        if (!s && ud_member(b->config, "partitionEnd"))
+            s = ud_json_uint(ud_member(b->config, "partitionEnd"), &end);
+        if (!s && (!count || count > 64 || id >= count || begin > end))
+            s = UD_SCHEMA;
+        b->source_partitions = (uint32_t)count;
+        b->source_partition = (uint32_t)id;
+        b->source_begin = begin;
+        b->source_end = end;
     }
-    if (!s && (kind == CSV_SOURCE || kind == JSON_SOURCE))
+    if (!s && kind == REST_SOURCE)
+        s = ud_rest_reader_open(c, b->lease, b->config, b->schema, &b->rest_reader);
+    if (!s && kind == REST_SINK)
+        s = ud_connection_lease_bind_rest(b->lease, c, b->config);
+    if (!s && (file_source(kind)))
         s = ud_checkpoint_source(c->activation, b->path);
+    if (!s && (file_source(kind)))
+        s = ud_connection_lease_authorize(b->lease, UD_ACCESS_READ);
     if (!s && kind == CSV_SOURCE) {
         ud_string null = {"\\N", 2};
         if (ud_member(b->config, "nullMarker"))
@@ -509,19 +143,41 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         if (!s)
             s = ud_csv_open(c->memory, b->path, b->fields, b->columns, &o, &b->csv);
     }
+    if (!s && kind == XLSX_SOURCE) {
+        char *configuration = NULL;
+        uint32_t length = 0;
+        s = ud_json_serialize(b->config, &configuration, &length);
+        ud_xlsx_options options = {.struct_size = sizeof(options),
+                                   .abi_version = UD_ABI_VERSION,
+                                   .batch_size = (uint32_t)batch,
+                                   .configuration = {configuration, length},
+                                   .buffers = c->execution->buffers,
+                                   .check = ud_builtin_operator_check,
+                                   .user = c->activation};
+        if (!s)
+            s = ud_xlsx_reader_open(c->memory, b->path, b->fields, b->columns, &options, &b->xlsx);
+        ud_free(configuration);
+    }
+#ifdef UD_WITH_ARROW_FILES
+    if (!s && (kind == PARQUET_SOURCE || kind == IPC_SOURCE || kind == IPC_STREAM_SOURCE)) {
+        ud_columnar_file_options options = {.struct_size = sizeof(options),
+                                            .abi_version = UD_ABI_VERSION,
+                                            .batch_rows = (uint32_t)batch,
+                                            .format = kind == PARQUET_SOURCE ? UD_FILE_PARQUET
+                                                      : kind == IPC_SOURCE   ? UD_FILE_ARROW_IPC
+                                                                             : UD_FILE_ARROW_STREAM,
+                                            .buffers = c->execution->buffers,
+                                            .check = ud_builtin_operator_check,
+                                            .user = c->activation};
+        s = ud_columnar_reader_open(c->memory, b->path, b->schema, &options, &b->columnar_reader);
+    }
+#endif
     if (!s && kind == JSON_SOURCE) {
         ud_json_options o = {sizeof(o), UD_CONFIG_VERSION, (uint32_t)batch, 1048576,
                              UD_ROUND_EXACT};
         s = ud_json_reader_open(c->memory, b->path, b->fields, b->columns, &o, &b->reader);
     }
-    if (!s && kind == SQL_SOURCE) {
-        ud_string sql = {0};
-        s = ud_json_string(ud_member(b->config, "sql"), &sql);
-        ud_read_options o = {sizeof(o), UD_ABI_VERSION, (uint32_t)batch, sql};
-        if (!s)
-            s = ud_connection_lease_read_open(b->lease, &o, b->schema);
-    }
-    if (!s && (kind == CSV_SINK || kind == JSON_SINK)) {
+    if (!s && (file_sink(kind))) {
         size_t len = strlen(b->path);
         char *lock = ud_alloc(c->memory, len + 32);
         if (!lock)
@@ -556,13 +212,55 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
             if (!s)
                 b->temporary_owned = 1;
         }
-        if (!s)
+        if (!s && (kind == CSV_SINK || kind == JSON_SINK))
             s = kind == CSV_SINK ? ud_csv_writer_open(c->memory, b->temporary, b->fields,
                                                       b->columns, "\\N", &b->csv_writer)
                                  : ud_json_writer_open(c->memory, b->temporary, b->fields,
                                                        b->columns, 1048576, &b->writer);
+        if (!s && kind == XLSX_SINK) {
+            char *configuration = NULL;
+            uint32_t length = 0;
+            s = ud_json_serialize(b->config, &configuration, &length);
+            ud_xlsx_options options = {.struct_size = sizeof(options),
+                                       .abi_version = UD_ABI_VERSION,
+                                       .batch_size = c->max_batch_rows,
+                                       .configuration = {configuration, length},
+                                       .buffers = c->execution->buffers,
+                                       .check = ud_builtin_operator_check,
+                                       .user = c->activation,
+                                       .stage_bytes = &b->stage_bytes};
+            if (!s)
+                s = ud_xlsx_writer_open(c->memory, b->temporary, b->fields, b->columns, &options,
+                                        &b->xlsx_writer);
+            ud_free(configuration);
+        }
     }
-    if (!s && kind == SQL_SINK) {
+#ifdef UD_WITH_ARROW_FILES
+    if (!s && (kind == PARQUET_SINK || kind == IPC_SINK || kind == IPC_STREAM_SINK)) {
+        ud_columnar_file_options options = {.struct_size = sizeof(options),
+                                            .abi_version = UD_ABI_VERSION,
+                                            .batch_rows = c->max_batch_rows,
+                                            .format = kind == PARQUET_SINK ? UD_FILE_PARQUET
+                                                      : kind == IPC_SINK   ? UD_FILE_ARROW_IPC
+                                                                           : UD_FILE_ARROW_STREAM,
+                                            .buffers = c->execution->buffers,
+                                            .check = ud_builtin_operator_check,
+                                            .user = c->activation,
+                                            .stage_bytes = &b->stage_bytes};
+        s = ud_columnar_writer_open(c->memory, b->temporary, b->schema, &options,
+                                    &b->columnar_writer);
+    }
+#endif
+    if (!s && kind == SQL_SINK && ud_member(b->config, "provisionReceipts")) {
+        const char *flag = NULL;
+        uint32_t n = 0;
+        s = ud_json_text(ud_member(b->config, "provisionReceipts"), &flag, &n);
+        if (!s && ud_json_kind(ud_member(b->config, "provisionReceipts")) != UD_JSON_BOOL)
+            s = UD_SCHEMA;
+        if (!s && n == 4)
+            s = ud_connection_lease_provision(b->lease);
+    }
+    if (!s && (kind == SQL_SINK || kind == REST_SINK)) {
         const ud_json *keys = ud_member(b->config, "keys");
         if (keys && ud_json_kind(keys) != UD_JSON_ARRAY)
             s = UD_SCHEMA;
@@ -577,6 +275,17 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                 s = UD_SCHEMA;
             if (!s)
                 b->keys[i] = (uint32_t)key;
+        }
+        if (!s && kind == SQL_SINK)
+            s = ud_builtin_sink_schema(b);
+        else if (!s && kind == REST_SINK) {
+            s = ud_builtin_clone_schema(c->memory, b->schema, &b->actual_schema);
+            if (!s)
+                s = ud_builtin_clone_schema(c->memory, b->schema, &b->write_schema);
+            b->schema_policy =
+                (ud_string){ud_strdup_n(c->memory, "{\"policy\":\"strict\"}", 19), 19};
+            if (!b->schema_policy.data)
+                s = UD_RESOURCE;
         }
         ud_activation *e = c->activation;
         if (!s && !e->execution->options.execution_id.length)
@@ -596,321 +305,248 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     }
     if (!s && (kind == DERIVE || kind == SPLIT)) {
         const ud_json *columns = ud_member(b->config, "columns");
-        b->expression_count = kind == SPLIT ? 1 : ud_json_size(columns);
+        const ud_json *branches = ud_member(b->config, "branches");
+        b->expression_count =
+            kind == SPLIT ? (branches ? ud_json_size(branches) : 1) : ud_json_size(columns);
         b->expressions = ud_alloc(c->memory, b->expression_count * sizeof(*b->expressions));
         if (!b->expressions)
             s = UD_RESOURCE;
         for (uint32_t i = 0; !s && i < b->expression_count; i++)
-            s = bind_expr(c,
-                          kind == SPLIT ? ud_member(b->config, "condition")
-                                        : ud_member(ud_json_at(columns, i), "expression"),
-                          in[0], b->expressions + i);
+            s = ud_builtin_bind_expr(
+                c,
+                kind == SPLIT ? (branches ? ud_member(ud_json_at(branches, i), "condition")
+                                          : ud_member(b->config, "condition"))
+                              : ud_member(ud_json_at(columns, i), "expression"),
+                in[0], b->expressions + i);
     }
-    if (!s &&
-        (kind == SORT || kind == JOIN || kind == LOOKUP || kind == WINDOW || kind == AGGREGATE))
-        s = create_operator(c, kind, b->config, in, &b->operator);
+    if (!s && (kind == SORT || kind == JOIN || kind == WINDOW || kind == AGGREGATE))
+        s = ud_builtin_create_operator(c, kind, b->config, in, &b->operator);
+    if (!s && kind == SQL_SOURCE)
+        s = ud_builtin_parameters(c, b->config, &b->parameters);
+    if (!s && source_kind(kind))
+        s = ud_builtin_source_prepare(b, (uint32_t)batch);
     if (s) {
-        dispose(b, s);
+        ud_builtin_dispose(b, s);
         return s;
     }
     *instance = b;
     return UD_OK;
 }
-static ud_status cast_rows(builtin *b,const ud_batch *input) {
-    ud_string policy={"fail",4};
-    if (ud_member(b->config,"errorPolicy")) UD_TRY(ud_json_string(ud_member(b->config,"errorPolicy"),&policy));
-    uint64_t rounding=0;if (ud_member(b->config,"rounding")) UD_TRY(ud_json_uint(ud_member(b->config,"rounding"),&rounding));
-    ud_batch *accepted=NULL,*rejected=NULL;
-    ud_status status=ud_batch_create(b->context.memory,b->fields,b->columns,input->rows,&accepted);
-    ud_field *error_fields=ud_alloc(b->context.memory,b->errors->columns*sizeof(*error_fields));
-    ud_value *converted=ud_alloc(b->context.memory,b->columns*sizeof(*converted));
-    ud_value *original=ud_alloc(b->context.memory,b->errors->columns*sizeof(*original));
-    if (!status && (!error_fields || !converted || !original)) status=UD_RESOURCE;
-    for (uint32_t i=0;!status && i<b->errors->columns;i++) error_fields[i]=b->errors->column[i].field;
-    if (!status && ud_named(policy,"redirect")) status=ud_batch_create(b->context.memory,error_fields,b->errors->columns,input->rows,&rejected);
-    for (uint32_t row=0;!status && row<input->rows;row++) {
-        status=ud_activation_check(b->context.activation);uint32_t bad=0;
-        ud_status conversion=UD_OK;
-        for (uint32_t i=0;!status && i<b->columns;i++) {
-            status=ud_batch_get(input,row,i,original+i);
-            if (!status && !conversion) {
-                conversion=ud_cast_value(b->context.memory,&input->column[i].field,original+i,
-                    b->fields+i,(int32_t)rounding,converted+i,0);
-                if (conversion) bad=i;
-            }
-        }
-        if (!status && !conversion) status=ud_batch_append(accepted,converted,b->columns);
-        else if (!status && (ud_named(policy,"fail") || conversion==UD_RESOURCE ||
-            conversion==UD_CANCELLED || conversion==UD_TIMEOUT || conversion==UD_AUTH)) status=conversion;
-        else if (!status && conversion) {
-            if (ud_named(policy,"redirect")) {
-                char id[33];ud_column_id_format(input->column[bad].field.identity,id);
-                original[b->columns]=(ud_value){.type=UD_INT64,.integer=conversion};
-                original[b->columns+1]=(ud_value){.type=UD_UTF8,.text=id,.text_length=32};
-                original[b->columns+2]=(ud_value){.type=UD_INT64,.integer=(int64_t)(b->number+row)};
-                status=ud_batch_append(rejected,original,b->errors->columns);
-            } else ud_task_rows(b->context.activation,0,0,1);
-        }
-        for (uint32_t i=0;i<b->columns;i++) ud_clear_value(converted+i);
-    }
-    if (!status && accepted->rows) status=b->context.emit(b->context.emit_user,0,accepted);
-    if (!status && rejected && rejected->rows) status=b->context.emit(b->context.emit_user,1,rejected);
-    b->number+=input->rows;
-    ud_free(error_fields);ud_free(converted);ud_free(original);ud_batch_destroy(accepted);ud_batch_destroy(rejected);
-    return status;
-}
-static ud_status source_partition(builtin *b,ud_batch *input,ud_batch **out) {
-    if (b->source_partitions==1 && !b->source_begin && b->source_end==UINT64_MAX) {
-        b->source_position+=input->rows;*out=input;return UD_OK;
-    }
-    ud_status status=ud_batch_create(b->context.memory,b->fields,b->columns,input->rows,out);
-    ud_value *values=ud_alloc(b->context.memory,b->columns*sizeof(*values));
-    if (!status && !values) status=UD_RESOURCE;
-    for (uint32_t row=0;!status && row<input->rows;row++,b->source_position++) {
-        uint64_t position=b->source_position;
-        if (position<b->source_begin || position>=b->source_end || position%b->source_partitions!=b->source_partition) continue;
-        for (uint32_t i=0;!status && i<b->columns;i++) status=ud_batch_get(input,row,i,values+i);
-        if (!status) status=ud_batch_append(*out,values,b->columns);
-    }
-    ud_free(values);ud_batch_destroy(input);
-    if (status) { ud_batch_destroy(*out);*out=NULL; }
-    return status;
-}
-static ud_status transformed(builtin *b, const ud_batch *in) {
-    int kind = b->kind;
-    ud_status s = UD_OK;
-    ud_batch *output[2] = {0};
-    if (kind == PASS || kind == MULTICAST) {
-        s = b->context.emit(b->context.emit_user, 0, (ud_batch *)in);
-        if (!s && kind == MULTICAST)
-            s = b->context.emit(b->context.emit_user, 1, (ud_batch *)in);
-        return s;
-    }
-    if (kind == UNION_ALL) {
-        uint32_t *indices = ud_alloc(b->context.memory, b->columns * sizeof(*indices));
-        if (!indices)
-            return UD_RESOURCE;
-        for (uint32_t j = 0; j < b->columns; j++)
-            indices[j] = j;
-        s = ud_batch_project(b->context.memory, in, indices, b->fields, b->columns, output);
-        ud_free(indices);
-        if (!s)
-            s = b->context.emit(b->context.emit_user, 0, output[0]);
-        ud_batch_destroy(output[0]);
-        return s;
-    }
-    if (kind == CAST) return cast_rows(b,in);
-    {
-        s = ud_batch_create(b->context.memory, b->fields, b->columns, in->rows, output);
-        if (!s && kind == SPLIT)
-            s = ud_batch_create(b->context.memory, b->fields, b->columns, in->rows, output + 1);
-        ud_value *values = ud_alloc(b->context.memory, b->columns * sizeof(*values));
-        if (!values && !s)
-            s = UD_RESOURCE;
-        for (uint32_t row = 0; !s && row < in->rows; row++) {
-            s = ud_activation_check(b->context.activation);
-            for (uint32_t j = 0; !s && j < in->columns; j++)
-                s = ud_batch_get(in, row, j, values + j);
-            uint32_t port = 0;
-            if (kind == SPLIT) {
-                ud_value value = {0};
-                if (!s)
-                    s = ud_expression_evaluate(b->expressions[0], in, row, &value);
-                if (!s)
-                    port = value.is_null || !value.integer ? 1 : 0;
-            } else
-                for (uint32_t j = 0; !s && j < b->expression_count; j++)
-                    s = ud_expression_evaluate(b->expressions[j], in, row,
-                                               values + in->columns + j);
-            if (!s)
-                s = ud_batch_append(output[port], values, b->columns);
-        }
-        ud_free(values);
-    }
-    for (uint32_t i = 0; !s && i < 2; i++)
-        if (output[i] && output[i]->rows)
-            s = b->context.emit(b->context.emit_user, i, output[i]);
-    ud_batch_destroy(output[0]);
-    ud_batch_destroy(output[1]);
-    return s;
-}
-static ud_status blocking(builtin *b) {
-    ud_batch *output = NULL;
-    ud_status s = ud_operator_pull(b->operator, &output);
-    if (!s)
-        s = b->context.emit(b->context.emit_user, 0, output);
-    ud_batch_destroy(output);
-    return s;
-}
+
 static ud_status step(void *ptr, const ud_component_event *event) {
     builtin *b = ptr;
     int kind = b->kind;
     UD_TRY(ud_activation_check(b->context.activation));
-    if (kind <= SQL_SOURCE) {
+    if (source_kind(kind)) {
         UD_TRY(ud_connection_lease_authorize(b->lease, UD_ACCESS_READ));
         ud_batch *batch = NULL;
-        ud_status s = kind == CSV_SOURCE    ? ud_csv_next(b->csv, &batch)
-                      : kind == JSON_SOURCE ? ud_json_reader_next(b->reader, &batch)
-                                            : ud_connection_lease_read_next(b->lease, &batch);
+        ud_status s = ud_builtin_source_next(b, &batch);
         if (!s) {
-            ud_batch *selected=NULL;s=source_partition(b,batch,&selected);batch=selected;
-            if (!s && batch->rows) s=b->context.emit(b->context.emit_user,0,batch);
-            else if (!s) s=UD_MORE;
+            if (!s && kind == XLSX_SOURCE && b->xlsx_rejected) {
+                ud_batch *errors = NULL;
+                s = ud_batch_create(b->context.memory, b->errors->schema->fields,
+                                    b->errors->columns, batch->rows, &errors);
+                for (uint32_t row = 0; !s && row < batch->rows; row++)
+                    s = ud_error_append(&b->context.errors, errors, batch, row,
+                                        (ud_string){"xlsx.cell", 9}, 1, (ud_id){0}, UD_PARSE,
+                                        UD_ERROR_REDIRECT);
+                if (!s)
+                    s = ud_batch_seal(errors);
+                if (!s)
+                    s = b->context.emit(b->context.emit_user, 1, errors);
+                ud_batch_destroy(errors);
+            } else if (!s && batch->rows)
+                s = b->context.emit(b->context.emit_user, 0, batch);
+            else if (!s)
+                s = UD_MORE;
         }
         ud_batch_destroy(batch);
         return s;
     }
+    if (kind == JOIN) {
+        if (event->kind == UD_COMPONENT_DATA)
+            UD_TRY(ud_operator_push(b->operator, event->input, event->batch));
+        else if (event->kind == UD_COMPONENT_INPUT_END)
+            UD_TRY(ud_operator_finish_input(b->operator, event->input));
+        return ud_builtin_blocking(b);
+    }
     if (event->kind == UD_COMPONENT_INPUT_END)
-        return b->operator ? ud_operator_finish_input(b->operator, event->input) : UD_OK;
+        return b->operator? ud_operator_finish_input(b->operator, event->input) : UD_OK;
     if (event->kind == UD_COMPONENT_POLL)
-        return kind == SORT || kind == JOIN || kind == LOOKUP || kind == WINDOW || kind == AGGREGATE
-                   ? blocking(b)
+        return kind == SORT || kind == JOIN || kind == WINDOW || kind == AGGREGATE
+                   ? ud_builtin_blocking(b)
                    : UD_END;
-    if (kind == CSV_SINK || kind == JSON_SINK) {
+    if (file_sink(kind)) {
         UD_TRY(ud_connection_lease_authorize(b->lease, UD_ACCESS_WRITE));
-        ud_status status=kind == CSV_SINK ? ud_csv_writer_append(b->csv_writer,event->batch) : ud_json_writer_append(b->writer,event->batch);
-        if (!status) b->written_rows+=event->batch->rows;
+        ud_status status;
+#ifdef UD_WITH_ARROW_FILES
+        if (b->columnar_writer)
+            status = ud_columnar_writer_append(b->columnar_writer, event->batch);
+        else
+#endif
+            status = kind == CSV_SINK    ? ud_csv_writer_append(b->csv_writer, event->batch)
+                     : kind == XLSX_SINK ? ud_xlsx_writer_append(b->xlsx_writer, event->batch)
+                                         : ud_json_writer_append(b->writer, event->batch);
+        if (!status)
+            status = ud_rule_stage(b->context.activation, event->batch, &b->delivery);
+        if (!status) {
+            b->written_rows += event->batch->rows;
+            b->written_errors += ud_batch_error_rows(event->batch);
+        }
         return status;
     }
-    if (kind == SQL_SINK) {
-        ud_string table = {0};
-        UD_TRY(ud_json_string(ud_member(b->config, "table"), &table));
-        char id[32], position[32];
-        snprintf(id, sizeof(id), "%llu", (unsigned long long)b->number);
-        snprintf(position, sizeof(position), "batch:%llu", (unsigned long long)b->number);
-        ud_write_options o = {sizeof(o),
-                              UD_ABI_VERSION,
-                              b->mode,
-                              table,
-                              {b->job, (uint32_t)strlen(b->job)},
-                              {id, (uint32_t)strlen(id)},
-                              {position, (uint32_t)strlen(position)},
-                              b->keys,
-                              b->key_count};
-        uint8_t digest[32];
-        ud_status s = ud_connection_lease_digest(b->lease, &o, event->batch, digest);
-        size_t length = strlen(b->job) + strlen(id) + 8;
-        char *identity = ud_alloc(b->context.memory, length);
-        if (!identity)
-            return UD_RESOURCE;
-        snprintf(identity, length, "%s/%s", b->job, id);
-        ud_string key = {identity, (uint32_t)strlen(identity)};
-        int replaying = ud_checkpoint_batch_seen(b->context.activation, key);
-        if (!s)
-            s = ud_checkpoint_batch(b->context.activation, key, digest, 0);
-        if (!s && replaying) {
-            ud_commit_receipt receipt = {0};
-            s = ud_connection_lease_receipt(b->lease, o.job, o.batch_id, &receipt);
-            if (!s && receipt.committed &&
-                (memcmp(receipt.digest, digest, 32) ||
-                 !ud_same(receipt.source_position, o.source_position)))
-                s = UD_CORRUPT;
-            ud_free((void *)receipt.source_position.data);
-        }
-        if (!s)
-            s = ud_connection_lease_write(b->lease, &o, event->batch);
-        if (!s) {
-            if (!ud_transaction_rows(b->context.activation,event->batch->rows)) ud_target_rows(b->context.activation,event->batch->rows,0);
-            s = ud_checkpoint_batch(b->context.activation, key, digest, 1);
-            if (s) s = UD_COMMIT_UNKNOWN;
-            else if (b->context.execution->journal) ud_target_rows(b->context.activation,event->batch->rows,1);
-        }
-        if (!s)
-            b->number++;
-        ud_free(identity);
-        return s;
+    if (kind == SQL_SINK || kind == REST_SINK) {
+        ud_batch *mapped = NULL, *before = NULL;
+        ud_status status = ud_builtin_sink_batch(b, event->batch, &mapped, &before);
+        if (!status)
+            status = ud_builtin_sink_write(b, mapped, before);
+        ud_batch_destroy(mapped);
+        ud_batch_destroy(before);
+        return status;
     }
-    if (kind == SORT || kind == JOIN || kind == LOOKUP || kind == WINDOW || kind == AGGREGATE)
+    if (kind == SORT || kind == JOIN || kind == WINDOW || kind == AGGREGATE)
         return ud_operator_push(b->operator, event->input, event->batch);
-    return transformed(b, event->batch);
+    return ud_builtin_transformed(b, event->batch);
 }
+
 static ud_status finish(void *ptr) {
     builtin *b = ptr;
-    if (b->kind == CSV_SOURCE || b->kind == JSON_SOURCE)
-        return ud_checkpoint_source(b->context.activation, b->path);
-    if (b->kind != CSV_SINK && b->kind != JSON_SINK)
-        return UD_OK;
-    ud_status s =
-        b->kind == CSV_SINK ? ud_csv_writer_close(b->csv_writer) : ud_json_writer_close(b->writer);
-    b->csv_writer = NULL;
-    b->writer = NULL;
-    if (!s)
-        s = ud_connection_lease_authorize(b->lease, UD_ACCESS_WRITE);
-    if (!s && b->existing) {
-        uint8_t expected[32], actual[32];
-        s = ud_file_hash(b->context.memory, b->temporary, expected);
-        if (!s)
-            s = ud_file_hash(b->context.memory, b->path, actual);
-        if (!s && memcmp(expected, actual, 32))
-            s = UD_CORRUPT;
-        if (!s)
-            s = ud_remove_file(b->context.memory, b->temporary);
-    } else if (!s)
-        s = ud_publish(b->context.memory, b->temporary, b->path);
-    if (!s) {
-        b->published = 1;
-        ud_target_rows(b->context.activation,b->written_rows,0);
-        s = ud_checkpoint_file_done(b->context.activation, b->path);
-        if (s) s = UD_COMMIT_UNKNOWN;
-        else if (b->context.execution->journal) ud_target_rows(b->context.activation,b->written_rows,1);
-    }
-    return s;
+    return file_source(b->kind) ? ud_builtin_source_finish(b)
+           : file_sink(b->kind) ? ud_builtin_sink_finish(b)
+                                : UD_OK;
 }
-static ud_status sql_task(void *user, const ud_component_context *c, ud_string text) {
-    (void)user;
-    ud_json *config = NULL;
-    UD_TRY(parse(c, text, &config));
-    static const char *keys[] = {"connection", "statement"};
-    ud_status s = ud_json_keys(config, keys, 2);
-    ud_string id = {0}, statement = {0};
-    if (!s)
-        s = ud_json_string(ud_member(config, "connection"), &id);
-    if (!s)
-        s = ud_json_string(ud_member(config, "statement"), &statement);
-    ud_connection_lease *lease = NULL;
-    if (!s)
-        s = ud_activation_acquire_connection(c->activation, id, UD_CONNECT_EXECUTE_SQL, &lease);
-    if (!s)
-        s = ud_connection_lease_execute_sql(lease, statement);
-    ud_status clean = ud_connection_lease_release(lease);
-    ud_json_destroy(config);
-    return s ? s : clean;
-}
-static ud_status sql_task_configure(void *user,const ud_component_context *c,ud_string text,
-                                    const ud_batch *const *inputs,ud_batch **outputs) {
-    (void)user;(void)inputs;(void)outputs;
-    ud_json *config=NULL;ud_status status=parse(c,text,&config);
-    static const char *keys[]={"connection","statement"};
-    if (!status) status=ud_json_keys(config,keys,2);
-    ud_string id={0},statement={0};
-    if (!status) status=ud_json_string(ud_member(config,"connection"),&id);
-    /* A loop-variable string is typed at definition binding and materialized at
-     * Activation binding. Nonempty SQL is checked by invoke before any lease. */
-    if (!status && ud_json_kind(ud_member(config,"statement"))!=UD_JSON_STRING) status=UD_SCHEMA;
-    if (!status) status=ud_json_text(ud_member(config,"statement"),&statement.data,&statement.length);
-    if (!status) status=connection_defined(c,id);
-    ud_json_destroy(config);return status;
-}
+
 static const char *configuration_schema(int kind) {
     switch (kind) {
-    case CSV_SOURCE: return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},\"nullMarker\":{\"type\":\"string\"},\"partitionCount\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":64},\"partitionId\":{\"type\":\"integer\",\"minimum\":0},\"partitionBegin\":{\"type\":\"integer\",\"minimum\":0},\"partitionEnd\":{\"type\":\"integer\",\"minimum\":0}},\"required\":[\"connection\",\"schema\"],\"additionalProperties\":false}";
-    case JSON_SOURCE: return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},\"partitionCount\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":64},\"partitionId\":{\"type\":\"integer\",\"minimum\":0},\"partitionBegin\":{\"type\":\"integer\",\"minimum\":0},\"partitionEnd\":{\"type\":\"integer\",\"minimum\":0}},\"required\":[\"connection\",\"schema\"],\"additionalProperties\":false}";
-    case SQL_SOURCE: return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},\"sql\":{\"type\":\"string\"},\"partitionCount\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":64},\"partitionId\":{\"type\":\"integer\",\"minimum\":0},\"partitionBegin\":{\"type\":\"integer\",\"minimum\":0},\"partitionEnd\":{\"type\":\"integer\",\"minimum\":0}},\"required\":[\"connection\",\"schema\",\"sql\"],\"additionalProperties\":false}";
-    case CSV_SINK: return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},\"required\":[\"connection\"],\"additionalProperties\":false}";
-    case JSON_SINK: return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},\"required\":[\"connection\"],\"additionalProperties\":false}";
-    case SQL_SINK: return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},\"table\":{\"type\":\"string\"},\"mode\":{\"type\":\"string\"},\"keys\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}},\"required\":[\"connection\",\"table\"],\"additionalProperties\":false}";
-    case CAST: return "{\"type\":\"object\",\"properties\":{\"schema\":{\"type\":\"object\"},\"rounding\":{\"type\":\"integer\"},\"errorPolicy\":{\"enum\":[\"fail\",\"ignore\",\"redirect\"]}},\"required\":[\"schema\"],\"additionalProperties\":false}";
-    case DERIVE: return "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"}},\"required\":[\"columns\"],\"additionalProperties\":false}";
-    case SPLIT: return "{\"type\":\"object\",\"properties\":{\"condition\":{\"type\":\"object\"}},\"required\":[\"condition\"],\"additionalProperties\":false}";
-    case SORT: return "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"integer\"},\"descending\":{\"type\":\"boolean\"},\"partitions\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":64}},\"required\":[\"key\"],\"additionalProperties\":false}";
-    case JOIN: return "{\"type\":\"object\",\"properties\":{\"leftKey\":{\"type\":\"integer\"},\"rightKey\":{\"type\":\"integer\"},\"partitions\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":64}},\"required\":[\"leftKey\",\"rightKey\"],\"additionalProperties\":false}";
-    case LOOKUP: return "{\"type\":\"object\",\"properties\":{\"leftKey\":{\"type\":\"integer\"},\"rightKey\":{\"type\":\"integer\"},\"partitions\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":64}},\"required\":[\"leftKey\",\"rightKey\"],\"additionalProperties\":false}";
-    case AGGREGATE: return "{\"type\":\"object\",\"properties\":{\"plan\":{\"type\":\"object\"},\"partitions\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":64}},\"required\":[\"plan\"],\"additionalProperties\":false}";
-    case WINDOW: return "{\"type\":\"object\",\"properties\":{\"keys\":{\"type\":\"array\"},\"partitionKeys\":{\"type\":\"integer\"},\"function\":{\"type\":\"string\"},\"column\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"}},\"required\":[\"keys\",\"partitionKeys\",\"function\",\"name\"],\"additionalProperties\":false}";
-    default: return "{\"type\":\"object\",\"additionalProperties\":false}";
+    case REST_SOURCE:
+        return "{ "
+               "\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"schema\":{\"type\":\"object\"},\"table\":{\"type\":\"string\"},\"batchSize\":{"
+               "\"type\":\"integer\",\"minimum\":1,\"maximum\":65536},\"caConnection\":{\"type\":"
+               "\"string\"},\"url\":{\"type\":\"string\"},\"rowsField\":{\"type\":\"string\","
+               "\"default\":\"rows\"},\"cursorField\":{\"type\":\"string\",\"default\":"
+               "\"nextCursor\"},\"cursorParameter\":{\"type\":\"string\",\"default\":\"cursor\"},"
+               "\"maxPages\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":1000000,\"default\":"
+               "10000},\"timeoutMs\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":86400000},"
+               "\"maxResponseBytes\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":67108864},"
+               "\"maxAttempts\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":8},"
+               "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000},"
+               "\"incremental\":{\"type\":\"object\"},\"ordering\":{\"type\":\"object\"}},"
+               "\"required\":[\"connection\",\"schema\"],\"additionalProperties\":false}";
+    case REST_SINK:
+        return "{ "
+               "\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},\"table\":"
+               "{\"type\":\"string\",\"default\":\"rest\"},\"mode\":{\"type\":\"string\",\"enum\":["
+               "\"append\",\"upsert\",\"delete\",\"changeset\"],\"default\":\"append\"},\"keys\":{"
+               "\"type\":\"array\",\"items\":{\"type\":\"integer\",\"minimum\":0},\"default\":[]},"
+               "\"beforeField\":{\"type\":\"string\"},\"receiptUrl\":{\"type\":\"string\","
+               "\"minLength\":1},\"caConnection\":{\"type\":\"string\"},\"url\":{\"type\":"
+               "\"string\"},\"timeoutMs\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":86400000}"
+               ",\"maxResponseBytes\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":67108864},"
+               "\"maxAttempts\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":8},"
+               "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000}},"
+               "\"required\":[\"connection\",\"receiptUrl\"],\"additionalProperties\":false}";
+    case PARQUET_SOURCE:
+    case IPC_SOURCE:
+    case IPC_STREAM_SOURCE:
+    case CSV_SOURCE:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},"
+               "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
+               "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
+               "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
+               "\"table\":{\"type\":\"string\"},\"nullMarker\":{\"type\":\"string\"}},\"required\":"
+               "[\"connection\",\"schema\"],\"additionalProperties\":false}";
+    case JSON_SOURCE:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},"
+               "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
+               "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
+               "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
+               "\"table\":{\"type\":\"string\"}},\"required\":[\"connection\",\"schema\"],"
+               "\"additionalProperties\":false}";
+    case SQL_SOURCE:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\","
+               "\"minLength\":1,\"x-role\":\"connection-resource\"},\"schema\":{\"type\":"
+               "\"object\"},\"batchSize\":{\"type\":\"integer\",\"minimum\":1},\"partitionCount\":{"
+               "\"type\":\"integer\",\"minimum\":1,\"maximum\":64},\"partitionId\":{\"type\":"
+               "\"integer\",\"minimum\":0},\"partitionBegin\":{\"type\":\"integer\",\"minimum\":0},"
+               "\"partitionEnd\":{\"type\":\"integer\",\"minimum\":0},\"incremental\":{\"type\":"
+               "\"object\"},\"schemaPolicy\":{\"type\":\"object\"},\"table\":{\"type\":\"string\","
+               "\"minLength\":1},\"sql\":{\"type\":\"string\",\"minLength\":1},\"parameters\":{"
+               "\"type\":\"object\"},\"ordering\":{\"type\":\"object\"},\"where\":{}},\"required\":"
+               "[\"connection\",\"schema\"],\"anyOf\":[{\"required\":[\"sql\"]},{\"required\":["
+               "\"table\"]}],\"additionalProperties\":false}";
+    case PARQUET_SINK:
+    case IPC_SINK:
+    case IPC_STREAM_SINK:
+    case CSV_SINK:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},"
+               "\"required\":[\"connection\"],\"additionalProperties\":false}";
+    case JSON_SINK:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},"
+               "\"required\":[\"connection\"],\"additionalProperties\":false}";
+    case SQL_SINK:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"table\":{\"type\":\"string\"},\"mode\":{\"type\":\"string\",\"enum\":[\"append\","
+               "\"upsert\",\"delete\",\"changeset\"]},\"beforeField\":{\"type\":\"string\"},"
+               "\"keys\":{\"type\":"
+               "\"array\"},\"schemaPolicy\":{\"type\":\"object\"},\"provisionReceipts\":{\"type\":"
+               "\"boolean\"}},\"required\":[\"connection\","
+               "\"table\",\"mode\"],\"additionalProperties\":false}";
+    case CAST:
+        return "{\"type\":\"object\",\"properties\":{\"schema\":{\"type\":\"object\"},\"rounding\":"
+               "{\"type\":\"integer\"},\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{"
+               "\"type\":\"boolean\"}},\"required\":[\"schema\"],\"additionalProperties\":false}";
+    case DERIVE:
+        return "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"}},"
+               "\"required\":[\"columns\"],\"additionalProperties\":false}";
+    case SPLIT:
+        return "{\"type\":\"object\",\"properties\":{\"condition\":{\"type\":\"object\"},"
+               "\"branches\":{\"type\":\"array\"},\"default\":{\"type\":\"string\"}},"
+               "\"additionalProperties\":false}";
+    case SORT:
+    case JOIN:
+    case AGGREGATE:
+    case WINDOW: {
+        ud_string schema = {0};
+        int k = kind == SORT        ? UD_OPERATOR_SORT
+                : kind == JOIN      ? UD_OPERATOR_JOIN
+                : kind == AGGREGATE ? UD_OPERATOR_AGGREGATE
+                                    : UD_OPERATOR_WINDOW;
+        return ud_operator_configuration_schema(k, &schema) ? NULL : schema.data;
+    }
+    case MULTICAST:
+        return "{\"type\":\"object\",\"properties\":{\"outputs\":{\"type\":\"array\"}},"
+               "\"additionalProperties\":false}";
+    case UNION_ALL:
+        return "{\"type\":\"object\",\"properties\":{\"inputs\":{\"type\":\"array\"}},"
+               "\"additionalProperties\":false}";
+    case XLSX_SOURCE:
+        return "{\"type\":\"object\",\"required\":[\"connection\",\"schema\"],\"properties\":{"
+               "\"connection\":{\"type\":\"string\"},\"schema\":{\"type\":\"object\"},\"sheet\":{"
+               "\"type\":\"string\"},\"range\":{\"type\":\"string\"},\"header\":{\"type\":"
+               "\"boolean\"},\"datePolicy\":{\"type\":\"string\"},\"formulaPolicy\":{\"type\":"
+               "\"string\"},\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":"
+               "\"boolean\"},\"batchSize\":{\"type\":\"integer\"},\"maxCompressedBytes\":{\"type\":"
+               "\"integer\"},\"maxDecompressedBytes\":{\"type\":\"integer\"},\"maxEntries\":{"
+               "\"type\":\"integer\"},\"maxCells\":{\"type\":\"integer\"},\"maxStringBytes\":{"
+               "\"type\":\"integer\"},\"ordering\":{\"type\":\"object\"}},\"additionalProperties\":"
+               "false}";
+    case XLSX_SINK:
+        return "{\"type\":\"object\",\"required\":[\"connection\"],\"properties\":{\"connection\":{"
+               "\"type\":\"string\"},\"sheet\":{\"type\":\"string\"},\"header\":{\"type\":"
+               "\"boolean\"},\"datePolicy\":{\"type\":\"string\"},\"maxCompressedBytes\":{\"type\":"
+               "\"integer\"}},\"additionalProperties\":false}";
+    default:
+        return "{\"type\":\"object\",\"additionalProperties\":false}";
     }
 }
+
 ud_status ud_builtin_register(ud_registry *registry) {
+    UD_TRY(ud_relational_register(registry));
+    UD_TRY(ud_cdc_register(registry));
+    UD_TRY(ud_advanced_register(registry));
     static const struct {
         const char *id;
         int kind;
@@ -931,54 +567,107 @@ ud_status ud_builtin_register(ud_registry *registry) {
                    {"sort", SORT, 1, 1, -1, -1},
                    {"join", JOIN, 2, 1, -1, -1},
                    {"aggregate", AGGREGATE, 1, 1, -1, -1},
-                   {"lookup", LOOKUP, 2, 1, -1, -1},
-                   {"window", WINDOW, 1, 1, -1, -1}};
+                   {"window", WINDOW, 1, 1, -1, -1},
+                   {"file.xlsx.source", XLSX_SOURCE, 0, 2, -1, 1},
+                   {"file.xlsx.destination", XLSX_SINK, 1, 0, -1, -1}
+#ifdef UD_WITH_HTTP
+                   ,
+                   {"rest.source", REST_SOURCE, 0, 1, -1, -1},
+                   {"rest.destination", REST_SINK, 1, 0, -1, -1}
+#endif
+#ifdef UD_WITH_ARROW_FILES
+                   ,
+                   {"file.parquet.source", PARQUET_SOURCE, 0, 1, -1, -1},
+                   {"file.parquet.destination", PARQUET_SINK, 1, 0, -1, -1},
+                   {"file.arrowIpc.source", IPC_SOURCE, 0, 1, -1, -1},
+                   {"file.arrowIpc.destination", IPC_SINK, 1, 0, -1, -1},
+                   {"file.arrowStream.source", IPC_STREAM_SOURCE, 0, 1, -1, -1},
+                   {"file.arrowStream.destination", IPC_STREAM_SINK, 1, 0, -1, -1}
+#endif
+    };
     for (uint32_t i = 0; i < sizeof(entries) / sizeof(*entries); i++) {
         int kind = entries[i].kind;
-        int category = kind <= SQL_SOURCE ? UD_COMPONENT_SOURCE
-                       : kind <= SQL_SINK ? UD_COMPONENT_DESTINATION
-                                          : UD_COMPONENT_TRANSFORM;
+        int category = source_kind(kind) ? UD_COMPONENT_SOURCE
+                       : sink_kind(kind) ? UD_COMPONENT_DESTINATION
+                                         : UD_COMPONENT_TRANSFORM;
         ud_component_descriptor d = {
             .struct_size = sizeof(d),
             .abi_version = UD_ABI_VERSION,
             .id = {entries[i].id, (uint32_t)strlen(entries[i].id)},
             .name = {entries[i].id, (uint32_t)strlen(entries[i].id)},
-            .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION)-1},
+            .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = {configuration_schema(kind),
                                      (uint32_t)strlen(configuration_schema(kind))},
             .category = category,
-            .capabilities =
-                UD_COMPONENT_THREAD_SAFE | (kind == SQL_SOURCE ? 0 : UD_COMPONENT_REPLAY_SAFE),
+            .capabilities = UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_REPLAY_SAFE,
             .inputs = entries[i].inputs,
             .outputs = entries[i].outputs,
             .synchronous_input = entries[i].sync,
             .error_output = entries[i].error,
-            .optional_outputs = kind==CAST ? UINT64_C(2) : 0,
+            .optional_outputs = kind == CAST || kind == XLSX_SOURCE ? UINT64_C(2) : 0,
             .user = (void *)(intptr_t)kind,
-            .configure = configure,
+            .configure = ud_builtin_configure,
             .prepare = prepare,
             .step = step,
             .finish = finish,
-            .dispose = dispose};
-        if (kind==SORT || kind==JOIN || kind==AGGREGATE || kind==LOOKUP || kind==WINDOW)
-            d.capabilities|=UD_COMPONENT_STATEFUL|UD_COMPONENT_BLOCKING|UD_COMPONENT_CLONEABLE|UD_COMPONENT_MERGEABLE;
-        if (kind==SORT || kind==JOIN || kind==AGGREGATE || kind==LOOKUP || kind==WINDOW) d.describe_plan=describe_operator;
+            .confirm = source_kind(kind) ? ud_builtin_confirm : NULL,
+            .diagnostics = source_kind(kind) || kind == SQL_SINK ? ud_builtin_diagnostics : NULL,
+            .dispose = ud_builtin_dispose};
+        if (kind == JOIN)
+            d.input_demand = ud_builtin_builtin_demand;
+        if (kind == SPLIT || kind == MULTICAST || kind == UNION_ALL)
+            d.bind_ports = ud_builtin_builtin_ports;
+        if (source_kind(kind))
+            d.describe_plan = ud_builtin_describe_source;
+        if (kind == SQL_SOURCE)
+            d.capabilities |= UD_COMPONENT_STATEFUL | UD_COMPONENT_BLOCKING;
+        if (kind == SORT || kind == JOIN || kind == AGGREGATE || kind == WINDOW)
+            d.capabilities |= UD_COMPONENT_STATEFUL | UD_COMPONENT_BLOCKING |
+                              UD_COMPONENT_CLONEABLE | UD_COMPONENT_MERGEABLE;
+        if (kind == SORT || kind == JOIN || kind == AGGREGATE || kind == WINDOW)
+            d.describe_plan = ud_builtin_describe_operator;
+        if (kind == SQL_SINK || kind == REST_SINK) {
+            d.effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_TRANSACTIONAL | UD_EFFECT_RECEIPTED |
+                        UD_EFFECT_COMMIT_UNKNOWN;
+            d.state_version = 1;
+            d.checkpoint = ud_builtin_checkpoint_state;
+            d.restore = ud_builtin_restore_state;
+            d.capabilities |= UD_COMPONENT_STATEFUL;
+        } else if (source_kind(kind))
+            d.effects = UD_EFFECT_EXTERNAL_READ;
+        else if (file_sink(kind))
+            d.effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_COMMIT_UNKNOWN;
+        if (kind == SORT || kind == JOIN || kind == AGGREGATE || kind == WINDOW) {
+            d.state_version = 1;
+            d.checkpoint = ud_builtin_checkpoint_state;
+            d.restore = ud_builtin_restore_state;
+        }
         UD_TRY(ud_registry_register(registry, &d));
     }
-    ud_component_descriptor task = {.struct_size = sizeof(task),
-                                    .abi_version = UD_ABI_VERSION,
-                                    .id = {"sql.execute", 11},
-                                    .name = {"Execute SQL", 11},
-                                    .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION)-1},
-                                    .configuration_schema = {"{\"type\":\"object\"}", 17},
-                                    .category = UD_COMPONENT_TASK,
-                                    .synchronous_input = -1,
-                                    .error_output = -1,
-                                    .configure=sql_task_configure,
-                                    .capabilities=UD_COMPONENT_THREAD_SAFE,
-                                    .invoke = sql_task};
+    static const char sql_task_schema[] =
+        "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\",\"minLength\":1,"
+        "\"x-role\":\"resource-reference\"},\"statement\":{\"type\":\"string\"},\"parameters\":{"
+        "\"type\":\"object\",\"properties\":{\"schema\":{\"type\":\"object\"},\"rows\":{\"type\":"
+        "\"array\",\"minItems\":1,\"maxItems\":65536}},\"required\":[\"schema\",\"rows\"],"
+        "\"additionalProperties\":false}},\"required\":[\"connection\",\"statement\"],"
+        "\"additionalProperties\":false}";
+    ud_component_descriptor task = {
+        .struct_size = sizeof(task),
+        .abi_version = UD_ABI_VERSION,
+        .id = {"sql.execute", 11},
+        .name = {"Execute SQL", 11},
+        .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
+        .configuration_schema = {sql_task_schema, sizeof(sql_task_schema) - 1},
+        .category = UD_COMPONENT_TASK,
+        .synchronous_input = -1,
+        .error_output = -1,
+        .configure = ud_builtin_sql_task_configure,
+        .capabilities = UD_COMPONENT_THREAD_SAFE,
+        .invoke = ud_builtin_sql_task};
     UD_TRY(ud_registry_register(registry, &task));
     UD_TRY(ud_transforms_register(registry));
+    UD_TRY(ud_quality_component_register(registry));
+    UD_TRY(ud_cache_components_register(registry));
     UD_TRY(ud_enumerators_register(registry));
     UD_TRY(ud_filesystem_register(registry));
     UD_TRY(ud_process_register(registry));

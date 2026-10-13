@@ -1,0 +1,86 @@
+Internal ctest changing into directory: /workspace/UniversalData/build/next-phase-linux
+Test project /workspace/UniversalData/build/next-phase-linux
+      Start 40: next_phase_pipeline_recovery
+      Start 35: http_task_execution
+      Start 34: process_task_execution
+      Start 13: postgresql_cursor_cancellation
+ 1/40 Test #13: postgresql_cursor_cancellation ........   Passed    1.03 sec
+      Start 21: core_runtime_resources
+ 2/40 Test #21: core_runtime_resources ................   Passed    1.04 sec
+      Start 19: indexed_segment_journal
+ 3/40 Test #19: indexed_segment_journal ...............   Passed    0.34 sec
+      Start 28: package_durable_recovery
+ 4/40 Test #28: package_durable_recovery ..............   Passed    0.26 sec
+      Start 37: profile_task_execution
+ 5/40 Test #37: profile_task_execution ................   Passed    0.29 sec
+      Start 33: filesystem_task_execution
+ 6/40 Test #33: filesystem_task_execution .............   Passed    0.19 sec
+      Start 38: native_custom_task
+ 7/40 Test #34: process_task_execution ................   Passed    3.29 sec
+      Start 24: value_semantics_pipeline
+ 8/40 Test #40: next_phase_pipeline_recovery ..........   Passed    3.33 sec
+      Start 31: child_package_execution
+ 9/40 Test #35: http_task_execution ...................   Passed    3.39 sec
+      Start 26: four_engine_connections_enumerators
+10/40 Test #38: native_custom_task ....................   Passed    0.25 sec
+      Start 25: package_failure_boundaries
+11/40 Test #24: value_semantics_pipeline ..............   Passed    0.15 sec
+      Start 11: sqlite_receipts_upsert
+12/40 Test #25: package_failure_boundaries ............   Passed    0.08 sec
+      Start 30: project_environment_deployment
+13/40 Test #31: child_package_execution ...............   Passed    0.15 sec
+      Start 12: worker_protocol
+14/40 Test #12: worker_protocol .......................   Passed    0.04 sec
+      Start 23: package_execution
+15/40 Test #26: four_engine_connections_enumerators ...   Passed    0.13 sec
+      Start 27: package_sql_integration
+16/40 Test #11: sqlite_receipts_upsert ................   Passed    0.10 sec
+      Start 32: catalog_execution_history
+17/40 Test #30: project_environment_deployment ........   Passed    0.07 sec
+      Start 20: logical_durable_task_facts
+18/40 Test #23: package_execution .....................   Passed    0.04 sec
+      Start 29: catalog_immutable_store
+19/40 Test #27: package_sql_integration ...............   Passed    0.05 sec
+      Start 22: core_pipeline_components
+20/40 Test #20: logical_durable_task_facts ............   Passed    0.04 sec
+      Start 15: shared_value_semantics
+21/40 Test #32: catalog_execution_history .............   Passed    0.05 sec
+      Start 39: next_phase_native_contracts
+22/40 Test #29: catalog_immutable_store ...............   Passed    0.04 sec
+      Start 16: four_engine_scheduling_operators
+23/40 Test #39: next_phase_native_contracts ...........   Passed    0.02 sec
+      Start 18: pipeline_tree_parallelism
+24/40 Test #16: four_engine_scheduling_operators ......   Passed    0.02 sec
+      Start 17: block_store_ownership
+25/40 Test #18: pipeline_tree_parallelism .............   Passed    0.01 sec
+      Start  7: nested_columnar_arrow
+26/40 Test #15: shared_value_semantics ................   Passed    0.04 sec
+      Start  5: json_nested_format
+27/40 Test  #7: nested_columnar_arrow .................   Passed    0.00 sec
+      Start 36: profile_statistics_kernel
+28/40 Test #22: core_pipeline_components ..............   Passed    0.05 sec
+      Start  2: json_document
+29/40 Test #36: profile_statistics_kernel .............   Passed    0.00 sec
+      Start  3: columnar
+30/40 Test  #5: json_nested_format ....................   Passed    0.00 sec
+31/40 Test  #2: json_document .........................   Passed    0.00 sec
+      Start  8: regex_nfa
+      Start  6: compute_plan
+32/40 Test  #3: columnar ..............................   Passed    0.00 sec
+      Start  9: field_mapping
+33/40 Test  #8: regex_nfa .............................   Passed    0.00 sec
+      Start  4: extended_scalar_types
+34/40 Test  #6: compute_plan ..........................   Passed    0.00 sec
+35/40 Test  #9: field_mapping .........................   Passed    0.00 sec
+      Start  1: foundation
+      Start 14: architecture_foundation
+36/40 Test #17: block_store_ownership .................   Passed    0.01 sec
+37/40 Test  #4: extended_scalar_types .................   Passed    0.00 sec
+38/40 Test  #1: foundation ............................   Passed    0.00 sec
+      Start 10: quality_classification
+39/40 Test #14: architecture_foundation ...............   Passed    0.00 sec
+40/40 Test #10: quality_classification ................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 40
+
+Total Test time (real) =   3.63 sec

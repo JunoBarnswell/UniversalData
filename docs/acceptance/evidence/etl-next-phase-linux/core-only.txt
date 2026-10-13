@@ -1,0 +1,116 @@
+Preset CMake variables:
+
+  CMAKE_BUILD_TYPE="Debug"
+  UD_BUILD_HOSTS="OFF"
+  UD_BUILD_JNI="OFF"
+  UD_COMPONENTS="Foundation;Columnar"
+
+-- The C compiler identification is GNU 14.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /workspace/UniversalData/build/next-phase-core
+[1/32] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/digest.c.o
+[2/32] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/platform.c.o
+/workspace/UniversalData/components/foundation/src/platform.c: In function ‘add_name’:
+/workspace/UniversalData/components/foundation/src/platform.c:109:46: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  109 |     if (*n == UINT32_MAX || (size_t)(*n + 1) > SIZE_MAX / sizeof(char *))
+      |                                              ^
+[3/32] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/foundation.c.o
+[4/32] Building C object components/foundation/CMakeFiles/ud_foundation.dir/src/json.c.o
+/workspace/UniversalData/components/foundation/src/json.c: In function ‘add_member’:
+/workspace/UniversalData/components/foundation/src/json.c:151:56: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  151 |         if (capacity < v->capacity || (size_t)capacity > SIZE_MAX / sizeof(*v->members))
+      |                                                        ^
+[5/32] Linking C static library components/foundation/libud_foundation.a
+[6/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/cursor.c.o
+[7/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/records.c.o
+/workspace/UniversalData/components/data/src/records.c: In function ‘metadata’:
+/workspace/UniversalData/components/data/src/records.c:5:35: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+    5 |     if ((uint64_t)batch->capacity > SIZE_MAX / sizeof(*batch->row_info))
+      |                                   ^
+[8/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/storage.c.o
+[9/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/schema_evolution.c.o
+[10/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/semantics.c.o
+[11/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/numeric.c.o
+[12/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/schema.c.o
+[13/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/columnar.c.o
+/workspace/UniversalData/components/data/src/columnar.c: In function ‘append_core’:
+/workspace/UniversalData/components/data/src/columnar.c:387:31: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  387 |             if ((size_t)count > SIZE_MAX / sizeof(ud_value))
+      |                               ^
+/workspace/UniversalData/components/data/src/columnar.c: In function ‘ud_copy_value’:
+/workspace/UniversalData/components/data/src/columnar.c:494:56: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  494 |             if (!v->children || (size_t)v->child_count > SIZE_MAX / sizeof(ud_value))
+      |                                                        ^
+[14/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/wire.c.o
+[15/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/arrow.c.o
+/workspace/UniversalData/components/data/src/arrow.c: In function ‘export_column’:
+/workspace/UniversalData/components/data/src/arrow.c:97:36: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   97 |         if (field->timezone_length > SIZE_MAX - 5)
+      |                                    ^
+/workspace/UniversalData/components/data/src/arrow.c: In function ‘import_value’:
+/workspace/UniversalData/components/data/src/arrow.c:424:27: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  424 |         if ((size_t)count > SIZE_MAX / sizeof(ud_value))
+      |                           ^
+[16/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/csv.c.o
+[17/32] Building C object tests/CMakeFiles/test_foundation.dir/foundation.c.o
+[18/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/schema_json.c.o
+[19/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/types.c.o
+[20/32] Building C object tests/CMakeFiles/test_json.dir/json.c.o
+[21/32] Building C object components/data/CMakeFiles/ud_columnar.dir/src/json.c.o
+/workspace/UniversalData/components/data/src/json.c: In function ‘parse_value’:
+/workspace/UniversalData/components/data/src/json.c:78:36: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   78 |         if (count && (size_t)count > SIZE_MAX / sizeof(ud_value))
+      |                                    ^
+[22/32] Linking C static library components/data/libud_columnar.a
+[23/32] Building C object tests/CMakeFiles/test_columnar.dir/columnar.c.o
+/workspace/UniversalData/tests/columnar.c: In function ‘main’:
+/workspace/UniversalData/tests/columnar.c:20:5: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+   20 |     ud_field fields[] = {{"id", 2, UD_INT64, 0}, {"text", 4, UD_UTF8, 1}, {"flag", 4, UD_BOOL, 0}};
+      |     ^~~~~~~~
+In file included from /workspace/UniversalData/tests/columnar.c:2:
+/workspace/UniversalData/include/ud/data.h:45:13: note: ‘precision’ declared here
+   45 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+/workspace/UniversalData/tests/columnar.c:20:5: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+   20 |     ud_field fields[] = {{"id", 2, UD_INT64, 0}, {"text", 4, UD_UTF8, 1}, {"flag", 4, UD_BOOL, 0}};
+      |     ^~~~~~~~
+/workspace/UniversalData/include/ud/data.h:45:13: note: ‘precision’ declared here
+   45 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+/workspace/UniversalData/tests/columnar.c:20:5: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+   20 |     ud_field fields[] = {{"id", 2, UD_INT64, 0}, {"text", 4, UD_UTF8, 1}, {"flag", 4, UD_BOOL, 0}};
+      |     ^~~~~~~~
+/workspace/UniversalData/include/ud/data.h:45:13: note: ‘precision’ declared here
+   45 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+[24/32] Building C object tests/CMakeFiles/typed_data_runner.dir/typed_data_runner.c.o
+[25/32] Building C object tests/CMakeFiles/test_types.dir/types.c.o
+[26/32] Building C object tests/CMakeFiles/test_format.dir/format.c.o
+[27/32] Linking C executable tests/test_foundation
+[28/32] Linking C executable tests/test_json
+[29/32] Linking C executable tests/test_types
+[30/32] Linking C executable tests/test_columnar
+[31/32] Linking C executable tests/test_format
+[32/32] Linking C executable tests/typed_data_runner
+Internal ctest changing into directory: /workspace/UniversalData/build/next-phase-core
+Test project /workspace/UniversalData/build/next-phase-core
+    Start 1: foundation
+1/5 Test #1: foundation .......................   Passed    0.00 sec
+    Start 2: json_document
+2/5 Test #2: json_document ....................   Passed    0.00 sec
+    Start 3: columnar
+3/5 Test #3: columnar .........................   Passed    0.00 sec
+    Start 4: extended_scalar_types
+4/5 Test #4: extended_scalar_types ............   Passed    0.00 sec
+    Start 5: json_nested_format
+5/5 Test #5: json_nested_format ...............   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Total Test time (real) =   0.01 sec

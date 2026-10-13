@@ -234,8 +234,8 @@ ud_status ud_sync_parent(ud_context *c, const char *path) {
 ud_status ud_replace_file(ud_context *c, const char *from, const char *to) {
 #ifdef _WIN32
     wchar_t *source = wide(from), *target = wide(to);
-    BOOL ok = source && target && MoveFileExW(source, target,
-                        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+    BOOL ok = source && target &&
+              MoveFileExW(source, target, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
     free(source);
     free(target);
     return ok ? UD_OK : ud_fail(c, UD_IO, "atomic replacement failed: %s", to);
@@ -332,17 +332,37 @@ uint64_t ud_now_ms(void) {
     return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 #endif
 }
-uint64_t ud_thread_cpu_ns(void) {
+uint64_t ud_monotonic_ns(void) {
 #ifdef _WIN32
-    FILETIME created,ended,kernel,user;
-    if (!GetThreadTimes(GetCurrentThread(),&created,&ended,&kernel,&user)) return 0;
-    ULARGE_INTEGER k,u;k.LowPart=kernel.dwLowDateTime;k.HighPart=kernel.dwHighDateTime;
-    u.LowPart=user.dwLowDateTime;u.HighPart=user.dwHighDateTime;
-    return (k.QuadPart+u.QuadPart)*100;
+    LARGE_INTEGER counter, frequency;
+    if (!QueryPerformanceCounter(&counter) || !QueryPerformanceFrequency(&frequency) ||
+        frequency.QuadPart <= 0)
+        return 0;
+    uint64_t ticks = (uint64_t)counter.QuadPart, rate = (uint64_t)frequency.QuadPart;
+    return ticks / rate * 1000000000 + ticks % rate * 1000000000 / rate;
 #else
     struct timespec ts;
-    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID,&ts)) return 0;
-    return (uint64_t)ts.tv_sec*1000000000+(uint64_t)ts.tv_nsec;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts))
+        return 0;
+    return (uint64_t)ts.tv_sec * 1000000000 + (uint64_t)ts.tv_nsec;
+#endif
+}
+uint64_t ud_thread_cpu_ns(void) {
+#ifdef _WIN32
+    FILETIME created, ended, kernel, user;
+    if (!GetThreadTimes(GetCurrentThread(), &created, &ended, &kernel, &user))
+        return 0;
+    ULARGE_INTEGER k, u;
+    k.LowPart = kernel.dwLowDateTime;
+    k.HighPart = kernel.dwHighDateTime;
+    u.LowPart = user.dwLowDateTime;
+    u.HighPart = user.dwHighDateTime;
+    return (k.QuadPart + u.QuadPart) * 100;
+#else
+    struct timespec ts;
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts))
+        return 0;
+    return (uint64_t)ts.tv_sec * 1000000000 + (uint64_t)ts.tv_nsec;
 #endif
 }
 ud_status ud_distinct_directories(ud_context *c, const char *first, const char *second) {

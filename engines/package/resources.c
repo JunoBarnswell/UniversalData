@@ -3,10 +3,13 @@
 static ud_status check_buffers(void *user) {
     ud_execution *e = user;
     UD_TRY(ud_activation_check(&e->root));
-    return e->buffer_lease ? ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_WRITE)
-                           : UD_OK;
+    if (!e->buffer_lease)
+        return UD_OK;
+    UD_TRY(ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_READ));
+    UD_TRY(ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_WRITE));
+    return ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_DELETE);
 }
-ud_status ud_execution_prepare_buffers(ud_execution *e) {
+ud_status ud_execution_buffer_options(ud_execution *e,ud_buffer_options *out) {
     const ud_json *policy = ud_member(ud_member(e->package->document, "policy"), "buffers");
     ud_buffer_options options = {.struct_size = sizeof(options),
                                  .abi_version = UD_ABI_VERSION,
@@ -35,6 +38,13 @@ ud_status ud_execution_prepare_buffers(ud_execution *e) {
         s = ud_json_uint(ud_member(policy, "maxBlocks"), &value);
         options.max_blocks = (uint32_t)value;
     }
+    if (!s) *out = options;
+    return s;
+}
+ud_status ud_execution_prepare_buffers(ud_execution *e) {
+    const ud_json *policy = ud_member(ud_member(e->package->document, "policy"), "buffers");
+    ud_buffer_options options = {0};
+    ud_status s = ud_execution_buffer_options(e, &options);
     if (!s && ud_member(policy, "connection")) {
         ud_string id;
         s = ud_json_string(ud_member(policy, "connection"), &id);
@@ -59,6 +69,7 @@ ud_status ud_execution_release_buffers(ud_execution *e) {
         ud_buffer_metrics metrics;
         UD_TRY(ud_buffer_manager_metrics(e->buffers, &metrics));
         atomic_store(&e->spill_bytes, metrics.total_spill_bytes);
+        e->buffer_metrics = metrics;
         UD_TRY(ud_buffer_manager_destroy(e->buffers));
         e->buffers = NULL;
     }

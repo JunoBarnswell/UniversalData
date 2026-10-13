@@ -38,6 +38,10 @@ UD_API ud_status ud_expression_evaluate(const ud_expression *, const ud_batch *,
                                         ud_value *);
 UD_API ud_status ud_expression_evaluate_batch(const ud_expression *, const ud_batch *,
                                               ud_string output_name, ud_batch **);
+/* Exact PostgreSQL Bool/Int64 predicate lowering from the bound Native AST.
+ * Caller proves actual source column domains; Unsupported retains Native AST.
+ * SQL string and typed parameters are owned by the caller. */
+UD_API ud_status ud_expression_sql(ud_expression *,int32_t,ud_string *,ud_batch **);
 UD_API void ud_expression_destroy(ud_expression *);
 /* Registers the native pure scalar catalog atomically in the same Registry. */
 UD_API ud_status ud_expression_register_functions(ud_registry *);

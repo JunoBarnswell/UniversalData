@@ -231,6 +231,21 @@ static int journal(const char *directory,int mode) {
     CHECK(after.entries==(mode==0?16384u:16385u) && after.probes-before.probes<16384u*8u);
     if(mode==0) {
         CHECK(after.snapshots>0 && after.segment_files<=1);
+        /* One key in different record kinds and owners must survive targeted
+         * retirement independently, including after durable replay. */
+        ud_journal_record retained={8,text("key-00000000"),text("other-task"),text("{\"retained\":true}")};
+        OK(ud_journal_append(store,&retained,1));
+        OK(ud_journal_forget(store,7,text("key-00000000")));
+        CHECK(!ud_journal_find(store,7,text("key-00000000")));
+        CHECK(ud_journal_find(store,8,text("key-00000000")));
+        ud_journal_close(store);store=NULL;
+        OK(ud_journal_open(ctx,text(directory),1,&store));
+        CHECK(!ud_journal_find(store,7,text("key-00000000")));
+        CHECK(ud_journal_find(store,8,text("key-00000000")));
+        OK(ud_journal_forget(store,8,text("key-00000000")));
+        ud_journal_record replaced={7,text("key-00000000"),text("active-task"),
+            text("{\"hash\":\"0123456789012345678901234567890123456789012345678901234567890123\"}")};
+        OK(ud_journal_append(store,&replaced,1));
         ud_journal_record last={3,text("done"),{0},text("{\"complete\":true}")};
         OK(ud_journal_append(store,&last,1));
     } else {

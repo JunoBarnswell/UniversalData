@@ -1,471 +1,219 @@
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 #include "ud/regex.h"
 #include "../internal.h"
-enum {
-    RX_EPS = 1,
-    RX_CHAR,
-    RX_DOT,
-    RX_CLASS,
-    RX_BEGIN,
-    RX_END,
-    RX_CAT,
-    RX_ALT,
-    RX_STAR,
-    RX_PLUS,
-    RX_OPT,
-    RX_SPLIT,
-    RX_MATCH
-};
-typedef struct rx_node {
-    int kind, left, right;
-    uint32_t cp, range[64], ranges;
-    int inverted;
-} rx_node;
-typedef struct rx_instruction {
-    int kind, next, other;
-    uint32_t cp, range[64], ranges;
-    int inverted;
-} rx_instruction;
 struct ud_regex {
     ud_context *ctx;
-    rx_instruction *code;
-    uint32_t count, capacity;
-    int start;
+    pcre2_code *code;
+    pcre2_general_context *general;
+    ud_regex_options options;
+    uint32_t captures;
 };
-typedef struct rx_parser {
-    const char *text;
-    uint32_t size, pos, count, capacity;
-    rx_node *nodes;
+typedef struct match_control {
+    const ud_regex *regex;
+    uint64_t deadline;
     ud_status status;
-} rx_parser;
-/* Called only after strict UTF8 validation. */
-static uint32_t next_cp(const char *text, uint32_t *pos) {
-    unsigned char c = (unsigned char)text[(*pos)++];
-    if (c < 128)
-        return c;
-    uint32_t cp = c < 224 ? c & 31 : c < 240 ? c & 15 : c & 7;
-    uint32_t n = c < 224 ? 1 : c < 240 ? 2 : 3;
-    while (n--)
-        cp = (cp << 6) | ((unsigned char)text[(*pos)++] & 63);
-    return cp;
+} match_control;
+static void *allocate(PCRE2_SIZE bytes, void *user) {
+    return ud_alloc(user, (size_t)bytes);
 }
-static int new_node(rx_parser *p, int kind, int left, int right) {
-    if (p->count == p->capacity) {
-        p->status = UD_RESOURCE;
-        return -1;
-    }
-    int at = (int)p->count++;
-    p->nodes[at].kind = kind;
-    p->nodes[at].left = left;
-    p->nodes[at].right = right;
-    return at;
+static void release(void *pointer, void *user) {
+    (void)user;
+    ud_free(pointer);
 }
-static void range(rx_parser *p, rx_node *n, uint32_t first, uint32_t last) {
-    if (first > last) {
-        p->status = UD_PARSE;
-        return;
-    }
-    if (n->ranges == 32) {
-        p->status = UD_RESOURCE;
-        return;
-    }
-    n->range[2 * n->ranges] = first;
-    n->range[2 * n->ranges + 1] = last;
-    n->ranges++;
+static int callout(pcre2_callout_block *block, void *user) {
+    (void)block;
+    match_control *c = user;
+    if (ud_is_cancelled(c->regex->ctx))
+        c->status = UD_CANCELLED;
+    if (!c->status && c->regex->options.check)
+        c->status = c->regex->options.check(c->regex->options.user);
+    if (!c->status && c->deadline && ud_now_ms() >= c->deadline)
+        c->status = UD_TIMEOUT;
+    return c->status ? PCRE2_ERROR_CALLOUT : 0;
 }
-static int shorthand(rx_parser *p, rx_node *n, uint32_t c, int in_class) {
-    if (c != 'd' && c != 'D' && c != 'w' && c != 'W' && c != 's' && c != 'S')
-        return 0;
-    int inverse = c == 'D' || c == 'W' || c == 'S';
-    if (in_class && inverse) {
-        p->status = UD_UNSUPPORTED;
-        return 1;
-    }
-    n->kind = RX_CLASS;
-    if (!in_class)
-        n->inverted = inverse;
-    if (c == 'd' || c == 'D' || c == 'w' || c == 'W')
-        range(p, n, '0', '9');
-    if (c == 'w' || c == 'W') {
-        range(p, n, 'A', 'Z');
-        range(p, n, 'a', 'z');
-        range(p, n, '_', '_');
-    }
-    if (c == 's' || c == 'S') {
-        range(p, n, 9, 13);
-        range(p, n, ' ', ' ');
-    }
-    return 1;
-}
-static uint32_t escaped(rx_parser *p) {
-    if (p->pos == p->size) {
-        p->status = UD_PARSE;
-        return 0;
-    }
-    uint32_t c = next_cp(p->text, &p->pos);
-    if (c == 'n')
-        return '\n';
-    if (c == 'r')
-        return '\r';
-    if (c == 't')
-        return '\t';
-    if (c == 'f')
-        return '\f';
-    if (c == 'v')
-        return '\v';
-    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
-        p->status = UD_UNSUPPORTED;
-    return c;
-}
-static int expression(rx_parser *, uint32_t);
-static int atom(rx_parser *p, uint32_t depth) {
-    if (p->pos == p->size) {
-        p->status = UD_PARSE;
-        return -1;
-    }
-    uint32_t c = next_cp(p->text, &p->pos);
-    int at = -1;
-    if (c == '(') {
-        if (depth == 64) {
-            p->status = UD_RESOURCE;
-            return -1;
-        }
-        if (p->pos < p->size && p->text[p->pos] == '?') {
-            p->status = UD_UNSUPPORTED;
-            return -1;
-        }
-        at = expression(p, depth + 1);
-        if (!p->status && (p->pos == p->size || p->text[p->pos++] != ')'))
-            p->status = UD_PARSE;
-        return at;
-    }
-    if (c == '*' || c == '+' || c == '?' || c == ')') {
-        p->status = UD_PARSE;
-        return -1;
-    }
-    if (c == '{' || c == '}') {
-        p->status = UD_UNSUPPORTED;
-        return -1;
-    }
-    at = new_node(p,
-                  c == '.'   ? RX_DOT
-                  : c == '^' ? RX_BEGIN
-                  : c == '$' ? RX_END
-                  : c == '[' ? RX_CLASS
-                             : RX_CHAR,
-                  -1, -1);
-    if (at < 0)
-        return at;
-    rx_node *n = p->nodes + at;
-    if (c == '[') {
-        if (p->pos < p->size && p->text[p->pos] == '^') {
-            n->inverted = 1;
-            p->pos++;
-        }
-        int complete = 0;
-        while (!p->status && p->pos < p->size) {
-            uint32_t start = next_cp(p->text, &p->pos);
-            if (start == ']') {
-                complete = 1;
-                break;
-            }
-            if (start == '\\') {
-                if (p->pos == p->size) {
-                    p->status = UD_PARSE;
-                    break;
-                }
-                uint32_t save = p->pos, code = next_cp(p->text, &p->pos);
-                if (shorthand(p, n, code, 1)) {
-                    if (p->pos + 1 < p->size && p->text[p->pos] == '-' &&
-                        p->text[p->pos + 1] != ']')
-                        p->status = UD_PARSE;
-                    continue;
-                }
-                p->pos = save;
-                start = escaped(p);
-            }
-            uint32_t end = start;
-            if (!p->status && p->pos + 1 < p->size && p->text[p->pos] == '-' &&
-                p->text[p->pos + 1] != ']') {
-                p->pos++;
-                end = next_cp(p->text, &p->pos);
-                if (end == '\\') {
-                    if (p->pos < p->size && p->text[p->pos] && strchr("dDwWsS", p->text[p->pos])) {
-                        p->status = UD_PARSE;
-                        break;
-                    }
-                    end = escaped(p);
-                }
-            }
-            if (!p->status)
-                range(p, n, start, end);
-        }
-        if (!p->status && (!complete || !n->ranges))
-            p->status = UD_PARSE;
-    } else if (c == '\\') {
-        if (p->pos == p->size)
-            p->status = UD_PARSE;
-        else {
-            uint32_t save = p->pos, code = next_cp(p->text, &p->pos);
-            if (!shorthand(p, n, code, 0)) {
-                p->pos = save;
-                n->cp = escaped(p);
-            }
-        }
-    } else
-        n->cp = c;
-    return at;
-}
-static int sequence(rx_parser *p, uint32_t depth) {
-    int result = -1;
-    while (!p->status && p->pos < p->size && p->text[p->pos] != '|' && p->text[p->pos] != ')') {
-        int part = atom(p, depth);
-        if (p->status)
-            break;
-        if (p->pos < p->size && p->text[p->pos] && strchr("*+?", p->text[p->pos])) {
-            char c = p->text[p->pos++];
-            part = new_node(p, c == '*' ? RX_STAR : c == '+' ? RX_PLUS : RX_OPT, part, -1);
-            if (p->pos < p->size && p->text[p->pos] && strchr("*+?", p->text[p->pos]))
-                p->status = UD_UNSUPPORTED;
-        }
-        if (!p->status)
-            result = result < 0 ? part : new_node(p, RX_CAT, result, part);
-    }
-    return !p->status && result < 0 ? new_node(p, RX_EPS, -1, -1) : result;
-}
-static int expression(rx_parser *p, uint32_t depth) {
-    int result = sequence(p, depth);
-    while (!p->status && p->pos < p->size && p->text[p->pos] == '|') {
-        p->pos++;
-        int right = sequence(p, depth);
-        if (!p->status)
-            result = new_node(p, RX_ALT, result, right);
-    }
-    return result;
-}
-static int instruction(ud_regex *r, int kind, int next, int other) {
-    if (r->count == r->capacity)
-        return -1;
-    int at = (int)r->count++;
-    r->code[at].kind = kind;
-    r->code[at].next = next;
-    r->code[at].other = other;
-    return at;
-}
-/* Compilation walks the AST iteratively to bound C stack independent of input. */
-typedef struct rx_frame {
-    int node, continuation, stage, first, instruction;
-} rx_frame;
-static ud_status compile_ast(ud_regex *r, const rx_node *nodes, uint32_t count, int root) {
-    rx_frame *stack = ud_alloc(r->ctx, (count + 1) * sizeof(*stack));
-    if (!stack)
+static ud_status result(int rc, const match_control *control) {
+    if (control->status)
+        return control->status;
+    if (rc >= 0)
+        return UD_OK;
+    if (rc == PCRE2_ERROR_NOMATCH)
+        return UD_END;
+    if (rc == PCRE2_ERROR_MATCHLIMIT || rc == PCRE2_ERROR_DEPTHLIMIT || rc == PCRE2_ERROR_HEAPLIMIT)
+        return UD_TIMEOUT;
+    if (rc == PCRE2_ERROR_NOMEMORY)
         return UD_RESOURCE;
-    uint32_t size = 1;
-    stack[0] = (rx_frame){root, 0, 0, 0, 0};
-    int result = 0;
-    ud_status s = UD_OK;
-    while (size && !s) {
-        rx_frame *f = stack + size - 1;
-        const rx_node *n = nodes + f->node;
-        if (f->stage == 0) {
-            if (n->kind == RX_CAT) {
-                f->stage = 1;
-                stack[size++] = (rx_frame){n->right, f->continuation, 0, 0, 0};
-            } else if (n->kind == RX_ALT) {
-                f->stage = 1;
-                stack[size++] = (rx_frame){n->left, f->continuation, 0, 0, 0};
-            } else if (n->kind == RX_STAR || n->kind == RX_PLUS) {
-                f->instruction = instruction(r, RX_SPLIT, -1, f->continuation);
-                if (f->instruction < 0)
-                    s = UD_RESOURCE;
-                else {
-                    f->stage = 1;
-                    stack[size++] = (rx_frame){n->left, f->instruction, 0, 0, 0};
-                }
-            } else if (n->kind == RX_OPT) {
-                f->stage = 1;
-                stack[size++] = (rx_frame){n->left, f->continuation, 0, 0, 0};
-            } else {
-                result = n->kind == RX_EPS ? f->continuation
-                                           : instruction(r, n->kind, f->continuation, -1);
-                if (result < 0)
-                    s = UD_RESOURCE;
-                else if (n->kind != RX_EPS) {
-                    r->code[result].cp = n->cp;
-                    r->code[result].ranges = n->ranges;
-                    r->code[result].inverted = n->inverted;
-                    memcpy(r->code[result].range, n->range, sizeof(n->range));
-                }
-                size--;
-            }
-        } else if (n->kind == RX_CAT) {
-            if (f->stage == 1) {
-                f->stage = 2;
-                stack[size++] = (rx_frame){n->left, result, 0, 0, 0};
-            } else
-                size--;
-        } else if (n->kind == RX_ALT) {
-            if (f->stage == 1) {
-                f->stage = 2;
-                f->first = result;
-                stack[size++] = (rx_frame){n->right, f->continuation, 0, 0, 0};
-            } else {
-                result = instruction(r, RX_SPLIT, f->first, result);
-                if (result < 0)
-                    s = UD_RESOURCE;
-                size--;
-            }
-        } else if (n->kind == RX_STAR || n->kind == RX_PLUS) {
-            r->code[f->instruction].next = result;
-            if (n->kind == RX_STAR)
-                result = f->instruction;
-            size--;
-        } else {
-            result = instruction(r, RX_SPLIT, result, f->continuation);
-            if (result < 0)
-                s = UD_RESOURCE;
-            size--;
-        }
-    }
-    if (!s)
-        r->start = result;
-    ud_free(stack);
-    return s;
+    return UD_PARSE;
 }
-void ud_regex_destroy(ud_regex *r) {
-    if (r) {
-        ud_free(r->code);
-        ud_free(r);
-    }
+static pcre2_match_context *match_context(const ud_regex *r, match_control *control) {
+    *control = (match_control){
+        .regex = r, .deadline = r->options.timeout_ms ? ud_now_ms() + r->options.timeout_ms : 0};
+    pcre2_match_context *ctx = pcre2_match_context_create(r->general);
+    if (!ctx)
+        return NULL;
+    pcre2_set_match_limit(ctx, r->options.max_steps);
+    pcre2_set_depth_limit(ctx, r->options.max_depth);
+    pcre2_set_heap_limit(ctx, (uint32_t)((r->options.heap_bytes + 1023) / 1024));
+    pcre2_set_callout(ctx, callout, control);
+    return ctx;
 }
-ud_status ud_regex_compile(ud_context *ctx, const char *text, uint32_t length, ud_regex **out) {
+ud_status ud_regex_compile(ud_context *ctx, const char *pattern, uint32_t length,
+                           const ud_regex_options *options, ud_regex **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
-    if (!ctx || (!text && length))
-        return UD_INVALID;
-    if (ud_is_cancelled(ctx))
-        return UD_CANCELLED;
-    if (length > 4096)
-        return UD_RESOURCE;
-    if (!ud_utf8_valid(text, length))
+    if (!ctx || !pattern || length > 4096 || !ud_utf8_valid(pattern, length))
         return UD_PARSE;
-    uint32_t capacity = length * 2 + 1;
-    if (capacity > 8192)
-        capacity = 8192;
-    rx_node *nodes = ud_alloc(ctx, capacity * sizeof(*nodes));
-    if (!nodes)
+    ud_regex *r = ud_alloc(ctx, sizeof(*r));
+    if (!r)
         return UD_RESOURCE;
-    rx_parser p = {text, length, 0, 0, capacity, nodes, UD_OK};
-    int root = expression(&p, 0);
-    if (!p.status && p.pos != p.size)
-        p.status = UD_PARSE;
-    ud_regex *r = NULL;
-    if (!p.status) {
-        r = ud_alloc(ctx, sizeof(*r));
-        if (!r)
-            p.status = UD_RESOURCE;
-    }
-    if (!p.status) {
-        r->ctx = ctx;
-        r->capacity = p.count + 1;
-        r->code = ud_alloc(ctx, r->capacity * sizeof(*r->code));
-        if (!r->code)
-            p.status = UD_RESOURCE;
-        else {
-            instruction(r, RX_MATCH, -1, -1);
-            p.status = compile_ast(r, nodes, p.count, root);
+    r->ctx = ctx;
+    r->options = (ud_regex_options){.struct_size = sizeof(r->options),
+                                    .abi_version = UD_ABI_VERSION,
+                                    .max_steps = 1000000,
+                                    .max_depth = 64,
+                                    .heap_bytes = 1048576};
+    if (options) {
+        if (options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION) {
+            ud_free(r);
+            return UD_INCOMPATIBLE;
         }
+        r->options = *options;
     }
-    ud_free(nodes);
-    if (p.status)
+    if (!r->options.max_steps || !r->options.max_depth || r->options.max_depth > 256 ||
+        r->options.heap_bytes < 1024 || r->options.heap_bytes > UINT32_MAX - 1023) {
+        ud_free(r);
+        return UD_SCHEMA;
+    }
+    r->general = pcre2_general_context_create(allocate, release, ctx);
+    if (!r->general) {
+        ud_free(r);
+        return UD_RESOURCE;
+    }
+    int error = 0;
+    PCRE2_SIZE offset = 0;
+    pcre2_compile_context *cc = pcre2_compile_context_create(r->general);
+    if (!cc) {
         ud_regex_destroy(r);
-    else
-        *out = r;
-    return p.status;
-}
-typedef struct rx_set {
-    uint8_t *seen;
-    int *active, *stack;
-    uint32_t count;
-} rx_set;
-static void closure(const ud_regex *r, rx_set *set, int start, uint32_t pos, uint32_t length) {
-    if (set->seen[start])
-        return;
-    uint32_t size = 0;
-    set->seen[start] = 1;
-    set->stack[size++] = start;
-    while (size) {
-        int at = set->stack[--size];
-        const rx_instruction *code = r->code + at;
-        if (code->kind != RX_SPLIT && code->kind != RX_BEGIN && code->kind != RX_END) {
-            set->active[set->count++] = at;
-            continue;
-        }
-        if ((code->kind == RX_BEGIN && pos != 0) || (code->kind == RX_END && pos != length))
-            continue;
-        if (!set->seen[code->next]) {
-            set->seen[code->next] = 1;
-            set->stack[size++] = code->next;
-        }
-        if (code->kind == RX_SPLIT && !set->seen[code->other]) {
-            set->seen[code->other] = 1;
-            set->stack[size++] = code->other;
-        }
+        return UD_RESOURCE;
     }
+    pcre2_set_parens_nest_limit(cc, r->options.max_depth);
+    r->code = pcre2_compile((PCRE2_SPTR)pattern, length, PCRE2_UTF | PCRE2_UCP | PCRE2_AUTO_CALLOUT,
+                            &error, &offset, cc);
+    pcre2_compile_context_free(cc);
+    if (!r->code) {
+        ud_regex_destroy(r);
+        return error == PCRE2_ERROR_NOMEMORY ? UD_RESOURCE : UD_PARSE;
+    }
+    pcre2_pattern_info(r->code, PCRE2_INFO_CAPTURECOUNT, &r->captures);
+    if (r->captures > 64) {
+        ud_regex_destroy(r);
+        return UD_RESOURCE;
+    }
+    *out = r;
+    return UD_OK;
 }
-ud_status ud_regex_test(const ud_regex *r, const char *text, uint32_t length, int32_t *matched) {
-    if (!r || !matched || (!text && length))
+uint32_t ud_regex_capture_count(const ud_regex *r) {
+    return r ? r->captures : 0;
+}
+ud_status ud_regex_group_index(const ud_regex *r, ud_string name, uint32_t *out) {
+    if (!r || !out || !name.data || !name.length || name.length > 255 ||
+        memchr(name.data, 0, name.length))
+        return UD_SCHEMA;
+    char text[256];
+    memcpy(text, name.data, name.length);
+    text[name.length] = 0;
+    int i = pcre2_substring_number_from_name(r->code, (PCRE2_SPTR)text);
+    if (i < 0)
+        return UD_SCHEMA;
+    *out = (uint32_t)i;
+    return UD_OK;
+}
+ud_status ud_regex_search(const ud_regex *r, const char *text, uint32_t length, uint32_t offset,
+                          ud_regex_span *spans, uint32_t count, int32_t *matched) {
+    if (!r || !matched || (!text && length) || offset > length || (count && !spans))
         return UD_INVALID;
     *matched = 0;
+    for (uint32_t i = 0; i < count; i++)
+        spans[i] = (ud_regex_span){UINT32_MAX, UINT32_MAX};
     if (!ud_utf8_valid(text, length))
         return UD_PARSE;
-    size_t bytes = (size_t)r->count;
-    uint8_t *seen = ud_alloc(r->ctx, bytes * 2);
-    int *indices = ud_alloc(r->ctx, bytes * 4 * sizeof(*indices));
-    if (!seen || !indices) {
-        ud_free(seen);
-        ud_free(indices);
+    match_control control;
+    pcre2_match_context *ctx = match_context(r, &control);
+    if (!ctx)
+        return UD_RESOURCE;
+    pcre2_match_data *data = pcre2_match_data_create_from_pattern(r->code, r->general);
+    if (!data) {
+        pcre2_match_context_free(ctx);
         return UD_RESOURCE;
     }
-    rx_set current = {seen, indices, indices + 2 * r->count, 0},
-           next = {seen + r->count, indices + r->count, indices + 3 * r->count, 0};
-    uint32_t pos = 0;
-    ud_status s = UD_OK;
-    for (;;) {
-        if (ud_is_cancelled(r->ctx)) {
-            s = UD_CANCELLED;
-            break;
-        }
-        closure(r, &current, r->start, pos, length);
-        for (uint32_t i = 0; i < current.count; i++)
-            if (r->code[current.active[i]].kind == RX_MATCH) {
-                *matched = 1;
-                break;
-            }
-        if (*matched || pos == length)
-            break;
-        uint32_t cp = next_cp(text, &pos);
-        next.count = 0;
-        memset(next.seen, 0, bytes);
-        for (uint32_t i = 0; i < current.count; i++) {
-            const rx_instruction *code = r->code + current.active[i];
-            int accepts = code->kind == RX_CHAR  ? code->cp == cp
-                          : code->kind == RX_DOT ? cp != '\n'
-                                                 : 0;
-            if (code->kind == RX_CLASS) {
-                for (uint32_t j = 0; j < code->ranges && !accepts; j++)
-                    accepts = cp >= code->range[2 * j] && cp <= code->range[2 * j + 1];
-                if (code->inverted)
-                    accepts = !accepts;
-            }
-            if (accepts)
-                closure(r, &next, code->next, pos, length);
-        }
-        rx_set swap = current;
-        current = next;
-        next = swap;
+    int rc = pcre2_match(r->code, (PCRE2_SPTR)text, length, offset, 0, data, ctx);
+    ud_status status = result(rc, &control);
+    if (status == UD_END)
+        status = UD_OK;
+    else if (!status) {
+        *matched = 1;
+        PCRE2_SIZE *pairs = pcre2_get_ovector_pointer(data);
+        uint32_t total = r->captures + 1;
+        if (total > count)
+            total = count;
+        for (uint32_t i = 0; i < total; i++)
+            if (pairs[2 * i] != PCRE2_UNSET)
+                spans[i] = (ud_regex_span){(uint32_t)pairs[2 * i], (uint32_t)pairs[2 * i + 1]};
     }
-    ud_free(seen);
-    ud_free(indices);
+    pcre2_match_data_free(data);
+    pcre2_match_context_free(ctx);
+    return status;
+}
+ud_status ud_regex_test(const ud_regex *r, const char *text, uint32_t length, int32_t *matched) {
+    return ud_regex_search(r, text, length, 0, NULL, 0, matched);
+}
+ud_status ud_regex_replace(const ud_regex *r, ud_string input, ud_string replacement, char **out,
+                           uint32_t *length) {
+    if (!r || !out || !length || (!input.data && input.length) ||
+        (!replacement.data && replacement.length))
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    if (!ud_utf8_valid(input.data, input.length) ||
+        !ud_utf8_valid(replacement.data, replacement.length))
+        return UD_PARSE;
+    match_control control;
+    pcre2_match_context *ctx = match_context(r, &control);
+    if (!ctx)
+        return UD_RESOURCE;
+    PCRE2_SIZE size = 0;
+    uint32_t flags = PCRE2_SUBSTITUTE_GLOBAL | PCRE2_SUBSTITUTE_OVERFLOW_LENGTH |
+                     PCRE2_SUBSTITUTE_UNSET_EMPTY | PCRE2_SUBSTITUTE_EXTENDED;
+    int rc = pcre2_substitute(r->code, (PCRE2_SPTR)input.data, input.length, 0, flags, NULL, ctx,
+                              (PCRE2_SPTR)replacement.data, replacement.length, NULL, &size);
+    ud_status s = rc == PCRE2_ERROR_NOMEMORY && !control.status ? UD_OK : result(rc, &control);
+    if (!s && (size > 16u * 1024u * 1024u || size >= UINT32_MAX))
+        s = UD_RESOURCE;
+    char *value = !s ? ud_alloc(r->ctx, (size_t)size + 1) : NULL;
+    if (!s && !value)
+        s = UD_RESOURCE;
+    if (!s) {
+        PCRE2_SIZE capacity = size + 1;
+        rc = pcre2_substitute(r->code, (PCRE2_SPTR)input.data, input.length, 0, flags, NULL, ctx,
+                              (PCRE2_SPTR)replacement.data, replacement.length,
+                              (PCRE2_UCHAR *)value, &capacity);
+        s = result(rc, &control);
+        if (!s) {
+            value[capacity] = 0;
+            *length = (uint32_t)capacity;
+            *out = value;
+            value = NULL;
+        }
+    }
+    ud_free(value);
+    pcre2_match_context_free(ctx);
     return s;
+}
+void ud_regex_destroy(ud_regex *r) {
+    if (!r)
+        return;
+    pcre2_code_free(r->code);
+    pcre2_general_context_free(r->general);
+    ud_free(r);
 }

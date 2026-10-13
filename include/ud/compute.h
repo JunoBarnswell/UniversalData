@@ -2,17 +2,20 @@
 #define UD_COMPUTE_H
 #include "data.h"
 #include "expression.h"
+#include "json.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
+/* Pre-discovered typed domain becomes a values array before pure Pivot binding.
+ * NULL keys are excluded; empty or over-limit domains fail explicitly. */
+UD_API ud_status ud_pivot_discover_values(ud_context *, const ud_batch *, uint32_t column,
+                                          ud_string prefix, uint32_t maximum, char **, uint32_t *);
+UD_API ud_status ud_compute_field_index(const ud_batch *, const ud_json *, uint32_t *);
 /* Stable sort, NULLS FIRST ascending / NULLS LAST descending. */
 UD_API ud_status ud_compute_sort(ud_context *, const ud_batch *, uint32_t key, int32_t descending,
                                  ud_batch **);
 UD_API ud_status ud_compute_slice(ud_context *, const ud_batch *, uint64_t offset, uint64_t limit,
                                   ud_batch **);
-/* Same key type required; NULL never joins NULL. Names must be unique across inputs. */
-UD_API ud_status ud_compute_inner_join(ud_context *, const ud_batch *left, uint32_t left_key,
-                                       const ud_batch *right, uint32_t right_key, ud_batch **);
 /* Canonical output metadata used by both binding and execution. Join outputs
  * acquire distinct identities and preserve each input's origin set. */
 UD_API ud_status ud_compute_join_schema(ud_context *, const ud_batch *, const ud_batch *,
@@ -50,8 +53,8 @@ UD_API ud_status ud_accumulator_create(const ud_plan *, ud_accumulator **);
 UD_API ud_status ud_accumulator_add(ud_accumulator *, const ud_batch *);
 /* Opaque canonical partial state; exact integer/Decimal SUM uses signed 256-bit
  * state and validates the declared output range only when finalizing. */
-UD_API ud_status ud_accumulator_partial_snapshot(const ud_accumulator *,ud_batch **);
-UD_API ud_status ud_accumulator_merge(ud_accumulator *,const ud_batch *partial_state);
+UD_API ud_status ud_accumulator_partial_snapshot(const ud_accumulator *, ud_batch **);
+UD_API ud_status ud_accumulator_merge(ud_accumulator *, const ud_batch *partial_state);
 UD_API ud_status ud_accumulator_snapshot(const ud_accumulator *, ud_batch **);
 UD_API ud_status ud_accumulator_restore(ud_accumulator *, const ud_batch *);
 UD_API void ud_accumulator_destroy(ud_accumulator *);

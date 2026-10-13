@@ -1,14 +1,14 @@
 #include "../internal.h"
 #define MAX_LINEAGE 4096u
-static int id_empty(ud_column_id id) {
+static int id_empty(ud_id id) {
     return !id.high && !id.low;
 }
-int32_t ud_column_id_compare(ud_column_id a, ud_column_id b) {
+int32_t ud_id_compare(ud_id a, ud_id b) {
     if (a.high != b.high)
         return a.high > b.high ? 1 : -1;
     return (a.low > b.low) - (a.low < b.low);
 }
-void ud_column_id_format(ud_column_id id, char out[33]) {
+void ud_id_format(ud_id id, char out[33]) {
     static const char hex[] = "0123456789abcdef";
     for (uint32_t j = 0; j < 16; j++) {
         uint64_t value = j < 8 ? id.high : id.low;
@@ -19,10 +19,10 @@ void ud_column_id_format(ud_column_id id, char out[33]) {
     }
     out[32] = 0;
 }
-ud_status ud_column_id_parse(ud_string text, ud_column_id *out) {
+ud_status ud_id_parse(ud_string text, ud_id *out) {
     if (!out)
         return UD_INVALID;
-    *out = (ud_column_id){0};
+    *out = (ud_id){0};
     if (!text.data || text.length != 32)
         return UD_SCHEMA;
     for (uint32_t j = 0; j < 32; j++) {
@@ -31,7 +31,7 @@ ud_status ud_column_id_parse(ud_string text, ud_column_id *out) {
                          : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10
                                                   : 16;
         if (digit == 16) {
-            *out = (ud_column_id){0};
+            *out = (ud_id){0};
             return UD_SCHEMA;
         }
         uint64_t *word = j < 16 ? &out->high : &out->low;
@@ -39,10 +39,10 @@ ud_status ud_column_id_parse(ud_string text, ud_column_id *out) {
     }
     return id_empty(*out) ? UD_SCHEMA : UD_OK;
 }
-ud_status ud_column_id_make(ud_context *ctx, ud_string scope, ud_string name, ud_column_id *out) {
+ud_status ud_id_make(ud_context *ctx, ud_string scope, ud_string name, ud_id *out) {
     if (!out)
         return UD_INVALID;
-    *out = (ud_column_id){0};
+    *out = (ud_id){0};
     if (!ctx || !scope.data || !scope.length || scope.length > 1048576 || !name.data ||
         !name.length || name.length > 65536 || memchr(scope.data, 0, scope.length) ||
         memchr(name.data, 0, name.length) || !ud_utf8_valid(scope.data, scope.length) ||
@@ -69,17 +69,17 @@ ud_status ud_column_id_make(ud_context *ctx, ud_string scope, ud_string name, ud
     return s;
 }
 static int order_id(const void *a, const void *b) {
-    return ud_column_id_compare(*(const ud_column_id *)a, *(const ud_column_id *)b);
+    return ud_id_compare(*(const ud_id *)a, *(const ud_id *)b);
 }
-static ud_status lineage_copy(ud_context *ctx, const ud_column_id *input, uint32_t count,
-                              ud_column_id **out, uint32_t *size) {
+static ud_status lineage_copy(ud_context *ctx, const ud_id *input, uint32_t count, ud_id **out,
+                              uint32_t *size) {
     *out = NULL;
     *size = 0;
     if (count > MAX_LINEAGE || (count && !input))
         return UD_SCHEMA;
     if (!count)
         return UD_OK;
-    ud_column_id *ids = ud_alloc(ctx, count * sizeof(*ids));
+    ud_id *ids = ud_alloc(ctx, count * sizeof(*ids));
     if (!ids)
         return UD_RESOURCE;
     memcpy(ids, input, count * sizeof(*ids));
@@ -89,14 +89,14 @@ static ud_status lineage_copy(ud_context *ctx, const ud_column_id *input, uint32
             ud_free(ids);
             return UD_SCHEMA;
         }
-        if (!*size || ud_column_id_compare(ids[j], ids[*size - 1]))
+        if (!*size || ud_id_compare(ids[j], ids[*size - 1]))
             ids[(*size)++] = ids[j];
     }
     *out = ids;
     return UD_OK;
 }
-ud_status ud_lineage_merge(ud_context *ctx, const ud_field *fields, uint32_t count,
-                           ud_column_id **out, uint32_t *size) {
+ud_status ud_lineage_merge(ud_context *ctx, const ud_field *fields, uint32_t count, ud_id **out,
+                           uint32_t *size) {
     if (!out || !size || !ctx || (count && !fields))
         return UD_INVALID;
     *out = NULL;
@@ -111,14 +111,14 @@ ud_status ud_lineage_merge(ud_context *ctx, const ud_field *fields, uint32_t cou
     if (!total)
         return UD_OK;
     uint32_t capacity = (uint32_t)(total > MAX_LINEAGE ? MAX_LINEAGE : total);
-    ud_column_id *all = ud_alloc(ctx, (size_t)capacity * sizeof(*all));
+    ud_id *all = ud_alloc(ctx, (size_t)capacity * sizeof(*all));
     if (!all)
         return UD_RESOURCE;
     uint32_t at = 0;
     ud_status s = UD_OK;
     for (uint32_t j = 0; j < count; j++) {
         for (uint32_t k = 0; k < fields[j].lineage_count; k++) {
-            ud_column_id id = fields[j].lineage[k];
+            ud_id id = fields[j].lineage[k];
             if (id_empty(id)) {
                 s = UD_SCHEMA;
                 break;
@@ -126,12 +126,12 @@ ud_status ud_lineage_merge(ud_context *ctx, const ud_field *fields, uint32_t cou
             uint32_t lo = 0, hi = at;
             while (lo < hi) {
                 uint32_t mid = lo + (hi - lo) / 2;
-                if (ud_column_id_compare(all[mid], id) < 0)
+                if (ud_id_compare(all[mid], id) < 0)
                     lo = mid + 1;
                 else
                     hi = mid;
             }
-            if (lo < at && !ud_column_id_compare(all[lo], id))
+            if (lo < at && !ud_id_compare(all[lo], id))
                 continue;
             if (at == capacity) {
                 s = UD_RESOURCE;
@@ -163,12 +163,13 @@ void ud_field_clear(ud_field *f) {
     ud_free((void *)f->children);
     memset(f, 0, sizeof(*f));
 }
-static ud_status copy_field(ud_context *ctx, const ud_field *f, ud_column_id parent, ud_field *out,
+static ud_status copy_field(ud_context *ctx, const ud_field *f, ud_id parent, ud_field *out,
                             uint32_t depth) {
     memset(out, 0, sizeof(*out));
     if (depth > 32 || !f || !f->name || !f->name_length || f->name_length > 65536 ||
         memchr(f->name, 0, f->name_length) || !ud_utf8_valid(f->name, f->name_length) ||
         f->type < UD_BOOL || f->type > UD_MAP || (f->nullable != 0 && f->nullable != 1) ||
+        f->key_order > 65536 ||
         (f->type == UD_DECIMAL128 &&
          (f->precision < 1 || f->precision > 38 || f->scale < -38 || f->scale > 38)) ||
         (f->type != UD_DECIMAL128 && (f->precision || f->scale)) ||
@@ -204,14 +205,13 @@ static ud_status copy_field(ud_context *ctx, const ud_field *f, ud_column_id par
         if (f->lineage_count)
             return UD_SCHEMA; /* Origins cannot bind an anonymous result. */
         char scope[33];
-        ud_column_id_format(parent, scope);
-        s = ud_column_id_make(ctx, (ud_string){scope, 32}, (ud_string){f->name, f->name_length},
-                              &out->identity);
+        ud_id_format(parent, scope);
+        s = ud_id_make(ctx, (ud_string){scope, 32}, (ud_string){f->name, f->name_length},
+                       &out->identity);
         if (!s)
-            s = lineage_copy(ctx, &out->identity, 1, (ud_column_id **)&out->lineage,
-                             &out->lineage_count);
+            s = lineage_copy(ctx, &out->identity, 1, (ud_id **)&out->lineage, &out->lineage_count);
     } else
-        s = lineage_copy(ctx, f->lineage, f->lineage_count, (ud_column_id **)&out->lineage,
+        s = lineage_copy(ctx, f->lineage, f->lineage_count, (ud_id **)&out->lineage,
                          &out->lineage_count);
     if (s)
         return s;
@@ -226,7 +226,7 @@ static ud_status copy_field(ud_context *ctx, const ud_field *f, ud_column_id par
             if (s)
                 return s;
             for (uint32_t prior = 0; prior < j; prior++)
-                if (!ud_column_id_compare(children[j].identity, children[prior].identity) ||
+                if (!ud_id_compare(children[j].identity, children[prior].identity) ||
                     (children[j].name_length == children[prior].name_length &&
                      !memcmp(children[j].name, children[prior].name, children[j].name_length)))
                     return UD_SCHEMA;
@@ -234,7 +234,7 @@ static ud_status copy_field(ud_context *ctx, const ud_field *f, ud_column_id par
     }
     return UD_OK;
 }
-ud_status ud_field_copy(ud_context *ctx, const ud_field *f, ud_column_id parent, ud_field *out) {
+ud_status ud_field_copy(ud_context *ctx, const ud_field *f, ud_id parent, ud_field *out) {
     if (!ctx || !f || !out)
         return UD_INVALID;
     ud_status s = copy_field(ctx, f, parent, out, 0);
@@ -250,10 +250,10 @@ static ud_status derive_field(ud_context *ctx, const ud_field *source, ud_string
     ud_field spec = *source;
     spec.name = name.data;
     spec.name_length = name.length;
-    UD_TRY(ud_column_id_make(ctx, scope, name, &spec.identity));
-    UD_TRY(ud_field_copy(ctx, &spec, (ud_column_id){0}, out));
+    UD_TRY(ud_id_make(ctx, scope, name, &spec.identity));
+    UD_TRY(ud_field_copy(ctx, &spec, (ud_id){0}, out));
     char child_scope[33];
-    ud_column_id_format(out->identity, child_scope);
+    ud_id_format(out->identity, child_scope);
     for (uint32_t j = 0; j < source->child_count; j++) {
         ud_field replacement = {0};
         const ud_field *child = source->children + j;
@@ -287,14 +287,15 @@ int32_t ud_field_matches(const ud_field *a, const ud_field *b, int32_t mode) {
          (a->timezone_length && memcmp(a->timezone, b->timezone, a->timezone_length))))
         return 0;
     if (mode != UD_FIELD_VALUE_TYPE &&
-        (a->nullable != b->nullable || a->name_length != b->name_length ||
+        (a->key_order != b->key_order || a->nullable != b->nullable ||
+         a->name_length != b->name_length ||
          (a->name_length && memcmp(a->name, b->name, a->name_length))))
         return 0;
     if (mode == UD_FIELD_PORT) {
-        if (ud_column_id_compare(a->identity, b->identity) || a->lineage_count != b->lineage_count)
+        if (ud_id_compare(a->identity, b->identity) || a->lineage_count != b->lineage_count)
             return 0;
         for (uint32_t j = 0; j < a->lineage_count; j++)
-            if (ud_column_id_compare(a->lineage[j], b->lineage[j]))
+            if (ud_id_compare(a->lineage[j], b->lineage[j]))
                 return 0;
     }
     for (uint32_t j = 0; j < a->child_count; j++) {
@@ -316,13 +317,13 @@ static ud_status cast_metadata(ud_context *ctx, const ud_field *source, const ud
     spec.lineage_count = source->lineage_count;
     ud_status s = UD_OK;
     if (!id_empty(target->identity))
-        s = ud_field_copy(ctx, &spec, (ud_column_id){0}, out);
+        s = ud_field_copy(ctx, &spec, (ud_id){0}, out);
     else if (ud_field_matches(source, target, UD_FIELD_VALUE_TYPE)) {
         spec.identity = source->identity;
-        s = ud_field_copy(ctx, &spec, (ud_column_id){0}, out);
+        s = ud_field_copy(ctx, &spec, (ud_id){0}, out);
     } else {
         char id[33], scope[40];
-        ud_column_id_format(source->identity, id);
+        ud_id_format(source->identity, id);
         snprintf(scope, sizeof(scope), "cast.%s", id);
         s = ud_field_derive(ctx, &spec, (ud_string){scope, (uint32_t)strlen(scope)},
                             (ud_string){target->name, target->name_length}, out);
@@ -361,9 +362,9 @@ ud_status ud_schema_owner_create(ud_context *ctx, const ud_field *fields, uint32
         return UD_INVALID;
     if (!scope.length)
         scope = (ud_string){"UD.Schema." UD_PROTOCOL_VERSION_TEXT,
-                             sizeof("UD.Schema." UD_PROTOCOL_VERSION_TEXT) - 1};
-    ud_column_id parent;
-    UD_TRY(ud_column_id_make(ctx, scope, (ud_string){"root", 4}, &parent));
+                            sizeof("UD.Schema." UD_PROTOCOL_VERSION_TEXT) - 1};
+    ud_id parent;
+    UD_TRY(ud_id_make(ctx, scope, (ud_string){"root", 4}, &parent));
     ud_schema_owner *schema = ud_alloc(ctx, sizeof(*schema));
     if (!schema)
         return UD_RESOURCE;
@@ -376,7 +377,7 @@ ud_status ud_schema_owner_create(ud_context *ctx, const ud_field *fields, uint32
         s = ud_field_copy(ctx, fields + j, parent, schema->fields + j);
         for (uint32_t prior = 0; !s && prior < j; prior++) {
             ud_field *a = schema->fields + j, *b = schema->fields + prior;
-            if (!ud_column_id_compare(a->identity, b->identity) ||
+            if (!ud_id_compare(a->identity, b->identity) ||
                 (a->name_length == b->name_length && !memcmp(a->name, b->name, a->name_length)))
                 s = UD_SCHEMA;
         }

@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 1.2.0，唯一 ABI/协议 6。本轮范围：统一架构与原生核心。验收事实见 metadata/product.json；本轮 Linux 集中验收，Windows 豁免。
+SDK 1.5.0，唯一 ABI/协议 9。本轮范围：统一架构与原生核心。验收事实见 metadata/product.json；本轮 Linux 集中验收，Windows 豁免。
 
 | SSIS 职责 | 实际入口/ID | 实现与边界 |
 |---|---|---|
@@ -18,15 +18,15 @@ SDK 1.2.0，唯一 ABI/协议 6。本轮范围：统一架构与原生核心。�
 | Copy Column / Character Map | `copyColumn`、`characterMap` | 复制列保留 lineage；trim/upper_ascii/lower_ascii 保留非 ASCII UTF8 |
 | Conditional Split / Multicast / Union All | `split`、`multicast`、`unionAll`、`pass` | 多端口、有界队列、sealed 引用共享、schema 检查 |
 | Sort / Aggregate / Join | `sort`、`aggregate`、`join` | 共用 Compute operator 和 Buffer Manager；Sort 稳定外存归并，Aggregate 有界分组，Join 有界 block nested loops |
-| Lookup | `lookup` | 确定性首个匹配、inner lookup；无匹配不输出；独立 Cache Transform 尚未实现 |
+| Lookup | `cacheBuild`, `cacheLookup` | Execution 内只读缓存；复合 typed key，First/Error/All；默认 First + miss Ignore（inner）；显式 Redirect 走普通错误目标。旧 inline lookup 删除。 |
 | Window | `window` | Row Number/Running Sum，分区及排序；BI Dataset/Query planner/并行分区待实现 |
 | Row Count / Audit | `rowCount`、`audit` | Activation 变量及根有序事件；并发任务不得写共享祖先变量 |
-| Error Output / Data Quality | `quality` 普通端口 0、错误端口 1 | NotNull/Unique/PrimaryKey/Range/Regex/RowCount；错误行携带 rule、source row、code；目标负责持久化 |
+| Error Output / Data Quality | `quality` 普通端口 0、错误端口 1 | Foreign Key 双输入、完整规则版本/政策、多 Violation、正规错误端口；分类与实际提交/确认分开。 |
 | Connection Manager | file/process/http definitions；SQLite/PostgreSQL physical driver | file/process/http definitions；SQLite/PostgreSQL typed driver；SQLite 纳入 Windows 验收，PostgreSQL 数据库行为未验收 |
 | Expression Function | `abs`、`length`、`trim`、`upper_ascii`、`lower_ascii`、`concat`、`coalesce`、`substring` | 8 个 native pure descriptors；length/substring 按 UTF8 code point；coalesce 参数显式求值 |
 | Buffer Manager | `ud_buffer_manager` / `ud_operator` | 按真实 allocation capacity 去重计量；驻留只 retain；spill 使用唯一 wire；显式 View 和 working quota；失败文件由管理器持有并重试清理 |
 | Transaction / Checkpoint / Catalog | Journal 4、目标 receipt、immutable artifacts/history | 当前版本索引式分段 Journal、原子快照/manifest、目标 receipt、不可变 artifacts/history；不提供跨任意目标的分布式事务 |
 
-未完成扩展：Merge/Merge Join、Pivot/Unpivot、完整 Cache Transform、Pipeline ForeignKey reference input、SCD、Fuzzy、Term、CDC、并行分区、BI planner、ODBC/SQL Server、MySQL、HTTP Source/Destination、SFTP、Kafka、RabbitMQ、Cloud、Excel、Parquet。
+未完成扩展：Merge/Merge Join、Pivot/Unpivot、SCD、Fuzzy、Term、Full CDC、Adaptive Scheduling、BI planner、ODBC/SQL Server、MySQL、HTTP Source/Destination、SFTP、Kafka、RabbitMQ、Cloud、Excel、Parquet。
 
 Arrow C Data Interface 与原生内存数据模型不等同于 Parquet driver。Microsoft .dtsx/COM/SSISDB/MSDTC 专属兼容不承诺；没有占位注册或旧 generic operation 路径。

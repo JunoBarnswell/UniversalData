@@ -7,6 +7,9 @@ typedef struct {
     uint32_t column;
     int kind;
     char *name;
+    ud_expression *condition;
+    uint32_t maximum_distinct;
+    int distinct, rounding;
 } ud_aggregate_def;
 struct ud_plan {
     ud_context *ctx;

@@ -393,3 +393,19 @@ ud_status ud_json_serialize(const ud_json *v, char **out, uint32_t *length) {
     ud_bytes_clear(&b);
     return s;
 }
+ud_status ud_json_keys(const ud_json *v, const char *const *keys, uint32_t n) {
+    if (ud_json_kind(v) != UD_JSON_OBJECT)
+        return UD_SCHEMA;
+    for (uint32_t i = 0; i < ud_json_size(v); i++) {
+        const char *key;
+        uint32_t len;
+        UD_TRY(ud_json_key(v, i, &key, &len));
+        int found = 0;
+        for (uint32_t j = 0; j < n; j++)
+            if (len == strlen(keys[j]) && !memcmp(key, keys[j], len))
+                found = 1;
+        if (!found)
+            return UD_SCHEMA;
+    }
+    return UD_OK;
+}

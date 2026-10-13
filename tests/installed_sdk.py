@@ -114,14 +114,15 @@ print(f"ZIP integrity: {len(listed)} files; native version {version}; current AB
 # These real consumers use public installed headers and the dynamic Data target.
 c_source = work / "c-source"
 c_source.mkdir()
-for origin, filename in [("hosts/cli.c", "package.c"), ("tests/typed_data_runner.c", "data.c"),
+for origin, filename in [("hosts/cli.c", "package.c"), ("tests/typed_data_runner.c", "data.c"), ("tests/wire_decode.c", "wire_decode.c"),
                          ("tests/core_runtime.c", "resources.c"), ("tests/package_sql.c", "sql.c"),
+                         ("tests/next_phase_queries.c", "query.c"),
                          ("tests/check.h", "check.h")]:
     shutil.copyfile(ROOT / origin, c_source / filename)
 (c_source / "CMakeLists.txt").write_text(
     "cmake_minimum_required(VERSION 3.24)\nproject(InstalledSDK C)\n"
     "find_package(UniversalData " + version + " EXACT CONFIG REQUIRED COMPONENTS Data)\n"
-    "foreach(name package data resources sql)\n"
+    "foreach(name package data resources sql query wire_decode)\n"
     "  add_executable(consumer_\u0024{name} \u0024{name}.c)\n"
     "  target_link_libraries(consumer_\u0024{name} PRIVATE UniversalData::Data)\n"
     "  if(MSVC)\n    target_compile_options(consumer_\u0024{name} PRIVATE /utf-8 /experimental:c11atomics)\n"
@@ -136,7 +137,7 @@ native_environment = dict(environment)
 native_environment["PATH"] = str(native) + os.pathsep + environment["PATH"]
 native_environment["LD_LIBRARY_PATH"] = str(native)
 run("c-dynamic-resources", [sys.executable, ROOT / "tests/core_runtime.py", c_output / ("consumer_resources" + executable)], native_environment)
-run("installed-host-pipeline", [sys.executable, ROOT / "tests/core_pipeline.py", sdk / "bin" / ("ud_cli" + executable)], native_environment)
+run("installed-host-pipeline", [sys.executable, ROOT / "tests/core_pipeline.py", sdk / "bin" / ("ud_cli" + executable), c_output / ("consumer_wire_decode" + executable)], native_environment)
 if manifest["capabilities"]["sqlite"]:
     connector = sdk / "lib/UniversalData/plugins" / ("ud_connector_sqlite.dll" if os.name == "nt" else "ud_connector_sqlite.so")
     run("c-dynamic-sqlite", [sys.executable, ROOT / "tests/package_sql.py", c_output / ("consumer_sql" + executable), connector], native_environment)
@@ -162,6 +163,16 @@ for name, source, assembly in [("package", "examples/dotnet/Program.cs", "Consum
                               "--no-restore", "--nologo", "--verbosity:minimal"])
     output = client / "bin/Release/net8.0"
     assert digest(output / runtime_path) == digest(library), "Consumer did not receive the packaged native asset."
+    if os.name != 'nt':
+        # These are the already copied and verified NuGet assets, not SDK
+        # loader paths. Share their exact bytes with the private package cache
+        # to bound this verification workspace on constrained runners.
+        package_native = work / 'nuget-cache' / 'universaldata' / version / pathlib.Path(runtime_path).parent
+        for asset in (output / pathlib.Path(runtime_path).parent).iterdir():
+            original = package_native / asset.name
+            assert original.is_file() and digest(asset) == digest(original)
+            asset.unlink()
+            os.link(original, asset)
     dotnet_outputs.append(output / (assembly + ".dll"))
 
 java_repository = work / "maven-repository"
@@ -193,6 +204,18 @@ run("bundle-language-parity",
      c_output / ("consumer_package" + executable), c_output / ("consumer_data" + executable),
      arguments.dotnet, *dotnet_outputs, arguments.java, java_client / "target/classes", installed_jar, native,
      "--managed-native-local"])
+if manifest["capabilities"]["sqlite"]:
+    run("bundle-native-query-parity", [sys.executable, ROOT / "tests/next_phase_queries.py",
+        "--query", c_output / ("consumer_query" + executable),
+        "--data", c_output / ("consumer_data" + executable), "--dotnet", arguments.dotnet,
+        "--data-dll", dotnet_outputs[1], "--java", arguments.java,
+        "--classes", java_client / "target/classes", "--jar", installed_jar,
+        "--native", native, "--sqlite", connector])
+if manifest['capabilities']['sqlite']:
+    run('bundle-advanced-metadata-parity', [sys.executable, ROOT / 'tests/advanced_metadata.py',
+        '--query', c_output / ('consumer_query' + executable), '--sqlite', connector,
+        '--dotnet', arguments.dotnet, '--data-dll', dotnet_outputs[1], '--java', arguments.java,
+        '--classes', java_client / 'target/classes', '--jar', installed_jar, '--native', native])
 record = {"exitCode": 0, "sdkVersion": version, "abiVersion": manifest["abiVersion"], "configuration": "Release",
           "sourceFingerprint": fingerprint, "archive": str(bundle), "archiveSha256": digest(bundle),
           "verifiedFiles": len(listed), "unpackedDirectory": str(unpacked), "logs": str(work),
@@ -202,6 +225,7 @@ record = {"exitCode": 0, "sdkVersion": version, "abiVersion": manifest["abiVersi
           "c": {"cmakeTarget": "UniversalData::Data", "dynamicPackage": True, "dynamicResources": True,
                 "installedHostPipeline": True, "dynamicSQLite": manifest["capabilities"]["sqlite"]},
           "languageParity": "10003 rows / 20006 input and output / 8 tasks; Package/Project/child and scalar/nested/wire equality",
+          "nativeQueryParity": "C/.NET/Java SQLite discovery/refresh, three compatibility policies and row identity from identified Wire",
           "commands": commands}
 arguments.evidence.parent.mkdir(parents=True, exist_ok=True)
 arguments.evidence.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")

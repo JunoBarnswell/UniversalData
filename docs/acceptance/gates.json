@@ -1,8 +1,8 @@
 {
   "generatedFrom": "metadata/product.json",
-  "version": 6,
-  "sdkVersion": "1.2.0",
-  "abi": 6,
+  "version": 9,
+  "sdkVersion": "1.5.0",
+  "abi": 9,
   "sourceFingerprint": null,
   "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
   "windows": "Exempt — explicit current user instruction",
@@ -32,43 +32,43 @@
     {
       "id": "sqlite-transactions-recovery",
       "status": "Pending",
-      "command": "sqlite_receipts_upsert/package_sql_integration/package_durable_recovery/child_package_execution/project_environment_deployment",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "memory-quota-spill-concurrency",
       "status": "Pending",
-      "command": "shared_value_semantics/core_runtime_resources/core_pipeline_components/package_failure_boundaries/process_task_execution",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "language-parity",
       "status": "Pending",
-      "command": "tests/installed_sdk.py: actual ZIP, dynamic C Data target, native NuGet without SDK PATH, Maven/JNI from bundle",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "installed-c",
       "status": "Pending",
-      "command": "ZIP-extracted SDK -> external CMake UniversalData::Data -> Package/resource/SQLite/Pipeline and datatype/wire execution",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "installed-nuget",
       "status": "Pending",
-      "command": "ZIP-extracted native-containing nupkg -> fresh external cache/clients; Package and typed data without SDK loader PATH",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "installed-maven",
       "status": "Pending",
-      "command": "ZIP-extracted JAR/POM -> fresh external Maven repository/client -> JNI/native from same bundle",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "source-contracts",
       "status": "Pending",
-      "command": "python scripts/static_check.py; git diff --check; removed ABI/API reference audit",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
@@ -81,69 +81,76 @@
     {
       "id": "distributable-bundle",
       "status": "Pending",
-      "command": "python tests/installed_sdk.py --bundle artifacts/UniversalData-1.1.0-win-x64.zip --work external-fresh-directory --evidence bundle-consumers.json",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
       "evidence": []
     },
     {
       "id": "block-store-ownership",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "pipeline-tree-parallelism",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "journal-indexed-recovery",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "task-facts",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "single-product-model",
       "status": "Pending",
       "evidence": [],
-      "command": ""
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "linux-release",
       "name": "Linux Release native/JNI build",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "linux-native",
       "name": "Linux native end-to-end cases",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "linux-sanitizers",
       "name": "Linux ASan/UBSan",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "four-engines",
       "name": "Four-engine completion scheduling, partition semantics and transactions",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "million-row-benchmark",
       "name": "1/2/4/8/16 workers, million rows and spill",
       "status": "Pending",
-      "evidence": []
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     }
   ],
-  "delivery": null
+  "delivery": {
+    "status": "Pending ABI 8 Linux build and installed consumers"
+  }
 }

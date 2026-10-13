@@ -17,6 +17,8 @@ typedef struct ud_buffer_options {
 typedef struct ud_buffer_metrics {
     uint64_t resident_bytes, working_bytes, spill_bytes, total_spill_bytes;
     uint64_t resident_high_water, working_high_water, wire_encodes;
+    uint64_t wire_decodes, encoded_bytes, read_bytes, write_bytes, spill_high_water;
+    uint64_t encode_cpu_ns, decode_cpu_ns, read_ms, write_ms;
     uint32_t blocks, views, cleanup_blocks;
 } ud_buffer_metrics;
 UD_API ud_status ud_buffer_manager_create(ud_context *, const ud_buffer_options *,
@@ -33,7 +35,15 @@ UD_API void ud_buffer_view_release(ud_buffer_view *);
 /* BUSY preserves the handle when views are alive. Other results consume it;
  * a failed spill deletion remains owned by the manager for destroy retry. */
 UD_API ud_status ud_buffer_release(ud_buffer_block *);
+UD_API uint32_t ud_buffer_block_views(const ud_buffer_block *);
 UD_API ud_status ud_buffer_manager_metrics(const ud_buffer_manager *, ud_buffer_metrics *);
+/* State indexes share the same bounded working domain as Wire/rehydration. */
+UD_API ud_status ud_buffer_working_allocate(ud_buffer_manager *, size_t, void **);
+UD_API ud_status ud_buffer_working_copy_value(ud_buffer_manager *, const ud_value *, ud_value *);
+UD_API ud_status ud_buffer_manager_limits(const ud_buffer_manager *, ud_buffer_options *);
+/* Native format staging shares the manager's disk budget and cleanup lifetime. */
+UD_API ud_status ud_buffer_reserve_external(ud_buffer_manager *, uint64_t);
+UD_API void ud_buffer_release_external(ud_buffer_manager *, uint64_t);
 UD_API ud_status ud_buffer_manager_destroy(ud_buffer_manager *); /* BUSY with live blocks. */
 #ifdef __cplusplus
 }

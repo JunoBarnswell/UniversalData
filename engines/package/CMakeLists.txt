@@ -1,11 +1,18 @@
 find_package(Threads REQUIRED)
-set(src ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/enumerator.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/transforms.c ${CMAKE_CURRENT_SOURCE_DIR}/resources.c ${CMAKE_CURRENT_SOURCE_DIR}/child.c ${CMAKE_CURRENT_SOURCE_DIR}/project.c ${CMAKE_CURRENT_SOURCE_DIR}/model.c ${CMAKE_CURRENT_SOURCE_DIR}/runtime.c ${CMAKE_CURRENT_SOURCE_DIR}/checkpoint.c
+set(src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/cdc.c ${PROJECT_SOURCE_DIR}/connectors/rest.c ${PROJECT_SOURCE_DIR}/connectors/http.c ${CMAKE_CURRENT_SOURCE_DIR}/templates.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/advanced.c ${PROJECT_SOURCE_DIR}/connectors/xlsx.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/relational.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/delivery.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/error.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/quality.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/cache.c ${CMAKE_CURRENT_SOURCE_DIR}/assets.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/enumerator.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/transforms.c ${CMAKE_CURRENT_SOURCE_DIR}/resources.c ${CMAKE_CURRENT_SOURCE_DIR}/child.c ${CMAKE_CURRENT_SOURCE_DIR}/project.c ${CMAKE_CURRENT_SOURCE_DIR}/model.c ${CMAKE_CURRENT_SOURCE_DIR}/runtime.c ${CMAKE_CURRENT_SOURCE_DIR}/checkpoint.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/profile.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/http.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/process.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/filesystem.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/control.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/builtins.c ${PROJECT_SOURCE_DIR}/connectors/manager.c ${PROJECT_SOURCE_DIR}/catalog/catalog.c ${PROJECT_SOURCE_DIR}/catalog/deployment.c ${PROJECT_SOURCE_DIR}/catalog/history.c)
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/builtins.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/binding.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/source.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/destination.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/row_transform.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/sql_task.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/lifecycle.c ${PROJECT_SOURCE_DIR}/connectors/manager.c ${PROJECT_SOURCE_DIR}/catalog/catalog.c ${PROJECT_SOURCE_DIR}/catalog/deployment.c ${PROJECT_SOURCE_DIR}/catalog/history.c)
+if(UD_WITH_ARROW_FILES)
+  list(APPEND src ${PROJECT_SOURCE_DIR}/connectors/columnar_file.cpp)
+endif()
 ud_component(ud_package Package ${src})
-target_link_libraries(ud_package PUBLIC ud_expression ud_compute ud_runtime ud_plugins Threads::Threads)
+target_link_libraries(ud_package PUBLIC ud_expression ud_compute ud_runtime ud_plugins Threads::Threads ZLIB::ZLIB EXPAT::EXPAT)
 if(UD_WITH_HTTP)
   target_compile_definitions(ud_package PRIVATE UD_WITH_HTTP)
   target_link_libraries(ud_package PUBLIC CURL::libcurl)
+endif()
+if(UD_WITH_ARROW_FILES)
+  target_compile_definitions(ud_package PRIVATE UD_WITH_ARROW_FILES)
+  target_link_libraries(ud_package PUBLIC UDArrow::Arrow UDArrow::Parquet)
 endif()
 set(UD_ALL_SOURCES ${UD_ALL_SOURCES} ${src} PARENT_SCOPE)

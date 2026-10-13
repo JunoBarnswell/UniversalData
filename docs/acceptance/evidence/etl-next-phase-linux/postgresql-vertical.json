@@ -1,0 +1,496 @@
+{
+  "exitCode": 0,
+  "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+  "rows": 1003,
+  "confirmedAtCrash": 254,
+  "types": [
+    "Timestamp UTC",
+    "Composite Int64 PK",
+    "Decimal128(38,2)",
+    "Bool",
+    "Binary",
+    "UTF8"
+  ],
+  "singlePhysicalSession": true,
+  "exactTargetEquality": true,
+  "interruption": {
+    "committed": 254,
+    "memoryUsed": 244976,
+    "spillBytes": 0,
+    "workerHighWater": 1,
+    "maxRssKiB": 10240,
+    "cpuSeconds": 0.020208
+  },
+  "package": {
+    "version": 7,
+    "id": "postgresql-next-phase",
+    "connections": [
+      {
+        "id": "db",
+        "driver": "/workspace/UniversalData/build/next-phase-linux/plugins/ud_connector_postgresql.so",
+        "resource": "host=/tmp/ud-pg-next-41ixcja0/socket user=fixture dbname=postgres",
+        "credentialReference": "fixture",
+        "maxLeases": 1
+      },
+      {
+        "id": "spill",
+        "driver": "file",
+        "resource": "/tmp/ud-pg-next-41ixcja0/spill"
+      }
+    ],
+    "policy": {
+      "buffers": {
+        "connection": "spill",
+        "residentBytes": 8192,
+        "workingBytes": 4194304,
+        "spillBytes": 200000000,
+        "maxBlocks": 10000
+      }
+    },
+    "controlFlow": {
+      "tasks": [
+        {
+          "id": "flow",
+          "kind": "dataFlow",
+          "config": {
+            "pipeline": "flow"
+          }
+        }
+      ],
+      "constraints": []
+    },
+    "dataFlows": [
+      {
+        "id": "flow",
+        "components": [
+          {
+            "id": "source",
+            "component": "sql.source",
+            "config": {
+              "connection": "db",
+              "table": "src",
+              "sql": "SELECT * FROM src ORDER BY id DESC",
+              "schema": {
+                "version": 7,
+                "fields": [
+                  {
+                    "name": "water",
+                    "type": "timestamp",
+                    "timezone": "UTC",
+                    "nullable": false,
+                    "keyOrder": 1
+                  },
+                  {
+                    "name": "id",
+                    "type": "int64",
+                    "nullable": false,
+                    "keyOrder": 2
+                  },
+                  {
+                    "name": "amount",
+                    "type": "decimal128",
+                    "precision": 38,
+                    "scale": 2,
+                    "nullable": false
+                  },
+                  {
+                    "name": "flag",
+                    "type": "bool",
+                    "nullable": false
+                  },
+                  {
+                    "name": "raw",
+                    "type": "binary",
+                    "nullable": false
+                  },
+                  {
+                    "name": "name",
+                    "type": "utf8",
+                    "nullable": false
+                  }
+                ]
+              },
+              "batchSize": 127,
+              "incremental": {
+                "mode": "composite",
+                "keys": [
+                  "water",
+                  "id"
+                ],
+                "after": [
+                  "2024-01-01T00:00:00Z",
+                  0
+                ],
+                "unique": true,
+                "monotonic": true
+              },
+              "schemaPolicy": {
+                "policy": "strict"
+              }
+            }
+          },
+          {
+            "id": "target",
+            "component": "sql.destination",
+            "config": {
+              "connection": "db",
+              "table": "dst",
+              "mode": "upsert",
+              "keys": [
+                0,
+                1
+              ]
+            }
+          }
+        ],
+        "paths": [
+          {
+            "from": "source",
+            "to": "target",
+            "output": 0,
+            "input": 0
+          }
+        ]
+      }
+    ]
+  },
+  "diagnostics": {
+    "result": 0,
+    "state": 5,
+    "input": 1003,
+    "rejected": 0,
+    "committed": 1003,
+    "acknowledged": 1003,
+    "errorRows": 0,
+    "committedErrors": 0,
+    "acknowledgedErrors": 0,
+    "diagnostics": {
+      "connections": {
+        "sessions": 1,
+        "activeLeases": 0,
+        "capacity": 64,
+        "acquisitions": 4,
+        "poolHits": 1,
+        "failures": 0,
+        "waitMs": 0,
+        "commits": 0,
+        "rollbacks": 0,
+        "commitUnknown": 0
+      },
+      "ruleDeliveries": [],
+      "schemas": [
+        {
+          "task": "/4:flow;",
+          "component": "source",
+          "result": 0,
+          "diff": {
+            "version": 7,
+            "result": "Compatible",
+            "compatible": true,
+            "changes": [],
+            "mapping": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          }
+        },
+        {
+          "task": "/4:flow;",
+          "component": "target",
+          "result": 0,
+          "diff": {
+            "version": 7,
+            "result": "Compatible",
+            "compatible": true,
+            "changes": [],
+            "mapping": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          }
+        }
+      ],
+      "caches": [],
+      "buffers": {
+        "residentPeak": 0,
+        "workingPeak": 49272,
+        "spillPeak": 19987,
+        "totalSpill": 157920,
+        "encodes": 8,
+        "decodes": 8,
+        "encodedBytes": 157920,
+        "readBytes": 157920,
+        "writeBytes": 157920,
+        "encodeCpuNs": 192307,
+        "decodeCpuNs": 1054659,
+        "readMs": 0,
+        "writeMs": 0
+      },
+      "scheduler": {
+        "workerLimit": 4,
+        "helperWorkers": 0,
+        "activeWorkers": 0,
+        "workerHighWater": 1,
+        "groups": 0,
+        "quanta": 20,
+        "yields": 17,
+        "blockedQuanta": 0,
+        "readySignals": 20
+      },
+      "tasks": [
+        {
+          "activation": "/4:flow;",
+          "state": 5,
+          "outcome": 0,
+          "precedencePassed": true,
+          "readyWaitMs": 0,
+          "elapsedMs": 71,
+          "cpuNs": 20221129
+        }
+      ],
+      "taskRecords": 1,
+      "taskRecordsDropped": 0,
+      "pipelines": [
+        {
+          "id": "flow",
+          "task": "/4:flow;",
+          "treeConcurrency": 1,
+          "recoveryOrdering": "serialized-tree-schedule",
+          "trees": [
+            {
+              "id": 0,
+              "nodes": [
+                {
+                  "id": "source",
+                  "component": "sql.source",
+                  "capabilities": 14699749183737298944,
+                  "stateMode": "blocking",
+                  "inputCount": 0,
+                  "outputCount": 1,
+                  "optionalOutputs": 0,
+                  "partitions": 1,
+                  "ordering": 1,
+                  "outputs": [
+                    {
+                      "version": 7,
+                      "fields": [
+                        {
+                          "name": "water",
+                          "type": "timestamp",
+                          "keyOrder": 1,
+                          "nullable": false,
+                          "identity": "1751cde36194354a9500ea8cf59a4a21",
+                          "lineage": [
+                            "1751cde36194354a9500ea8cf59a4a21"
+                          ],
+                          "timezone": "UTC"
+                        },
+                        {
+                          "name": "id",
+                          "type": "int64",
+                          "keyOrder": 2,
+                          "nullable": false,
+                          "identity": "345c3f62a122acf4e5f8d0b8d83515de",
+                          "lineage": [
+                            "345c3f62a122acf4e5f8d0b8d83515de"
+                          ]
+                        },
+                        {
+                          "name": "amount",
+                          "type": "decimal128",
+                          "nullable": false,
+                          "identity": "5209df708c69fd6dc14fcb804e42bedb",
+                          "lineage": [
+                            "5209df708c69fd6dc14fcb804e42bedb"
+                          ],
+                          "precision": 38,
+                          "scale": 2
+                        },
+                        {
+                          "name": "flag",
+                          "type": "bool",
+                          "nullable": false,
+                          "identity": "290c966d3e9c5c3fb8e2c24eb72a219b",
+                          "lineage": [
+                            "290c966d3e9c5c3fb8e2c24eb72a219b"
+                          ]
+                        },
+                        {
+                          "name": "raw",
+                          "type": "binary",
+                          "nullable": false,
+                          "identity": "1265e4852837ab9806c5b7c21b287ca3",
+                          "lineage": [
+                            "1265e4852837ab9806c5b7c21b287ca3"
+                          ]
+                        },
+                        {
+                          "name": "name",
+                          "type": "utf8",
+                          "nullable": false,
+                          "identity": "72b9068683a3ed9c1eabbfe1c150dcc2",
+                          "lineage": [
+                            "72b9068683a3ed9c1eabbfe1c150dcc2"
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "state": 5,
+                  "steps": 9,
+                  "processedRows": 0,
+                  "producedRows": 1003,
+                  "rejectedRows": 0,
+                  "inputWaits": 0,
+                  "capacityWaits": 0,
+                  "callbackMs": 3,
+                  "cpuNs": 4334220,
+                  "firstMs": 21656944,
+                  "endMs": 21657010,
+                  "readyMs": 21656944,
+                  "prepareMs": 4,
+                  "prepareCpuNs": 650217,
+                  "inputWaitMs": 0,
+                  "capacityWaitMs": 0,
+                  "finishMs": 0,
+                  "finishCpuNs": 291,
+                  "facts": {
+                    "snapshotRows": 1003,
+                    "snapshotBatches": 8,
+                    "snapshotReadMs": 2,
+                    "sourceHashMs": 0,
+                    "materialized": true,
+                    "cursor": {
+                      "version": 7,
+                      "policyFingerprint": "8c79001ae6e75b0d5b09ff5ba463dbe2ec6e27cf79149b909b015559e72ebae1",
+                      "lastRead": 1003,
+                      "lastConfirmed": 1003,
+                      "uncommitted": 0,
+                      "commitUnknown": false
+                    },
+                    "schema": {
+                      "version": 7,
+                      "result": "Compatible",
+                      "compatible": true,
+                      "changes": [],
+                      "mapping": [
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5
+                      ]
+                    }
+                  }
+                }
+              ],
+              "readyMs": 21656944,
+              "firstMs": 21656944,
+              "endMs": 21657010,
+              "quanta": 9,
+              "busyQuanta": 0,
+              "callbackMs": 3,
+              "cpuNs": 4344056
+            },
+            {
+              "id": 1,
+              "nodes": [
+                {
+                  "id": "target",
+                  "component": "sql.destination",
+                  "capabilities": 13835058055282163712,
+                  "stateMode": "streaming",
+                  "inputCount": 1,
+                  "outputCount": 0,
+                  "optionalOutputs": 0,
+                  "partitions": 1,
+                  "ordering": 1,
+                  "outputs": [],
+                  "state": 5,
+                  "steps": 10,
+                  "processedRows": 1003,
+                  "producedRows": 0,
+                  "rejectedRows": 0,
+                  "inputWaits": 0,
+                  "capacityWaits": 0,
+                  "callbackMs": 63,
+                  "cpuNs": 12919989,
+                  "firstMs": 21656944,
+                  "endMs": 21657010,
+                  "readyMs": 21656944,
+                  "prepareMs": 1,
+                  "prepareCpuNs": 115011,
+                  "inputWaitMs": 0,
+                  "capacityWaitMs": 0,
+                  "finishMs": 0,
+                  "finishCpuNs": 140,
+                  "facts": {
+                    "snapshotRows": 0,
+                    "snapshotBatches": 0,
+                    "snapshotReadMs": 0,
+                    "sourceHashMs": 0,
+                    "materialized": false,
+                    "schema": {
+                      "version": 7,
+                      "result": "Compatible",
+                      "compatible": true,
+                      "changes": [],
+                      "mapping": [
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5
+                      ]
+                    }
+                  }
+                }
+              ],
+              "readyMs": 21656944,
+              "firstMs": 21656944,
+              "endMs": 21657010,
+              "quanta": 10,
+              "busyQuanta": 0,
+              "callbackMs": 63,
+              "cpuNs": 14781473
+            }
+          ],
+          "paths": [
+            {
+              "from": "source",
+              "to": "target",
+              "fromTree": 0,
+              "toTree": 1,
+              "output": 0,
+              "input": 0,
+              "capacity": 1,
+              "producedRows": 1003,
+              "consumedRows": 1003,
+              "queueHighWater": 1
+            }
+          ],
+          "outcome": 0
+        }
+      ],
+      "pipelineRecords": 1,
+      "pipelineRecordsDropped": 0,
+      "errorCount": 0,
+      "workerHighWater": 1,
+      "spillBytes": 157920,
+      "state": 5,
+      "outcome": 0
+    },
+    "maxRssKiB": 10240,
+    "cpuSeconds": 0.026456
+  }
+}

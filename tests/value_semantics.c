@@ -1,4 +1,5 @@
 #include "ud/compute.h"
+#include "ud/operator.h"
 #include "ud/format.h"
 #include "ud/expression.h"
 #include "ud/quality.h"
@@ -137,6 +138,19 @@ static int roundtrips(ud_context *ctx) {
     return 0;
 }
 static int float_operators(ud_context *ctx) {
+    ud_buffer_manager *buffers = NULL;
+    ud_buffer_options bo = {.struct_size = sizeof(bo),
+                            .abi_version = UD_ABI_VERSION,
+                            .max_blocks = 100,
+                            .resident_limit = 1000000,
+                            .working_limit = 1000000};
+    OK(ud_buffer_manager_create(ctx, &bo, &buffers));
+    ud_quality_options qo = {.struct_size = sizeof(qo),
+                             .abi_version = UD_ABI_VERSION,
+                             .max_batch_rows = 4096,
+                             .max_violations = 4096,
+                             .policy = UD_ERROR_REDIRECT,
+                             .buffers = buffers};
     ud_field fields[] = {{.name = "key", .name_length = 3, .type = UD_FLOAT64, .nullable = 1},
                          {.name = "id", .name_length = 2, .type = UD_INT64}};
     double keys[] = {-0.0,
@@ -173,23 +187,63 @@ static int float_operators(ud_context *ctx) {
                         {.type = UD_INT64, .integer = j}};
         OK(ud_batch_append(right, v, 2));
     }
-    OK(ud_compute_inner_join(ctx, input, 0, right, 0, &joined));
+    ud_buffer_manager *join_buffers = NULL;
+    OK(ud_buffer_manager_create(ctx,
+                                &(ud_buffer_options){.struct_size = sizeof(ud_buffer_options),
+                                                     .abi_version = UD_ABI_VERSION,
+                                                     .max_blocks = 100,
+                                                     .resident_limit = 1048576,
+                                                     .working_limit = 1048576},
+                                &join_buffers));
+    uint32_t join_key = 0;
+    const ud_batch *join_inputs[] = {input, right};
+    ud_operator *join_op = NULL;
+    OK(ud_operator_create(ctx,
+                          &(ud_operator_options){.struct_size = sizeof(ud_operator_options),
+                                                 .abi_version = UD_ABI_VERSION,
+                                                 .kind = UD_OPERATOR_JOIN,
+                                                 .max_batch_rows = 8,
+                                                 .keys = &join_key,
+                                                 .right_keys = &join_key,
+                                                 .key_count = 1,
+                                                 .buffers = join_buffers},
+                          join_inputs, &join_op));
+    OK(ud_batch_seal(input));
+    OK(ud_batch_seal(right));
+    OK(ud_operator_push(join_op, 1, right));
+    OK(ud_operator_finish_input(join_op, 1));
+    OK(ud_operator_push(join_op, 0, input));
+    OK(ud_operator_finish_input(join_op, 0));
+    OK(ud_operator_pull(join_op, &joined, NULL));
     CHECK(ud_batch_rows(joined) == 7);
     int64_t pairs[][2] = {{0, 0}, {1, 0}, {2, 1}, {2, 2}, {3, 1}, {3, 2}, {6, 4}};
+    uint32_t pair_seen = 0;
     for (uint32_t j = 0; j < 7; j++) {
-        ud_value v;
-        OK(ud_batch_get(joined, j, 1, &v));
-        CHECK(v.integer == pairs[j][0]);
-        OK(ud_batch_get(joined, j, 3, &v));
-        CHECK(v.integer == pairs[j][1]);
+        ud_value a, b;
+        OK(ud_batch_get(joined, j, 1, &a));
+        OK(ud_batch_get(joined, j, 3, &b));
+        uint32_t at = 0;
+        for (; at < 7; at++)
+            if (a.integer == pairs[at][0] && b.integer == pairs[at][1])
+                break;
+        CHECK(at < 7 && !(pair_seen & (1u << at)));
+        pair_seen |= 1u << at;
     }
+    CHECK(pair_seen == 127);
     ud_batch_destroy(joined);
-    const char *commands = "{\"version\":6,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"cnt\"},{\"function\":\"min\",\"column\":\"key\",\"name\":\"lo\"},{\"function\":\"max\",\"column\":\"key\",\"name\":\"hi\"}]}";
+    CHECK(ud_operator_pull(join_op, &joined, NULL) == UD_END);
+    OK(ud_operator_destroy(join_op));
+    qo.buffers = join_buffers;
+    const char *commands =
+        "{\"version\":9,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*"
+        "\",\"name\":\"cnt\"},{\"function\":\"min\",\"column\":\"key\",\"name\":\"lo\"},{"
+        "\"function\":\"max\",\"column\":\"key\",\"name\":\"hi\"}]}";
     ud_field left_fields[2];
     OK(ud_batch_field(input, 0, left_fields));
     OK(ud_batch_field(input, 1, left_fields + 1));
     ud_plan *plan = NULL;
-    OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, left_fields, 2, (ud_string){commands,(uint32_t)strlen(commands)},NULL, &plan));
+    OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, left_fields, 2,
+                             (ud_string){commands, (uint32_t)strlen(commands)}, NULL, &plan));
     ud_batch *groups = NULL, *twice = NULL;
     OK(ud_compute_apply(plan, input, &groups));
     CHECK(ud_batch_rows(groups) == 6);
@@ -220,7 +274,8 @@ static int float_operators(ud_context *ctx) {
         OK(ud_batch_get(groups, 1, j, duplicate + j));
     OK(ud_batch_append(corrupt, duplicate, 4));
     OK(ud_batch_append(corrupt, duplicate, 4));
-    OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, left_fields, 2, (ud_string){commands,(uint32_t)strlen(commands)},NULL, &plan));
+    OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, left_fields, 2,
+                             (ud_string){commands, (uint32_t)strlen(commands)}, NULL, &plan));
     OK(ud_accumulator_create(plan, &acc));
     CHECK(ud_accumulator_restore(acc, corrupt) == UD_CORRUPT);
     CHECK(ud_accumulator_add(acc, input) == UD_INVALID);
@@ -230,7 +285,9 @@ static int float_operators(ud_context *ctx) {
     ud_batch_destroy(groups);
     uint32_t key = 0;
     ud_quality_rule rule = {.struct_size = sizeof(rule),
-                            .version = UD_CONFIG_VERSION,
+                            .abi_version = UD_ABI_VERSION,
+                            .rule_version = 1,
+                            .policy = UD_ERROR_INHERIT,
                             .id = "unique",
                             .id_length = 6,
                             .kind = UD_RULE_UNIQUE,
@@ -238,7 +295,7 @@ static int float_operators(ud_context *ctx) {
                             .column_count = 1};
     ud_quality *q = NULL;
     ud_batch *part = NULL, *accepted = NULL;
-    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, UD_QUALITY_REJECT, &q));
+    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, &qo, &q));
     OK(ud_compute_slice(ctx, input, 0, 4, &part));
     OK(ud_quality_apply(q, part, &accepted, NULL, NULL, NULL));
     CHECK(ud_batch_rows(accepted) == 2);
@@ -255,7 +312,8 @@ static int float_operators(ud_context *ctx) {
     rule.kind = UD_RULE_FOREIGN_KEY;
     rule.reference = right;
     rule.reference_columns = &key;
-    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, UD_QUALITY_REJECT, &q));
+    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, &qo, &q));
+    OK(ud_quality_reference_end(q));
     ud_batch_destroy(right);
     OK(ud_quality_apply(q, input, &accepted, NULL, NULL, NULL));
     CHECK(ud_batch_rows(accepted) == 6);
@@ -264,12 +322,14 @@ static int float_operators(ud_context *ctx) {
     rule.kind = UD_RULE_RANGE;
     rule.minimum = (ud_value){.type = UD_FLOAT64, .real = -INFINITY};
     rule.maximum = (ud_value){.type = UD_FLOAT64, .real = INFINITY};
-    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, UD_QUALITY_REJECT, &q));
+    OK(ud_quality_create(ctx, left_fields, 2, &rule, 1, &qo, &q));
     OK(ud_quality_apply(q, input, &accepted, NULL, NULL, NULL));
     CHECK(ud_batch_rows(accepted) == 6);
     ud_batch_destroy(accepted);
     ud_quality_destroy(q);
     ud_batch_destroy(input);
+    OK(ud_buffer_manager_destroy(buffers));
+    OK(ud_buffer_manager_destroy(join_buffers));
     return 0;
 }
 static int expressions(ud_context *ctx) {
@@ -301,6 +361,7 @@ static int expressions(ud_context *ctx) {
     OK(ud_batch_append(batch, v, 4));
     v[0].is_null = 1;
     OK(ud_batch_append(batch, v, 4));
+    OK(ud_batch_seal(batch));
     ud_expression_options o = {sizeof(o), UD_ABI_VERSION, batch, NULL, NULL};
     ud_expression *e = NULL;
     OK(ud_expression_create(
@@ -367,7 +428,41 @@ static void fault_free(void *user, void *pointer) {
     (void)user;
     free(pointer);
 }
+static ud_status fixture_join(ud_context *ctx, ud_buffer_manager *buffers, const ud_batch *left,
+                              const ud_batch *right, ud_batch **out) {
+    uint32_t key = 0;
+    const ud_batch *inputs[] = {left, right};
+    ud_operator *j = NULL;
+    ud_status status =
+        ud_operator_create(ctx,
+                           &(ud_operator_options){.struct_size = sizeof(ud_operator_options),
+                                                  .abi_version = UD_ABI_VERSION,
+                                                  .kind = UD_OPERATOR_JOIN,
+                                                  .max_batch_rows = 8,
+                                                  .buffers = buffers,
+                                                  .keys = &key,
+                                                  .right_keys = &key,
+                                                  .key_count = 1},
+                           inputs, &j);
+    if (!status)
+        status = ud_operator_push(j, 1, right);
+    if (!status)
+        status = ud_operator_finish_input(j, 1);
+    if (!status)
+        status = ud_operator_push(j, 0, left);
+    if (!status)
+        status = ud_operator_finish_input(j, 0);
+    if (!status)
+        status = ud_operator_pull(j, out, NULL);
+    ud_status closed = ud_operator_destroy(j);
+    return status ? status : closed;
+}
 static int allocation_failures(void) {
+    ud_quality_options qo = {.struct_size = sizeof(qo),
+                             .abi_version = UD_ABI_VERSION,
+                             .max_batch_rows = 4096,
+                             .max_violations = 4096,
+                             .policy = UD_ERROR_REDIRECT};
     uint32_t failures[3] = {0}, successes[3] = {0};
     for (uint32_t operation = 0; operation < 3; operation++) {
         for (uint64_t offset = 1; offset <= 512; offset++) {
@@ -397,19 +492,36 @@ static int allocation_failures(void) {
             field.name_length = 3;
             ud_plan *plan = NULL;
             ud_quality *q = NULL;
-            const char *commands = "{\"version\":6,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"cnt\"}]}";
-            OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1, (ud_string){commands,(uint32_t)strlen(commands)},NULL, &plan));
+            ud_buffer_manager *buffers = NULL;
+            OK(ud_buffer_manager_create(
+                ctx,
+                &(ud_buffer_options){.struct_size = sizeof(ud_buffer_options),
+                                     .abi_version = UD_ABI_VERSION,
+                                     .max_blocks = 100,
+                                     .resident_limit = 1048576,
+                                     .working_limit = 1048576},
+                &buffers));
+            qo.buffers = buffers;
+            OK(ud_batch_seal(left));
+            OK(ud_batch_seal(right));
+            const char *commands = "{\"version\":9,\"group\":[\"key\"],\"aggregates\":[{"
+                                   "\"function\":\"count\",\"column\":\"*\",\"name\":\"cnt\"}]}";
+            OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1,
+                                     (ud_string){commands, (uint32_t)strlen(commands)}, NULL,
+                                     &plan));
             uint32_t column = 0;
             ud_quality_rule rule = {.struct_size = sizeof(rule),
-                                    .version = UD_CONFIG_VERSION,
+                                    .abi_version = UD_ABI_VERSION,
+                                    .rule_version = 1,
+                                    .policy = UD_ERROR_INHERIT,
                                     .id = "unique",
                                     .id_length = 6,
                                     .kind = UD_RULE_UNIQUE,
                                     .columns = &column,
                                     .column_count = 1};
-            OK(ud_quality_create(ctx, &field, 1, &rule, 1, UD_QUALITY_REJECT, &q));
+            OK(ud_quality_create(ctx, &field, 1, &rule, 1, &qo, &q));
             fault.fail = fault.calls + offset;
-            ud_status status = operation == 0 ? ud_compute_inner_join(ctx, left, 0, right, 0, &out)
+            ud_status status = operation == 0   ? fixture_join(ctx, buffers, left, right, &out)
                                : operation == 1 ? ud_compute_apply(plan, left, &out)
                                                 : ud_quality_apply(q, left, &out, NULL, NULL, NULL);
             CHECK(status == UD_OK || status == UD_RESOURCE);
@@ -431,6 +543,7 @@ static int allocation_failures(void) {
             ud_batch_destroy(left);
             ud_batch_destroy(right);
             ud_quality_destroy(q);
+            OK(ud_buffer_manager_destroy(buffers));
             ud_plan_destroy(plan);
             CHECK(ud_memory_used(ctx) == 0);
             OK(ud_context_destroy(ctx));
