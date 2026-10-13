@@ -6,7 +6,7 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <math.h>
-#include <pthread.h>
+#include "../components/foundation/thread.h"
 #if defined(UD_MYSQL_CLIENT)
 typedef bool ud_mysql_bool;
 #else
@@ -52,7 +52,7 @@ typedef struct mysql_state {
     ud_status bulk_status;
     int bulk_requested;
     atomic_int cancelled;
-    pthread_mutex_t cancellation;
+    ud_mutex cancellation;
     void *check_user;
     ud_status (*check)(void *);
 } mysql_state;
@@ -1667,14 +1667,14 @@ static void cancel(void *state) {
     mysql_state *p = state;
     atomic_store(&p->cancelled, 1);
     p->broken = 1;
-    pthread_mutex_lock(&p->cancellation);
+    ud_mutex_lock(&p->cancellation);
     if (!p->cancel_db)
         p->cancel_db = connect_session(p);
     if (p->cancel_db && p->db)
         mysql_kill(p->cancel_db, mysql_thread_id(p->db));
     if (p->cancel_db && p->cdc && p->cdc->stream)
         mysql_kill(p->cancel_db, mysql_thread_id(p->cdc->stream));
-    pthread_mutex_unlock(&p->cancellation);
+    ud_mutex_unlock(&p->cancellation);
 }
 static ud_status reset(void *state) {
     mysql_state *p = state;
@@ -1697,7 +1697,7 @@ void ud_mysql_destroy(void *state) {
         mysql_close(p->db);
     if (p->cancel_db)
         mysql_close(p->cancel_db);
-    pthread_mutex_destroy(&p->cancellation);
+    ud_mutex_destroy(&p->cancellation);
     char *strings[] = {p->host_name, p->user, p->password, p->database, p->ca, p->cert, p->key};
     for (uint32_t i = 0; i < 7; i++)
         p->host.deallocate(strings[i]);
@@ -1734,7 +1734,7 @@ ud_status ud_mysql_initialize(const ud_host_api *h, const char *configuration, u
     p->check = h->check_io;
     p->check_user = h->control_user;
     atomic_init(&p->cancelled, 0);
-    pthread_mutex_init(&p->cancellation, NULL);
+    ud_mutex_init(&p->cancellation);
     ud_json *j = NULL;
     ud_status s = h->json_parse(h->context, configuration, length, &j, NULL);
     static const char *keys[] = {"host", "port", "user", "password",          "database",

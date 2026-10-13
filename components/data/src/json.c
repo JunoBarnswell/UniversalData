@@ -449,6 +449,90 @@ static ud_status read_record(ud_json_reader *reader, ud_bytes *line) {
     }
     return s;
 }
+ud_status ud_json_discover(ud_context *ctx, const char *path, ud_string scope,
+                           const ud_json_options *options, uint32_t sample_rows, ud_batch **out) {
+    if (!ctx || !path || !out || !options || !sample_rows || sample_rows > 100000 ||
+        options->struct_size != sizeof(*options) || options->version != UD_CONFIG_VERSION ||
+        !options->max_record_bytes || options->framing < UD_JSON_FRAMING_LINES ||
+        options->framing > UD_JSON_FRAMING_ARRAY)
+        return UD_INVALID;
+    *out = NULL;
+    ud_json_reader reader = {.ctx = ctx, .options = *options};
+    reader.file = ud_fopen(path, "rb");
+    if (!reader.file)
+        return UD_IO;
+    ud_field *fields = NULL;
+    uint32_t count = 0, capacity = 0;
+    ud_status status = UD_OK;
+    for (uint32_t row = 0; !status && row < sample_rows; row++) {
+        ud_bytes raw = {.ctx = ctx};
+        ud_json *object = NULL;
+        status = read_record(&reader, &raw);
+        if (status == UD_END) {
+            status = UD_OK;
+            ud_bytes_clear(&raw);
+            break;
+        }
+        if (!status)
+            status = ud_json_parse(ctx, (const char *)raw.data, (uint32_t)raw.size, &object, NULL);
+        if (!status && ud_json_kind(object) != UD_JSON_OBJECT)
+            status = UD_SCHEMA;
+        for (uint32_t at = 0; !status && at < count; at++)
+            if (!ud_json_find(object, fields[at].name, fields[at].name_length))
+                fields[at].nullable = 1;
+        for (uint32_t member = 0; !status && member < ud_json_size(object); member++) {
+            const char *name = NULL;
+            uint32_t length = 0;
+            status = ud_json_key(object, member, &name, &length);
+            uint32_t at = 0;
+            while (!status && at < count &&
+                   (fields[at].name_length != length || memcmp(fields[at].name, name, length)))
+                at++;
+            if (!status && at == count) {
+                if (count == capacity) {
+                    uint32_t next = capacity ? capacity * 2 : 16;
+                    if (next > 65536) {
+                        status = UD_RESOURCE;
+                        break;
+                    }
+                    ud_field *allocated = ud_alloc(ctx, next * sizeof(*allocated));
+                    if (!allocated) {
+                        status = UD_RESOURCE;
+                        break;
+                    }
+                    if (count)
+                        memcpy(allocated, fields, count * sizeof(*fields));
+                    ud_free(fields);
+                    fields = allocated;
+                    capacity = next;
+                }
+                fields[at].name = ud_strdup_n(ctx, name, length);
+                fields[at].name_length = length;
+                fields[at].nullable = row != 0;
+                if (!fields[at].name)
+                    status = UD_RESOURCE;
+                count++;
+            }
+            const ud_json *value = ud_json_at(object, member);
+            const char *text = NULL;
+            uint32_t size = 0;
+            int kind = ud_json_kind(value);
+            if (!status && kind != UD_JSON_NULL)
+                status = ud_json_text(value, &text, &size);
+            if (!status)
+                status = ud_infer_scalar(ctx, fields + at, text, size, kind);
+        }
+        ud_json_destroy(object);
+        ud_bytes_clear(&raw);
+    }
+    if (!status)
+        status = ud_infer_schema(ctx, fields, count, scope, out);
+    for (uint32_t at = 0; at < count; at++)
+        ud_free((void *)fields[at].name);
+    ud_free(fields);
+    fclose(reader.file);
+    return status;
+}
 ud_status ud_json_reader_next(ud_json_reader *reader, ud_batch **out, ud_batch **errors) {
     if (!reader || !out || (reader->records.policy == UD_ERROR_REDIRECT && !errors))
         return UD_INVALID;

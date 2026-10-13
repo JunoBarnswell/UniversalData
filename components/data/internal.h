@@ -46,6 +46,8 @@ ud_status ud_dictionary_parse(ud_context *, const ud_json *, ud_field *);
 ud_status ud_dictionary_json(ud_bytes *, const ud_field *);
 void ud_dictionary_clear(ud_field *);
 ud_status ud_record_options_validate(ud_context *, const ud_record_options *);
+ud_status ud_infer_scalar(ud_context *, ud_field *, const char *, uint32_t, int json_kind);
+ud_status ud_infer_schema(ud_context *, ud_field *, uint32_t, ud_string, ud_batch **);
 ud_status ud_field_derive(ud_context *, const ud_field *, ud_string name_space,
                           ud_string output_name, ud_field *);
 ud_status ud_field_cast_metadata(ud_context *, const ud_field *, const ud_field *, ud_field *);

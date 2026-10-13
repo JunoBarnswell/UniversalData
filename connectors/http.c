@@ -326,6 +326,7 @@ static ud_status request(const ud_component_context *c, const ud_http_options *p
     }
     SET(CURLOPT_CUSTOMREQUEST, method);
 #undef SET
+    int completed = 0;
     for (uint64_t i = 0; !s && i < p->attempts; i++) {
         t.received = t.headers = 0;
         t.body.size = t.header_bytes.size = 0;
@@ -333,6 +334,7 @@ static ud_status request(const ud_component_context *c, const ud_http_options *p
         out->attempted = 1;
         s = perform(easy, &t, status);
         int transport_failed = s != UD_OK;
+        completed = !transport_failed;
         if (s) {
             if ((!ud_named(p->method, "GET") && !ud_named(p->method, "HEAD") &&
                  !p->idempotency_key.length) ||
@@ -366,8 +368,9 @@ static ud_status request(const ud_component_context *c, const ud_http_options *p
     curl_easy_cleanup(easy);
     ud_free(method);
     out->status = (int32_t)*status;
+    out->completed = completed;
     out->retry_after_ms = t.retry_after;
-    if (!s) {
+    if (completed) {
         out->body = (ud_string){(const char *)t.body.data, (uint32_t)t.body.size};
         t.body.data = NULL;
         out->headers =

@@ -26,6 +26,7 @@ enum {
     DERIVE,
     SPLIT,
     MULTICAST,
+    BALANCED,
     UNION_ALL,
     SORT,
     JOIN,
@@ -40,7 +41,8 @@ enum {
     IPC_SOURCE,
     IPC_SINK,
     IPC_STREAM_SOURCE,
-    IPC_STREAM_SINK
+    IPC_STREAM_SINK,
+    SQL_COMMAND
 };
 
 static inline int file_source(int k) {
@@ -122,6 +124,8 @@ ud_status ud_builtin_bind_expr(const ud_component_context *c, const ud_json *val
 ud_status ud_builtin_describe_sink(void *, const ud_component_context *, ud_string,
                                    const ud_batch *const *, ud_component_plan *);
 ud_status ud_builtin_sink_records(builtin *, const ud_batch *);
+ud_status ud_builtin_sql_command_prepare(builtin *);
+ud_status ud_builtin_sql_command(builtin *, const ud_batch *);
 ud_status ud_builtin_blocking(builtin *b);
 uint64_t ud_builtin_builtin_demand(void *ptr);
 ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud_string text,

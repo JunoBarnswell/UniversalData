@@ -150,6 +150,70 @@ static ud_status next_record(ud_csv_reader *r, record *row) {
         r->record++;
     return s;
 }
+ud_status ud_csv_discover(ud_context *ctx, const char *path, ud_string scope,
+                          const ud_csv_options *options, uint32_t sample_rows, ud_batch **out) {
+    if (!ctx || !path || !out || !sample_rows || sample_rows > 100000 ||
+        (options &&
+         (options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION)))
+        return UD_INVALID;
+    *out = NULL;
+    ud_csv_reader reader = {.ctx = ctx,
+                            .path = (char *)path,
+                            .columns = 65536,
+                            .max_record_bytes = options && options->max_record_bytes
+                                                    ? options->max_record_bytes
+                                                    : 16777216};
+    reader.file = ud_fopen(path, "rb");
+    if (!reader.file)
+        return UD_IO;
+    unsigned char bom[3];
+    size_t size = fread(bom, 1, 3, reader.file);
+    ud_status status =
+        size == 3 && !memcmp(bom, "\xef\xbb\xbf", 3) ? UD_OK : ud_seek(reader.file, 0);
+    record header = {0};
+    if (!status)
+        status = next_record(&reader, &header);
+    if (status == UD_END)
+        status = UD_SCHEMA;
+    ud_field *fields = !status ? ud_alloc(ctx, header.n * sizeof(*fields)) : NULL;
+    if (!status && !fields)
+        status = UD_RESOURCE;
+    reader.columns = header.n;
+    for (uint32_t at = 0; !status && at < header.n; at++) {
+        if (!header.length[at]) {
+            status = UD_SCHEMA;
+            break;
+        }
+        fields[at].name = header.text[at];
+        fields[at].name_length = header.length[at];
+    }
+    const char *marker = options && options->null_marker ? options->null_marker : "\\N";
+    uint32_t marker_length = options && options->null_marker ? options->null_marker_length : 2;
+    for (uint32_t row = 0; !status && row < sample_rows; row++) {
+        record values = {0};
+        status = next_record(&reader, &values);
+        if (status == UD_END) {
+            status = UD_OK;
+            record_free(&values);
+            break;
+        }
+        if (!status && values.n != header.n)
+            status = UD_SCHEMA;
+        for (uint32_t at = 0; !status && at < header.n; at++)
+            if (values.length[at] == marker_length &&
+                !memcmp(values.text[at], marker, marker_length))
+                fields[at].nullable = 1;
+            else
+                status = ud_infer_scalar(ctx, fields + at, values.text[at], values.length[at], -1);
+        record_free(&values);
+    }
+    if (!status)
+        status = ud_infer_schema(ctx, fields, header.n, scope, out);
+    ud_free(fields);
+    record_free(&header);
+    fclose(reader.file);
+    return status;
+}
 ud_status ud_csv_open(ud_context *c, const char *path, const ud_field *f, uint32_t n,
                       const ud_csv_options *o, ud_csv_reader **out) {
     if (!out)

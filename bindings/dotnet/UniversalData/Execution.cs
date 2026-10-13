@@ -29,7 +29,7 @@ public sealed class Execution : IDisposable
 
     public Execution(string packageJson, string tenant, PackageAuthorizer? authorize, string parametersJson = "{}", string executionId = "", PackageCredentialResolver? resolve = null,
         uint edgeCapacity = 2, uint maxBatchRows = 4096, ulong memoryLimit = 268435456, ulong timeoutMilliseconds = 0, string? stateDirectory = null, bool resume = false, uint maxConcurrency = 1,
-        Registry? registry = null, Action<ExecutionEvent>? observe = null)
+        Registry? registry = null, Action<ExecutionEvent>? observe = null, ulong eventSequenceStart = 0)
     {
         Native.Authorizer? grant = authorize is null ? null : (_, scope, resource, action) =>
         {
@@ -84,6 +84,7 @@ public sealed class Execution : IDisposable
                 StateDirectory = Pin(stateDirectory ?? ""),
                 Resume = resume ? 1 : 0,
                 MaxConcurrency = maxConcurrency,
+                EventSequenceStart = eventSequenceStart,
                 Authorize = grant is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(grant),
                 Resolve = resolver is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(resolver)
                 , Observe = observer is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(observer)
@@ -150,6 +151,8 @@ public sealed class Execution : IDisposable
     public string Explain() => Inspect(false);
 
     public string Diagnostics() => Inspect(true);
+    internal void RecordCatalog(IntPtr catalog, ulong revision)
+    { Control(); lock (controller) { Open(); Check(Native.ud_catalog_record_execution(catalog, execution, revision)); } }
 
     private string Inspect(bool diagnostics)
     {
@@ -187,6 +190,7 @@ internal sealed class ExecutionHandle : SafeHandleZeroOrMinusOneIsInvalid
 
 internal static partial class Native
 {
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_record_execution(IntPtr catalog, ExecutionHandle execution, ulong revision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void Observer(IntPtr user, IntPtr executionEvent);
     [StructLayout(LayoutKind.Sequential)] internal struct ExecutionEventValue
     { internal uint Size, Abi; internal StringValue PackageId, ExecutionId, TaskId, PipelineId, ComponentId;
@@ -200,7 +204,7 @@ internal static partial class Native
     internal struct ExecutionOptions
     {
         internal uint Size, Abi; internal ContextOptions Context; internal uint Capacity, MaxRows, Depth; internal ulong Timeout;
-        internal StringValue Parameters, Tenant, ExecutionId; internal IntPtr Registry, Authorize, AuthorizeUser, Resolve, ResolveUser, Observe, ObserveUser; internal StringValue StateDirectory; internal int Resume; internal uint MaxConcurrency;
+        internal StringValue Parameters, Tenant, ExecutionId; internal IntPtr Registry, Authorize, AuthorizeUser, Resolve, ResolveUser, Observe, ObserveUser; internal StringValue StateDirectory; internal int Resume; internal uint MaxConcurrency; internal ulong EventSequenceStart;
     }
 
     [StructLayout(LayoutKind.Sequential)]

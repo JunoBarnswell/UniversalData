@@ -1,4 +1,5 @@
 #include "internal.h"
+#include <math.h>
 const ud_json *ud_member(const ud_json *v, const char *s) {
     return ud_json_find(v, s, (uint32_t)strlen(s));
 }
@@ -79,8 +80,9 @@ ud_status ud_connection_definitions_check(const ud_json *defs) {
 ud_status ud_package_check(const ud_package *p) {
     static const char *keys[] = {"version",       "id",          "parameters", "variables",
                                  "connections",   "controlFlow", "dataFlows",  "policy",
-                                 "eventHandlers", "project",     "deployment", "caches"};
-    UD_TRY(ud_json_keys(p->document, keys, 12));
+                                 "eventHandlers", "project",     "deployment", "caches",
+                                 "layout"};
+    UD_TRY(ud_json_keys(p->document, keys, 13));
     uint64_t version;
     UD_TRY(ud_json_uint(ud_member(p->document, "version"), &version));
     if (version != UD_PACKAGE_VERSION)
@@ -182,6 +184,79 @@ ud_status ud_package_check(const ud_package *p) {
             UD_TRY(ud_json_string(ud_member(ud_json_at(flows, j), "id"), &other));
             if (ud_same(id, other))
                 return UD_SCHEMA;
+        }
+    }
+    const ud_json *layout = ud_member(p->document, "layout");
+    if (layout) {
+        static const char *layout_keys[] = {"version", "nodes", "viewports"};
+        UD_TRY(ud_json_keys(layout, layout_keys, 3));
+        uint64_t epoch;
+        UD_TRY(ud_json_uint(ud_member(layout, "version"), &epoch));
+        if (epoch != UD_CONFIG_VERSION)
+            return UD_INCOMPATIBLE;
+        const char *collections[] = {"nodes", "viewports"};
+        for (uint32_t collection = 0; collection < 2; collection++) {
+            const ud_json *entries = ud_member(layout, collections[collection]);
+            if (!entries)
+                continue;
+            if (ud_json_kind(entries) != UD_JSON_ARRAY || ud_json_size(entries) > 65536)
+                return UD_SCHEMA;
+            for (uint32_t index = 0; index < ud_json_size(entries); index++) {
+                const ud_json *entry = ud_json_at(entries, index);
+                static const char *node_keys[] = {"flow", "id", "x", "y"};
+                static const char *viewport_keys[] = {"flow", "x", "y", "zoom"};
+                UD_TRY(ud_json_keys(entry, collection ? viewport_keys : node_keys, 4));
+                ud_string flow;
+                UD_TRY(ud_json_string(ud_member(entry, "flow"), &flow));
+                const ud_json *graph = NULL;
+                if (ud_named(flow, "control"))
+                    graph = ud_member(p->document, "controlFlow");
+                for (uint32_t at = 0; !graph && at < ud_json_size(flows); at++) {
+                    ud_string id;
+                    UD_TRY(ud_json_string(ud_member(ud_json_at(flows, at), "id"), &id));
+                    if (ud_same(flow, id))
+                        graph = ud_json_at(flows, at);
+                }
+                if (!graph)
+                    return UD_SCHEMA;
+                ud_string node = {0};
+                if (!collection) {
+                    UD_TRY(ud_json_string(ud_member(entry, "id"), &node));
+                    const ud_json *items =
+                        ud_member(graph, ud_named(flow, "control") ? "tasks" : "components");
+                    int found = 0;
+                    for (uint32_t at = 0; at < ud_json_size(items); at++) {
+                        ud_string id;
+                        UD_TRY(ud_json_string(ud_member(ud_json_at(items, at), "id"), &id));
+                        found |= ud_same(node, id);
+                    }
+                    if (!found)
+                        return UD_SCHEMA;
+                }
+                for (uint32_t previous = 0; previous < index; previous++) {
+                    const ud_json *other = ud_json_at(entries, previous);
+                    ud_string other_flow, other_node = {0};
+                    UD_TRY(ud_json_string(ud_member(other, "flow"), &other_flow));
+                    if (!collection)
+                        UD_TRY(ud_json_string(ud_member(other, "id"), &other_node));
+                    if (ud_same(flow, other_flow) && (collection || ud_same(node, other_node)))
+                        return UD_SCHEMA;
+                }
+                const char *coordinates[] = {"x", "y", "zoom"};
+                for (uint32_t at = 0; at < 2 + collection; at++) {
+                    const ud_json *coordinate = ud_member(entry, coordinates[at]);
+                    const char *raw;
+                    uint32_t size;
+                    ud_value number;
+                    if (ud_json_kind(coordinate) != UD_JSON_NUMBER)
+                        return UD_SCHEMA;
+                    UD_TRY(ud_json_text(coordinate, &raw, &size));
+                    UD_TRY(ud_value_parse(p->ctx, UD_FLOAT64, raw, size, &number));
+                    if (!isfinite(number.real) || fabs(number.real) > 1e9 ||
+                        (at == 2 && (number.real < 0.1 || number.real > 4)))
+                        return UD_SCHEMA;
+                }
+            }
         }
     }
     return UD_OK;

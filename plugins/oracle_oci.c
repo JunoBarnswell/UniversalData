@@ -1,6 +1,6 @@
 #include "common.h"
 #include <oci.h>
-#include <pthread.h>
+#include "../components/foundation/thread.h"
 #include <stdatomic.h>
 #include <stdio.h>
 #define OCI_TRY(call)                                                                              \
@@ -1203,10 +1203,10 @@ static ud_status test(void *state) {
 static void cancel(void *state) {
     oracle *p = state;
     atomic_store(&p->cancelled, 1);
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     if (p->service)
         OCIBreak(p->service, p->error);
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
 }
 static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     oracle *p = state;
@@ -1249,18 +1249,18 @@ void ud_oci_destroy(void *state) {
         return;
     ud_oracle_cdc_close(p);
     ud_oci_read_close(p);
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     if (p->service)
         OCILogoff(p->service, p->error);
     p->service = NULL;
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
     if (p->branch_handle)
         OCIHandleFree(p->branch_handle, OCI_HTYPE_TRANS);
     if (p->error)
         OCIHandleFree(p->error, OCI_HTYPE_ERROR);
     if (p->env)
         OCIHandleFree(p->env, OCI_HTYPE_ENV);
-    pthread_mutex_destroy(&p->ownership);
+    ud_mutex_destroy(&p->ownership);
     p->host.deallocate(p->write_types);
     ud_oci_bulk_forget(p); /* Unknown prepared branches preserve their physical staging data. */
     if (p->configuration) {
@@ -1281,10 +1281,7 @@ ud_status ud_oci_initialize(const ud_host_api *h, const char *text, uint32_t len
     p->user = h->control_user;
     p->check = h->check_io;
     atomic_init(&p->cancelled, 0);
-    if (pthread_mutex_init(&p->ownership, NULL)) {
-        h->deallocate(p);
-        return UD_RESOURCE;
-    }
+    ud_mutex_init(&p->ownership);
     p->configuration = plugin_string(h, text, length);
     p->configuration_length = length;
     if (!p->configuration) {

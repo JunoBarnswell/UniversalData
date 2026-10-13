@@ -64,6 +64,14 @@ ud_status ud_builtin_transformed(builtin *b, const ud_batch *in) {
     int kind = b->kind;
     ud_status s = UD_OK;
     uint32_t output_count = b->context.output_count;
+    if (kind == BALANCED) {
+        uint32_t selected = (uint32_t)(b->number % output_count);
+        if (b->number == UINT64_MAX)
+            return UD_RESOURCE;
+        UD_TRY(b->context.emit(b->context.emit_user, selected, in));
+        b->number++;
+        return UD_OK;
+    }
     ud_batch **output = ud_alloc(b->context.memory, (output_count + 1) * sizeof(*output));
     if (!output)
         return UD_RESOURCE;

@@ -370,12 +370,31 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
             ud_free(text);
         }
     }
-    if (!s && (kind == SPLIT || kind == MULTICAST))
+    if (!s && (kind == SPLIT || kind == MULTICAST || kind == BALANCED))
         for (uint32_t p = 1; !s && p < c->output_count - (kind == SPLIT); p++)
             s = ud_builtin_clone_schema(c->memory, in[0], out + p);
-    if (!s && (kind == DERIVE || kind == SPLIT)) {
+    if (!s && (kind == DERIVE || kind == SPLIT || kind == SQL_COMMAND)) {
         uint32_t port = kind == SPLIT ? c->output_count - 1 : 1;
         s = error_schema(c, config, in[0], port, out + port);
+        if (!s && kind == SQL_COMMAND) {
+            int policy;
+            s = ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy);
+            if (!s && policy != UD_ERROR_FAIL && !c->activation->transaction_serial)
+                s = UD_UNSUPPORTED;
+            const ud_json *parameters = ud_member(config, "parameters");
+            for (uint32_t at = 0; !s && at < ud_json_size(parameters); at++) {
+                uint64_t column;
+                s = ud_json_uint(ud_json_at(parameters, at), &column);
+                if (!s && column >= in[0]->columns)
+                    s = UD_SCHEMA;
+                for (uint32_t previous = 0; !s && previous < at; previous++) {
+                    uint64_t before;
+                    s = ud_json_uint(ud_json_at(parameters, previous), &before);
+                    if (!s && before == column)
+                        s = UD_SCHEMA;
+                }
+            }
+        }
     }
     if (!s && kind == SPLIT) {
         const ud_json *branches = ud_member(config, "branches");
@@ -467,9 +486,9 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
     int kind = (int)(intptr_t)user;
     ud_json *config = NULL;
     UD_TRY(ud_builtin_parse(c, text, &config));
-    const ud_json *names = ud_member(config, kind == MULTICAST   ? "outputs"
-                                             : kind == UNION_ALL ? "inputs"
-                                                                 : "branches");
+    const ud_json *names = ud_member(config, kind == MULTICAST || kind == BALANCED ? "outputs"
+                                             : kind == UNION_ALL                   ? "inputs"
+                                                                                   : "branches");
     uint32_t n = names ? ud_json_size(names) : 2;
     ud_status s = UD_OK;
     if (kind == SPLIT)
@@ -491,7 +510,8 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
             ud_string name = {0};
             char fallback[32];
             const ud_json *value = NULL;
-            if (names && ((kind == UNION_ALL && !direction) || (kind == MULTICAST && direction)))
+            if (names && ((kind == UNION_ALL && !direction) ||
+                          ((kind == MULTICAST || kind == BALANCED) && direction)))
                 value = ud_json_at(names, i);
             if (names && kind == SPLIT && direction) {
                 if (i + 2 < ports->output_count) {

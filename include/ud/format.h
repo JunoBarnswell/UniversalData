@@ -47,6 +47,8 @@ typedef struct ud_json_options {
 UD_API ud_status ud_json_reader_open(ud_context *, const char *path, const ud_field *,
                                      uint32_t columns, const ud_json_options *, ud_json_reader **);
 UD_API ud_status ud_json_reader_next(ud_json_reader *, ud_batch **accepted, ud_batch **errors);
+UD_API ud_status ud_json_discover(ud_context *, const char *, ud_string name_space,
+                                  const ud_json_options *, uint32_t sample_rows, ud_batch **schema);
 UD_API uint64_t ud_json_reader_offset(const ud_json_reader *);
 UD_API uint64_t ud_json_reader_record(const ud_json_reader *);
 /* Requires offset/record from this unchanged input at a line boundary. */

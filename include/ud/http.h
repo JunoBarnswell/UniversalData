@@ -15,6 +15,7 @@ typedef struct ud_http_response {
     ud_string body, headers;
     uint64_t retry_after_ms;
     int32_t attempted; /* Transport started; cancellation/timeout may hide a side effect. */
+    int32_t completed; /* Complete HTTP response, including explicitly rejected status codes. */
 } ud_http_response;
 /* One Native transport owner for HTTP Task and formal REST components. Every
  * transfer rechecks the existing ConnectionManager lease and resource grant. */

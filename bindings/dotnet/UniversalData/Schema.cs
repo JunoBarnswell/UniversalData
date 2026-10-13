@@ -24,15 +24,17 @@ internal sealed class NativeStrings : IDisposable
         try
         {
             for (int i = 0; i < strings.Length; i++)
-            {
-                byte[] bytes = Utf8.Bytes(strings[i]);
-                var pin = GCHandle.Alloc(bytes.Length == 0 ? new byte[1] : bytes, GCHandleType.Pinned);
-                pins.Add(pin); values[i] = new(pin.AddrOfPinnedObject(), checked((uint)bytes.Length));
-            }
+                values[i] = Pin(strings[i]);
         }
         catch { Dispose(); throw; }
     }
     internal Native.StringValue this[int index] => values[index];
+    internal Native.StringValue Pin(string value)
+    {
+        byte[] bytes = Utf8.Bytes(value);
+        var pin = GCHandle.Alloc(bytes.Length == 0 ? new byte[1] : bytes, GCHandleType.Pinned);
+        pins.Add(pin); return new(pin.AddrOfPinnedObject(), checked((uint)bytes.Length));
+    }
     public void Dispose() { foreach (var pin in pins) pin.Free(); pins.Clear(); }
 }
 

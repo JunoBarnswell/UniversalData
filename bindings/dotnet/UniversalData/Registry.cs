@@ -93,18 +93,6 @@ public sealed class Registry : IDisposable
     ~Registry() { try { Dispose(); } catch { /* An owning Execution retains the Registry until teardown. */ } }
 }
 
-internal sealed class NativeStrings : IDisposable
-{
-    private readonly List<GCHandle> pins = new();
-    internal Native.StringValue Pin(string text)
-    {
-        var bytes = Utf8.Bytes(text);
-        var pin = GCHandle.Alloc(bytes.Length == 0 ? new byte[1] : bytes, GCHandleType.Pinned);
-        pins.Add(pin); return new(pin.AddrOfPinnedObject(), checked((uint)bytes.Length));
-    }
-    public void Dispose() { foreach (var pin in pins) pin.Free(); pins.Clear(); }
-}
-
 internal sealed class TaskRegistration
 {
     private sealed record Instance(IManagedTask Task, IntPtr Memory, IntPtr Activation);

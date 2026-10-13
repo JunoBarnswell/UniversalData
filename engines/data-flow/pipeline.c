@@ -711,7 +711,8 @@ static ud_status validate_effects(physical_plan *p) {
     for (uint32_t index = 0; !status && index < p->count; index++) {
         node *n = p->nodes + index;
         if (epochs && (n->binding.effects & UD_EFFECT_EXTERNAL_WRITE) &&
-            !(n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT))) {
+            !(n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT)) &&
+            !(p->execution->transaction_epoch && (n->binding.effects & UD_EFFECT_TRANSACTIONAL))) {
             status = UD_UNSUPPORTED;
             break;
         }
@@ -1165,7 +1166,8 @@ static ud_status stage_epoch(physical_plan *p, node *n, uint64_t epoch) {
     if (ud_transaction_active(&n->activation) && !n->activation.transaction_epoch)
         return UD_UNSUPPORTED;
     if ((n->binding.effects & UD_EFFECT_EXTERNAL_WRITE) &&
-        !(n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT)))
+        !(n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT)) &&
+        !(n->activation.transaction_epoch && (n->binding.effects & UD_EFFECT_TRANSACTIONAL)))
         return UD_UNSUPPORTED;
     if ((n->descriptor.capabilities & UD_COMPONENT_STATEFUL) && !n->descriptor.checkpoint)
         return UD_UNSUPPORTED;

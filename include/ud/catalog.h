@@ -47,6 +47,7 @@ UD_API ud_status ud_catalog_list(ud_catalog *, int32_t kind, char **json, uint32
  * Time bounds select explicit timestampMs values in stored documents.
  * Only the current tenant/kind/filter/page is inspected; no directory scan. */
 UD_API ud_status ud_catalog_query(ud_catalog *, ud_string query, char **json, uint32_t *length);
+UD_API ud_status ud_catalog_latest_revision(ud_catalog *, int32_t kind, ud_string id, uint64_t *);
 /* Stores versioned identifiers/state/result/time/kind only, no row/SQL/config
  * data. sequence is explicit; returned errors belong to the host log policy. */
 UD_API ud_status ud_catalog_record_event(ud_catalog *, const ud_execution_event *,

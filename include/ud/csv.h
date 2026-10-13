@@ -16,6 +16,8 @@ typedef struct ud_csv_options {
 UD_API ud_status ud_csv_open(ud_context *, const char *path, const ud_field *, uint32_t columns,
                              const ud_csv_options *, ud_csv_reader **);
 UD_API ud_status ud_csv_next(ud_csv_reader *, ud_batch **accepted, ud_batch **errors);
+UD_API ud_status ud_csv_discover(ud_context *, const char *, ud_string name_space,
+                                 const ud_csv_options *, uint32_t sample_rows, ud_batch **schema);
 UD_API uint64_t ud_csv_offset(const ud_csv_reader *);
 UD_API uint64_t ud_csv_record(const ud_csv_reader *);
 /* Offset and record must originate from this immutable file at a record boundary. */

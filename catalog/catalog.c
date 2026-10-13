@@ -550,6 +550,45 @@ ud_status ud_catalog_record_event(ud_catalog *c, const ud_execution_event *event
     ud_bytes_clear(&json);
     return s;
 }
+ud_status ud_catalog_latest_revision(ud_catalog *catalog, int32_t kind, ud_string id,
+                                     uint64_t *revision) {
+    if (!catalog || !revision || !kind_valid(kind) || !string_valid(id, 1))
+        return UD_INVALID;
+    *revision = 0;
+    UD_TRY(grant(catalog, UD_ACCESS_READ));
+    sqlite3_stmt *statement = NULL;
+    ud_status status = prepare(catalog,
+                               "SELECT revision FROM documents WHERE tenant=?1 AND kind=?2 AND "
+                               "id=?3 ORDER BY revision DESC LIMIT 1",
+                               &statement);
+    if (!status)
+        status = bind_text(statement, 1, catalog->options.tenant);
+    if (!status)
+        status = sql_status(sqlite3_bind_int(statement, 2, kind));
+    if (!status)
+        status = bind_text(statement, 3, id);
+    if (!status) {
+        int result = sqlite3_step(statement);
+        if (result == SQLITE_DONE)
+            status = UD_END;
+        else if (result != SQLITE_ROW)
+            status = sql_status(result);
+        else {
+            const char *text = (const char *)sqlite3_column_text(statement, 0);
+            if (!text || sqlite3_column_bytes(statement, 0) != 20)
+                status = UD_CORRUPT;
+            for (uint32_t at = 0; !status && at < 20; at++) {
+                unsigned digit = (unsigned char)text[at] - '0';
+                if (digit > 9 || *revision > (UINT64_MAX - digit) / 10)
+                    status = UD_CORRUPT;
+                else
+                    *revision = *revision * 10 + digit;
+            }
+        }
+    }
+    sqlite3_finalize(statement);
+    return status;
+}
 void ud_catalog_close(ud_catalog *c) {
     if (c) {
         if (c->database)

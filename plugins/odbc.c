@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <pthread.h>
+#include "../components/foundation/thread.h"
 #ifdef UD_WITH_MSSQL_BCP
 #include <msodbcsql.h>
 #endif
@@ -59,27 +59,27 @@ static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
 /* Registration protects every live statement against concurrent cancellation.
  * Free and ud_odbc_cancel hold the same short ownership lock; I/O does not hold it. */
 static SQLRETURN statement_allocate(odbc_state *p, SQLHSTMT *out) {
-    pthread_mutex_lock(&p->handles_lock);
+    ud_mutex_lock(&p->handles_lock);
     uint32_t i = 0;
     while (i < 16 && p->handles[i])
         i++;
     SQLRETURN rc = i == 16 ? SQL_ERROR : SQLAllocHandle(SQL_HANDLE_STMT, p->connection, out);
     if (SQL_SUCCEEDED(rc))
         p->handles[i] = *out;
-    pthread_mutex_unlock(&p->handles_lock);
+    ud_mutex_unlock(&p->handles_lock);
     return rc;
 }
 static void statement_release(odbc_state *p, SQLHSTMT handle) {
     if (!handle)
         return;
-    pthread_mutex_lock(&p->handles_lock);
+    ud_mutex_lock(&p->handles_lock);
     for (uint32_t i = 0; i < 16; i++)
         if (p->handles[i] == handle) {
             p->handles[i] = NULL;
             break;
         }
     SQLFreeHandle(SQL_HANDLE_STMT, handle);
-    pthread_mutex_unlock(&p->handles_lock);
+    ud_mutex_unlock(&p->handles_lock);
 }
 static ud_status parameter_get(odbc_state *p, const ud_batch *batch, uint32_t first, uint32_t row,
                                const uint32_t *mapping, uint32_t i, const ud_write_options *write,
@@ -1295,12 +1295,12 @@ static ud_status test(void *state) {
 void ud_odbc_cancel(void *state) {
     odbc_state *p = state;
     atomic_store(&p->cancelled, 1);
-    pthread_mutex_lock(&p->handles_lock);
+    ud_mutex_lock(&p->handles_lock);
     ud_mssql_cdc_cancel(p);
     for (uint32_t i = 0; i < 16; i++)
         if (p->handles[i])
             SQLCancelHandle(SQL_HANDLE_STMT, p->handles[i]);
-    pthread_mutex_unlock(&p->handles_lock);
+    ud_mutex_unlock(&p->handles_lock);
 }
 static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     odbc_state *p = state;
@@ -1355,7 +1355,7 @@ void ud_odbc_destroy(void *state) {
     }
     if (p->environment)
         SQLFreeHandle(SQL_HANDLE_ENV, p->environment);
-    pthread_mutex_destroy(&p->handles_lock);
+    ud_mutex_destroy(&p->handles_lock);
     p->host.deallocate(p->configuration);
     p->host.deallocate(p);
 }
@@ -1389,10 +1389,7 @@ static ud_status initialize(const ud_host_api *h, const char *configuration, uin
         h->deallocate(p);
         return UD_RESOURCE;
     }
-    if (pthread_mutex_init(&p->handles_lock, NULL)) {
-        h->deallocate(p);
-        return UD_RESOURCE;
-    }
+    ud_mutex_init(&p->handles_lock);
     p->check = h->check_io;
     p->check_user = h->control_user;
     atomic_init(&p->cancelled, 0);

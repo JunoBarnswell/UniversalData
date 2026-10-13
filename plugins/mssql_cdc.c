@@ -229,11 +229,11 @@ static ud_status fence(struct ud_mssql_cdc *c) {
     odbc_state *p = c->owner;
     void *peer = NULL;
     TRY(ud_odbc_initialize(&p->host, p->configuration, p->configuration_length, &peer));
-    pthread_mutex_lock(&p->handles_lock);
+    ud_mutex_lock(&p->handles_lock);
     c->peer = peer;
     if (atomic_load(&p->cancelled))
         ud_odbc_cancel(c->peer);
-    pthread_mutex_unlock(&p->handles_lock);
+    ud_mutex_unlock(&p->handles_lock);
     TRY(ud_odbc_begin(p, UD_ISOLATION_SERIALIZABLE));
     char *sql = p->host.allocate(p->host.context, strlen(c->table) + 160);
     if (!sql)
@@ -413,9 +413,9 @@ ud_status ud_mssql_cdc_open(void *state, const ud_cdc_options *o) {
     if (!c)
         return UD_RESOURCE;
     c->owner = p;
-    pthread_mutex_lock(&p->handles_lock);
+    ud_mutex_lock(&p->handles_lock);
     p->cdc = c;
-    pthread_mutex_unlock(&p->handles_lock);
+    ud_mutex_unlock(&p->handles_lock);
     c->batch_rows = o->batch_rows;
     c->table = table_name(p, o->table);
     c->capture = plugin_string(&p->host, o->slot.data, o->slot.length);
@@ -695,10 +695,10 @@ void ud_mssql_cdc_cancel(odbc_state *p) {
 }
 ud_status ud_mssql_cdc_close(void *state) {
     odbc_state *p = state;
-    pthread_mutex_lock(&p->handles_lock);
+    ud_mutex_lock(&p->handles_lock);
     struct ud_mssql_cdc *c = p->cdc;
     p->cdc = NULL;
-    pthread_mutex_unlock(&p->handles_lock);
+    ud_mutex_unlock(&p->handles_lock);
     if (!c)
         return UD_OK;
     ud_odbc_read_close(p);

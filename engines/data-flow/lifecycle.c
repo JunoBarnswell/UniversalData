@@ -108,12 +108,11 @@ ud_status ud_builtin_checkpoint_state(void *ptr, ud_batch **out) {
     builtin *b = ptr;
     if (b->operator)
         return ud_operator_checkpoint(b->operator, out);
-    if (b->kind != SQL_SINK && b->kind != REST_SINK)
+    if (b->kind != SQL_SINK && b->kind != REST_SINK && b->kind != BALANCED &&
+        b->kind != SQL_COMMAND)
         return UD_UNSUPPORTED;
-    ud_field field = {.name = "nextBatch", .name_length = 9, .type = UD_INT64};
-    ud_value value = {.type = UD_INT64, .integer = (int64_t)b->number};
-    if (b->number > INT64_MAX)
-        return UD_RESOURCE;
+    ud_field field = {.name = "nextBatch", .name_length = 9, .type = UD_UINT64};
+    ud_value value = {.type = UD_UINT64, .unsigned_integer = b->number};
     UD_TRY(ud_batch_create(b->context.memory, &field, 1, 1, out));
     ud_status status = ud_batch_append(*out, &value, 1);
     if (!status)
@@ -129,12 +128,14 @@ ud_status ud_builtin_restore_state(void *ptr, const ud_batch *state) {
     builtin *b = ptr;
     if (b->operator)
         return ud_operator_restore(&b->operator, state);
-    if ((b->kind != SQL_SINK && b->kind != REST_SINK) || state->columns != 1 || state->rows != 1)
+    if ((b->kind != SQL_SINK && b->kind != REST_SINK && b->kind != BALANCED &&
+         b->kind != SQL_COMMAND) ||
+        state->columns != 1 || state->rows != 1)
         return UD_CORRUPT;
     ud_value value;
     UD_TRY(ud_batch_get(state, 0, 0, &value));
-    if (value.type != UD_INT64 || value.is_null || value.integer < 0)
+    if (value.type != UD_UINT64 || value.is_null || value.is_absent)
         return UD_CORRUPT;
-    b->number = (uint64_t)value.integer;
+    b->number = value.unsigned_integer;
     return UD_OK;
 }

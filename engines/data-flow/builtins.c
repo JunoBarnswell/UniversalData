@@ -24,7 +24,7 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     if (!s)
         s = ud_builtin_clone_schema(c->memory, sink_kind(kind) ? in[0] : out[0], &b->schema);
     if (!s && (kind == CAST || kind == DERIVE || kind == SPLIT || kind == XLSX_SOURCE ||
-               kind == CSV_SOURCE || kind == JSON_SOURCE))
+               kind == CSV_SOURCE || kind == JSON_SOURCE || kind == SQL_COMMAND))
         s = ud_builtin_clone_schema(c->memory, out[kind == SPLIT ? c->output_count - 1 : 1],
                                     &b->errors);
     if (!s && kind == SQL_SINK)
@@ -95,10 +95,12 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         for (uint32_t i = 0; !s && i < b->columns; i++)
             s = ud_batch_field(b->schema, i, b->fields + i);
     }
-    if (!s && (source_kind(kind) || sink_kind(kind))) {
+    if (!s && (source_kind(kind) || sink_kind(kind) || kind == SQL_COMMAND)) {
         ud_string connection = {0};
         s = ud_json_string(ud_member(b->config, "connection"), &connection);
         uint64_t caps = source_kind(kind) ? UD_CONNECT_READ : UD_CONNECT_APPEND;
+        if (kind == SQL_COMMAND)
+            caps = UD_CONNECT_EXECUTE_SQL;
         if (kind == SQL_SINK || kind == REST_SINK)
             caps = b->mode == UD_WRITE_APPEND   ? UD_CONNECT_APPEND
                    : b->mode == UD_WRITE_UPSERT ? UD_CONNECT_UPSERT
@@ -279,6 +281,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                          c->task_id.data, (int)c->component_id.length, c->component_id.data);
         }
     }
+    if (!s && kind == SQL_COMMAND)
+        s = ud_builtin_sql_command_prepare(b);
     if (!s && (kind == DERIVE || kind == SPLIT)) {
         const ud_json *columns = ud_member(b->config, "columns");
         const ud_json *branches = ud_member(b->config, "branches");
@@ -378,6 +382,8 @@ static ud_status step(void *ptr, const ud_component_event *event) {
         }
         return status;
     }
+    if (kind == SQL_COMMAND)
+        return ud_builtin_sql_command(b, event->batch);
     if (kind == SQL_SINK || kind == REST_SINK) {
         if (kind == SQL_SINK)
             return ud_builtin_sink_records(b, event->batch);
@@ -493,6 +499,16 @@ static const char *configuration_schema(int kind) {
                "\"includeInput\":{\"type\":\"boolean\",\"default\":false}},\"required\":["
                "\"connection\","
                "\"table\",\"mode\"],\"additionalProperties\":false}";
+    case SQL_COMMAND:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"statement\":{\"type\":\"string\",\"minLength\":1},\"parameters\":{\"type\":"
+               "\"array\","
+               "\"items\":{\"type\":\"integer\",\"minimum\":0}},\"errorPolicy\":{\"type\":"
+               "\"string\","
+               "\"enum\":[\"fail\",\"redirect\",\"ignore\"]},\"includeInput\":{\"type\":"
+               "\"boolean\"}},"
+               "\"required\":[\"connection\",\"statement\",\"parameters\"],"
+               "\"additionalProperties\":false}";
     case CAST:
         return "{\"type\":\"object\",\"properties\":{\"schema\":{\"type\":\"object\"},\"rounding\":"
                "{\"type\":\"integer\"},\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{"
@@ -518,6 +534,7 @@ static const char *configuration_schema(int kind) {
         return ud_operator_configuration_schema(k, &schema) ? NULL : schema.data;
     }
     case MULTICAST:
+    case BALANCED:
         return "{\"type\":\"object\",\"properties\":{\"outputs\":{\"type\":\"array\"}},"
                "\"additionalProperties\":false}";
     case UNION_ALL:
@@ -559,11 +576,13 @@ ud_status ud_builtin_register(ud_registry *registry) {
                    {"file.csv.destination", CSV_SINK, 1, 0, -1, -1},
                    {"file.ndjson.destination", JSON_SINK, 1, 0, -1, -1},
                    {"sql.destination", SQL_SINK, 1, 1, -1, 0},
+                   {"sql.command", SQL_COMMAND, 1, 2, -1, 1},
                    {"pass", PASS, 1, 1, 0, -1},
                    {"cast", CAST, 1, 2, -1, 1},
                    {"derive", DERIVE, 1, 2, -1, 1},
                    {"split", SPLIT, 1, 2, -1, -1},
                    {"multicast", MULTICAST, 1, 2, 0, -1},
+                   {"balanced", BALANCED, 1, 2, 0, -1},
                    {"unionAll", UNION_ALL, 2, 1, -1, -1},
                    {"sort", SORT, 1, 1, -1, -1},
                    {"join", JOIN, 2, 1, -1, -1},
@@ -606,7 +625,8 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .synchronous_input = entries[i].sync,
             .error_output = entries[i].error,
             .optional_outputs = kind == CAST || kind == DERIVE || kind == XLSX_SOURCE ||
-                                        kind == CSV_SOURCE || kind == JSON_SOURCE
+                                        kind == CSV_SOURCE || kind == JSON_SOURCE ||
+                                        kind == SQL_COMMAND
                                     ? UINT64_C(2)
                                 : kind == SQL_SINK ? UINT64_C(1)
                                                    : 0,
@@ -620,7 +640,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .dispose = ud_builtin_dispose};
         if (kind == JOIN)
             d.input_demand = ud_builtin_builtin_demand;
-        if (kind == SPLIT || kind == MULTICAST || kind == UNION_ALL)
+        if (kind == SPLIT || kind == MULTICAST || kind == BALANCED || kind == UNION_ALL)
             d.bind_ports = ud_builtin_builtin_ports;
         if (source_kind(kind))
             d.describe_plan = ud_builtin_describe_source;
@@ -636,6 +656,14 @@ ud_status ud_builtin_register(ud_registry *registry) {
             if (kind == SQL_SINK)
                 d.effects |= UD_EFFECT_TRANSACTIONAL;
             d.describe_plan = ud_builtin_describe_sink;
+            d.state_version = 1;
+            d.checkpoint = ud_builtin_checkpoint_state;
+            d.restore = ud_builtin_restore_state;
+            d.capabilities |= UD_COMPONENT_STATEFUL;
+        } else if (kind == SQL_COMMAND || kind == BALANCED) {
+            if (kind == SQL_COMMAND)
+                d.effects =
+                    UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_TRANSACTIONAL | UD_EFFECT_COMMIT_UNKNOWN;
             d.state_version = 1;
             d.checkpoint = ud_builtin_checkpoint_state;
             d.restore = ud_builtin_restore_state;

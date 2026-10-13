@@ -2,6 +2,7 @@
 #include "../components/contracts/connection_internal.h"
 #include "../engines/package/internal.h"
 #include "rest.h"
+#include "ud/csv.h"
 
 typedef struct session {
     ud_plugin *plugin;
@@ -440,8 +441,8 @@ static ud_status acquire(ud_activation *a, ud_string id, uint64_t caps, int kind
     } else if (!status && (ud_named(l->driver, "file") || ud_named(l->driver, "excel") ||
                            ud_named(l->driver, "process"))) {
         int process = ud_named(l->driver, "process");
-        l->capabilities =
-            process ? UD_CONNECT_EXECUTE_PROCESS : UD_CONNECT_READ | UD_CONNECT_APPEND;
+        l->capabilities = process ? UD_CONNECT_EXECUTE_PROCESS
+                                  : UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_METADATA;
 #ifdef _WIN32
         if (l->resource.length < 3 || l->resource.data[1] != ':')
             status = UD_INVALID;
@@ -628,8 +629,45 @@ ud_status ud_connection_lease_schema(ud_connection_lease *lease, ud_string table
     if (!lease || !out)
         return UD_INVALID;
     UD_TRY(ud_connection_lease_authorize(lease, UD_ACCESS_DISCOVER));
-    return lease->connection ? ud_connection_schema(lease->connection, table, scope, out)
-                             : UD_UNSUPPORTED;
+    if (lease->connection)
+        return ud_connection_schema(lease->connection, table, scope, out);
+    if (!ud_named(lease->driver, "file"))
+        return UD_UNSUPPORTED;
+    UD_TRY(ud_connection_lease_authorize(lease, UD_ACCESS_READ));
+    char *path = ud_strdup_n(lease->activation->execution->ctx, lease->resource.data,
+                             lease->resource.length);
+    if (!path)
+        return UD_RESOURCE;
+    ud_context *ctx = lease->activation->execution->ctx;
+    ud_status status = ud_path_no_symlinks(ctx, path);
+    ud_string format = table;
+    if (!format.length) {
+        const char *extension = strrchr(path, '.');
+        if (extension && !strcmp(extension, ".csv"))
+            format = (ud_string){"csv", 3};
+        else if (extension && !strcmp(extension, ".ndjson"))
+            format = (ud_string){"ndjson", 6};
+        else if (extension && !strcmp(extension, ".json"))
+            format = (ud_string){"jsonArray", 9};
+    }
+    if (!status && ud_named(format, "csv")) {
+        ud_csv_options options = {.struct_size = sizeof(options),
+                                  .abi_version = UD_ABI_VERSION,
+                                  .max_record_bytes = 16777216};
+        status = ud_csv_discover(ctx, path, scope, &options, 256, out);
+    } else if (!status && (ud_named(format, "ndjson") || ud_named(format, "jsonArray"))) {
+        ud_json_options options = {.struct_size = sizeof(options),
+                                   .version = UD_CONFIG_VERSION,
+                                   .batch_size = 256,
+                                   .max_record_bytes = 16777216,
+                                   .framing = ud_named(format, "jsonArray")
+                                                  ? UD_JSON_FRAMING_ARRAY
+                                                  : UD_JSON_FRAMING_LINES};
+        status = ud_json_discover(ctx, path, scope, &options, 256, out);
+    } else if (!status)
+        status = UD_UNSUPPORTED;
+    ud_free(path);
+    return status;
 }
 ud_status ud_connection_lease_discover(ud_connection_lease *l, ud_string table, ud_batch **out) {
     if (!l || !l->connection)

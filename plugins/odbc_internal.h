@@ -3,7 +3,7 @@
 #include "common.h"
 #include <sql.h>
 #include <sqlext.h>
-#include <pthread.h>
+#include "../components/foundation/thread.h"
 #include <stdatomic.h>
 typedef struct odbc_state {
     ud_host_api host;
@@ -14,7 +14,7 @@ typedef struct odbc_state {
     SQLHENV environment;
     SQLHDBC connection;
     SQLHSTMT cursor;
-    pthread_mutex_t handles_lock;
+    ud_mutex handles_lock;
     SQLHSTMT handles[16];
     ud_batch *schema;
     uint32_t batch_size;

@@ -2,7 +2,7 @@
 #include "postgresql_cdc.h"
 #include <libpq-fe.h>
 #include <stdatomic.h>
-#include <pthread.h>
+#include "../components/foundation/thread.h"
 #ifdef _WIN32
 #include <winsock2.h>
 #else
@@ -15,7 +15,7 @@ typedef struct {
     ud_pg_cdc *cdc;
     char *configuration;
     PGcancelConn *cancel;
-    pthread_mutex_t ownership;
+    ud_mutex ownership;
     ud_batch *schema;
     uint32_t batch_size;
     int reading, finished;
@@ -237,13 +237,13 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
     if (!p)
         return UD_RESOURCE;
     p->host = *host;
-    pthread_mutex_init(&p->ownership, NULL);
+    ud_mutex_init(&p->ownership);
     p->control_user = host->control_user;
     p->check = host->check_io;
     atomic_init(&p->cancelled, 0);
     char *copy = plugin_string(host, config, length);
     if (!copy) {
-        pthread_mutex_destroy(&p->ownership);
+        ud_mutex_destroy(&p->ownership);
         host->deallocate(p);
         return UD_RESOURCE;
     }
@@ -252,7 +252,7 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
     p->configuration = plugin_string(host, config, length);
     if (!p->configuration) {
         host->deallocate(copy);
-        pthread_mutex_destroy(&p->ownership);
+        ud_mutex_destroy(&p->ownership);
         host->deallocate(p);
         return UD_RESOURCE;
     }
@@ -320,7 +320,7 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
         if (p->cancel)
             PQcancelFinish(p->cancel);
         host->deallocate(p->configuration);
-        pthread_mutex_destroy(&p->ownership);
+        ud_mutex_destroy(&p->ownership);
         host->deallocate(p);
         return host->report(host->context, s,
                             "PostgreSQL initialization failed; connection string is redacted");
@@ -724,10 +724,10 @@ static ud_status next_read(void *state, ud_batch **out) {
 static void cancel_operation(void *state) {
     postgres_state *p = state;
     atomic_store(&p->cancelled, 1);
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     if (p->cdc)
         ud_pg_cdc_cancel(p->cdc);
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
 }
 static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string batch_id,
                          ud_commit_receipt *out) {
@@ -1037,17 +1037,17 @@ static void destroy(void *state) {
         return;
     p->host.batch_destroy(p->schema);
     p->schema = NULL;
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     ud_pg_cdc *child = p->cdc;
     p->cdc = NULL;
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
     ud_pg_cdc_close(child);
     p->host.deallocate(p->configuration);
     if (p->cancel)
         PQcancelFinish(p->cancel);
     if (p->db)
         PQfinish(p->db);
-    pthread_mutex_destroy(&p->ownership);
+    ud_mutex_destroy(&p->ownership);
     p->host.deallocate(p);
 }
 static int transaction_statement(const char *sql) {
@@ -1420,11 +1420,11 @@ static ud_status cdc_open(void *state, const ud_cdc_options *options) {
     ud_pg_cdc *child = NULL;
     ud_status status = ud_pg_cdc_open(&host, p->configuration, options, &child);
     if (!status) {
-        pthread_mutex_lock(&p->ownership);
+        ud_mutex_lock(&p->ownership);
         p->cdc = child;
         if (atomic_load(&p->cancelled))
             ud_pg_cdc_cancel(child);
-        pthread_mutex_unlock(&p->ownership);
+        ud_mutex_unlock(&p->ownership);
     }
     return status;
 }
@@ -1438,10 +1438,10 @@ static ud_status cdc_confirm(void *state, ud_string position) {
 }
 static ud_status cdc_close(void *state) {
     postgres_state *p = state;
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     ud_pg_cdc *child = p->cdc;
     p->cdc = NULL;
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
     return ud_pg_cdc_close(child);
 }
 static const ud_connector_api connector = {

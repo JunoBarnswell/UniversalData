@@ -50,7 +50,8 @@ typedef struct ud_execution_options {
     void *observe_user;
     ud_string state_directory; /* Optional authorized durable journal; absolute path. */
     int32_t resume;
-    uint32_t max_concurrency; /* 0 selects 1; shared Control/Tree native worker budget. */
+    uint32_t max_concurrency;      /* 0 selects 1; shared Control/Tree native worker budget. */
+    uint64_t event_sequence_start; /* Persisted host/Catalog sequence when resuming the same ID. */
 } ud_execution_options;
 typedef struct ud_execution_metrics {
     uint32_t struct_size, abi_version;
@@ -79,6 +80,9 @@ UD_API ud_status ud_activation_raise(ud_activation *, int32_t event_kind,
 UD_API ud_status ud_execution_component_catalog(ud_execution *, char **, uint32_t *);
 UD_API ud_status ud_execution_explain(ud_execution *, char **, uint32_t *);
 UD_API ud_status ud_execution_diagnostics(ud_execution *, char **, uint32_t *);
+/* One Data Schema result. Database resources discover a table; file resources
+ * accept csv/ndjson/jsonArray or infer the framing from the filename. Sampling
+ * is bounded to 256 complete records; unsupported unions never narrow silently. */
 UD_API ud_status ud_execution_discover_schema(ud_execution *, ud_string connection, ud_string table,
                                               char **, uint32_t *);
 UD_API ud_status ud_execution_execute(ud_execution *);

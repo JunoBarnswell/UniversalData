@@ -23,7 +23,7 @@
   },
   "candidate": {
     "branch": "codex/etl-ssis-product-alignment",
-    "state": "2.0 implementation in progress: Native types/presence/errors, distributed participants and staged checkpoint facts, REST delivery guarantees, remote native loading and .NET Registry/Observer code; schema/product closure and current acceptance remain pending",
+    "state": "2.0 implementation in progress: Native correctness/remote loading contracts, file discovery, row SQL, balanced dispatch, HTTP variables and managed product-host foundations; schema/CDC/product closure and concentrated acceptance remain pending",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,
@@ -35,7 +35,7 @@
       "phase": 4,
       "name": "Complete product dependency closure",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -47,7 +47,8 @@
       "acceptance": "A complete product build is requested with a missing dependency. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "An explicit PRODUCT native profile requires all native database drivers, Microsoft BCP SDK, Arrow file codecs, HTTP, CLI/Worker and JNI. Missing dependencies cannot silently become a full native product. Complete Web/extra-protocol dependency closure remains pending."
     },
     {
       "id": "ETL-002",
@@ -393,7 +394,7 @@
       "phase": 1,
       "name": "Unified file and database discovery",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -406,7 +407,8 @@
       "acceptance": "A designer/SDK discovers a file or database schema. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Database and file resources return Data Schema through the same discovery API. Bounded CSV/NDJSON/JSON-array sampling preserves integer/Decimal domains and identities; unsupported JSON unions/nesting remain explicit. Full formats and behavior acceptance remain pending."
     },
     {
       "id": "ETL-020",
@@ -454,7 +456,7 @@
       "phase": 6,
       "name": "Durable execution logs",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -466,7 +468,8 @@
       "acceptance": "An execution produces task/component/error events or logs are paginated. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native Catalog event records have an indexed latest-revision query, and Execution supports a host-restored event sequence start. Worker event persistence uses the Native Catalog. Error-chain detail, filters, retention and recovery acceptance remain pending."
     },
     {
       "id": "ETL-023",
@@ -573,7 +576,7 @@
       "phase": 5,
       "name": "Row SQL command parameter binding",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -585,7 +588,8 @@
       "acceptance": "Each input row invokes a parameterized external SQL command. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "sql.command processes input rows through native typed parameter binding, has a shared error output under real savepoints and declares external writes. Durable intents stop unproved response replay; accepted facts share the Native transaction journal. Real parameter/constraint/recovery acceptance remains pending."
     },
     {
       "id": "ETL-029",
@@ -631,7 +635,7 @@
       "phase": 5,
       "name": "Balanced batch dispatch",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -642,7 +646,8 @@
       "acceptance": "A batch is distributed to exactly one output while Multicast retains replication. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "balanced dispatches each batch to one output and checkpoints the Native dispatch position; multicast continues to copy to all outputs. Saturated-output performance, fairness and restore acceptance remain pending."
     },
     {
       "id": "ETL-032",
@@ -936,7 +941,7 @@
       "phase": 6,
       "name": "ASP.NET Core 10 management and isolated workers",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -948,14 +953,15 @@
       "acceptance": "A management request creates/queries/controls an independent native execution process. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "ASP.NET Core 10 product host projects are underway. Shared host resource/credential policy and one independent Worker holding Native Execution are implemented; start waits for the service to persist the Native ID. Management API, durable dispatch and complete process lifecycle remain pending."
     },
     {
       "id": "ETL-048",
       "phase": 7,
       "name": "React Flow package designer",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -966,7 +972,8 @@
       "acceptance": "A user edits control/data flow, ports, mappings, connections, metadata or package layout. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Designer visual concepts and design system are defined; protocol-10 package layout uses stable IDs and Native validates positions/viewports against actual graphs. React Flow editing and real browser acceptance remain pending."
     },
     {
       "id": "ETL-049",
@@ -993,7 +1000,7 @@
       "phase": 6,
       "name": "Full Linux and Windows driver CI",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -1005,7 +1012,8 @@
       "acceptance": "CI must compile every declared driver and register SQL/CDC real integrations. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Built-in drivers now use the existing Foundation mutex owner for Linux/Windows rather than direct pthread-only declarations. Full dependency matrix, real CI and Windows driver acceptance remain pending."
     },
     {
       "id": "ETL-051",
@@ -1031,7 +1039,7 @@
       "phase": 5,
       "name": "HTTP response variable mappings",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
@@ -1042,7 +1050,8 @@
       "acceptance": "HTTP status/body/header output is bound to a declared native variable. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "HTTP Task declares response body/header variables, permits typed UTF8/BINARY body retention and retains complete rejected-status responses. Ambiguous writes remain CommitUnknown. Real transport and variable-mapping acceptance remain pending."
     }
   ],
   "gates": [

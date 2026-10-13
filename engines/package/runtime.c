@@ -17,6 +17,11 @@ void ud_activation_notify_kind(ud_activation *e, int32_t kind, ud_execution_stat
     if (!e->execution->options.observe)
         return;
     ud_mutex_lock(&e->execution->events_lock);
+    if (e->execution->event_sequence == UINT64_MAX) {
+        atomic_store(&e->execution->observer_fault, UD_RESOURCE);
+        ud_mutex_unlock(&e->execution->events_lock);
+        return;
+    }
     ud_execution_event event = {sizeof(event),
                                 UD_ABI_VERSION,
                                 e->package->id,
@@ -219,6 +224,7 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     ud_mutex_init(&e->cancellation_lock);
     ud_condition_init(&e->cancellation_changed);
     e->options = *options;
+    e->event_sequence = options->event_sequence_start;
     if (!e->options.max_concurrency)
         e->options.max_concurrency = 1;
     e->options.parameters = (ud_string){0};
@@ -823,8 +829,8 @@ ud_status ud_execution_discover_schema(ud_execution *e, ud_string connection, ud
     char scope[33];
     ud_status status = ud_connection_field_namespace(&e->root, connection, table, scope);
     if (!status)
-        status =
-            ud_activation_acquire_connection(&e->root, connection, UD_CONNECT_METADATA, &lease);
+        status = ud_activation_acquire_connection(&e->root, connection,
+                                                  UD_CONNECT_READ | UD_CONNECT_METADATA, &lease);
     if (!status)
         status = ud_connection_lease_schema(lease, table, (ud_string){scope, 32}, &schema);
     if (!status)
