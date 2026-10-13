@@ -2,9 +2,11 @@
 #define UD_COMPUTE_H
 #include "data.h"
 #include "expression.h"
+#include "json.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
+UD_API ud_status ud_compute_field_index(const ud_batch *, const ud_json *, uint32_t *);
 /* Stable sort, NULLS FIRST ascending / NULLS LAST descending. */
 UD_API ud_status ud_compute_sort(ud_context *, const ud_batch *, uint32_t key, int32_t descending,
                                  ud_batch **);

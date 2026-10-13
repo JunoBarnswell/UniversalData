@@ -162,59 +162,6 @@ static ud_status connection_defined(const ud_component_context *ctx, ud_string i
     int project_scope = 0;
     return ud_connection_definition(ctx->activation, id, &definition, &project_scope);
 }
-static ud_status check_config(int kind, const ud_json *config) {
-    if (kind == XLSX_SOURCE || kind == XLSX_SINK) {
-        static const char *keys[] = {
-            "connection",   "schema",     "batchSize",          "sheet",
-            "range",        "header",     "formulaPolicy",      "errorPolicy",
-            "includeInput", "datePolicy", "maxCompressedBytes", "maxDecompressedBytes",
-            "maxEntries",   "maxCells",   "maxStringBytes",     "ordering"};
-        return ud_json_keys(config, keys, 16);
-    }
-    static const char *source[] = {
-        "connection",   "schema",         "batchSize",    "sql",        "partitionCount",
-        "partitionId",  "partitionBegin", "partitionEnd", "nullMarker", "incremental",
-        "schemaPolicy", "table",          "ordering",     "parameters"};
-    static const char *sink[] = {"connection", "table",        "mode",
-                                 "keys",       "schemaPolicy", "provisionReceipts"};
-    static const char *cast[] = {"schema", "rounding", "errorPolicy", "includeInput"},
-                      *derive[] = {"columns"}, *split[] = {"condition", "branches", "default"},
-                      *sort[] = {"keys", "descending", "partitions"},
-                      *join[] = {"leftKeys", "rightKeys",    "partitions",
-                                 "joinType", "rightAliases", "strategy"},
-                      *aggregate[] = {"plan", "partitions"};
-    if (source_kind(kind))
-        return ud_json_keys(config, source, 14);
-    if (file_sink(kind))
-        return ud_json_keys(config, sink, 1);
-    if (kind == SQL_SINK)
-        return ud_json_keys(config, sink, 6);
-    if (kind == MULTICAST) {
-        static const char *keys[] = {"outputs"};
-        return ud_json_keys(config, keys, 1);
-    }
-    if (kind == UNION_ALL) {
-        static const char *keys[] = {"inputs"};
-        return ud_json_keys(config, keys, 1);
-    }
-    if (kind == CAST)
-        return ud_json_keys(config, cast, 4);
-    if (kind == DERIVE)
-        return ud_json_keys(config, derive, 1);
-    if (kind == SPLIT)
-        return ud_json_keys(config, split, 3);
-    if (kind == SORT)
-        return ud_json_keys(config, sort, 3);
-    if (kind == JOIN)
-        return ud_json_keys(config, join, 6);
-    if (kind == AGGREGATE)
-        return ud_json_keys(config, aggregate, 2);
-    if (kind == WINDOW) {
-        static const char *keys[] = {"keys", "partitionKeys", "function", "name", "column"};
-        return ud_json_keys(config, keys, 5);
-    }
-    return ud_json_size(config) == 0 ? UD_OK : UD_SCHEMA;
-}
 static ud_status operator_check(void *user) {
     return ud_activation_check(user);
 }
@@ -226,6 +173,7 @@ static ud_status create_operator(const ud_component_context *c, int kind, const 
                                    .buffers = c->execution->buffers,
                                    .check = operator_check,
                                    .user = c->activation};
+    UD_TRY(ud_component_operator_options(c, &options));
     if (kind == JOIN) {
         char *json = NULL;
         uint32_t length = 0;
@@ -268,11 +216,10 @@ static ud_status create_operator(const ud_component_context *c, int kind, const 
             s = UD_RESOURCE;
         for (uint32_t i = 0; !s && i < options.key_count; i++) {
             uint64_t index = 0;
-            s = ud_json_uint(ud_json_at(keys, i), &index);
-            if (!s && index >= inputs[0]->columns)
-                s = UD_SCHEMA;
-            if (!s)
-                window_keys[i] = (uint32_t)index;
+            uint32_t selected = 0;
+            s = ud_compute_field_index(inputs[0], ud_json_at(keys, i), &selected);
+            index = selected;
+            if (!s) window_keys[i] = (uint32_t)index;
         }
         uint64_t partition = 0, column = 0;
         ud_string function = {0};
@@ -284,15 +231,34 @@ static ud_status create_operator(const ud_component_context *c, int kind, const 
             s = ud_json_string(ud_member(config, "function"), &function);
         if (!s)
             s = ud_json_string(ud_member(config, "name"), &options.window_name);
-        options.window_function = ud_named(function, "rowNumber")    ? UD_WINDOW_ROW_NUMBER
-                                  : ud_named(function, "runningSum") ? UD_WINDOW_RUNNING_SUM
-                                                                     : 0;
-        if (!s && !options.window_function)
-            s = UD_UNSUPPORTED;
-        if (!s && options.window_function == UD_WINDOW_RUNNING_SUM)
-            s = ud_json_uint(ud_member(config, "column"), &column);
-        if (!s && column >= inputs[0]->columns)
-            s = UD_SCHEMA;
+        static const char *functions[] = {"rowNumber", "runningSum", "rank", "denseRank", "lag", "lead", "first", "last", "movingSum", "movingAverage"};
+        for (uint32_t i = 0; i < sizeof(functions) / sizeof(*functions); i++)
+            if (ud_named(function, functions[i])) options.window_function = (int32_t)i + 1;
+        if (!s && !options.window_function) s = UD_UNSUPPORTED;
+        if (!s && (options.window_function == UD_WINDOW_RUNNING_SUM || options.window_function >= UD_WINDOW_LAG)) {
+            uint32_t selected = 0;
+            s = ud_compute_field_index(inputs[0], ud_member(config, "column"), &selected);
+            column = selected;
+        }
+        uint64_t offset = 1;
+        if (!s && ud_member(config, "offset")) s = ud_json_uint(ud_member(config, "offset"), &offset);
+        if (!s && offset > 65536) s = UD_SCHEMA;
+        options.window_offset = (uint32_t)offset;
+        const ud_json *frame = ud_member(config, "frame");
+        if (!s && frame) {
+            ud_string type = {0};
+            s = ud_json_string(ud_member(frame, "type"), &type);
+            if (!s) s = ud_json_uint(ud_member(frame, "preceding"), &options.frame_preceding);
+            if (!s) s = ud_json_uint(ud_member(frame, "following"), &options.frame_following);
+            options.frame_kind = ud_named(type, "rows") ? UD_FRAME_ROWS : ud_named(type, "range") ? UD_FRAME_RANGE : 0;
+            if (!options.frame_kind) s = UD_SCHEMA;
+        }
+        if (!s && !frame && options.window_function >= UD_WINDOW_MOVING_SUM) s = UD_SCHEMA;
+        options.average_rounding = UD_ROUND_HALF_EVEN;
+        if (!s && ud_member(config, "averageRounding")) {
+            ud_string mode = {0}; s = ud_json_string(ud_member(config, "averageRounding"), &mode);
+            if (!s) options.average_rounding = ud_named(mode, "exact") ? UD_ROUND_EXACT : UD_ROUND_HALF_EVEN;
+        }
         options.kind = UD_OPERATOR_WINDOW;
         options.keys = window_keys;
         options.partition_key_count = (uint32_t)partition;
@@ -389,10 +355,7 @@ static ud_status describe_operator(void *user, const ud_component_context *c, ud
     if (!status)
         status = create_operator(c, kind, config, inputs, &op);
     if (!status) {
-        out->partitions = ud_operator_partition_count(op);
-        status = ud_operator_order(op, &out->sort);
-        out->ordering = kind == SORT || kind == AGGREGATE || kind == WINDOW ? UD_ORDER_GLOBAL
-                                                                            : UD_ORDER_PARTITION;
+        status = ud_component_operator_plan(op, out);
     }
     ud_status released = ud_operator_destroy(op);
     if (!status)
@@ -405,8 +368,6 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     int kind = (int)(intptr_t)user;
     ud_json *config = NULL;
     ud_status s = parse(c, text, &config);
-    if (!s)
-        s = check_config(kind, config);
     if (!s && source_kind(kind)) {
         uint64_t count = 1, id = 0, begin = 0, end = UINT64_MAX;
         if (ud_member(config, "partitionCount"))
@@ -1976,7 +1937,7 @@ static const char *configuration_schema(int kind) {
                "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
                "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
                "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
-               "\"table\":{\"type\":\"string\"},\"sql\":{\"type\":\"string\"}},\"required\":["
+               "\"table\":{\"type\":\"string\"},\"sql\":{\"type\":\"string\"},\"parameters\":{\"type\":\"object\"},\"ordering\":{\"type\":\"object\"}},\"required\":["
                "\"connection\",\"schema\",\"sql\"],\"additionalProperties\":false}";
     case CSV_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},"
@@ -1987,7 +1948,7 @@ static const char *configuration_schema(int kind) {
     case SQL_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
                "\"table\":{\"type\":\"string\"},\"mode\":{\"type\":\"string\"},\"keys\":{\"type\":"
-               "\"array\"},\"schemaPolicy\":{\"type\":\"object\"}},\"required\":[\"connection\","
+               "\"array\"},\"schemaPolicy\":{\"type\":\"object\"},\"provisionReceipts\":{\"type\":\"boolean\"}},\"required\":[\"connection\","
                "\"table\",\"mode\"],\"additionalProperties\":false}";
     case CAST:
         return "{\"type\":\"object\",\"properties\":{\"schema\":{\"type\":\"object\"},\"rounding\":"
@@ -2000,24 +1961,12 @@ static const char *configuration_schema(int kind) {
         return "{\"type\":\"object\",\"properties\":{\"condition\":{\"type\":\"object\"},"
                "\"branches\":{\"type\":\"array\"},\"default\":{\"type\":\"string\"}},"
                "\"additionalProperties\":false}";
-    case SORT:
-        return "{\"type\":\"object\",\"properties\":{\"keys\":{\"type\":\"array\"},\"descending\":{"
-               "\"type\":\"boolean\"},\"partitions\":{\"type\":\"integer\"}},\"required\":["
-               "\"keys\"],\"additionalProperties\":false}";
-    case JOIN:
-        return "{\"type\":\"object\",\"properties\":{\"leftKeys\":{\"type\":\"array\"},"
-               "\"rightKeys\":{\"type\":\"array\"},\"partitions\":{\"type\":\"integer\"},"
-               "\"joinType\":{\"type\":\"string\"},\"rightAliases\":{\"type\":\"object\"},"
-               "\"strategy\":{\"type\":\"string\"}},\"required\":[\"leftKeys\",\"rightKeys\"],"
-               "\"additionalProperties\":false}";
-    case AGGREGATE:
-        return "{\"type\":\"object\",\"properties\":{\"plan\":{\"type\":\"object\"},\"partitions\":"
-               "{\"type\":\"integer\"}},\"required\":[\"plan\"],\"additionalProperties\":false}";
-    case WINDOW:
-        return "{\"type\":\"object\",\"properties\":{\"keys\":{\"type\":\"array\"},"
-               "\"partitionKeys\":{\"type\":\"integer\"},\"function\":{\"type\":\"string\"},"
-               "\"name\":{\"type\":\"string\"},\"column\":{\"type\":\"integer\"}},\"required\":["
-               "\"keys\",\"partitionKeys\",\"function\",\"name\"],\"additionalProperties\":false}";
+    case SORT: case JOIN: case AGGREGATE: case WINDOW: {
+        ud_string schema = {0};
+        int k = kind == SORT ? UD_OPERATOR_SORT : kind == JOIN ? UD_OPERATOR_JOIN :
+                kind == AGGREGATE ? UD_OPERATOR_AGGREGATE : UD_OPERATOR_WINDOW;
+        return ud_operator_configuration_schema(k, &schema) ? NULL : schema.data;
+    }
     case MULTICAST:
         return "{\"type\":\"object\",\"properties\":{\"outputs\":{\"type\":\"array\"}},"
                "\"additionalProperties\":false}";

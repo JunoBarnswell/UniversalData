@@ -139,6 +139,11 @@ static ud_status bind_ports(node *n, ud_activation *e, const ud_json *definition
                                         .component_id = n->id,
                                         .max_batch_rows = e->execution->options.max_batch_rows};
     UD_TRY(ud_bound_config(&n->activation, ud_member(definition, "config"), &n->configuration));
+    ud_json *bound = NULL;
+    UD_TRY(ud_component_bind_configuration(e->execution->ctx, &n->descriptor,
+                                           n->configuration, &bound));
+    ud_json_destroy(n->configuration);
+    n->configuration = bound;
     UD_TRY(ud_json_serialize(n->configuration, &n->json, &n->json_length));
     ud_component_ports *ports = &n->ports;
     if (n->descriptor.bind_ports)
@@ -792,8 +797,17 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                     return UD_SCHEMA;
             }
         }
-        for (uint32_t j = 0; j < n->descriptor.outputs; j++)
+        n->binding.effects = n->descriptor.effects;
+        n->binding.state_version = n->descriptor.state_version;
+        for (uint32_t j = 0; j < n->descriptor.outputs; j++) {
             n->ports.outputs[j].schema = n->schemas[j];
+            if((int32_t)j != n->descriptor.error_output) {
+                n->ports.outputs[j].sort = n->binding.sort;
+                n->ports.outputs[j].partition_count = n->binding.partitions;
+                n->ports.outputs[j].partition_key_count = n->binding.partition_key_count;
+                memcpy(n->ports.outputs[j].partition_keys, n->binding.partition_keys, sizeof(n->binding.partition_keys));
+            }
+        }
         for (uint32_t j = 0; j < n->descriptor.outputs; j++)
             if (!n->schemas[j] || n->schemas[j]->ctx != e->execution->ctx || n->schemas[j]->rows)
                 return UD_SCHEMA;
@@ -1035,8 +1049,8 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
     UD_TRY(ud_bytes_put(b, ",", 1));
     UD_TRY(json_number(b, "treeConcurrency", p->concurrency));
     if (p->execution->execution->options.state_directory.length)
-        UD_TRY(ud_bytes_put(b, ",\"recoveryOrdering\":\"serialized-tree-schedule\"",
-                            sizeof(",\"recoveryOrdering\":\"serialized-tree-schedule\"") - 1));
+        UD_TRY(ud_bytes_put(b, ",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"",
+                            sizeof(",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"") - 1));
     UD_TRY(ud_bytes_put(b, ",\"trees\":[", sizeof(",\"trees\":[") - 1));
     for (uint32_t t = 0; t < p->tree_count; t++) {
         if (t)
@@ -1094,6 +1108,9 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
             UD_TRY(json_number(b, "partitions", partitions));
             UD_TRY(ud_bytes_put(b, ",", 1));
             UD_TRY(json_number(b, "ordering", n->binding.ordering));
+            const char *physical_names[] = {"algorithm", "estimatedRows", "rowWidthEstimate", "memoryBudget", "spillBudget", "estimatedCost", "stateVersion", "effects"};
+            const uint64_t physical_values[] = {n->binding.algorithm,n->binding.estimated_rows,n->binding.row_width,n->binding.memory_budget,n->binding.spill_budget,n->binding.estimated_cost,n->binding.state_version,n->binding.effects};
+            for(uint32_t field=0;field<8;field++){UD_TRY(ud_bytes_put(b, ",", 1));UD_TRY(json_number(b, physical_names[field], physical_values[field]));}
             UD_TRY(ud_bytes_put(b, ",\"sortKeys\":[", 13));
             for (uint32_t k = 0; k < n->binding.sort.count; k++) {
                 char id[33];

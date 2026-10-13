@@ -150,7 +150,9 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_value_parse_field,
                             ud_value_format,
                             NULL,
-                            NULL,ud_json_parse,ud_json_destroy,ud_json_find,ud_json_text,ud_json_kind};
+                            NULL, ud_json_parse, ud_json_destroy, ud_json_find, ud_json_text, ud_json_kind,
+                            ud_json_size, ud_json_at, ud_json_keys, ud_json_bind_schema,
+                            ud_field_from_sql,ud_sql_compile_write,ud_sql_statement_clear};
     *out = p;
     return UD_OK;
 }
@@ -590,11 +592,11 @@ ud_status ud_connection_write(ud_connection *c, const ud_write_options *options,
     }
     if (options->mode == UD_WRITE_CHANGESET) {
         if(c->transaction) return UD_UNSUPPORTED;
-        if(!options->operations||!options->before||!batch->sealed||!options->before->sealed||
-           options->before->columns!=batch->columns||options->before->rows!=batch->rows||
-           options->current_column>=batch->columns||batch->column[options->current_column].field.type!=UD_BOOL) return UD_SCHEMA;
-        for(uint32_t j=0;j<batch->columns;j++) if(!ud_field_matches(&batch->column[j].field,&options->before->column[j].field,UD_FIELD_VALUE_TYPE)) return UD_SCHEMA;
-        for(uint32_t row=0;row<batch->rows;row++) if(options->operations[row]<UD_CHANGE_INSERT||options->operations[row]>UD_CHANGE_DELETE) return UD_SCHEMA;
+        if(!options->operations || !batch->sealed) return UD_SCHEMA;
+        if(options->before && (!options->before->sealed || options->before->columns!=batch->columns || options->before->rows!=batch->rows)) return UD_SCHEMA;
+        if(options->current_column!=UINT32_MAX && (options->current_column>=batch->columns || batch->column[options->current_column].field.type!=UD_BOOL)) return UD_SCHEMA;
+        for(uint32_t j=0;options->before && j<batch->columns;j++) if(!ud_field_matches(&batch->column[j].field,&options->before->column[j].field,UD_FIELD_VALUE_TYPE)) return UD_SCHEMA;
+        for(uint32_t row=0;row<batch->rows;row++) if(options->operations[row]<UD_CHANGE_INSERT || options->operations[row]>UD_CHANGE_UPSERT) return UD_SCHEMA;
     }
     UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
     uint8_t digest[32];
@@ -627,10 +629,11 @@ ud_status ud_connection_digest(ud_connection *c, const ud_write_options *options
     for (uint32_t j = 0; !s && j < options->key_count; j++)
         s = ud_put_u64(&wire, options->keys[j]);
     if(!s&&options->mode==UD_WRITE_CHANGESET) {
-        if(!options->operations||!options->before||options->before->rows!=batch->rows) s=UD_SCHEMA;
+        if(!options->operations || (options->before && options->before->rows!=batch->rows)) s=UD_SCHEMA;
         if(!s)s=ud_put_u64(&wire,options->current_column);
         for(uint32_t row=0;!s&&row<batch->rows;row++)s=ud_put_u64(&wire,(uint64_t)options->operations[row]);
-        if(!s)s=ud_encode_batch(&wire,options->before);
+        if(!s)s=ud_put_u64(&wire, options->before ? 1 : 0);
+        if(!s && options->before)s=ud_encode_batch(&wire,options->before);
     }
     if (!s)
         s = ud_encode_batch(&wire, batch);

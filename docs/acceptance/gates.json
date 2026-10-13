@@ -1,8 +1,8 @@
 {
   "generatedFrom": "metadata/product.json",
-  "version": 8,
-  "sdkVersion": "1.4.0",
-  "abi": 8,
+  "version": 9,
+  "sdkVersion": "1.5.0",
+  "abi": 9,
   "sourceFingerprint": null,
   "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
   "windows": "Exempt — explicit current user instruction",

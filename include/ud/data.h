@@ -110,7 +110,11 @@ UD_API int32_t ud_truth_and(int32_t, int32_t);
 UD_API int32_t ud_truth_or(int32_t, int32_t);
 UD_API int32_t ud_truth_not(int32_t);
 typedef struct ud_batch ud_batch;
-enum { UD_SQL_CANONICAL = 0, UD_SQL_SQLITE = 1, UD_SQL_POSTGRESQL = 2 };
+enum { UD_SQL_CANONICAL = 0, UD_SQL_SQLITE = 1, UD_SQL_POSTGRESQL = 2,
+       UD_SQL_MYSQL, UD_SQL_MARIADB, UD_SQL_SQLSERVER, UD_SQL_ORACLE, UD_SQL_DB2, UD_SQL_DUCKDB };
+/* Pure provider-specific type proof. Zone-free datetime declarations require an
+ * explicit provider UTC annotation, never the machine's local timezone. */
+UD_API ud_status ud_field_from_sql(ud_string declaration, int32_t dialect, ud_field *);
 /* Owned canonical schema/diff results. Native policy JSON accepts strict,
  * compatible, or explicitMapping with complete expected/actual ID/name pairs. */
 UD_API ud_status ud_schema_fingerprint(const ud_batch *, uint8_t out[32]);
@@ -127,7 +131,7 @@ enum { UD_ROW_ERROR = 1 };
 enum { UD_ERROR_FAIL = 0, UD_ERROR_REDIRECT = 1, UD_ERROR_IGNORE = 2 };
 typedef struct ud_row_info {
     ud_id id, rule;
-    uint32_t flags, reserved;
+    uint32_t flags, operation; /* 0 ordinary row; UD_CHANGE_* for a Changeset. */
 } ud_row_info;
 /* Metadata is native, owned with the Batch and preserved by Wire/Spill. Zero ID
  * means unspecified direct-API provenance. Mutation requires an owned mutable batch. */

@@ -67,6 +67,7 @@ UD_API ud_status ud_execution_create_json(ud_string, const ud_execution_options 
  * acquires external resources. Diagnostics are available after execution joins. */
 UD_API ud_status ud_activation_raise(ud_activation *, int32_t event_kind,
                                      ud_status original_result);
+UD_API ud_status ud_execution_component_catalog(ud_execution *, char **, uint32_t *);
 UD_API ud_status ud_execution_explain(ud_execution *, char **, uint32_t *);
 UD_API ud_status ud_execution_diagnostics(ud_execution *, char **, uint32_t *);
 UD_API ud_status ud_execution_discover_schema(ud_execution *, ud_string connection, ud_string table,

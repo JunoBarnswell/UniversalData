@@ -822,3 +822,8 @@ ud_status ud_schema_report(ud_activation *a, ud_string diff, ud_status result) {
     ud_bytes_clear(&record);
     return status;
 }
+
+ud_status ud_execution_component_catalog(ud_execution *e, char **out, uint32_t *length) {
+    if (!e) return UD_INVALID;
+    return ud_registry_describe(e->registry, out, length);
+}

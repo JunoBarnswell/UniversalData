@@ -109,6 +109,15 @@ public sealed class Execution : IDisposable
         }
     }
 
+    public string ComponentCatalog()
+    {
+        Control(); lock (controller)
+        {
+            Open(); Check(Native.ud_execution_component_catalog(execution, out var text, out var length));
+            return DataOwnership.Text(text, length);
+        }
+    }
+
     public string Explain() => Inspect(false);
 
     public string Diagnostics() => Inspect(true);
@@ -179,6 +188,7 @@ internal static partial class Native
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_execution_wait")] internal static extern int ud_execution_wait_raw(IntPtr execution, uint timeout);
 
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_component_catalog(ExecutionHandle execution, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_explain(ExecutionHandle execution, out IntPtr text, out uint length);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_diagnostics(ExecutionHandle execution, out IntPtr text, out uint length);

@@ -592,3 +592,13 @@ JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeDiscover(JNIEnv
     ud_free(text);
     return result;
 }
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeCatalog(JNIEnv *env, jclass cls,
+                                                                         jlong handle) {
+    (void)cls;
+    java_execution *j = (java_execution *)(intptr_t)handle;
+    char *text = NULL; uint32_t size = 0;
+    ud_status status = ud_execution_component_catalog(j->execution, &text, &size);
+    if (status) { fail(env, status, ud_status_name(status)); return NULL; }
+    jstring result = utf8(env, text); ud_free(text); return result;
+}

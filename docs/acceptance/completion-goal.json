@@ -1,6 +1,6 @@
 {
   "generatedFrom": "metadata/product.json",
-  "goalVersion": 8,
+  "goalVersion": 9,
   "completionRule": "Current core/infrastructure gates are required; extensions retain their actual status.",
   "automaticMergeOrReleaseAuthorized": false,
   "items": [

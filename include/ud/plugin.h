@@ -2,6 +2,7 @@
 #define UD_PLUGIN_H
 #include "data.h"
 #include "json.h"
+#include "sql.h"
 #include "connector.h"
 #include "component.h"
 #ifdef __cplusplus
@@ -39,6 +40,13 @@ typedef struct ud_host_api {
     const ud_json *(*json_find)(const ud_json *, const char *, uint32_t);
     ud_status (*json_text)(const ud_json *, const char **, uint32_t *);
     int32_t (*json_kind)(const ud_json *);
+    uint32_t (*json_size)(const ud_json *);
+    const ud_json *(*json_at)(const ud_json *, uint32_t);
+    ud_status (*json_keys)(const ud_json *, const char *const *, uint32_t);
+    ud_status (*json_bind_schema)(ud_context *, const ud_json *, const ud_json *, ud_json **);
+    ud_status (*field_from_sql)(ud_string, int32_t, ud_field *);
+    ud_status (*compile_write)(ud_context *,int32_t,int32_t,const ud_write_options *,const ud_batch *,uint32_t,uint32_t,ud_sql_statement *);
+    void (*statement_clear)(ud_sql_statement *);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;

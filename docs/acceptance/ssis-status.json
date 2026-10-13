@@ -1,9 +1,9 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "1.4.0",
-  "abi": 8,
+  "sdkVersion": "1.5.0",
+  "abi": 9,
   "scope": {
-    "name": "ETL next phase R1–R5 only",
+    "name": "PR #5 Native foundation, extension platform and advanced ETL",
     "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
     "extensions": "Tracked independently; Planned/Partial remain incomplete",
     "windows": "Exempt — explicit current user instruction"
@@ -19,8 +19,8 @@
   },
   "candidate": {
     "branch": "codex/etl-next-phase-r1-r5",
-    "state": "PR #5 E01–E15 / N01–N11 / D01–D12 implementation in progress; ABI 8 verification pending",
-    "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
+    "state": "PR #5 advanced ETL implementation in progress; ABI 9 verification pending",
+    "sourceCommit": "fd03e6508b0a13c4e418225c91bd60e56c547418",
     "sourceFingerprint": null,
     "mergeEvidence": null,
     "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"

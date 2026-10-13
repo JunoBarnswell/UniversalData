@@ -45,7 +45,7 @@ typedef struct ud_metadata_options {
     uint32_t limit;
 } ud_metadata_options;
 enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3, UD_WRITE_CHANGESET = 4 };
-enum { UD_CHANGE_INSERT = 1, UD_CHANGE_UPDATE = 2, UD_CHANGE_DELETE = 3 };
+enum { UD_CHANGE_INSERT = 1, UD_CHANGE_UPDATE = 2, UD_CHANGE_DELETE = 3, UD_CHANGE_UPSERT = 4 };
 enum {
     UD_ACCESS_OPEN = 1,
     UD_ACCESS_DISCOVER = 2,
@@ -86,9 +86,9 @@ typedef struct ud_write_options {
     const uint32_t *keys;
     uint32_t key_count;
     const int32_t *operations; /* CHANGESET: one typed action per row, in supplied order. */
-    const ud_batch *before;    /* Exact optimistic preimages; same value types and row count. */
+    const ud_batch *before;    /* Optional exact preimages; same shape/count when supplied. */
     uint32_t
-        current_column; /* CHANGESET INSERT enforces one current row per supplied business key. */
+        current_column; /* UINT32_MAX for ordinary Changesets; SCD supplies its current BOOL. */
 } ud_write_options;
 typedef struct ud_commit_receipt {
     int32_t committed;

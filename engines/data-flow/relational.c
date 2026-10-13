@@ -42,6 +42,7 @@ static ud_status bind_operator(const ud_component_context *c, int kind, ud_strin
                                    .reference = reference,
                                    .executor = c->execution->executor,
                                    .partition_count = 1};
+    UD_TRY(ud_component_operator_options(c, &options));
     return ud_operator_create(c->memory, &options, in, out);
 }
 static ud_status inputs_for_scd(const ud_component_context *c, const ud_json *config,
@@ -205,9 +206,7 @@ static ud_status describe(void *user, const ud_component_context *c, ud_string t
     ud_operator *o = NULL;
     if (!s)
         s = bind_operator(c, kind, text, bound, NULL, &o);
-    if (!s)
-        s = ud_operator_order(o, &plan->sort);
-    plan->ordering = plan->sort.count ? UD_ORDER_GLOBAL : UD_ORDER_UNORDERED;
+    if (!s) s = ud_component_operator_plan(o, plan);
     ud_operator_destroy(o);
     ud_batch_destroy(dimension);
     ud_json_destroy(config);
@@ -509,13 +508,15 @@ ud_status ud_relational_register(ud_registry *registry) {
                    {"scd", UD_OPERATOR_SCD}};
     for (uint32_t i = 0; i < sizeof(entries) / sizeof(*entries); i++) {
         int k = entries[i].kind;
+        ud_string schema = {0};
+        UD_TRY(ud_operator_configuration_schema(k, &schema));
         ud_component_descriptor d = {
             .struct_size = sizeof(d),
             .abi_version = UD_ABI_VERSION,
             .id = {entries[i].id, (uint32_t)strlen(entries[i].id)},
             .name = {entries[i].id, (uint32_t)strlen(entries[i].id)},
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
-            .configuration_schema = {"{\"type\":\"object\"}", 17},
+            .configuration_schema = schema,
             .category = UD_COMPONENT_TRANSFORM,
             .inputs = k == UD_OPERATOR_MERGE || k == UD_OPERATOR_MERGE_JOIN ? 2 : 1,
             .outputs = (uint32_t)outputs(k),
@@ -561,4 +562,25 @@ ud_status ud_relational_register(ud_registry *registry) {
                                  .dispose = dispose,
                                  .diagnostics = sink_diagnostics};
     return ud_registry_register(registry, &d);
+}
+
+ud_status ud_component_operator_options(const ud_component_context *c,ud_operator_options *o) {
+    ud_buffer_options limits = {0};
+    UD_TRY(ud_execution_buffer_options(c->execution,&limits));
+    uint32_t concurrency = ud_execution_concurrency(c->activation);
+    if(!concurrency) return UD_SCHEMA;
+    o->memory_budget=limits.working_limit/(2u*concurrency);
+    o->spill_budget=limits.spill_limit;
+    o->input_count=c->input_count;
+    for(uint32_t i=0;i<c->input_count&&i<64;i++) if(c->input_plans) o->estimated_rows[i]=c->input_plans[i].estimated_rows;
+    return UD_OK;
+}
+ud_status ud_component_operator_plan(const ud_operator *o,ud_component_plan *out) {
+    ud_physical_plan_info info={.struct_size=sizeof(info),.abi_version=UD_ABI_VERSION};
+    UD_TRY(ud_operator_physical_plan(o,&info));
+    out->sort=info.sort;out->partitions=info.partitions;
+    out->algorithm=info.algorithm;out->ordering=info.sort.count?UD_ORDER_GLOBAL:info.algorithm==UD_PHYSICAL_GRACE_HASH?UD_ORDER_PARTITION:UD_ORDER_UNORDERED;
+    out->estimated_rows=info.estimated_rows;out->row_width=info.row_width;
+    out->memory_budget=info.memory_budget;out->spill_budget=info.spill_budget;out->estimated_cost=info.estimated_cost;
+    return UD_OK;
 }

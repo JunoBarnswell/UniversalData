@@ -8,6 +8,9 @@ typedef struct ud_executor ud_executor;
 extern "C" {
 #endif
 typedef struct ud_operator ud_operator;
+enum { UD_PHYSICAL_STREAM = 1, UD_PHYSICAL_SORT, UD_PHYSICAL_HASH,
+       UD_PHYSICAL_GRACE_HASH, UD_PHYSICAL_MERGE, UD_PHYSICAL_INDEX };
+
 enum {
     UD_OPERATOR_SORT = 1,
     UD_OPERATOR_AGGREGATE,
@@ -30,7 +33,10 @@ typedef struct ud_sort_contract {
     ud_sort_key keys[16]; /* Canonical typed comparison; UTF8 compares unsigned bytes. */
 } ud_sort_contract;
 typedef struct ud_cache ud_cache;
-enum { UD_WINDOW_ROW_NUMBER = 1, UD_WINDOW_RUNNING_SUM };
+enum { UD_WINDOW_ROW_NUMBER = 1, UD_WINDOW_RUNNING_SUM, UD_WINDOW_RANK,
+       UD_WINDOW_DENSE_RANK, UD_WINDOW_LAG, UD_WINDOW_LEAD, UD_WINDOW_FIRST,
+       UD_WINDOW_LAST, UD_WINDOW_MOVING_SUM, UD_WINDOW_MOVING_AVERAGE };
+enum { UD_FRAME_DEFAULT = 0, UD_FRAME_ROWS = 1, UD_FRAME_RANGE = 2 };
 typedef struct ud_operator_options {
     uint32_t struct_size, abi_version;
     int32_t kind;
@@ -51,7 +57,20 @@ typedef struct ud_operator_options {
     ud_string configuration;  /* Native binding for relational, sampling and SCD operators. */
     const ud_sort_contract *input_order; /* One contract per input; copied on binding. */
     ud_cache *reference; /* Sealed SCD current-dimension asset, retained by operator. */
+    uint32_t window_offset;
+    int32_t frame_kind, average_rounding;
+    uint64_t frame_preceding, frame_following;
+    uint64_t estimated_rows[64], memory_budget, spill_budget;
+    uint32_t input_count;
 } ud_operator_options;
+typedef struct ud_physical_plan_info {
+    uint32_t struct_size, abi_version, algorithm, input_count, output_count, partitions;
+    uint64_t estimated_rows, row_width, memory_budget, spill_budget, estimated_cost;
+    ud_sort_contract sort;
+    ud_string decision; /* Borrowed immutable diagnostic text. */
+} ud_physical_plan_info;
+UD_API ud_status ud_operator_physical_plan(const ud_operator *, ud_physical_plan_info *);
+UD_API ud_status ud_operator_configuration_schema(int32_t kind, ud_string *);
 /* Pure binding copies schemas. Separate instances may share Buffer Manager. */
 UD_API ud_status ud_operator_create(ud_context *, const ud_operator_options *,
                                     const ud_batch *const *, ud_operator **);

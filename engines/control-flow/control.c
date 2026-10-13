@@ -313,6 +313,11 @@ ud_status ud_control_validate(ud_activation *e, const ud_json *flow, uint32_t de
                 char *text = NULL;
                 uint32_t n = 0;
                 s = ud_bound_config(e, config, &bound);
+                ud_json *validated = NULL;
+                if (!s)
+                    s = ud_component_bind_configuration(e->execution->ctx, &d, bound, &validated);
+                ud_json_destroy(bound);
+                bound = validated;
                 if (!s)
                     s = ud_json_serialize(bound, &text, &n);
                 ud_component_context context = {.struct_size = sizeof(context),

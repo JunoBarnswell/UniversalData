@@ -39,6 +39,13 @@ public final class Execution implements AutoCloseable {
         }
     }
     private static native String nativeDiscover(long handle,byte[] connection,byte[] table);
+    public String componentCatalog() {
+        control(); synchronized(controller) { lifetime.readLock().lock();
+            try { open(); return nativeCatalog(handle); }
+            finally { lifetime.readLock().unlock(); }
+        }
+    }
+    private static native String nativeCatalog(long handle);
     public String explain() { return inspect(false); }
     public String diagnostics() { return inspect(true); }
     private String inspect(boolean diagnostics) {

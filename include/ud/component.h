@@ -1,6 +1,7 @@
 #ifndef UD_COMPONENT_H
 #define UD_COMPONENT_H
 #include "expression.h"
+#include "json.h"
 #include "activation.h"
 #include "operator.h"
 #ifdef __cplusplus
@@ -33,6 +34,9 @@ typedef struct ud_component_port {
     ud_string name;
     uint32_t direction, index, flags;
     const ud_batch *schema; /* Borrowed Binder-owned schema. */
+    ud_sort_contract sort;
+    uint32_t partition_count, partition_key_count;
+    ud_id partition_keys[16];
 } ud_component_port;
 typedef struct ud_component_ports {
     uint32_t input_count, output_count;
@@ -74,7 +78,14 @@ struct ud_component_plan {
     uint32_t struct_size, abi_version, partitions;
     int32_t ordering; /* UD_ORDER_*; dynamic physical policy, pure binding only. */
     ud_sort_contract sort;
+    uint64_t estimated_rows, row_width, memory_budget, spill_budget, estimated_cost;
+    double selectivity;
+    uint32_t algorithm, state_version, partition_key_count, effects;
+    ud_id partition_keys[16];
 };
+enum { UD_EFFECT_EXTERNAL_READ = 1, UD_EFFECT_EXTERNAL_WRITE = 2,
+       UD_EFFECT_TRANSACTIONAL = 4, UD_EFFECT_RECEIPTED = 8,
+       UD_EFFECT_COMMIT_UNKNOWN = 16 };
 typedef struct ud_component_descriptor {
     uint32_t struct_size, abi_version;
     ud_string id, name, version, configuration_schema;
@@ -120,6 +131,11 @@ typedef struct ud_component_descriptor {
                                const ud_batch *const *, ud_component_plan *);
     ud_status (*bind_ports)(void *, const ud_component_context *, ud_string, ud_component_ports *);
     uint64_t (*input_demand)(void *); /* NULL admits every input. */
+    uint32_t state_version, effects;
+    /* State snapshots use canonical typed Batch / Wire / Journal ownership.
+     * Callback returns an owned sealed batch; restore borrows it. */
+    ud_status (*checkpoint)(void *, ud_batch **);
+    ud_status (*restore)(void *, const ud_batch *);
 } ud_component_descriptor;
 UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
 /* Copies descriptor metadata, retains callback user by contract (host lifetime).
@@ -140,6 +156,12 @@ UD_API uint32_t ud_registry_count(const ud_registry *);
 UD_API ud_status ud_registry_get(const ud_registry *, uint32_t, ud_component_descriptor *);
 UD_API ud_status ud_registry_find(const ud_registry *, ud_string id, ud_component_descriptor *);
 UD_API ud_status ud_registry_destroy(ud_registry *);
+/* Pure descriptor binding materializes defaults and validates the one declared
+ * configuration schema before any configure/prepare callback. */
+UD_API ud_status ud_component_bind_configuration(ud_context *, const ud_component_descriptor *,
+                                                 const ud_json *, ud_json **);
+/* Owned Native Catalog JSON, identical for C, CLI, .NET and Java. */
+UD_API ud_status ud_registry_describe(const ud_registry *, char **, uint32_t *);
 #ifdef __cplusplus
 }
 #endif

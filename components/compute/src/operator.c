@@ -1,5 +1,6 @@
 #include "ud/operator.h"
 #include "relational.h"
+#include "window.h"
 #include "../internal.h"
 #include "../../execution/executor.h"
 
@@ -19,6 +20,7 @@ typedef struct cursor {
 } cursor;
 struct ud_operator {
     ud_relational *relational;
+    ud_window *window;
     ud_context *ctx;
     ud_operator_options options;
     ud_batch *inputs[2], *schema;
@@ -34,8 +36,7 @@ struct ud_operator {
     uint32_t pending_row;
     ud_value *group_keys;
     int group_active, input_done, saw_group;
-    ud_value window_value;
-    uint64_t window_rows;
+
 };
 static ud_status check(ud_operator *o) {
     if (o->failed)
@@ -272,6 +273,11 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
     o->options = *options;
     if (!o->options.partition_count)
         o->options.partition_count = 1;
+    if (options->kind == UD_OPERATOR_WINDOW) {
+        ud_status status = ud_window_create(ctx, options, inputs[0], &o->window);
+        if (status) { ud_free(o); return status; }
+        *out = o; return UD_OK;
+    }
     if (options->kind == UD_OPERATOR_JOIN || options->kind >= UD_OPERATOR_MERGE) {
         ud_status status = ud_relational_create(ctx, options, inputs, &o->relational);
         if (status) {
@@ -333,93 +339,6 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
         o->group_keys = !s ? ud_alloc(ctx, (sort.key_count + 1) * sizeof(*o->group_keys)) : NULL;
         if (!s && !o->group_keys)
             s = UD_RESOURCE;
-    } else if (!s && options->kind == UD_OPERATOR_WINDOW) {
-        if (options->partition_key_count > options->key_count || !options->window_name.length ||
-            !options->window_name.data || options->window_function < UD_WINDOW_ROW_NUMBER ||
-            options->window_function > UD_WINDOW_RUNNING_SUM ||
-            (options->window_function == UD_WINDOW_RUNNING_SUM &&
-             options->window_column >= inputs[0]->columns))
-            s = UD_SCHEMA;
-        ud_field spec = {.type = UD_INT64};
-        if (!s && options->window_function == UD_WINDOW_RUNNING_SUM) {
-            spec = inputs[0]->column[options->window_column].field;
-            if (spec.type != UD_INT64 && spec.type != UD_FLOAT64 && spec.type != UD_DECIMAL128)
-                s = UD_SCHEMA;
-            spec.nullable = 1;
-        }
-        ud_field *fields = !s ? ud_alloc(ctx, (inputs[0]->columns + 1) * sizeof(*fields)) : NULL;
-        if (!s && !fields)
-            s = UD_RESOURCE;
-        ud_field derived = {0};
-        ud_bytes signature = {.ctx = ctx};
-        ud_field *dependencies = NULL;
-        ud_id *origins = NULL;
-        uint32_t origin_count = 0, dependency_count = 0;
-        if (!s &&
-            (options->key_count > inputs[0]->columns || (options->key_count && !options->keys)))
-            s = UD_SCHEMA;
-        if (!s) {
-            dependencies = ud_alloc(ctx, (options->key_count + 1) * sizeof(*dependencies));
-            if (!dependencies)
-                s = UD_RESOURCE;
-        }
-        for (uint32_t i = 0; !s && i < inputs[0]->columns; i++) {
-            char id[33];
-            ud_id_format(inputs[0]->column[i].field.identity, id);
-            s = ud_bytes_put(&signature, id, 32);
-        }
-        const uint64_t semantics[] = {options->window_function, options->window_column,
-                                      options->partition_key_count, options->descending,
-                                      options->key_count};
-        for (uint32_t i = 0; !s && i < 5; i++)
-            s = ud_put_u64(&signature, semantics[i]);
-        for (uint32_t i = 0; !s && i < options->key_count; i++) {
-            if (options->keys[i] >= inputs[0]->columns)
-                s = UD_SCHEMA;
-            if (!s)
-                s = ud_put_u64(&signature, options->keys[i]);
-            if (!s)
-                dependencies[dependency_count++] = inputs[0]->column[options->keys[i]].field;
-        }
-        if (!s && options->window_function == UD_WINDOW_RUNNING_SUM)
-            dependencies[dependency_count++] = inputs[0]->column[options->window_column].field;
-        if (!s)
-            s = ud_lineage_merge(ctx, dependencies, dependency_count, &origins, &origin_count);
-        if (!s) {
-            uint8_t digest[32];
-            char scope[65];
-            static const char hex[] = "0123456789abcdef";
-            ud_hash(signature.data, signature.size, digest);
-            for (uint32_t i = 0; i < 32; i++) {
-                scope[2 * i] = hex[digest[i] >> 4];
-                scope[2 * i + 1] = hex[digest[i] & 15];
-            }
-            scope[64] = 0;
-            spec.lineage = origins;
-            spec.lineage_count = origin_count;
-            s = ud_field_derive(ctx, &spec, (ud_string){scope, 64}, options->window_name, &derived);
-        }
-        ud_free(origins);
-        ud_free(dependencies);
-        ud_bytes_clear(&signature);
-        if (!s) {
-            for (uint32_t i = 0; i < inputs[0]->columns; i++)
-                fields[i] = inputs[0]->column[i].field;
-            fields[inputs[0]->columns] = derived;
-            s = ud_batch_create(ctx, fields, inputs[0]->columns + 1, 0, &o->schema);
-        }
-        ud_field_clear(&derived);
-        ud_free(fields);
-        ud_operator_options sort = *options;
-        sort.kind = UD_OPERATOR_SORT;
-        if (!s)
-            s = ud_operator_create(ctx, &sort, inputs, &o->group_sort);
-        o->group_keys =
-            !s ? ud_alloc(ctx, (options->partition_key_count + 1) * sizeof(*o->group_keys)) : NULL;
-        if (!s && !o->group_keys)
-            s = UD_RESOURCE;
-        o->window_value = (ud_value){
-            .type = spec.type, .is_null = 1, .precision = spec.precision, .scale = spec.scale};
     } else if (!s)
         s = copy_schema(ctx, inputs[0], 0, &o->schema);
     if (!s && options->kind != UD_OPERATOR_AGGREGATE) {
@@ -446,6 +365,7 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
 ud_status ud_operator_schema(const ud_operator *o, uint32_t output, ud_batch **out) {
     if (!o || !out)
         return UD_INVALID;
+    if (o->window) return output ? UD_INVALID : ud_window_schema(o->window, out);
     if (o->relational)
         return ud_relational_schema(o->relational, output, out);
     return output ? UD_INVALID : copy_schema(o->ctx, o->schema, 0, out);
@@ -572,6 +492,10 @@ static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *in
     return status;
 }
 ud_status ud_operator_push(ud_operator *o, uint32_t port, const ud_batch *input) {
+    if (o && o->window) {
+        if(port || !input || !input->sealed || input->rows > o->options.max_batch_rows) return UD_INVALID;
+        return ud_window_push(o->window, input);
+    }
     if (o && o->relational) {
         if (!input || !input->sealed || input->rows > o->options.max_batch_rows)
             return UD_INVALID;
@@ -583,7 +507,7 @@ ud_status ud_operator_push(ud_operator *o, uint32_t port, const ud_batch *input)
     UD_TRY(check(o));
     UD_TRY(compatible(o->inputs[port], input));
     ud_status status = UD_OK;
-    if (o->options.kind == UD_OPERATOR_WINDOW || o->raw_aggregation)
+    if (o->raw_aggregation)
         status = ud_operator_push(o->group_sort, 0, input);
     else
         status = parallel_push(o, port, input);
@@ -592,6 +516,7 @@ ud_status ud_operator_push(ud_operator *o, uint32_t port, const ud_batch *input)
     return status;
 }
 ud_status ud_operator_finish_input(ud_operator *o, uint32_t port) {
+    if (o && o->window) return port ? UD_INVALID : ud_window_end(o->window);
     if (o && o->relational)
         return ud_relational_end(o->relational, port);
     if (!o || port >= o->ports || o->port_ended[port])
@@ -698,81 +623,6 @@ static ud_status aggregate_pull(ud_operator *o, ud_batch **out) {
     }
     return ud_batch_seal(*out);
 }
-static ud_status window_pull(ud_operator *o, ud_batch **out) {
-    UD_TRY(copy_schema(o->ctx, o->schema, o->options.max_batch_rows, out));
-    ud_value *values = ud_alloc(o->ctx, o->schema->columns * sizeof(*values));
-    ud_status s = values ? UD_OK : UD_RESOURCE;
-    while (!s && (*out)->rows < o->options.max_batch_rows) {
-        s = check(o);
-        if (s)
-            break;
-        if (!o->pending || o->pending_row == o->pending->rows) {
-            ud_batch_destroy(o->pending);
-            o->pending = NULL;
-            o->pending_row = 0;
-            s = ud_operator_pull(o->group_sort, &o->pending, NULL);
-            if (s == UD_END) {
-                s = UD_OK;
-                break;
-            }
-        }
-        if (s)
-            break;
-        int boundary = !o->window_rows;
-        for (uint32_t i = 0; !s && !boundary && i < o->options.partition_key_count; i++) {
-            ud_value key;
-            s = ud_batch_get(o->pending, o->pending_row, o->keys[i], &key);
-            if (!s && ud_value_compare(&key, o->group_keys + i))
-                boundary = 1;
-        }
-        if (boundary) {
-            o->window_rows = 0;
-            o->window_value.is_null = 1;
-            for (uint32_t i = 0; !s && i < o->options.partition_key_count; i++) {
-                ud_value key;
-                s = ud_batch_get(o->pending, o->pending_row, o->keys[i], &key);
-                ud_clear_value(o->group_keys + i);
-                if (!s)
-                    s = ud_copy_value(o->ctx, &key, o->group_keys + i, 0);
-            }
-        }
-        if (s)
-            break;
-        if (o->window_rows == INT64_MAX) {
-            s = UD_OVERFLOW;
-            break;
-        }
-        o->window_rows++;
-        for (uint32_t i = 0; !s && i < o->pending->columns; i++)
-            s = ud_batch_get(o->pending, o->pending_row, i, values + i);
-        if (!s && o->options.window_function == UD_WINDOW_RUNNING_SUM) {
-            const ud_value *value = values + o->options.window_column;
-            if (!value->is_null) {
-                if (o->window_value.is_null)
-                    o->window_value = *value;
-                else
-                    s = ud_value_numeric(UD_NUMERIC_ADD, &o->window_value, value,
-                                         &o->schema->column[o->pending->columns].field,
-                                         &o->window_value);
-            }
-            values[o->pending->columns] = o->window_value;
-        } else
-            values[o->pending->columns] =
-                (ud_value){.type = UD_INT64, .integer = (int64_t)o->window_rows};
-        if (!s)
-            s = ud_batch_append(*out, values, o->schema->columns);
-        if (!s)
-            s = ud_batch_copy_row_info(*out, (*out)->rows - 1, o->pending, o->pending_row);
-        o->pending_row++;
-    }
-    ud_free(values);
-    if (s || !(*out)->rows) {
-        ud_batch_destroy(*out);
-        *out = NULL;
-        return s ? s : UD_END;
-    }
-    return ud_batch_seal(*out);
-}
 
 ud_status ud_operator_pull(ud_operator *o, ud_batch **out, uint32_t *output) {
     if (!out)
@@ -782,15 +632,14 @@ ud_status ud_operator_pull(ud_operator *o, ud_batch **out, uint32_t *output) {
         return UD_INVALID;
     if (output)
         *output = 0;
+    if (o->window) return ud_window_pull(o->window, out);
     if (o->relational)
         return ud_relational_pull(o->relational, out, output);
     UD_TRY(check(o));
     if (o->ended != o->ports)
         return UD_BUSY;
     ud_status s = UD_OK;
-    if (o->options.kind == UD_OPERATOR_WINDOW)
-        s = window_pull(o, out);
-    else if (o->group_sort)
+    if (o->group_sort)
         s = aggregate_pull(o, out);
     else {
         if (!o->prepared) {
@@ -807,6 +656,7 @@ ud_status ud_operator_pull(ud_operator *o, ud_batch **out, uint32_t *output) {
 ud_status ud_operator_destroy(ud_operator *o) {
     if (!o)
         return UD_OK;
+    if (o->window) { ud_window_destroy(o->window); ud_free(o); return UD_OK; }
     if (o->relational) {
         ud_relational_destroy(o->relational);
         ud_free(o);
@@ -829,9 +679,6 @@ ud_status ud_operator_destroy(ud_operator *o) {
     if (o->options.aggregation && o->group_keys)
         for (uint32_t i = 0; i < o->options.aggregation->key_n; i++)
             ud_clear_value(o->group_keys + i);
-    if (o->options.kind == UD_OPERATOR_WINDOW && o->group_keys)
-        for (uint32_t i = 0; i < o->options.partition_key_count; i++)
-            ud_clear_value(o->group_keys + i);
     ud_free(o->group_keys);
     ud_batch_destroy(o->pending);
     for (uint32_t i = 0; i < 2; i++)
@@ -852,9 +699,10 @@ ud_status ud_operator_order(const ud_operator *o, ud_sort_contract *out) {
     if (!o || !out)
         return UD_INVALID;
     memset(out, 0, sizeof(*out));
+    if (o->window) return ud_window_order(o->window, out);
     if (o->relational)
         return ud_relational_order(o->relational, out);
-    if (o->options.kind == UD_OPERATOR_SORT || o->options.kind == UD_OPERATOR_WINDOW) {
+    if (o->options.kind == UD_OPERATOR_SORT) {
         if (o->options.key_count > 16)
             return UD_RESOURCE;
         out->count = o->options.key_count;
@@ -868,6 +716,7 @@ ud_status ud_operator_order(const ud_operator *o, ud_sort_contract *out) {
 uint64_t ud_operator_input_demand(const ud_operator *o) {
     if (!o)
         return 0;
+    if (o->window) return ud_window_demand(o->window);
     if (o->relational)
         return ud_relational_demand(o->relational);
     uint64_t mask = 0;
@@ -884,4 +733,21 @@ ud_status ud_operator_diagnostics(const ud_operator *o, char **json, uint32_t *l
     *json = ud_strdup_n(o->ctx, "{}", 2);
     *length = 2;
     return *json ? UD_OK : UD_RESOURCE;
+}
+
+ud_status ud_operator_physical_plan(const ud_operator *o, ud_physical_plan_info *out) {
+    if (!o || !out) return UD_INVALID;
+    if (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION) return UD_INCOMPATIBLE;
+    memset(out, 0, sizeof(*out));out->struct_size=sizeof(*out);out->abi_version=UD_ABI_VERSION;
+    out->algorithm=o->relational ? ud_relational_algorithm(o->relational) : o->window || o->options.kind==UD_OPERATOR_SORT || o->group_sort ? UD_PHYSICAL_SORT : UD_PHYSICAL_STREAM;
+    out->input_count=o->options.input_count ? o->options.input_count : o->options.kind==UD_OPERATOR_JOIN || o->options.kind==UD_OPERATOR_MERGE || o->options.kind==UD_OPERATOR_MERGE_JOIN ? 2 : 1;
+    out->output_count=o->options.kind==UD_OPERATOR_SCD?6:o->options.kind==UD_OPERATOR_PIVOT||o->options.kind==UD_OPERATOR_ROW_SAMPLING||o->options.kind==UD_OPERATOR_PERCENTAGE_SAMPLING?2:1;
+    out->partitions=o->options.partition_count?o->options.partition_count:1;
+    out->estimated_rows=o->options.estimated_rows[0];out->memory_budget=o->options.memory_budget;out->spill_budget=o->options.spill_budget;
+    ud_batch *schema=NULL;ud_status status=ud_operator_schema(o,0,&schema);
+    for(uint32_t i=0;!status&&i<schema->columns;i++) {ud_type t=schema->column[i].field.type;out->row_width+=t==UD_UTF8||t==UD_BINARY||t>=UD_STRUCT?32:t==UD_DECIMAL128?16:8;}
+    ud_batch_destroy(schema);if(!status)status=ud_operator_order(o,&out->sort);
+    if(out->estimated_rows && out->row_width <= UINT64_MAX/out->estimated_rows)out->estimated_cost=out->estimated_rows*out->row_width;
+    const char *decision=out->algorithm==UD_PHYSICAL_MERGE?"bound sort contracts; canonical merge comparison":out->algorithm==UD_PHYSICAL_HASH?"right-side estimate fits declared hash budget":out->algorithm==UD_PHYSICAL_GRACE_HASH?"missing or large estimate; bounded hash partitions with merge fallback for skew":out->algorithm==UD_PHYSICAL_SORT?"external stable sort using shared Buffer runs":"bounded streaming kernel";
+    out->decision=(ud_string){decision,(uint32_t)strlen(decision)};return status;
 }

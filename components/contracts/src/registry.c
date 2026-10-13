@@ -282,3 +282,71 @@ ud_status ud_registry_destroy(ud_registry *r) {
     ud_free(r);
     return UD_OK;
 }
+
+ud_status ud_component_bind_configuration(ud_context *ctx, const ud_component_descriptor *d,
+                                          const ud_json *config, ud_json **out) {
+    if (!ctx || !d || !config || !out)
+        return UD_INVALID;
+    if (d->struct_size != sizeof(*d) || d->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    *out = NULL;
+    ud_json *schema = NULL;
+    ud_status s = ud_json_parse(ctx, d->configuration_schema.data,
+                                d->configuration_schema.length, &schema, NULL);
+    if (!s)
+        s = ud_json_bind_schema(ctx, schema, config, out);
+    ud_json_destroy(schema);
+    return s;
+}
+static ud_status describe_entry(ud_bytes *bytes, const ud_component_descriptor *d) {
+    UD_TRY(ud_bytes_put(bytes, "{\"id\":", 6));
+    UD_TRY(ud_json_quote(bytes, d->id.data, d->id.length));
+    UD_TRY(ud_bytes_put(bytes, ",\"name\":", 8));
+    UD_TRY(ud_json_quote(bytes, d->name.data, d->name.length));
+    UD_TRY(ud_bytes_put(bytes, ",\"version\":", 11));
+    UD_TRY(ud_json_quote(bytes, d->version.data, d->version.length));
+    UD_TRY(ud_bytes_put(bytes, ",\"configurationSchema\":", 23));
+    UD_TRY(ud_bytes_put(bytes, d->configuration_schema.data, d->configuration_schema.length));
+    char info[768];
+    int n = snprintf(info, sizeof(info),
+        ",\"category\":%d,\"inputs\":%u,\"outputs\":%u,\"dynamicPorts\":%s,"
+        "\"errorOutput\":%d,\"synchronousInput\":%d,\"capabilities\":%llu,"
+        "\"optionalInputs\":%llu,\"optionalOutputs\":%llu,\"stateVersion\":%u,"
+        "\"effects\":%u,\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s}",
+        d->category, d->inputs, d->outputs, d->bind_ports ? "true" : "false", d->error_output,
+        d->synchronous_input, (unsigned long long)d->capabilities,
+        (unsigned long long)d->optional_inputs, (unsigned long long)d->optional_outputs,
+        d->state_version, d->effects, d->checkpoint ? "true" : "false",
+        d->restore ? "true" : "false", d->describe_plan ? "true" : "false");
+    return n < 0 || (size_t)n >= sizeof(info) ? UD_RESOURCE : ud_bytes_put(bytes, info, (size_t)n);
+}
+ud_status ud_registry_describe(const ud_registry *r, char **out, uint32_t *length) {
+    if (!r || !out || !length)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    ud_bytes bytes = {.ctx = r->ctx};
+    ud_mutex_lock((ud_mutex *)&r->mutex);
+    ud_status s = ud_bytes_put(&bytes, "[", 1);
+    for (uint32_t i = 0; !s && i < r->count; i++) {
+        if (i)
+            s = ud_bytes_put(&bytes, ",", 1);
+        if (!s)
+            s = describe_entry(&bytes, &r->entries[i]->descriptor);
+    }
+    ud_mutex_unlock((ud_mutex *)&r->mutex);
+    if (!s)
+        s = ud_bytes_put(&bytes, "]", 1);
+    if (!s && bytes.size >= UINT32_MAX)
+        s = UD_RESOURCE;
+    if (!s) {
+        *length = (uint32_t)bytes.size;
+        s = ud_bytes_put(&bytes, "", 1);
+    }
+    if (!s) {
+        *out = (char *)bytes.data;
+        bytes.data = NULL;
+    }
+    ud_bytes_clear(&bytes);
+    return s;
+}

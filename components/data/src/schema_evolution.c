@@ -17,6 +17,22 @@ ud_status ud_schema_fingerprint(const ud_batch *schema, uint8_t out[32]) {
     ud_free(json);
     return UD_OK;
 }
+static ud_status decimal_type(ud_field *field, const char *type, int default_scale) {
+    const char *open = strchr(type, '(');
+    int p = 0, scale = default_scale;
+    char tail = 0;
+    if (!open)
+        return UD_UNSUPPORTED;
+    int parsed = sscanf(open, "(%d,%d)%c", &p, &scale, &tail);
+    if (parsed != 2 && sscanf(open, "(%d)%c", &p, &tail) != 1)
+        return UD_SCHEMA;
+    if (p < 1 || p > 38 || scale < -38 || scale > 38)
+        return UD_UNSUPPORTED;
+    field->type = UD_DECIMAL128;
+    field->precision = p;
+    field->scale = scale;
+    return UD_OK;
+}
 static ud_status sql_type(ud_field *field, ud_string declaration, int32_t dialect) {
     if (!declaration.data || declaration.length > 255 ||
         memchr(declaration.data, 0, declaration.length))
@@ -26,75 +42,104 @@ static ud_status sql_type(ud_field *field, ud_string declaration, int32_t dialec
         type[j] = (char)tolower((unsigned char)declaration.data[j]);
     type[declaration.length] = 0;
     char *begin = type;
-    while (*begin == ' ')
-        begin++;
+    while (*begin == ' ') begin++;
     size_t n = strlen(begin);
-    while (n && begin[n - 1] == ' ')
-        begin[--n] = 0;
+    while (n && begin[n - 1] == ' ') begin[--n] = 0;
     if (dialect == UD_SQL_CANONICAL) {
-        const char *names[] = {"bool",   "int64",  "float64",   "utf8",  "decimal128",
-                               "date32", "time64", "timestamp", "binary"};
+        const char *names[] = {"bool", "int64", "float64", "utf8", "decimal128",
+                              "date32", "time64", "timestamp", "binary"};
         for (uint32_t i = 0; i < 9; i++)
-            if (!strcmp(begin, names[i])) {
-                field->type = (ud_type)i + 1;
-                break;
-            }
-        if(!strncmp(begin,"decimal128(",11)){int precision=0,scale=0;char tail=0;if(sscanf(begin+10,"(%d,%d)%c",&precision,&scale,&tail)!=2||precision<1||precision>38||scale<-38||scale>38)return UD_UNSUPPORTED;field->type=UD_DECIMAL128;field->precision=precision;field->scale=scale;}
-        else if(field->type==UD_DECIMAL128)return UD_UNSUPPORTED;
+            if (!strcmp(begin, names[i])) field->type = (ud_type)i + 1;
+        if (!strncmp(begin, "decimal128(", 11)) UD_TRY(decimal_type(field, begin, 0));
+        else if (field->type == UD_DECIMAL128) return UD_UNSUPPORTED;
     } else if (dialect == UD_SQL_SQLITE) {
-        if (!strcmp(begin, "boolean") || !strcmp(begin, "bool"))
-            field->type = UD_BOOL;
-        else if (strstr(begin, "int"))
-            field->type = UD_INT64;
-        else if (strstr(begin, "char") || strstr(begin, "clob") || strstr(begin, "text"))
-            field->type = UD_UTF8;
-        else if (!*begin || strstr(begin, "blob"))
-            field->type = UD_BINARY;
-        else if (strstr(begin, "real") || strstr(begin, "floa") || strstr(begin, "doub"))
-            field->type = UD_FLOAT64;
-        else
-            return UD_UNSUPPORTED; /* SQLite NUMERIC affinity cannot prove Decimal precision. */
+        if (!strcmp(begin, "timestamp_utc")) field->type = UD_TIMESTAMP;
+        else if (!strcmp(begin, "date32")) field->type = UD_DATE32;
+        else if (!strcmp(begin, "time64")) field->type = UD_TIME64;
+        else if (!strcmp(begin, "boolean") || !strcmp(begin, "bool")) field->type = UD_BOOL;
+        else if (strstr(begin, "int")) field->type = UD_INT64;
+        else if (strstr(begin, "char") || strstr(begin, "clob") || strstr(begin, "text")) field->type = UD_UTF8;
+        else if (!*begin || strstr(begin, "blob")) field->type = UD_BINARY;
+        else if (strstr(begin, "real") || strstr(begin, "floa") || strstr(begin, "doub")) field->type = UD_FLOAT64;
+        /* NUMERIC affinity cannot prove lossless Decimal; TIMESTAMP has no zone. */
     } else if (dialect == UD_SQL_POSTGRESQL) {
-        if (!strcmp(begin, "boolean"))
-            field->type = UD_BOOL;
-        else if (!strcmp(begin, "smallint") || !strcmp(begin, "integer") ||
-                 !strcmp(begin, "bigint"))
-            field->type = UD_INT64;
-        else if (!strcmp(begin, "double precision"))
-            field->type = UD_FLOAT64;
-        else if (!strcmp(begin, "text") || !strncmp(begin, "character varying", 17) ||
-                 !strncmp(begin, "character(", 10))
-            field->type = UD_UTF8;
-        else if (!strncmp(begin, "numeric(", 8) || !strncmp(begin, "decimal(", 8)) {
-            int precision = 0, scale = 0;
-            char tail = 0;
-            if (sscanf(strchr(begin, '('), "(%d,%d)%c", &precision, &scale, &tail) != 2 ||
-                precision < 1 || precision > 38 || scale < -38 || scale > 38)
-                return UD_UNSUPPORTED;
-            field->type = UD_DECIMAL128;
-            field->precision = precision;
-            field->scale = scale;
-        } else if (!strcmp(begin, "date"))
-            field->type = UD_DATE32;
-        else if (!strcmp(begin, "time without time zone"))
-            field->type = UD_TIME64;
-        else if (!strcmp(begin, "timestamp with time zone"))
-            field->type = UD_TIMESTAMP;
-        else if (!strcmp(begin, "bytea"))
-            field->type = UD_BINARY;
+        if (!strcmp(begin, "boolean")) field->type = UD_BOOL;
+        else if (!strcmp(begin, "smallint") || !strcmp(begin, "integer") || !strcmp(begin, "bigint")) field->type = UD_INT64;
+        else if (!strcmp(begin, "real") || !strcmp(begin, "double precision")) field->type = UD_FLOAT64;
+        else if (!strcmp(begin, "text") || !strncmp(begin, "character varying", 17) || !strncmp(begin, "character(", 10)) field->type = UD_UTF8;
+        else if (!strncmp(begin, "numeric(", 8) || !strncmp(begin, "decimal(", 8)) UD_TRY(decimal_type(field, begin, 0));
+        else if (!strcmp(begin, "date")) field->type = UD_DATE32;
+        else if (!strncmp(begin, "time without time zone", 22)) field->type = UD_TIME64;
+        else if (!strcmp(begin, "timestamp with time zone") || !strncmp(begin, "timestamp_utc", 13)) field->type = UD_TIMESTAMP;
+        else if (!strcmp(begin, "bytea")) field->type = UD_BINARY;
+    } else if (dialect == UD_SQL_MYSQL || dialect == UD_SQL_MARIADB) {
+        if (!strncmp(begin, "bigint", 6) && strstr(begin, "unsigned")) {
+            field->type = UD_DECIMAL128; field->precision = 20; field->scale = 0;
+        } else if (!strncmp(begin, "tinyint", 7) || !strncmp(begin, "smallint", 8) ||
+                   !strncmp(begin, "mediumint", 9) || !strncmp(begin, "int", 3) || !strncmp(begin, "bigint", 6) ||
+                   !strcmp(begin, "year")) field->type = UD_INT64;
+        else if (!strcmp(begin, "boolean") || !strcmp(begin, "bool")) field->type = UD_BOOL;
+        else if (!strncmp(begin, "decimal(", 8) || !strncmp(begin, "numeric(", 8)) UD_TRY(decimal_type(field, begin, 0));
+        else if (!strncmp(begin, "double", 6) || !strncmp(begin, "float", 5)) field->type = UD_FLOAT64;
+        else if (strstr(begin, "char") || strstr(begin, "text") || !strcmp(begin, "json")) field->type = UD_UTF8;
+        else if (strstr(begin, "blob") || strstr(begin, "binary") || !strncmp(begin, "bit(", 4)) field->type = UD_BINARY;
+        else if (!strcmp(begin, "date")) field->type = UD_DATE32;
+        else if (!strncmp(begin, "time", 4) && strncmp(begin, "timestamp", 9)) field->type = UD_TIME64;
+        else if (!strncmp(begin, "timestamp", 9) || !strncmp(begin, "datetime_utc", 12)) field->type = UD_TIMESTAMP;
+        /* DATETIME UTC is supplied only by an explicit session policy. */
+    } else if (dialect == UD_SQL_SQLSERVER) {
+        if (!strcmp(begin, "bit")) field->type = UD_BOOL;
+        else if (!strcmp(begin, "tinyint") || !strcmp(begin, "smallint") || !strcmp(begin, "int") || !strcmp(begin, "bigint")) field->type = UD_INT64;
+        else if (!strncmp(begin, "decimal(", 8) || !strncmp(begin, "numeric(", 8)) UD_TRY(decimal_type(field, begin, 0));
+        else if (!strcmp(begin, "money") || !strcmp(begin, "smallmoney")) { field->type = UD_DECIMAL128; field->precision = !strcmp(begin, "money") ? 19 : 10; field->scale = 4; }
+        else if (!strncmp(begin, "float", 5) || !strcmp(begin, "real")) field->type = UD_FLOAT64;
+        else if (strstr(begin, "char") || strstr(begin, "text") || !strcmp(begin, "xml")) field->type = UD_UTF8;
+        else if (strstr(begin, "binary") || !strcmp(begin, "image") || !strcmp(begin, "timestamp") || !strcmp(begin, "rowversion")) field->type = UD_BINARY;
+        else if (!strcmp(begin, "date")) field->type = UD_DATE32;
+        else if (!strncmp(begin, "time(", 5) || !strcmp(begin, "time")) field->type = UD_TIME64;
+        else if (!strncmp(begin, "datetimeoffset", 14) || !strncmp(begin, "datetime2_utc", 13) || !strcmp(begin, "datetime_utc")) field->type = UD_TIMESTAMP;
+    } else if (dialect == UD_SQL_ORACLE) {
+        if (!strncmp(begin, "number(", 7) || !strncmp(begin, "decimal(", 8) || !strncmp(begin, "numeric(", 8)) UD_TRY(decimal_type(field, begin, 0));
+        else if (!strcmp(begin, "binary_double") || !strcmp(begin, "binary_float")) field->type = UD_FLOAT64;
+        else if (strstr(begin, "char") || strstr(begin, "clob")) field->type = UD_UTF8;
+        else if (!strncmp(begin, "raw", 3) || !strcmp(begin, "blob")) field->type = UD_BINARY;
+        else if (!strcmp(begin, "date_utc") || !strncmp(begin, "timestamp_utc", 13) || strstr(begin, "with time zone") || strstr(begin, "with local time zone")) field->type = UD_TIMESTAMP;
+        /* Bare NUMBER and DATE require an explicit precision / UTC policy. */
+    } else if (dialect == UD_SQL_DB2) {
+        if (!strcmp(begin, "boolean")) field->type = UD_BOOL;
+        else if (!strcmp(begin, "smallint") || !strcmp(begin, "integer") || !strcmp(begin, "bigint")) field->type = UD_INT64;
+        else if (!strncmp(begin, "decimal(", 8) || !strncmp(begin, "numeric(", 8)) UD_TRY(decimal_type(field, begin, 0));
+        else if (!strcmp(begin, "double") || !strcmp(begin, "real")) field->type = UD_FLOAT64;
+        else if (strstr(begin, "char") || strstr(begin, "clob")) field->type = UD_UTF8;
+        else if (strstr(begin, "blob") || strstr(begin, "binary")) field->type = UD_BINARY;
+        else if (!strcmp(begin, "date")) field->type = UD_DATE32;
+        else if (!strcmp(begin, "time")) field->type = UD_TIME64;
+        else if (!strncmp(begin, "timestamp_utc", 13)) field->type = UD_TIMESTAMP;
+    } else if (dialect == UD_SQL_DUCKDB) {
+        if (!strcmp(begin, "boolean")) field->type = UD_BOOL;
+        else if (!strcmp(begin, "tinyint") || !strcmp(begin, "smallint") || !strcmp(begin, "integer") || !strcmp(begin, "bigint") || !strcmp(begin, "utinyint") || !strcmp(begin, "usmallint") || !strcmp(begin, "uinteger")) field->type = UD_INT64;
+        else if (!strcmp(begin, "ubigint")) {field->type = UD_DECIMAL128;field->precision=20;field->scale=0;}
+        else if (!strncmp(begin, "decimal(", 8)) UD_TRY(decimal_type(field, begin, 0));
+        else if (!strcmp(begin, "double") || !strcmp(begin, "float")) field->type = UD_FLOAT64;
+        else if (!strcmp(begin, "varchar")) field->type = UD_UTF8;
+        else if (!strcmp(begin, "blob")) field->type = UD_BINARY;
+        else if (!strcmp(begin, "date")) field->type = UD_DATE32;
+        else if (!strcmp(begin, "time")) field->type = UD_TIME64;
+        else if (!strcmp(begin, "timestamp with time zone") || !strcmp(begin, "timestamp_utc")) field->type = UD_TIMESTAMP;
     }
-    if (!field->type)
-        return UD_UNSUPPORTED;
-    if (field->type == UD_TIMESTAMP) {
-        field->timezone = "UTC";
-        field->timezone_length = 3;
-    }
+    if (!field->type) return UD_UNSUPPORTED;
+    if (field->type == UD_TIMESTAMP) { field->timezone = "UTC"; field->timezone_length = 3; }
     return UD_OK;
+}
+ud_status ud_field_from_sql(ud_string declaration, int32_t dialect, ud_field *out) {
+    if (!out || dialect < UD_SQL_CANONICAL || dialect > UD_SQL_DUCKDB) return UD_INVALID;
+    memset(out, 0, sizeof(*out));
+    return sql_type(out, declaration, dialect);
 }
 ud_status ud_schema_from_metadata(ud_context *ctx, const ud_batch *metadata, ud_string scope,
                                   int32_t dialect, ud_batch **out) {
     if (!ctx || !metadata || !out || metadata->columns < 4 || !metadata->rows || dialect < 0 ||
-        dialect > 2)
+        dialect > UD_SQL_DUCKDB)
         return UD_INVALID;
     *out = NULL;
     ud_field *fields = ud_alloc(ctx, (size_t)metadata->rows * sizeof(*fields));

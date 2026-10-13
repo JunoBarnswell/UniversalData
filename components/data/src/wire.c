@@ -206,7 +206,7 @@ ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
         UD_TRY(ud_batch_row_info(table, row, &info));
         UD_TRY(ud_put_u64(b, info.id.high));
         UD_TRY(ud_put_u64(b, info.id.low));
-        if (info.flags || info.rule.high || info.rule.low)
+        if (info.flags || info.operation || info.rule.high || info.rule.low)
             exceptional++;
     }
     if (present)
@@ -214,12 +214,13 @@ ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
     for (uint32_t row = 0; present && row < table->rows; row++) {
         ud_row_info info;
         UD_TRY(ud_batch_row_info(table, row, &info));
-        if (!info.flags && !info.rule.high && !info.rule.low)
+        if (!info.flags && !info.operation && !info.rule.high && !info.rule.low)
             continue;
         UD_TRY(ud_put_u64(b, row));
         UD_TRY(ud_put_u64(b, info.rule.high));
         UD_TRY(ud_put_u64(b, info.rule.low));
         UD_TRY(ud_put_u64(b, info.flags));
+        UD_TRY(ud_put_u64(b, info.operation));
     }
     return UD_OK;
 }
@@ -275,7 +276,7 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
     if (!s && exceptional > rows)
         s = UD_CORRUPT;
     for (uint64_t i = 0; !s && i < exceptional; i++) {
-        uint64_t row = 0, flags = 0;
+        uint64_t row = 0, flags = 0, operation = 0;
         s = ud_get_u64(b, &row);
         if (!s && (row >= rows || (i && row <= previous)))
             s = UD_CORRUPT;
@@ -290,7 +291,10 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
             s = ud_get_u64(b, &flags);
         if (!s && (flags & ~((uint64_t)UD_ROW_ERROR)))
             s = UD_CORRUPT;
+        if (!s) s = ud_get_u64(b, &operation);
+        if (!s && operation > 4) s = UD_CORRUPT;
         info.flags = (uint32_t)flags;
+        info.operation = (uint32_t)operation;
         if (!s)
             s = ud_batch_set_row_info(*out, (uint32_t)row, &info);
         previous = row;

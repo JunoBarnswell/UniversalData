@@ -560,3 +560,16 @@ ud_status ud_buffer_reserve_external(ud_buffer_manager *m,uint64_t bytes) {
 void ud_buffer_release_external(ud_buffer_manager *m,uint64_t bytes) {
     if(!m)return;ud_mutex_lock(&m->mutex);if(bytes<=m->metrics.spill_bytes)m->metrics.spill_bytes-=bytes;ud_mutex_unlock(&m->mutex);
 }
+
+ud_status ud_buffer_working_allocate(ud_buffer_manager *manager,size_t bytes,void **out) {
+    if(!manager||!out||!bytes)return UD_INVALID;
+    *out=NULL;UD_TRY(check(manager));ud_memory_scope scope;
+    ud_memory_domain_enter(manager->working,&scope);
+    *out=ud_alloc(manager->ctx,bytes);ud_memory_domain_leave(&scope);
+    return *out?UD_OK:UD_RESOURCE;
+}
+ud_status ud_buffer_manager_limits(const ud_buffer_manager *manager,ud_buffer_options *out) {
+    if(!manager||!out)return UD_INVALID;
+    if(out->struct_size!=sizeof(*out)||out->abi_version!=UD_ABI_VERSION)return UD_INCOMPATIBLE;
+    *out=manager->options;return UD_OK;
+}

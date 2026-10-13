@@ -2,12 +2,12 @@
   "modelVersion": 1,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "1.4.0",
-    "abiVersion": 8,
-    "protocolVersion": 8
+    "sdkVersion": "1.5.0",
+    "abiVersion": 9,
+    "protocolVersion": 9
   },
   "scope": {
-    "name": "ETL next phase R1–R5 only",
+    "name": "PR #5 Native foundation, extension platform and advanced ETL",
     "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
     "extensions": "Tracked independently; Planned/Partial remain incomplete",
     "windows": "Exempt — explicit current user instruction"
@@ -23,8 +23,8 @@
   },
   "candidate": {
     "branch": "codex/etl-next-phase-r1-r5",
-    "state": "PR #5 E01–E15 / N01–N11 / D01–D12 implementation in progress; ABI 8 verification pending",
-    "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
+    "state": "PR #5 advanced ETL implementation in progress; ABI 9 verification pending",
+    "sourceCommit": "fd03e6508b0a13c4e418225c91bd60e56c547418",
     "sourceFingerprint": null,
     "mergeEvidence": null,
     "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
@@ -5846,6 +5846,56 @@
       "state": "Pending",
       "verification": "NotRun",
       "evidence": []
+    }
+  ],
+  "advancedWorkItems": [
+    {
+      "id": "A0",
+      "state": "InProgress",
+      "verification": "NotRun",
+      "name": "Unified declaration, configuration, types and effects"
+    },
+    {
+      "id": "A1",
+      "state": "Pending",
+      "verification": "NotRun",
+      "name": "Native MySQL / MariaDB / ODBC / OCI drivers"
+    },
+    {
+      "id": "A2",
+      "state": "Pending",
+      "verification": "NotRun",
+      "name": "Parquet / Arrow IPC / REST formats"
+    },
+    {
+      "id": "A3",
+      "state": "Pending",
+      "verification": "NotRun",
+      "name": "Bounded physical operators and performance"
+    },
+    {
+      "id": "B1",
+      "state": "Pending",
+      "verification": "NotRun",
+      "name": "Metadata extension platform and templates"
+    },
+    {
+      "id": "B2",
+      "state": "Pending",
+      "verification": "NotRun",
+      "name": "Advanced relational operators"
+    },
+    {
+      "id": "B3",
+      "state": "Pending",
+      "verification": "NotRun",
+      "name": "Quality, text and fuzzy matching"
+    },
+    {
+      "id": "B4",
+      "state": "Pending",
+      "verification": "NotRun",
+      "name": "Nested fields, changes and CDC"
     }
   ]
 }

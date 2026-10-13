@@ -200,6 +200,9 @@ ud_status ud_checkpoint_batch(ud_activation *, ud_string identity, const uint8_t
                               int committed);
 
 void ud_checkpoint_close(ud_execution *);
+ud_status ud_execution_buffer_options(ud_execution *,ud_buffer_options *);
+ud_status ud_component_operator_options(const ud_component_context *,ud_operator_options *);
+ud_status ud_component_operator_plan(const ud_operator *,ud_component_plan *);
 ud_status ud_execution_prepare_buffers(ud_execution *);
 ud_status ud_execution_release_buffers(ud_execution *);
 /* Persistent Source snapshots and cursor facts share the existing journal owner. */

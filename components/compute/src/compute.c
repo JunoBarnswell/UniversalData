@@ -1,4 +1,5 @@
 #include "../internal.h"
+#include "state.h"
 #include <math.h>
 #include <ctype.h>
 typedef struct group {
@@ -55,26 +56,6 @@ static int wide_sum(const ud_plan *p, uint32_t i) {
     return p->aggs[i].kind == 1 && (p->fields[p->aggs[i].column].type == UD_INT64 ||
                                     p->fields[p->aggs[i].column].type == UD_DECIMAL128);
 }
-static ud_status wide_add(uint64_t target[4], const uint64_t input[4]) {
-    uint64_t sign_a = target[3] >> 63, sign_b = input[3] >> 63, carry = 0;
-    for (uint32_t i = 0; i < 4; i++) {
-        uint64_t first = target[i] + input[i], c1 = first < target[i];
-        uint64_t second = first + carry, c2 = second < first;
-        target[i] = second;
-        carry = c1 | c2;
-    }
-    return sign_a == sign_b && (target[3] >> 63) != sign_a ? UD_OVERFLOW : UD_OK;
-}
-static void wide_value(const ud_value *v, uint64_t words[4]) {
-    if (v->type == UD_INT64) {
-        words[0] = (uint64_t)v->integer;
-        words[1] = words[2] = words[3] = v->integer < 0 ? UINT64_MAX : 0;
-    } else {
-        words[0] = v->decimal.low;
-        words[1] = (uint64_t)v->decimal.high;
-        words[2] = words[3] = v->decimal.high < 0 ? UINT64_MAX : 0;
-    }
-}
 static void state_field(const ud_plan *p, uint32_t column, ud_field *field) {
     *field = p->output_schema->column[column].field;
     if (column >= p->key_n && wide_sum(p, column - p->key_n)) {
@@ -94,21 +75,8 @@ ud_status ud_accumulator_state_schema(const ud_plan *p, ud_batch **out) {
     ud_free(fields);
     return status;
 }
-static ud_status final_sum(const ud_plan *p, uint32_t i, const uint64_t words[4], ud_value *out) {
-    const ud_field *f = &p->output_schema->column[p->key_n + i].field;
-    if (f->type == UD_INT64) {
-        uint64_t sign = words[0] >> 63 ? UINT64_MAX : 0;
-        if (words[1] != sign || words[2] != sign || words[3] != sign)
-            return UD_OVERFLOW;
-        out->integer = (int64_t)words[0];
-        return UD_OK;
-    }
-    uint64_t sign = words[1] >> 63 ? UINT64_MAX : 0;
-    if (words[2] != sign || words[3] != sign)
-        return UD_OVERFLOW;
-    ud_decimal128 value = {words[0], (int64_t)words[1]};
-    return ud_decimal_rescale(value, f->scale, f->precision, f->scale, UD_ROUND_EXACT,
-                              &out->decimal);
+static ud_status final_sum(const ud_plan *p,uint32_t i,const uint64_t words[4],ud_value *out) {
+    return ud_sum_wide_result(&p->output_schema->column[p->key_n+i].field,words,out);
 }
 static ud_status index_group(ud_accumulator *a, group *g) {
     if (!a->plan->key_n)
@@ -273,8 +241,8 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, 
                 continue;
             if (wide_sum(p, i)) {
                 uint64_t words[4];
-                wide_value(&input, words);
-                UD_TRY(wide_add(g->sums + (size_t)i * 4, words));
+                ud_sum_wide_value(&input, words);
+                UD_TRY(ud_sum_wide_add(g->sums + (size_t)i * 4, words));
                 v->is_null = 0;
             } else if (def->kind == 0) {
                 if (v->integer == INT64_MAX)
@@ -384,7 +352,7 @@ ud_status ud_accumulator_merge_row(ud_accumulator *a, const ud_batch *b, uint32_
             for (uint32_t k = 0; k < 4; k++)
                 for (uint32_t j = 0; j < 8; j++)
                     words[k] |= (uint64_t)(uint8_t)input.text[k * 8 + j] << (j * 8);
-            UD_TRY(wide_add(g->sums + (size_t)i * 4, words));
+            UD_TRY(ud_sum_wide_add(g->sums + (size_t)i * 4, words));
             value->is_null = 0;
         } else if (value->is_null) {
             ud_clear_value(value);
@@ -556,7 +524,7 @@ ud_status ud_accumulator_restore(ud_accumulator *a, const ud_batch *b) {
         }
         for (uint32_t i = 0; !s && i < a->plan->agg_n; i++)
             if (wide_sum(a->plan, i) && !g->values[a->plan->key_n + i].is_null)
-                wide_value(g->values + a->plan->key_n + i, g->sums + (size_t)i * 4);
+                ud_sum_wide_value(g->values + a->plan->key_n + i, g->sums + (size_t)i * 4);
         g->hash = UD_VALUE_HASH_SEED;
         for (uint32_t k = 0; !s && k < a->plan->key_n; k++)
             g->hash = ud_value_hash(g->values + k, g->hash);
