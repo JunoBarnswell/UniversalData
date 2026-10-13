@@ -45,10 +45,10 @@ def package(root,count=10003,duplicates='first'):
         component('derive','derive',columns=[dict(name='doubled',expression={'op':'mul','args':[{'column':'amount'},{'literal':2,'type':'int64'}]})]),
         component('quality','quality',errorPolicy='redirect',rules=[dict(id='required',version=2,kind='notNull',columns=['amount','doubled']),dict(id='range',kind='range',columns=['amount'],minimum=0,maximum=100),dict(id='tenant',kind='regex',columns=['tenant'],pattern='^[AB]$'),dict(id='fk',kind='foreignKey',columns=['tenant','fk'],referenceColumns=['ref_tenant','ref_key'])]),
         component('lookup','cacheLookup',cache='ref',keys=[2,3],errorPolicy='redirect'),
-        component('fan','multicast'),component('normalSQL','sql.destination',connection='target',table='output',mode='upsert',keys=[0,1]),component('normalFile','file.ndjson.destination',connection='normalFile')]
+        component('fan','multicast'),component('normalSQL','sql.destination',connection='target',table='output',mode='upsert',keys=[0,1],provisionReceipts=True),component('normalFile','file.ndjson.destination',connection='normalFile')]
     paths=[edge('facts','cast'),edge('cast','derive'),edge('derive','quality'),edge('reference','quality',input=1),edge('quality','lookup'),edge('lookup','fan'),edge('fan','normalSQL'),edge('fan','normalFile',output=1)]
     for origin,file_connection in [('cast','castErrors'),('quality','qualityErrors'),('lookup','missErrors')]:
-        nodes.extend([component(origin+'Fan','multicast'),component(origin+'File','file.ndjson.destination',connection=file_connection),component(origin+'SQL','sql.destination',connection='target',table='errors',mode='upsert',keys=[7,4,3])])
+        nodes.extend([component(origin+'Fan','multicast'),component(origin+'File','file.ndjson.destination',connection=file_connection),component(origin+'SQL','sql.destination',connection='target',table='errors',mode='upsert',keys=[7,4,3],provisionReceipts=True)])
         paths.extend([edge(origin,origin+'Fan',output=1),edge(origin+'Fan',origin+'SQL'),edge(origin+'Fan',origin+'File',output=1)])
     doc=dict(version=VERSION,id='next-phase',policy=dict(maxConcurrency=4,buffers=dict(connection='spill',residentBytes=8192,workingBytes=4194304,spillBytes=200000000,maxBlocks=10000)),connections=connections,
         caches=[dict(id='ref',sourceConnection='reference',schema=ref,keys=[0,1],duplicates=duplicates,errorPolicy='redirect' if duplicates=='error' else 'fail',scope='execution')],
@@ -115,7 +115,7 @@ if __name__=="__main__":
      nodes=[];paths=[]
      for part,batch in [(0,7),(1,31)]:
          config=dict(original,partitionCount=2,partitionId=part,batchSize=batch)
-         nodes.extend([component('source'+str(part),'sql.source',**config),component('target'+str(part),'sql.destination',connection='target',table='partitioned',mode='upsert',keys=[0,1])])
+         nodes.extend([component('source'+str(part),'sql.source',**config),component('target'+str(part),'sql.destination',connection='target',table='partitioned',mode='upsert',keys=[0,1],provisionReceipts=True)])
          paths.append(edge('source'+str(part),'target'+str(part)))
      doc.pop('caches');doc['controlFlow']=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='partitioned'))],constraints=[])
      doc['dataFlows']=[dict(id='partitioned',components=nodes,paths=paths)]

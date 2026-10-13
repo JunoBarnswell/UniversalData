@@ -461,13 +461,15 @@ static ud_status vector_node(const ud_expression *e, const expression_node *n, c
     *out = NULL;
     if (ud_is_cancelled(e->ctx))
         return UD_CANCELLED;
-    ud_field field = n->field;
-    field.name = "value";
-    field.name_length = 5;
+    ud_field field = {0};
+    UD_TRY(ud_field_derive(e->ctx, &n->field, (ud_string){"expression-vector", 17},
+                           (ud_string){"value", 5}, &field));
     field.nullable = 1;
     if (n->kind == COLUMN && !n->constant) {
         uint32_t column = n->column;
-        return ud_batch_project(e->ctx, b, &column, &field, 1, out);
+        ud_status status = ud_batch_project(e->ctx, b, &column, &field, 1, out);
+        ud_field_clear(&field);
+        return status;
     }
     ud_batch *arguments[16] = {0};
     ud_status status = UD_OK;
@@ -517,6 +519,7 @@ static ud_status vector_node(const ud_expression *e, const expression_node *n, c
     }
     for (uint32_t i = 0; i < 16; i++)
         ud_batch_destroy(arguments[i]);
+    ud_field_clear(&field);
     if (!status)
         status = ud_batch_seal(*out);
     if (status) {

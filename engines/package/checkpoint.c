@@ -294,61 +294,8 @@ static ud_status ud_checkpoint_task_begin_record(ud_activation *e, ud_string kin
         return UD_OK;
     const ud_json *done = find(j, RECORD_TASK_DONE, e->task_id);
     if (done) {
-        /* Declared execution caches are reconstructed through their normal DataFlow.
-         * Replaying containers reaches builders; other completed tasks keep their facts. */
-        if (e->execution->asset_count &&
-            (ud_named(kind, "sequence") || ud_named(kind, "for") || ud_named(kind, "foreach") ||
-             ud_named(kind, "executePackage"))) {
-            e->task_facts |= UD_TASK_EXECUTED | UD_TASK_DURABLE;
-            return UD_OK;
-        }
-        if (e->execution->asset_count && ud_named(kind, "dataFlow")) {
-            const ud_json *flows = ud_member(e->package->document, "dataFlows");
-            /* Builder flows are idempotent native assets. Receipt replay protects sinks. */
-            ud_string pipeline = {0};
-            if (e->task_definition)
-                UD_TRY(ud_json_string(
-                    ud_member(ud_member(e->task_definition, "config"), "pipeline"), &pipeline));
-            int builder = 0;
-            for (uint32_t f = 0; f < ud_json_size(flows); f++) {
-                const ud_json *flow = ud_json_at(flows, f);
-                ud_string id;
-                UD_TRY(ud_json_string(ud_member(flow, "id"), &id));
-                if (!ud_same(id, pipeline))
-                    continue;
-                const ud_json *components = ud_member(flow, "components");
-                for (uint32_t i = 0; i < ud_json_size(components); i++) {
-                    ud_string component = {0};
-                    if (!ud_json_string(ud_member(ud_json_at(components, i), "component"),
-                                        &component) &&
-                        ud_named(component, "cacheBuild"))
-                        builder = 1;
-                }
-            }
-            if (builder) {
-                uint64_t input = 0, output = 0, rejected = 0, committed = 0, ack = 0, errors = 0,
-                         ce = 0, ae = 0;
-                UD_TRY(ud_json_uint(ud_member(done, "input"), &input));
-                UD_TRY(ud_json_uint(ud_member(done, "output"), &output));
-                UD_TRY(ud_json_uint(ud_member(done, "rejected"), &rejected));
-                UD_TRY(ud_json_uint(ud_member(done, "committed"), &committed));
-                UD_TRY(ud_json_uint(ud_member(done, "acknowledged"), &ack));
-                UD_TRY(ud_json_uint(ud_member(done, "errorRows"), &errors));
-                UD_TRY(ud_json_uint(ud_member(done, "committedErrors"), &ce));
-                UD_TRY(ud_json_uint(ud_member(done, "acknowledgedErrors"), &ae));
-                UD_TRY(ud_rule_facts_restore(e->execution, ud_member(done, "rules"), 1));
-                atomic_fetch_sub(&e->execution->input_rows, input);
-                atomic_fetch_sub(&e->execution->output_rows, output);
-                atomic_fetch_sub(&e->execution->rejected_rows, rejected);
-                atomic_fetch_sub(&e->execution->committed_rows, committed);
-                atomic_fetch_sub(&e->execution->acknowledged_rows, ack);
-                atomic_fetch_sub(&e->execution->error_rows, errors);
-                atomic_fetch_sub(&e->execution->committed_error_rows, ce);
-                atomic_fetch_sub(&e->execution->acknowledged_error_rows, ae);
-                e->task_facts |= UD_TASK_EXECUTED | UD_TASK_DURABLE;
-                return UD_OK;
-            }
-        }
+        /* Completed tasks never repeat external reads. Execution cache assets
+         * restore their frozen Native state lazily from this same journal. */
         UD_TRY(restore(e, done));
         e->task_facts |= UD_TASK_EXECUTED | UD_TASK_DURABLE;
         *completed = 1;

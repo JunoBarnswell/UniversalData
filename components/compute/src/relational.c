@@ -414,6 +414,7 @@ ud_status ud_relational_create(ud_context *ctx, const ud_operator_options *o,
             if (o->kind == UD_OPERATOR_JOIN && !sorted) {
                 ud_operator_options sort = *o;
                 sort.kind = UD_OPERATOR_SORT;
+                sort.configuration = (ud_string){0};
                 sort.keys = r->keys[p];
                 sort.key_count = r->key_count;
                 sort.right_keys = NULL;

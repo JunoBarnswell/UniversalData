@@ -1,5 +1,5 @@
 """Real error-path commits, new transforms, Window, CSV and shared spill."""
-import csv, json, pathlib, subprocess, sys, tempfile
+import base64, csv, json, pathlib, subprocess, sys, tempfile
 with tempfile.TemporaryDirectory(prefix="ud-core-pipeline-") as folder:
     root=pathlib.Path(folder)
     spill=root/"spill";spill.mkdir()
@@ -27,6 +27,14 @@ with tempfile.TemporaryDirectory(prefix="ud-core-pipeline-") as folder:
     with (root/"ok.csv").open(newline="") as file: rows=list(csv.DictReader(file))
     assert rows==[dict(x=str(i),t=t,copied=t,total=str(total)) for i,t,total in [(1,"c",1),(2,"d",3),(3,"a",6)]],rows
     errors=[json.loads(s) for s in (root/"bad.ndjson").read_text().splitlines()]
-    assert len(errors)==1 and errors[0]["input"]["x"] is None and errors[0]["ruleId"]=="required" and len(errors[0]["sourceRowId"])==32 and errors[0]["ruleVersion"]==1
+    assert len(errors)==1 and errors[0]["ruleId"]=="required" and len(errors[0]["sourceRowId"])==32 and errors[0]["ruleVersion"]==1
+    # Inspect the error payload through the same Native Wire codec used by SDKs.
+    wire=root/'error.udw';wire.write_bytes(base64.b64decode(errors[0]['input'],validate=True))
+    decoded=subprocess.run([sys.argv[2],str(wire)],capture_output=True,text=True,timeout=10)
+    assert decoded.returncode==0,decoded.stderr
+    payload=json.loads(decoded.stdout)
+    assert payload['rows']==[dict(x=None,t=' b ')]
+    assert payload['rowInfo']['id']==errors[0]['sourceRowId']
+    wire.unlink()
     assert not list(root.glob("*.udw"))
     print("Quality normal/error commits, Character Map/Copy/RowCount/Audit, Window and CSV with actual shared spill passed")

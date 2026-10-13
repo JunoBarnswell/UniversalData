@@ -281,6 +281,31 @@ static int text_and_restore(ud_context *c, ud_buffer_manager *m) {
     ud_batch_destroy(b);
     return 0;
 }
+static int multiway_identity(ud_context *c, ud_buffer_manager *m) {
+    ud_batch *left=NULL,*right=NULL;
+    OK(input(c,"{\"version\":9,\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"v\",\"type\":\"int64\",\"nullable\":false}]}","[{\"k\":1,\"v\":0}]",&left));
+    OK(input(c,"{\"version\":9,\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"v\",\"type\":\"int64\",\"nullable\":false}]}","[{\"k\":1,\"v\":1},{\"k\":1,\"v\":2}]",&right));
+    const char *cfg="{\"inputs\":[\"a\",\"b\",\"c\"],\"joins\":[{\"input\":\"b\",\"leftKeys\":[\"k\"],\"rightKeys\":[\"k\"],\"rightAliases\":{\"k\":\"bk\",\"v\":\"bv\"}},{\"input\":\"c\",\"leftKeys\":[\"k\"],\"rightKeys\":[\"k\"],\"rightAliases\":{\"k\":\"ck\",\"v\":\"cv\"}}]}";
+    const ud_batch *inputs[]={left,right,right};ud_id expected[4]={{0}},field_ids[6]={{0}};
+    for(uint32_t reversed=0;reversed<2;reversed++) {
+        ud_operator_options o={.struct_size=sizeof(o),.abi_version=UD_ABI_VERSION,.kind=UD_OPERATOR_MULTIWAY_JOIN,.max_batch_rows=8,.input_count=3,.configuration=text(cfg),.buffers=m,.memory_budget=1048576,.spill_budget=16777216};
+        o.estimated_rows[1]=reversed?100:1;o.estimated_rows[2]=reversed?1:100;
+        ud_operator *join=NULL;OK(ud_operator_create(c,&o,inputs,&join));ud_batch *schema=NULL;OK(ud_operator_schema(join,0,&schema));
+        CHECK(ud_batch_columns(schema)==6);
+        for(uint32_t j=0;j<6;j++){ud_field f;OK(ud_batch_field(schema,j,&f));if(reversed)CHECK(!ud_id_compare(field_ids[j],f.identity));else field_ids[j]=f.identity;}
+        ud_batch_destroy(schema);char *explain=NULL;uint32_t size;
+        OK(ud_operator_explain(join,&explain,&size));CHECK(strstr(explain,reversed?"\"rightInput\":2":"\"rightInput\":1"));ud_free(explain);
+        for(uint32_t port=0;port<3;port++){OK(ud_operator_push(join,port,inputs[port]));OK(ud_operator_finish_input(join,port));}
+        uint32_t count=0;for(;;){ud_batch*out=NULL;ud_status status=ud_operator_pull(join,&out,NULL);if(status==UD_END)break;OK(status);
+            for(uint32_t row=0;row<ud_batch_rows(out);row++){ud_value b,cval;ud_row_info info;OK(ud_batch_get(out,row,3,&b));OK(ud_batch_get(out,row,5,&cval));OK(ud_batch_row_info(out,row,&info));uint32_t index=(uint32_t)((b.integer-1)*2+cval.integer-1);CHECK(index<4);
+                if(reversed)CHECK(!ud_id_compare(expected[index],info.id));else expected[index]=info.id;count++;
+            }
+            uint8_t *wire=NULL;uint64_t bytes;ud_batch *restored=NULL;OK(ud_batch_serialize(out,&wire,&bytes));OK(ud_batch_deserialize(c,wire,bytes,&restored));ud_row_info x,y;OK(ud_batch_row_info(out,0,&x));OK(ud_batch_row_info(restored,0,&y));CHECK(!ud_id_compare(x.origins,y.origins)&&x.flags==y.flags);ud_free(wire);ud_batch_destroy(restored);ud_batch_destroy(out);
+        }CHECK(count==4);OK(ud_operator_destroy(join));
+    }
+    for(uint32_t i=0;i<4;i++)for(uint32_t j=0;j<i;j++)CHECK(ud_id_compare(expected[i],expected[j]));
+    ud_batch_destroy(left);ud_batch_destroy(right);return 0;
+}
 int main(void) {
     ud_context *c = NULL;
     OK(ud_context_create(&(ud_context_options){.struct_size = sizeof(ud_context_options),
@@ -300,6 +325,7 @@ int main(void) {
     CHECK(!windows(c, m));
     CHECK(!cache_state(c, m));
     CHECK(!text_and_restore(c, m));
+    CHECK(!multiway_identity(c, m));
     OK(ud_buffer_manager_destroy(m));
     CHECK(ud_memory_used(c) == 0);
     OK(ud_context_destroy(c));

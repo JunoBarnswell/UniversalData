@@ -125,7 +125,13 @@ ud_status ud_state_add_batch(ud_state *s, const ud_batch *batch) {
     for (uint32_t i = 0; i < batch->columns; i++)
         if (!ud_field_matches(&batch->column[i].field, &s->schema->column[i].field, UD_FIELD_PORT))
             return UD_SCHEMA;
-    UD_TRY(flush(s));
+    /* Partial partition fragments pack into the existing bounded chunk. A
+     * sealed full chunk still shares its columns directly with Buffer. */
+    if (s->chunk || batch->rows < s->batch_size) {
+        for (uint32_t row = 0; row < batch->rows; row++)
+            UD_TRY(ud_state_append(s, batch, row));
+        return UD_OK;
+    }
     if (s->count == s->capacity) {
         uint32_t cap = s->capacity ? s->capacity * 2 : 16;
         if (cap < s->capacity)

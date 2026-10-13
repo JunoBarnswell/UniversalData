@@ -862,7 +862,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         h->deallocate((void *)previous.source_position.data);
     }
     uint32_t columns = options->mode == UD_WRITE_DELETE ? options->key_count : h->columns(batch);
-    uint32_t limit = columns ? 65535 / columns : 0;
+    uint32_t limit = columns ? h->parameter_limit(UD_SQL_POSTGRESQL) / columns : 0;
     if (!limit)
         s = UD_RESOURCE;
     if (limit > 1024)

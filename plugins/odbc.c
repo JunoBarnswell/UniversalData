@@ -21,6 +21,10 @@ static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
     SQLGetDiagRecA(kind, handle, 1, (SQLCHAR *)p->sqlstate, &p->native_error, message,
                    sizeof(message), &length);
     p->sqlstate[5] = 0;
+    char safe[96];
+    snprintf(safe, sizeof(safe), "ODBC operation failed (SQLSTATE %.5s, native %ld)",
+             p->sqlstate, (long)p->native_error);
+    p->host.report(p->host.context, UD_IO, safe);
     if (!strncmp(p->sqlstate, "08", 2)) {
         p->broken = 1;
         return UD_TRANSIENT;
@@ -256,12 +260,12 @@ static ud_status parameters_bind(odbc_state *p, SQLHSTMT stmt, const ud_batch *b
         q->sql_type = f.type == UD_BOOL         ? SQL_BIT
                       : f.type == UD_INT64      ? SQL_BIGINT
                       : f.type == UD_FLOAT64    ? SQL_DOUBLE
-                      : f.type == UD_BINARY     ? SQL_LONGVARBINARY
+                      : f.type == UD_BINARY     ? SQL_VARBINARY
                       : f.type == UD_DECIMAL128 ? SQL_DECIMAL
                       : f.type == UD_DATE32     ? SQL_TYPE_DATE
                       : f.type == UD_TIME64     ? SQL_TYPE_TIME
                       : f.type == UD_TIMESTAMP  ? SQL_TYPE_TIMESTAMP
-                      : f.type == UD_UTF8       ? (p->ansi ? SQL_LONGVARCHAR : SQL_WLONGVARCHAR)
+                      : f.type == UD_UTF8       ? (p->ansi ? SQL_VARCHAR : SQL_WVARCHAR)
                                                 : 0;
         if (!q->sql_type) {
             s = UD_UNSUPPORTED;
@@ -419,7 +423,7 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
         s = parameters_bind(p, stmt, parameters, first, rows, mapping, columns, write, plan,
                             &bound);
     SQLRETURN rc = !s ? SQLExecute(stmt) : SQL_ERROR;
-    if (!s && !SQL_SUCCEEDED(rc))
+    if (!s && !SQL_SUCCEEDED(rc) && rc != SQL_NO_DATA)
         s = failure(p, SQL_HANDLE_STMT, stmt);
     if (!s && array) {
         SQLRETURN more;
@@ -655,15 +659,20 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
             } else if (fields[i].type == UD_TIMESTAMP && n >= 19 && owned[i][10] == ' ' &&
                        n < 128) {
                 char time[132];
-                memcpy(time, owned[i], n);
-                time[10] = 'T';
-                if (n == 19 || owned[i][n - 1] != 'Z') {
-                    if (!p->utc) {
-                        s = UD_UNSUPPORTED;
-                        break;
-                    }
-                    time[n++] = 'Z';
+                uint32_t normalized = 0;
+                int zoned = 0;
+                for (uint32_t at = 0; at < n; at++) {
+                    char ch = owned[i][at];
+                    if (at == 10) ch = 'T';
+                    else if (at > 18 && ch == ' ') continue;
+                    if (at > 18 && (ch == '+' || ch == '-' || ch == 'Z')) zoned = 1;
+                    time[normalized++] = ch;
                 }
+                if (!zoned) {
+                    if (!p->utc) { s = UD_UNSUPPORTED; break; }
+                    time[normalized++] = 'Z';
+                }
+                n = normalized;
                 s = p->host.parse_field(p->host.context, fields + i, time, n, UD_ROUND_EXACT,
                                         values + i);
             } else if (fields[i].type == UD_BOOL) {
@@ -758,34 +767,50 @@ static char *identifier(odbc_state *p, ud_string value) {
     name[n] = 0;
     return name;
 }
-static ud_status canonical_type(odbc_state *p, int type, int precision, int scale, const char *name,
-                                char out[80]) {
-    const char *t =
-        type == SQL_BIT ? "bool"
-        : type == SQL_TINYINT || type == SQL_SMALLINT || type == SQL_INTEGER || type == SQL_BIGINT
-            ? "int64"
-        : type == SQL_REAL || type == SQL_FLOAT || type == SQL_DOUBLE ? "float64"
-        : type == SQL_CHAR || type == SQL_VARCHAR || type == SQL_LONGVARCHAR || type == SQL_WCHAR ||
-                type == SQL_WVARCHAR || type == SQL_WLONGVARCHAR
-            ? "utf8"
-        : type == SQL_BINARY || type == SQL_VARBINARY || type == SQL_LONGVARBINARY ? "binary"
-        : type == SQL_TYPE_DATE || type == SQL_DATE                                ? "date32"
-        : type == SQL_TYPE_TIME || type == SQL_TIME                                ? "time64"
-        : type == SQL_TYPE_TIMESTAMP || type == SQL_TIMESTAMP || type == -155      ? "timestamp"
-                                                                                   : NULL;
-    if (type == SQL_DECIMAL || type == SQL_NUMERIC) {
-        if (precision < 1 || precision > 38 || scale < 0 || scale > 38)
-            return UD_UNSUPPORTED;
-        snprintf(out, 80, "decimal128(%d,%d)", precision, scale);
-        return UD_OK;
-    }
-    if (type == SQL_BIGINT && name && (strstr(name, "UNSIGNED") || strstr(name, "unsigned"))) {
-        snprintf(out, 80, "decimal128(20,0)");
-        return UD_OK;
-    }
-    if (!t || (!p->utc && !strcmp(t, "timestamp")))
+/* Emit the actual provider's declaration. The shared Columnar SQL grammar
+ * owns canonical types; ODBC numeric codes cannot erase provider semantics. */
+static ud_status sql_declaration(odbc_state *p, int type, int precision, int scale,
+                                 const char *name, char out[80]) {
+    if (!name || !*name || strlen(name) >= 64)
         return UD_UNSUPPORTED;
-    snprintf(out, 80, "%s", t);
+    char lower[64];
+    for (size_t i = 0; i <= strlen(name); i++)
+        lower[i] = name[i] >= 'A' && name[i] <= 'Z' ? name[i] - 'A' + 'a' : name[i];
+    if (type == SQL_DECIMAL || type == SQL_NUMERIC) {
+        if (precision < 1 || precision > 38 || scale < -38 || scale > 38)
+            return UD_UNSUPPORTED;
+        snprintf(out, 80, "%s(%d,%d)", p->dialect == DIALECT_ORACLE ? "number" : "decimal",
+                 precision, scale);
+        return UD_OK;
+    }
+    if (p->dialect == DIALECT_POSTGRES) {
+        if (!strcmp(lower, "int8")) strcpy(lower, "bigint");
+        else if (!strcmp(lower, "int4")) strcpy(lower, "integer");
+        else if (!strcmp(lower, "int2")) strcpy(lower, "smallint");
+        else if (!strcmp(lower, "float8")) strcpy(lower, "double precision");
+        else if (!strcmp(lower, "float4")) strcpy(lower, "real");
+        else if (!strcmp(lower, "bool")) strcpy(lower, "boolean");
+        else if (!strcmp(lower, "varchar")) strcpy(lower, "character varying");
+        else if (!strcmp(lower, "timestamptz")) strcpy(lower, "timestamp with time zone");
+        else if (!strcmp(lower, "timestamp")) return UD_UNSUPPORTED;
+        else if (!strcmp(lower, "time")) strcpy(lower, "time without time zone");
+    } else if (p->dialect == DIALECT_MSSQL) {
+        if (!strcmp(lower, "datetime2") || !strcmp(lower, "datetime") ||
+            !strcmp(lower, "smalldatetime")) {
+            if (!p->utc) return UD_UNSUPPORTED;
+            snprintf(out, 80, "%s_utc", !strcmp(lower, "datetime2") ? "datetime2" : "datetime");
+            return UD_OK;
+        }
+    } else if (p->dialect == DIALECT_MYSQL && !strncmp(lower, "datetime", 8)) {
+        if (!p->utc) return UD_UNSUPPORTED;
+        strcpy(lower, "datetime_utc");
+    } else if (p->dialect == DIALECT_ORACLE &&
+               (!strcmp(lower, "date") || !strcmp(lower, "timestamp"))) {
+        if (!p->utc) return UD_UNSUPPORTED;
+        snprintf(out, 80, "%s_utc", lower);
+        return UD_OK;
+    }
+    snprintf(out, 80, "%s", lower);
     return UD_OK;
 }
 static ud_status columns_query(odbc_state *p, ud_string table, SQLHSTMT *stmt, int primary) {
@@ -878,7 +903,7 @@ ud_status ud_odbc_discover(void *state, ud_string table, ud_batch **out) {
             s = get_cell(p, stmt, columns[i], 0, values + i, &length, &null);
         char type[80];
         if (!s)
-            s = canonical_type(p, atoi(values[1]), atoi(values[3]), atoi(values[4]), values[2],
+            s = sql_declaration(p, atoi(values[1]), atoi(values[3]), atoi(values[4]), values[2],
                                type);
         int key = 0;
         for (uint32_t k = 0; !s && k < count; k++)
@@ -1022,7 +1047,12 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         s = UD_CORRUPT;
     p->host.deallocate((void *)previous.source_position.data);
     uint32_t width = o->mode == UD_WRITE_DELETE ? o->key_count : p->host.columns(batch);
-    uint32_t limit = width ? 32767 / width : 0;
+    /* SQL Server's prepared RPC also carries the handle, SQL and declarations.
+     * Reserve their wire parameters before deriving a deterministic row chunk. */
+    uint32_t budget = p->host.parameter_limit(native_dialect(p));
+    if (p->dialect == DIALECT_MSSQL && budget >= 4)
+        budget -= 4;
+    uint32_t limit = width ? budget / width : 0;
     if (!limit)
         s = UD_RESOURCE;
     if (limit > 1000)

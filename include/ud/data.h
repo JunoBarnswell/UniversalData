@@ -127,14 +127,16 @@ UD_API ud_status ud_schema_compare_json(ud_context *, ud_string, ud_string, ud_s
 UD_API ud_status ud_schema_map(ud_context *, const ud_batch *actual, const ud_batch *expected,
                                ud_string, ud_batch **);
 
-enum { UD_ROW_ERROR = 1 };
+enum { UD_ROW_ERROR = 1, UD_ROW_JOINED = 2 };
 enum { UD_ERROR_FAIL = 0, UD_ERROR_REDIRECT = 1, UD_ERROR_IGNORE = 2 };
 typedef struct ud_row_info {
-    ud_id id, rule;
+    ud_id id, rule, origins; /* Associative source-identity accumulator for Join. */
     uint32_t flags, operation; /* 0 ordinary row; UD_CHANGE_* for a Changeset. */
 } ud_row_info;
 /* Metadata is native, owned with the Batch and preserved by Wire/Spill. Zero ID
  * means unspecified direct-API provenance. Mutation requires an owned mutable batch. */
+/* Assign a frozen logical input role without changing source row IDs. */
+UD_API ud_status ud_batch_join_origin(ud_context *, const ud_batch *, ud_id, ud_batch **);
 UD_API ud_status ud_row_info_join(ud_context *,const ud_row_info *,const ud_row_info *,ud_row_info *);
 UD_API ud_status ud_batch_row_info(const ud_batch *, uint32_t, ud_row_info *);
 UD_API ud_status ud_batch_set_row_info(ud_batch *, uint32_t, const ud_row_info *);

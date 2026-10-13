@@ -304,7 +304,9 @@ ud_status ud_advanced_pull(ud_advanced *a, ud_batch **out, uint32_t *output) {
             }
             if (!s && selected == a->error_port)
                 s = ud_error_append(&a->options.errors, target, a->pending, row,
-                                    (ud_string){"native.transform", 16}, 1, (ud_id){0}, cause,
+                                    a->options.kind == UD_OPERATOR_CACHE_LOOKUP
+                                        ? (ud_string){"cache.miss", 10}
+                                        : (ud_string){"native.transform", 16}, 1, (ud_id){0}, cause,
                                     a->policy);
             else if (!s) {
                 s = ud_batch_append(target, v, target->columns);
@@ -409,6 +411,7 @@ void ud_advanced_destroy(ud_advanced *a) {
     ud_cache_release(a->reference);
     ud_json_destroy(a->config);
     ud_free(a->tree_json);
+    ud_free(a->join_projection);
     ud_free(a);
 }
 

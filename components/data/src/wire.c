@@ -221,6 +221,8 @@ ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
         UD_TRY(ud_put_u64(b, info.rule.low));
         UD_TRY(ud_put_u64(b, info.flags));
         UD_TRY(ud_put_u64(b, info.operation));
+        UD_TRY(ud_put_u64(b, info.origins.high));
+        UD_TRY(ud_put_u64(b, info.origins.low));
     }
     return UD_OK;
 }
@@ -289,10 +291,18 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
             s = ud_get_u64(b, &info.rule.low);
         if (!s)
             s = ud_get_u64(b, &flags);
-        if (!s && (flags & ~((uint64_t)UD_ROW_ERROR)))
+        if (!s && (flags & ~((uint64_t)(UD_ROW_ERROR | UD_ROW_JOINED))))
             s = UD_CORRUPT;
-        if (!s) s = ud_get_u64(b, &operation);
-        if (!s && operation > 4) s = UD_CORRUPT;
+        if (!s)
+            s = ud_get_u64(b, &operation);
+        if (!s && operation > 4)
+            s = UD_CORRUPT;
+        if (!s)
+            s = ud_get_u64(b, &info.origins.high);
+        if (!s)
+            s = ud_get_u64(b, &info.origins.low);
+        if (!s && !(flags & UD_ROW_JOINED) && (info.origins.high || info.origins.low))
+            s = UD_CORRUPT;
         info.flags = (uint32_t)flags;
         info.operation = (uint32_t)operation;
         if (!s)
@@ -303,6 +313,8 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
         clear_field(fields + j);
     ud_free(fields);
     ud_free(values);
+    if (!s)
+        s = ud_batch_seal(*out);
     if (s) {
         ud_batch_destroy(*out);
         *out = NULL;

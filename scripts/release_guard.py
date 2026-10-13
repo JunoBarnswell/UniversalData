@@ -16,7 +16,7 @@ def source_hash():
                    "hosts", "bindings", "cmake", "tests", "examples", "scripts", "packaging", "metadata", "benchmarks"):
         files.extend(p for p in (ROOT / folder).rglob("*") if p.is_file()
             and not set(p.relative_to(ROOT).parts) & {"bin", "obj", "target", "build", "__pycache__"}
-            and p.suffix in {".c", ".h", ".cs", ".java", ".py", ".ps1", ".cmake", ".json",
+            and p.suffix in {".c", ".h", ".cpp", ".cs", ".java", ".py", ".ps1", ".cmake", ".json",
                              ".xml", ".csproj", ".vcxproj", ".filters", ".txt", ".props", ".in"}
             and p != ROOT / "metadata/product.json")
     digest = hashlib.sha256()

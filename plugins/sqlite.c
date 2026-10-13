@@ -28,6 +28,13 @@ static ud_status control(sqlite_state *p) {
 static int progress(void *user) {
     return control(user) != UD_OK;
 }
+static int wait_for_writer(void *user, int attempt) {
+    sqlite_state *p = user;
+    if (attempt >= 6000 || control(p))
+        return 0;
+    sqlite3_sleep(5);
+    return control(p) == UD_OK;
+}
 static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     sqlite_state *p = state;
     p->control_user = user;
@@ -72,6 +79,7 @@ static ud_status initialize(const ud_host_api *h, const char *config, uint32_t n
         h->deallocate(p);
         return s;
     }
+    sqlite3_busy_handler(p->db, wait_for_writer, p);
     *out = p;
     return UD_OK;
 }
@@ -434,7 +442,9 @@ static ud_status validate_target(sqlite_state *p, ud_string table, const ud_batc
             int temporal = (f.type == UD_TIMESTAMP && !strcmp(upper, "TIMESTAMP_UTC")) ||
                            (f.type == UD_DATE32 && !strcmp(upper, "DATE32")) ||
                            (f.type == UD_TIME64 && !strcmp(upper, "TIME64"));
-            if (expected != affinity && !temporal)
+            int boolean = f.type == UD_BOOL &&
+                          (!strcmp(upper, "BOOLEAN") || !strcmp(upper, "BOOL"));
+            if (expected != affinity && !temporal && !boolean)
                 s = h->report(h->context, UD_SCHEMA,
                               "target SQLite affinity would coerce a typed value; use TEXT for "
                               "Decimal and INTEGER for UTC microseconds");

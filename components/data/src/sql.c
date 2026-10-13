@@ -45,9 +45,11 @@ static ud_status column(writer *w, uint32_t index, const char *prefix) {
     return quote(w, (ud_string){f->name, f->name_length});
 }
 static ud_status parameter(writer *w, uint32_t row, uint32_t col, uint32_t source) {
-    ud_sql_statement *s = w->statement;
-    if (s->parameter_count == 65535)
+    uint32_t maximum = ud_sql_parameter_limit(w->dialect);
+    if (!maximum || w->statement->parameter_count >= maximum)
         return UD_RESOURCE;
+
+    ud_sql_statement *s = w->statement;
     if (s->parameter_count == w->capacity) {
         uint32_t cap = w->capacity ? w->capacity * 2 : 32;
         if (cap > 65535)
@@ -384,6 +386,19 @@ static ud_status last_rows(writer *w, uint32_t first, uint32_t *count) {
     ud_free(nodes);
     ud_free(selection);
     return status;
+}
+uint32_t ud_sql_parameter_limit(int32_t dialect) {
+    switch (dialect) {
+    case UD_SQL_SQLSERVER: return 2100;
+    case UD_SQL_SQLITE: return 32766;
+    case UD_SQL_POSTGRESQL:
+    case UD_SQL_MYSQL:
+    case UD_SQL_MARIADB:
+    case UD_SQL_ORACLE:
+    case UD_SQL_DB2:
+    case UD_SQL_DUCKDB: return 65535;
+    default: return 0;
+    }
 }
 ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
                                const ud_write_options *o, const ud_batch *b, uint32_t first,

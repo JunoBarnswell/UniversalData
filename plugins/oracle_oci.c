@@ -28,6 +28,9 @@ static ud_status failure(oracle *p, sword rc) {
     sb4 code = 0;
     OraText text[2];
     OCIErrorGet(p->error, 1, NULL, &code, text, sizeof(text), OCI_HTYPE_ERROR);
+    char safe[80];
+    snprintf(safe, sizeof(safe), "OCI operation failed (Oracle code %ld)", (long)code);
+    p->host.report(p->host.context, UD_IO, safe);
     if (code == 1291 || code == 1284 || code == 1327 || code == 1555)
         return UD_FENCED;
     if (code == 1013)
@@ -46,8 +49,7 @@ static ud_status failure(oracle *p, sword rc) {
         return UD_QUALITY;
     if (code == 942 || code == 904)
         return UD_SCHEMA;
-    return p->host.report(p->host.context, UD_IO,
-                          "OCI operation failed; diagnostic payload redacted");
+    return UD_IO;
 }
 static void cells_clear(oracle *p, cell *v, uint32_t n) {
     if (!v)
@@ -861,7 +863,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
                                               o->source_position.data, o->source_position.length))))
         s = UD_CORRUPT;
     p->host.deallocate((void *)previous.source_position.data);
-    uint32_t limit = p->host.columns(b) ? 65535 / p->host.columns(b) : 0;
+    uint32_t limit = p->host.columns(b) ? p->host.parameter_limit(UD_SQL_ORACLE) / p->host.columns(b) : 0;
     if (!limit)
         s = UD_RESOURCE;
     if (limit > 128)

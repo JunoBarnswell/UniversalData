@@ -41,12 +41,52 @@ static ud_status join_config(ud_advanced *a, const ud_json *entry, ud_string *ou
     ud_bytes_clear(&bytes);
     return s;
 }
+/* Freeze the logical definition through the same Native Join binder. Physical
+ * order may change; columns, aliases, lineage and nullability remain logical. */
+static ud_status logical_schema(ud_advanced *a, const ud_json *names, const ud_json *joins,
+                                ud_batch **out) {
+    *out = NULL;
+    ud_batch *left = NULL;
+    UD_TRY(ud_advanced_clone(a->ctx, a->inputs[0], 0, &left));
+    ud_status s = UD_OK;
+    uint64_t used = 1;
+    for (uint32_t level = 0; !s && level < a->ports - 1; level++) {
+        const ud_json *entry = ud_json_at(joins, level);
+        ud_string name = {0}, config = {0};
+        s = ud_json_text(ud_advanced_member(entry, "input"), &name.data, &name.length);
+        uint32_t input = UINT32_MAX;
+        for (uint32_t p = 1; !s && p < a->ports; p++)
+            if (text_is(ud_json_at(names, p), name)) input = p;
+        if (!s && (input == UINT32_MAX || (used & (UINT64_C(1) << input)))) s = UD_SCHEMA;
+        if (!s) s = join_config(a, entry, &config);
+        ud_operator_options options = a->options;
+        options.kind = UD_OPERATOR_JOIN;
+        options.configuration = config;
+        options.record_state = 0;
+        options.input_count = 2;
+        options.input_order = NULL;
+        options.partition_count = 1;
+        const ud_batch *inputs[] = {left, input == UINT32_MAX ? NULL : a->inputs[input]};
+        ud_operator *bound = NULL;
+        if (!s) s = ud_operator_create(a->ctx, &options, inputs, &bound);
+        ud_batch *next = NULL;
+        if (!s) s = ud_operator_schema(bound, 0, &next);
+        ud_operator_destroy(bound);
+        ud_free((void *)config.data);
+        ud_batch_destroy(left);
+        left = next;
+        if (!s) used |= UINT64_C(1) << input;
+    }
+    if (s) ud_batch_destroy(left); else *out = left;
+    return s;
+}
 ud_status ud_multiway_bind(ud_advanced *a) {
     const ud_json *names = ud_advanced_member(a->config, "inputs"),
                   *joins = ud_advanced_member(a->config, "joins");
     if (a->ports < 2 || a->ports > 64 || ud_json_size(names) != a->ports ||
         ud_json_size(joins) != a->ports - 1)
         return UD_SCHEMA;
+    UD_TRY(logical_schema(a, names, joins, &a->schema[0]));
     int reorder = 1;
     ud_bytes tree = {.ctx = a->ctx};
     ud_status initialized = ud_bytes_put(&tree, "[", 1);
@@ -160,9 +200,27 @@ ud_status ud_multiway_bind(ud_advanced *a) {
     if (!status) {
         a->tree_json = (char *)tree.data;
         tree.data = NULL;
-        a->schema[0] = left;
-    } else
-        ud_batch_destroy(left);
+        uint32_t columns = a->schema[0]->columns;
+        if (left->columns != columns)
+            status = UD_SCHEMA;
+        a->join_projection = !status ? ud_alloc(a->ctx, columns * sizeof(uint32_t)) : NULL;
+        if (!status && !a->join_projection)
+            status = UD_RESOURCE;
+        for (uint32_t i = 0; !status && i < columns; i++) {
+            int found = 0;
+            for (uint32_t j = 0; j < columns; j++)
+                if (!ud_id_compare(a->schema[0]->column[i].field.identity,
+                                   left->column[j].field.identity) &&
+                    ud_field_matches(&a->schema[0]->column[i].field, &left->column[j].field,
+                                     UD_FIELD_VALUE_TYPE)) {
+                    a->join_projection[i] = j;
+                    found++;
+                }
+            if (found != 1)
+                status = UD_SCHEMA;
+        }
+    }
+    ud_batch_destroy(left);
     ud_bytes_clear(&tree);
     return status;
 }
@@ -177,7 +235,16 @@ ud_status ud_multiway_push(ud_advanced *a, uint32_t port, const ud_batch *b) {
         if (node == UINT32_MAX)
             return UD_SCHEMA;
     }
-    return ud_operator_push(a->joins[node], input, b);
+    ud_string name = {0};
+    const ud_json *names = ud_advanced_member(a->config, "inputs");
+    UD_TRY(ud_json_text(ud_json_at(names, port), &name.data, &name.length));
+    ud_id scope;
+    UD_TRY(ud_id_make(a->ctx, (ud_string){"multiway.input", 14}, name, &scope));
+    ud_batch *tagged = NULL;
+    ud_status s = ud_batch_join_origin(a->ctx, b, scope, &tagged);
+    if (!s) s = ud_operator_push(a->joins[node], input, tagged);
+    ud_batch_destroy(tagged);
+    return s;
 }
 ud_status ud_multiway_end(ud_advanced *a, uint32_t port) {
     if (!port)
@@ -210,8 +277,11 @@ ud_status ud_multiway_pull(ud_advanced *a, ud_batch **out, uint32_t *port) {
         if (s)
             return s;
         if (a->join_at + 1 == a->join_count) {
-            *out = batch;
-            return UD_OK;
+            ud_status projected = ud_batch_project(a->ctx, batch, a->join_projection,
+                                                   a->schema[0]->schema->fields,
+                                                   a->schema[0]->columns, out);
+            ud_batch_destroy(batch);
+            return projected;
         }
         s = ud_operator_push(a->joins[a->join_at + 1], 0, batch);
         ud_batch_destroy(batch);

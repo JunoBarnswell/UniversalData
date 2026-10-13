@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory(prefix='ud-package-recovery-') as folder:
                'children':{'tasks':[{'id':'increment','kind':'set','config':{'name':'n','value':{'op':'add','args':[{'ref':'n'},lit(1)]}}}],'constraints':[]}},
                {'id':'flow','kind':'dataFlow','config':{'pipeline':'p'}}], 'constraints':[{'from':'loop','to':'flow','on':'success'}]},
    'dataFlows':[{'id':'p','components':[{'id':'source','component':'file.ndjson.source','config':{'connection':'source','schema':{'version':9,'fields':[{'name':'x','type':'int64','nullable':False}]},'batchSize':7}},
-              {'id':'multicast','component':'multicast','config':{}},{'id':'db','component':'sql.destination','config':{'connection':'target','table':'dest','mode':'append','keys':[]}},
+              {'id':'multicast','component':'multicast','config':{}},{'id':'db','component':'sql.destination','config':{'connection':'target','table':'dest','mode':'append','keys':[],'provisionReceipts':True}},
               {'id':'file','component':'file.ndjson.destination','config':{'connection':'file'}}],
               'paths':[{'from':a,'output':port,'to':b,'input':0} for a,port,b in [('source',0,'multicast'),('multicast',0,'db'),('multicast',1,'file')]]}]}
   path=r/'package.json';path.write_text(json.dumps(p));return r,p

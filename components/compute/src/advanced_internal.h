@@ -16,7 +16,7 @@ struct ud_advanced {
     uint32_t ports, outputs, error_port, row, element, token_row, *keys, key_count, partition_keys;
     uint64_t ended, processed, emitted[4], rejected, position, group_rows, limit;
     ud_operator *sort, *window, *joins[63];
-    uint32_t join_inputs[63], join_count, join_at;
+    uint32_t join_inputs[63], join_count, join_at, *join_projection;
     advanced_field *fields;
     uint32_t field_count, column;
     ud_regex *regex;

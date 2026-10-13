@@ -15,6 +15,7 @@ typedef struct ud_sql_statement {
 /* Single Native write grammar for every provider. A Changeset statement covers
  * exactly one row; ordinary writes may compile bounded multi-row statements.
  * Providers bind the returned parameter references without formatting values. */
+UD_API uint32_t ud_sql_parameter_limit(int32_t dialect);
 UD_API ud_status ud_sql_compile_write(ud_context *,int32_t dialect,int32_t parameter_style,
                                       const ud_write_options *,const ud_batch *,uint32_t first,
                                       uint32_t rows,ud_sql_statement *);

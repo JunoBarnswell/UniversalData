@@ -35,9 +35,16 @@ ud_status ud_compute_join_schema(ud_context *ctx, const ud_batch *left, const ud
                 name = (ud_string){(char *)renamed.data, (uint32_t)renamed.size};
             }
         }
-        if (!s)
+        int duplicate = 0;
+        for (uint32_t k = 0; k < j; k++)
+            duplicate |= !ud_id_compare(source->identity, fields[k].identity);
+        if (!s && (duplicate || renamed.size))
             s = ud_field_derive(ctx, source, (ud_string){scope, (uint32_t)strlen(scope)}, name,
                                 fields + j);
+        else if (!s)
+            s = ud_field_copy(ctx, source, (ud_id){0}, fields + j);
+        if (!s)
+            fields[j].key_order = 0;
         ud_bytes_clear(&renamed);
     }
     if (!s)

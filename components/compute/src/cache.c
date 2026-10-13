@@ -464,8 +464,12 @@ ud_status ud_cache_next(ud_cache_reader *reader, const ud_batch **out, uint32_t 
         return UD_INVALID;
     *out = NULL;
     if (reader->next >= reader->end) {
-        ud_buffer_view_release(reader->view);
-        reader->view = NULL;
+        /* Immutable Full Cache pages belong to the reader until it advances or
+         * closes. Partial entries release the view before their LRU/TTL changes. */
+        if (reader->cache->partial) {
+            ud_buffer_view_release(reader->view);
+            reader->view = NULL;
+        }
         return UD_END;
     }
     UD_TRY(check(reader->cache));

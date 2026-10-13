@@ -339,6 +339,7 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
             s = copy_schema(ctx, options->aggregation->output_schema, 0, &o->schema);
         ud_operator_options sort = *options;
         sort.kind = UD_OPERATOR_SORT;
+        sort.configuration = (ud_string){0};
         sort.aggregation = NULL;
         for (uint32_t i = 0; !s && i < options->aggregation->agg_n; i++) {
             ud_aggregate_def *a = options->aggregation->aggs + i;

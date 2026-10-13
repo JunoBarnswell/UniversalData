@@ -298,7 +298,10 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
             return UD_SCHEMA;
         if (ud_json_kind(ud_member(def, "config")) != UD_JSON_OBJECT)
             return UD_SCHEMA;
-        UD_TRY(bind_ports(n, e, def, p->id));
+        ud_status bound = bind_ports(n, e, def, p->id);
+        if (bound)
+            return ud_fail(e->execution->ctx, bound, "component '%.*s' configuration failed",
+                           (int)n->id.length, n->id.data);
         n->inputs = ud_alloc(e->execution->ctx, (n->descriptor.inputs + 1) * sizeof(*n->inputs));
         n->emitted = ud_alloc(e->execution->ctx, n->descriptor.outputs + 1);
         if (!n->inputs || !n->emitted)
@@ -883,6 +886,10 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
         n->context.input_plans = n->input_plans;
         n->context.output_schemas = (const ud_batch *const *)n->schemas;
         for (uint32_t j = 0; j < n->descriptor.inputs; j++) {
+            n->input_plans[j] = (ud_component_plan){.struct_size = sizeof(ud_component_plan),
+                                                    .abi_version = UD_ABI_VERSION,
+                                                    .partitions = 1,
+                                                    .ordering = UD_ORDER_UNORDERED};
             inputs[j] = NULL;
             if (n->inputs[j] != UINT32_MAX) {
                 edge *v = p->edges + n->inputs[j];
@@ -914,7 +921,8 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                    n->binding.ordering > UD_ORDER_GLOBAL))
             s = UD_SCHEMA;
         if (s)
-            return s;
+            return ud_fail(e->execution->ctx, s, "component '%.*s' schema/plan binding failed",
+                           (int)n->id.length, n->id.data);
         if (ud_member(n->configuration, "errorPolicy")) {
             ud_string policy;
             UD_TRY(ud_json_string(ud_member(n->configuration, "errorPolicy"), &policy));

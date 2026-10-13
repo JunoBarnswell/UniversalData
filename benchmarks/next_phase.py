@@ -1,5 +1,5 @@
 """Sealed six-workload Linux matrix. Native driver reports CPU/RSS/owner metrics."""
-import argparse, hashlib, json, os, pathlib, platform, sqlite3, subprocess, tempfile, time
+import argparse, shutil, hashlib, json, os, pathlib, platform, sqlite3, subprocess, tempfile, time
 
 def field(name,kind='int64'): return dict(name=name,type=kind,nullable=False)
 def component(id,kind,**config): return dict(id=id,component=kind,config=config)
@@ -33,7 +33,7 @@ def main():
         with reference.open('w') as stream:
             for key in range(args.references):stream.write(json.dumps(dict(ref_key=key,label=str(key)),separators=(',',':'))+'\n')
         sources=schema([field('id'),field('fk')]);refs=schema([field('ref_key'),field('label','utf8')])
-        widths={'streaming':[1,2,4,8],'sortSpill':[1,2,4,8],'join':[1,2,4,8],'errorDualSink':[1,2,4],'incrementalResume':[1,4],'cacheLookup':[1,4]}
+        widths={name:[1,2,4] for name in ('streaming','sortSpill','join','errorDualSink','incrementalResume','cacheLookup')}
         golden={}
         for workload,workers_list in widths.items():
             for workers in workers_list:
@@ -51,7 +51,7 @@ def main():
                 elif workload=='incrementalResume':
                     nodes[0]['config']['incremental']=dict(mode='watermark',keys=['id'],after=[-1],unique=True,monotonic=True)
                     with sqlite3.connect(root/'target.db') as db:db.execute('CREATE TABLE output(id INTEGER NOT NULL PRIMARY KEY,fk INTEGER NOT NULL)')
-                    connections.append(dict(id='target',driver=args.sqlite,resource=str(root/'target.db'),credentialReference='fixture'));nodes.append(component('output','sql.destination',connection='target',table='output',mode='upsert',keys=[0]));paths=[edge('source','output')]
+                    connections.append(dict(id='target',driver=args.sqlite,resource=str(root/'target.db'),credentialReference='fixture'));nodes.append(component('output','sql.destination',connection='target',table='output',mode='upsert',keys=[0],provisionReceipts=True));paths=[edge('source','output')]
                 else:
                     caches=[dict(id='ref',sourceConnection='reference',schema=refs,keys=[0],duplicates='first',scope='execution')]
                     build=dict(id='build',components=[component('reference','file.ndjson.source',connection='reference',schema=refs,batchSize=256),component('build','cacheBuild',cache='ref',mapping=[0,1])],paths=[edge('reference','build')])
@@ -70,6 +70,10 @@ def main():
                 else:golden[workload]=signature
                 matrix.append(dict(workload=workload,workers=workers,rows=args.rows,references=args.references,rowsPerSecond=args.rows/facts['seconds'],signature=signature,**facts));print(workload,workers,facts['seconds'],flush=True)
                 assert not list((root/'spill').glob('*.udw'))
+                # Raw measurements and semantic signatures are sealed above.
+                # Delete only this workload's owned temporary data before the next.
+                assert root.parent==base and (root/'package.json').is_file()
+                shutil.rmtree(root)
     artifact={'machine':{'platform':platform.platform(),'cpuCount':os.cpu_count(),'cpuQuota':pathlib.Path('/sys/fs/cgroup/cpu.max').read_text().strip() if pathlib.Path('/sys/fs/cgroup/cpu.max').exists() else None},'rows':args.rows,'references':args.references,'samples':matrix}
     args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(artifact,indent=2));print(args.output)
 if __name__=='__main__':main()

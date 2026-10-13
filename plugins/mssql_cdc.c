@@ -244,6 +244,7 @@ static ud_status fence(struct ud_mssql_cdc *c) {
     if (status)
         return status;
     TRY(scalar(c->peer, "SELECT CONVERT(binary(16),NEWID()) AS [value]", NULL, UD_BINARY, &value));
+    fprintf(stderr,"MS fence marker length=%u memory=%llu\n",value.text_length,(unsigned long long)0);
     if (value.is_null || value.text_length != 16) {
         p->host.deallocate((void *)value.text);
         return UD_CORRUPT;
@@ -260,6 +261,7 @@ static ud_status fence(struct ud_mssql_cdc *c) {
     uint64_t rows = 0;
     if (!status)
         status = ud_odbc_execute(c->peer, &insert, &rows);
+    fprintf(stderr,"MS fence insert status=%d rows=%llu\n",status,(unsigned long long)rows);
     if (!status && rows != 1)
         status = UD_CORRUPT;
     const char *poll = "SELECT TOP(1) [__$start_lsn] AS [value] FROM cdc.ud_sdk_cdc_fence_CT WHERE "
@@ -277,6 +279,7 @@ static ud_status fence(struct ud_mssql_cdc *c) {
         if (status)
             break;
         status = scalar(c->peer, poll, params, UD_BINARY, &value);
+        if(status!=UD_END)fprintf(stderr,"MS fence poll status=%d memory=%llu\n",status,(unsigned long long)0);
         if (!status && !value.is_null) {
             if (value.text_length != 10)
                 status = UD_CORRUPT;
@@ -443,8 +446,10 @@ ud_status ud_mssql_cdc_open(void *state, const ud_cdc_options *o) {
     }
     if (!status)
         status = source_identity(c);
+    fprintf(stderr,"MS CDC identity status=%d\n",status);
     if (!status && o->mode == UD_CDC_SNAPSHOT_STREAM) {
         status = fence(c);
+        fprintf(stderr,"MS CDC fence status=%d\n",status);
         if (!status) {
             char *names = NULL;
             status = source_fields(c, &names);

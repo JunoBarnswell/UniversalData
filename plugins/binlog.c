@@ -11,7 +11,7 @@
 struct ud_binlog {
     ud_host_api host;
     ud_batch *schema;
-    char *database, *table, *transaction;
+    char *database, *table, *transaction, *incarnation;
     uint8_t *types, *meta, *unsigned_columns;
     uint32_t columns, batch_rows;
     uint64_t table_id, version;
@@ -507,8 +507,10 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
             return UD_CORRUPT;
         body.n -= 4;
     }
-    if (kind == 19)
-        return map(d, &body);
+    if (kind == 19) {
+        ud_status mapped = map(d, &body);
+        return mapped == UD_OK ? UD_BUSY : mapped;
+    }
     ud_status s = UD_BUSY;
     if (kind == 33 || kind == 34 || kind == 162) {
         char transaction[160];
@@ -562,6 +564,22 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
             return UD_CORRUPT;
         const char *query = (const char *)body.p + at;
         size_t n = body.n - at;
+        /* Query events may be protocol comment placeholders (MariaDB's
+         * annotation downgrade), not DDL. Strip complete SQL comments first. */
+        for (;;) {
+            while (n && (*query==' '||*query=='\t'||*query=='\r'||*query=='\n')) { query++; n--; }
+            if (n && (*query=='#' || (n>1 && query[0]=='-' && query[1]=='-'))) {
+                while(n && *query!='\n') { query++; n--; }
+                continue;
+            }
+            if (n>1 && query[0]=='/' && query[1]=='*') {
+                size_t end=2; while(end+1<n && !(query[end]=='*'&&query[end+1]=='/')) end++;
+                if(end+1==n) return UD_CORRUPT;
+                query+=end+2; n-=end+2; continue;
+            }
+            break;
+        }
+        if (!n) return UD_BUSY;
         if (n == 6 && !memcmp(query, "COMMIT", 6)) {
             if (!d->begun)
                 return UD_CORRUPT;
@@ -582,14 +600,14 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
     else if (kind == 39 || kind == 40 || kind >= 166)
         s = UD_UNSUPPORTED;
     if (!s) {
-        size_t n = file.length + 256;
+        size_t n = file.length + strlen(d->incarnation) + 256;
         char *text = d->host.allocate(d->host.context, n);
         if (!text)
             return UD_RESOURCE;
         int length = snprintf(
-            text, n, "{\"file\":\"%.*s\",\"position\":%llu,\"gtid\":\"%s\",\"vendor\":\"%s\"}",
+            text, n, "{\"file\":\"%.*s\",\"position\":%llu,\"gtid\":\"%s\",\"vendor\":\"%s\",\"incarnation\":\"%s\"}",
             (int)file.length, file.data, (unsigned long long)position,
-            d->transaction ? d->transaction : "", d->maria ? "mariadb" : "mysql");
+            d->transaction ? d->transaction : "", d->maria ? "mariadb" : "mysql", d->incarnation);
         if (length < 0 || (size_t)length >= n) {
             d->host.deallocate(text);
             return UD_RESOURCE;
@@ -606,7 +624,7 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
     return s;
 }
 ud_status ud_binlog_create(const ud_host_api *h, const ud_cdc_options *o, int maria,
-                           ud_binlog **out) {
+                           ud_string incarnation, int checksum, ud_binlog **out) {
     *out = NULL;
     if (!o->schema || !o->table.length)
         return UD_SCHEMA;
@@ -614,7 +632,9 @@ ud_status ud_binlog_create(const ud_host_api *h, const ud_cdc_options *o, int ma
     if (!d)
         return UD_RESOURCE;
     d->host = *h;
+    d->incarnation = plugin_string(h, incarnation.data, incarnation.length);
     d->maria = maria;
+    d->checksum = checksum;
     d->version = 1;
     d->columns = h->columns(o->schema);
     d->batch_rows = o->batch_rows;
@@ -628,7 +648,7 @@ ud_status ud_binlog_create(const ud_host_api *h, const ud_cdc_options *o, int ma
     d->meta = h->allocate(h->context, d->columns * 2);
     d->unsigned_columns = h->allocate(h->context, d->columns);
     ud_field *f = NULL;
-    ud_status s = d->table && d->types && d->meta && d->unsigned_columns
+    ud_status s = d->incarnation && d->table && d->types && d->meta && d->unsigned_columns
                       ? plugin_fields(h, o->schema, &f)
                       : UD_RESOURCE;
     if (!s)
@@ -648,6 +668,7 @@ void ud_binlog_destroy(ud_binlog *d) {
     d->host.deallocate(d->database);
     d->host.deallocate(d->table);
     d->host.deallocate(d->transaction);
+    d->host.deallocate(d->incarnation);
     d->host.deallocate(d->pending);
     d->host.deallocate((void *)d->pending_position.data);
     d->host.deallocate(d->types);
@@ -685,7 +706,7 @@ ud_status ud_binlog_drain(ud_binlog *d, ud_cdc_event *out) {
 ud_status ud_binlog_rotation(ud_binlog *d, const void *raw, size_t size, ud_string *file,
                              uint64_t *offset) {
     const uint8_t *data = raw;
-    if (size >= 20 && data[0] == 0) {
+    if (size >= 20 && data[0] == 0 && little(data + 10, 4) == size - 1) {
         data++;
         size--;
     }

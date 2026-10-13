@@ -361,6 +361,7 @@ static int expressions(ud_context *ctx) {
     OK(ud_batch_append(batch, v, 4));
     v[0].is_null = 1;
     OK(ud_batch_append(batch, v, 4));
+    OK(ud_batch_seal(batch));
     ud_expression_options o = {sizeof(o), UD_ABI_VERSION, batch, NULL, NULL};
     ud_expression *e = NULL;
     OK(ud_expression_create(

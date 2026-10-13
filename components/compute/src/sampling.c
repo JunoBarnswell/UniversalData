@@ -40,6 +40,7 @@ ud_status ud_rel_sampling_bind(ud_relational *r) {
     uint32_t k[] = {0, 1};
     ud_operator_options o = r->options;
     o.kind = UD_OPERATOR_SORT;
+    o.configuration = (ud_string){0};
     o.key_count = 2;
     o.keys = k;
     o.partition_count = 1;

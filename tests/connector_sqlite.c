@@ -203,6 +203,7 @@ int main(int argc, char **argv) {
     OK(ud_batch_append(floats, &value, 1));
     value.real = -INFINITY;
     OK(ud_batch_append(floats, &value, 1));
+    OK(ud_batch_seal(floats));
     OK(ud_connection_write(dst, &float_write, floats));
     ud_batch_destroy(floats);
     CHECK(sqlite3_prepare_v2(target, "SELECT f FROM float_values ORDER BY rowid", -1, &right,
