@@ -213,3 +213,9 @@ if(TARGET ud_package AND NOT WIN32)
     set_tests_properties(next_phase_pipeline_recovery PROPERTIES TIMEOUT 420)
   endif()
 endif()
+
+if(TARGET ud_connector_sqlite AND TARGET test_next_phase_execution)
+  add_test(NAME ssis_native_features COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/ssis_native_features.py
+    $<TARGET_FILE:test_next_phase_execution> $<TARGET_FILE:ud_connector_sqlite>)
+  set_tests_properties(ssis_native_features PROPERTIES TIMEOUT 600)
+endif()

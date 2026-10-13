@@ -150,7 +150,7 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_value_parse_field,
                             ud_value_format,
                             NULL,
-                            NULL};
+                            NULL,ud_json_parse,ud_json_destroy,ud_json_find,ud_json_text,ud_json_kind};
     *out = p;
     return UD_OK;
 }
@@ -261,6 +261,7 @@ struct ud_connection {
     ud_plugin_instance *instance;
     ud_connection_options options;
     const ud_connector_api *api;
+    uint64_t capabilities;
     int cursor, transaction;
 };
 static int valid_string(ud_string s, int required) {
@@ -361,6 +362,7 @@ ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options 
         ud_free(c);
         return status;
     }
+    c->capabilities=c->api->session_capabilities?c->api->session_capabilities(c->instance->state):c->api->capabilities;
     *out = c;
     return UD_OK;
 }
@@ -394,7 +396,7 @@ ud_status ud_connection_open(ud_plugin *p, const ud_connection_options *options,
     return status;
 }
 int ud_connection_reusable(const ud_connection *c) {
-    return c && (c->api->capabilities & UD_CONNECT_POOL) && !c->cursor && !c->transaction &&
+    return c && (c->capabilities & UD_CONNECT_POOL) && !c->cursor && !c->transaction &&
            !atomic_load(&c->instance->busy);
 }
 ud_status ud_connection_reset_session(ud_connection *c) {
@@ -421,7 +423,7 @@ ud_status ud_connection_begin(ud_connection *c, int32_t isolation) {
     if (!c || c->transaction || c->cursor || isolation < UD_ISOLATION_READ_COMMITTED ||
         isolation > UD_ISOLATION_SERIALIZABLE)
         return UD_INVALID;
-    if (!(c->api->capabilities & UD_CONNECT_TRANSACTION))
+    if (!(c->capabilities & UD_CONNECT_TRANSACTION))
         return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
     ud_status status = c->api->begin(c->instance->state, isolation);
@@ -462,7 +464,7 @@ ud_status ud_connection_metadata(ud_connection *c, const ud_metadata_options *op
     if (!c || !options || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    if (!(c->api->capabilities & UD_CONNECT_METADATA))
+    if (!(c->capabilities & UD_CONNECT_METADATA))
         return UD_UNSUPPORTED;
     if (!options->limit || options->limit > 65536 || options->kind < UD_METADATA_CATALOGS ||
         options->kind > UD_METADATA_INDEXES || !valid_string(options->parent, 0))
@@ -477,7 +479,7 @@ ud_status ud_connection_metadata(ud_connection *c, const ud_metadata_options *op
     return status;
 }
 uint64_t ud_connection_capabilities(const ud_connection *c) {
-    return c ? c->api->capabilities : 0;
+    return c ? c->capabilities : 0;
 }
 ud_status ud_connection_test(ud_connection *c) {
     UD_TRY(connection_enter(c, UD_ACCESS_OPEN));
@@ -519,7 +521,7 @@ ud_status ud_connection_read_open(ud_connection *c, const ud_read_options *optio
     if (!schema || !valid_string(options->sql, 1) || !options->batch_size ||
         options->batch_size > INT32_MAX || c->cursor)
         return UD_INVALID;
-    if (!(c->api->capabilities & UD_CONNECT_READ))
+    if (!(c->capabilities & UD_CONNECT_READ))
         return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c, UD_ACCESS_READ));
     ud_status s = c->api->read_open(c->instance->state, options, schema);
@@ -573,8 +575,9 @@ ud_status ud_connection_write(ud_connection *c, const ud_write_options *options,
     uint64_t cap = options->mode == UD_WRITE_APPEND   ? UD_CONNECT_APPEND
                    : options->mode == UD_WRITE_UPSERT ? UD_CONNECT_UPSERT
                    : options->mode == UD_WRITE_DELETE ? UD_CONNECT_DELETE
+                   : options->mode == UD_WRITE_CHANGESET ? UD_CONNECT_CHANGESET
                                                       : 0;
-    if (!cap || !(c->api->capabilities & cap))
+    if (!cap || !(c->capabilities & cap))
         return UD_UNSUPPORTED;
     if (options->mode != UD_WRITE_APPEND && !options->key_count)
         return UD_INVALID;
@@ -584,6 +587,14 @@ ud_status ud_connection_write(ud_connection *c, const ud_write_options *options,
         for (uint32_t k = 0; k < j; k++)
             if (options->keys[j] == options->keys[k])
                 return UD_SCHEMA;
+    }
+    if (options->mode == UD_WRITE_CHANGESET) {
+        if(c->transaction) return UD_UNSUPPORTED;
+        if(!options->operations||!options->before||!batch->sealed||!options->before->sealed||
+           options->before->columns!=batch->columns||options->before->rows!=batch->rows||
+           options->current_column>=batch->columns||batch->column[options->current_column].field.type!=UD_BOOL) return UD_SCHEMA;
+        for(uint32_t j=0;j<batch->columns;j++) if(!ud_field_matches(&batch->column[j].field,&options->before->column[j].field,UD_FIELD_VALUE_TYPE)) return UD_SCHEMA;
+        for(uint32_t row=0;row<batch->rows;row++) if(options->operations[row]<UD_CHANGE_INSERT||options->operations[row]>UD_CHANGE_DELETE) return UD_SCHEMA;
     }
     UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
     uint8_t digest[32];
@@ -615,6 +626,12 @@ ud_status ud_connection_digest(ud_connection *c, const ud_write_options *options
         s = ud_put_u64(&wire, options->key_count);
     for (uint32_t j = 0; !s && j < options->key_count; j++)
         s = ud_put_u64(&wire, options->keys[j]);
+    if(!s&&options->mode==UD_WRITE_CHANGESET) {
+        if(!options->operations||!options->before||options->before->rows!=batch->rows) s=UD_SCHEMA;
+        if(!s)s=ud_put_u64(&wire,options->current_column);
+        for(uint32_t row=0;!s&&row<batch->rows;row++)s=ud_put_u64(&wire,(uint64_t)options->operations[row]);
+        if(!s)s=ud_encode_batch(&wire,options->before);
+    }
     if (!s)
         s = ud_encode_batch(&wire, batch);
     if (!s)
@@ -630,7 +647,7 @@ ud_status ud_connection_receipt(ud_connection *c, ud_string job, ud_string batch
     memset(out, 0, sizeof(*out));
     if (!c || !valid_string(job, 1) || !valid_string(batch_id, 1))
         return UD_INVALID;
-    if (!(c->api->capabilities & UD_CONNECT_RECEIPTS) || !c->api->receipt)
+    if (!(c->capabilities & UD_CONNECT_RECEIPTS) || !c->api->receipt)
         return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c, UD_ACCESS_RECEIPT));
     ud_status s = c->api->receipt(c->instance->state, c->options.tenant, job, batch_id, out);
@@ -658,13 +675,21 @@ ud_status ud_connection_close(ud_connection *c) {
     return UD_OK;
 }
 
-ud_status ud_connection_execute_sql(ud_connection *c, ud_string statement) {
+ud_status ud_connection_execute_command(ud_connection *c,const ud_read_options *options,uint64_t *processed) {
+    if(processed)*processed=0;
+    if(!options||options->struct_size!=sizeof(*options)||options->abi_version!=UD_ABI_VERSION)return UD_INCOMPATIBLE;
+    ud_string statement=options->sql;
+    if(options->parameters&&!options->parameters->sealed)return UD_INVALID;
     if (!c || !valid_string(statement, 1) || c->cursor)
         return UD_INVALID;
-    if (!(c->api->capabilities & UD_CONNECT_EXECUTE_SQL) || !c->api->execute_sql)
+    if (!(c->capabilities & UD_CONNECT_EXECUTE_SQL) || !c->api->execute)
         return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
-    ud_status s = c->api->execute_sql(c->instance->state, statement);
+    ud_status s = c->api->execute(c->instance->state, options, processed);
     connection_leave(c);
     return s;
+}
+ud_status ud_connection_provision(ud_connection *c){
+    if(!c||!(c->capabilities&UD_CONNECT_PROVISION)||!c->api->provision)return UD_UNSUPPORTED;
+    UD_TRY(connection_enter(c,UD_ACCESS_WRITE));ud_status status=c->api->provision(c->instance->state);connection_leave(c);return status;
 }

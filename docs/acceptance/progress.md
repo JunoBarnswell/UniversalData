@@ -2,9 +2,9 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 1.3.0 / ABI 7；R1–R5 P0/P1 implemented and Linux verified; unmerged PR candidate。
+SDK 1.4.0 / ABI 8；N1–N5 implementation in PR #5; Linux acceptance pending。
 
-门禁通过 18/18；Linux 本轮必验，Windows 豁免；远程 CI 使用实际运行状态。
+门禁通过 0/18；Linux 本轮必验，Windows 豁免；远程 CI 使用实际运行状态。
 
 | 整改 | 当前状态 |
 |---|---|

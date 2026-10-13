@@ -135,6 +135,8 @@ ud_status ud_connection_field_namespace(ud_activation *, ud_string, ud_string, c
 ud_status ud_pipeline_field_namespace(const ud_component_context *, char output[33]);
 ud_status ud_transforms_register(ud_registry *);
 ud_status ud_builtin_register(ud_registry *);
+ud_status ud_relational_register(ud_registry *);
+ud_status ud_pipeline_write(const ud_component_context *, struct ud_connection_lease *, const ud_write_options *, const ud_batch *);
 ud_status ud_component_lookup(ud_activation *, ud_string, ud_component_descriptor *);
 void ud_activation_notify_kind(ud_activation *, int32_t kind, ud_execution_state, ud_status);
 void ud_activation_notify(ud_activation *, ud_execution_state, ud_status);

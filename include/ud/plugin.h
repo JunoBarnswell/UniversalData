@@ -27,6 +27,11 @@ typedef struct ud_host_api {
     ud_status (*format_value)(const ud_value *, char *, uint32_t, uint32_t *);
     void *control_user;
     ud_status (*check_io)(void *);
+    ud_status (*json_parse)(ud_context *,const char *,uint32_t,ud_json **,uint32_t *);
+    void (*json_destroy)(ud_json *);
+    const ud_json *(*json_find)(const ud_json *,const char *,uint32_t);
+    ud_status (*json_text)(const ud_json *,const char **,uint32_t *);
+    int32_t (*json_kind)(const ud_json *);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;

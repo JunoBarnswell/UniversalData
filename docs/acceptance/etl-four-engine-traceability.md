@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-保留全部 69 项目标；下表是附件 78 项工作项的同源投影。Implemented 与 Verified 分开，能力组合边界见权威模型 limitations。
+保留 G00–G68，并新增 G69 Sampling，共 70 项目标；下表是附件 78 项工作项的同源投影。Implemented 与 Verified 分开，能力组合边界见权威模型 limitations。
 
 | ID | 优先级 | 阶段 | 能力 | 代码 | 验收 | 69 项目标映射 |
 |---|---|---|---|---|---|---|

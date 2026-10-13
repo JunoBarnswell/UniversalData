@@ -200,15 +200,10 @@ ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
          parent = parent->data_owner)
         present = parent->row_info != NULL;
     UD_TRY(ud_put_u64(b, present));
-    for (uint32_t row = 0; present && row < table->rows; row++) {
-        ud_row_info info;
-        UD_TRY(ud_batch_row_info(table, row, &info));
-        UD_TRY(ud_put_u64(b, info.id.high));
-        UD_TRY(ud_put_u64(b, info.id.low));
-        UD_TRY(ud_put_u64(b, info.rule.high));
-        UD_TRY(ud_put_u64(b, info.rule.low));
-        UD_TRY(ud_put_u64(b, info.flags));
-    }
+    uint64_t exceptional=0;
+    for(uint32_t row=0;present&&row<table->rows;row++){ud_row_info info;UD_TRY(ud_batch_row_info(table,row,&info));UD_TRY(ud_put_u64(b,info.id.high));UD_TRY(ud_put_u64(b,info.id.low));if(info.flags||info.rule.high||info.rule.low)exceptional++;}
+    if(present)UD_TRY(ud_put_u64(b,exceptional));
+    for(uint32_t row=0;present&&row<table->rows;row++){ud_row_info info;UD_TRY(ud_batch_row_info(table,row,&info));if(!info.flags&&!info.rule.high&&!info.rule.low)continue;UD_TRY(ud_put_u64(b,row));UD_TRY(ud_put_u64(b,info.rule.high));UD_TRY(ud_put_u64(b,info.rule.low));UD_TRY(ud_put_u64(b,info.flags));}
     return UD_OK;
 }
 ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
@@ -249,24 +244,9 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
         s = ud_get_u64(b, &present);
     if (!s && present > 1)
         s = UD_CORRUPT;
-    for (uint32_t row = 0; !s && present && row < rows; row++) {
-        ud_row_info info = {0};
-        uint64_t flags = 0;
-        s = ud_get_u64(b, &info.id.high);
-        if (!s)
-            s = ud_get_u64(b, &info.id.low);
-        if (!s)
-            s = ud_get_u64(b, &info.rule.high);
-        if (!s)
-            s = ud_get_u64(b, &info.rule.low);
-        if (!s)
-            s = ud_get_u64(b, &flags);
-        if (!s && (flags & ~((uint64_t)UD_ROW_ERROR)))
-            s = UD_CORRUPT;
-        info.flags = (uint32_t)flags;
-        if (!s)
-            s = ud_batch_set_row_info(*out, row, &info);
-    }
+    for(uint32_t row=0;!s&&present&&row<rows;row++){ud_row_info info={0};s=ud_get_u64(b,&info.id.high);if(!s)s=ud_get_u64(b,&info.id.low);if(!s)s=ud_batch_set_row_info(*out,row,&info);}
+    uint64_t exceptional=0,previous=0;if(!s&&present)s=ud_get_u64(b,&exceptional);if(!s&&exceptional>rows)s=UD_CORRUPT;
+    for(uint64_t i=0;!s&&i<exceptional;i++){uint64_t row=0,flags=0;s=ud_get_u64(b,&row);if(!s&&(row>=rows||(i&&row<=previous)))s=UD_CORRUPT;ud_row_info info={0};if(!s)s=ud_batch_row_info(*out,(uint32_t)row,&info);if(!s)s=ud_get_u64(b,&info.rule.high);if(!s)s=ud_get_u64(b,&info.rule.low);if(!s)s=ud_get_u64(b,&flags);if(!s&&(flags&~((uint64_t)UD_ROW_ERROR)))s=UD_CORRUPT;info.flags=(uint32_t)flags;if(!s)s=ud_batch_set_row_info(*out,(uint32_t)row,&info);previous=row;}
     for (uint32_t j = 0; j < columns; j++)
         clear_field(fields + j);
     ud_free(fields);

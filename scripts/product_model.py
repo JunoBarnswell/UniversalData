@@ -10,12 +10,12 @@ MODEL = ROOT / "metadata/product.json"
 
 def read_model():
     model = json.loads(MODEL.read_text(encoding="utf-8"))
-    if model["modelVersion"] != 1 or len(model["goals"]) != 69:
+    if model["modelVersion"] != 1 or len(model["goals"]) != 70:
         raise ValueError("Unsupported product model or changed goal inventory.")
     if (model["product"]["abiVersion"] != model["product"]["protocolVersion"]
             or not 0 < model["product"]["abiVersion"] <= 4294967295):
         raise ValueError("ABI and all protocol epochs must be one positive uint32 version.")
-    for key in ("goals", "gates", "remediations", "fourEngineWorkItems", "nextPhaseWorkItems"):
+    for key in ("goals", "gates", "remediations", "fourEngineWorkItems", "nextPhaseWorkItems", "nativeFeatureWorkItems"):
         identifiers = [item["id"] for item in model[key]]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Duplicate identifiers in " + key)
@@ -45,7 +45,7 @@ def projections(model):
     progress = dict(facts, requiredGates=sum(gate["status"] != "Exempt" for gate in model["gates"]), passedGates=len(passed),
                     remediations=model["remediations"])
     status = dict(facts, components="docs/product/component-catalog.md",
-                  remediations=model["remediations"], workItems=model.get("fourEngineWorkItems",[]), nextPhaseWorkItems=model.get("nextPhaseWorkItems",[]), limitations=model["limitations"])
+                  remediations=model["remediations"], workItems=model.get("fourEngineWorkItems",[]), nextPhaseWorkItems=model.get("nextPhaseWorkItems",[]), nativeFeatureWorkItems=model.get("nativeFeatureWorkItems", []), limitations=model["limitations"])
     goals = {"generatedFrom": marker, "goalVersion": protocol,
              "completionRule": "Current core/infrastructure gates are required; extensions retain their actual status.",
              "automaticMergeOrReleaseAuthorized": False, "items": model["goals"]}
@@ -67,7 +67,7 @@ def projections(model):
     for item in model["remediations"]:
         progress_md += "| " + item["id"] + " | " + item["state"] + " / " + item["verification"] + " |\n"
     trace = "# 四引擎需求与验收追踪\n\n<!-- Generated from metadata/product.json. -->\n\n"
-    trace += "保留全部 69 项目标；下表是附件 78 项工作项的同源投影。Implemented 与 Verified 分开，能力组合边界见权威模型 limitations。\n\n"
+    trace += "保留 G00–G68，并新增 G69 Sampling，共 70 项目标；下表是附件 78 项工作项的同源投影。Implemented 与 Verified 分开，能力组合边界见权威模型 limitations。\n\n"
     trace += "| ID | 优先级 | 阶段 | 能力 | 代码 | 验收 | 69 项目标映射 |\n|---|---|---|---|---|---|---|\n"
     for row in model["fourEngineWorkItems"]:
         trace += "| " + row["id"] + " | " + row["priority"] + " | " + row["phase"] + " | " + row["name"] + " | " + row["state"] + " | " + row["verification"] + " | " + ", ".join(row["goals"]) + " |\n"

@@ -229,7 +229,7 @@ ud_status ud_compute_inner_join(ud_context *ctx, const ud_batch *left, uint32_t 
     ud_status s = ud_buffer_manager_create(ctx, &budget, &buffers);
     ud_operator_options options = {.struct_size = sizeof(options),
                                    .abi_version = UD_ABI_VERSION,
-                                   .kind = UD_OPERATOR_INNER_JOIN,
+                                   .kind = UD_OPERATOR_JOIN,
                                    .max_batch_rows = 4096,
                                    .keys = &lk,
                                    .key_count = 1,
@@ -239,7 +239,7 @@ ud_status ud_compute_inner_join(ud_context *ctx, const ud_batch *left, uint32_t 
         s = ud_operator_create(ctx, &options, schemas, &operator);
     ud_batch *schema = NULL;
     if (!s)
-        s = ud_operator_schema(operator, & schema);
+        s = ud_operator_schema(operator, 0, & schema);
     for (uint32_t port = 0; !s && port < 2; port++) {
         const ud_batch *input = schemas[port];
         for (uint32_t row = 0; !s && row < input->rows; row += 4096) {
@@ -259,7 +259,7 @@ ud_status ud_compute_inner_join(ud_context *ctx, const ud_batch *left, uint32_t 
     uint64_t rows = 0;
     while (!s) {
         ud_batch *batch = NULL;
-        s = ud_operator_pull(operator, & batch);
+        s = ud_operator_pull(operator, &batch, NULL);
         if (s == UD_END) {
             s = UD_OK;
             break;

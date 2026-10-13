@@ -30,12 +30,12 @@ int main(int argc, char **argv) {
         o.abi_version = UD_ABI_VERSION;
         OK(ud_catalog_open(ctx, &o, &c));
         CHECK(ud_catalog_get(c, &key, &json, &length) == UD_END && !json);
-        const char *package = "{\"version\":7,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
+        const char *package = "{\"version\":8,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
                               "\"constraints\":[]},\"dataFlows\":[]}";
         OK(ud_catalog_put(c, &key, str(package)));
         OK(ud_catalog_put(c, &key, str(package)));
         CHECK(ud_catalog_put(c, &key,
-                             str("{\"version\":7,\"id\":\"test\",\"parameters\":{},\"controlFlow\":"
+                             str("{\"version\":8,\"id\":\"test\",\"parameters\":{},\"controlFlow\":"
                                  "{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}")) ==
               UD_CORRUPT);
         OK(ud_catalog_get(c, &key, &json, &length));
@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
             CHECK(ud_catalog_list(c, UD_CATALOG_PACKAGE, &json, &length) == UD_CORRUPT && !json);
         } else if (!strcmp(argv[2], "staging")) {
             key.revision = 3;
-            const char *package = "{\"version\":7,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
+            const char *package = "{\"version\":8,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
                                   "\"constraints\":[]},\"dataFlows\":[]}";
             CHECK(ud_catalog_put(c, &key, str(package)) == UD_BUSY);
         } else {

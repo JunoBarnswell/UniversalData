@@ -1,6 +1,6 @@
 {
   "generatedFrom": "metadata/product.json",
-  "goalVersion": 7,
+  "goalVersion": 8,
   "completionRule": "Current core/infrastructure gates are required; extensions retain their actual status.",
   "automaticMergeOrReleaseAuthorized": false,
   "items": [
@@ -1481,6 +1481,25 @@
       "evidence": [],
       "requiredThisDelivery": false,
       "progress": "No new completion claim in this delivery; Documented boundary scope retained."
+    },
+    {
+      "id": "G69",
+      "phase": 7,
+      "name": "Deterministic Row and Percentage Sampling",
+      "priority": "Optional-contract",
+      "code": "Documented boundary",
+      "verification": "Pending N3 acceptance",
+      "acceptance": "定义 WMI/SMO/SSAS/Agent/OLEDB/dtsx 插件类别与范围；无未验证兼容声明。不强制复制 Windows 专属实现。",
+      "implementation": [
+        "docs/product/component-catalog.md",
+        "docs/architecture/ssis-reference-matrix.md"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "Native global sampling with stable source row identity",
+      "status": "Planned"
     }
   ]
 }

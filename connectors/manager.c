@@ -372,7 +372,7 @@ static ud_status acquire(ud_activation *a, ud_string id, uint64_t caps, int kind
         status = ud_json_string(ud_member(l->definition, "resource"), &l->resource);
     if (!status)
         status = ud_connection_lease_authorize(l, UD_ACCESS_OPEN);
-    if (!status && ((kind == 1 && !ud_named(l->driver, "file")) ||
+    if (!status && ((kind == 1 && !ud_named(l->driver, "file") && !ud_named(l->driver,"excel")) ||
                     (kind == 2 && !ud_named(l->driver, "process")) ||
                     (kind == 3 && !ud_named(l->driver, "http"))))
         status = UD_UNSUPPORTED;
@@ -395,7 +395,7 @@ static ud_status acquire(ud_activation *a, ud_string id, uint64_t caps, int kind
 #else
         status = UD_UNSUPPORTED;
 #endif
-    } else if (!status && (ud_named(l->driver, "file") || ud_named(l->driver, "process"))) {
+    } else if (!status && (ud_named(l->driver, "file") || ud_named(l->driver,"excel") || ud_named(l->driver, "process"))) {
         int process = ud_named(l->driver, "process");
         l->capabilities =
             process ? UD_CONNECT_EXECUTE_PROCESS : UD_CONNECT_READ | UD_CONNECT_APPEND;
@@ -443,7 +443,7 @@ ud_status ud_acquire_http_connection(ud_activation *a, ud_string id, ud_connecti
 ud_status ud_connection_lease_path(const ud_connection_lease *l, ud_string *out) {
     if (!l || !out)
         return UD_INVALID;
-    if (!ud_named(l->driver, "file"))
+    if (!ud_named(l->driver, "file") && !ud_named(l->driver,"excel"))
         return UD_UNSUPPORTED;
     *out = l->resource;
     return UD_OK;
@@ -518,11 +518,11 @@ ud_status ud_connection_lease_receipt(ud_connection_lease *l, ud_string job, ud_
     UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_RECEIPT));
     return ud_connection_receipt(l->connection, job, batch, out);
 }
-ud_status ud_connection_lease_execute_sql(ud_connection_lease *l, ud_string sql) {
+ud_status ud_connection_lease_execute_command(ud_connection_lease *l, const ud_read_options *options, uint64_t *processed) {
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
     UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_WRITE));
-    return ud_connection_execute_sql(l->connection, sql);
+    return ud_connection_execute_command(l->connection,options,processed);
 }
 ud_status ud_connection_lease_digest(ud_connection_lease *l, const ud_write_options *o,
                                      const ud_batch *b, uint8_t digest[32]) {
@@ -740,7 +740,7 @@ ud_status ud_transaction_enter(ud_activation *a, const ud_json *policy, int vali
     ud_string driver = {0};
     if (ud_json_kind(ud_member(def, "driver")) == UD_JSON_STRING) {
         UD_TRY(ud_json_string(ud_member(def, "driver"), &driver));
-        if (ud_named(driver, "file") || ud_named(driver, "http") || ud_named(driver, "process"))
+        if (ud_named(driver, "file") || ud_named(driver,"excel") || ud_named(driver, "http") || ud_named(driver, "process"))
             return UD_UNSUPPORTED;
     }
     a->transaction_serial = 1;
@@ -849,4 +849,9 @@ ud_status ud_connection_lease_snapshot_grant(ud_connection_lease *source, ud_act
     }
     *out = grant;
     return UD_OK;
+}
+
+ud_status ud_connection_lease_provision(ud_connection_lease *lease){
+    if(!lease||!lease->connection)return UD_UNSUPPORTED;
+    UD_TRY(ud_connection_lease_authorize(lease,UD_ACCESS_WRITE));return ud_connection_provision(lease->connection);
 }

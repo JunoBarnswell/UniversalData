@@ -36,6 +36,9 @@ UD_API void ud_buffer_view_release(ud_buffer_view *);
  * a failed spill deletion remains owned by the manager for destroy retry. */
 UD_API ud_status ud_buffer_release(ud_buffer_block *);
 UD_API ud_status ud_buffer_manager_metrics(const ud_buffer_manager *, ud_buffer_metrics *);
+/* Native format staging shares the manager's disk budget and cleanup lifetime. */
+UD_API ud_status ud_buffer_reserve_external(ud_buffer_manager *, uint64_t);
+UD_API void ud_buffer_release_external(ud_buffer_manager *, uint64_t);
 UD_API ud_status ud_buffer_manager_destroy(ud_buffer_manager *); /* BUSY with live blocks. */
 #ifdef __cplusplus
 }

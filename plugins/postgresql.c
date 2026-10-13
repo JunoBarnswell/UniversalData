@@ -362,6 +362,16 @@ static int compatible_oid(ud_type t, Oid oid) {
            : t == UD_BINARY     ? oid == 17
                                 : 0;
 }
+typedef struct pg_parameters {uint32_t count;const char **values;char **owned;Oid *types;int *lengths,*formats;} pg_parameters;
+static void parameters_clear(postgres_state *p,pg_parameters *v){for(uint32_t i=0;i<v->count;i++)p->host.deallocate(v->owned?v->owned[i]:NULL);p->host.deallocate(v->values);p->host.deallocate(v->owned);p->host.deallocate(v->types);p->host.deallocate(v->lengths);p->host.deallocate(v->formats);memset(v,0,sizeof(*v));}
+static ud_status parameters_create(postgres_state *p,const ud_batch *b,uint32_t row,pg_parameters *v){memset(v,0,sizeof(*v));if(!b)return UD_OK;ud_host_api *h=&p->host;v->count=h->columns(b);if(v->count>65535||row>=h->rows(b))return UD_SCHEMA;v->values=h->allocate(h->context,v->count*sizeof(*v->values));v->owned=h->allocate(h->context,v->count*sizeof(*v->owned));v->types=h->allocate(h->context,v->count*sizeof(*v->types));v->lengths=h->allocate(h->context,v->count*sizeof(*v->lengths));v->formats=h->allocate(h->context,v->count*sizeof(*v->formats));ud_status s=(!v->values||!v->owned||!v->types||!v->lengths||!v->formats)?UD_RESOURCE:UD_OK;
+ for(uint32_t i=0;!s&&i<v->count;i++){ud_value value;s=h->get(b,row,i,&value);if(s)break;v->types[i]=value.type==UD_BOOL?16:value.type==UD_INT64?20:value.type==UD_FLOAT64?701:value.type==UD_DECIMAL128?1700:value.type==UD_BINARY?17:value.type==UD_DATE32?1082:value.type==UD_TIME64?1083:value.type==UD_TIMESTAMP?1184:value.type==UD_UTF8?25:0;if(!v->types[i]){s=UD_UNSUPPORTED;break;}if(value.is_null)continue;
+  if(value.type==UD_BINARY){if(value.text_length>INT_MAX){s=UD_RESOURCE;break;}v->values[i]=value.text?value.text:"";v->formats[i]=1;v->lengths[i]=(int)value.text_length;}
+  else if(value.type==UD_UTF8){if(value.text_length&&memchr(value.text,0,value.text_length)){s=UD_PARSE;break;}v->owned[i]=plugin_string(h,value.text,value.text_length);if(!v->owned[i])s=UD_RESOURCE;v->values[i]=v->owned[i];}
+  else{char text[256];uint32_t required;s=h->format_value(&value,text,sizeof(text),&required);if(!s){v->owned[i]=plugin_string(h,text,required-1);if(!v->owned[i])s=UD_RESOURCE;v->values[i]=v->owned[i];}}
+ }if(s)parameters_clear(p,v);return s;
+}
+
 static ud_status open_read(void *state, const ud_read_options *options, const ud_batch *schema) {
     postgres_state *p = state;
     ud_host_api *h = &p->host;
@@ -382,7 +392,10 @@ static ud_status open_read(void *state, const ud_read_options *options, const ud
         size_t n = strlen(prefix);
         memcpy(sql, prefix, n);
         memcpy(sql + n, options->sql.data, options->sql.length);
-        s = command(p, sql);
+        pg_parameters parameters={0};s=parameters_create(p,options->parameters,options->parameter_row,&parameters);
+        PGresult *prepared=!s?query(p,sql,(int)parameters.count,parameters.types,parameters.values,parameters.lengths,parameters.formats,0):NULL;
+        if(!s&&(!prepared||PQresultStatus(prepared)!=PGRES_COMMAND_OK))s=pg_failure(p,prepared);
+        PQclear(prepared);parameters_clear(p,&parameters);
         h->deallocate(sql);
     }
     PGresult *r =
@@ -630,7 +643,7 @@ static ud_status validate_target(postgres_state *p, ud_string table, const ud_ba
                 }
                 if (!s && field.type == UD_UTF8 && oid == 1043 && modifier >= 4) {
                     uint32_t limit = (uint32_t)(modifier - 4);
-                    for (uint32_t row = 0; !s && row < h->rows(batch); row++) {
+                    for (uint32_t row = 0; !s && row < h->rows(batch) && options->mode==UD_WRITE_CHANGESET; row++) {
                         ud_value value;
                         h->get(batch, row, j, &value);
                         uint32_t characters = 0;
@@ -650,6 +663,33 @@ static ud_status validate_target(postgres_state *p, ud_string table, const ud_ba
     return s ? h->report(h->context, s, "target schema would narrow or coerce a typed value")
              : UD_OK;
 }
+static ud_status postgres_batch_sql(postgres_state *p,const ud_write_options *o,const ud_batch *batch,char **out){
+    ud_host_api *h=&p->host;uint32_t columns=h->columns(batch),rows=h->rows(batch);if(!rows||columns>65535/rows)return UD_RESOURCE;
+    char *table=plugin_identifier(h,o->table);char **names=h->allocate(h->context,columns*sizeof(*names));uint8_t *key=h->allocate(h->context,columns);size_t capacity=1024+(table?strlen(table):0)+(size_t)rows*columns*20;ud_status s=table&&names&&key?UD_OK:UD_RESOURCE;
+    for(uint32_t j=0;!s&&j<columns;j++){ud_field f;h->field(batch,j,&f);names[j]=plugin_identifier(h,(ud_string){f.name,f.name_length});if(!names[j])s=UD_RESOURCE;else{if(strlen(names[j])>(SIZE_MAX-capacity-128)/8)s=UD_OVERFLOW;else capacity+=strlen(names[j])*8+128;}}
+    for(uint32_t k=0;k<o->key_count;k++)key[o->keys[k]]=1;char *sql=!s?h->allocate(h->context,capacity):NULL;if(!s&&!sql)s=UD_RESOURCE;size_t used=0;
+    if(!s&&o->mode==UD_WRITE_DELETE){used+=(size_t)snprintf(sql+used,capacity-used,"DELETE FROM %s AS target USING(VALUES",table);for(uint32_t row=0;row<rows;row++){used+=(size_t)snprintf(sql+used,capacity-used,"%s(",row?",":"");for(uint32_t k=0;k<o->key_count;k++)used+=(size_t)snprintf(sql+used,capacity-used,"%s$%u",k?",":"",row*o->key_count+k+1);used+=(size_t)snprintf(sql+used,capacity-used,")");}used+=(size_t)snprintf(sql+used,capacity-used,") AS source(");for(uint32_t k=0;k<o->key_count;k++)used+=(size_t)snprintf(sql+used,capacity-used,"%s%s",k?",":"",names[o->keys[k]]);used+=(size_t)snprintf(sql+used,capacity-used,") WHERE ");for(uint32_t k=0;k<o->key_count;k++)used+=(size_t)snprintf(sql+used,capacity-used,"%starget.%s=source.%s",k?" AND ":"",names[o->keys[k]],names[o->keys[k]]);}
+    else if(!s){used+=(size_t)snprintf(sql+used,capacity-used,"INSERT INTO %s(",table);for(uint32_t j=0;j<columns;j++)used+=(size_t)snprintf(sql+used,capacity-used,"%s%s",j?",":"",names[j]);used+=(size_t)snprintf(sql+used,capacity-used,") ");
+        if(o->mode==UD_WRITE_UPSERT){used+=(size_t)snprintf(sql+used,capacity-used,"SELECT DISTINCT ON(");for(uint32_t k=0;k<o->key_count;k++)used+=(size_t)snprintf(sql+used,capacity-used,"%s%s",k?",":"",names[o->keys[k]]);used+=(size_t)snprintf(sql+used,capacity-used,") ");for(uint32_t j=0;j<columns;j++)used+=(size_t)snprintf(sql+used,capacity-used,"%s%s",j?",":"",names[j]);used+=(size_t)snprintf(sql+used,capacity-used," FROM(");}
+        used+=(size_t)snprintf(sql+used,capacity-used,"VALUES");for(uint32_t row=0;row<rows;row++){used+=(size_t)snprintf(sql+used,capacity-used,"%s(",row?",":"");for(uint32_t j=0;j<columns;j++)used+=(size_t)snprintf(sql+used,capacity-used,"%s$%u",j?",":"",row*columns+j+1);if(o->mode==UD_WRITE_UPSERT)used+=(size_t)snprintf(sql+used,capacity-used,",%u",row);used+=(size_t)snprintf(sql+used,capacity-used,")");}
+        if(o->mode==UD_WRITE_UPSERT){used+=(size_t)snprintf(sql+used,capacity-used,") AS source(");for(uint32_t j=0;j<columns;j++)used+=(size_t)snprintf(sql+used,capacity-used,"%s%s",j?",":"",names[j]);used+=(size_t)snprintf(sql+used,capacity-used,",_ud_ordinal) ORDER BY ");for(uint32_t k=0;k<o->key_count;k++)used+=(size_t)snprintf(sql+used,capacity-used,"%s%s",k?",":"",names[o->keys[k]]);used+=(size_t)snprintf(sql+used,capacity-used,",_ud_ordinal DESC ON CONFLICT(");for(uint32_t k=0;k<o->key_count;k++)used+=(size_t)snprintf(sql+used,capacity-used,"%s%s",k?",":"",names[o->keys[k]]);int any=0;for(uint32_t j=0;j<columns;j++)any|=!key[j];used+=(size_t)snprintf(sql+used,capacity-used,any?") DO UPDATE SET ":") DO NOTHING");for(uint32_t j=0,written=0;any&&j<columns;j++)if(!key[j])used+=(size_t)snprintf(sql+used,capacity-used,"%s%s=excluded.%s",written++?",":"",names[j],names[j]);}
+    }
+    for(uint32_t j=0;j<columns;j++)h->deallocate(names?names[j]:NULL);h->deallocate(names);h->deallocate(key);h->deallocate(table);if(s)h->deallocate(sql);else *out=sql;return s;
+}
+static ud_status postgres_batch_parameters(postgres_state *p,const ud_write_options *o,const ud_batch *b,pg_parameters *all){
+    ud_host_api *h=&p->host;uint32_t columns=o->mode==UD_WRITE_DELETE?o->key_count:h->columns(b),rows=h->rows(b);if(!rows||columns>65535/rows)return UD_RESOURCE;memset(all,0,sizeof(*all));all->count=columns*rows;
+    all->values=h->allocate(h->context,all->count*sizeof(*all->values));all->owned=h->allocate(h->context,all->count*sizeof(*all->owned));all->types=h->allocate(h->context,all->count*sizeof(*all->types));all->lengths=h->allocate(h->context,all->count*sizeof(*all->lengths));all->formats=h->allocate(h->context,all->count*sizeof(*all->formats));ud_status s=all->values&&all->owned&&all->types&&all->lengths&&all->formats?UD_OK:UD_RESOURCE;
+    for(uint32_t row=0;!s&&row<rows;row++){pg_parameters part={0};s=parameters_create(p,b,row,&part);for(uint32_t j=0;!s&&j<columns;j++){uint32_t source=o->mode==UD_WRITE_DELETE?o->keys[j]:j,target=row*columns+j;all->values[target]=part.values[source];all->owned[target]=part.owned[source];part.owned[source]=NULL;all->types[target]=part.types[source];all->lengths[target]=part.lengths[source];all->formats[target]=part.formats[source];}parameters_clear(p,&part);for(uint32_t k=0;!s&&k<o->key_count;k++){ud_value value;s=h->get(b,row,o->keys[k],&value);if(!s&&value.is_null&&o->mode!=UD_WRITE_APPEND)s=UD_SCHEMA;}}
+    if(s)parameters_clear(p,all);return s;
+}
+
+static ud_status parameters_changeset(postgres_state *p,const ud_write_options *o,const ud_batch *b,uint32_t row,pg_parameters *out){
+ int action=o->operations[row];if(action==UD_CHANGE_INSERT)return parameters_create(p,b,row,out);if(action==UD_CHANGE_DELETE)return parameters_create(p,o->before,row,out);
+ pg_parameters after={0},before={0};ud_status s=parameters_create(p,b,row,&after);if(!s)s=parameters_create(p,o->before,row,&before);ud_host_api *h=&p->host;memset(out,0,sizeof(*out));out->count=after.count+before.count;
+ if(!s){out->values=h->allocate(h->context,out->count*sizeof(*out->values));out->owned=h->allocate(h->context,out->count*sizeof(*out->owned));out->types=h->allocate(h->context,out->count*sizeof(*out->types));out->lengths=h->allocate(h->context,out->count*sizeof(*out->lengths));out->formats=h->allocate(h->context,out->count*sizeof(*out->formats));if(!out->values||!out->owned||!out->types||!out->lengths||!out->formats)s=UD_RESOURCE;}
+ if(!s){for(uint32_t side=0;side<2;side++){pg_parameters *part=side?&before:&after;uint32_t base=side?after.count:0;for(uint32_t i=0;i<part->count;i++){out->values[base+i]=part->values[i];out->owned[base+i]=part->owned[i];part->owned[i]=NULL;out->types[base+i]=part->types[i];out->lengths[base+i]=part->lengths[i];out->formats[base+i]=part->formats[i];}}}parameters_clear(p,&after);parameters_clear(p,&before);if(s)parameters_clear(p,out);return s;
+}
+
 static ud_status write_batch(void *state, ud_string tenant, const ud_write_options *options,
                              const ud_batch *batch, const uint8_t digest[32]) {
     postgres_state *p = state;
@@ -660,7 +700,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         return UD_RESOURCE;
     atomic_store(&p->cancelled, 0);
     char *sql = NULL;
-    ud_status s = connector_write_sql(h, options, batch, 1, &sql);
+    ud_status s = options->mode == UD_WRITE_CHANGESET ? UD_OK : postgres_batch_sql(p,options,batch,&sql);
+    if(options->mode==UD_WRITE_CHANGESET&&p->transaction)return UD_UNSUPPORTED;
     if (s)
         return s;
     int own = !p->transaction;
@@ -669,11 +710,6 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         h->deallocate(sql);
         return s;
     }
-    if (!s)
-        s = command(p, "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job "
-                       "TEXT NOT NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL "
-                       "CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY "
-                       "KEY(tenant,job,batch_id))");
     char *table = plugin_identifier(h, options->table);
     if (!s && !table)
         s = UD_RESOURCE;
@@ -683,7 +719,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!lock)
             s = UD_RESOURCE;
         else {
-            snprintf(lock, size, "LOCK TABLE %s IN ROW EXCLUSIVE MODE", table);
+            snprintf(lock, size, options->mode==UD_WRITE_CHANGESET ? "LOCK TABLE %s IN SHARE ROW EXCLUSIVE MODE" : "LOCK TABLE %s IN ROW EXCLUSIVE MODE", table);
             s = command(p, lock);
             h->deallocate(lock);
         }
@@ -719,80 +755,15 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
             s = UD_CORRUPT;
         h->deallocate((void *)previous.source_position.data);
     }
-    uint32_t columns = options->mode == UD_WRITE_DELETE ? options->key_count : h->columns(batch);
-    const char **parameters = h->allocate(h->context, columns * sizeof(*parameters));
-    char **owned = h->allocate(h->context, columns * sizeof(*owned));
-    Oid *types = h->allocate(h->context, columns * sizeof(*types));
-    int *lengths = h->allocate(h->context, columns * sizeof(*lengths)),
-        *formats = h->allocate(h->context, columns * sizeof(*formats));
-    if (!s && (!parameters || !owned || !types || !lengths || !formats))
-        s = UD_RESOURCE;
-    for (uint32_t row = 0; !s && !existing && row < h->rows(batch); row++) {
-        if (atomic_load(&p->cancelled) || h->cancelled(h->context)) {
-            s = UD_CANCELLED;
-            break;
-        }
-        memset(types, 0, columns * sizeof(*types));
-        memset(formats, 0, columns * sizeof(*formats));
-        memset(lengths, 0, columns * sizeof(*lengths));
-        for (uint32_t k = 0; !s && k < options->key_count; k++) {
-            ud_value key;
-            h->get(batch, row, options->keys[k], &key);
-            if (key.is_null && options->mode != UD_WRITE_APPEND)
-                s = UD_SCHEMA;
-        }
-        for (uint32_t j = 0; !s && j < columns; j++) {
-            ud_value value;
-            h->get(batch, row, options->mode == UD_WRITE_DELETE ? options->keys[j] : j, &value);
-            parameters[j] = NULL;
-            if (value.is_null)
-                continue;
-            if (value.type == UD_BINARY) {
-                if (value.text_length > INT_MAX) {
-                    s = UD_OVERFLOW;
-                    break;
-                }
-                parameters[j] = value.text ? value.text : "";
-                types[j] = 17;
-                formats[j] = 1;
-                lengths[j] = (int)value.text_length;
-            } else if (value.type == UD_UTF8) {
-                if (value.text_length && memchr(value.text, 0, value.text_length)) {
-                    s = UD_PARSE;
-                    break;
-                }
-                owned[j] = plugin_string(h, value.text, value.text_length);
-                if (!owned[j])
-                    s = UD_RESOURCE;
-                else
-                    parameters[j] = owned[j];
-            } else {
-                char number[160];
-                uint32_t required;
-                s = h->format_value(&value, number, sizeof(number), &required);
-                if (!s) {
-                    owned[j] = plugin_string(h, number, required - 1);
-                    if (!owned[j])
-                        s = UD_RESOURCE;
-                    else
-                        parameters[j] = owned[j];
-                }
-            }
-        }
-        result = !s ? query(p, sql, (int)columns, types, parameters, lengths, formats, 0) : NULL;
-        if (!s && (!result || PQresultStatus(result) != PGRES_COMMAND_OK))
-            s = pg_failure(p, result);
-        PQclear(result);
-        for (uint32_t j = 0; j < columns; j++) {
-            h->deallocate(owned[j]);
-            owned[j] = NULL;
-        }
+    if(!s&&!existing&&options->mode!=UD_WRITE_CHANGESET){pg_parameters batch_parameters={0};s=postgres_batch_parameters(p,options,batch,&batch_parameters);PGresult *written=!s?query(p,sql,(int)batch_parameters.count,batch_parameters.types,batch_parameters.values,batch_parameters.lengths,batch_parameters.formats,0):NULL;if(!s&&(!written||PQresultStatus(written)!=PGRES_COMMAND_OK))s=pg_failure(p,written);PQclear(written);parameters_clear(p,&batch_parameters);}
+    for(uint32_t row=0;!s&&!existing&&options->mode==UD_WRITE_CHANGESET&&row<h->rows(batch);row++){
+        s=control(p);h->deallocate(sql);sql=NULL;if(!s)s=connector_change_sql(h,options,batch,1,options->operations[row],&sql);
+        pg_parameters parameters={0};if(!s)s=parameters_changeset(p,options,batch,row,&parameters);
+        PGresult *changed=!s?query(p,sql,(int)parameters.count,parameters.types,parameters.values,parameters.lengths,parameters.formats,0):NULL;
+        if(!s&&(!changed||PQresultStatus(changed)!=PGRES_COMMAND_OK))s=pg_failure(p,changed);
+        if(!s&&strcmp(PQcmdTuples(changed),"1"))s=h->report(h->context,UD_FENCED,"changeset preimage or current business-key conflict");
+        PQclear(changed);parameters_clear(p,&parameters);
     }
-    h->deallocate(parameters);
-    h->deallocate(owned);
-    h->deallocate(types);
-    h->deallocate(lengths);
-    h->deallocate(formats);
     for (int j = 0; j < 4; j++)
         h->deallocate(identity[j]);
     h->deallocate(sql);
@@ -861,17 +832,13 @@ static int transaction_statement(const char *sql) {
            !strcmp(token, "ROLLBACK") || !strcmp(token, "SAVEPOINT") || !strcmp(token, "RELEASE") ||
            !strcmp(token, "END") || !strcmp(token, "PREPARE");
 }
-static ud_status execute_sql(void *state, ud_string statement) {
-    postgres_state *p = state;
-    char *sql = plugin_string(&p->host, statement.data, statement.length);
-    if (!sql)
-        return UD_RESOURCE;
-    ud_status s = transaction_statement(sql) ? UD_UNSUPPORTED : command(p, sql);
-    if (s && s != UD_UNSUPPORTED && (p->broken || PQstatus(p->db) != CONNECTION_OK))
-        s = UD_COMMIT_UNKNOWN;
-    p->host.deallocate(sql);
-    return s;
+static ud_status execute_command(void *state,const ud_read_options *options,uint64_t *processed){
+ postgres_state *p=state;if(processed)*processed=0;char *sql=plugin_string(&p->host,options->sql.data,options->sql.length);if(!sql)return UD_RESOURCE;
+ ud_status s=transaction_statement(sql)?UD_UNSUPPORTED:UD_OK;uint32_t count=options->parameters?p->host.rows(options->parameters):1;
+ for(uint32_t row=0;!s&&row<count;row++){pg_parameters parameters={0};s=parameters_create(p,options->parameters,row,&parameters);PGresult *result=!s?query(p,sql,(int)parameters.count,parameters.types,parameters.values,parameters.lengths,parameters.formats,0):NULL;if(!s&&(!result||PQresultStatus(result)!=PGRES_COMMAND_OK))s=pg_failure(p,result);if(!s&&processed){const char *n=PQcmdTuples(result);if(n&&*n)*processed+=strtoull(n,NULL,10);}PQclear(result);parameters_clear(p,&parameters);}
+ if(s&&s!=UD_UNSUPPORTED&&(p->broken||PQstatus(p->db)!=CONNECTION_OK))s=UD_COMMIT_UNKNOWN;p->host.deallocate(sql);return s;
 }
+
 static ud_status begin_transaction(void *state, int32_t isolation) {
     postgres_state *p = state;
     if (p->transaction)
@@ -1011,12 +978,13 @@ static ud_status reset_session(void *state) {
     p->cleaning = 0;
     return status;
 }
+static ud_status provision(void *state){return command(state,"CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))");}
 static const ud_connector_api connector = {
     sizeof(connector),
     UD_PLUGIN_ABI,
     UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
         UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
-        UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL,
+        UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
     test_connection,
     discover,
     open_read,
@@ -1025,14 +993,14 @@ static const ud_connector_api connector = {
     write_batch,
     receipt,
     cancel_operation,
-    execute_sql,
+    execute_command,
     begin_transaction,
     commit_transaction,
     rollback_transaction,
     metadata,
     set_control,
     reset_session,
-    UD_SQL_POSTGRESQL};
+    NULL,provision,UD_SQL_POSTGRESQL};
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
         return UD_INCOMPATIBLE;

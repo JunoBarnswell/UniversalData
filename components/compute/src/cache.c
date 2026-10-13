@@ -181,7 +181,7 @@ ud_status ud_cache_seal(ud_cache *cache) {
     ud_batch *batch = NULL;
     uint64_t position = 0;
     ud_value *previous = NULL;
-    while (!status && (status = ud_operator_pull(cache->sort, &batch)) == UD_OK) {
+    while (!status && (status = ud_operator_pull(cache->sort, &batch, NULL)) == UD_OK) {
         if (cache->count == cache->capacity) {
             uint32_t capacity = cache->capacity ? cache->capacity * 2 : 16;
             if (capacity < cache->capacity || (uint64_t)capacity > SIZE_MAX / sizeof(*cache->pages))

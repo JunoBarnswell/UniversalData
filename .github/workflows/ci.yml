@@ -36,7 +36,7 @@ jobs:
       - name: Linux distributable and independent C, NuGet and Maven consumers
         run: |
           python packaging/package-linux.py --build build/full --output build/delivery
-          python tests/installed_sdk.py --bundle build/UniversalData-1.3.0-linux-x64.zip --work "$RUNNER_TEMP/ud-sdk-$GITHUB_RUN_ID" --evidence build/sdk-consumers.json
+          python tests/installed_sdk.py --bundle build/UniversalData-1.4.0-linux-x64.zip --work "$RUNNER_TEMP/ud-sdk-$GITHUB_RUN_ID" --evidence build/sdk-consumers.json
       - name: Six workloads, million rows and bounded spill
         run: python benchmarks/next_phase.py build/full/tests/test_next_phase_execution build/full/plugins/ud_connector_sqlite.so --output build/next-phase-benchmark.json
       - name: Public contracts and removed legacy exports
@@ -46,7 +46,7 @@ jobs:
           name: package-sdk-linux-x64
           path: |
             build/delivery
-            build/UniversalData-1.3.0-linux-x64.zip
+            build/UniversalData-1.4.0-linux-x64.zip
             build/sdk-consumers.json
             build/next-phase-benchmark.json
   minimal-components:

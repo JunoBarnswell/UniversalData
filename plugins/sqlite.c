@@ -96,6 +96,7 @@ static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char 
             return UD_INVALID;
         }
     }
+    if(!s)s=bind_parameters(p,p->read,options->parameters,options->parameter_row);
     uint32_t columns = h->columns(schema);
     if (sqlite3_column_count(p->read) != (int)columns)
         return UD_SCHEMA;
@@ -245,6 +246,12 @@ static ud_status connector_read_close(void *state) {
     p->cursor_schema = NULL;
     p->cursor_finished = 1;
     return rc == SQLITE_OK ? UD_OK : failure(p, rc);
+}
+static ud_status bind_connector_value(sqlite_state *,sqlite3_stmt *,int,const ud_value *);
+static ud_status bind_parameters(sqlite_state *p,sqlite3_stmt *statement,const ud_batch *parameters,uint32_t row){
+ uint32_t count=parameters?p->host.columns(parameters):0;
+ if(sqlite3_bind_parameter_count(statement)!=(int)count||(parameters&&row>=p->host.rows(parameters)))return UD_SCHEMA;
+ for(uint32_t i=0;i<count;i++){ud_value value;ud_status s=p->host.get(parameters,row,i,&value);if(!s)s=bind_connector_value(p,statement,(int)i+1,&value);if(s)return s;}return UD_OK;
 }
 static ud_status connector_read_open(void *state, const ud_read_options *options,
                                      const ud_batch *schema) {
@@ -435,7 +442,8 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
         return UD_BUSY;
     atomic_store(&p->cancelled, 0);
     char *sql = NULL;
-    ud_status s = connector_write_sql(h, options, batch, 0, &sql);
+    ud_status s = options->mode == UD_WRITE_CHANGESET ? UD_OK : connector_write_sql(h, options, batch, 0, &sql);
+    if(options->mode==UD_WRITE_CHANGESET&&p->transaction)return UD_UNSUPPORTED;
     if (s)
         return s;
     int own = !p->transaction;
@@ -444,14 +452,6 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
         h->deallocate(sql);
         return rc == SQLITE_BUSY || rc == SQLITE_LOCKED ? UD_TRANSIENT : failure(p, rc);
     }
-    rc = sqlite3_exec(
-        p->db,
-        "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT "
-        "NULL,batch_id TEXT NOT NULL,digest BLOB NOT NULL CHECK(length(digest)=32),source_position "
-        "TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))",
-        NULL, NULL, NULL);
-    if (rc != SQLITE_OK)
-        s = failure(p, rc);
     if (!s)
         s = validate_target(p, options->table, batch);
     ud_commit_receipt receipt = {0};
@@ -463,7 +463,7 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
                       "batch id was reused with a different payload / cursor / destination");
     h->deallocate((void *)receipt.source_position.data);
     sqlite3_stmt *stmt = NULL;
-    if (!s && !existing) {
+    if (!s && !existing && options->mode != UD_WRITE_CHANGESET) {
         rc = sqlite3_prepare_v2(p->db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK)
             s = failure(p, rc);
@@ -473,6 +473,12 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
         if (h->cancelled(h->context) || atomic_load(&p->cancelled)) {
             s = UD_CANCELLED;
             break;
+        }
+        if(options->mode==UD_WRITE_CHANGESET){
+            sqlite3_finalize(stmt);stmt=NULL;h->deallocate(sql);sql=NULL;
+            s=connector_change_sql(h,options,batch,0,options->operations[r],&sql);
+            if(!s&&(rc=sqlite3_prepare_v2(p->db,sql,-1,&stmt,NULL))!=SQLITE_OK)s=failure(p,rc);
+            if(s)break;
         }
         sqlite3_reset(stmt);
         sqlite3_clear_bindings(stmt);
@@ -487,8 +493,12 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
             h->get(batch, r, options->mode == UD_WRITE_DELETE ? options->keys[j] : j, &value);
             s = bind_connector_value(p, stmt, (int)j + 1, &value);
         }
+        if(!s&&options->mode==UD_WRITE_CHANGESET&&options->operations[r]!=UD_CHANGE_INSERT){
+            for(uint32_t j=0;!s&&j<columns;j++){ud_value value;h->get(options->before,r,j,&value);s=bind_connector_value(p,stmt,(int)(options->operations[r]==UD_CHANGE_UPDATE?columns:0)+(int)j+1,&value);}
+        }
         if (!s && (rc = sqlite3_step(stmt)) != SQLITE_DONE)
             s = failure(p, rc);
+        if(!s&&options->mode==UD_WRITE_CHANGESET&&sqlite3_changes(p->db)!=1)s=h->report(h->context,UD_FENCED,"changeset preimage or current business-key conflict");
     }
     sqlite3_finalize(stmt);
     stmt = NULL;
@@ -555,8 +565,9 @@ static int statement_authorize(void *user, int action, const char *a, const char
                ? SQLITE_DENY
                : SQLITE_OK;
 }
-static ud_status connector_execute_sql(void *state, ud_string statement) {
-    sqlite_state *p = state;
+static ud_status connector_execute_command(void *state,const ud_read_options *options,uint64_t *processed) {
+    if(processed)*processed=0;ud_string statement=options->sql;
+    sqlite_state *p = state;ud_host_api *h=&p->host;
     char *sql = plugin_string(&p->host, statement.data, statement.length);
     if (!sql)
         return UD_RESOURCE;
@@ -568,14 +579,14 @@ static ud_status connector_execute_sql(void *state, ud_string statement) {
         if (rc != SQLITE_OK)
             status = failure(p, rc);
     }
-    if (!status) {
-        sqlite3_set_authorizer(p->db, statement_authorize, p);
-        rc = sqlite3_exec(p->db, sql, NULL, NULL, NULL);
-        sqlite3_set_authorizer(p->db, NULL, NULL);
-        if (rc != SQLITE_OK)
-            status = failure(p, rc);
-        if (!status)
-            status = control(p);
+    if(!status){
+        const char *cursor=sql;uint32_t rows=options->parameters?h->rows(options->parameters):1;
+        sqlite3_set_authorizer(p->db,statement_authorize,p);
+        while(!status&&*cursor){sqlite3_stmt *stmt=NULL;const char *tail=NULL;rc=sqlite3_prepare_v2(p->db,cursor,-1,&stmt,&tail);if(rc!=SQLITE_OK)status=failure(p,rc);if(!stmt){cursor=tail?tail:cursor+strlen(cursor);continue;}
+            for(uint32_t row=0;!status&&row<rows;row++){sqlite3_reset(stmt);sqlite3_clear_bindings(stmt);status=bind_parameters(p,stmt,options->parameters,row);if(!status){rc=sqlite3_step(stmt);if(rc!=SQLITE_DONE)status=rc==SQLITE_ROW?UD_SCHEMA:failure(p,rc);else if(processed)*processed+=(uint64_t)sqlite3_changes(p->db);}if(!status)status=control(p);}
+            sqlite3_finalize(stmt);cursor=tail?tail:cursor+strlen(cursor);
+        }
+        sqlite3_set_authorizer(p->db,NULL,NULL);
     }
     p->host.deallocate(sql);
     if (own) {
@@ -703,12 +714,13 @@ static ud_status reset_session(void *state) {
     p->cleaning = 0;
     return status;
 }
+static ud_status provision(void *state){sqlite_state *p=state;ud_status status=control(p);if(status)return status;int rc=sqlite3_exec(p->db,"CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT NULL,batch_id TEXT NOT NULL,digest BLOB NOT NULL CHECK(length(digest)=32),source_position TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))",NULL,NULL,NULL);return rc==SQLITE_OK?UD_OK:failure(p,rc);}
 static const ud_connector_api connector = {sizeof(connector),
                                            UD_PLUGIN_ABI,
                                            UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
                                                UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS |
                                                UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
-                                               UD_CONNECT_METADATA | UD_CONNECT_POOL,
+                                               UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
                                            connector_test,
                                            connector_discover,
                                            connector_read_open,
@@ -717,14 +729,14 @@ static const ud_connector_api connector = {sizeof(connector),
                                            connector_write,
                                            connector_receipt,
                                            connector_cancel,
-                                           connector_execute_sql,
+                                           connector_execute_command,
                                            begin_transaction,
                                            commit_transaction,
                                            rollback_transaction,
                                            metadata,
                                            set_control,
                                            reset_session,
-                                           UD_SQL_SQLITE};
+                                           NULL,provision,UD_SQL_SQLITE};
 
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))

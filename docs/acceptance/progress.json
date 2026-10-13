@@ -1,7 +1,7 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "1.3.0",
-  "abi": 7,
+  "sdkVersion": "1.4.0",
+  "abi": 8,
   "scope": {
     "name": "ETL next phase R1–R5 only",
     "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
@@ -19,9 +19,9 @@
   },
   "candidate": {
     "branch": "codex/etl-next-phase-r1-r5",
-    "state": "R1–R5 P0/P1 implemented and Linux verified; unmerged PR candidate",
+    "state": "N1–N5 implementation in PR #5; Linux acceptance pending",
     "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
-    "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+    "sourceFingerprint": null,
     "mergeEvidence": null,
     "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
   },
@@ -34,16 +34,10 @@
     "evidence": "docs/acceptance/evidence/etl-next-phase-linux/remote-ci.json"
   },
   "artifacts": {
-    "archive": "artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip",
-    "manifest": "artifacts/1.3.0/linux-x64-sealed/manifest.json",
-    "sha256": "3e2292575c811d514caa2a9172bc0052bd3e2cd3cf2b88d61418a716bcbe8161",
-    "runtimeIdentifier": "linux-x64",
-    "configuration": "Release",
-    "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
-    "status": "Built and consumed from actual ZIP; local unmerged candidate"
+    "status": "Pending ABI 8 Linux build and installed consumers"
   },
   "requiredGates": 18,
-  "passedGates": 18,
+  "passedGates": 0,
   "remediations": [
     {
       "id": "R01",

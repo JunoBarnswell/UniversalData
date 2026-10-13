@@ -212,7 +212,7 @@ static int partitions(void) {
     ud_batch *result = NULL;
     int previous = -1, last = 128;
     ud_status status;
-    while ((status = ud_operator_pull(sort, &result)) == UD_OK) {
+    while ((status = ud_operator_pull(sort, &result, NULL)) == UD_OK) {
         for (uint32_t i = 0; i < ud_batch_rows(result); i++) {
             ud_value k, v;
             OK(ud_batch_get(result, i, 0, &k));
@@ -241,7 +241,7 @@ static int partitions(void) {
     ud_plan_destroy(plan);
     OK(ud_operator_push(agg, 0, batch));
     OK(ud_operator_finish_input(agg, 0));
-    OK(ud_operator_pull(agg, &result));
+    OK(ud_operator_pull(agg, &result, NULL));
     CHECK(ud_batch_rows(result) == 4);
     for (uint32_t i = 0; i < 4; i++) {
         ud_value k, n, sum;
@@ -251,7 +251,7 @@ static int partitions(void) {
         CHECK(k.integer == i && n.integer == 32 && sum.integer == 32 * i + 1984);
     }
     ud_batch_destroy(result);
-    CHECK(ud_operator_pull(agg, &result) == UD_END);
+    CHECK(ud_operator_pull(agg, &result, NULL) == UD_END);
     OK(ud_operator_destroy(agg));
     const int64_t extreme[] = {INT64_MAX, 1, -1};
     ud_batch *large = NULL;
@@ -271,7 +271,7 @@ static int partitions(void) {
         ud_plan_destroy(plan);
         OK(ud_operator_push(agg, 0, large));
         OK(ud_operator_finish_input(agg, 0));
-        OK(ud_operator_pull(agg, &result));
+        OK(ud_operator_pull(agg, &result, NULL));
         ud_value sum;
         OK(ud_batch_get(result, 0, 2, &sum));
         CHECK(sum.integer == INT64_MAX);
@@ -292,7 +292,7 @@ static int partitions(void) {
     }
     OK(ud_batch_seal(right));
     inputs[1] = right;
-    o.kind = UD_OPERATOR_INNER_JOIN;
+    o.kind = UD_OPERATOR_JOIN;
     o.aggregation = NULL;
     o.right_keys = &key;
     ud_operator *join = NULL;
@@ -302,7 +302,7 @@ static int partitions(void) {
     OK(ud_operator_finish_input(join, 0));
     OK(ud_operator_finish_input(join, 1));
     total = 0;
-    while ((status = ud_operator_pull(join, &result)) == UD_OK) {
+    while ((status = ud_operator_pull(join, &result, NULL)) == UD_OK) {
         total += ud_batch_rows(result);
         ud_batch_destroy(result);
     }

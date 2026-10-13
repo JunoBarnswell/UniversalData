@@ -548,3 +548,15 @@ ud_status ud_buffer_manager_destroy(ud_buffer_manager *manager) {
     ud_free(manager);
     return UD_OK;
 }
+
+ud_status ud_buffer_reserve_external(ud_buffer_manager *m,uint64_t bytes) {
+    if(!m)return UD_INVALID;
+    ud_mutex_lock(&m->mutex);
+    ud_status status=bytes>m->options.spill_limit-m->metrics.spill_bytes?UD_RESOURCE:UD_OK;
+    if(!status){m->metrics.spill_bytes+=bytes;m->metrics.total_spill_bytes+=bytes;
+        if(m->metrics.spill_bytes>m->metrics.spill_high_water)m->metrics.spill_high_water=m->metrics.spill_bytes;}
+    ud_mutex_unlock(&m->mutex);return status;
+}
+void ud_buffer_release_external(ud_buffer_manager *m,uint64_t bytes) {
+    if(!m)return;ud_mutex_lock(&m->mutex);if(bytes<=m->metrics.spill_bytes)m->metrics.spill_bytes-=bytes;ud_mutex_unlock(&m->mutex);
+}

@@ -20,7 +20,9 @@ enum {
     UD_CONNECT_HTTP = 1024,
     UD_CONNECT_TRANSACTION = 2048,
     UD_CONNECT_METADATA = 4096,
-    UD_CONNECT_POOL = 8192
+    UD_CONNECT_POOL = 8192,
+    UD_CONNECT_CHANGESET = 16384, UD_CONNECT_PREPARED = 32768,
+    UD_CONNECT_BATCH_WRITE = 65536, UD_CONNECT_NATIVE_CDC = 131072, UD_CONNECT_PROVISION = 262144
 };
 enum { UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE };
 enum {
@@ -39,7 +41,8 @@ typedef struct ud_metadata_options {
     uint64_t offset;
     uint32_t limit;
 } ud_metadata_options;
-enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3 };
+enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3, UD_WRITE_CHANGESET = 4 };
+enum { UD_CHANGE_INSERT = 1, UD_CHANGE_UPDATE = 2, UD_CHANGE_DELETE = 3 };
 enum {
     UD_ACCESS_OPEN = 1,
     UD_ACCESS_DISCOVER = 2,
@@ -69,7 +72,9 @@ typedef struct ud_connection_options {
 } ud_connection_options;
 typedef struct ud_read_options {
     uint32_t struct_size, abi_version, batch_size;
-    ud_string sql; /* Explicit readonly statement. Cursor retains a bounded batch. */
+    ud_string sql; /* Prepared SQL text; no value interpolation. */
+    const ud_batch *parameters; /* Borrowed sealed typed parameter batch. */
+    uint32_t parameter_row; /* Read selects one row; execute applies all supplied rows. */
 } ud_read_options;
 typedef struct ud_write_options {
     uint32_t struct_size, abi_version;
@@ -77,6 +82,9 @@ typedef struct ud_write_options {
     ud_string table, job, batch_id, source_position;
     const uint32_t *keys;
     uint32_t key_count;
+    const int32_t *operations; /* CHANGESET: one typed action per row, in supplied order. */
+    const ud_batch *before; /* Exact optimistic preimages; same value types and row count. */
+    uint32_t current_column; /* CHANGESET INSERT enforces one current row per supplied business key. */
 } ud_write_options;
 typedef struct ud_commit_receipt {
     int32_t committed;
@@ -98,7 +106,7 @@ typedef struct ud_connector_api {
     ud_status (*receipt)(void *, ud_string tenant, ud_string job, ud_string batch_id,
                          ud_commit_receipt *);
     void (*cancel)(void *);
-    ud_status (*execute_sql)(void *, ud_string);
+    ud_status (*execute)(void *, const ud_read_options *, uint64_t *);
     ud_status (*begin)(void *, int32_t isolation);
     ud_status (*commit)(void *);
     ud_status (*rollback)(void *);
@@ -109,11 +117,14 @@ typedef struct ud_connector_api {
     /* POOL requires a clean-session proof. No cursor, transaction or mutable
      * per-session SQL state may cross leases. Failure retires the session. */
     ud_status (*reset_session)(void *);
+    uint64_t (*session_capabilities)(void *); /* Actual immutable probe results, not a driver-name guess. */
+    ud_status (*provision)(void *); /* Explicit authorized SDK receipt schema provisioning. */
     int32_t metadata_dialect; /* UD_SQL_*; provider declares its metadata grammar. */
 } ud_connector_api;
 UD_API ud_status ud_connection_open(ud_plugin *, const ud_connection_options *, ud_connection **);
+UD_API ud_status ud_connection_provision(ud_connection *);
 UD_API uint64_t ud_connection_capabilities(const ud_connection *);
-UD_API ud_status ud_connection_execute_sql(ud_connection *, ud_string);
+UD_API ud_status ud_connection_execute_command(ud_connection *, const ud_read_options *, uint64_t *processed_rows);
 UD_API ud_status ud_connection_begin(ud_connection *, int32_t isolation);
 UD_API ud_status ud_connection_commit(ud_connection *);
 UD_API ud_status ud_connection_rollback(ud_connection *);

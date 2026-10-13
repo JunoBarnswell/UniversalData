@@ -53,7 +53,7 @@ static int buffers_and_operators(const char *directory) {
     ud_operator *op = NULL;
     OK(ud_operator_create(ctx, &spec, inputs, &op));
     ud_batch *batch = NULL;
-    CHECK(ud_operator_pull(op, &batch) == UD_BUSY && !batch);
+    CHECK(ud_operator_pull(op, &batch, NULL) == UD_BUSY && !batch);
     for (int i = 30; i >= 0; i--) {
         OK(ud_batch_create(ctx, &field, 1, 1, &batch));
         ud_value value = {.type = UD_INT64, .integer = i};
@@ -69,7 +69,7 @@ static int buffers_and_operators(const char *directory) {
     CHECK(ud_operator_finish_input(op, 0) == UD_INVALID);
     uint32_t rows = 0;
     ud_status status;
-    while ((status = ud_operator_pull(op, &batch)) == UD_OK) {
+    while ((status = ud_operator_pull(op, &batch, NULL)) == UD_OK) {
         CHECK(ud_batch_rows(batch) > 0 && ud_batch_rows(batch) <= 3);
         for (uint32_t i = 0; i < ud_batch_rows(batch); i++) {
             ud_value value;
@@ -97,7 +97,7 @@ static int buffers_and_operators(const char *directory) {
     spec.window_name = text("running");
     OK(ud_operator_create(ctx, &spec, inputs, &op));
     ud_batch *window_schema = NULL, *other_schema = NULL, *other_output = NULL;
-    OK(ud_operator_schema(op, &window_schema));
+    OK(ud_operator_schema(op, 0, &window_schema));
     ud_field original, other_field = field;
     OK(ud_batch_field(window_schema, 1, &original));
     CHECK(original.lineage_count == 1);
@@ -106,7 +106,7 @@ static int buffers_and_operators(const char *directory) {
     const ud_batch *other_inputs[] = {other_schema};
     ud_operator *other_op = NULL;
     OK(ud_operator_create(ctx, &spec, other_inputs, &other_op));
-    OK(ud_operator_schema(other_op, &other_output));
+    OK(ud_operator_schema(other_op, 0, &other_output));
     OK(ud_batch_field(other_output, 1, &other_field));
     CHECK(ud_id_compare(original.identity, other_field.identity));
     ud_batch_destroy(other_output);
@@ -123,7 +123,7 @@ static int buffers_and_operators(const char *directory) {
     ud_batch_destroy(batch);
     batch = NULL;
     OK(ud_operator_finish_input(op, 0));
-    OK(ud_operator_pull(op, &batch));
+    OK(ud_operator_pull(op, &batch, NULL));
     const int sums[] = {1, 3, 6};
     for (uint32_t i = 0; i < 3; i++) {
         ud_value value;
@@ -132,24 +132,24 @@ static int buffers_and_operators(const char *directory) {
     }
     ud_batch_destroy(batch);
     batch = NULL;
-    CHECK(ud_operator_pull(op, &batch) == UD_END);
+    CHECK(ud_operator_pull(op, &batch, NULL) == UD_END);
     OK(ud_operator_destroy(op));
     ud_plan *plan = NULL;
     const char *definition =
-        "{\"version\":7,\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
+        "{\"version\":8,\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
     OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1, text(definition), NULL, &plan));
     spec.kind = UD_OPERATOR_AGGREGATE;
     spec.aggregation = plan;
     OK(ud_operator_create(ctx, &spec, inputs, &op));
     ud_plan_destroy(plan);
     OK(ud_operator_finish_input(op, 0));
-    OK(ud_operator_pull(op, &batch));
+    OK(ud_operator_pull(op, &batch, NULL));
     ud_value count;
     OK(ud_batch_get(batch, 0, 0, &count));
     CHECK(count.integer == 0);
     ud_batch_destroy(batch);
     batch = NULL;
-    CHECK(ud_operator_pull(op, &batch) == UD_END);
+    CHECK(ud_operator_pull(op, &batch, NULL) == UD_END);
     OK(ud_operator_destroy(op));
     OK(ud_buffer_manager_destroy(manager));
 
@@ -286,7 +286,7 @@ static int activations(void) {
                               .observe = observe,
                               .observe_user = &f};
     const char *package =
-        "{\"version\":7,\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
+        "{\"version\":8,\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
         "{\"id\":\"deadline\",\"kind\":\"test.delay\",\"timeoutMs\":1000,\"config\":{}},"
         "{\"id\":\"sibling\",\"kind\":\"test.delay\",\"config\":{}}],\"constraints\":[]},"
         "\"dataFlows\":[]}";
@@ -303,7 +303,7 @@ static int activations(void) {
     o.max_concurrency = 1;
     f.sequence = 0;
     package =
-        "{\"version\":7,\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":"
+        "{\"version\":8,\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\",\"default\":"
         "0}},"
         "\"eventHandlers\":{\"after\":{\"tasks\":[{\"id\":\"after\",\"kind\":\"set\",\"config\":{"
         "\"name\":\"n\",\"value\":{\"literal\":3,\"type\":\"int64\"}}}],\"constraints\":[]}},"

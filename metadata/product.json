@@ -2,9 +2,9 @@
   "modelVersion": 1,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "1.3.0",
-    "abiVersion": 7,
-    "protocolVersion": 7
+    "sdkVersion": "1.4.0",
+    "abiVersion": 8,
+    "protocolVersion": 8
   },
   "scope": {
     "name": "ETL next phase R1–R5 only",
@@ -23,9 +23,9 @@
   },
   "candidate": {
     "branch": "codex/etl-next-phase-r1-r5",
-    "state": "R1–R5 P0/P1 implemented and Linux verified; unmerged PR candidate",
+    "state": "PR #5 E01–E15 / N01–N11 / D01–D12 implementation in progress; ABI 8 verification pending",
     "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
-    "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+    "sourceFingerprint": null,
     "mergeEvidence": null,
     "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
   },
@@ -1507,6 +1507,25 @@
       "evidence": [],
       "requiredThisDelivery": false,
       "progress": "No new completion claim in this delivery; Documented boundary scope retained."
+    },
+    {
+      "id": "G69",
+      "phase": 7,
+      "name": "Deterministic Row and Percentage Sampling",
+      "priority": "Optional-contract",
+      "code": "Documented boundary",
+      "verification": "Pending N3 acceptance",
+      "acceptance": "定义 WMI/SMO/SSAS/Agent/OLEDB/dtsx 插件类别与范围；无未验证兼容声明。不强制复制 Windows 专属实现。",
+      "implementation": [
+        "docs/product/component-catalog.md",
+        "docs/architecture/ssis-reference-matrix.md"
+      ],
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "requiredThisDelivery": false,
+      "progress": "Native global sampling with stable source row identity",
+      "status": "Planned"
     }
   ],
   "remediations": [
@@ -1572,96 +1591,45 @@
     },
     {
       "id": "sqlite-transactions-recovery",
-      "status": "Passed",
-      "command": "sqlite_receipts_upsert/package_sql_integration/package_durable_recovery/child_package_execution/project_environment_deployment",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-          "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
-          "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
-        }
-      ]
+      "status": "Pending",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "evidence": []
     },
     {
       "id": "memory-quota-spill-concurrency",
-      "status": "Passed",
-      "command": "shared_value_semantics/core_runtime_resources/core_pipeline_components/package_failure_boundaries/process_task_execution",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-          "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-          "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-          "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
-        }
-      ]
+      "status": "Pending",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "evidence": []
     },
     {
       "id": "language-parity",
-      "status": "Passed",
-      "command": "tests/installed_sdk.py: actual ZIP, dynamic C Data target, native NuGet without SDK PATH, Maven/JNI from bundle",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-          "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-consumers.txt",
-          "sha256": "8d5afb781921527e8429a4c665d7216970398f9c2eaa5ade3e7b31e4fd01e71c"
-        }
-      ]
+      "status": "Pending",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "evidence": []
     },
     {
       "id": "installed-c",
-      "status": "Passed",
-      "command": "ZIP-extracted SDK -> external CMake UniversalData::Data -> Package/resource/SQLite/Pipeline and datatype/wire execution",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-          "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
-        }
-      ]
+      "status": "Pending",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "evidence": []
     },
     {
       "id": "installed-nuget",
-      "status": "Passed",
-      "command": "ZIP-extracted native-containing nupkg -> fresh external cache/clients; Package and typed data without SDK loader PATH",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-          "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
-        }
-      ]
+      "status": "Pending",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "evidence": []
     },
     {
       "id": "installed-maven",
-      "status": "Passed",
-      "command": "ZIP-extracted JAR/POM -> fresh external Maven repository/client -> JNI/native from same bundle",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-          "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
-        }
-      ]
+      "status": "Pending",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "evidence": []
     },
     {
       "id": "source-contracts",
-      "status": "Passed",
-      "command": "python scripts/static_check.py; git diff --check; removed ABI/API reference audit",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/contracts.txt",
-          "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
-        }
-      ]
+      "status": "Pending",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "evidence": []
     },
     {
       "id": "windows-release",
@@ -1672,187 +1640,78 @@
     },
     {
       "id": "distributable-bundle",
-      "status": "Passed",
-      "command": "python3 tests/installed_sdk.py --bundle artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip --work /workspace/next-phase-sdk-sealed --evidence docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-          "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/bundle-manifest.json",
-          "sha256": "422b70f16c4810062a83e7c5c46befc399d6e42941701247cb19e78087555c90"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/bundle-build.txt",
-          "sha256": "e5dbc959736f6b0ebdefd783b817c7ada127b80bdd29da69f075e0ea9df33c32"
-        }
-      ]
+      "status": "Pending",
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation",
+      "evidence": []
     },
     {
       "id": "block-store-ownership",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-          "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-          "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
-        }
-      ],
-      "command": ""
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "pipeline-tree-parallelism",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-          "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-          "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
-        }
-      ],
-      "command": ""
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "journal-indexed-recovery",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-          "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-          "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
-        }
-      ],
-      "command": ""
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "task-facts",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-          "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
-          "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
-        }
-      ],
-      "command": ""
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "single-product-model",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/contracts.txt",
-          "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
-          "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
-        }
-      ],
-      "command": ""
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "linux-release",
       "name": "Linux Release native/JNI build",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
-          "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/build-release.txt",
-          "sha256": "8c35b1682f73592d30612d7b0fabdb384fcfff35cb5a076cb48b85b1368aa794"
-        }
-      ],
-      "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "linux-native",
       "name": "Linux native end-to-end cases",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-          "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
-        }
-      ],
-      "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "linux-sanitizers",
       "name": "Linux ASan/UBSan",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-          "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/build-sanitizers.txt",
-          "sha256": "fe7cc10c76ad6835af45585832100bd41e068ed7d05096c92b9404d9a51af5b3"
-        }
-      ],
-      "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "four-engines",
       "name": "Four-engine completion scheduling, partition semantics and transactions",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-          "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-          "sha256": "51f926693a387aa45528116f8cf7a2b5bdb361a5a2144d0bedc554e76166ee82"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json",
-          "sha256": "d6b15b8b5375c51397d9e1c3389371ae6dc7b2fd2c9b87e4470cddc4114663c3"
-        }
-      ],
-      "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     },
     {
       "id": "million-row-benchmark",
       "name": "1/2/4/8/16 workers, million rows and spill",
-      "status": "Passed",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-          "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
-        },
-        {
-          "path": "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
-          "sha256": "fd7a3adb67c37f13dfdeff4fb3b58b25a29a9352519c03585fb3adfda711937f"
-        }
-      ],
-      "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+      "status": "Pending",
+      "evidence": [],
+      "command": "Concentrated ABI 8 Linux acceptance after N1–N5 implementation"
     }
   ],
   "artifacts": {
-    "archive": "artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip",
-    "manifest": "artifacts/1.3.0/linux-x64-sealed/manifest.json",
-    "sha256": "3e2292575c811d514caa2a9172bc0052bd3e2cd3cf2b88d61418a716bcbe8161",
-    "runtimeIdentifier": "linux-x64",
-    "configuration": "Release",
-    "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
-    "status": "Built and consumed from actual ZIP; local unmerged candidate"
+    "status": "Pending ABI 8 Linux build and installed consumers"
   },
   "remoteCI": {
     "state": "Blocked",
@@ -5384,6 +5243,609 @@
         "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
       ],
       "name": "六负载并发矩阵与一致性"
+    }
+  ],
+  "deliveryHistory": [
+    {
+      "sdkVersion": "1.3.0",
+      "abiVersion": 7,
+      "candidate": {
+        "branch": "codex/etl-next-phase-r1-r5",
+        "state": "R1–R5 P0/P1 implemented and Linux verified; unmerged PR candidate",
+        "sourceCommit": "fc028063fdfafd07719fe8011630b9f5305423c8",
+        "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+        "mergeEvidence": null,
+        "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
+      },
+      "gates": [
+        {
+          "id": "windows-msvc",
+          "status": "Exempt",
+          "command": "packaging/package.ps1 -BuildDirectory build/windows; Release C17/JNI/SQLite",
+          "evidence": [],
+          "reason": "Current user requires Linux only; Windows exempt"
+        },
+        {
+          "id": "windows-native",
+          "status": "Exempt",
+          "command": "ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure",
+          "evidence": [],
+          "reason": "Current user requires Linux only; Windows exempt"
+        },
+        {
+          "id": "windows-asan",
+          "status": "Exempt",
+          "command": "ctest --test-dir build/abi4-asan-msvc -C Debug --parallel 4 --output-on-failure",
+          "evidence": [],
+          "runtimeOptions": "halt_on_error=1:abort_on_error=1",
+          "reason": "Current user requires Linux only; Windows exempt"
+        },
+        {
+          "id": "sqlite-transactions-recovery",
+          "status": "Passed",
+          "command": "sqlite_receipts_upsert/package_sql_integration/package_durable_recovery/child_package_execution/project_environment_deployment",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
+              "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
+            }
+          ]
+        },
+        {
+          "id": "memory-quota-spill-concurrency",
+          "status": "Passed",
+          "command": "shared_value_semantics/core_runtime_resources/core_pipeline_components/package_failure_boundaries/process_task_execution",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+              "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+              "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
+            }
+          ]
+        },
+        {
+          "id": "language-parity",
+          "status": "Passed",
+          "command": "tests/installed_sdk.py: actual ZIP, dynamic C Data target, native NuGet without SDK PATH, Maven/JNI from bundle",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-consumers.txt",
+              "sha256": "8d5afb781921527e8429a4c665d7216970398f9c2eaa5ade3e7b31e4fd01e71c"
+            }
+          ]
+        },
+        {
+          "id": "installed-c",
+          "status": "Passed",
+          "command": "ZIP-extracted SDK -> external CMake UniversalData::Data -> Package/resource/SQLite/Pipeline and datatype/wire execution",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            }
+          ]
+        },
+        {
+          "id": "installed-nuget",
+          "status": "Passed",
+          "command": "ZIP-extracted native-containing nupkg -> fresh external cache/clients; Package and typed data without SDK loader PATH",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            }
+          ]
+        },
+        {
+          "id": "installed-maven",
+          "status": "Passed",
+          "command": "ZIP-extracted JAR/POM -> fresh external Maven repository/client -> JNI/native from same bundle",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            }
+          ]
+        },
+        {
+          "id": "source-contracts",
+          "status": "Passed",
+          "command": "python scripts/static_check.py; git diff --check; removed ABI/API reference audit",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/contracts.txt",
+              "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+            }
+          ]
+        },
+        {
+          "id": "windows-release",
+          "status": "Exempt",
+          "command": "packaging/package.ps1; ctest -C Release",
+          "evidence": [],
+          "reason": "Current user requires Linux only; Windows exempt"
+        },
+        {
+          "id": "distributable-bundle",
+          "status": "Passed",
+          "command": "python3 tests/installed_sdk.py --bundle artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip --work /workspace/next-phase-sdk-sealed --evidence docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
+              "sha256": "43c066827eb196688fe074d31b1e49a96537c5e31963d53ab70b82d89111a2ca"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/bundle-manifest.json",
+              "sha256": "422b70f16c4810062a83e7c5c46befc399d6e42941701247cb19e78087555c90"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/bundle-build.txt",
+              "sha256": "e5dbc959736f6b0ebdefd783b817c7ada127b80bdd29da69f075e0ea9df33c32"
+            }
+          ]
+        },
+        {
+          "id": "block-store-ownership",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+              "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "pipeline-tree-parallelism",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+              "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "journal-indexed-recovery",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+              "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "task-facts",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
+              "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "single-product-model",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/contracts.txt",
+              "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
+              "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
+            }
+          ],
+          "command": ""
+        },
+        {
+          "id": "linux-release",
+          "name": "Linux Release native/JNI build",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/validation.json",
+              "sha256": "0f6f54ab9042f90a3b93a8f1a14ec2cbd1bfcca2d783a0dfcc64871096aabdb8"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/build-release.txt",
+              "sha256": "8c35b1682f73592d30612d7b0fabdb384fcfff35cb5a076cb48b85b1368aa794"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        },
+        {
+          "id": "linux-native",
+          "name": "Linux native end-to-end cases",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        },
+        {
+          "id": "linux-sanitizers",
+          "name": "Linux ASan/UBSan",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
+              "sha256": "e5bfd2763d873e3151692bfaa0d260502f84cc1a807fa4b5ccbfd3ce666ad49b"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/build-sanitizers.txt",
+              "sha256": "fe7cc10c76ad6835af45585832100bd41e068ed7d05096c92b9404d9a51af5b3"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        },
+        {
+          "id": "four-engines",
+          "name": "Four-engine completion scheduling, partition semantics and transactions",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
+              "sha256": "9a0a832fe5c6a54bf4f3ac9f66a0d3f3da8009111051aaea06714d4b0da98797"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
+              "sha256": "51f926693a387aa45528116f8cf7a2b5bdb361a5a2144d0bedc554e76166ee82"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json",
+              "sha256": "d6b15b8b5375c51397d9e1c3389371ae6dc7b2fd2c9b87e4470cddc4114663c3"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        },
+        {
+          "id": "million-row-benchmark",
+          "name": "1/2/4/8/16 workers, million rows and spill",
+          "status": "Passed",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
+              "sha256": "6df152135e832babdb2c633e8379ddd400a3344b74a941611ffee553e40c372b"
+            },
+            {
+              "path": "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
+              "sha256": "fd7a3adb67c37f13dfdeff4fb3b58b25a29a9352519c03585fb3adfda711937f"
+            }
+          ],
+          "command": "See docs/acceptance/evidence/etl-next-phase-linux/validation.json: actual commands and source fingerprint"
+        }
+      ],
+      "artifacts": {
+        "archive": "artifacts/1.3.0/UniversalData-1.3.0-linux-x64.zip",
+        "manifest": "artifacts/1.3.0/linux-x64-sealed/manifest.json",
+        "sha256": "3e2292575c811d514caa2a9172bc0052bd3e2cd3cf2b88d61418a716bcbe8161",
+        "runtimeIdentifier": "linux-x64",
+        "configuration": "Release",
+        "sourceFingerprint": "d7387494a8455cdc45cd661c2987256305c1894b50d31bad2eb60ed0cd511696",
+        "status": "Built and consumed from actual ZIP; local unmerged candidate"
+      }
+    }
+  ],
+  "nativeFeatureWorkItems": [
+    {
+      "id": "N1",
+      "priority": "P1",
+      "name": "Sorted Merge and Merge Join",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G37"
+      ]
+    },
+    {
+      "id": "N2",
+      "priority": "P1",
+      "name": "Pivot and Unpivot",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G41"
+      ]
+    },
+    {
+      "id": "N3",
+      "priority": "P1",
+      "name": "Row and Percentage Sampling",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G69"
+      ]
+    },
+    {
+      "id": "N4",
+      "priority": "P1",
+      "name": "Native XLSX source and destination",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G66"
+      ]
+    },
+    {
+      "id": "N5",
+      "priority": "P2",
+      "name": "Atomic SCD Type 1 and Type 2",
+      "state": "In progress",
+      "verification": "Pending",
+      "goals": [
+        "G54"
+      ]
+    }
+  ],
+  "fullEnhancementWorkItems": [
+    {
+      "id": "E01",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E02",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E03",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E04",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E05",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E06",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E07",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E08",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E09",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E10",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E11",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E12",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E13",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E14",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "E15",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N01",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N02",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N03",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N04",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N05",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N06",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N07",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N08",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N09",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N10",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "N11",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D01",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D02",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D03",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D04",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D05",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D06",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D07",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D08",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D09",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D10",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D11",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
+    },
+    {
+      "id": "D12",
+      "state": "Pending",
+      "verification": "NotRun",
+      "evidence": []
     }
   ]
 }

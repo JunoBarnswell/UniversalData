@@ -49,7 +49,8 @@ typedef struct node {
     atomic_int state;
     ud_activation activation;
     ud_component_context context;
-    ud_component_plan binding;
+    ud_component_plan binding, *input_plans;
+    ud_component_ports ports;
     uint64_t steps, processed, produced, rejected, wait_input, wait_capacity, callback_ms, cpu_ns,
         first_ms, end_ms, ready_ms, prepare_ms, prepare_cpu_ns, finish_ms, finish_cpu_ns,
         blocked_ms, input_wait_ms, capacity_wait_ms;
@@ -92,6 +93,10 @@ static ud_status clear(physical_plan *p, ud_status result) {
                 for (uint32_t j = 0; j < n->descriptor.outputs; j++)
                     ud_batch_destroy(n->schemas[j]);
             ud_free(n->schemas);
+            ud_free(n->input_plans);
+            for(uint32_t k=0;k<n->ports.input_count;k++)ud_free((void*)n->ports.inputs[k].name.data);
+            for(uint32_t k=0;k<n->ports.output_count;k++)ud_free((void*)n->ports.outputs[k].name.data);
+            ud_free(n->ports.inputs);ud_free(n->ports.outputs);
             ud_free(n->inputs);
             ud_free(n->outputs);
             ud_free(n->emitted);
@@ -104,6 +109,43 @@ static ud_status clear(physical_plan *p, ud_status result) {
     ud_free(p->trees);
     ud_free(p->tree_order);
     return result ? result : cleanup;
+}
+static ud_status bind_ports(node *n,ud_activation *e,const ud_json *definition,ud_string pipeline) {
+    n->activation=(ud_activation){.execution=e->execution,.parent=e,.definition=e->definition,.package=e->package,.parameters=e->parameters,.scope=e->scope,.task_id=e->task_id,.pipeline_id=pipeline,.component_id=n->id,.deadline=e->deadline,.scope_authority=e,.depth=e->depth,.parallel=e->parallel};
+    atomic_init(&n->activation.cancelled,0);
+    n->context=(ud_component_context){.struct_size=sizeof(n->context),.abi_version=UD_ABI_VERSION,.memory=e->execution->ctx,.execution=e->execution,.activation=&n->activation,.task_id=e->task_id,.pipeline_id=pipeline,.component_id=n->id,.max_batch_rows=e->execution->options.max_batch_rows};
+    UD_TRY(ud_bound_config(&n->activation,ud_member(definition,"config"),&n->configuration));
+    UD_TRY(ud_json_serialize(n->configuration,&n->json,&n->json_length));
+    ud_component_ports *ports=&n->ports;
+    if(n->descriptor.bind_ports)UD_TRY(n->descriptor.bind_ports(n->descriptor.user,&n->context,(ud_string){n->json,n->json_length},ports));
+    else {
+        ports->input_count=n->descriptor.inputs;ports->output_count=n->descriptor.outputs;
+        ports->inputs=ud_alloc(e->execution->ctx,(ports->input_count+1)*sizeof(*ports->inputs));ports->outputs=ud_alloc(e->execution->ctx,(ports->output_count+1)*sizeof(*ports->outputs));
+        if(!ports->inputs||!ports->outputs)return UD_RESOURCE;
+        for(uint32_t direction=0;direction<2;direction++)for(uint32_t i=0;i<(direction?ports->output_count:ports->input_count);i++){
+            ud_component_port *port=(direction?ports->outputs:ports->inputs)+i;char name[32];int length=snprintf(name,sizeof(name),"%s%u",direction?"output":"input",i);port->name=(ud_string){ud_strdup_n(e->execution->ctx,name,(size_t)length),(uint32_t)length};if(!port->name.data)return UD_RESOURCE;
+            port->flags=((direction?n->descriptor.optional_outputs:n->descriptor.optional_inputs)&(UINT64_C(1)<<i))?0:UD_PORT_REQUIRED;
+            if(direction&&(int32_t)i==n->descriptor.error_output)port->flags|=UD_PORT_ERROR;
+        }
+    }
+    if(ports->input_count>64||ports->output_count>64)return UD_SCHEMA;
+    n->descriptor.inputs=ports->input_count;n->descriptor.outputs=ports->output_count;n->descriptor.optional_inputs=n->descriptor.optional_outputs=0;n->descriptor.error_output=-1;
+    char scope[33];UD_TRY(ud_pipeline_field_namespace(&n->context,scope));
+    for(uint32_t direction=0;direction<2;direction++)for(uint32_t i=0;i<(direction?ports->output_count:ports->input_count);i++){
+        ud_component_port *port=(direction?ports->outputs:ports->inputs)+i;port->direction=direction?UD_PORT_OUTPUT:UD_PORT_INPUT;port->index=i;
+        if(!port->name.data||!port->name.length||memchr(port->name.data,0,port->name.length))return UD_SCHEMA;
+        for(uint32_t j=0;j<i;j++){ud_component_port *other=(direction?ports->outputs:ports->inputs)+j;if(ud_same(port->name,other->name))return UD_SCHEMA;}
+        ud_bytes symbol={.ctx=e->execution->ctx};UD_TRY(ud_put_u64(&symbol,direction));UD_TRY(ud_bytes_put(&symbol,port->name.data,port->name.length));uint8_t digest[32];ud_hash(symbol.data,symbol.size,digest);ud_bytes_clear(&symbol);char hex[65];static const char alphabet[]="0123456789abcdef";for(uint32_t j=0;j<32;j++){hex[j*2]=alphabet[digest[j]>>4];hex[j*2+1]=alphabet[digest[j]&15];}hex[64]=0;UD_TRY(ud_id_make(e->execution->ctx,(ud_string){scope,32},(ud_string){hex,64},&port->id));
+        if(!(port->flags&UD_PORT_REQUIRED)){if(direction)n->descriptor.optional_outputs|=UINT64_C(1)<<i;else n->descriptor.optional_inputs|=UINT64_C(1)<<i;}
+        if(port->flags&UD_PORT_ERROR){if(!direction||n->descriptor.error_output!=-1)return UD_SCHEMA;n->descriptor.error_output=(int32_t)i;}
+    }
+    n->context.input_count=ports->input_count;n->context.output_count=ports->output_count;return UD_OK;
+}
+static ud_status port_index(const node *n,int output,const ud_json *json,uint64_t *index){
+    if(ud_json_kind(json)==UD_JSON_NUMBER)return ud_json_uint(json,index);
+    ud_string name;UD_TRY(ud_json_string(json,&name));ud_id id={0};int by_id=name.length==32&&!ud_id_parse(name,&id);
+    const ud_component_port *ports=output?n->ports.outputs:n->ports.inputs;uint32_t count=output?n->ports.output_count:n->ports.input_count;
+    for(uint32_t i=0;i<count;i++)if(ud_same(ports[i].name,name)||(by_id&&!ud_id_compare(ports[i].id,id))){*index=i;return UD_OK;}return UD_SCHEMA;
 }
 static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan *p) {
     p->execution = e;
@@ -145,6 +187,7 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
             return UD_SCHEMA;
         if (ud_json_kind(ud_member(def, "config")) != UD_JSON_OBJECT)
             return UD_SCHEMA;
+        UD_TRY(bind_ports(n,e,def,p->id));
         n->inputs = ud_alloc(e->execution->ctx, (n->descriptor.inputs + 1) * sizeof(*n->inputs));
         n->emitted = ud_alloc(e->execution->ctx, n->descriptor.outputs + 1);
         if (!n->inputs || !n->emitted)
@@ -171,11 +214,10 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
             s = ud_json_string(ud_member(def, "from"), &from);
         if (!s)
             s = ud_json_string(ud_member(def, "to"), &to);
-        if (!s)
-            s = ud_json_uint(ud_member(def, "output"), &output);
-        if (!s)
-            s = ud_json_uint(ud_member(def, "input"), &input);
-        int a = !s ? index_of(p, from) : -1, b = !s ? index_of(p, to) : -1;
+        int a=!s?index_of(p,from):-1,b=!s?index_of(p,to):-1;
+        if(!s&&(a<0||b<0))s=UD_SCHEMA;
+        if(!s)s=port_index(p->nodes+a,1,ud_member(def,"output"),&output);
+        if(!s)s=port_index(p->nodes+b,0,ud_member(def,"input"),&input);
         if (!s && (a < 0 || b < 0 || a == b || output >= p->nodes[a].descriptor.outputs ||
                    input >= p->nodes[b].descriptor.inputs))
             s = UD_SCHEMA;
@@ -226,6 +268,18 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
                 s = UD_SCHEMA;
         }
     }
+    for (uint32_t i=0;!s&&i<p->count;i++) if(ud_named(p->nodes[i].descriptor.id,"scd")) {
+        uint32_t destination=UINT32_MAX, seen_ports=0;
+        for(uint32_t j=0;j<p->nodes[i].output_edges;j++) {
+            edge *v=p->edges+p->nodes[i].outputs[j];
+            if(v->output>=1&&v->output<=4) {
+                if(!ud_named(p->nodes[v->to].descriptor.id,"scd.destination")||v->input!=v->output-1||
+                   (destination!=UINT32_MAX&&destination!=v->to)|| (seen_ports&(1u<<v->output))) {s=UD_SCHEMA;break;}
+                destination=v->to;seen_ports|=1u<<v->output;
+            }
+        }
+        if(seen_ports!=30u) s=UD_SCHEMA;
+    }
     uint32_t *order = ud_alloc(e->execution->ctx, p->count * sizeof(*order));
     if (!order && !s)
         s = UD_RESOURCE;
@@ -265,8 +319,7 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
                 (n->descriptor.capabilities & UD_COMPONENT_THREAD_AFFINE))
                 p->concurrency = 1;
         }
-        if (e->execution->options.state_directory.length)
-            p->concurrency = 1;
+
         const ud_json *maximum = ud_member(ud_member(e->package->document, "policy"), "maxTrees");
         if (maximum) {
             uint64_t value = 0;
@@ -523,7 +576,7 @@ static ud_status validate_effects(physical_plan *p) {
 }
 static ud_status configure_plan(physical_plan *p, const ud_json *definition, emit_target *targets) {
     ud_activation *e = p->execution;
-    const ud_json *defs = ud_member(definition, "components");
+    (void)definition;
     /* Entire pipeline schema/configuration is validated before any acquisition. */
     for (uint32_t i = 0; i < p->count; i++) {
         node *n = p->nodes + p->order[i];
@@ -561,15 +614,14 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                                             ud_resolve_value,
                                             &n->activation,
                                             ud_resolve_field};
-        UD_TRY(ud_bound_config(&n->activation, ud_member(ud_json_at(defs, index), "config"),
-                               &n->configuration));
+
         if (n->activation.transaction_serial && ud_member(n->configuration, "connection")) {
             ud_string connection;
             UD_TRY(ud_json_string(ud_member(n->configuration, "connection"), &connection));
             if (!ud_same(connection, n->activation.transaction_connection))
                 return UD_UNSUPPORTED;
         }
-        UD_TRY(ud_json_serialize(n->configuration, &n->json, &n->json_length));
+
         if (n->descriptor.category == UD_COMPONENT_SOURCE &&
             ud_member(n->configuration, "incremental"))
             n->descriptor.capabilities |= UD_COMPONENT_STATEFUL | UD_COMPONENT_BLOCKING;
@@ -580,11 +632,21 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
             ud_alloc(e->execution->ctx, (n->descriptor.inputs + 1) * sizeof(*inputs));
         if (!inputs)
             return UD_RESOURCE;
+        n->input_plans = ud_alloc(e->execution->ctx, (n->descriptor.inputs+1)*sizeof(*n->input_plans));
+        if (!n->input_plans) { ud_free(inputs); return UD_RESOURCE; }
+        for(uint32_t edge_index=0;edge_index<n->output_edges;edge_index++)
+            n->context.connected_outputs |= UINT64_C(1)<<p->edges[n->outputs[edge_index]].output;
+        n->context.input_count=n->descriptor.inputs;n->context.output_count=n->descriptor.outputs;
+        n->context.input_plans = n->input_plans;
+        n->context.output_schemas = (const ud_batch *const *)n->schemas;
         for (uint32_t j = 0; j < n->descriptor.inputs; j++) {
             inputs[j] = NULL;
             if (n->inputs[j] != UINT32_MAX) {
                 edge *v = p->edges + n->inputs[j];
                 inputs[j] = p->nodes[v->from].schemas[v->output];
+                n->ports.inputs[j].schema=inputs[j];
+                if ((int32_t)v->output != p->nodes[v->from].descriptor.error_output)
+                    n->input_plans[j] = p->nodes[v->from].binding;
             }
         }
         ud_status s =
@@ -594,6 +656,9 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                                          .abi_version = UD_ABI_VERSION,
                                          .partitions = 1,
                                          .ordering = UD_ORDER_UNORDERED};
+        if (!s && !n->descriptor.describe_plan && n->descriptor.synchronous_input >= 0) {
+            n->binding = n->input_plans[n->descriptor.synchronous_input];
+        }
         if (!s && n->descriptor.describe_plan)
             s = n->descriptor.describe_plan(n->descriptor.user, &n->context,
                                             (ud_string){n->json, n->json_length}, inputs,
@@ -618,6 +683,7 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                     return UD_SCHEMA;
             }
         }
+        for(uint32_t j=0;j<n->descriptor.outputs;j++)n->ports.outputs[j].schema=n->schemas[j];
         for (uint32_t j = 0; j < n->descriptor.outputs; j++)
             if (!n->schemas[j] || n->schemas[j]->ctx != e->execution->ctx || n->schemas[j]->rows)
                 return UD_SCHEMA;
@@ -706,10 +772,11 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     ud_buffer_view *view = NULL;
     int selected = n->pending || n->descriptor.category == UD_COMPONENT_SOURCE ||
                    n->ended == n->descriptor.inputs;
+    uint64_t demand = n->descriptor.input_demand ? n->descriptor.input_demand(n->instance) : UINT64_MAX;
     if (!selected)
         for (uint32_t i = 0; i < n->descriptor.inputs; i++) {
             uint32_t port = (n->next_port + i) % n->descriptor.inputs;
-            if (n->inputs[port] == UINT32_MAX)
+            if (!(demand & (UINT64_C(1) << port)) || n->inputs[port] == UINT32_MAX)
                 continue;
             edge *v = p->edges + n->inputs[port];
             if (ud_queue_count(v->queue)) {
@@ -884,6 +951,12 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
             UD_TRY(ud_bytes_put(b, ",\"stateMode\":", sizeof(",\"stateMode\":") - 1));
             UD_TRY(ud_json_quote(b, mode, (uint32_t)strlen(mode)));
             UD_TRY(ud_bytes_put(b, ",", 1));
+            UD_TRY(ud_bytes_put(b,",\"ports\":[",10));
+            for(uint32_t direction=0,at=0;direction<2;direction++)for(uint32_t k=0;k<(direction?n->ports.output_count:n->ports.input_count);k++){
+                const ud_component_port *port=(direction?n->ports.outputs:n->ports.inputs)+k;if(at++)UD_TRY(ud_bytes_put(b,",",1));char id[33];ud_id_format(port->id,id);
+                UD_TRY(ud_bytes_put(b,"{\"id\":",6));UD_TRY(ud_json_quote(b,id,32));UD_TRY(ud_bytes_put(b,",\"name\":",8));UD_TRY(ud_json_quote(b,port->name.data,port->name.length));UD_TRY(json_number(b,"direction",port->direction));UD_TRY(json_number(b,"index",port->index));UD_TRY(json_number(b,"flags",port->flags));UD_TRY(ud_bytes_put(b,"}",1));
+            }
+            UD_TRY(ud_bytes_put(b,"]",1));
             UD_TRY(json_number(b, "inputCount", n->descriptor.inputs));
             UD_TRY(ud_bytes_put(b, ",", 1));
             UD_TRY(json_number(b, "outputCount", n->descriptor.outputs));
@@ -894,6 +967,13 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
             UD_TRY(json_number(b, "partitions", partitions));
             UD_TRY(ud_bytes_put(b, ",", 1));
             UD_TRY(json_number(b, "ordering", n->binding.ordering));
+            UD_TRY(ud_bytes_put(b, ",\"sortKeys\":[", 13));
+            for(uint32_t k=0;k<n->binding.sort.count;k++) {
+                char id[33];ud_id_format(n->binding.sort.keys[k].field,id);
+                if(k) UD_TRY(ud_bytes_put(b,",",1));
+                UD_TRY(ud_json_quote(b,id,32));
+            }
+            UD_TRY(ud_bytes_put(b,"]",1));
             UD_TRY(ud_bytes_put(b, ",\"outputs\":[", sizeof(",\"outputs\":[") - 1));
             for (uint32_t j = 0; j < n->descriptor.outputs; j++) {
                 if (j)

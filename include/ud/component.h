@@ -2,6 +2,7 @@
 #define UD_COMPONENT_H
 #include "expression.h"
 #include "activation.h"
+#include "operator.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,6 +26,15 @@ typedef struct ud_component_event {
 /* Successful emit retains a sealed reference; it does not take the caller's
  * reference. At most one Buffer per output per step. Only invoke in step. */
 typedef ud_status (*ud_component_emit)(void *, uint32_t output, ud_batch *);
+typedef struct ud_component_plan ud_component_plan;
+enum {UD_PORT_INPUT=1,UD_PORT_OUTPUT=2,UD_PORT_REQUIRED=1,UD_PORT_ERROR=2};
+typedef struct ud_component_port {
+    ud_id id;ud_string name;uint32_t direction,index,flags;
+    const ud_batch *schema; /* Borrowed Binder-owned schema. */
+} ud_component_port;
+typedef struct ud_component_ports {
+    uint32_t input_count,output_count;ud_component_port *inputs,*outputs;
+} ud_component_ports;
 typedef struct ud_component_context {
     uint32_t struct_size, abi_version;
     ud_context *memory;
@@ -37,6 +47,10 @@ typedef struct ud_component_context {
     ud_expression_resolver resolve;
     void *resolve_user;
     ud_status (*resolve_field)(void *, ud_string, ud_field *);
+    const ud_component_plan *input_plans; /* Borrowed for the instance lifetime. */
+    uint32_t input_count,output_count;
+    uint64_t connected_outputs; /* Binding knows which regular ports have edges. */
+    const ud_batch *const *output_schemas; /* Resolved output identities at pure binding. */
 } ud_component_context;
 /* Task promises its effects may safely be replayed after an interrupted invoke.
  * This is a host/plugin contract, not a claim inferred by the runtime. */
@@ -53,10 +67,11 @@ typedef struct ud_component_context {
 #define UD_ENUMERATOR_RESUMABLE UINT64_C(0x0008000000000000)
 #define UD_FUNCTION_PURE UINT64_C(0x2000000000000000)
 #define UD_FUNCTION_DETERMINISTIC UINT64_C(0x1000000000000000)
-typedef struct ud_component_plan {
+struct ud_component_plan {
     uint32_t struct_size, abi_version, partitions;
     int32_t ordering; /* UD_ORDER_*; dynamic physical policy, pure binding only. */
-} ud_component_plan;
+    ud_sort_contract sort;
+};
 typedef struct ud_component_descriptor {
     uint32_t struct_size, abi_version;
     ud_string id, name, version, configuration_schema;
@@ -100,6 +115,8 @@ typedef struct ud_component_descriptor {
     uint64_t optional_outputs; /* Unconnected optional ports never accept emitted data. */
     ud_status (*describe_plan)(void *, const ud_component_context *, ud_string,
                                const ud_batch *const *, ud_component_plan *);
+    ud_status (*bind_ports)(void *, const ud_component_context *, ud_string, ud_component_ports *);
+    uint64_t (*input_demand)(void *); /* NULL admits every input. */
 } ud_component_descriptor;
 UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
 /* Copies descriptor metadata, retains callback user by contract (host lifetime).

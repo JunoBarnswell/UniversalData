@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 1.3.0，唯一 ABI/协议 7。本轮范围：统一架构与原生核心。验收事实见 metadata/product.json；本轮 Linux 集中验收，Windows 豁免。
+SDK 1.4.0，唯一 ABI/协议 8。本轮范围：统一架构与原生核心。验收事实见 metadata/product.json；本轮 Linux 集中验收，Windows 豁免。
 
 | SSIS 职责 | 实际入口/ID | 实现与边界 |
 |---|---|---|

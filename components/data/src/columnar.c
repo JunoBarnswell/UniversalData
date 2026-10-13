@@ -104,6 +104,7 @@ void ud_batch_destroy(ud_batch *b) {
             ud_free(v->offsets);
             ud_free(v->strings);
         }
+    ud_free(b->append_values);
     ud_free(b->row_info);
     ud_free(b->column);
     ud_batch_destroy(b->data_owner);
@@ -124,6 +125,7 @@ ud_status ud_batch_seal(ud_batch *b) {
             UD_TRY(ud_batch_get(b, row, j, &value));
         }
     }
+    ud_free(b->append_values);b->append_values=NULL;
     b->sealed = 1;
     return UD_OK;
 }

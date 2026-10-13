@@ -28,6 +28,7 @@ struct ud_batch {
     ud_column *column;
     ud_schema_owner *schema;
     ud_row_info *row_info;
+    ud_value *append_values; /* Mutable batch-local workspace; released on seal. */
     struct ud_batch *data_owner; /* Sealed projection retains original buffers. */
 };
 typedef ud_status (*ud_storage_visit)(void *, const void *allocation, uint64_t bytes);
@@ -57,5 +58,6 @@ ud_status ud_copy_value(ud_context *, const ud_value *, ud_value *, uint32_t dep
 void ud_clear_value(ud_value *);
 ud_status ud_cast_value(ud_context *, const ud_field *, const ud_value *, const ud_field *,
                         int32_t rounding, ud_value *, uint32_t depth);
+ud_status ud_value_canonical(const ud_value *, ud_status (*)(void *,const void *,size_t), void *,uint32_t);
 ud_status ud_batch_hash_rows(const ud_batch *, ud_sha256 *);
 #endif
