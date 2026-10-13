@@ -67,11 +67,9 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
         (void)ud_json_writer_close(b->writer);
     if (b->csv_writer)
         (void)ud_csv_writer_close(b->csv_writer);
-    if (b->temporary && b->temporary_owned && !b->published)
-        (void)ud_remove_file(b->context.memory, b->temporary);
+    ud_file_generation_destroy(b->generation);
     if (b->stage_bytes)
         ud_buffer_release_external(b->context.execution->buffers, b->stage_bytes);
-    ud_unlock(b->lock);
     (void)ud_connection_lease_release(b->lease);
     for (uint32_t i = 0; i < b->expression_count; i++)
         ud_expression_destroy(b->expressions[i]);
@@ -84,7 +82,6 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
     (void)ud_operator_destroy(b->operator);
     ud_free(b->fields);
     ud_free(b->path);
-    ud_free(b->temporary);
     ud_free(b->job);
     ud_free(b->keys);
     ud_free(b->write_indices);

@@ -375,7 +375,9 @@
         "engines/data-flow/destination.c",
         "engines/package/checkpoint.c",
         "components/data/src/text_stream.c",
-        "tests/file_layout.c"
+        "tests/file_layout.c",
+        "engines/package/file_generation.c",
+        "tests/file_generation.c"
       ],
       "trigger": "Encoding/layout settings or append/overwrite requires restart-safe publication.",
       "baselineFinding": "Publication facts and file checksums exist but enterprise format/append generation rules are incomplete.",
@@ -383,7 +385,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "CSV discovery, Source and Destination now share one Native fileFormat contract: UTF-8/UTF-16LE/UTF-16BE/ISO-8859-1, Unicode delimiter/qualifier, fixed Unicode widths, header, preamble/skip lines, position mapping, null marker and row delimiter. Resume uses original encoded offsets; error input preserves original bytes. Atomic append/overwrite generation and concentrated acceptance are still pending."
+      "progress": "CSV discovery/read/write share one Native fileFormat for UTF-8/UTF-16LE/UTF-16BE/ISO-8859-1, Unicode delimiter/qualifier, fixed Unicode widths, header/preamble/skip lines, positions, null marker and row delimiter. File Sinks now use Native Journal-backed generation publication: preserve/check original bytes, persist prepared output digest before atomic publish, and prove a recovered published generation. CSV/NDJSON/Arrow/Parquet append streams original records through the same codecs. XLSX append preservation remains unsupported; process-kill/codec acceptance is registered but not run."
     },
     {
       "id": "ETL-018",

@@ -156,41 +156,23 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     if (!s && (file_source(kind)))
         s = ud_connection_lease_authorize(b->lease, UD_ACCESS_READ);
     if (!s && (file_sink(kind))) {
-        size_t len = strlen(b->path);
-        char *lock = ud_alloc(c->memory, len + 32);
-        if (!lock)
-            s = UD_RESOURCE;
-        else {
-            snprintf(lock, len + 32, "%s.ud-package.lock", b->path);
-            s = ud_lock(c->memory, lock, &b->lock);
-            ud_free(lock);
-        }
-        int replaying = 0;
-        if (!s) {
-            b->temporary = ud_alloc(c->memory, len + 32);
-            if (!b->temporary)
-                s = UD_RESOURCE;
-            else
-                snprintf(b->temporary, len + 32, "%s.ud-package.part", b->path);
-        }
+        ud_string mode = {"create", 6};
+        if (ud_member(b->config, "fileMode"))
+            s = ud_json_string(ud_member(b->config, "fileMode"), &mode);
+        int file_mode = ud_named(mode, "create")      ? UD_FILE_CREATE
+                        : ud_named(mode, "overwrite") ? UD_FILE_OVERWRITE
+                        : ud_named(mode, "append")    ? UD_FILE_APPEND
+                                                      : -1;
+        if (!s && file_mode < 0)
+            s = UD_SCHEMA;
+        if (!s && file_mode == UD_FILE_APPEND && kind == XLSX_SINK)
+            s = UD_UNSUPPORTED; /* Workbook preservation contract is separate from row append. */
         if (!s)
-            s = ud_checkpoint_stage(c->activation, b->path, b->temporary, &replaying);
-        struct stat info;
-        if (!s) {
-            b->existing = !stat(b->path, &info);
-            if (b->existing && !replaying)
-                s = UD_BUSY;
-            else if (!b->existing && errno != ENOENT)
-                s = UD_IO;
-        }
-        if (!s && replaying)
-            s = ud_remove_file(c->memory, b->temporary);
-        if (!s) {
-            s = ud_reserve_file(c->memory, b->temporary);
-            if (!s)
-                b->temporary_owned = 1;
-        }
-        if (!s && kind == CSV_SINK) {
+            s = ud_file_generation_open(c->activation, b->lease, c->component_id, b->path,
+                                        file_mode, &b->generation);
+        if (!s)
+            b->temporary = b->generation->temporary;
+        if (!s && kind == CSV_SINK && !b->generation->prepared) {
             char *format = NULL;
             uint32_t length = 0;
             if (ud_member(b->config, "fileFormat"))
@@ -204,10 +186,10 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                                        &b->csv_writer);
             ud_free(format);
         }
-        if (!s && kind == JSON_SINK)
+        if (!s && kind == JSON_SINK && !b->generation->prepared)
             s = ud_json_writer_open(c->memory, b->temporary, b->fields, b->columns, 1048576,
                                     &b->writer);
-        if (!s && kind == XLSX_SINK) {
+        if (!s && kind == XLSX_SINK && !b->generation->prepared) {
             char *configuration = NULL;
             uint32_t length = 0;
             s = ud_json_serialize(b->config, &configuration, &length);
@@ -226,7 +208,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         }
     }
 #ifdef UD_WITH_ARROW_FILES
-    if (!s && (kind == PARQUET_SINK || kind == IPC_SINK || kind == IPC_STREAM_SINK)) {
+    if (!s && (kind == PARQUET_SINK || kind == IPC_SINK || kind == IPC_STREAM_SINK) &&
+        !b->generation->prepared) {
         ud_columnar_file_options options = {.struct_size = sizeof(options),
                                             .abi_version = UD_ABI_VERSION,
                                             .batch_rows = c->max_batch_rows,
@@ -241,6 +224,9 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                                     &b->columnar_writer);
     }
 #endif
+    if (!s && file_sink(kind) && b->generation->mode == UD_FILE_APPEND &&
+        b->generation->base_exists && !b->generation->prepared)
+        s = ud_builtin_sink_append_original(b);
     if (!s && kind == SQL_SINK && ud_member(b->config, "provisionReceipts")) {
         const char *flag = NULL;
         uint32_t n = 0;
@@ -377,15 +363,17 @@ static ud_status step(void *ptr, const ud_component_event *event) {
                    : UD_END;
     if (file_sink(kind)) {
         UD_TRY(ud_connection_lease_authorize(b->lease, UD_ACCESS_WRITE));
-        ud_status status;
+        ud_status status = UD_OK;
+        if (!b->generation->prepared) {
 #ifdef UD_WITH_ARROW_FILES
-        if (b->columnar_writer)
-            status = ud_columnar_writer_append(b->columnar_writer, event->batch);
-        else
+            if (b->columnar_writer)
+                status = ud_columnar_writer_append(b->columnar_writer, event->batch);
+            else
 #endif
-            status = kind == CSV_SINK    ? ud_csv_writer_append(b->csv_writer, event->batch)
-                     : kind == XLSX_SINK ? ud_xlsx_writer_append(b->xlsx_writer, event->batch)
-                                         : ud_json_writer_append(b->writer, event->batch);
+                status = kind == CSV_SINK    ? ud_csv_writer_append(b->csv_writer, event->batch)
+                         : kind == XLSX_SINK ? ud_xlsx_writer_append(b->xlsx_writer, event->batch)
+                                             : ud_json_writer_append(b->writer, event->batch);
+        }
         if (!status)
             status = ud_rule_stage(b->context.activation, event->batch, &b->delivery);
         if (!status) {
@@ -502,14 +490,20 @@ static const char *configuration_schema(int kind) {
     case PARQUET_SINK:
     case IPC_SINK:
     case IPC_STREAM_SINK:
-        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},"
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"fileMode\":{\"type\":\"string\",\"enum\":[\"create\",\"overwrite\",\"append\"],"
+               "\"default\":\"create\"}},"
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
     case CSV_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"fileMode\":{\"type\":\"string\",\"enum\":[\"create\",\"overwrite\",\"append\"],"
+               "\"default\":\"create\"},"
                "\"fileFormat\":" UD_CSV_FORMAT_SCHEMA
                "},\"required\":[\"connection\"],\"additionalProperties\":false}";
     case JSON_SINK:
-        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},"
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"fileMode\":{\"type\":\"string\",\"enum\":[\"create\",\"overwrite\",\"append\"],"
+               "\"default\":\"create\"}},"
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
     case SQL_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
@@ -579,7 +573,9 @@ static const char *configuration_schema(int kind) {
                "false}";
     case XLSX_SINK:
         return "{\"type\":\"object\",\"required\":[\"connection\"],\"properties\":{\"connection\":{"
-               "\"type\":\"string\"},\"sheet\":{\"type\":\"string\"},\"header\":{\"type\":"
+               "\"type\":\"string\"},\"fileMode\":{\"type\":\"string\",\"enum\":[\"create\","
+               "\"overwrite\"],\"default\":\"create\"},\"sheet\":{\"type\":\"string\"},\"header\":{"
+               "\"type\":"
                "\"boolean\"},\"datePolicy\":{\"type\":\"string\"},\"maxCompressedBytes\":{\"type\":"
                "\"integer\"}},\"additionalProperties\":false}";
     default:

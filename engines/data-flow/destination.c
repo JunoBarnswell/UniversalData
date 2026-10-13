@@ -383,35 +383,113 @@ ud_status ud_builtin_sink_records(builtin *b, const ud_batch *input) {
     return status;
 }
 
-ud_status ud_builtin_sink_finish(builtin *b) {
-    ud_status s;
+ud_status ud_builtin_sink_append_original(builtin *b) {
+    ud_context *ctx = b->context.memory;
+    UD_TRY(ud_file_generation_check_original(b->generation));
+    ud_csv_reader *csv = NULL;
+    ud_json_reader *json = NULL;
 #ifdef UD_WITH_ARROW_FILES
-    if (b->columnar_writer) {
-        s = ud_columnar_writer_close(b->columnar_writer);
-        b->columnar_writer = NULL;
-    } else
+    ud_columnar_reader *columnar = NULL;
 #endif
-        s = b->kind == CSV_SINK    ? ud_csv_writer_close(b->csv_writer)
-            : b->kind == XLSX_SINK ? ud_xlsx_writer_close(b->xlsx_writer)
-                                   : ud_json_writer_close(b->writer);
+    ud_status status = UD_OK;
+    if (b->kind == CSV_SINK) {
+        char *format = NULL;
+        uint32_t length = 0;
+        if (ud_member(b->config, "fileFormat"))
+            status = ud_json_serialize(ud_member(b->config, "fileFormat"), &format, &length);
+        ud_csv_options options = {.struct_size = sizeof(options),
+                                  .abi_version = UD_ABI_VERSION,
+                                  .batch_size = b->context.max_batch_rows,
+                                  .max_record_bytes = 16777216,
+                                  .format = {format, length}};
+        if (!status)
+            status =
+                ud_csv_open(ctx, b->generation->original, b->fields, b->columns, &options, &csv);
+        ud_free(format);
+    } else if (b->kind == JSON_SINK) {
+        ud_json_options options = {.struct_size = sizeof(options),
+                                   .version = UD_CONFIG_VERSION,
+                                   .batch_size = b->context.max_batch_rows,
+                                   .max_record_bytes = 16777216};
+        status = ud_json_reader_open(ctx, b->generation->original, b->fields, b->columns, &options,
+                                     &json);
+    }
+#ifdef UD_WITH_ARROW_FILES
+    else {
+        ud_columnar_file_options options = {.struct_size = sizeof(options),
+                                            .abi_version = UD_ABI_VERSION,
+                                            .batch_rows = b->context.max_batch_rows,
+                                            .format = b->kind == PARQUET_SINK ? UD_FILE_PARQUET
+                                                      : b->kind == IPC_SINK   ? UD_FILE_ARROW_IPC
+                                                                            : UD_FILE_ARROW_STREAM,
+                                            .buffers = b->context.execution->buffers,
+                                            .check = ud_builtin_operator_check,
+                                            .user = b->context.activation};
+        status =
+            ud_columnar_reader_open(ctx, b->generation->original, b->schema, &options, &columnar);
+    }
+#else
+    else
+        status = UD_UNSUPPORTED;
+#endif
+    while (!status) {
+        ud_batch *batch = NULL;
+        status = ud_activation_check(b->context.activation);
+        if (!status)
+            status = ud_file_generation_check_original(b->generation);
+        if (!status)
+            status = csv    ? ud_csv_next(csv, &batch, NULL)
+                     : json ? ud_json_reader_next(json, &batch, NULL)
+#ifdef UD_WITH_ARROW_FILES
+                            : ud_columnar_reader_next(columnar, &batch)
+#else
+                            : UD_UNSUPPORTED
+#endif
+                ;
+        if (status == UD_END) {
+            status = UD_OK;
+            ud_batch_destroy(batch);
+            break;
+        }
+        if (!status)
+            status = csv    ? ud_csv_writer_append(b->csv_writer, batch)
+                     : json ? ud_json_writer_append(b->writer, batch)
+#ifdef UD_WITH_ARROW_FILES
+                            : ud_columnar_writer_append(b->columnar_writer, batch)
+#else
+                            : UD_UNSUPPORTED
+#endif
+                ;
+        ud_batch_destroy(batch);
+    }
+    ud_csv_close(csv);
+    ud_json_reader_close(json);
+#ifdef UD_WITH_ARROW_FILES
+    ud_columnar_reader_close(columnar);
+#endif
+    return status;
+}
+ud_status ud_builtin_sink_finish(builtin *b) {
+    ud_status s = UD_OK;
+    if (!b->generation->prepared) {
+#ifdef UD_WITH_ARROW_FILES
+        if (b->columnar_writer) {
+            s = ud_columnar_writer_close(b->columnar_writer);
+            b->columnar_writer = NULL;
+        } else
+#endif
+            s = b->kind == CSV_SINK    ? ud_csv_writer_close(b->csv_writer)
+                : b->kind == XLSX_SINK ? ud_xlsx_writer_close(b->xlsx_writer)
+                                       : ud_json_writer_close(b->writer);
+    }
     b->csv_writer = NULL;
     b->writer = NULL;
     b->xlsx_writer = NULL;
     if (!s)
         s = ud_connection_lease_authorize(b->lease, UD_ACCESS_WRITE);
-    if (!s && b->existing) {
-        uint8_t expected[32], actual[32];
-        s = ud_file_hash(b->context.memory, b->temporary, expected);
-        if (!s)
-            s = ud_file_hash(b->context.memory, b->path, actual);
-        if (!s && memcmp(expected, actual, 32))
-            s = UD_CORRUPT;
-        if (!s)
-            s = ud_remove_file(b->context.memory, b->temporary);
-    } else if (!s)
-        s = ud_publish(b->context.memory, b->temporary, b->path);
+    if (!s)
+        s = ud_file_generation_publish(b->generation);
     if (!s) {
-        b->published = 1;
         ud_target_rows(b->context.activation, b->written_rows, b->written_errors, 0);
         s = ud_rule_delivered(b->context.activation, b->delivery, 0);
         if (!s)

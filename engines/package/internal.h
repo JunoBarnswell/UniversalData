@@ -213,8 +213,9 @@ ud_status ud_checkpoint_open(ud_execution *);
 ud_status ud_checkpoint_task_begin(ud_activation *, ud_string kind, int *completed);
 ud_status ud_checkpoint_task_done(ud_activation *);
 ud_status ud_checkpoint_source(ud_activation *, const char *path);
-ud_status ud_checkpoint_stage(ud_activation *, const char *target, const char *temporary,
-                              int *replaying);
+enum { UD_FILE_BASE = 1, UD_FILE_PREPARED = 2 };
+ud_status ud_checkpoint_file_read(ud_activation *, int32_t, ud_string, char **, uint32_t *);
+ud_status ud_checkpoint_file_record(ud_activation *, int32_t, ud_string, ud_string);
 ud_status ud_checkpoint_file_done(ud_activation *, const char *target);
 int ud_checkpoint_batch_seen(ud_activation *, ud_string identity);
 int ud_checkpoint_batch_completed(ud_activation *, ud_string identity);

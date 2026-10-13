@@ -6,6 +6,7 @@
 #include "ud/operator.h"
 #include "ud/format.h"
 #include "ud/csv.h"
+#include "../package/file_generation.h"
 #include "ud/xlsx.h"
 #include "../../connectors/rest.h"
 #ifdef UD_WITH_ARROW_FILES
@@ -93,8 +94,7 @@ typedef struct builtin {
     uint64_t stage_bytes;
     int32_t xlsx_rejected;
     char *path, *temporary, *job;
-    void *lock;
-    int published, existing, temporary_owned;
+    ud_file_generation *generation;
     uint64_t number, source_position, source_begin, source_end, written_rows, written_errors;
     uint32_t source_partitions, source_partition;
     uint32_t *keys, key_count, *write_indices, before_column;
@@ -171,4 +171,5 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
                             const ud_write_options *options, const ud_batch *input);
 ud_status ud_builtin_source_finish(builtin *);
 ud_status ud_builtin_sink_finish(builtin *);
+ud_status ud_builtin_sink_append_original(builtin *);
 #endif

@@ -21,7 +21,9 @@ enum {
     RECORD_TRANSACTION_DECISION,
     RECORD_TRANSACTION_COMPLETE,
     RECORD_TRANSACTION_FACT,
-    RECORD_SCHEMA_EVENT
+    RECORD_SCHEMA_EVENT,
+    RECORD_FILE_BASE,
+    RECORD_FILE_PREPARED
 };
 typedef struct checkpoint_journal {
     ud_execution *execution;
@@ -296,7 +298,7 @@ static ud_status file_record(checkpoint_journal *j, ud_activation *a, uint64_t k
 static ud_status restore_fact(void *user, uint64_t kind, ud_string key, const ud_json *payload) {
     checkpoint_journal *j = user;
     ud_execution *e = j->execution;
-    if (kind < RECORD_HEADER || kind > RECORD_SCHEMA_EVENT)
+    if (kind < RECORD_HEADER || kind > RECORD_FILE_PREPARED)
         return UD_CORRUPT;
     if (kind == RECORD_SOURCE || kind == RECORD_FILE_DONE) {
         char *path = ud_strdup_n(e->ctx, key.data, key.length);
@@ -451,35 +453,6 @@ static ud_status ud_checkpoint_source_record(ud_activation *e, const char *path)
     return e->execution->journal ? file_record(e->execution->journal, e, RECORD_SOURCE, path)
                                  : UD_OK;
 }
-static ud_status ud_checkpoint_stage_record(ud_activation *e, const char *target,
-                                            const char *temporary, int *replaying) {
-    *replaying = 0;
-    checkpoint_journal *j = e->execution->journal;
-    if (!j)
-        return UD_OK;
-    ud_string key = {target, (uint32_t)strlen(target)};
-    const ud_json *entry = find(j, RECORD_STAGE, key);
-    if (entry) {
-        ud_string owned;
-        UD_TRY(ud_json_string(entry, &owned));
-        if (!ud_named(owned, temporary))
-            return UD_CORRUPT;
-        *replaying = 1;
-        return UD_OK;
-    }
-    struct stat info;
-    if (!stat(target, &info) || !stat(temporary, &info))
-        return UD_BUSY;
-    if (errno != ENOENT)
-        return UD_IO;
-    ud_bytes payload = {.ctx = e->execution->ctx};
-    ud_status s = ud_json_quote(&payload, temporary, (uint32_t)strlen(temporary));
-    if (!s)
-        s = append(j, e, RECORD_STAGE, key,
-                   (ud_string){(char *)payload.data, (uint32_t)payload.size});
-    ud_bytes_clear(&payload);
-    return s;
-}
 static ud_status ud_checkpoint_file_done_record(ud_activation *e, const char *path) {
     return e->execution->journal ? file_record(e->execution->journal, e, RECORD_FILE_DONE, path)
                                  : UD_OK;
@@ -557,16 +530,38 @@ ud_status ud_checkpoint_source(ud_activation *e, const char *path) {
     return result;
 }
 
-ud_status ud_checkpoint_stage(ud_activation *e, const char *target, const char *temporary,
-                              int *replaying) {
-    UD_TRY(checkpoint_before(e, NULL));
-    ud_mutex_lock(&e->execution->journal_lock);
-    ud_status result = ud_checkpoint_stage_record(e, target, temporary, replaying);
-    ud_mutex_unlock(&e->execution->journal_lock);
-    checkpoint_after(e, result);
-    return result;
+ud_status ud_checkpoint_file_read(ud_activation *activation, int32_t phase, ud_string key,
+                                  char **out, uint32_t *length) {
+    if (!activation || !out || !length || phase < UD_FILE_BASE || phase > UD_FILE_PREPARED)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    checkpoint_journal *journal = activation->execution->journal;
+    if (!journal)
+        return UD_END;
+    ud_mutex_lock(&activation->execution->journal_lock);
+    const ud_json *record =
+        find(journal, phase == UD_FILE_BASE ? RECORD_FILE_BASE : RECORD_FILE_PREPARED, key);
+    ud_status status = record ? ud_json_serialize(record, out, length) : UD_END;
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    return status;
 }
-
+ud_status ud_checkpoint_file_record(ud_activation *activation, int32_t phase, ud_string key,
+                                    ud_string value) {
+    if (!activation || phase < UD_FILE_BASE || phase > UD_FILE_PREPARED)
+        return UD_INVALID;
+    checkpoint_journal *journal = activation->execution->journal;
+    if (!journal)
+        return UD_OK;
+    UD_TRY(checkpoint_before(activation, NULL));
+    ud_mutex_lock(&activation->execution->journal_lock);
+    ud_status status =
+        append(journal, activation, phase == UD_FILE_BASE ? RECORD_FILE_BASE : RECORD_FILE_PREPARED,
+               key, value);
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    checkpoint_after(activation, status);
+    return status;
+}
 ud_status ud_checkpoint_file_done(ud_activation *e, const char *path) {
     UD_TRY(checkpoint_before(e, path));
     ud_mutex_lock(&e->execution->journal_lock);
