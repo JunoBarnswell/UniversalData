@@ -359,20 +359,23 @@
       "phase": 4,
       "name": "Enterprise file layouts and publication",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "components/data/src/csv.c",
         "engines/data-flow/destination.c",
-        "engines/package/checkpoint.c"
+        "engines/package/checkpoint.c",
+        "components/data/src/text_stream.c",
+        "tests/file_layout.c"
       ],
       "trigger": "Encoding/layout settings or append/overwrite requires restart-safe publication.",
       "baselineFinding": "Publication facts and file checksums exist but enterprise format/append generation rules are incomplete.",
       "acceptance": "Encoding/layout settings or append/overwrite requires restart-safe publication. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "CSV discovery, Source and Destination now share one Native fileFormat contract: UTF-8/UTF-16LE/UTF-16BE/ISO-8859-1, Unicode delimiter/qualifier, fixed Unicode widths, header, preamble/skip lines, position mapping, null marker and row delimiter. Resume uses original encoded offsets; error input preserves original bytes. Atomic append/overwrite generation and concentrated acceptance are still pending."
     },
     {
       "id": "ETL-018",

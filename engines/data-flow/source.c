@@ -5,18 +5,19 @@ static ud_status open_file_reader(builtin *b, uint32_t batch) {
     int kind = b->kind;
     ud_status s = UD_OK;
     if (!s && kind == CSV_SOURCE) {
-        ud_string null = {"\\N", 2};
-        if (ud_member(b->config, "nullMarker"))
-            s = ud_json_string(ud_member(b->config, "nullMarker"), &null);
-        ud_csv_options o = {.struct_size = sizeof(o),
-                            .abi_version = UD_ABI_VERSION,
-                            .batch_size = batch,
-                            .null_marker = null.data,
-                            .null_marker_length = null.length,
-                            .max_record_bytes = 16777216,
-                            .records = &b->records};
+        char *format = NULL;
+        uint32_t length = 0;
+        if (ud_member(b->config, "fileFormat"))
+            s = ud_json_serialize(ud_member(b->config, "fileFormat"), &format, &length);
+        ud_csv_options options = {.struct_size = sizeof(options),
+                                  .abi_version = UD_ABI_VERSION,
+                                  .batch_size = batch,
+                                  .max_record_bytes = 16777216,
+                                  .records = &b->records,
+                                  .format = {format, length}};
         if (!s)
-            s = ud_csv_open(c->memory, b->path, b->fields, b->columns, &o, &b->csv);
+            s = ud_csv_open(c->memory, b->path, b->fields, b->columns, &options, &b->csv);
+        ud_free(format);
     }
     if (!s && kind == XLSX_SOURCE) {
         char *configuration = NULL;

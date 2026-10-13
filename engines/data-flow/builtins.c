@@ -190,11 +190,23 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
             if (!s)
                 b->temporary_owned = 1;
         }
-        if (!s && (kind == CSV_SINK || kind == JSON_SINK))
-            s = kind == CSV_SINK ? ud_csv_writer_open(c->memory, b->temporary, b->fields,
-                                                      b->columns, "\\N", &b->csv_writer)
-                                 : ud_json_writer_open(c->memory, b->temporary, b->fields,
-                                                       b->columns, 1048576, &b->writer);
+        if (!s && kind == CSV_SINK) {
+            char *format = NULL;
+            uint32_t length = 0;
+            if (ud_member(b->config, "fileFormat"))
+                s = ud_json_serialize(ud_member(b->config, "fileFormat"), &format, &length);
+            ud_csv_options options = {.struct_size = sizeof(options),
+                                      .abi_version = UD_ABI_VERSION,
+                                      .max_record_bytes = 16777216,
+                                      .format = {format, length}};
+            if (!s)
+                s = ud_csv_writer_open(c->memory, b->temporary, b->fields, b->columns, &options,
+                                       &b->csv_writer);
+            ud_free(format);
+        }
+        if (!s && kind == JSON_SINK)
+            s = ud_json_writer_open(c->memory, b->temporary, b->fields, b->columns, 1048576,
+                                    &b->writer);
         if (!s && kind == XLSX_SINK) {
             char *configuration = NULL;
             uint32_t length = 0;
@@ -444,7 +456,6 @@ static const char *configuration_schema(int kind) {
     case PARQUET_SOURCE:
     case IPC_SOURCE:
     case IPC_STREAM_SOURCE:
-    case CSV_SOURCE:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
                "\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},"
                "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
@@ -454,6 +465,17 @@ static const char *configuration_schema(int kind) {
                "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
                "\"required\":"
                "[\"connection\",\"schema\"],\"additionalProperties\":false}";
+    case CSV_SOURCE:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"schema\":{\"type\":\"object\"},"
+               "\"fileFormat\":" UD_CSV_FORMAT_SCHEMA
+               ",\"batchSize\":{\"type\":\"integer\"},\"partitionCount\":{\"type\":\"integer\"},"
+               "\"partitionId\":{\"type\":\"integer\"},\"partitionBegin\":{\"type\":\"integer\"},"
+               "\"partitionEnd\":{\"type\":\"integer\"},"
+               "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
+               "\"table\":{\"type\":\"string\"},"
+               "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
+               "\"required\":[\"connection\",\"schema\"],\"additionalProperties\":false}";
     case JSON_SOURCE:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
                "\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},"
@@ -480,9 +502,12 @@ static const char *configuration_schema(int kind) {
     case PARQUET_SINK:
     case IPC_SINK:
     case IPC_STREAM_SINK:
-    case CSV_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},"
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
+    case CSV_SINK:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"fileFormat\":" UD_CSV_FORMAT_SCHEMA
+               "},\"required\":[\"connection\"],\"additionalProperties\":false}";
     case JSON_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},"
                "\"required\":[\"connection\"],\"additionalProperties\":false}";

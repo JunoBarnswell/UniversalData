@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 2.0.0 / ABI 10；2.0 implementation in progress: Native correctness/remote loading contracts, file discovery, row SQL, balanced dispatch, HTTP variables and managed product-host foundations; schema/CDC/product closure and concentrated acceptance remain pending。
+SDK 2.0.0 / ABI 10；2.0 bulk implementation in progress: Native correctness and remote loading, CDC schema/clear events, managed extension/host lifecycle, SQLite deployment/queue/jobs, React designer and Native debug are connected in source. Remaining IO/components, contract closure and concentrated Linux/Windows acceptance are pending.。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
@@ -17,27 +17,27 @@ SDK 2.0.0 / ABI 10；2.0 implementation in progress: Native correctness/remote l
 | ETL-007 Complete unsigned integer domain | Partial / NotRun |
 | ETL-008 Duration and calendar Interval | Partial / NotRun |
 | ETL-009 JSON and dictionary fidelity | Planned / NotRun |
-| ETL-010 CDC TRUNCATE semantics | Planned / NotRun |
+| ETL-010 CDC TRUNCATE semantics | Partial / NotRun |
 | ETL-011 Recoverable transaction participants | Partial / NotRun |
 | ETL-012 Durable coordinator decisions | Partial / NotRun |
 | ETL-013 PostgreSQL COPY loading | Partial / NotRun |
 | ETL-014 MySQL and MariaDB native loading | Partial / NotRun |
 | ETL-015 SQL Server BCP loading | Partial / NotRun |
 | ETL-016 OCI staged Direct Path loading | Partial / NotRun |
-| ETL-017 Enterprise file layouts and publication | Planned / NotRun |
+| ETL-017 Enterprise file layouts and publication | Partial / NotRun |
 | ETL-018 Incremental overlap target capability proof | Partial / NotRun |
 | ETL-019 Unified file and database discovery | Partial / NotRun |
 | ETL-020 One SDK and protocol family | Implemented / NotRun |
 | ETL-021 SQLite indexed Native Catalog | Implemented / NotRun |
 | ETL-022 Durable execution logs | Partial / NotRun |
-| ETL-023 Deployment and execution management | Planned / NotRun |
-| ETL-024 CLI resource policy | Planned / NotRun |
+| ETL-023 Deployment and execution management | Partial / NotRun |
+| ETL-024 CLI resource policy | Partial / NotRun |
 | ETL-025 Online Schema Change barrier | Partial / NotRun |
 | ETL-026 CDC field presence and key images | Partial / NotRun |
 | ETL-027 Plain REST and receipt guarantees | Partial / NotRun |
 | ETL-028 Row SQL command parameter binding | Partial / NotRun |
 | ETL-029 Public managed Registry and native callback ownership | Partial / NotRun |
-| ETL-030 Deployment-compiled C# scripts | Planned / NotRun |
+| ETL-030 Deployment-compiled C# scripts | Partial / NotRun |
 | ETL-031 Balanced batch dispatch | Partial / NotRun |
 | ETL-032 Import and Export Column | Planned / NotRun |
 | ETL-033 XML Source | Planned / NotRun |
@@ -50,13 +50,13 @@ SDK 2.0.0 / ABI 10；2.0 implementation in progress: Native correctness/remote l
 | ETL-040 SSAS Data Mining no longer supported | NotApplicable / NotApplicable |
 | ETL-041 SQL Server maintenance Agent and SSAS XMLA | Planned / NotRun |
 | ETL-042 Exact Distinct profiling with shared Compute budget | Implemented / NotRun |
-| ETL-043 Durable job queue and schedules | Planned / NotRun |
+| ETL-043 Durable job queue and schedules | Partial / NotRun |
 | ETL-044 Proven filter pushdown and streaming JSON array | Partial / NotRun |
 | ETL-045 Azure Blob and ADLS Gen2 | Planned / NotRun |
 | ETL-046 S3 and MinIO | Planned / NotRun |
 | ETL-047 ASP.NET Core 10 management and isolated workers | Partial / NotRun |
 | ETL-048 React Flow package designer | Partial / NotRun |
-| ETL-049 Safe native runtime debugging | Planned / NotRun |
+| ETL-049 Safe native runtime debugging | Partial / NotRun |
 | ETL-050 Full Linux and Windows driver CI | Partial / NotRun |
 | ETL-051 Independent release consumers and capability manifests | Planned / NotRun |
 | ETL-052 HTTP response variable mappings | Partial / NotRun |

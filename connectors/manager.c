@@ -641,6 +641,20 @@ ud_status ud_connection_lease_schema(ud_connection_lease *lease, ud_string table
     ud_context *ctx = lease->activation->execution->ctx;
     ud_status status = ud_path_no_symlinks(ctx, path);
     ud_string format = table;
+    ud_json *configuration = NULL;
+    char *file_options = NULL;
+    uint32_t option_length = 0;
+    if (!status && table.length && table.data[0] == '{') {
+        static const char *keys[] = {"format", "options"};
+        status = ud_json_parse(ctx, table.data, table.length, &configuration, NULL);
+        if (!status)
+            status = ud_json_keys(configuration, keys, 2);
+        if (!status)
+            status = ud_json_string(ud_member(configuration, "format"), &format);
+        if (!status && ud_member(configuration, "options"))
+            status = ud_json_serialize(ud_member(configuration, "options"), &file_options,
+                                       &option_length);
+    }
     if (!format.length) {
         const char *extension = strrchr(path, '.');
         if (extension && !strcmp(extension, ".csv"))
@@ -653,7 +667,8 @@ ud_status ud_connection_lease_schema(ud_connection_lease *lease, ud_string table
     if (!status && ud_named(format, "csv")) {
         ud_csv_options options = {.struct_size = sizeof(options),
                                   .abi_version = UD_ABI_VERSION,
-                                  .max_record_bytes = 16777216};
+                                  .max_record_bytes = 16777216,
+                                  .format = {file_options, option_length}};
         status = ud_csv_discover(ctx, path, scope, &options, 256, out);
     } else if (!status && (ud_named(format, "ndjson") || ud_named(format, "jsonArray"))) {
         ud_json_options options = {.struct_size = sizeof(options),
@@ -667,6 +682,8 @@ ud_status ud_connection_lease_schema(ud_connection_lease *lease, ud_string table
     } else if (!status)
         status = UD_UNSUPPORTED;
     ud_free(path);
+    ud_free(file_options);
+    ud_json_destroy(configuration);
     return status;
 }
 ud_status ud_connection_lease_discover(ud_connection_lease *l, ud_string table, ud_batch **out) {

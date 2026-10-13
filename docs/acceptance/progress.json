@@ -19,7 +19,7 @@
   },
   "candidate": {
     "branch": "codex/etl-ssis-product-alignment",
-    "state": "2.0 implementation in progress: Native correctness/remote loading contracts, file discovery, row SQL, balanced dispatch, HTTP variables and managed product-host foundations; schema/CDC/product closure and concentrated acceptance remain pending",
+    "state": "2.0 bulk implementation in progress: Native correctness and remote loading, CDC schema/clear events, managed extension/host lifecycle, SQLite deployment/queue/jobs, React designer and Native debug are connected in source. Remaining IO/components, contract closure and concentrated Linux/Windows acceptance are pending.",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,
@@ -226,19 +226,24 @@
       "phase": 3,
       "name": "CDC TRUNCATE semantics",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/cdc.c",
-        "include/ud/connector.h"
+        "include/ud/connector.h",
+        "include/ud/cdc.h",
+        "components/data/src/sql.c",
+        "plugins/binlog.c",
+        "plugins/postgresql_cdc.c"
       ],
       "trigger": "A source transaction truncates a captured table.",
       "baselineFinding": "ud_cdc_event has no TRUNCATE event.",
       "acceptance": "A source transaction truncates a captured table. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "CDC TRUNCATE now uses the Native ChangeSet/receipt/Journal/epoch path for PG and MySQL-family streams. SQL reset is explicitly enabled and authorized, compiled as transactional DELETE without identity/sequence resets. Failure is not a rejected record. Real log/target acceptance remains pending."
     },
     {
       "id": "ETL-011",
@@ -362,20 +367,23 @@
       "phase": 4,
       "name": "Enterprise file layouts and publication",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "components/data/src/csv.c",
         "engines/data-flow/destination.c",
-        "engines/package/checkpoint.c"
+        "engines/package/checkpoint.c",
+        "components/data/src/text_stream.c",
+        "tests/file_layout.c"
       ],
       "trigger": "Encoding/layout settings or append/overwrite requires restart-safe publication.",
       "baselineFinding": "Publication facts and file checksums exist but enterprise format/append generation rules are incomplete.",
       "acceptance": "Encoding/layout settings or append/overwrite requires restart-safe publication. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "CSV discovery, Source and Destination now share one Native fileFormat contract: UTF-8/UTF-16LE/UTF-16BE/ISO-8859-1, Unicode delimiter/qualifier, fixed Unicode widths, header, preamble/skip lines, position mapping, null marker and row delimiter. Resume uses original encoded offsets; error input preserves original bytes. Atomic append/overwrite generation and concentrated acceptance are still pending."
     },
     {
       "id": "ETL-018",
@@ -484,38 +492,46 @@
       "phase": 6,
       "name": "Deployment and execution management",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "catalog/deployment.c",
-        "hosts"
+        "hosts",
+        "products/UniversalData.Management/Program.cs",
+        "products/UniversalData.Management/RunDispatcher.cs",
+        "bindings/dotnet/UniversalData/Catalog.cs"
       ],
       "trigger": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered.",
       "baselineFinding": "Immutable deployment binding exists; process manager and enable/disable state are absent.",
       "acceptance": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Management API dispatches immutable package/deployment versions via Native Catalog.BindPackage. Durable queue records, worker start handshake, single-manager ownership, cancel/recovery and process identity checks are implemented. Restart, cancellation and unknown-outcome acceptance remain pending."
     },
     {
       "id": "ETL-024",
       "phase": 5,
       "name": "CLI resource policy",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "hosts/cli.c",
-        "connectors/manager.c"
+        "connectors/manager.c",
+        "products/UniversalData.CommandLine/Program.cs",
+        "products/UniversalData.Hosting/HostPolicy.cs",
+        "hosts/CMakeLists.txt"
       ],
       "trigger": "CLI resolves authorized resources and credential references.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "CLI resolves authorized resources and credential references. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "The file-root-only Native CLI implementation is retired. The .NET 10 CLI shares HostPolicy, credential references and SDK loading with the product Worker. CLI recovery locates the original state directory through Native Catalog and keeps its execution ID. Product build/install acceptance is pending."
     },
     {
       "id": "ETL-025",
@@ -527,7 +543,11 @@
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/pipeline.c",
-        "components/data/src/schema_evolution.c"
+        "components/data/src/schema_evolution.c",
+        "engines/data-flow/cdc.c",
+        "engines/package/checkpoint.c",
+        "plugins/postgresql_metadata.c",
+        "plugins/mysql_family.c"
       ],
       "trigger": "A compatible/incompatible runtime schema event reaches an epoch boundary.",
       "baselineFinding": "Pipeline routes SCHEMA_CHANGE but returns incompatible instead of rebinding at a barrier.",
@@ -535,7 +555,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "PostgreSQL pgoutput accepts default/index/full replication identity; key-only and unchanged TOAST fields retain presence separately from NULL. Native Changeset SQL skips absent fields and uses known old keys/preimages. Runtime schema rebinding, TRUNCATE and real recovery acceptance remain pending."
+      "progress": "CDC accepts only schema mappings that preserve the bound component contract. Driver decoders rebind, downstream pure configure runs again, source version and actual decoder schema persist in the epoch/snapshot. Schema observations include the source position before admission, and incompatibility stops confirmation. Wider output-contract evolution, provider-origin identity proof and real recovery acceptance remain pending."
     },
     {
       "id": "ETL-026",
@@ -609,7 +629,10 @@
       "requiredThisDelivery": true,
       "implementation": [
         "bindings/dotnet/UniversalData",
-        "include/ud/component.h"
+        "include/ud/component.h",
+        "bindings/dotnet/UniversalData/Registry.cs",
+        "bindings/dotnet/UniversalData/ManagedDataFlow.cs",
+        "bindings/dotnet/UniversalData/Execution.cs"
       ],
       "trigger": "A managed component/task is registered and an exception escapes its callback.",
       "baselineFinding": ".NET ExecutionOptions carries registry/observer pointers internally but public APIs do not expose them.",
@@ -617,26 +640,30 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Public .NET Registry owns managed Task registration through Native lifecycle callbacks. Execution leases the Registry and retains delegates/owners; Observer failures latch Native faults without recursion. Full managed Data Flow components and deployment assembly loading remain pending."
+      "progress": "Public managed Registry now projects Native Task and Data Flow configure/open/step/finish/cancel/dispose/checkpoint/restore lifetimes. Native Batch allocations use the activation quota; borrowed batches/context expire at callback return, owned batches are explicit, exception status enters the native error chain. ABI/layout, lifetime and installed-consumer acceptance are pending."
     },
     {
       "id": "ETL-030",
       "phase": 5,
       "name": "Deployment-compiled C# scripts",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "bindings/dotnet/UniversalData",
-        "hosts"
+        "hosts",
+        "bindings/dotnet/UniversalData/ManagedModules.cs",
+        "products/UniversalData.CommandLine/Program.cs",
+        "products/UniversalData.Worker/Program.cs"
       ],
       "trigger": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry.",
       "baselineFinding": "No common managed deployment assembly loader exists for Native hosts.",
       "acceptance": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "C# deployment compiles fixed deterministic assemblies with SDK/protocol attributes and digest-bound package extensions. Registry.LoadPackageExtensions is the SDK/CLI/Worker entry, with host execute grant, frozen verified bytes and Registry-owned module lifetime. Deployment and cross-host behavior acceptance are pending."
     },
     {
       "id": "ETL-031",
@@ -871,19 +898,21 @@
       "phase": 6,
       "name": "Durable job queue and schedules",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "catalog",
-        "hosts"
+        "hosts",
+        "products/UniversalData.Management/RunDispatcher.cs"
       ],
       "trigger": "A timer enqueues work, service restarts or a worker fails with unknown commit.",
       "baselineFinding": "No durable scheduler/queue exists in the Catalog.",
       "acceptance": "A timer enqueues work, service restarts or a worker fails with unknown commit. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Interval jobs, persisted queue/due times, job and host concurrency bounds, delayed bounded retries and restart restoration use Native SQLite Catalog. Retries retain the original execution ID and require Native Journal recovery; unknown outcomes stop automatic retries. Real scheduling/crash acceptance is pending."
     },
     {
       "id": "ETL-044",
@@ -954,7 +983,11 @@
       "requiredThisDelivery": true,
       "implementation": [
         "hosts",
-        "bindings/dotnet"
+        "bindings/dotnet",
+        "products/UniversalData.Management/Program.cs",
+        "products/UniversalData.Worker/Program.cs",
+        "products/UniversalData.Hosting/HostPolicy.cs",
+        "products/UniversalData.Hosting/WorkerControl.cs"
       ],
       "trigger": "A management request creates/queries/controls an independent native execution process.",
       "baselineFinding": "No ASP.NET management product or execution process ownership exists.",
@@ -962,7 +995,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "ASP.NET Core 10 product host projects are underway. Shared host resource/credential policy and one independent Worker holding Native Execution are implemented; start waits for the service to persist the Native ID. Management API, durable dispatch and complete process lifecycle remain pending."
+      "progress": "ASP.NET Core 10 loopback service and multiple independent Worker processes project the same Native Execution/Registry/Catalog. Shared host resource scopes and credentials are explicit. APIs cover component metadata, schema, package versions, deployments, execution, logs, jobs, scripts and debug. Build/runtime/product acceptance is pending."
     },
     {
       "id": "ETL-048",
@@ -973,7 +1006,11 @@
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "hosts"
+        "hosts",
+        "products/designer/src/Editor.tsx",
+        "products/designer/src/PropertyForm.tsx",
+        "products/designer/src/Executions.tsx",
+        "products/designer/src/api.ts"
       ],
       "trigger": "A user edits control/data flow, ports, mappings, connections, metadata or package layout.",
       "baselineFinding": "No React/TypeScript/React Flow package designer exists.",
@@ -981,27 +1018,32 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Designer visual concepts and design system are defined; protocol-10 package layout uses stable IDs and Native validates positions/viewports against actual graphs. React Flow editing and real browser acceptance remain pending."
+      "progress": "React/TypeScript/React Flow designer sources implement control/data flow editing, dynamic handles, metadata forms, Native validation, connection editing, bounded undo/redo and versioned layouts. Deployment is bound to the saved immutable version; transport preserves integers beyond JS safe range. Field mapping, browser fidelity and complete workflow acceptance remain pending."
     },
     {
       "id": "ETL-049",
       "phase": 7,
       "name": "Safe native runtime debugging",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "include/ud/package.h",
         "engines/package/runtime.c",
-        "engines/data-flow/pipeline.c"
+        "engines/data-flow/pipeline.c",
+        "engines/package/debug.c",
+        "bindings/dotnet/UniversalData/Execution.cs",
+        "products/UniversalData.Hosting/WorkerControl.cs",
+        "products/designer/src/Executions.tsx"
       ],
       "trigger": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary.",
       "baselineFinding": "Execution exposes cancel/wait but no native debug controller.",
       "acceptance": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native Task/Batch/resolved-Epoch debug boundaries, explicit one-worker debug scheduling, bounded per-output previews and pause/continue/step APIs are connected to the SDK, Worker control pipe, management API and UI. Active transactions never park. Concurrency/cancellation/transaction/debug acceptance is pending."
     },
     {
       "id": "ETL-050",

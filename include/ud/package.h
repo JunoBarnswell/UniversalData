@@ -89,7 +89,9 @@ UD_API ud_status ud_execution_debug_control(ud_execution *, ud_string command);
 UD_API ud_status ud_execution_debug_snapshot(ud_execution *, char **, uint32_t *);
 /* One Data Schema result. Database resources discover a table; file resources
  * accept csv/ndjson/jsonArray or infer the framing from the filename. Sampling
- * is bounded to 256 complete records; unsupported unions never narrow silently. */
+ * is bounded to 256 complete records; unsupported unions never narrow silently.
+ * File discovery also accepts {"format":"csv","options":{...}} so the same
+ * fileFormat contract governs inference, decoding and encoding. */
 UD_API ud_status ud_execution_discover_schema(ud_execution *, ud_string connection, ud_string table,
                                               char **, uint32_t *);
 UD_API ud_status ud_execution_execute(ud_execution *);
