@@ -1727,10 +1727,12 @@
       "scope": "Linux Release PRODUCT; all six driver SDKs, BCP/OCI, HTTP/XML/network, Arrow, JNI, .NET 10 and designer",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/pr7-foundation/build-22f189c.txt",
-          "sha256": "602658bd6195468a74180a0dad45777e30145bc7a4be601d80fe0ac60b879d62",
-          "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
-          "kind": "Actual incremental PRODUCT build completion after all Native/driver/Designer dependency targets were built"
+          "path": "docs/acceptance/evidence/pr7-foundation/native-product-433f846.txt",
+          "sha256": "b7d9c9c9c55165419f48e70d20184a7f800c06b46fb1eb8841a4557235087770"
+        },
+        {
+          "path": "docs/acceptance/evidence/pr7-foundation/hosting-f5756bb.txt",
+          "sha256": "602658bd6195468a74180a0dad45777e30145bc7a4be601d80fe0ac60b879d62"
         }
       ],
       "currentEvidence": "Linux Release PRODUCT build at 22f189c; /tmp/ud-next-22f189c-build.log"
@@ -1752,9 +1754,12 @@
       "scope": "78 Linux cases and real four-driver/domain cases passed; complete schema physical-identity and missing live scenarios remain unverified",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/pr7-foundation/core-22f189c.xml",
-          "sha256": "6d0ebe2734f49a96942c0c6f3521be58caf38dcc6c2c650266bf096cde78177b",
-          "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10"
+          "path": "docs/acceptance/evidence/pr7-foundation/core-433f846.xml",
+          "sha256": "52bf1e5bbb462e8262a764a87bc113a65aa976c463d079ed781042472b084796"
+        },
+        {
+          "path": "docs/acceptance/evidence/pr7-foundation/asan-ubsan-433f846.xml",
+          "sha256": "625f6503fbfbe9febfc2f2756412cd739e6f6ff4fcb9c6ed1026e546ba246723"
         }
       ],
       "currentEvidence": "67 registered core tests passed at 22f189c; broad new feature correctness remains incomplete"
@@ -1765,16 +1770,12 @@
       "scope": "Real Native file/source/dual-target/Journal and three-provider prepared-branch kills plus installed Worker recovery passed; complete live CDC/coordinator kill matrix remains unverified",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "sha256": "3306492025963d8f7facb362e146e9e25af551637ce7487f866c4b7f71be20a8"
+          "path": "docs/acceptance/evidence/pr7-foundation/drivers-433f846.xml",
+          "sha256": "5de1c7e012c693098b48a38fb30b9275fa7dc9e0c39c43a29ffcf447c197644c"
         },
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed-web-worker-browser.log",
-          "sha256": "3553aebc37449ccb2976a5870ca7ee2d04d52d8daf656fc4afb9bee1ecfeef00"
+          "path": "docs/acceptance/evidence/pr7-foundation/worker-control-f5756bb.xml",
+          "sha256": "3f80a2c54bb97858ac477b61091ea932ce2f8d10e4461d7f8991286266e532d3"
         }
       ]
     },
@@ -1784,16 +1785,8 @@
       "scope": "Four genuine SQL/CDC/native drivers accepted; Oracle TCPS and independent SMTP/FTP/SFTP/Azure/S3/SSAS/WMI resources remain Blocked",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "sha256": "3306492025963d8f7facb362e146e9e25af551637ce7487f866c4b7f71be20a8"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-oracle.log",
-          "sha256": "2bcba6e6f8480df1cbab54df88851e05659364fca8f4bd5ffb8e7adfa7176556"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
-          "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
+          "path": "docs/acceptance/evidence/pr7-foundation/drivers-433f846.xml",
+          "sha256": "5de1c7e012c693098b48a38fb30b9275fa7dc9e0c39c43a29ffcf447c197644c"
         }
       ]
     },
@@ -1803,24 +1796,8 @@
       "scope": "Independent public C, offline NuGet/.NET, Maven/Java/JNI and Native Registry/Observer/Catalog lifecycle on Linux",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/bundle-language-parity.log",
-          "sha256": "bbaa89d22bf1eab9f4cb75f86d99e07cc5d53be2cc69973e20b6bcf2fcc4783b"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/bundle-native-query-parity.log",
-          "sha256": "03ecb5a1c9badf5115a7d510d1c583d6cb9f6d07e0e2329156d7765518b4cf18"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/bundle-advanced-metadata-parity.log",
-          "sha256": "1880b5189f91f4f37c8bbcb2f1368b65beee2ac8a3ff04e3824ba47f8d818e84"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "sha256": "3306492025963d8f7facb362e146e9e25af551637ce7487f866c4b7f71be20a8"
+          "path": "docs/acceptance/evidence/pr7-foundation/installed-f5756bb.json",
+          "sha256": "27941ad1910d2bf9814ca83aaa456aee97d7921aff675cf4ac58d93d4b5a7ba3"
         }
       ]
     },
@@ -1830,9 +1807,8 @@
       "scope": "Typecheck/lint/build; real edit/save/reload/deploy/output/log/debug and same-ID killed-Worker recovery from both build and installed assets",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/pr7-foundation/browser.json",
-          "sha256": "64529b2b780cb9528f8bd0b7ee3c984b8174e0a66e18f4fb424ca8646a8ccfbb",
-          "kind": "Actual browser run before source sealing; not an installed/released artifact acceptance"
+          "path": "docs/acceptance/evidence/pr7-foundation/browser-installed-f5756bb.json",
+          "sha256": "4f1978cfdf51936b16058487146ee0a541f039b5f4d183bcf3d393f9f42739ac"
         }
       ],
       "currentEvidence": "Real browser flow passed; advanced new feature UI remains incomplete"
@@ -1843,28 +1819,12 @@
       "scope": "Linux six requested 1M/100k workloads at 1/2/4 workers and genuine remote native/parameter comparisons for four available databases; Oracle comparison Blocked",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/pipeline-performance.json",
-          "sha256": "da2eae387d73f53bca359d396181a9f9c12aa6ca32948739798a86057b096e01"
+          "path": "docs/acceptance/evidence/pr7-foundation/remote-bulk-433f846.json",
+          "sha256": "049da12ca20b0546f177b7a2fb05cec0965cba017a37b47032ffbc546e53785a"
         },
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/pipeline-performance.log",
-          "sha256": "8a226b1593ed3685442015f9b7aa38986d0487ad282bb85a717e6ff57d7c28f9"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/postgresql-bulk-performance.jsonl",
-          "sha256": "1624d44016f2bbb4ee62fb2e2ca6a916d1df310663e9f7dfded1af21ade1a7ce"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/mysql-bulk-performance.jsonl",
-          "sha256": "ea4b095bc2a703ec1e5415118c0975c21225abc313c3bec89a57ba7194037958"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/mariadb-bulk-performance.jsonl",
-          "sha256": "55a5acdde3d7ea5a8c585c899e0247460b247e2da0dde655cd966ee46e9d21e4"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/mssql-bulk-performance.jsonl",
-          "sha256": "adcac6335a9d67c21321e23cd383a924303ce7b2c09568fd4a9750671b6cdac6"
+          "path": "docs/acceptance/evidence/pr7-foundation/pipeline-million-433f846.json",
+          "sha256": "f3a8d2c9b4f8a1fae4977fc8efa5be9ae1779bc95551b41bd756954bab15b3f5"
         }
       ]
     },
@@ -1874,16 +1834,8 @@
       "scope": "Same-source Linux C/.NET/Java/CLI/Web/Worker all passed; required Windows installed consumers remain Blocked",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "sha256": "526a4b4f705fcbb5aa57958b2102e95c5153ed246ac46d9d3b5e7efe19e58849"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
-          "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
+          "path": "docs/acceptance/evidence/pr7-foundation/installed-f5756bb.json",
+          "sha256": "27941ad1910d2bf9814ca83aaa456aee97d7921aff675cf4ac58d93d4b5a7ba3"
         }
       ]
     },
@@ -1893,16 +1845,8 @@
       "scope": "Static public-function/ownership/version-model checks passed; qualified SQL Server participants, complete online identity proof and broader Avro coverage remain incomplete",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/static-check.log",
+          "path": "docs/acceptance/evidence/pr7-foundation/source-contracts-f5756bb.txt",
           "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/model-check.log",
-          "sha256": "7d85e2acb283914e5223cf87480fc06f1d46f285be6daaa613443292b341531a"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
-          "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
         }
       ],
       "currentEvidence": "product_model.py check and static_check.py passed"
@@ -1913,20 +1857,8 @@
       "scope": "Linux PRODUCT manifest, 267 file checksums, same-source fingerprint, offline NuGet closure and relocatable Native/host assets passed; Windows/full-product certification remains Blocked",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json",
-          "sha256": "105ea1b50dc861f80c7e051d731a6e5eb0458afe5426e40281ab06dffc2632fa"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/package-final.log",
-          "sha256": "3334a89c1431f646d6dd664625d579d0f8ea074fef579c5523469b5bd918d223"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
-          "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
+          "path": "docs/acceptance/evidence/pr7-foundation/manifest-f5756bb.json",
+          "sha256": "02a7a5ecff71e80286fdd339a8059a5bd583980b2b3c77086838d476a4f90605"
         }
       ]
     }
@@ -8852,8 +8784,8 @@
             "metadata/ci.yml.in",
             "scripts/ctest_release_gate.py"
           ],
-          "verification": "Linux Release PRODUCT, explicit CORE ASan/UBSan and source/Designer builds passed. Fixed unconditional component registration declarations previously hidden by the XML feature guard. GitHub jobs remain unable to start.",
-          "remaining": "Remote Linux/Windows CI is blocked by GitHub account billing. Windows, full independent driver/delivery gates still have no current success record."
+          "verification": "Linux Release PRODUCT/core, ASan/UBSan CORE, 21 actual driver tests and independent installed C/.NET/Java/CLI/Web consumers passed. Worker readiness race found by installed browser acceptance was corrected and its five affected contracts passed. Remote GitHub jobs still cannot start.",
+          "remaining": "Remote Linux/Windows CI is blocked by GitHub account billing; Windows and independent specialty resources have no success record. Full product goals remain incomplete, so release readiness is not passed."
         },
         {
           "id": "P0-02",
@@ -8863,7 +8795,7 @@
             "products/UniversalData.Management/ManagementSecurity.cs",
             "products/UniversalData.Hosting/HostIdentity.cs"
           ],
-          "verification": "Real Management/Worker tests: login, CSRF, reader role denial, object/tenant isolation, logout/rotation; real browser flow passed",
+          "verification": "Real Management/Worker tests: login, CSRF, reader role denial, object/tenant isolation, logout/rotation; real browser flow passed Installed Management/Worker/browser flow passed after an explicit controlReady handshake; unstarted authenticated control and capability denial passed.",
           "remaining": "Windows product verification and an independent production deployment remain unexecuted; do not treat this as a complete platform release."
         },
         {
@@ -8960,8 +8892,8 @@
           "source": [
             "engines/data-flow/cdc.c"
           ],
-          "verification": "No new acceptance claimed for this task in the current iteration",
-          "remaining": "CDC protocol/replica identity/filter/partition/DDL compatibility still requires current-source review and live fault acceptance."
+          "verification": "Current live PostgreSQL/MySQL/MariaDB/SQL Server CDC tests passed, plus real participant recovery on PostgreSQL/MySQL/MariaDB. This is basic protocol acceptance, not the requested complete DDL/filter/partition/reconnect matrix.",
+          "remaining": "Publication row/column filters, partition DDL, provider-stable identity migration, long transactions and the complete live log-expiry/reconnect/schema-fault matrix remain incomplete."
         },
         {
           "id": "P1-07",
@@ -9178,9 +9110,9 @@
         }
       ],
       "validation": {
-        "nativeCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
-        "nativeSourceFingerprint": "f430d25e46eeb1471a46b8d2b38f35304ae2ee4418a904766675121cbeff3cdf",
-        "build": "Linux Release PRODUCT: all configured drivers, Native facade, JNI, .NET 10 CLI/Worker/Management and Designer typecheck/lint/build passed",
+        "nativeCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+        "nativeSourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+        "build": "Linux Release PRODUCT and explicit CORE ASan/UBSan build passed; current hosted control-readiness build passed. Windows/remote CI remain Blocked.",
         "testRuns": [
           {
             "report": "commit-22f189c.xml",
@@ -9545,7 +9477,7 @@
         ],
         "browser": {
           "status": "Passed",
-          "packageId": "browser-2300041e2552484ba5641a8bae369d61",
+          "packageId": "browser-007077a170854a1b815fbfd58a52e57c",
           "edit": true,
           "dragUndoRedo": true,
           "saveReload": true,
@@ -9559,10 +9491,11 @@
         },
         "notRun": [
           "Windows",
-          "current-iteration full live driver matrix",
-          "performance workloads",
-          "installed release consumers",
-          "malicious-extension OS sandbox scenarios"
+          "OCI TCPS live acceptance",
+          "independent SMTP/FTP/SFTP/cloud/SSAS/WMI resources",
+          "full live schema/CDC/connection-loss fault matrix",
+          "malicious-extension OS sandbox scenarios",
+          "future Kafka/Lakehouse and distributed-Worker workloads"
         ],
         "sandboxEnvironment": "bubblewrap namespace creation succeeds; systemd user bus is unavailable, so enforced user cgroup launch cannot be accepted",
         "ci": {
@@ -9573,7 +9506,105 @@
         },
         "evidenceDirectory": "docs/acceptance/evidence/pr7-foundation",
         "checkpointRevision": 2,
-        "rowCommandContract": "docs/architecture/connection-and-plugin-model.md"
+        "rowCommandContract": "docs/architecture/connection-and-plugin-model.md",
+        "productCommit": "f5756bb47e4b7c80d6198a9a807fb9819aca125f",
+        "productSourceFingerprint": "81c4084ace9841d4d54227c0363aa577218c6177515ffb9069f8a1cc4defefb5",
+        "closureReports": [
+          {
+            "path": "docs/acceptance/evidence/pr7-foundation/core-433f846.xml",
+            "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+            "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+            "tests": 69,
+            "failures": 0,
+            "skipped": 0,
+            "note": "Linux Release PRODUCT, all 69 core tests",
+            "sha256": "52bf1e5bbb462e8262a764a87bc113a65aa976c463d079ed781042472b084796"
+          },
+          {
+            "path": "docs/acceptance/evidence/pr7-foundation/drivers-433f846.xml",
+            "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+            "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+            "tests": 21,
+            "failures": 0,
+            "skipped": 0,
+            "note": "21 live PostgreSQL/MySQL/MariaDB/SQL Server tests, including CDC and participant process recovery",
+            "sha256": "5de1c7e012c693098b48a38fb30b9275fa7dc9e0c39c43a29ffcf447c197644c"
+          },
+          {
+            "path": "docs/acceptance/evidence/pr7-foundation/asan-ubsan-433f846.xml",
+            "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+            "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+            "tests": 55,
+            "failures": 0,
+            "skipped": 0,
+            "note": "Explicit Linux CORE profile: ASan/UBSan, detect_leaks=1; 55 tests",
+            "sha256": "625f6503fbfbe9febfc2f2756412cd739e6f6ff4fcb9c6ed1026e546ba246723"
+          },
+          {
+            "path": "docs/acceptance/evidence/pr7-foundation/asan-apache-433f846.xml",
+            "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+            "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+            "tests": 1,
+            "failures": 0,
+            "skipped": 0,
+            "note": "Apache Python ctypes test preloads ASan, detect_leaks=0 for the Python process; other native tests retain leak checks",
+            "sha256": "6570320ab27d97807c92a279eb48f43a5df82561a9c55ee1f78f52298652c746"
+          },
+          {
+            "path": "docs/acceptance/evidence/pr7-foundation/worker-control-f5756bb.xml",
+            "sourceCommit": "f5756bb47e4b7c80d6198a9a807fb9819aca125f",
+            "sourceFingerprint": "81c4084ace9841d4d54227c0363aa577218c6177515ffb9069f8a1cc4defefb5",
+            "tests": 5,
+            "failures": 0,
+            "skipped": 0,
+            "note": "Five affected product contracts, including authenticated control before Native start",
+            "sha256": "3f80a2c54bb97858ac477b61091ea932ce2f8d10e4461d7f8991286266e532d3"
+          }
+        ],
+        "installedConsumers": {
+          "status": "Passed",
+          "platform": "linux-x64",
+          "sourceCommit": "f5756bb47e4b7c80d6198a9a807fb9819aca125f",
+          "sourceFingerprint": "81c4084ace9841d4d54227c0363aa577218c6177515ffb9069f8a1cc4defefb5",
+          "report": "docs/acceptance/evidence/pr7-foundation/installed-f5756bb.json"
+        },
+        "performance": {
+          "report": "remote-bulk-433f846.json",
+          "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+          "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+          "rowsPerMode": 1000000,
+          "transport": "Actual TCP services on the same Linux host; not an inter-host network benchmark",
+          "verification": "Every field read back; typed batch SHA-256 transcript compared; all eight outputs match",
+          "timing": "Native write time; generation and verification reported separately",
+          "nativeSpeedup": {
+            "postgresql": 2.703,
+            "mysql": 1.91,
+            "mariadb": 2.281,
+            "sqlserver_bcp": 1.807
+          },
+          "pipelineMatrix": {
+            "report": "pipeline-million-433f846.json",
+            "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+            "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+            "rows": 1000000,
+            "referenceKeys": 100000,
+            "errorRows": 100000,
+            "samples": 18,
+            "workers": [
+              1,
+              2,
+              4
+            ],
+            "scope": [
+              "Streaming",
+              "Sort Spill",
+              "Join",
+              "error dual sink",
+              "incremental kill/resume",
+              "cache Lookup"
+            ]
+          }
+        }
       }
     }
   }

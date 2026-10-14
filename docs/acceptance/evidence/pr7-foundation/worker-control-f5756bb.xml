@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="5"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="6"
+	timestamp="2026-10-14T13:12:39"
+	>
+	<testcase name="management_authenticated_native_worker" classname="management_authenticated_native_worker" time="2.31185" status="run">
+		<properties/>
+		<system-out>Actual Management/Worker/Native: authentication, CSRF, object roles, tenant isolation, execution, protected parameters, logs and rotation passed
+</system-out>
+	</testcase>
+	<testcase name="hosting_identity_secret_resource_contracts" classname="hosting_identity_secret_resource_contracts" time="1.0747" status="run">
+		<properties/>
+		<system-out>Identity, rotation, object permissions, tenant resources, protected references and redaction passed
+</system-out>
+	</testcase>
+	<testcase name="worker_protocol" classname="worker_protocol" time="0.920364" status="run">
+		<properties/>
+		<system-out>Native ID/control readiness handshake, capability denial, private Journal isolation, terminal identity, pipe loss and stale protocol rejection passed
+</system-out>
+	</testcase>
+	<testcase name="managed_product_worker_process_recovery" classname="managed_product_worker_process_recovery" time="0.888826" status="run">
+		<properties/>
+		<system-out>Product Worker: fixed module, Source/Transform/Destination, real process kill, same Native ID/Row IDs and committed epoch recovery passed
+</system-out>
+	</testcase>
+	<testcase name="managed_registry_scripts_debug_lifecycle" classname="managed_registry_scripts_debug_lifecycle" time="1.37893" status="run">
+		<properties/>
+		<system-out>Managed Registry/task/component ownership, expired borrows, GC, observer fault, cancellation, Native debug/step, deployment compilation and Catalog retention passed
+</system-out>
+	</testcase>
+</testsuite>
