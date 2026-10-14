@@ -1,60 +1,149 @@
 #include "builtins_internal.h"
+/* A single conversion plan is used for configuration and row execution. Policies
+ * apply to fields; ignore never silently removes a complete input record. */
+ud_status ud_builtin_conversion_policy(const ud_json *config, const ud_batch *input,
+                                       uint32_t column, int *error, int *truncation) {
+    UD_TRY(ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, error));
+    UD_TRY(ud_error_policy(config, "truncationPolicy", *error, truncation));
+    const ud_json *columns = ud_member(config, "columns");
+    if (columns && ud_json_kind(columns) != UD_JSON_ARRAY)
+        return UD_SCHEMA;
+    int matched = 0;
+    for (uint32_t j = 0; j < ud_json_size(columns); j++) {
+        const ud_json *item = ud_json_at(columns, j);
+        static const char *keys[] = {"input", "errorDisposition", "truncationDisposition"};
+        UD_TRY(ud_json_keys(item, keys, 3));
+        ud_string name = {0};
+        UD_TRY(ud_json_string(ud_member(item, "input"), &name));
+        int at = -1;
+        ud_id id = {0};
+        int identity = name.length == 32 && !ud_id_parse(name, &id);
+        for (uint32_t k = 0; k < input->columns; k++) {
+            const ud_field *f = input->schema->fields + k;
+            if (identity
+                    ? !ud_id_compare(f->identity, id)
+                    : (name.length == f->name_length && !memcmp(name.data, f->name, name.length)))
+                at = (int)k;
+        }
+        if (at < 0)
+            return UD_SCHEMA;
+        int ep, tp;
+        UD_TRY(ud_error_policy(item, "errorDisposition", *error, &ep));
+        UD_TRY(ud_error_policy(item, "truncationDisposition", *truncation, &tp));
+        if ((uint32_t)at == column) {
+            if (matched++)
+                return UD_SCHEMA;
+            *error = ep;
+            *truncation = tp;
+        }
+    }
+    return UD_OK;
+}
+ud_status ud_builtin_conversion_schema(const ud_component_context *context, const ud_json *config,
+                                       const ud_batch *input, ud_batch **out) {
+    ud_batch *bound = *out;
+    ud_field *fields = ud_alloc(context->memory, bound->columns * sizeof(*fields));
+    if (!fields)
+        return UD_RESOURCE;
+    ud_status status = UD_OK;
+    for (uint32_t j = 0; !status && j < bound->columns; j++) {
+        fields[j] = bound->schema->fields[j];
+        int ep, tp;
+        status = ud_builtin_conversion_policy(config, input, j, &ep, &tp);
+        if (!status && (ep == UD_ERROR_IGNORE || tp == UD_ERROR_IGNORE))
+            fields[j].nullable = 1;
+        if (!status && (ep == UD_ERROR_REDIRECT || tp == UD_ERROR_REDIRECT) &&
+            !(context->connected_outputs & UINT64_C(2)))
+            status = UD_SCHEMA;
+    }
+    ud_batch *replacement = NULL;
+    if (!status)
+        status = ud_batch_create(context->memory, fields, bound->columns, 0, &replacement);
+    ud_free(fields);
+    if (!status) {
+        *out = replacement;
+        ud_batch_destroy(bound);
+    }
+    return status;
+}
 ud_status ud_builtin_cast_rows(builtin *b, const ud_batch *input) {
-    int policy;
-    UD_TRY(ud_error_policy(b->config, "errorPolicy", UD_ERROR_FAIL, &policy));
     uint64_t rounding = 0;
     if (ud_member(b->config, "rounding"))
         UD_TRY(ud_json_uint(ud_member(b->config, "rounding"), &rounding));
     ud_batch *accepted = NULL, *errors = NULL;
     ud_status status =
         ud_batch_create(b->context.memory, b->fields, b->columns, input->rows, &accepted);
-    if (!status && policy == UD_ERROR_REDIRECT)
+    if (!status)
         status = ud_batch_create(b->context.memory, b->errors->schema->fields, b->errors->columns,
                                  input->rows, &errors);
-    ud_value *values = ud_alloc(b->context.memory, (size_t)b->columns * sizeof(*values));
-    if (!status && !values)
+    ud_value *values = ud_alloc(b->context.memory, b->columns * sizeof(*values));
+    int *policies = ud_alloc(b->context.memory, b->columns * 2 * sizeof(*policies));
+    if (!status && (!values || !policies))
         status = UD_RESOURCE;
+    for (uint32_t col = 0; !status && col < b->columns; col++)
+        status = ud_builtin_conversion_policy(b->config, input, col, policies + col * 2,
+                                              policies + col * 2 + 1);
     for (uint32_t row = 0; !status && row < input->rows; row++) {
-        ud_status conversion = UD_OK;
-        uint32_t bad = 0;
         status = ud_activation_check(b->context.activation);
-        for (uint32_t col = 0; !status && !conversion && col < b->columns; col++) {
-            ud_value original;
+        int redirected = 0;
+        for (uint32_t col = 0; !status && !redirected && col < b->columns; col++) {
+            ud_value original = {0};
             status = ud_batch_get(input, row, col, &original);
-            if (!status) {
-                conversion = ud_cast_value(b->context.memory, &input->column[col].field, &original,
-                                           b->fields + col, (int32_t)rounding, values + col, 0);
-                bad = col;
+            ud_status conversion = status;
+            if (!conversion)
+                conversion =
+                    ud_value_cast_field(b->context.memory, input->schema->fields + col, &original,
+                                        b->fields + col, (int32_t)rounding, 0, values + col);
+            int policy = policies[col * 2 + (conversion == UD_TRUNCATED)];
+            if (!status && conversion && ud_record_error_recoverable(conversion) &&
+                policy == UD_ERROR_IGNORE) {
+                if (conversion == UD_TRUNCATED)
+                    conversion = ud_value_cast_field(b->context.memory, input->schema->fields + col,
+                                                     &original, b->fields + col, (int32_t)rounding,
+                                                     1, values + col);
+                else {
+                    values[col] = (ud_value){.type = b->fields[col].type,
+                                             .is_null = 1,
+                                             .precision = b->fields[col].precision,
+                                             .scale = b->fields[col].scale};
+                    conversion = UD_OK;
+                }
+            }
+            if (!status && conversion) {
+                if (!ud_record_error_recoverable(conversion) || policy != UD_ERROR_REDIRECT)
+                    status = conversion;
+                else {
+                    status = ud_error_append(
+                        &b->context.errors, errors,
+                        &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                           .abi_version = UD_ABI_VERSION,
+                                           .input = input,
+                                           .row = row,
+                                           .rule = {"cast", 4},
+                                           .rule_version = 2,
+                                           .column = input->schema->fields[col].identity,
+                                           .code = conversion,
+                                           .policy = policy});
+                    redirected = 1;
+                    if (!status)
+                        ud_task_rows(b->context.activation, 0, 0, 1);
+                }
             }
         }
-        if (!status && !conversion) {
+        if (!status && !redirected) {
             status = ud_batch_append(accepted, values, b->columns);
             if (!status)
                 status = ud_batch_copy_row_info(accepted, accepted->rows - 1, input, row);
-        } else if (!status && (policy == UD_ERROR_FAIL || !ud_record_error_recoverable(conversion)))
-            status = conversion;
-        else if (!status && policy == UD_ERROR_REDIRECT) {
-            status = ud_error_append(&b->context.errors, errors,
-                                     &(ud_record_error){.struct_size = sizeof(ud_record_error),
-                                                        .abi_version = UD_ABI_VERSION,
-                                                        .input = input,
-                                                        .row = row,
-                                                        .rule = (ud_string){"cast", 4},
-                                                        .rule_version = 1,
-                                                        .column = input->column[bad].field.identity,
-                                                        .code = conversion,
-                                                        .policy = policy});
-            if (!status)
-                ud_task_rows(b->context.activation, 0, 0, 1);
         }
         for (uint32_t col = 0; col < b->columns; col++)
             ud_clear_value(values + col);
     }
     if (!status && accepted->rows)
         status = b->context.emit(b->context.emit_user, 0, accepted);
-    if (!status && errors && errors->rows)
+    if (!status && errors->rows)
         status = b->context.emit(b->context.emit_user, 1, errors);
     ud_free(values);
+    ud_free(policies);
     ud_batch_destroy(accepted);
     ud_batch_destroy(errors);
     return status;
@@ -62,6 +151,8 @@ ud_status ud_builtin_cast_rows(builtin *b, const ud_batch *input) {
 
 ud_status ud_builtin_transformed(builtin *b, const ud_batch *in) {
     int kind = b->kind;
+    if (kind == DERIVE)
+        return ud_derive_rows(b->derive, in, b->errors);
     ud_status s = UD_OK;
     uint32_t output_count = b->context.output_count;
     if (kind == BALANCED) {
@@ -130,12 +221,7 @@ ud_status ud_builtin_transformed(builtin *b, const ud_batch *in) {
                         break;
                     }
                 }
-            } else
-                for (uint32_t j = 0; !s && !record_status && j < b->expression_count; j++) {
-                    column = b->fields[in->columns + j].identity;
-                    record_status = ud_expression_evaluate(b->expressions[j], in, row,
-                                                           values + in->columns + j);
-                }
+            }
             if (!s && record_status) {
                 if (policy == UD_ERROR_FAIL || !ud_record_error_recoverable(record_status))
                     s = record_status;

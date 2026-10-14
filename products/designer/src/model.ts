@@ -1,14 +1,14 @@
 import { PROTOCOL_VERSION } from './version';
 export type Configuration = Record<string, unknown>;
 export interface PropertySchema { type?: string | string[]; title?: string; description?: string; enum?: unknown[]; default?: unknown; properties?: Record<string, PropertySchema>; required?: string[]; items?: PropertySchema; additionalProperties?: boolean | PropertySchema; oneOf?: PropertySchema[]; anyOf?: PropertySchema[]; minimum?: number; maximum?: number; minItems?: number; maxItems?: number; }
-export interface Component { id: string; name: string; category: number; inputs: number; outputs: number; dynamicPorts: boolean; structuralControl?: boolean; children?: boolean; errorOutput: number; configurationSchema: PropertySchema; }
+export interface Component { minimumArguments?: number; maximumArguments?: number; id: string; name: string; category: number; inputs: number; outputs: number; dynamicPorts: boolean; structuralControl?: boolean; children?: boolean; errorOutput: number; configurationSchema: PropertySchema; }
 export interface FlowComponent { id: string; component: string; config: Configuration; }
 export interface FlowPath { from: string; output: number; to: string; input: number; }
 export interface TaskDefinition { id: string; kind: string; config: Configuration; children?: ControlGraph; }
 export interface ControlGraph { tasks: TaskDefinition[]; constraints: Constraint[]; }
 export interface Constraint { from: string; to: string; on: 'success' | 'failure' | 'completion'; }
 export interface Connection { id: string; driver: string; resource: string; credentialReference?: string; }
-export interface PackageDocument { version: number; id: string; connections?: Connection[]; controlFlow: ControlGraph; dataFlows: { id: string; components: FlowComponent[]; paths: FlowPath[] }[];
+export interface PackageDocument { variables?: Record<string, unknown>; parameters?: Record<string, unknown>; version: number; id: string; connections?: Connection[]; controlFlow: ControlGraph; dataFlows: { id: string; components: FlowComponent[]; paths: FlowPath[] }[];
   layout?: { version: number; nodes: { flow: string; id: string; x: number; y: number }[]; viewports: { flow: string; x: number; y: number; zoom: number }[] }; }
 export interface RunState { id: string; packageId: string; packageRevision: string; state: string; executionId: string; result: number; timestampMs: number; debug?: { previewRows: number; breakpoints: string[] }; }
 export interface CatalogDocument<T> { id: string; revision: number | bigint; document: T; }
@@ -18,7 +18,7 @@ export function defaults(schema: PropertySchema): Configuration { return Object.
 export function ports(component: Component) {
   return { inputs: component.inputs, outputs: component.outputs, error: component.errorOutput };
 }
-export interface DataField { name: string; type: string; nullable: boolean; identity?: string; physicalIdentity?: string; lineage?: string[]; children?: DataField[]; precision?: number; scale?: number; timezone?: string; keyOrder?: number; }
+export interface DataField { scalar?: { type: string; length: number; codePage: number; localeId: number; comparisonFlags: number; fractionalDigits: number }; name: string; type: string; nullable: boolean; identity?: string; physicalIdentity?: string; lineage?: string[]; children?: DataField[]; precision?: number; scale?: number; timezone?: string; keyOrder?: number; }
 export interface DataSchema { version: number; fields: DataField[]; }
 export interface NativePort { id: string; name: string; direction: number; index: number; flags: number; }
 export interface BoundNode { id: string; inputCount: number; outputCount: number; ports: NativePort[]; inputs: (DataSchema | null)[]; outputs: DataSchema[]; }

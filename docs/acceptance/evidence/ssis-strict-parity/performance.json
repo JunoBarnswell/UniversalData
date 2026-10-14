@@ -1,0 +1,162 @@
+{
+  "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+  "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "logicalProcessors": 5,
+  "remoteBulk": {
+    "postgresql": [
+      {
+        "mode": "parameters",
+        "dialect": 2,
+        "rows": 1000000,
+        "batches": 62,
+        "batchRows": 16384,
+        "writeSeconds": 5.401976,
+        "generationSeconds": 0.328619,
+        "cpuSeconds": 1.570035,
+        "peakRssKiB": 13408,
+        "rowsPerSecond": 185117,
+        "verifiedRowsAndReceipts": true,
+        "outputSignature": "4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427",
+        "verificationSeconds": 1.550792,
+        "table": "ud_bulk_b83cfe8c1a25f1e7d6fbf9880e9d1d37_parameters"
+      },
+      {
+        "mode": "native",
+        "dialect": 2,
+        "rows": 1000000,
+        "batches": 62,
+        "batchRows": 16384,
+        "writeSeconds": 1.69595,
+        "generationSeconds": 0.351574,
+        "cpuSeconds": 1.330419,
+        "peakRssKiB": 13408,
+        "rowsPerSecond": 589640,
+        "verifiedRowsAndReceipts": true,
+        "outputSignature": "4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427",
+        "verificationSeconds": 1.571932,
+        "table": "ud_bulk_b83cfe8c1a25f1e7d6fbf9880e9d1d37_native"
+      },
+      {
+        "nativeSpeedup": 3.185
+      }
+    ],
+    "mysql": [
+      {
+        "mode": "parameters",
+        "dialect": 3,
+        "rows": 1000000,
+        "batches": 62,
+        "batchRows": 16384,
+        "writeSeconds": 6.91807,
+        "generationSeconds": 0.280601,
+        "cpuSeconds": 2.165894,
+        "peakRssKiB": 14584,
+        "rowsPerSecond": 144549,
+        "verifiedRowsAndReceipts": true,
+        "outputSignature": "4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427",
+        "verificationSeconds": 1.907334,
+        "table": "ud_bulk_2ef4600679ec1b5d71c8573e23aa51d5_parameters"
+      },
+      {
+        "mode": "native",
+        "dialect": 3,
+        "rows": 1000000,
+        "batches": 62,
+        "batchRows": 16384,
+        "writeSeconds": 3.88922,
+        "generationSeconds": 0.276552,
+        "cpuSeconds": 1.092446,
+        "peakRssKiB": 14584,
+        "rowsPerSecond": 257121,
+        "verifiedRowsAndReceipts": true,
+        "outputSignature": "4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427",
+        "verificationSeconds": 1.649223,
+        "table": "ud_bulk_2ef4600679ec1b5d71c8573e23aa51d5_native"
+      },
+      {
+        "nativeSpeedup": 1.779
+      }
+    ],
+    "mariadb": [
+      {
+        "mode": "parameters",
+        "dialect": 4,
+        "rows": 1000000,
+        "batches": 62,
+        "batchRows": 16384,
+        "writeSeconds": 5.154746,
+        "generationSeconds": 0.317723,
+        "cpuSeconds": 1.557429,
+        "peakRssKiB": 12996,
+        "rowsPerSecond": 193996,
+        "verifiedRowsAndReceipts": true,
+        "outputSignature": "4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427",
+        "verificationSeconds": 2.025409,
+        "table": "ud_bulk_5caa7e447c9524993f03a5f3934222c3_parameters"
+      },
+      {
+        "mode": "native",
+        "dialect": 4,
+        "rows": 1000000,
+        "batches": 62,
+        "batchRows": 16384,
+        "writeSeconds": 3.366953,
+        "generationSeconds": 0.337761,
+        "cpuSeconds": 1.396483,
+        "peakRssKiB": 12996,
+        "rowsPerSecond": 297004,
+        "verifiedRowsAndReceipts": true,
+        "outputSignature": "4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427",
+        "verificationSeconds": 1.810161,
+        "table": "ud_bulk_5caa7e447c9524993f03a5f3934222c3_native"
+      },
+      {
+        "nativeSpeedup": 1.531
+      }
+    ],
+    "odbc": [
+      {
+        "mode": "parameters",
+        "dialect": 5,
+        "rows": 1000000,
+        "batches": 62,
+        "batchRows": 16384,
+        "writeSeconds": 12.315734,
+        "generationSeconds": 0.357026,
+        "cpuSeconds": 2.365645,
+        "peakRssKiB": 16064,
+        "rowsPerSecond": 81197,
+        "verifiedRowsAndReceipts": true,
+        "outputSignature": "4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427",
+        "verificationSeconds": 2.836956,
+        "table": "ud_bulk_db5efbb46324b94b3e1c041a638f9e37_parameters"
+      },
+      {
+        "mode": "native",
+        "dialect": 5,
+        "rows": 1000000,
+        "batches": 62,
+        "batchRows": 16384,
+        "writeSeconds": 6.694725,
+        "generationSeconds": 0.326803,
+        "cpuSeconds": 2.209148,
+        "peakRssKiB": 16456,
+        "rowsPerSecond": 149371,
+        "verifiedRowsAndReceipts": true,
+        "outputSignature": "4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427",
+        "verificationSeconds": 2.434844,
+        "table": "ud_bulk_db5efbb46324b94b3e1c041a638f9e37_native"
+      },
+      {
+        "nativeSpeedup": 1.84
+      }
+    ]
+  },
+  "matrixSource": "matrix.json",
+  "limits": [
+    "Measured on this shared Linux host; relative driver results are not a general throughput guarantee.",
+    "BatchSize=1 preserves per-batch receipt/Journal work and is slow; no performance success is inferred from recovery confirmation.",
+    "Configured concurrency is recorded separately from actual workerHighWater; serializable shared transactions can serialize work."
+  ]
+}

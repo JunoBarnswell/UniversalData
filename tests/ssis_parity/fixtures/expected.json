@@ -1,0 +1,219 @@
+{
+  "description": "Independent deterministic 50000-row business expectations; NOT real SSIS Golden output",
+  "formatVersion": 1,
+  "header": [
+    "RowId",
+    "OrderNo",
+    "CustomerName",
+    "Status",
+    "Region",
+    "ProductCode",
+    "Amount",
+    "CategoryPath",
+    "CreatedAt",
+    "Remark"
+  ],
+  "clean": {
+    "source": "ssis_50000_clean.csv",
+    "inputRows": 50000,
+    "sourceFileSha256": "195a290c88fc6d51913bd41c4f3fb2bffa5138359af93dc5d31693a03871e1e7",
+    "sourceFileBytes": 4856462,
+    "businessRows": 50000,
+    "errorRows": 0,
+    "errorRowIds": [],
+    "errorRowIdsSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "branches": {
+      "VIP": {
+        "count": 3008,
+        "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+      },
+      "REFUND": {
+        "count": 15342,
+        "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+      },
+      "PAID_OTHER": {
+        "count": 14298,
+        "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+      },
+      "OTHER": {
+        "count": 17352,
+        "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+      }
+    },
+    "region": {
+      "EAST": {
+        "count": 12500,
+        "amountSum": "9032065.52"
+      },
+      "SOUTH": {
+        "count": 12500,
+        "amountSum": "9029806.64"
+      },
+      "NORTH": {
+        "count": 12500,
+        "amountSum": "9029797.76"
+      },
+      "WEST": {
+        "count": 12500,
+        "amountSum": "9031788.88"
+      }
+    },
+    "product": {
+      "P01": {
+        "count": 7142,
+        "amountSum": "5162770.12"
+      },
+      "P02": {
+        "count": 7143,
+        "amountSum": "5162146.68"
+      },
+      "P03": {
+        "count": 7143,
+        "amountSum": "5160096.13"
+      },
+      "P04": {
+        "count": 7143,
+        "amountSum": "5158045.58"
+      },
+      "P05": {
+        "count": 7143,
+        "amountSum": "5161707.66"
+      },
+      "P06": {
+        "count": 7143,
+        "amountSum": "5159371.59"
+      },
+      "P07": {
+        "count": 7143,
+        "amountSum": "5159321.04"
+      }
+    }
+  },
+  "dirty": {
+    "source": "ssis_50000_dirty.csv",
+    "inputRows": 50000,
+    "sourceFileSha256": "5243ec9e2854dc515a3823805c2829e9c528b10febda5ffb89210a03306a78b5",
+    "sourceFileBytes": 4856892,
+    "businessRows": 49950,
+    "errorRows": 50,
+    "errorRowIds": [
+      997,
+      1994,
+      2991,
+      3988,
+      4985,
+      5982,
+      6979,
+      7976,
+      8973,
+      9970,
+      10967,
+      11964,
+      12961,
+      13958,
+      14955,
+      15952,
+      16949,
+      17946,
+      18943,
+      19940,
+      20937,
+      21934,
+      22931,
+      23928,
+      24925,
+      25922,
+      26919,
+      27916,
+      28913,
+      29910,
+      30907,
+      31904,
+      32901,
+      33898,
+      34895,
+      35892,
+      36889,
+      37886,
+      38883,
+      39880,
+      40877,
+      41874,
+      42871,
+      43868,
+      44865,
+      45862,
+      46859,
+      47856,
+      48853,
+      49850
+    ],
+    "errorRowIdsSha256": "9d374dc9cc065c3302c97bc7aa6220e25ed83bd69696612e4c1830a8900b83c7",
+    "branches": {
+      "VIP": {
+        "count": 3004,
+        "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+      },
+      "REFUND": {
+        "count": 15327,
+        "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+      },
+      "PAID_OTHER": {
+        "count": 14284,
+        "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+      },
+      "OTHER": {
+        "count": 17335,
+        "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+      }
+    },
+    "region": {
+      "EAST": {
+        "count": 12488,
+        "amountSum": "9021971.84"
+      },
+      "SOUTH": {
+        "count": 12487,
+        "amountSum": "9021167.39"
+      },
+      "NORTH": {
+        "count": 12487,
+        "amountSum": "9022362.94"
+      },
+      "WEST": {
+        "count": 12488,
+        "amountSum": "9022121.88"
+      }
+    },
+    "product": {
+      "P01": {
+        "count": 7135,
+        "amountSum": "5158217.68"
+      },
+      "P02": {
+        "count": 7136,
+        "amountSum": "5156758.70"
+      },
+      "P03": {
+        "count": 7136,
+        "amountSum": "5155872.61"
+      },
+      "P04": {
+        "count": 7135,
+        "amountSum": "5152792.02"
+      },
+      "P05": {
+        "count": 7136,
+        "amountSum": "5155737.45"
+      },
+      "P06": {
+        "count": 7136,
+        "amountSum": "5154565.84"
+      },
+      "P07": {
+        "count": 7136,
+        "amountSum": "5153679.75"
+      }
+    }
+  }
+}

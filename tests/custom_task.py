@@ -9,7 +9,7 @@ with tempfile.TemporaryDirectory(prefix="ud-native-custom-") as temporary:
     root=pathlib.Path(temporary)
     def fixture(name,extra=None):
         folder=root/name;folder.mkdir()
-        doc={"version":10,"id":"custom","variables":{"n":{"type":"int64","default":0}},
+        doc={"version":11,"id":"custom","variables":{"n":{"type":"int64","default":0}},
              "connections":[{"id":"target","driver":"file","resource":str(folder/"marker")}],
              "controlFlow":{"tasks":[{"id":"custom","kind":"sample.custom","config":{"connection":"target","variable":"n","expression":{"op":"add","args":[{"ref":"n"},{"literal":5,"type":"int64"}]},**(extra or {})}}],"constraints":[]},"dataFlows":[]}
         return folder,doc

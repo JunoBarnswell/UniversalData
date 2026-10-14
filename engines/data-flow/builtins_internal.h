@@ -61,6 +61,13 @@ static inline int file_sink(int k) {
 static inline int sink_kind(int k) {
     return file_sink(k) || k == SQL_SINK || k == REST_SINK;
 }
+typedef struct ud_derive_plan ud_derive_plan;
+ud_status ud_builtin_sink_projection(const ud_component_context *, const ud_json *,
+                                     const ud_batch *, int, ud_batch **, uint32_t **, uint32_t *);
+ud_status ud_derive_bind(const ud_component_context *, const ud_json *, const ud_batch *,
+                         ud_derive_plan **, ud_batch **);
+void ud_derive_destroy(ud_derive_plan *);
+ud_status ud_derive_rows(ud_derive_plan *, const ud_batch *, const ud_batch *);
 typedef struct builtin {
     int kind;
     ud_component_context context;
@@ -80,6 +87,7 @@ typedef struct builtin {
     ud_rest_reader *rest_reader;
     ud_field *fields;
     uint32_t columns;
+    ud_derive_plan *derive;
     ud_expression **expressions;
     uint32_t expression_count;
     ud_connection_lease *lease;
@@ -132,6 +140,9 @@ ud_status ud_builtin_blocking(builtin *b);
 uint64_t ud_builtin_builtin_demand(void *ptr);
 ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud_string text,
                                    ud_component_ports *ports);
+ud_status ud_builtin_conversion_policy(const ud_json *, const ud_batch *, uint32_t, int *, int *);
+ud_status ud_builtin_conversion_schema(const ud_component_context *, const ud_json *,
+                                       const ud_batch *, ud_batch **);
 ud_status ud_builtin_cast_rows(builtin *b, const ud_batch *input);
 ud_status ud_builtin_checkpoint_state(void *ptr, ud_batch **out);
 ud_status ud_builtin_clone_schema(ud_context *ctx, const ud_batch *in, ud_batch **out);

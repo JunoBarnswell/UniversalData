@@ -74,6 +74,7 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
     for (uint32_t i = 0; i < b->expression_count; i++)
         ud_expression_destroy(b->expressions[i]);
     ud_free(b->expressions);
+    ud_derive_destroy(b->derive);
     ud_batch_destroy(b->schema);
     ud_batch_destroy(b->errors);
     for (uint32_t i = 0; i < b->input_count; i++)

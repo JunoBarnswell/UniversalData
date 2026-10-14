@@ -2,7 +2,7 @@
 namespace UniversalData;
 public static class ProductInfo
 {
-    public const string Sdk = "2.0.0";
-    public const int Protocol = 10;
-    public const int WorkerRevision = 2;
+    public const string Sdk = "2.1.0";
+    public const int Protocol = 11;
+    public const int WorkerRevision = 1;
 }

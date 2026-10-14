@@ -11,7 +11,7 @@ static class WorkerManagedRecovery
         Directory.CreateDirectory(directory); string root = Path.Combine(directory,"effects"); Directory.CreateDirectory(root);
         string digest = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(module))).ToLowerInvariant();
         var policy = new HostPolicy(Path.Combine(directory,"state"),[root],[],[Path.GetDirectoryName(module)!],new(),TrustedAssemblyHashes:[digest]);
-        string package = JsonSerializer.Serialize(new { version = 10,id = "managed-worker-recovery",
+        string package = JsonSerializer.Serialize(new { version=11,id = "managed-worker-recovery",
             extensions = new[] { new { kind = "managedAssembly",path = module,sha256 = digest } },
             controlFlow = new { tasks = new[] { new { id = "flow",kind = "dataFlow",config = new { pipeline = "rows" } } },constraints = Array.Empty<object>() },
             dataFlows = new[] { new { id = "rows",components = new[] {
@@ -19,13 +19,14 @@ static class WorkerManagedRecovery
                 new { id = "transform",component = "managed.pass",config = new { root } },
                 new { id = "target",component = "managed.destination",config = new { root } } },
                 paths = new[] { new { from = "source",output = 0,to = "transform",input = 0 },new { from = "transform",output = 0,to = "target",input = 0 } } } } });
-        var request = new WorkerRequest(10,Guid.NewGuid().ToString("N"),"execute",policy,HostIdentity.Operator("local"),package,
+        var request = new WorkerRequest(UniversalData.ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"execute",policy,HostIdentity.Operator("local"),package,
             ControlReference:new ParameterVault(policy).Store("{\"token\":\"managed-recovery-control-capability\"}"));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(40));
         try {
+            Task<string>? workerErrors=null;
             async Task<JsonElement> Frame(Process process,string kind) {
                 while(true) {
-                    string text = await WorkerProtocol.ReadLine(process.StandardOutput,67108864,timeout.Token) ?? throw new Exception("Worker terminated without a Native frame");
+                    string text = await WorkerProtocol.ReadLine(process.StandardOutput,67108864,timeout.Token) ?? throw new Exception("Worker terminated without a Native frame: " + (workerErrors is null ? "" : await workerErrors));
                     using var document = JsonDocument.Parse(text); var value = document.RootElement;
                     if (value.GetProperty("ticket").GetString() != request.Ticket) throw new Exception("Worker ticket changed");
                     if (value.GetProperty("kind").GetString() == "catalog") continue;
@@ -40,7 +41,7 @@ static class WorkerManagedRecovery
             string nativeId;
             Dictionary<string,long> before;
             using(var process = WorkerLauncher.Launch(worker,request)) {
-                var errors = process.StandardError.ReadToEndAsync(timeout.Token);
+                var errors = workerErrors = process.StandardError.ReadToEndAsync(timeout.Token);
                 try {
                     var ready = await Start(process); nativeId = ready.GetProperty("executionId").GetString()!;
                     while(!File.Exists(Path.Combine(root,"kill-ready"))) {
@@ -56,7 +57,7 @@ static class WorkerManagedRecovery
             File.WriteAllText(Path.Combine(root,"continue"),"resume");
             request = request with { ExecutionId = nativeId,Resume = true,Revision = 1 };
             using(var process = WorkerLauncher.Launch(worker,request)) {
-                var errors = process.StandardError.ReadToEndAsync(timeout.Token);
+                var errors = workerErrors = process.StandardError.ReadToEndAsync(timeout.Token);
                 try {
                     var ready = await Start(process); if (ready.GetProperty("executionId").GetString() != nativeId) throw new Exception("Recovery changed Native identity");
                     var terminal = await Frame(process,"terminal");

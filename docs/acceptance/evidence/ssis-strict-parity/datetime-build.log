@@ -1,0 +1,118 @@
+[0/2] Re-checking globbed directories...
+[1/75] Building C object components/data/CMakeFiles/ud_columnar.dir/src/semantics.c.o
+[2/75] Linking C static library components/data/libud_columnar.a
+[3/75] Building C object CMakeFiles/ud_data.dir/components/data/src/semantics.c.o
+[4/75] Linking C executable ud_remote_bulk_benchmark
+[5/75] Linking C executable ud_benchmark
+[6/75] Building C object tests/CMakeFiles/test_value_semantics.dir/value_semantics.c.o
+/tmp/UniversalData-Next/tests/value_semantics.c: In function ‘expressions’:
+/tmp/UniversalData-Next/tests/value_semantics.c:365:5: warning: missing initializer for field ‘resolve_field’ of ‘ud_expression_options’ [-Wmissing-field-initializers]
+  365 |     ud_expression_options o = {sizeof(o), UD_ABI_VERSION, batch, NULL, NULL};
+      |     ^~~~~~~~~~~~~~~~~~~~~
+In file included from /tmp/UniversalData-Next/include/ud/compute.h:4,
+                 from /tmp/UniversalData-Next/tests/value_semantics.c:1:
+/tmp/UniversalData-Next/include/ud/expression.h:18:34: note: ‘resolve_field’ declared here
+   18 |     ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
+      |                                  ^~~~~~~~~~~~~
+[7/75] Linking CXX executable tests/test_catalog_secrets
+[8/75] Linking C executable tests/test_transaction_facts
+[9/75] Linking CXX shared library libud_data.so.2.1.0
+[10/75] Creating library symlink libud_data.so.11 libud_data.so
+[11/75] Linking C executable tests/test_schema_identity
+[12/75] Linking C shared library bindings/java/native/libud_java.so
+[13/75] Linking CXX executable tests/test_checkpoint_contract
+[14/75] Linking CXX executable tests/test_execution_identity
+[15/75] Linking C executable tests/test_schema_discovery
+[16/75] Linking C executable tests/test_type_domains
+[17/75] Linking C executable tests/test_record_errors
+[18/75] Linking C executable tests/test_sql_bulk
+[19/75] Linking C executable tests/test_format
+[20/75] Linking C executable tests/test_types
+[21/75] Linking C executable tests/test_columnar
+[22/75] Linking C executable tests/test_regex
+[23/75] Linking C executable tests/test_compute
+[24/75] Linking C executable tests/test_nested
+[25/75] Linking C executable tests/test_mapping
+[26/75] Linking C executable tests/test_quality
+[27/75] Linking C executable tests/test_connector_sqlite
+[28/75] Linking C executable tests/test_postgresql_schema
+[29/75] Linking C executable tests/test_postgresql_cancel
+[30/75] Linking C executable tests/test_architecture_foundation
+[31/75] Linking C executable tests/test_value_semantics
+[32/75] Linking CXX executable tests/test_four_engines
+[33/75] Linking CXX executable tests/test_infrastructure
+[34/75] Linking CXX executable tests/test_core_runtime
+[35/75] Linking CXX executable tests/test_package_execution
+[36/75] Linking CXX executable tests/test_next_phase_queries
+[37/75] Linking CXX executable tests/test_package_outcome
+[38/75] Linking CXX executable tests/test_package_sql
+[39/75] Linking CXX executable tests/test_four_engine_connections
+[40/75] Linking C executable tests/typed_data_runner
+[41/75] Linking CXX executable tests/test_sql_command_records
+[42/75] Linking CXX executable tests/test_catalog_leases
+[43/75] Linking CXX executable tests/test_catalog
+[44/75] Linking CXX executable tests/test_package_recovery
+[45/75] Linking CXX executable tests/test_project
+[46/75] Linking CXX executable tests/test_child_package
+[47/75] Linking CXX executable tests/test_catalog_history
+[48/75] Linking CXX executable tests/test_filesystem_task
+[49/75] Linking CXX executable tests/test_process_task
+[50/75] Linking C executable tests/test_profile
+[51/75] Linking C shared module tests/sample_custom_task.so
+[52/75] Linking C shared module tests/sample_custom_bad.so
+[53/75] Linking CXX executable tests/test_http_task
+[54/75] Linking C executable tests/test_postgresql_values
+[55/75] Linking CXX executable tests/test_profile_task
+[56/75] Linking C executable tests/test_custom_task
+[57/75] Linking CXX executable tests/test_next_phase
+[58/75] Linking C executable tests/test_advanced_native
+[59/75] Linking C executable tests/test_advanced_sql
+[60/75] Linking C executable tests/test_wire_decode
+[61/75] Linking C executable tests/test_transaction_participants
+[62/75] Linking C executable tests/test_advanced_cdc
+[63/75] Linking C executable tests/test_mysql_domains
+[64/75] Linking C executable tests/test_file_layout
+[65/75] Linking CXX executable tests/test_next_phase_execution
+[66/75] Linking C executable tests/test_ssis_expression
+[67/75] Linking CXX executable tests/test_file_generation
+[68/75] Linking C executable tests/test_ssis_database
+[69/75] Linking CXX executable tests/test_product_native
+[70/75] Linking CXX executable tests/test_ssis_workflow
+[71/75] cd /tmp/ud-next-build/hosts && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.CommandLine/UniversalData.CommandLine.csproj -c Release -o /tmp/ud-next-build/hosts/product/cli && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.Worker/UniversalData.Worker.csproj -c Release -o /tmp/ud-next-build/hosts/product/worker && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.Management/UniversalData.Management.csproj -c Release -o /tmp/ud-next-build/hosts/product/management -p:DesignerAssets=/tmp/ud-next-build/hosts/designer && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.1.0 /tmp/ud-next-build/hosts/product/cli/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.1.0 /tmp/ud-next-build/hosts/product/worker/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.1.0 /tmp/ud-next-build/hosts/product/management/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy_directory /tmp/ud-next-build/hosts/product/worker /tmp/ud-next-build/hosts/product/management/worker
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.CommandLine -> /tmp/UniversalData-Next/products/UniversalData.CommandLine/bin/Release/net10.0/ud_cli.dll
+  UniversalData.CommandLine -> /tmp/ud-next-build/hosts/product/cli/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Worker -> /tmp/UniversalData-Next/products/UniversalData.Worker/bin/Release/net10.0/ud_worker.dll
+  UniversalData.Worker -> /tmp/ud-next-build/hosts/product/worker/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Management -> /tmp/UniversalData-Next/products/UniversalData.Management/bin/Release/net10.0/UniversalData.Management.dll
+  UniversalData.Management -> /tmp/ud-next-build/hosts/product/management/
+[72/75] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/hosting_contracts/HostingContracts.csproj -c Release -o /tmp/ud-next-build/tests/hosting-contracts
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  HostingContracts -> /tmp/UniversalData-Next/tests/hosting_contracts/bin/Release/net10.0/HostingContracts.dll
+  HostingContracts -> /tmp/ud-next-build/tests/hosting-contracts/
+[73/75] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/managed_recovery/ManagedRecovery.csproj -c Release -o /tmp/ud-next-build/tests/managed-recovery
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedRecovery -> /tmp/UniversalData-Next/tests/managed_recovery/bin/Release/net10.0/ManagedRecovery.dll
+  ManagedRecovery -> /tmp/ud-next-build/tests/managed-recovery/
+[74/75] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/managed_product/ManagedProduct.csproj -c Release -o /tmp/ud-next-build/tests/managed-product
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedProduct -> /tmp/UniversalData-Next/tests/managed_product/bin/Release/net10.0/ManagedProduct.dll
+  ManagedProduct -> /tmp/ud-next-build/tests/managed-product/

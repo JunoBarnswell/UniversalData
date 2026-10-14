@@ -20,6 +20,8 @@ public final class Batch implements AutoCloseable {
     public synchronized BigInteger getUInt64(int row, int column) { ensureOpen(); return new BigInteger(nativeUInt64(handle, row, column)); }
     public synchronized Duration getDuration(int row, int column) { ensureOpen(); return new Duration(nativeDuration(handle, row, column)); }
     public synchronized Interval getInterval(int row, int column) { ensureOpen(); long[] parts = nativeInterval(handle, row, column); return new Interval(Math.toIntExact(parts[0]), Math.toIntExact(parts[1]), parts[2]); }
+    public synchronized TemporalValue getDateTime(int row,int column) {ensureOpen();long[] value=nativeDateTime(handle,row,column);return new TemporalValue(value[0],value[2]==0?null:Math.toIntExact(value[1]));}
+    private static native long[] nativeDateTime(long handle,int row,int column);
     private static native String nativeUInt64(long handle, int row, int column);
     private static native long nativeDuration(long handle, int row, int column);
     private static native long[] nativeInterval(long handle, int row, int column);

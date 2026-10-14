@@ -1,0 +1,22 @@
+Internal ctest changing into directory: /tmp/ud-next-asan
+Test project /tmp/ud-next-asan
+    Start 10: source_record_errors
+1/8 Test #10: source_record_errors ................   Passed    0.02 sec
+    Start 15: compute_plan
+2/8 Test #15: compute_plan ........................   Passed    0.02 sec
+    Start 22: shared_value_semantics
+3/8 Test #22: shared_value_semantics ..............   Passed    0.48 sec
+    Start 31: sql_command_records_recovery
+4/8 Test #31: sql_command_records_recovery ........   Passed    1.40 sec
+    Start 34: package_durable_recovery
+5/8 Test #34: package_durable_recovery ............   Passed    1.45 sec
+    Start 55: native_sql_source_record_errors
+6/8 Test #55: native_sql_source_record_errors .....   Passed    0.08 sec
+    Start 59: ssis_native_expression_contract
+7/8 Test #59: ssis_native_expression_contract .....   Passed    0.24 sec
+    Start 60: ssis_row_error_atomicity_recovery
+8/8 Test #60: ssis_row_error_atomicity_recovery ...   Passed    6.38 sec
+
+100% tests passed, 0 tests failed out of 8
+
+Total Test time (real) =  10.06 sec

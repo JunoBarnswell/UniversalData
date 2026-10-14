@@ -321,6 +321,8 @@ typedef struct java_execution {
 } java_execution;
 static int attach(java_execution *j, JNIEnv **env, int *attached) {
     *attached = 0;
+    if (!j->vm)
+        return 0;
     jint status = (*j->vm)->GetEnv(j->vm, (void **)env, JNI_VERSION_1_8);
     if (status == JNI_EDETACHED) {
         if ((*j->vm)->AttachCurrentThread(j->vm, (void **)env, NULL) != JNI_OK)
@@ -841,7 +843,7 @@ typedef struct java_registration {
     JavaVM *vm;
     jobject factory;
     jclass type;
-    jmethodID prepare, invoke, lifecycle;
+    jmethodID prepare, invoke, lifecycle, configure, checkpoint, restore, epoch;
 } java_registration;
 typedef struct java_task {
     java_registration *owner;
@@ -1480,4 +1482,850 @@ JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeSecureCompact(JNIEnv
 }
 JNIEXPORT jlong JNICALL Java_org_universaldata_Registry_nativeFeatures(JNIEnv *env,jclass type) {
     (void)env; (void)type; return (jlong)ud_registry_features();
+}
+
+/* JNI is a lifecycle projection of the same Native function and Batch contract. */
+static ud_status java_function_bind(void *user, ud_context *memory, const ud_field *fields,
+                                    uint32_t count, ud_batch **out) {
+    *out = NULL;
+    java_registration *owner = user;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (!owner_attach(owner, &env, &attached))
+        return UD_RESOURCE;
+    ud_status s = UD_OK;
+    ud_batch *arguments = NULL;
+    char *schema = NULL;
+    uint32_t length = 0;
+    int frame = (*env)->PushLocalFrame(env, 16) >= 0;
+    if (!frame)
+        s = UD_RESOURCE;
+    if (!s)
+        s = ud_function_argument_schema(memory, fields, count, &arguments);
+    if (!s && arguments)
+        s = ud_schema_to_json(arguments, &schema, &length);
+    jbyteArray result = NULL;
+    if (!s) {
+        jstring input = schema
+                            ? utf8_length(env, schema, length)
+                            : utf8(env, "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[]}");
+        if (!input)
+            s = UD_RESOURCE;
+        else
+            result = (*env)->CallStaticObjectMethod(env, owner->type, owner->prepare,
+                                                    owner->factory, input);
+    }
+    if (!s && (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        s = ud_context_report(memory, UD_SCHEMA, (ud_string){"Java function binding failed", 28});
+    }
+    uint32_t n = 0;
+    char *text = !s && result ? copy_data(env, memory, result, &n) : NULL;
+    if (!s && !text)
+        s = UD_SCHEMA;
+    if (!s)
+        s = ud_schema_from_json(memory, text, n, (ud_string){0}, out);
+    ud_free(text);
+    ud_free(schema);
+    ud_batch_destroy(arguments);
+    if (frame)
+        (*env)->PopLocalFrame(env, NULL);
+    if (attached)
+        (*owner->vm)->DetachCurrentThread(owner->vm);
+    return s;
+}
+static ud_status java_function_evaluate(void *user, ud_context *memory, const ud_field *fields,
+                                        const ud_value *values, uint32_t count,
+                                        const ud_field *result, ud_value *out) {
+    memset(out, 0, sizeof(*out));
+    java_registration *owner = user;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (!owner_attach(owner, &env, &attached))
+        return UD_RESOURCE;
+    int frame = (*env)->PushLocalFrame(env, 16) >= 0;
+    ud_batch *arguments = NULL;
+    ud_status s =
+        frame ? ud_function_arguments(memory, fields, values, count, &arguments) : UD_RESOURCE;
+    if (!s)
+        (*env)->CallStaticVoidMethod(env, owner->type, owner->invoke, owner->factory,
+                                     (jlong)(intptr_t)memory, (jlong)(intptr_t)arguments,
+                                     (jlong)(intptr_t)result, (jlong)(intptr_t)out);
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        s = ud_context_report(memory, UD_PARSE, (ud_string){"Java function evaluation failed", 31});
+    }
+    ud_batch_destroy(arguments);
+    if (frame)
+        (*env)->PopLocalFrame(env, NULL);
+    if (attached)
+        (*owner->vm)->DetachCurrentThread(owner->vm);
+    return s;
+}
+JNIEXPORT void JNICALL Java_org_universaldata_Registry_nativeRegisterFunction(
+    JNIEnv *env, jclass type, jlong handle, jbyteArray id, jbyteArray name, jbyteArray version,
+    jint minimum, jint maximum, jboolean deterministic, jboolean threads, jobject definition) {
+    java_registry *registry = (java_registry *)(intptr_t)handle;
+    char *text[3] = {0};
+    uint32_t size[3] = {0};
+    jbyteArray input[] = {id, name, version};
+    ud_status s = UD_OK;
+    for (uint32_t j = 0; j < 3; j++) {
+        text[j] = copy_data(env, registry->memory, input[j], size + j);
+        if (!text[j])
+            s = UD_RESOURCE;
+    }
+    java_registration *owner = !s ? ud_alloc(registry->memory, sizeof(*owner)) : NULL;
+    if (!s && !owner)
+        s = UD_RESOURCE;
+    if (!s) {
+        atomic_init(&owner->references, 1);
+        owner->memory = registry->memory;
+        if ((*env)->GetJavaVM(env, &owner->vm) != JNI_OK)
+            s = UD_RESOURCE;
+        owner->factory = (*env)->NewGlobalRef(env, definition);
+        owner->type = (*env)->NewGlobalRef(env, type);
+        owner->prepare = (*env)->GetStaticMethodID(
+            env, type, "bindFunction",
+            "(Lorg/universaldata/Registry$FunctionDefinition;Ljava/lang/String;)[B");
+        owner->invoke =
+            (*env)->GetStaticMethodID(env, type, "evaluateFunction",
+                                      "(Lorg/universaldata/Registry$FunctionDefinition;JJJJ)V");
+        if (!owner->factory || !owner->type || !owner->prepare || !owner->invoke)
+            s = UD_RESOURCE;
+    }
+    ud_component_descriptor descriptor = {
+        .struct_size = sizeof(descriptor),
+        .abi_version = UD_ABI_VERSION,
+        .id = {text[0], size[0]},
+        .name = {text[1], size[1]},
+        .version = {text[2], size[2]},
+        .configuration_schema = {"{}", 2},
+        .category = UD_COMPONENT_FUNCTION,
+        .synchronous_input = -1,
+        .error_output = -1,
+        .user = owner,
+        .min_arguments = (uint32_t)minimum,
+        .max_arguments = (uint32_t)maximum,
+        .capabilities = UD_FUNCTION_PURE | (deterministic ? UD_FUNCTION_DETERMINISTIC : 0) |
+                        (threads ? UD_COMPONENT_THREAD_SAFE : 0),
+        .function_bind = java_function_bind,
+        .function_evaluate = java_function_evaluate};
+    if (!s)
+        s = ud_registry_register_owned(registry->registry, &descriptor, 1, owner, owner_retain,
+                                       owner_release);
+    if (owner)
+        owner_release(owner);
+    for (uint32_t j = 0; j < 3; j++)
+        ud_free(text[j]);
+    if (s)
+        fail(env, s, ud_status_name(s));
+}
+JNIEXPORT void JNICALL Java_org_universaldata_Registry_nativeFunctionCheck(JNIEnv *env, jclass type,
+                                                                           jlong memory) {
+    (void)type;
+    if (ud_is_cancelled((ud_context *)(intptr_t)memory))
+        fail(env, UD_CANCELLED, "Function cancelled");
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_Registry_nativeFunctionSchema(JNIEnv *env,
+                                                                               jclass type,
+                                                                               jlong memory,
+                                                                               jlong field) {
+    (void)type;
+    ud_batch *batch = NULL;
+    char *text = NULL;
+    uint32_t n = 0;
+    ud_status s = ud_batch_create((ud_context *)(intptr_t)memory, (const ud_field *)(intptr_t)field,
+                                  1, 0, &batch);
+    if (!s)
+        s = ud_schema_to_json(batch, &text, &n);
+    jstring result = !s ? utf8_length(env, text, n) : NULL;
+    ud_free(text);
+    ud_batch_destroy(batch);
+    if (s)
+        fail(env, s, ud_status_name(s));
+    return result;
+}
+JNIEXPORT void JNICALL Java_org_universaldata_Registry_nativeFunctionResult(
+    JNIEnv *env, jclass type, jlong memory, jlong batch, jlong field, jlong result) {
+    (void)type;
+    ud_status s =
+        ud_function_result((ud_context *)(intptr_t)memory, (const ud_batch *)(intptr_t)batch,
+                           (const ud_field *)(intptr_t)field, (ud_value *)(intptr_t)result);
+    if (s)
+        fail(env, s, ud_status_name(s));
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_CallbackBatch_nativeCreate(JNIEnv *env, jclass type,
+                                                                          jlong memory,
+                                                                          jbyteArray schema,
+                                                                          jbyteArray rows) {
+    (void)type;
+    ud_context *ctx = (ud_context *)(intptr_t)memory;
+    uint32_t sn = 0, rn = 0;
+    char *sc = copy_data(env, ctx, schema, &sn), *data = copy_data(env, ctx, rows, &rn);
+    ud_batch *batch = NULL;
+    ud_status s = sc && data
+                      ? ud_batch_from_json_schema(ctx, sc, sn, data, rn, UD_ROUND_EXACT, &batch)
+                      : UD_RESOURCE;
+    ud_free(sc);
+    ud_free(data);
+    if (s)
+        fail(env, s, ud_status_name(s));
+    return (jlong)(intptr_t)batch;
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_CallbackBatch_nativeText(JNIEnv *env, jclass type,
+                                                                          jlong pointer, jint kind,
+                                                                          jint row) {
+    (void)type;
+    ud_batch *batch = (ud_batch *)(intptr_t)pointer;
+    char *text = NULL;
+    uint32_t n = 0;
+    ud_status s = kind == 0   ? ud_schema_to_json(batch, &text, &n)
+                  : kind == 1 ? ud_batch_to_json(batch, &text, &n)
+                  : row < 0   ? UD_INVALID
+                              : ud_batch_row_info_json(batch, (uint32_t)row, &text, &n);
+    jstring result = !s ? utf8_length(env, text, n) : NULL;
+    ud_free(text);
+    if (s)
+        fail(env, s, ud_status_name(s));
+    return result;
+}
+JNIEXPORT jint JNICALL Java_org_universaldata_CallbackBatch_nativeCount(JNIEnv *env, jclass type,
+                                                                        jlong pointer,
+                                                                        jboolean columns) {
+    (void)env;
+    (void)type;
+    ud_batch *batch = (ud_batch *)(intptr_t)pointer;
+    return (jint)(columns ? ud_batch_columns(batch) : ud_batch_rows(batch));
+}
+static ud_status callback_value(JNIEnv *env, jlong pointer, jint row, jint col, ud_value *v) {
+    ud_status s = row < 0 || col < 0 ? UD_INVALID
+                                     : ud_batch_get((ud_batch *)(intptr_t)pointer, (uint32_t)row,
+                                                    (uint32_t)col, v);
+    if (!s && v->is_absent)
+        s = UD_INCOMPATIBLE;
+    if (s)
+        fail(env, s, ud_status_name(s));
+    return s;
+}
+JNIEXPORT jboolean JNICALL Java_org_universaldata_CallbackBatch_nativeNull(JNIEnv *env, jclass type,
+                                                                           jlong pointer, jint row,
+                                                                           jint col) {
+    (void)type;
+    ud_value v = {0};
+    return callback_value(env, pointer, row, col, &v) ? JNI_FALSE
+           : v.is_null                                ? JNI_TRUE
+                                                      : JNI_FALSE;
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_CallbackBatch_nativeUtf8(JNIEnv *env, jclass type,
+                                                                          jlong pointer, jint row,
+                                                                          jint col) {
+    (void)type;
+    ud_value v = {0};
+    if (callback_value(env, pointer, row, col, &v))
+        return NULL;
+    if (v.type != UD_UTF8) {
+        fail(env, UD_SCHEMA, "Argument is not UTF8");
+        return NULL;
+    }
+    return v.is_null ? NULL : utf8_length(env, v.text, v.text_length);
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_CallbackBatch_nativeInt64(JNIEnv *env, jclass type,
+                                                                         jlong pointer, jint row,
+                                                                         jint col) {
+    (void)type;
+    ud_value v = {0};
+    if (callback_value(env, pointer, row, col, &v))
+        return 0;
+    if (v.type != UD_INT64 || v.is_null) {
+        fail(env, UD_SCHEMA, "Argument is not a present Int64");
+        return 0;
+    }
+    return (jlong)v.integer;
+}
+JNIEXPORT void JNICALL Java_org_universaldata_CallbackBatch_nativeCopyIdentity(
+    JNIEnv *env, jclass type, jlong pointer, jint row, jlong source, jint source_row) {
+    (void)type;
+    ud_row_info info;
+    ud_status s = row < 0 || source_row < 0 ? UD_INVALID
+                                            : ud_batch_row_info((const ud_batch *)(intptr_t)source,
+                                                                (uint32_t)source_row, &info);
+    if (!s)
+        s = ud_batch_set_row_info((ud_batch *)(intptr_t)pointer, (uint32_t)row, &info);
+    if (s)
+        fail(env, s, ud_status_name(s));
+}
+JNIEXPORT void JNICALL Java_org_universaldata_CallbackBatch_nativeDestroy(JNIEnv *env, jclass type,
+                                                                          jlong pointer) {
+    (void)env;
+    (void)type;
+    ud_batch_destroy((ud_batch *)(intptr_t)pointer);
+}
+
+typedef struct java_component {
+    java_registration *owner;
+    jobject component;
+    ud_component_context context;
+} java_component;
+static jobjectArray component_schemas(JNIEnv *env, const ud_batch *const *schemas, uint32_t count) {
+    jclass string = (*env)->FindClass(env, "java/lang/String");
+    if (!string)
+        return NULL;
+    jobjectArray out = (*env)->NewObjectArray(env, (jsize)count, string, NULL);
+    if (!out)
+        return NULL;
+    for (uint32_t j = 0; j < count; j++) {
+        if (!schemas[j])
+            continue;
+        char *text = NULL;
+        uint32_t n;
+        ud_status s = ud_schema_to_json(schemas[j], &text, &n);
+        if (s) {
+            fail(env, s, ud_status_name(s));
+            return NULL;
+        }
+        jstring value = utf8_length(env, text, n);
+        ud_free(text);
+        if (!value)
+            return NULL;
+        (*env)->SetObjectArrayElement(env, out, (jsize)j, value);
+        (*env)->DeleteLocalRef(env, value);
+    }
+    return out;
+}
+static ud_status java_component_configure(void *user, const ud_component_context *context,
+                                          ud_string config, const ud_batch *const *inputs,
+                                          ud_batch **outputs) {
+    java_registration *owner = user;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (!owner_attach(owner, &env, &attached))
+        return UD_RESOURCE;
+    int frame = (*env)->PushLocalFrame(env, 32) >= 0;
+    ud_status s = frame ? UD_OK : UD_RESOURCE;
+    jobjectArray result = NULL;
+    if (!s) {
+        jobjectArray schemas = component_schemas(env, inputs, context->input_count);
+        jstring configuration = utf8_length(env, config.data, config.length);
+        if (!schemas || !configuration)
+            s = UD_RESOURCE;
+        else
+            result = (*env)->CallStaticObjectMethod(env, owner->type, owner->configure,
+                                                    owner->factory, configuration, schemas);
+    }
+    if (!s)
+        s = callback_failure(env, context->memory);
+    if (!s && (!result || (uint32_t)(*env)->GetArrayLength(env, result) != context->output_count))
+        s = UD_SCHEMA;
+    char *scope = NULL;
+    uint32_t scope_size = 0;
+    if (!s)
+        s = ud_component_schema_namespace(context, &scope, &scope_size);
+    for (uint32_t j = 0; !s && j < context->output_count; j++) {
+        jbyteArray schema = (*env)->GetObjectArrayElement(env, result, (jsize)j);
+        uint32_t n = 0;
+        char *text = schema ? copy_data(env, context->memory, schema, &n) : NULL;
+        s = text ? ud_schema_from_json(context->memory, text, n, (ud_string){scope, scope_size},
+                                       outputs + j)
+                 : UD_SCHEMA;
+        ud_free(text);
+        if (schema)
+            (*env)->DeleteLocalRef(env, schema);
+    }
+    ud_free(scope);
+    if (frame)
+        (*env)->PopLocalFrame(env, NULL);
+    if (attached)
+        (*owner->vm)->DetachCurrentThread(owner->vm);
+    return s;
+}
+static ud_status java_component_prepare(void *user, const ud_component_context *context,
+                                        ud_string config, const ud_batch *const *inputs,
+                                        const ud_batch *const *outputs, void **out) {
+    *out = NULL;
+    java_registration *owner = user;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (!owner_attach(owner, &env, &attached))
+        return UD_RESOURCE;
+    int frame = (*env)->PushLocalFrame(env, 32) >= 0;
+    ud_status s = frame ? UD_OK : UD_RESOURCE;
+    java_component *instance = !s ? ud_alloc(context->memory, sizeof(*instance)) : NULL;
+    if (!s && !instance)
+        s = UD_RESOURCE;
+    if (!s) {
+        instance->owner = owner;
+        instance->context = *context;
+        jobjectArray in = component_schemas(env, inputs, context->input_count),
+                     output = component_schemas(env, outputs, context->output_count);
+        jstring configuration = utf8_length(env, config.data, config.length);
+        jobject value = in && output && configuration
+                            ? (*env)->CallStaticObjectMethod(
+                                  env, owner->type, owner->prepare, owner->factory,
+                                  (jlong)(intptr_t)&instance->context, configuration, in, output)
+                            : NULL;
+        s = callback_failure(env, context->memory);
+        if (!s && !value)
+            s = UD_RESOURCE;
+        if (!s) {
+            instance->component = (*env)->NewGlobalRef(env, value);
+            if (!instance->component) {
+                (*env)->CallStaticVoidMethod(env, owner->type, owner->lifecycle, value,
+                                             (jlong)(intptr_t)&instance->context, 2);
+                callback_failure(env, context->memory);
+                s = UD_RESOURCE;
+            }
+        }
+    }
+    if (s)
+        ud_free(instance);
+    else
+        *out = instance;
+    if (frame)
+        (*env)->PopLocalFrame(env, NULL);
+    if (attached)
+        (*owner->vm)->DetachCurrentThread(owner->vm);
+    return s;
+}
+static ud_status java_component_step(void *pointer, const ud_component_event *event) {
+    java_component *instance = pointer;
+    java_registration *owner = instance->owner;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (!owner_attach(owner, &env, &attached))
+        return UD_RESOURCE;
+    int frame = (*env)->PushLocalFrame(env, 16) >= 0;
+    ud_status s = frame ? UD_OK : UD_RESOURCE;
+    if (!s) {
+        jstring position =
+            utf8_length(env, event->source_position.data ? event->source_position.data : "",
+                        event->source_position.length);
+        if (!position)
+            s = UD_RESOURCE;
+        else
+            s = (*env)->CallStaticIntMethod(env, owner->type, owner->invoke, instance->component,
+                                            (jlong)(intptr_t)&instance->context, (jint)event->kind,
+                                            (jint)event->input, (jlong)(intptr_t)event->batch,
+                                            (jlong)event->epoch, (jlong)event->schema_version,
+                                            (jlong)event->watermark, position);
+        ud_status error = callback_failure(env, instance->context.memory);
+        if (error)
+            s = error;
+    }
+    if (frame)
+        (*env)->PopLocalFrame(env, NULL);
+    if (attached)
+        (*owner->vm)->DetachCurrentThread(owner->vm);
+    return s;
+}
+static ud_status component_lifecycle(java_component *instance, int action) {
+    java_registration *owner = instance->owner;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (!owner_attach(owner, &env, &attached))
+        return UD_RESOURCE;
+    int frame = (*env)->PushLocalFrame(env, 16) >= 0;
+    ud_status s = frame ? UD_OK : UD_RESOURCE;
+    if (!s) {
+        (*env)->CallStaticVoidMethod(env, owner->type, owner->lifecycle, instance->component,
+                                     (jlong)(intptr_t)&instance->context, (jint)action);
+        s = callback_failure(env, instance->context.memory);
+    }
+    if (frame)
+        (*env)->PopLocalFrame(env, NULL);
+    if (attached)
+        (*owner->vm)->DetachCurrentThread(owner->vm);
+    return s;
+}
+static ud_status java_component_finish(void *pointer) {
+    return component_lifecycle(pointer, 0);
+}
+static ud_status java_component_confirm(void *pointer) {
+    return component_lifecycle(pointer, 3);
+}
+static void java_component_cancel(void *pointer) {
+    java_component *instance = pointer;
+    ud_status s = component_lifecycle(instance, 1);
+    if (s)
+        ud_activation_report_fault(instance->context.activation, s,
+                                   (ud_string){"Java component cancel failed", 28});
+}
+static void java_component_dispose(void *pointer, ud_status result) {
+    (void)result;
+    java_component *instance = pointer;
+    java_registration *owner = instance->owner;
+    ud_status s = component_lifecycle(instance, 2);
+    if (s)
+        ud_activation_report_fault(instance->context.activation, s,
+                                   (ud_string){"Java component disposal failed", 30});
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (owner_attach(owner, &env, &attached)) {
+        (*env)->DeleteGlobalRef(env, instance->component);
+        if (attached)
+            (*owner->vm)->DetachCurrentThread(owner->vm);
+    }
+    ud_free(instance);
+}
+static ud_status java_component_checkpoint(void *pointer, ud_batch **out) {
+    *out = NULL;
+    java_component *instance = pointer;
+    java_registration *owner = instance->owner;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (!owner_attach(owner, &env, &attached))
+        return UD_RESOURCE;
+    int frame = (*env)->PushLocalFrame(env, 16) >= 0;
+    ud_status s = frame ? UD_OK : UD_RESOURCE;
+    if (!s) {
+        jlong batch =
+            (*env)->CallStaticLongMethod(env, owner->type, owner->checkpoint, instance->component,
+                                         (jlong)(intptr_t)&instance->context);
+        s = callback_failure(env, instance->context.memory);
+        if (!s)
+            *out = (ud_batch *)(intptr_t)batch;
+    }
+    if (frame)
+        (*env)->PopLocalFrame(env, NULL);
+    if (attached)
+        (*owner->vm)->DetachCurrentThread(owner->vm);
+    return s;
+}
+static ud_status java_component_restore(void *pointer, const ud_batch *state) {
+    java_component *instance = pointer;
+    java_registration *owner = instance->owner;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (!owner_attach(owner, &env, &attached))
+        return UD_RESOURCE;
+    int frame = (*env)->PushLocalFrame(env, 16) >= 0;
+    ud_status s = frame ? UD_OK : UD_RESOURCE;
+    if (!s) {
+        (*env)->CallStaticVoidMethod(env, owner->type, owner->restore, instance->component,
+                                     (jlong)(intptr_t)&instance->context, (jlong)(intptr_t)state);
+        s = callback_failure(env, instance->context.memory);
+    }
+    if (frame)
+        (*env)->PopLocalFrame(env, NULL);
+    if (attached)
+        (*owner->vm)->DetachCurrentThread(owner->vm);
+    return s;
+}
+static ud_status java_component_epoch(void *pointer, uint64_t epoch, ud_string position) {
+    java_component *instance = pointer;
+    java_registration *owner = instance->owner;
+    JNIEnv *env = NULL;
+    int attached = 0;
+    if (!owner_attach(owner, &env, &attached))
+        return UD_RESOURCE;
+    int frame = (*env)->PushLocalFrame(env, 16) >= 0;
+    ud_status s = frame ? UD_OK : UD_RESOURCE;
+    if (!s) {
+        jstring text = utf8_length(env, position.data ? position.data : "", position.length);
+        if (!text)
+            s = UD_RESOURCE;
+        else {
+            (*env)->CallStaticVoidMethod(env, owner->type, owner->epoch, instance->component,
+                                         (jlong)epoch, text);
+            s = callback_failure(env, instance->context.memory);
+        }
+    }
+    if (frame)
+        (*env)->PopLocalFrame(env, NULL);
+    if (attached)
+        (*owner->vm)->DetachCurrentThread(owner->vm);
+    return s;
+}
+JNIEXPORT void JNICALL Java_org_universaldata_Registry_nativeRegisterComponent(
+    JNIEnv *env, jclass type, jlong handle, jbyteArray id, jbyteArray name, jbyteArray version,
+    jbyteArray schema, jint category, jint inputs, jint outputs, jint synchronous, jint error,
+    jlong optional_inputs, jlong optional_outputs, jboolean replay, jboolean threads,
+    jboolean stateful, jboolean blocking, jint state_version, jint effects, jboolean controls,
+    jboolean final_ack, jboolean epoch_ack, jobject definition) {
+    java_registry *registry = (java_registry *)(intptr_t)handle;
+    char *text[4] = {0};
+    uint32_t size[4] = {0};
+    jbyteArray data[] = {id, name, version, schema};
+    ud_status s = UD_OK;
+    for (uint32_t j = 0; j < 4; j++) {
+        text[j] = copy_data(env, registry->memory, data[j], size + j);
+        if (!text[j])
+            s = UD_RESOURCE;
+    }
+    java_registration *owner = !s ? ud_alloc(registry->memory, sizeof(*owner)) : NULL;
+    if (!s && !owner)
+        s = UD_RESOURCE;
+    if (!s) {
+        atomic_init(&owner->references, 1);
+        owner->memory = registry->memory;
+        if ((*env)->GetJavaVM(env, &owner->vm) != JNI_OK)
+            s = UD_RESOURCE;
+        owner->factory = (*env)->NewGlobalRef(env, definition);
+        owner->type = (*env)->NewGlobalRef(env, type);
+        owner->configure =
+            (*env)->GetStaticMethodID(env, type, "configureComponent",
+                                      "(Lorg/universaldata/Registry$DataFlowDefinition;Ljava/lang/"
+                                      "String;[Ljava/lang/String;)[[B");
+        owner->prepare = (*env)->GetStaticMethodID(
+            env, type, "prepareComponent",
+            "(Lorg/universaldata/Registry$DataFlowDefinition;JLjava/lang/String;[Ljava/lang/"
+            "String;[Ljava/lang/String;)Lorg/universaldata/DataFlow;");
+        owner->invoke = (*env)->GetStaticMethodID(
+            env, type, "stepComponent", "(Lorg/universaldata/DataFlow;JIIJJJJLjava/lang/String;)I");
+        owner->lifecycle = (*env)->GetStaticMethodID(env, type, "lifecycleComponent",
+                                                     "(Lorg/universaldata/DataFlow;JI)V");
+        owner->checkpoint = (*env)->GetStaticMethodID(env, type, "checkpointComponent",
+                                                      "(Lorg/universaldata/DataFlow;J)J");
+        owner->restore = (*env)->GetStaticMethodID(env, type, "restoreComponent",
+                                                   "(Lorg/universaldata/DataFlow;JJ)V");
+        owner->epoch =
+            (*env)->GetStaticMethodID(env, type, "confirmEpochComponent",
+                                      "(Lorg/universaldata/DataFlow;JLjava/lang/String;)V");
+        if (!owner->factory || !owner->type || !owner->configure || !owner->prepare ||
+            !owner->invoke || !owner->lifecycle || !owner->checkpoint || !owner->restore ||
+            !owner->epoch)
+            s = UD_RESOURCE;
+    }
+    ud_component_descriptor descriptor = {
+        .struct_size = sizeof(descriptor),
+        .abi_version = UD_ABI_VERSION,
+        .id = {text[0], size[0]},
+        .name = {text[1], size[1]},
+        .version = {text[2], size[2]},
+        .configuration_schema = {text[3], size[3]},
+        .category = category,
+        .inputs = (uint32_t)inputs,
+        .outputs = (uint32_t)outputs,
+        .synchronous_input = synchronous,
+        .error_output = error,
+        .optional_inputs = (uint64_t)optional_inputs,
+        .optional_outputs = (uint64_t)optional_outputs,
+        .state_version = (uint32_t)state_version,
+        .effects = (uint32_t)effects,
+        .user = owner,
+        .capabilities =
+            (replay ? UD_COMPONENT_REPLAY_SAFE : 0) | (threads ? UD_COMPONENT_THREAD_SAFE : 0) |
+            (stateful ? UD_COMPONENT_STATEFUL : 0) | (blocking ? UD_COMPONENT_BLOCKING : 0) |
+            (controls ? UD_COMPONENT_CONTROL_EVENTS : 0),
+        .configure = java_component_configure,
+        .prepare = java_component_prepare,
+        .step = java_component_step,
+        .finish = java_component_finish,
+        .cancel = java_component_cancel,
+        .dispose = java_component_dispose,
+        .checkpoint = stateful ? java_component_checkpoint : NULL,
+        .restore = stateful ? java_component_restore : NULL,
+        .confirm = final_ack ? java_component_confirm : NULL,
+        .confirm_epoch = epoch_ack ? java_component_epoch : NULL};
+    if (!s)
+        s = ud_registry_register_owned(registry->registry, &descriptor, 1, owner, owner_retain,
+                                       owner_release);
+    if (owner)
+        owner_release(owner);
+    for (uint32_t j = 0; j < 4; j++)
+        ud_free(text[j]);
+    if (s)
+        fail(env, s, ud_status_name(s));
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_Registry_nativeRetainComponentBatch(JNIEnv *env,
+                                                                                   jclass type,
+                                                                                   jlong pointer) {
+    (void)type;
+    ud_batch *batch = (ud_batch *)(intptr_t)pointer;
+    ud_status s = ud_batch_seal(batch);
+    if (!s)
+        s = ud_batch_retain(batch);
+    if (s) {
+        fail(env, s, ud_status_name(s));
+        return 0;
+    }
+    return pointer;
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_DataFlowContext_nativeMemory(JNIEnv *env,
+                                                                            jclass type,
+                                                                            jlong pointer) {
+    (void)env;
+    (void)type;
+    return (jlong)(intptr_t)((const ud_component_context *)(intptr_t)pointer)->memory;
+}
+JNIEXPORT void JNICALL Java_org_universaldata_DataFlowContext_nativeCheck(JNIEnv *env, jclass type,
+                                                                          jlong pointer) {
+    (void)type;
+    ud_status s =
+        ud_activation_check(((const ud_component_context *)(intptr_t)pointer)->activation);
+    if (s)
+        fail(env, s, ud_status_name(s));
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_DataFlowContext_nativeText(JNIEnv *env,
+                                                                            jclass type,
+                                                                            jlong pointer,
+                                                                            jint kind, jint port) {
+    (void)type;
+    const ud_component_context *c = (const ud_component_context *)(intptr_t)pointer;
+    ud_string value = kind == 0   ? c->task_id
+                      : kind == 1 ? c->pipeline_id
+                      : kind == 2 ? c->component_id
+                                  : c->recovery_position;
+    if (kind < 4)
+        return utf8_length(env, value.data ? value.data : "", value.length);
+    if (port < 0 || (uint32_t)port >= (kind == 4 ? c->output_count : c->input_count)) {
+        fail(env, UD_INVALID, "Invalid component port");
+        return NULL;
+    }
+    if (kind == 5) {
+        const ud_component_plan *plan = c->input_plans + (uint32_t)port;
+        return utf8_length(env, plan->physical_tree.data ? plan->physical_tree.data : "",
+                           plan->physical_tree.length);
+    }
+    char *text = NULL;
+    uint32_t length = 0;
+    ud_status s = ud_schema_to_json(c->output_schemas[port], &text, &length);
+    jstring out = !s ? utf8_length(env, text, length) : NULL;
+    ud_free(text);
+    if (s)
+        fail(env, s, ud_status_name(s));
+    return out;
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_DataFlowContext_nativeNumber(JNIEnv *env,
+                                                                            jclass type,
+                                                                            jlong pointer,
+                                                                            jint kind) {
+    (void)env;
+    (void)type;
+    const ud_component_context *c = (const ud_component_context *)(intptr_t)pointer;
+    return kind == 0   ? (jlong)c->recovery_epoch
+           : kind == 1 ? c->recovery_terminal
+                       : (jlong)(c->recommended_batch_rows ? c->recommended_batch_rows(c->emit_user)
+                                                           : c->max_batch_rows);
+}
+JNIEXPORT void JNICALL Java_org_universaldata_DataFlowContext_nativeEmit(JNIEnv *env, jclass type,
+                                                                         jlong pointer, jint output,
+                                                                         jlong batch) {
+    (void)type;
+    const ud_component_context *c = (const ud_component_context *)(intptr_t)pointer;
+    ud_batch *value = (ud_batch *)(intptr_t)batch;
+    ud_status s =
+        output < 0 || (uint32_t)output >= c->output_count ? UD_INVALID : ud_batch_seal(value);
+    if (!s)
+        s = c->emit(c->emit_user, (uint32_t)output, value);
+    if (s)
+        fail(env, s, ud_status_name(s));
+}
+JNIEXPORT void JNICALL Java_org_universaldata_DataFlowContext_nativeEmitControl(
+    JNIEnv *env, jclass type, jlong pointer, jint output, jint kind, jlong batch, jlong epoch,
+    jlong schema_version, jlong watermark, jbyteArray position) {
+    (void)type;
+    const ud_component_context *c = (const ud_component_context *)(intptr_t)pointer;
+    uint32_t n = 0;
+    char *text = copy_data(env, c->memory, position, &n);
+    ud_status s = text && output >= 0 && c->emit_event ? UD_OK : UD_INVALID;
+    if (!s && batch)
+        s = ud_batch_seal((ud_batch *)(intptr_t)batch);
+    ud_component_event event = {.struct_size = sizeof(event),
+                                .abi_version = UD_ABI_VERSION,
+                                .kind = kind,
+                                .batch = (ud_batch *)(intptr_t)batch,
+                                .epoch = (uint64_t)epoch,
+                                .schema_version = (uint64_t)schema_version,
+                                .watermark = watermark,
+                                .source_position = {text, n}};
+    if (!s)
+        s = c->emit_event(c->emit_user, (uint32_t)output, &event);
+    ud_free(text);
+    if (s)
+        fail(env, s, ud_status_name(s));
+}
+JNIEXPORT void JNICALL Java_org_universaldata_DataFlowContext_nativeSourceIdentity(
+    JNIEnv *env, jclass type, jlong pointer, jlong batch, jint row, jlong position,
+    jbyteArray source) {
+    (void)type;
+    const ud_component_context *c = (const ud_component_context *)(intptr_t)pointer;
+    uint32_t n = 0;
+    char *text = copy_data(env, c->memory, source, &n);
+    ud_status s = text && row >= 0 && position >= 0
+                      ? ud_component_source_identity(c, (ud_batch *)(intptr_t)batch, (uint32_t)row,
+                                                     (uint64_t)position, (ud_string){text, n})
+                      : UD_INVALID;
+    ud_free(text);
+    if (s)
+        fail(env, s, ud_status_name(s));
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_DataFlowContext_nativeErrorBatch(
+    JNIEnv *env, jclass type, jlong pointer, jint capacity, jboolean include) {
+    (void)type;
+    const ud_component_context *c = (const ud_component_context *)(intptr_t)pointer;
+    ud_batch *batch = NULL;
+    ud_status s = capacity < 0 ? UD_INVALID : ud_error_batch(&c->errors, include, capacity, &batch);
+    if (s)
+        fail(env, s, ud_status_name(s));
+    return (jlong)(intptr_t)batch;
+}
+JNIEXPORT void JNICALL Java_org_universaldata_DataFlowContext_nativeAppendError(
+    JNIEnv *env, jclass type, jlong pointer, jlong errors, jlong input, jint row, jbyteArray rule,
+    jint version, jbyteArray field, jint code) {
+    (void)type;
+    const ud_component_context *c = (const ud_component_context *)(intptr_t)pointer;
+    uint32_t n = 0, fn = 0;
+    char *r = copy_data(env, c->memory, rule, &n), *f = copy_data(env, c->memory, field, &fn);
+    ud_id id = {0};
+    ud_status s = r && f && row >= 0 && version > 0 ? UD_OK : UD_INVALID;
+    if (!s && fn)
+        s = ud_id_parse((ud_string){f, fn}, &id);
+    ud_record_error record = {.struct_size = sizeof(record),
+                              .abi_version = UD_ABI_VERSION,
+                              .input = (const ud_batch *)(intptr_t)input,
+                              .row = (uint32_t)row,
+                              .rule = {r, n},
+                              .rule_version = (uint32_t)version,
+                              .column = id,
+                              .code = code,
+                              .policy = UD_ERROR_REDIRECT};
+    if (!s)
+        s = ud_error_append(&c->errors, (ud_batch *)(intptr_t)errors, &record);
+    ud_free(r);
+    ud_free(f);
+    if (s)
+        fail(env, s, ud_status_name(s));
+}
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeExpression(
+    JNIEnv *env, jclass type, jlong handle, jbyteArray schema, jbyteArray source) {
+    (void)type;
+    java_execution *execution = (java_execution *)(intptr_t)handle;
+    uint32_t sn = 0, en = 0, n = 0;
+    char *a = copy_data(env, execution->ctx, schema, &sn),
+         *b = copy_data(env, execution->ctx, source, &en), *result = NULL;
+    ud_status status =
+        a && b ? ud_execution_compile_expression(execution->execution, (ud_string){a, sn},
+                                                 (ud_string){b, en}, &result, &n)
+               : UD_RESOURCE;
+    jstring out = !status ? utf8_length(env, result, n) : NULL;
+    ud_free(a);
+    ud_free(b);
+    ud_free(result);
+    if (status)
+        fail(env, status, ud_status_name(status));
+    return out;
+}
+JNIEXPORT jlongArray JNICALL Java_org_universaldata_Batch_nativeDateTime(JNIEnv *env, jclass type,
+                                                                         jlong handle, jint row,
+                                                                         jint column) {
+    (void)type;
+    java_data *batch = (java_data *)(intptr_t)handle;
+    ud_value value = {0};
+    ud_status status = row < 0 || column < 0
+                           ? UD_INVALID
+                           : ud_batch_get(batch->batch, (uint32_t)row, (uint32_t)column, &value);
+    if (!status && (value.type != UD_DATETIME || value.is_null || value.is_absent))
+        status = UD_INCOMPATIBLE;
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        return NULL;
+    }
+    jlong parts[] = {value.datetime.ticks, value.datetime.offset_minutes,
+                     value.datetime.has_offset};
+    jlongArray result = (*env)->NewLongArray(env, 3);
+    if (result)
+        (*env)->SetLongArrayRegion(env, result, 0, 3, parts);
+    return result;
 }

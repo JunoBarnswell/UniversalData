@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='ud-apache-avro-') as directory:
         config = dict(connection='input', schema=native_schema)
         if reader_schema is not None:
             config['readerSchema'] = reader_schema
-        package = dict(version=10, id=name, connections=[dict(id='input', driver='file', resource=str(source)), dict(id='output', driver='file', resource=str(target))],
+        package = dict(version=11, id=name, connections=[dict(id='input', driver='file', resource=str(source)), dict(id='output', driver='file', resource=str(target))],
             controlFlow=dict(tasks=[dict(id='copy', kind='dataFlow', config=dict(pipeline='flow'))], constraints=[]),
             dataFlows=[dict(id='flow', components=[dict(id='source', component='file.avro.source', config=config),
                 dict(id='sink', component='file.avro.sink', config=dict(connection='output', writerSchema=output_schema, codec='deflate', fileMode='overwrite'))],

@@ -189,7 +189,9 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
         s = ud_checkpoint_effect_intent(c->activation, key, digest);
     if (!s && replaying && !completed && guarantee == UD_DELIVERY_RESPONSE)
         s = UD_COMMIT_UNKNOWN;
-    if (!s && replaying && guarantee == UD_DELIVERY_RECEIPT) {
+    /* Incomplete effects are resolved by the driver's atomic idempotent
+     * write. A separate absent-key probe can acquire transaction gap locks. */
+    if (!s && replaying && completed && guarantee == UD_DELIVERY_RECEIPT) {
         ud_commit_receipt receipt = {0};
         s = ud_connection_lease_receipt(lease, o.job, o.batch_id, &receipt);
         if (!s && receipt.committed &&
@@ -511,4 +513,91 @@ ud_status ud_builtin_sink_finish(builtin *b) {
     if (s == UD_COMMIT_UNKNOWN)
         ud_rule_delivered(b->context.activation, b->delivery, 2);
     return s;
+}
+
+ud_status ud_builtin_sink_projection(const ud_component_context *c, const ud_json *config,
+                                     const ud_batch *input, int mode, ud_batch **out,
+                                     uint32_t **indices, uint32_t *before) {
+    if (!c || !config || !input || !out || !indices || !before)
+        return UD_INVALID;
+    *out = NULL;
+    *indices = NULL;
+    *before = UINT32_MAX;
+    const ud_json *mapping = ud_member(config, "mapping");
+    uint32_t count = mapping ? ud_json_size(mapping) : input->columns;
+    if ((mapping && ud_json_kind(mapping) != UD_JSON_ARRAY) || !count || count > 65536)
+        return UD_SCHEMA;
+    if (mapping && mode == UD_WRITE_CHANGESET)
+        return UD_UNSUPPORTED;
+    ud_field *fields = ud_alloc(c->memory, count * sizeof(*fields));
+    uint32_t *selected = ud_alloc(c->memory, count * sizeof(*selected));
+    ud_status status = fields && selected ? UD_OK : UD_RESOURCE;
+    ud_string before_name = {"before", 6};
+    if (!status && ud_member(config, "beforeField"))
+        status = ud_json_string(ud_member(config, "beforeField"), &before_name);
+    uint32_t total = 0;char scope[33];
+    if(!status&&mapping)status=ud_pipeline_field_namespace(c,scope);
+    for (uint32_t j = 0; !status && j < count; j++) {
+        uint32_t source = j;
+        ud_string target = {0};
+        if (mapping) {
+            const ud_json *entry = ud_json_at(mapping, j);
+            static const char *keys[] = {"source", "target"};
+            status = ud_json_keys(entry, keys, 2);
+            ud_string reference = {0};
+            if (!status)
+                status = ud_json_string(ud_member(entry, "source"), &reference);
+            if (!status)
+                status = ud_json_string(ud_member(entry, "target"), &target);
+            ud_id id = {0};
+            int by_id = !ud_id_parse(reference, &id), found = 0;
+            for (uint32_t at = 0; !status && at < input->columns; at++) {
+                const ud_field *field = input->schema->fields + at;
+                if (by_id ? !ud_id_compare(id, field->identity)
+                          : reference.length == field->name_length &&
+                                !memcmp(reference.data, field->name, reference.length)) {
+                    if (found) {
+                        status = UD_SCHEMA;
+                        break;
+                    }
+                    found = 1;
+                    source = at;
+                }
+            }
+            if (!status && !found)
+                status = UD_SCHEMA;
+        }
+        if (status)
+            break;
+        ud_field field = input->schema->fields[source];
+        if (mode == UD_WRITE_CHANGESET && field.name_length == before_name.length &&
+            !memcmp(field.name, before_name.data, before_name.length)) {
+            if (field.type != UD_STRUCT)
+                status = UD_SCHEMA;
+            else
+                *before = source;
+            continue;
+        }
+        selected[total] = source;
+        if(mapping)status=ud_field_derive(c->memory,&field,(ud_string){scope,32},target,fields+total);
+        else fields[total]=field;
+        total++;
+    }
+    if (!status && *before != UINT32_MAX) {
+        const ud_field *prior = input->schema->fields + *before;
+        if (prior->child_count != total)
+            status = UD_SCHEMA;
+        for (uint32_t j = 0; !status && j < total; j++)
+            if (!ud_field_matches(prior->children + j, fields + j, UD_FIELD_LAYOUT))
+                status = UD_SCHEMA;
+    }
+    if (!status)
+        status = ud_batch_create(c->memory, fields, total, 0, out);
+    if(mapping)for(uint32_t j=0;j<count;j++)ud_field_clear(fields+j);
+    ud_free(fields);
+    if (status)
+        ud_free(selected);
+    else
+        *indices = selected;
+    return status;
 }

@@ -57,14 +57,21 @@ int main(int argc, char **argv) {
     o.authorize = grant;
     OK(ud_connection_open(p, &o, &db));
     OK(ud_connection_test(db));
-    OK(ud_connection_execute_command(db, &(ud_read_options){.struct_size=sizeof(ud_read_options),.abi_version=UD_ABI_VERSION,.sql=str("CREATE TEMP TABLE ud_sdk_receipts_v10(tenant TEXT NOT NULL,job TEXT NOT NULL,batch_id "
-            "TEXT NOT NULL,digest BYTEA NOT NULL CHECK(octet_length(digest)=32),source_position "
-            "TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))")}, NULL));
+    OK(ud_connection_execute_command(
+        db,
+        &(ud_read_options){.struct_size = sizeof(ud_read_options),
+                           .abi_version = UD_ABI_VERSION,
+                           .sql = str("CREATE TEMP TABLE ud_sdk_receipts_v11(tenant TEXT NOT "
+                                      "NULL,job TEXT NOT NULL,batch_id "
+                                      "TEXT NOT NULL,digest BYTEA NOT NULL "
+                                      "CHECK(octet_length(digest)=32),source_position "
+                                      "TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))")},
+        NULL));
     OK(ud_connection_execute_command(db, &(ud_read_options){.struct_size=sizeof(ud_read_options),.abi_version=UD_ABI_VERSION,.sql=str("CREATE TEMP TABLE ud_value_semantics(id BIGINT PRIMARY KEY,b BOOLEAN NOT NULL,f "
                 "DOUBLE PRECISION,s TEXT,d NUMERIC(38,2),date DATE,time TIME,at TIMESTAMPTZ,raw "
                 "BYTEA)")}, NULL));
     const char *schema =
-        "{\"version\":10,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false},{"
+        "{\"version\":11,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false},{"
         "\"name\":\"b\",\"type\":\"bool\",\"nullable\":false},{\"name\":\"f\",\"type\":\"float64\","
         "\"nullable\":true},{\"name\":\"s\",\"type\":\"utf8\",\"nullable\":true},{\"name\":\"d\","
         "\"type\":\"decimal128\",\"precision\":38,\"scale\":2,\"nullable\":true},{\"name\":"

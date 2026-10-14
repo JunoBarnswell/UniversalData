@@ -100,7 +100,7 @@ try {
         [ordered]@{ path = [IO.Path]::GetRelativePath($stage,$_.FullName).Replace('\','/'); bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     })
     $manifest = [ordered]@{
-        schemaVersion = 10; protocolVersion = $product.protocolVersion; buildProfile = $cache['UD_BUILD_PROFILE']; sdkVersion = $version; abiVersion = $abi; runtimeIdentifier = $RuntimeIdentifier
+        schemaVersion = $product.protocolVersion; protocolVersion = $product.protocolVersion; buildProfile = $cache['UD_BUILD_PROFILE']; sdkVersion = $version; abiVersion = $abi; runtimeIdentifier = $RuntimeIdentifier
         configuration = $Configuration; sourceFingerprint = $fingerprint; capabilities = $capabilities
         files = $files
     }

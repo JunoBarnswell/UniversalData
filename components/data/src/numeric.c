@@ -1,11 +1,13 @@
 #include "../internal.h"
 #include <math.h>
 ud_status ud_numeric_result_field(int32_t op, const ud_field *a, const ud_field *b, ud_field *out) {
-    if (!a || !b || !out || op < UD_NUMERIC_ADD || op > UD_NUMERIC_MULTIPLY)
+    if (!a || !b || !out || op < UD_NUMERIC_ADD || op > UD_NUMERIC_REMAINDER)
         return UD_INVALID;
     if (a->dictionary_kind || b->dictionary_kind)
         return UD_UNSUPPORTED;
-    if (!ud_field_matches(a, b, UD_FIELD_VALUE_TYPE) ||
+    if ((a->type == UD_DECIMAL128 && b->type == UD_DECIMAL128
+             ? (op != UD_NUMERIC_MULTIPLY && a->scale != b->scale)
+             : !ud_field_matches(a, b, UD_FIELD_VALUE_TYPE)) ||
         (a->type != UD_INT64 && a->type != UD_UINT64 && a->type != UD_DURATION &&
          a->type != UD_INTERVAL && a->type != UD_FLOAT64 && a->type != UD_DECIMAL128))
         return UD_SCHEMA;
@@ -77,9 +79,92 @@ static ud_status multiply(ud_decimal128 a, ud_decimal128 b, int32_t precision, u
         text[at++] = (char)('0' + product[j - 1]);
     return ud_decimal_parse(text, at, precision, 0, UD_ROUND_EXACT, out);
 }
+
+/* Base-10 long division retains all 38 coefficient digits on MSVC and C17;
+ * no compiler-specific 128-bit integers and no float intermediate. */
+static int big_compare(const uint8_t *a, const uint8_t *b) {
+    for (int j = 159; j >= 0; j--)
+        if (a[j] != b[j])
+            return a[j] > b[j] ? 1 : -1;
+    return 0;
+}
+static void big_subtract(uint8_t *a, const uint8_t *b) {
+    int borrow = 0;
+    for (int j = 0; j < 160; j++) {
+        int x = a[j] - b[j] - borrow;
+        borrow = x < 0;
+        a[j] = (uint8_t)(x < 0 ? x + 10 : x);
+    }
+}
+static ud_status quotient(const ud_value *a, const ud_value *b, const ud_field *f, int remainder,
+                          ud_decimal128 *out) {
+    if (!b->decimal.high && !b->decimal.low)
+        return UD_PARSE;
+    uint8_t numerator[160] = {0}, denominator[160] = {0}, rest[160] = {0}, answer[160] = {0},
+            d[39] = {0};
+    uint32_t an = digits(a->decimal, d);
+    memcpy(numerator, d, an);
+    memset(d, 0, sizeof(d));
+    uint32_t bn = digits(b->decimal, d);
+    memcpy(denominator, d, bn);
+    int exponent = remainder ? 0 : f->scale + b->scale - a->scale;
+    if (exponent >= 0) {
+        if (exponent > 110)
+            return UD_OVERFLOW;
+        memmove(numerator + exponent, numerator, an);
+        memset(numerator, 0, (size_t)exponent);
+        an += (uint32_t)exponent;
+    } else {
+        int shift = -exponent;
+        if (shift > 110)
+            return UD_OVERFLOW;
+        memmove(denominator + shift, denominator, bn);
+        memset(denominator, 0, (size_t)shift);
+    }
+    for (uint32_t pos = an; pos; pos--) {
+        memmove(rest + 1, rest, 159);
+        rest[0] = numerator[pos - 1];
+        while (big_compare(rest, denominator) >= 0) {
+            big_subtract(rest, denominator);
+            if (++answer[pos - 1] > 9)
+                return UD_CORRUPT;
+        }
+    }
+    if (remainder)
+        memcpy(answer, rest, 160);
+    else {
+        uint8_t twice[160];
+        int carry = 0;
+        for (uint32_t j = 0; j < 160; j++) {
+            int n = rest[j] * 2 + carry;
+            twice[j] = (uint8_t)(n % 10);
+            carry = n / 10;
+        }
+        if (big_compare(twice, denominator) >= 0) {
+            for (uint32_t j = 0; j < 160; j++) {
+                if (++answer[j] < 10)
+                    break;
+                answer[j] = 0;
+            }
+        }
+    }
+    uint32_t n = 160;
+    while (n > 1 && !answer[n - 1])
+        n--;
+    if (n > (uint32_t)f->precision)
+        return UD_OVERFLOW;
+    char text[162];
+    uint32_t at = 0;
+    int negative = remainder ? a->decimal.high < 0 : (a->decimal.high < 0) != (b->decimal.high < 0);
+    if (negative)
+        text[at++] = '-';
+    for (uint32_t j = n; j; j--)
+        text[at++] = (char)('0' + answer[j - 1]);
+    return ud_decimal_parse(text, at, f->precision, 0, UD_ROUND_EXACT, out);
+}
 ud_status ud_value_numeric(int32_t op, const ud_value *a, const ud_value *b, const ud_field *field,
                            ud_value *out) {
-    if (!a || !b || !field || !out || op < UD_NUMERIC_ADD || op > UD_NUMERIC_MULTIPLY)
+    if (!a || !b || !field || !out || op < UD_NUMERIC_ADD || op > UD_NUMERIC_REMAINDER)
         return UD_INVALID;
     if (a->is_absent || b->is_absent)
         return UD_INCOMPATIBLE;
@@ -101,6 +186,12 @@ ud_status ud_value_numeric(int32_t op, const ud_value *a, const ud_value *b, con
     }
     if (field->type == UD_UINT64) {
         uint64_t x = left.unsigned_integer, y = right.unsigned_integer;
+        if (op >= UD_NUMERIC_DIVIDE) {
+            if (!y)
+                return UD_PARSE;
+            out->unsigned_integer = op == UD_NUMERIC_DIVIDE ? x / y : x % y;
+            return UD_OK;
+        }
         if (op == UD_NUMERIC_ADD) {
             if (x > UINT64_MAX - y)
                 return UD_OVERFLOW;
@@ -139,6 +230,13 @@ ud_status ud_value_numeric(int32_t op, const ud_value *a, const ud_value *b, con
     if (field->type == UD_DURATION && op == UD_NUMERIC_MULTIPLY)
         return UD_UNSUPPORTED;
     if (field->type == UD_FLOAT64) {
+        if (op >= UD_NUMERIC_DIVIDE) {
+            if (right.real == 0)
+                return UD_PARSE;
+            out->real =
+                op == UD_NUMERIC_DIVIDE ? left.real / right.real : fmod(left.real, right.real);
+            return isfinite(out->real) ? UD_OK : UD_OVERFLOW;
+        }
         out->real = op == UD_NUMERIC_ADD        ? left.real + right.real
                     : op == UD_NUMERIC_SUBTRACT ? left.real - right.real
                                                 : left.real * right.real;
@@ -146,15 +244,18 @@ ud_status ud_value_numeric(int32_t op, const ud_value *a, const ud_value *b, con
                                                                                     : UD_OVERFLOW;
     }
     if (field->type == UD_DECIMAL128) {
-        if (left.precision < 1 || left.precision > 38 || right.precision != left.precision ||
-            left.scale != right.scale || left.scale < -38 || left.scale > 38 ||
-            field->precision < 1 || field->precision > 38)
+        if (left.precision < 1 || left.precision > 38 || right.precision < 1 ||
+            right.precision > 38 ||
+            (op != UD_NUMERIC_MULTIPLY && op != UD_NUMERIC_DIVIDE && left.scale != right.scale) ||
+            left.scale < -38 || left.scale > 38 || field->precision < 1 || field->precision > 38)
             return UD_SCHEMA;
         ud_decimal128 checked;
         UD_TRY(ud_decimal_rescale(left.decimal, left.scale, left.precision, left.scale,
                                   UD_ROUND_EXACT, &checked));
         UD_TRY(ud_decimal_rescale(right.decimal, right.scale, right.precision, right.scale,
                                   UD_ROUND_EXACT, &checked));
+        if (op >= UD_NUMERIC_DIVIDE)
+            return quotient(&left, &right, field, op == UD_NUMERIC_REMAINDER, &out->decimal);
         if (op == UD_NUMERIC_MULTIPLY) {
             if (field->scale != left.scale + right.scale)
                 return UD_SCHEMA;
@@ -167,6 +268,19 @@ ud_status ud_value_numeric(int32_t op, const ud_value *a, const ud_value *b, con
                               field->precision, &out->decimal);
     }
     int64_t x = left.integer, y = right.integer;
+    if (op >= UD_NUMERIC_DIVIDE) {
+        if (!y)
+            return UD_PARSE;
+        if (x == INT64_MIN && y == -1) {
+            if (op == UD_NUMERIC_REMAINDER) {
+                out->integer = 0;
+                return UD_OK;
+            }
+            return UD_OVERFLOW;
+        }
+        out->integer = op == UD_NUMERIC_DIVIDE ? x / y : x % y;
+        return UD_OK;
+    }
     if (op == UD_NUMERIC_ADD) {
         if ((y > 0 && x > INT64_MAX - y) || (y < 0 && x < INT64_MIN - y))
             return UD_OVERFLOW;

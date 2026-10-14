@@ -18,15 +18,60 @@ enum {
     UD_UINT64 = 10,
     UD_DURATION = 11,
     UD_INTERVAL = 12,
-    UD_STRUCT = 13,
-    UD_LIST = 14,
-    UD_MAP = 15
+    UD_DATETIME = 13,
+    UD_STRUCT = 14,
+    UD_LIST = 15,
+    UD_MAP = 16
 };
 /* Signed two's-complement coefficient, independent of compiler __int128 support. */
 typedef struct ud_decimal128 {
     uint64_t low;
     int64_t high;
 } ud_decimal128;
+/* Logical scalar domains share Native storage, but retain their complete
+ * declared range, representation and conversion constraints. */
+enum {
+    UD_DT_BOOL = 1,
+    UD_DT_I1,
+    UD_DT_I2,
+    UD_DT_I4,
+    UD_DT_I8,
+    UD_DT_UI1,
+    UD_DT_UI2,
+    UD_DT_UI4,
+    UD_DT_UI8,
+    UD_DT_R4,
+    UD_DT_R8,
+    UD_DT_DECIMAL,
+    UD_DT_NUMERIC,
+    UD_DT_CY,
+    UD_DT_DATE,
+    UD_DT_DBDATE,
+    UD_DT_DBTIME,
+    UD_DT_DBTIME2,
+    UD_DT_DBTIMESTAMP,
+    UD_DT_DBTIMESTAMP2,
+    UD_DT_DBTIMESTAMPOFFSET,
+    UD_DT_FILETIME,
+    UD_DT_STR,
+    UD_DT_WSTR,
+    UD_DT_TEXT,
+    UD_DT_NTEXT,
+    UD_DT_BYTES,
+    UD_DT_IMAGE,
+    UD_DT_GUID
+};
+typedef struct ud_scalar_metadata {
+    uint32_t kind, length, code_page, locale_id, comparison_flags, fractional_digits;
+} ud_scalar_metadata;
+/* 100 ns ticks since 0001-01-01 in the proleptic Gregorian calendar.
+ * Naive wall time and explicit offsets are distinct; no host timezone inference.
+ * A DateTime's declared scalar domain determines date/time-only restrictions. */
+typedef struct ud_datetime {
+    int64_t ticks;
+    int32_t offset_minutes, has_offset;
+} ud_datetime;
+
 /* Calendar components are independent; never normalize months into days or
  * days into microseconds. Tuple order is structural, not anchored chronology. */
 typedef struct ud_interval {
@@ -74,6 +119,7 @@ typedef struct ud_field {
      * remain independent: rename/reorder preserve the former, expressions
      * carry origins without pretending to be physical provider columns. */
     ud_id physical_identity;
+    ud_scalar_metadata scalar;
 } ud_field;
 enum { UD_FIELD_VALUE_TYPE = 0, UD_FIELD_PORT = 1, UD_FIELD_LAYOUT = 2 };
 /* VALUE_TYPE ignores root display name, identity, lineage and nullability;
@@ -105,7 +151,28 @@ typedef struct ud_value {
     /* CDC field omission is distinct from SQL NULL. An absent value carries
      * is_null=1, cannot participate in expressions, and is preserved by Wire. */
     int32_t is_absent;
+    ud_datetime datetime;
 } ud_value;
+/* Logical metadata is validated by Batch, schema binding and every cast.
+ * JSON/Wire/Arrow preserve it. Code page lengths count encoded bytes; WSTR
+ * lengths count UTF-16 units. No implicit replacement characters. */
+UD_API const char *ud_scalar_type_name(uint32_t);
+UD_API ud_status ud_scalar_type_parse(ud_string, uint32_t *);
+/* Borrowed common value metadata; identities/lineage are bound by the caller. */
+UD_API ud_status ud_scalar_common(const ud_field *,const ud_field *,ud_field *);
+UD_API ud_status ud_scalar_field(ud_string type, uint32_t length, int32_t precision, int32_t scale,
+                                 uint32_t code_page, uint32_t locale_id, ud_field *);
+UD_API ud_status ud_value_cast_field(ud_context *, const ud_field *, const ud_value *,
+                                     const ud_field *, int32_t rounding, int32_t truncate,
+                                     ud_value *);
+UD_API ud_status ud_value_validate_field(ud_context *, const ud_field *, const ud_value *);
+UD_API ud_status ud_datetime_parse(ud_string, const ud_field *, ud_datetime *);
+UD_API ud_status ud_datetime_format(ud_datetime, char *, uint32_t, uint32_t *);
+UD_API ud_status ud_datetime_from_value(const ud_field *, const ud_value *, ud_datetime *);
+UD_API ud_status ud_datetime_to_value(const ud_field *, ud_datetime, ud_value *);
+UD_API ud_status ud_datetime_part(ud_string datepart, ud_datetime, int64_t *);
+UD_API ud_status ud_datetime_add(ud_string datepart, int64_t, ud_datetime, ud_datetime *);
+UD_API ud_status ud_datetime_diff(ud_string datepart, ud_datetime, ud_datetime, int64_t *);
 /* Date32 is days since 1970-01-01; Time64 is microseconds since midnight.
  * Duration is signed microseconds (including negative/long SQL TIME).
  * Interval preserves signed months, days and microseconds independently.
@@ -121,7 +188,13 @@ UD_API ud_status ud_decimal_rescale(ud_decimal128, int32_t from_scale, int32_t p
                                     int32_t to_scale, int32_t rounding, ud_decimal128 *);
 UD_API ud_status ud_decimal_add(ud_decimal128, ud_decimal128, int32_t precision, ud_decimal128 *);
 UD_API int32_t ud_decimal_compare(ud_decimal128, ud_decimal128);
-enum { UD_NUMERIC_ADD = 0, UD_NUMERIC_SUBTRACT = 1, UD_NUMERIC_MULTIPLY = 2 };
+enum {
+    UD_NUMERIC_ADD = 0,
+    UD_NUMERIC_SUBTRACT = 1,
+    UD_NUMERIC_MULTIPLY = 2,
+    UD_NUMERIC_DIVIDE = 3,
+    UD_NUMERIC_REMAINDER = 4
+};
 /* Exact native numeric kernels shared by expressions, functions and aggregation.
  * No cross-type coercion. Decimal multiplication infers summed scale (must fit
  * -38..38) and precision capped at 38. Overflow is diagnosed, never wrapped. */

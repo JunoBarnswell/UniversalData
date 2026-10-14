@@ -6,7 +6,7 @@
 /* No compiler extensions, floating point or process locale in Decimal operations. */
 static const char *const type_names[] = {
     "bool",   "int64",  "float64",  "utf8",     "decimal128", "date32", "time64", "timestamp",
-    "binary", "uint64", "duration", "interval", "struct",     "list",   "map"};
+    "binary", "uint64", "duration", "interval", "datetime",   "struct", "list",   "map"};
 const char *ud_type_name(ud_type type) {
     return type >= UD_BOOL && type <= UD_MAP ? type_names[type - 1] : NULL;
 }
@@ -396,8 +396,8 @@ static void date_from_days(int64_t days, int *y, int *m, int *d) {
     *m = (int)mp + (mp < 10 ? 3 : -9);
     *y = year + (*m <= 2);
 }
-ud_status ud_value_parse_field(ud_context *ctx, const ud_field *f, const char *s, uint32_t n,
-                               int32_t rounding, ud_value *out) {
+ud_status ud_parse_field_base(ud_context *ctx, const ud_field *f, const char *s, uint32_t n,
+                              int32_t rounding, ud_value *out) {
     if (!f || !s || !out)
         return UD_INVALID;
     memset(out, 0, sizeof(*out));
@@ -497,6 +497,8 @@ ud_status ud_value_format(const ud_value *v, char *out, uint32_t cap, uint32_t *
         return UD_INVALID;
     if (v->is_absent)
         return UD_INCOMPATIBLE;
+    if (v->type == UD_DATETIME && !v->is_null)
+        return ud_datetime_format(v->datetime, out, cap, required);
     char text[160];
     uint32_t n = 0;
     const char *p = text;
@@ -680,8 +682,8 @@ static ud_status float_to_integer(double value, int32_t rounding, int64_t *out) 
     *out = (int64_t)whole;
     return UD_OK;
 }
-ud_status ud_cast_value(ud_context *ctx, const ud_field *from, const ud_value *v,
-                        const ud_field *to, int32_t rounding, ud_value *out, uint32_t depth) {
+ud_status ud_cast_value_base(ud_context *ctx, const ud_field *from, const ud_value *v,
+                             const ud_field *to, int32_t rounding, ud_value *out, uint32_t depth) {
     if (depth > 32 || v->type != from->type)
         return UD_SCHEMA;
     out->type = to->type;

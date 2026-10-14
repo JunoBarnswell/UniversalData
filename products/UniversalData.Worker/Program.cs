@@ -10,7 +10,7 @@ using(var envelope=JsonDocument.Parse(input))
 var request = JsonSerializer.Deserialize<WorkerRequest>(input,HostPolicy.JsonOptions) ?? throw new InvalidDataException("Invalid Worker request");
 if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket,"N",out _) || request.Policy is null ||
     request.Identity is null || request.Identity.Grants is null || !HostIdentity.ValidId(request.Identity.Tenant) ||
-    request.Mode is not ("execute" or "components" or "validate" or "ports" or "schema" or "compile"))
+    request.Mode is not ("execute" or "components" or "validate" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage"))
     throw new InvalidDataException("Incompatible Worker request");
 var policy = request.Policy with { Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated };
 var directory = policy.ExecutionDirectory(request.Ticket); Directory.CreateDirectory(directory);
@@ -21,7 +21,8 @@ if (request.Mode != "execute") {
     var inspectionFilter = new SecretFilter(parameters);
     int status = 0; object value = new { };
     try {
-        if (request.Mode == "compile") {
+        if(request.Mode=="expressionLanguage") { using var language=JsonDocument.Parse(ExpressionLanguage.Describe());value=language.RootElement.Clone(); }
+        else if (request.Mode == "compile") {
             request.Identity.Require("script.compile","*");
             value = CSharpDeployment.Compile(request.Payload!.Value.GetProperty("source").GetString()!,Path.Combine(policy.DataDirectory,"assemblies"),policy.Tenant,
                 (_,resource,access) => access == ConnectionAccess.Write && HostPolicy.Inside(resource,Path.Combine(policy.DataDirectory,"assemblies")));
@@ -29,6 +30,7 @@ if (request.Mode != "execute") {
             using var execution = policy.CreateExecution(request.Package,parameters);
             string result = request.Mode switch {
                 "components" => execution.ComponentCatalog(),
+                "expression" => execution.CompileExpression(request.Payload!.Value.GetProperty("schema").GetRawText(),request.Payload.Value.GetProperty("source").GetString()!),
                 "validate" => execution.Explain(),
                 "ports" => execution.ComponentPorts(request.Payload!.Value.GetProperty("pipelineId").GetString()!,request.Payload.Value.GetProperty("componentId").GetString()!,
                     request.Payload.Value.GetProperty("kind").GetString()!,request.Payload.Value.GetProperty("configuration").GetRawText()),

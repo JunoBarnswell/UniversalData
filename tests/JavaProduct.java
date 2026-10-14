@@ -1,4 +1,7 @@
 import org.universaldata.Catalog;
+import org.universaldata.DataFlow;
+import org.universaldata.DataFlowContext;
+import org.universaldata.CallbackBatch;
 import org.universaldata.Execution;
 import org.universaldata.Registry;
 import org.universaldata.UniversalDataException;
@@ -9,7 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class JavaProduct {
-    static final String EMPTY="{\"version\":10,\"id\":\"java-product\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
+    static final String EMPTY="{\"version\":11,\"id\":\"java-product\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
     static String task(String kind) { return EMPTY.replace("\"tasks\":[]", "\"tasks\":[{\"id\":\"task\",\"kind\":\""+kind+"\",\"config\":{}}]"); }
     static void require(boolean value) { if(!value)throw new AssertionError(); }
     static void status(int expected,Runnable action) {
@@ -21,6 +24,10 @@ public final class JavaProduct {
                              67108864,0,null,false,4,registry,observer,0);
     }
     public static void main(String[] args) throws Exception {
+        try(org.universaldata.Batch temporal=new org.universaldata.Batch("{\"version\":11,\"fields\":[{\"name\":\"instant\",\"type\":\"datetime\",\"nullable\":false,\"scalar\":{\"type\":\"DT_DBTIMESTAMPOFFSET\",\"fractionalDigits\":7}}]}","[{\"instant\":\"9999-12-31T23:59:59.9999999+00:00\"}]")) {
+            require(temporal.getDateTime(0,0).ticks100Nanoseconds()==3155378975999999999L&&temporal.getDateTime(0,0).offsetMinutes()==0);
+            try(org.universaldata.Batch restored=org.universaldata.Batch.fromWire(temporal.toWire())) {require(restored.getDateTime(0,0).equals(temporal.getDateTime(0,0)));}
+        }
         AtomicInteger calls=new AtomicInteger(),finished=new AtomicInteger(),closed=new AtomicInteger(),events=new AtomicInteger();
         Registry.TaskContext[] borrowed=new Registry.TaskContext[1];
         try(Registry registry=new Registry()) {
@@ -51,6 +58,31 @@ public final class JavaProduct {
                 status(8,()-> { while(!execution.await(100)) { } });
             }
         }
+        String schema="{\"version\":11,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}";
+        AtomicInteger delivered=new AtomicInteger();CallbackBatch[] expired=new CallbackBatch[1];
+        try(Registry registry=new Registry()) {
+            registry.registerFunction(new Registry.FunctionDefinition("java.triple","Triple",null,1,1,true,true,true,
+                metadata -> "{\"version\":11,\"fields\":[{\"name\":\"value\",\"type\":\"int64\",\"nullable\":false}]}",
+                (context,input) -> {context.checkCancellation();expired[0]=input;return context.result("[{\"value\":"+Math.multiplyExact(input.int64(0,0),3)+"}]");}));
+            registry.registerComponent(new Registry.DataFlowDefinition("java.source","Java Source",null,"{}",2,0,1,-1,-1,0,0,true,true,false,false,0,0,true,false,false,
+                (config,inputs)->new String[]{schema},()->new DataFlow(){int position;
+                    public int step(DataFlowContext context,DataFlow.Event event) {
+                        context.checkCancellation();if(position==5)return 1;
+                        try(CallbackBatch batch=context.createBatch(context.outputSchema(0),"[{\"id\":"+(++position)+"}]")){context.setSourceIdentity(batch,0,position-1,"source");context.emit(0,batch);}return 0;
+                    }}));
+            registry.registerComponent(new Registry.DataFlowDefinition("java.destination","Java Destination",null,"{}",4,1,0,-1,-1,0,0,true,true,false,false,0,0,true,false,false,
+                (config,inputs)->new String[0],()->new DataFlow(){
+                    public int step(DataFlowContext context,DataFlow.Event event){
+                        if(event.kind()==DataFlow.DATA){for(int row=0;row<event.batch().rows();row++){require(event.batch().int64(row,1)==event.batch().int64(row,0)*3+1);require(!event.batch().rowIdentity(row).isEmpty());delivered.incrementAndGet();}}
+                        return event.kind()==DataFlow.POLL?1:0;
+                    }}));
+            String graph="{\"version\":11,\"id\":\"java-dataflow\",\"controlFlow\":{\"tasks\":[{\"id\":\"flow\",\"kind\":\"dataFlow\",\"config\":{\"pipeline\":\"rows\"}}],\"constraints\":[]},\"dataFlows\":[{\"id\":\"rows\",\"components\":[{\"id\":\"source\",\"component\":\"java.source\",\"config\":{}},{\"id\":\"derive\",\"component\":\"derive\",\"config\":{\"columns\":[{\"name\":\"triple\",\"expression\":\"java.triple([id])+1L\"}]}},{\"id\":\"target\",\"component\":\"java.destination\",\"config\":{}}],\"paths\":[{\"from\":\"source\",\"output\":0,\"to\":\"derive\",\"input\":0},{\"from\":\"derive\",\"output\":0,\"to\":\"target\",\"input\":0}]}]}";
+            try(Execution execution=execution(graph,registry,null)) {
+                require(execution.compileExpression(schema,"java.triple([id])+1L").contains("\"result\":0"));
+                System.gc();execution.execute();require(delivered.get()==5);
+            }
+            try{expired[0].rows();throw new AssertionError("Function argument outlived callback");}catch(IllegalStateException expected){}
+        }
         Path root=Files.createTempDirectory("ud-java-catalog-");
         try(Catalog catalog=new Catalog(root.toString(),"local",(tenant,resource,action)->true)) {
             catalog.put(Catalog.Kind.PACKAGE,"java-product",-1L,EMPTY);
@@ -60,8 +92,8 @@ public final class JavaProduct {
             Catalog.Lease lease=catalog.tryAcquireLease(Catalog.Kind.AUDIT,"run/sdk","java-node",30000,"sdk-pool",1);
             require(lease!=null && lease.generation()==1 && catalog.leaseActive(Catalog.Kind.AUDIT,"run/sdk"));
             require(catalog.tryAcquireLease(Catalog.Kind.AUDIT,"run/sdk","other-node",30000,"sdk-pool",1)==null);
-            catalog.compareExchange(Catalog.Kind.AUDIT,"run/sdk",0,"{\"version\":10,\"id\":\"run/sdk\",\"state\":\"Queued\"}",lease);
-            status(17,()->catalog.compareExchange(Catalog.Kind.AUDIT,"run/sdk",0,"{\"version\":10,\"id\":\"run/sdk\"}",lease));
+            catalog.compareExchange(Catalog.Kind.AUDIT,"run/sdk",0,"{\"version\":11,\"id\":\"run/sdk\",\"state\":\"Queued\"}",lease);
+            status(17,()->catalog.compareExchange(Catalog.Kind.AUDIT,"run/sdk",0,"{\"version\":11,\"id\":\"run/sdk\"}",lease));
             catalog.renewLease(lease,30000);catalog.releaseLease(lease);
             require(!catalog.leaseActive(Catalog.Kind.AUDIT,"run/sdk"));
             status(17,()->catalog.renewLease(lease,30000));

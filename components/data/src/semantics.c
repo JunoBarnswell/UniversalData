@@ -21,6 +21,13 @@ int32_t ud_value_compare(const ud_value *a, const ud_value *b) {
         return v ? (v > 0 ? 1 : -1)
                  : (a->text_length > b->text_length) - (a->text_length < b->text_length);
     }
+    if (a->type == UD_DATETIME) {
+        if (a->datetime.has_offset != b->datetime.has_offset)
+            return (a->datetime.has_offset > b->datetime.has_offset) ? 1 : -1;
+        int64_t x = a->datetime.ticks - (int64_t)a->datetime.offset_minutes * 600000000,
+                y = b->datetime.ticks - (int64_t)b->datetime.offset_minutes * 600000000;
+        return (x > y) - (x < y);
+    }
     if (a->type == UD_FLOAT64) {
         if (isnan(a->real) || isnan(b->real))
             return isnan(a->real) ? (isnan(b->real) ? 0 : 1) : -1;
@@ -86,6 +93,12 @@ ud_status ud_value_canonical(const ud_value *v, ud_status (*emit)(void *, const 
         UD_TRY(canonical_integer(emit, user, v->decimal.low));
         return canonical_integer(emit, user, (uint64_t)v->decimal.high);
     }
+    if (v->type == UD_DATETIME) {
+        UD_TRY(canonical_integer(emit, user, (uint64_t)v->datetime.has_offset));
+        return canonical_integer(
+            emit, user,
+            (uint64_t)(v->datetime.ticks - (int64_t)v->datetime.offset_minutes * 600000000));
+    }
     if (v->type == UD_INTERVAL) {
         UD_TRY(canonical_integer(emit, user, (uint64_t)(int64_t)v->interval.months));
         UD_TRY(canonical_integer(emit, user, (uint64_t)(int64_t)v->interval.days));
@@ -113,4 +126,120 @@ static ud_status hash_bytes(void *user, const void *bytes, size_t length) {
 uint64_t ud_value_hash(const ud_value *v, uint64_t hash) {
     ud_value_canonical(v, hash_bytes, &hash, 0);
     return hash;
+}
+
+static int numeric(const ud_field *f) {
+    return !f->dictionary_kind && f->scalar.kind != UD_DT_DATE &&
+           f->scalar.kind != UD_DT_FILETIME &&
+           (f->type == UD_INT64 || f->type == UD_UINT64 || f->type == UD_FLOAT64 ||
+            f->type == UD_DECIMAL128);
+}
+static unsigned bits(const ud_field *f) {
+    uint32_t k = f->scalar.kind;
+    return k >= UD_DT_I1 && k <= UD_DT_I4     ? 8u << (k - UD_DT_I1)
+           : k >= UD_DT_UI1 && k <= UD_DT_UI4 ? 8u << (k - UD_DT_UI1)
+                                              : 64;
+}
+static int digits(const ud_field *f) {
+    return f->type == UD_DECIMAL128 ? f->precision
+           : f->type == UD_UINT64   ? (bits(f) == 64   ? 20
+                                       : bits(f) == 32 ? 10
+                                       : bits(f) == 16 ? 5
+                                                       : 3)
+           : bits(f) == 64          ? 19
+           : bits(f) == 32          ? 10
+           : bits(f) == 16          ? 5
+                                    : 3;
+}
+ud_status ud_scalar_common(const ud_field *a, const ud_field *b, ud_field *out) {
+    if (!a || !b || !out)
+        return UD_INVALID;
+    ud_field left = *a, right = *b;
+    a = &left;
+    b = &right;
+    *out = *a;
+    out->name = "value";
+    out->name_length = 5;
+    out->identity = (ud_id){0};
+    out->physical_identity = (ud_id){0};
+    out->lineage = NULL;
+    out->lineage_count = 0;
+    out->key_order = 0;
+    out->nullable = a->nullable || b->nullable;
+    if (a->type == UD_UTF8 && b->type == UD_UTF8) {
+        out->scalar = (ud_scalar_metadata){0};
+        if (a->scalar.kind && b->scalar.kind) {
+            out->scalar.kind = !a->scalar.length || !b->scalar.length ? UD_DT_NTEXT : UD_DT_WSTR;
+            out->scalar.length =
+                a->scalar.length > b->scalar.length ? a->scalar.length : b->scalar.length;
+            out->scalar.locale_id = a->scalar.locale_id ? a->scalar.locale_id : b->scalar.locale_id;
+        }
+        return UD_OK;
+    }
+    if (a->type == UD_BOOL && b->type == UD_BOOL) {
+        out->scalar =
+            (ud_scalar_metadata){.kind = (a->scalar.kind || b->scalar.kind) ? UD_DT_BOOL : 0};
+        return UD_OK;
+    }
+    if (a->type == UD_DATETIME && b->type == UD_DATETIME) {
+        if ((a->scalar.kind == UD_DT_DBTIMESTAMPOFFSET) !=
+            (b->scalar.kind == UD_DT_DBTIMESTAMPOFFSET))
+            return UD_SCHEMA;
+        if (!a->scalar.kind || !b->scalar.kind)
+            out->scalar = (ud_scalar_metadata){0};
+        else {
+            int time_a = a->scalar.kind == UD_DT_DBTIME || a->scalar.kind == UD_DT_DBTIME2,
+                time_b = b->scalar.kind == UD_DT_DBTIME || b->scalar.kind == UD_DT_DBTIME2;
+            if (time_a != time_b)
+                return UD_SCHEMA;
+            out->scalar.kind = a->scalar.kind == UD_DT_DBTIMESTAMPOFFSET ? UD_DT_DBTIMESTAMPOFFSET
+                               : time_a                                  ? UD_DT_DBTIME2
+                                                                         : UD_DT_DBTIMESTAMP2;
+            out->scalar.fractional_digits =
+                a->scalar.fractional_digits > b->scalar.fractional_digits
+                    ? a->scalar.fractional_digits
+                    : b->scalar.fractional_digits;
+        }
+        return UD_OK;
+    }
+    if (!numeric(a) || !numeric(b)) {
+        return ud_field_matches(a, b, UD_FIELD_VALUE_TYPE) ? UD_OK : UD_SCHEMA;
+    }
+    out->scalar = (ud_scalar_metadata){0};
+    out->precision = out->scale = 0;
+    if (a->type == UD_FLOAT64 || b->type == UD_FLOAT64) {
+        out->type = UD_FLOAT64;
+        if (a->scalar.kind || b->scalar.kind)
+            out->scalar.kind =
+                a->scalar.kind == UD_DT_R4 && b->scalar.kind == UD_DT_R4 ? UD_DT_R4 : UD_DT_R8;
+    } else if (a->type == UD_DECIMAL128 || b->type == UD_DECIMAL128) {
+        out->type = UD_DECIMAL128;
+        out->scale = a->scale > b->scale ? a->scale : b->scale;
+        int whole = digits(a) - a->scale > digits(b) - b->scale ? digits(a) - a->scale
+                                                                : digits(b) - b->scale;
+        out->precision = whole + out->scale;
+        if (out->precision > 38)
+            return UD_OVERFLOW;
+        if (a->scalar.kind || b->scalar.kind)
+            out->scalar.kind = UD_DT_NUMERIC;
+    } else {
+        unsigned width = bits(a) > bits(b) ? bits(a) : bits(b);
+        int sign = a->type == UD_INT64 || b->type == UD_INT64;
+        if (a->type != b->type) {
+            unsigned uns = a->type == UD_UINT64 ? bits(a) : bits(b),
+                     signed_bits = a->type == UD_INT64 ? bits(a) : bits(b);
+            if (uns >= signed_bits) {
+                if (uns == 64)
+                    return UD_SCHEMA;
+                width = uns * 2;
+            }
+        }
+        out->type = sign ? UD_INT64 : UD_UINT64;
+        if (a->scalar.kind || b->scalar.kind)
+            out->scalar.kind = (sign ? UD_DT_I1 : UD_DT_UI1) + (width == 8    ? 0
+                                                                : width == 16 ? 1
+                                                                : width == 32 ? 2
+                                                                              : 3);
+    }
+    return UD_OK;
 }

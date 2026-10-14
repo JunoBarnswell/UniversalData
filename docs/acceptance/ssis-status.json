@@ -1,40 +1,84 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "2.0.0",
-  "abi": 10,
+  "sdkVersion": "2.1.0",
+  "abi": 11,
   "scope": {
-    "name": "UniversalData 2.0 SSIS current capabilities and complete ETL product",
+    "name": "UniversalData SSIS 2025 strict parity, Native scalar/expression and seven-target ETL delivery",
     "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
     "windows": "Required — complete driver build, native/language/install and platform acceptance",
     "extensions": "50 applicable audit items require current source and behavior evidence; ETL-039/040 NotApplicable"
   },
   "baseline": {
-    "mainCommit": "203c9c9fcf80b3e27ac10a66c8093873a25c732f",
+    "mainCommit": "867228797e6f2433cedff684f59ca1d28d3b4b29",
     "merged": true,
     "sdkVersion": "2.0.0",
     "abiVersion": 10,
     "mergeEvidence": {
-      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/6"
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/7"
     }
   },
   "candidate": {
-    "branch": "codex/etl-architecture-advanced-extensions",
-    "state": "Draft PR #7 continuation: Linux identity/projection and multi-process ownership/history contracts passed current scoped acceptance. SQL Server XA compiles but its actual recovery resource remains Blocked. Complete Schema state migration, Kafka/Lakehouse and cross-machine agents are still incomplete; production release is not certified.",
-    "sourceCommit": "",
-    "sourceFingerprint": "",
+    "branch": "codex/ssis-strict-parity",
+    "state": "Draft PR #8. Native core implemented and Linux acceptance sealed; complete SSIS parity remains Partial.",
+    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+    "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
     "mergeEvidence": null,
-    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/7"
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/8"
   },
   "remoteCI": {
-    "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
-    "runId": 38556015263,
-    "status": "Verification Blocked",
-    "reason": "GitHub account billing/spending limit prevented jobs from starting; no build steps executed",
-    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38556015263"
+    "state": "VerificationBlocked",
+    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38637673809",
+    "status": "completed",
+    "conclusion": "failure",
+    "jobs": [
+      {
+        "id": 116104898127,
+        "name": "source-and-designer",
+        "conclusion": "failure",
+        "steps": 0
+      },
+      {
+        "id": 116104898465,
+        "name": "native-core (ubuntu-24.04)",
+        "conclusion": "failure",
+        "steps": 0
+      },
+      {
+        "id": 116104898543,
+        "name": "native-core (windows-2025)",
+        "conclusion": "failure",
+        "steps": 0
+      },
+      {
+        "id": 116104899923,
+        "name": "complete-drivers-and-delivery",
+        "conclusion": "skipped",
+        "steps": 0
+      },
+      {
+        "id": 116104920549,
+        "name": "release-readiness",
+        "conclusion": "failure",
+        "steps": 0
+      }
+    ],
+    "annotations": [
+      {
+        "level": "failure",
+        "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      }
+    ],
+    "reason": "GitHub did not start build steps because of account billing/spending restrictions. Skipped complete-product delivery is not accepted as a pass."
   },
   "artifacts": {
-    "status": "No current-source release artifact; prior PR #6 artifact is archived in history.product2FirstDelivery",
-    "published": false
+    "archive": "artifacts/ssis-strict-parity/UniversalData-2.1.0-linux-x64.zip",
+    "sha256": "4ac9171df0cf469f50e1f035a780a5caf918e83ef1179fc655b6017554400d90",
+    "manifest": "artifacts/ssis-strict-parity/bundle/manifest.json",
+    "runtimeIdentifier": "linux-x64",
+    "sdkVersion": "2.1.0",
+    "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d"
   },
   "components": "docs/product/component-catalog.md",
   "items": [
@@ -1730,7 +1774,8 @@
     "All 50 applicable audit items remain incomplete until current source AND behavior evidence exists",
     "Current Linux PRODUCT build and real four-driver SQL/CDC/native bulk acceptance passed; Windows, Oracle TCPS and independent SMTP/FTP/SFTP/Azure/S3/SSAS/WMI acceptance are Blocked.",
     "Qualified SQL Server distributed transaction participation, complete online schema physical-identity proof and broader Avro named-reference/union coverage are not certified complete; see existing audit items.",
-    "Historical ABI 9 documents and results do not certify SDK 2.0 / ABI 10",
-    "Raw data, old packages, plugins and recovery directories remain preserved; old protocols are rejected rather than migrated in place"
+    "Raw data, old packages, plugins and recovery directories remain preserved; old protocols are rejected rather than migrated in place",
+    "SDK 2.1.0 / ABI and protocol family 11 is a clean break. Historical protocol 10 packages, plugins and recovery states are retained but rejected, and historical acceptance does not certify this source.",
+    "SSIS strict parity remains Partial: LCID comparison/sort inheritance, root/intermediate DT_STR rules, the complete 29x29 conversion legality/result matrix, exact Decimal promotion and all vendor transform behaviors are not implemented or certified. Real Windows SSIS 2025 Golden acceptance is VerificationBlocked."
   ]
 }

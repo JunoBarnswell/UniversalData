@@ -186,6 +186,7 @@ static ud_status copy_field(ud_context *ctx, const ud_field *f, ud_id parent, ud
                                f->children[0].child_count != 2 || !f->children[0].children ||
                                f->children[0].children[0].nullable)))
         return UD_SCHEMA;
+    UD_TRY(ud_scalar_field_validate(f));
     *out = *f;
     out->name = NULL;
     out->timezone = NULL;
@@ -313,7 +314,8 @@ ud_status ud_field_derive(ud_context *ctx, const ud_field *source, ud_string sco
 }
 int32_t ud_field_matches(const ud_field *a, const ud_field *b, int32_t mode) {
     if (!a || !b || mode < UD_FIELD_VALUE_TYPE || mode > UD_FIELD_LAYOUT || a->type != b->type ||
-        a->precision != b->precision || a->scale != b->scale || a->child_count != b->child_count)
+        a->precision != b->precision || a->scale != b->scale || a->child_count != b->child_count ||
+        memcmp(&a->scalar, &b->scalar, sizeof(a->scalar)))
         return 0;
     if (a->dictionary_kind != b->dictionary_kind || a->dictionary_count != b->dictionary_count)
         return 0;

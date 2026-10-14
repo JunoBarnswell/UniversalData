@@ -454,3 +454,33 @@ if(TARGET ud_connector_odbc AND TARGET ud_connector_postgresql)
   set_tests_properties(integration_mssql_postgresql_participant_recovery PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
     LABELS "real-integration;crash-recovery;odbc;postgresql" RESOURCE_LOCK "ud_integration_odbc;ud_integration_postgresql")
 endif()
+
+if(TARGET ud_expression)
+  add_executable(test_ssis_expression ssis_parity/expression.c)
+  target_link_libraries(test_ssis_expression PRIVATE ud_expression)
+  add_test(NAME ssis_native_expression_contract COMMAND test_ssis_expression)
+endif()
+if(TARGET ud_package)
+  add_executable(test_ssis_workflow ssis_parity/runner.c)
+  target_link_libraries(test_ssis_workflow PRIVATE ud_package)
+  add_test(NAME ssis_row_error_atomicity_recovery COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ssis_parity/row_semantics.py $<TARGET_FILE:test_ssis_workflow>)
+  set_tests_properties(ssis_row_error_atomicity_recovery PROPERTIES TIMEOUT 180)
+endif()
+if(TARGET ud_package AND TARGET ud_connector_mysql)
+  add_executable(test_ssis_database ssis_parity/database.c)
+  target_link_libraries(test_ssis_database PRIVATE ud_plugins ud_columnar)
+  add_test(NAME integration_ssis_mysql_50000 COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ssis_parity/workflow.py --runner $<TARGET_FILE:test_ssis_workflow>
+    --database $<TARGET_FILE:test_ssis_database> --plugin $<TARGET_FILE:ud_connector_mysql>
+    --output ${CMAKE_CURRENT_BINARY_DIR}/ssis-parity-results)
+  set_tests_properties(integration_ssis_mysql_50000 PROPERTIES SKIP_RETURN_CODE 77
+    TIMEOUT 5400 LABELS "real-integration;mysql;ssis-parity;performance;recovery"
+    RESOURCE_LOCK ud_integration_mysql)
+endif()
+if(Python3_EXECUTABLE)
+  add_test(NAME ssis_microsoft_golden COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ssis_parity/compare_golden.py)
+  set_tests_properties(ssis_microsoft_golden PROPERTIES SKIP_RETURN_CODE 77
+    LABELS "ssis-golden;windows-resource")
+endif()

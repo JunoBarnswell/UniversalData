@@ -1,10 +1,10 @@
 # UniversalData
 
-UniversalData 2.0 正在 `codex/etl-ssis-product-alignment` / PR #6 开发，以 `main@7e706d28`（SDK 1.5.0 / ABI 9）为基线。C17 继续拥有唯一 Package / Execution / Component / Connector 执行体系；SDK 2.0.0 与 ABI、Package、Schema、Plan、Wire、Plugin、Checkpoint、Worker 协议族统一为 10。旧插件重新构建、旧包重新生成，旧恢复状态明确拒绝；原始数据与旧产物保留。
+当前 SDK 为 **2.1.0 / ABI 11**，从 `main@867228797e6f2433cedff684f59ca1d28d3b4b29` 在 `codex/ssis-strict-parity` 开发。C17 继续拥有唯一 Package / Execution / Activation / Component / Connector 执行体系。Package、Schema、Plan、Wire、Plugin、Checkpoint、Worker 协议族统一为 11；旧插件须重新构建，旧包须重新生成，旧恢复状态明确拒绝，原始数据和旧产物保留。
 
-现有产品模型追踪全部 52 项审查：ETL-039（DQS）与 ETL-040（SSAS Data Mining）不适用，其余 50 项必须同时有当前源码与行为证据。三轮有界设计复核已纳入该模型。2.0 的 Linux 与 Windows 均要求验收；历史 ABI 9 的验收与 Windows 豁免不计入当前版本。当前连贯实现仍在进行，集中编译和验收尚未执行。
+现有产品模型继续追踪 52 项审查，并纳入本次 SSIS 的 30 项 Derived Column、23 个运算符、39 个函数、29 个类型域、31 类转换和 20 个业务验收条目。[逐项源码与缺口](docs/acceptance/ssis-strict-parity.md)由同一产品模型生成。Linux 的 Native、数据库、语言和浏览器结果只证明其中列明的行为；**没有真实 Windows SSIS Golden 的条目均不声明微软等价**。Windows 与独立供应商资源缺失单独记录受阻，代码缺口保持 Partial。
 
-已落代码包括 Native 默认执行 ID 与宿主读取、[SQLite 索引 Catalog](docs/architecture/catalog.md)，以及 [PostgreSQL COPY / MySQL、MariaDB 受控远程原生装载](docs/architecture/sql-bulk-loading.md) 的追加模式。Upsert 暂存合并、BCP、OCI Direct Path、类型与恢复完整整改、ASP.NET Core 10 管理与 React Flow 设计器等仍按产品模型保持未完成状态。
+SSIS 公式文本和 JSON 表达式共用 Native typed IR、Registry 和求值器；Derived Column 的新增/替换共用读取原始输入的行级写入计划。29 个逻辑类型域保留位宽、精度、长度和代码页，新增 DateTime 保留 100ns 与显式偏移。C# / Java 通过 Native Registry 注册扩展函数与组件。[50K 真实 MySQL 验收](tests/ssis_parity/README.md)覆盖 CSV/XLSX、七目标事务、逐行回读、错误隔离和进程恢复。[远程批量装载](docs/architecture/sql-bulk-loading.md)使用 PostgreSQL COPY、MySQL/MariaDB LOCAL INFILE 和 SQL Server BCP；OCI Direct Path 的真实验收仍受环境限制。
 
 ```mermaid
 flowchart LR

@@ -1,0 +1,268 @@
+{
+  "exitCode": 0,
+  "sdkVersion": "2.1.0",
+  "abiVersion": 11,
+  "configuration": "Release",
+  "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+  "archive": "/workspace/ud-ssis-delivery-current/UniversalData-2.1.0-linux-x64.zip",
+  "archiveSha256": "4ac9171df0cf469f50e1f035a780a5caf918e83ef1179fc655b6017554400d90",
+  "verifiedFiles": 273,
+  "unpackedDirectory": "/workspace/ud-ssis-installed-current/bundle",
+  "logs": "/workspace/ud-ssis-installed-current",
+  "nativeLibrary": {
+    "path": "/workspace/ud-ssis-installed-current/bundle/sdk/lib/libud_data.so",
+    "sha256": "c96a1b98ce99e525257ce52c7b8641ae7fe71fb5262b28c38eac5607860a7cf7"
+  },
+  "nuget": {
+    "path": "/workspace/ud-ssis-installed-current/bundle/packages/UniversalData.2.1.0.nupkg",
+    "sha256": "d3d741ee11fad58b07037b74740c0d72826553e7821cf7849f826b5a3effd816",
+    "nativeFromPackage": true,
+    "sdkLoaderPath": false
+  },
+  "maven": {
+    "path": "/workspace/ud-ssis-installed-current/bundle/packages/universal-data-2.1.0.jar",
+    "sha256": "4897817d6f927c971fd2b76103a2c5fe2e08b76190202b8af47d98564c837614",
+    "nativeFromBundle": true
+  },
+  "c": {
+    "cmakeTarget": "UniversalData::Data",
+    "dynamicPackage": true,
+    "dynamicResources": true,
+    "installedHostPipeline": true,
+    "dynamicSQLite": true
+  },
+  "languageParity": "10003 rows / 20006 input and output / 8 tasks; Package/Project/child and scalar/nested/wire equality",
+  "nativeQueryParity": "C/.NET/Java SQLite discovery/refresh, three compatibility policies and row identity from identified Wire",
+  "installedWebWorkerBrowser": "Passed",
+  "commands": [
+    {
+      "step": "c-configure",
+      "command": [
+        "/workspace/.universaldata-tools/bin/cmake",
+        "-S",
+        "/workspace/ud-ssis-installed-current/c-source",
+        "-B",
+        "/workspace/ud-ssis-installed-current/c-build",
+        "-DCMAKE_PREFIX_PATH=/workspace/ud-ssis-installed-current/bundle/sdk",
+        "-DCMAKE_BUILD_TYPE=Release"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-build",
+      "command": [
+        "/workspace/.universaldata-tools/bin/cmake",
+        "--build",
+        "/workspace/ud-ssis-installed-current/c-build",
+        "--config",
+        "Release",
+        "--parallel",
+        "4"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-dynamic-resources",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/core_runtime.py",
+        "/workspace/ud-ssis-installed-current/c-build/consumer_resources"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "installed-host-pipeline",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/core_pipeline.py",
+        "/workspace/ud-ssis-installed-current/bundle/sdk/bin/universaldata/cli/ud_cli",
+        "/workspace/ud-ssis-installed-current/c-build/consumer_wire_decode"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-dynamic-sqlite",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/package_sql.py",
+        "/workspace/ud-ssis-installed-current/c-build/consumer_sql",
+        "/workspace/ud-ssis-installed-current/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-restore-package",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "restore",
+        "/workspace/ud-ssis-installed-current/dotnet-package/Consumer.csproj",
+        "--source",
+        "/workspace/ud-ssis-installed-current/bundle/packages",
+        "--packages",
+        "/workspace/ud-ssis-installed-current/nuget-cache",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-build-package",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "build",
+        "/workspace/ud-ssis-installed-current/dotnet-package/Consumer.csproj",
+        "--configuration",
+        "Release",
+        "--no-restore",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-restore-data",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "restore",
+        "/workspace/ud-ssis-installed-current/dotnet-data/DataConsumer.csproj",
+        "--source",
+        "/workspace/ud-ssis-installed-current/bundle/packages",
+        "--packages",
+        "/workspace/ud-ssis-installed-current/nuget-cache",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-build-data",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "build",
+        "/workspace/ud-ssis-installed-current/dotnet-data/DataConsumer.csproj",
+        "--configuration",
+        "Release",
+        "--no-restore",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "maven-install",
+      "command": [
+        "/workspace/.universaldata-tools/maven/bin/mvn",
+        "-B",
+        "-q",
+        "-s",
+        "/workspace/.universaldata-tools/maven-settings.xml",
+        "-f",
+        "/workspace/ud-ssis-installed-current/bundle/packages/universal-data-2.1.0.pom",
+        "install:install-file",
+        "-Dfile=/workspace/ud-ssis-installed-current/bundle/packages/universal-data-2.1.0.jar",
+        "-DpomFile=/workspace/ud-ssis-installed-current/bundle/packages/universal-data-2.1.0.pom",
+        "-DlocalRepositoryPath=/workspace/ud-ssis-installed-current/maven-repository"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "maven-consumer",
+      "command": [
+        "/workspace/.universaldata-tools/maven/bin/mvn",
+        "-B",
+        "-q",
+        "-s",
+        "/workspace/.universaldata-tools/maven-settings.xml",
+        "-f",
+        "/workspace/ud-ssis-installed-current/java-consumer/pom.xml",
+        "-Dmaven.repo.local=/workspace/ud-ssis-installed-current/java-cache",
+        "package"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-language-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/package_language_parity.py",
+        "/workspace/ud-ssis-installed-current/c-build/consumer_package",
+        "/workspace/ud-ssis-installed-current/c-build/consumer_data",
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "/workspace/ud-ssis-installed-current/dotnet-package/bin/Release/net8.0/Consumer.dll",
+        "/workspace/ud-ssis-installed-current/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "/workspace/ud-ssis-installed-current/java-consumer/target/classes",
+        "/workspace/ud-ssis-installed-current/maven-repository/org/universaldata/universal-data/2.1.0/universal-data-2.1.0.jar",
+        "/workspace/ud-ssis-installed-current/bundle/sdk/lib",
+        "--managed-native-local"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-native-query-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/next_phase_queries.py",
+        "--query",
+        "/workspace/ud-ssis-installed-current/c-build/consumer_query",
+        "--data",
+        "/workspace/ud-ssis-installed-current/c-build/consumer_data",
+        "--dotnet",
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "--data-dll",
+        "/workspace/ud-ssis-installed-current/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "--java",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "--classes",
+        "/workspace/ud-ssis-installed-current/java-consumer/target/classes",
+        "--jar",
+        "/workspace/ud-ssis-installed-current/maven-repository/org/universaldata/universal-data/2.1.0/universal-data-2.1.0.jar",
+        "--native",
+        "/workspace/ud-ssis-installed-current/bundle/sdk/lib",
+        "--sqlite",
+        "/workspace/ud-ssis-installed-current/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-advanced-metadata-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/advanced_metadata.py",
+        "--query",
+        "/workspace/ud-ssis-installed-current/c-build/consumer_query",
+        "--sqlite",
+        "/workspace/ud-ssis-installed-current/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so",
+        "--dotnet",
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "--data-dll",
+        "/workspace/ud-ssis-installed-current/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "--java",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "--classes",
+        "/workspace/ud-ssis-installed-current/java-consumer/target/classes",
+        "--jar",
+        "/workspace/ud-ssis-installed-current/maven-repository/org/universaldata/universal-data/2.1.0/universal-data-2.1.0.jar",
+        "--native",
+        "/workspace/ud-ssis-installed-current/bundle/sdk/lib"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "installed-web-worker-browser",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/UniversalData-Next/tests/web_product.py",
+        "--url",
+        "http://127.0.0.1:59765",
+        "--root",
+        "/workspace/ud-ssis-installed-current/web/resources",
+        "--evidence",
+        "/workspace/ud-ssis-installed-current/browser",
+        "--browser-executable",
+        "/usr/bin/chromium"
+      ],
+      "exitCode": 0
+    }
+  ]
+}

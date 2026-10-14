@@ -24,3 +24,21 @@
 }
 @media(max-width:480px){.brand strong{display:none}.main-header nav button{padding:0 6px}.editor-toolbar>select{max-width:155px}.editor-toolbar input{width:135px}}
 .login-page{min-height:100dvh;display:grid;place-items:center;background:#f8fafb;padding:24px}.login-card{display:flex;flex-direction:column;gap:20px;width:min(400px,100%);padding:32px;background:#fff;border:1px solid var(--line);border-radius:8px}.login-card h1{font-size:23px;margin:0}.session-controls{display:flex;gap:6px;align-items:center}.session-controls>button{padding:6px;border:0}.session-controls>span{max-width:100px;overflow:hidden;text-overflow:ellipsis}.property-group{margin:0;min-width:0;padding:12px;border:1px solid var(--line);border-radius:4px;display:flex;flex-direction:column;gap:12px}.property-group legend{font-weight:600;padding:0 5px}.property-list{display:flex;flex-direction:column;gap:12px}.property-entry{display:flex;flex-direction:column;gap:9px;border-left:2px solid #d8dde4;padding-left:10px}.property-entry>header{display:flex;align-items:center;justify-content:space-between;gap:7px}.property-entry>header button{padding:4px 8px}.property-entry .property-form{padding-bottom:0}.expression-node{display:flex;flex-direction:column;gap:8px}.expression-node .expression-node{border-left:2px solid var(--line);padding-left:10px}.property-help{font-size:11px;line-height:1.6;color:var(--muted)}
+
+.ssis-column-dialog { width: min(96vw, 1500px); max-width: 96vw; max-height: 90vh; border: 1px solid #cbd5e1; border-radius: 10px; padding: 20px; color: #1e293b; }
+.ssis-column-dialog::backdrop { background: #0f172a80; }
+.ssis-column-dialog > header, .ssis-column-dialog > footer, .ssis-formula-tools { display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
+.ssis-column-table { overflow-x: auto; margin: 16px 0; }
+.ssis-column-table table { width: 100%; border-collapse: collapse; }
+.ssis-column-table th, .ssis-column-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; text-align: left; }
+.ssis-column-table td:nth-child(3) { min-width: 440px; }
+.ssis-column-table td:nth-child(2) { min-width: 180px; }
+.ssis-column-table input, .ssis-column-table select { width: 100%; }
+.ssis-formula textarea { min-height: 90px; width: 100%; font: 13px/1.6 ui-monospace, monospace; tab-size: 2; }
+.ssis-formula select { max-width: 210px; }
+.ssis-formula small, .ssis-inferred { display: block; font-size: 12px; color: #475569; overflow-wrap: anywhere; }
+.ssis-split-editor fieldset { margin: 12px 0; padding: 10px; border: 1px solid #cbd5e1; }
+
+.ssis-formula-highlight{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel,#151c27);padding:.65rem;border-radius:.3rem}.formula-string{color:#83c798}.formula-variable{color:#d8a8ff}.formula-column{color:#70c9ed}.formula-type{color:#ffd086}.formula-function{color:#9cb9ff}
+
+.ssis-formula-highlight,.formula-token{color:#e3e9f2}.ssis-column-table button{white-space:nowrap}

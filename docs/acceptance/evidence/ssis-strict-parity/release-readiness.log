@@ -1,0 +1,10 @@
+Core delivery evidence incomplete:
+windows-full-build: required core gate did not pass
+correctness: required core gate did not pass
+recovery: required core gate did not pass
+external-integration: required core gate did not pass
+language-parity: required core gate did not pass
+web: required core gate did not pass
+performance: required core gate did not pass
+installed-consumers: required core gate did not pass
+release-integrity: required core gate did not pass

@@ -48,13 +48,14 @@ static ud_status parse_fields(ud_context *ctx, const ud_json *array, uint32_t de
         return UD_RESOURCE;
     *out = fields;
     *count = n;
-    static const char *allowed[] = {"name",    "type",     "nullable",  "precision",
-                                    "scale",   "timezone", "children",  "identity",
-                                    "lineage", "keyOrder", "dictionary", "physicalIdentity"};
+    static const char *allowed[] = {"name",    "type",     "nullable",   "precision",
+                                    "scale",   "timezone", "children",   "identity",
+                                    "lineage", "keyOrder", "dictionary", "physicalIdentity",
+                                    "scalar"};
     for (uint32_t j = 0; j < n; j++) {
         const ud_json *v = ud_json_at(array, j);
         ud_field *f = fields + j;
-        UD_TRY(ud_json_keys(v, allowed, 12));
+        UD_TRY(ud_json_keys(v, allowed, 13));
         UD_TRY(text_value(member(v, "name"), &f->name, &f->name_length));
         const ud_json *id = member(v, "identity"), *lineage = member(v, "lineage");
         if (id) {
@@ -103,6 +104,25 @@ static ud_status parse_fields(ud_context *ctx, const ud_json *array, uint32_t de
             if (order < 0 || order > 65536)
                 return UD_SCHEMA;
             f->key_order = (uint32_t)order;
+        }
+        if (member(v, "scalar")) {
+            const ud_json *meta = member(v, "scalar");
+            static const char *keys[] = {"type",     "length",          "codePage",
+                                         "localeId", "comparisonFlags", "fractionalDigits"};
+            UD_TRY(ud_json_keys(meta, keys, 6));
+            ud_string name;
+            UD_TRY(text_value(member(meta, "type"), &name.data, &name.length));
+            UD_TRY(ud_scalar_type_parse(name, &f->scalar.kind));
+            uint32_t *dest[] = {&f->scalar.length, &f->scalar.code_page, &f->scalar.locale_id,
+                                &f->scalar.comparison_flags, &f->scalar.fractional_digits};
+            for (uint32_t k = 1; k < 6; k++)
+                if (member(meta, keys[k])) {
+                    int32_t n = 0;
+                    UD_TRY(integer(ctx, member(meta, keys[k]), &n));
+                    if (n < 0)
+                        return UD_SCHEMA;
+                    *dest[k - 1] = (uint32_t)n;
+                }
         }
         const ud_json *nullable = member(v, "nullable");
         if (ud_json_kind(nullable) != UD_JSON_BOOL)
@@ -171,6 +191,16 @@ static ud_status emit_fields(ud_bytes *bytes, const ud_field *fields, uint32_t c
         UD_TRY(ud_bytes_put(bytes, ",\"type\":", 8));
         UD_TRY(
             ud_json_quote(bytes, ud_type_name(f->type), (uint32_t)strlen(ud_type_name(f->type))));
+        if (f->scalar.kind) {
+            char meta[260];
+            int n = snprintf(meta, sizeof(meta),
+                             ",\"scalar\":{\"type\":\"%s\",\"length\":%u,\"codePage\":%u,"
+                             "\"localeId\":%u,\"comparisonFlags\":%u,\"fractionalDigits\":%u}",
+                             ud_scalar_type_name(f->scalar.kind), f->scalar.length,
+                             f->scalar.code_page, f->scalar.locale_id, f->scalar.comparison_flags,
+                             f->scalar.fractional_digits);
+            UD_TRY(ud_bytes_put(bytes, meta, (size_t)n));
+        }
         if (f->key_order) {
             char key[40];
             int n = snprintf(key, sizeof(key), ",\"keyOrder\":%u", f->key_order);

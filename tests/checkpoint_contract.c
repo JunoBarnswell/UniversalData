@@ -15,7 +15,8 @@ int main(int argc,char **argv) {
     const char old[] = "\"0000000000000000000000000000000000000000000000000000000000000000\"";
     ud_journal_record header = {1,{"identity",8},{0},{old,sizeof(old)-1}};
     OK(ud_journal_append(journal,&header,1)); ud_journal_close(journal);
-    const char package[] = "{\"version\":10,\"id\":\"contract\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
+    const char package[] = "{\"version\":11,\"id\":\"contract\",\"controlFlow\":{\"tasks\":[],"
+                           "\"constraints\":[]},\"dataFlows\":[]}";
     ud_execution_options options = {.struct_size = sizeof(options),.abi_version = UD_ABI_VERSION,
         .context = {.struct_size = sizeof(ud_context_options),.abi_version = UD_ABI_VERSION,.memory_limit = 16777216},
         .edge_capacity = 1,.max_batch_rows = 1,.max_depth = 32,

@@ -1,6 +1,6 @@
 using UniversalData;
 
-[assembly: UniversalDataModule("2.0.0", 10)]
+[assembly: UniversalDataModule(ProductInfo.Sdk, ProductInfo.Protocol)]
 
 /// <summary>The same actual module is exercised through SDK registration and the product Worker loader.</summary>
 public sealed class RecoveryModule : IManagedModule

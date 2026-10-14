@@ -14,9 +14,10 @@ public enum DataType
     UInt64 = 10,
     Duration = 11,
     Interval = 12,
-    Struct = 13,
-    List = 14,
-    Map = 15
+    DateTime = 13,
+    Struct = 14,
+    List = 15,
+    Map = 16
 }
 public readonly record struct Duration(long Microseconds);
 public readonly record struct Interval(int Months, int Days, long Microseconds);

@@ -56,7 +56,7 @@ static async Task WorkerHandshake(string worker)
         var policy = new HostPolicy(Path.Combine(directory,"state"),[],[],[],new());
         var identity = HostIdentity.Operator("local");
         var request = new WorkerRequest(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"execute",policy,identity,
-            "{\"version\":10,\"id\":\"worker\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}",
+            "{\"version\":11,\"id\":\"worker\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}",
             Debug:JsonSerializer.SerializeToElement(new { previewRows = 1,breakpoints = Array.Empty<string>() }),
             ControlReference:new ParameterVault(policy).Store("{\"token\":\"test-control-capability-294871439\"}"));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -112,12 +112,12 @@ static async Task WorkerHandshake(string worker)
         request = request with { Ticket = Guid.NewGuid().ToString("N") };
         string privateFile = Path.Combine(policy.ExecutionDirectory(request.Ticket),"private.ndjson");
         Directory.CreateDirectory(Path.GetDirectoryName(privateFile)!); File.WriteAllText(privateFile,"{\"id\":1}\n");
-        string probe = JsonSerializer.Serialize(new { version = 10,id = "private-state-probe",
+        string probe = JsonSerializer.Serialize(new { version=11,id = "private-state-probe",
             variables = new { rows = new { type = "int64",@default = 0 } },
             connections = new[] { new { id = "private",driver = "file",resource = privateFile } },
             controlFlow = new { tasks = new[] { new { id = "read",kind = "dataFlow",config = new { pipeline = "probe" } } },constraints = Array.Empty<object>() },
             dataFlows = new[] { new { id = "probe",components = new object[] {
-                new { id = "source",component = "file.ndjson.source",config = new { connection = "private",schema = new { version = 10,fields = new[] { new { name = "id",type = "int64",nullable = false } } } } },
+                new { id = "source",component = "file.ndjson.source",config = new { connection = "private",schema = new { version=11,fields = new[] { new { name = "id",type = "int64",nullable = false } } } } },
                 new { id = "count",component = "profile.statistics",config = new { statistics = new[] { new { kind = "rows",variable = "rows" } } } } },
                 paths = new[] { new { from = "source",output = 0,to = "count",input = 0 } } } } });
         request = request with { Package = probe };
@@ -131,7 +131,7 @@ static async Task WorkerHandshake(string worker)
                 process.StandardInput.Close(); await process.WaitForExitAsync(timeout.Token); await errors;
             } finally { if (!process.HasExited) await WorkerLauncher.Terminate(process,request.Ticket,false); }
         }
-        request = request with { Ticket = Guid.NewGuid().ToString("N"),Package = "{\"version\":10,\"id\":\"worker\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}" };
+        request = request with { Ticket = Guid.NewGuid().ToString("N"),Package = "{\"version\":11,\"id\":\"worker\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}" };
         using(var process = WorkerLauncher.Launch(worker,request)) {
             try {
                 await Send(process,request); _ = await Read(process,"ready"); process.StandardInput.Close();

@@ -12,7 +12,24 @@ ud_status ud_state_create(ud_context *ctx, ud_buffer_manager *buffers, const ud_
         return UD_RESOURCE;
     (*out)->ctx = ctx;
     (*out)->buffers = buffers;
-    (*out)->batch_size = batch_size;
+    ud_buffer_options limits = {0};
+    ud_status budget = ud_buffer_manager_limits(buffers, &limits);
+    if (budget) {
+        ud_free(*out);
+        *out = NULL;
+        return budget;
+    }
+    /* A page must fit concurrently with its encoded bytes and other readers.
+     * Event rows may contain complete variable-size batches, so a row count is
+     * never a sufficient memory bound. */
+    (*out)->page_limit = limits.working_limit / 8;
+    if (!(*out)->page_limit)
+        (*out)->page_limit = 1;
+    uint64_t width = sizeof(ud_row_info) + (uint64_t)schema->columns * 32;
+    uint64_t capacity = (*out)->page_limit / width;
+    if (!capacity)
+        capacity = 1;
+    (*out)->batch_size = capacity < batch_size ? (uint32_t)capacity : batch_size;
     ud_status s = schema_copy(ctx, schema, 0, &(*out)->schema);
     if (s) {
         ud_state_destroy(*out);
@@ -43,6 +60,30 @@ static ud_status flush(ud_state *state) {
         (ud_state_page){block, state->rows - state->chunk->rows, state->chunk->rows};
     ud_batch_destroy(state->chunk);
     state->chunk = NULL;
+    state->chunk_bytes = 0;
+    return UD_OK;
+}
+static uint64_t payload_bytes(const ud_value *value) {
+    uint64_t n = value->type == UD_UTF8 || value->type == UD_BINARY ? value->text_length : 0;
+    for (uint32_t j = 0; j < value->child_count; j++) {
+        uint64_t child = payload_bytes(value->children + j);
+        if (child > UINT64_MAX - sizeof(ud_value) - n)
+            return UINT64_MAX;
+        n += sizeof(ud_value) + child;
+    }
+    return n;
+}
+static ud_status row_bytes(const ud_batch *batch, uint32_t row, uint64_t *out) {
+    uint64_t n = sizeof(ud_row_info) + (uint64_t)batch->columns * 32;
+    for (uint32_t j = 0; j < batch->columns; j++) {
+        ud_value value;
+        UD_TRY(ud_batch_get(batch, row, j, &value));
+        uint64_t size = payload_bytes(&value);
+        if (size > UINT64_MAX - n)
+            return UD_OVERFLOW;
+        n += size;
+    }
+    *out = n;
     return UD_OK;
 }
 ud_status ud_state_append(ud_state *s, const ud_batch *b, uint32_t row) {
@@ -53,11 +94,19 @@ ud_status ud_state_append(ud_state *s, const ud_batch *b, uint32_t row) {
             return UD_SCHEMA;
     if (s->rows == UINT64_MAX)
         return UD_OVERFLOW;
+    uint64_t bytes = 0;
+    UD_TRY(row_bytes(b, row, &bytes));
+    if (s->chunk && s->chunk->rows &&
+        (bytes > s->page_limit || s->chunk_bytes > s->page_limit - bytes))
+        UD_TRY(flush(s));
     if (!s->chunk)
         UD_TRY(schema_copy(s->ctx, s->schema, s->batch_size, &s->chunk));
     UD_TRY(ud_batch_append_from(s->chunk, b, row));
     s->rows++;
-    return s->chunk->rows == s->batch_size ? flush(s) : UD_OK;
+    if (bytes > UINT64_MAX - s->chunk_bytes)
+        return UD_OVERFLOW;
+    s->chunk_bytes += bytes;
+    return s->chunk->rows == s->batch_size || s->chunk_bytes >= s->page_limit ? flush(s) : UD_OK;
 }
 ud_status ud_state_seal(ud_state *s) {
     if (!s)
@@ -127,7 +176,15 @@ ud_status ud_state_add_batch(ud_state *s, const ud_batch *batch) {
             return UD_SCHEMA;
     /* Partial partition fragments pack into the existing bounded chunk. A
      * sealed full chunk still shares its columns directly with Buffer. */
-    if (s->chunk || batch->rows < s->batch_size) {
+    uint64_t bytes = 0;
+    for (uint32_t row = 0; row < batch->rows && bytes <= s->page_limit; row++) {
+        uint64_t n = 0;
+        UD_TRY(row_bytes(batch, row, &n));
+        if (n > UINT64_MAX - bytes)
+            return UD_OVERFLOW;
+        bytes += n;
+    }
+    if (s->chunk || batch->rows < s->batch_size || bytes > s->page_limit) {
         for (uint32_t row = 0; row < batch->rows; row++)
             UD_TRY(ud_state_append(s, batch, row));
         return UD_OK;

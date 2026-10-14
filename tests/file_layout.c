@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
     ud_batch *errors = NULL;
     OK(ud_csv_next(reader, &rows, &errors));
     CHECK(ud_batch_rows(rows) == 1 && ud_batch_rows(errors) == 1);
-    OK(ud_batch_get(errors, 0, 13, &value));
+    OK(ud_batch_get(errors, 0, 15, &value));
     CHECK(value.type == UD_BINARY && value.text_length == 20); // exact UTF-16 bytes of bad;value\n
     ud_batch_destroy(rows);
     ud_batch_destroy(errors);

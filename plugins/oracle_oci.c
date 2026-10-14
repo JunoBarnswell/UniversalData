@@ -695,7 +695,7 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
     ud_status s =
         ud_oci_query(p,
                      "SELECT digest AS \"digest\",source_position AS \"source_position\" FROM "
-                     "ud_sdk_receipts_v10 WHERE tenant=:p1 AND job=:p2 AND batch_id=:p3 FOR UPDATE",
+                     "ud_sdk_receipts_v11 WHERE tenant=:p1 AND job=:p2 AND batch_id=:p3 FOR UPDATE",
                      args, 3, f, 2, &b);
     if (!s && p->host.rows(b)) {
         ud_value d, v;
@@ -723,12 +723,12 @@ static ud_status provision(void *state) {
         return UD_BUSY;
     ud_status status = literal(
         p,
-        "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_receipts_v10(tenant VARCHAR2(256 BYTE) NOT "
+        "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_receipts_v11(tenant VARCHAR2(256 BYTE) NOT "
         "NULL,job VARCHAR2(256 BYTE) NOT NULL,batch_id VARCHAR2(256 BYTE) NOT NULL,digest "
         "RAW(32) NOT NULL,source_position CLOB,PRIMARY KEY(tenant,job,batch_id))'; EXCEPTION "
         "WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;");
     if (!status)
-        status = literal(p, "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_tx_receipts_v10("
+        status = literal(p, "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_tx_receipts_v11("
                             "branch_id RAW(64) PRIMARY KEY,digest RAW(32) NOT NULL)'; EXCEPTION "
                             "WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;");
     return status;
@@ -759,7 +759,7 @@ static ud_status transaction_recover(void *state, const ud_transaction_branch *b
     ud_field digest = {.name = "digest", .name_length = 6, .type = UD_BINARY};
     if (!status && *result != UD_TX_PREPARED)
         status = ud_oci_query(p,
-                              "SELECT digest AS \"digest\" FROM ud_sdk_tx_receipts_v10 "
+                              "SELECT digest AS \"digest\" FROM ud_sdk_tx_receipts_v11 "
                               "WHERE branch_id=UTL_RAW.CAST_TO_RAW(:p1)",
                               &argument, 1, &digest, 1, &rows);
     if (!status && rows) {
@@ -830,7 +830,7 @@ static ud_status transaction_begin(void *state, const ud_transaction_branch *bra
     digest[64] = 0;
     char statement_text[384];
     snprintf(statement_text, sizeof(statement_text),
-             "INSERT INTO ud_sdk_tx_receipts_v10(branch_id,digest) "
+             "INSERT INTO ud_sdk_tx_receipts_v11(branch_id,digest) "
              "VALUES(HEXTORAW('%s'),HEXTORAW('%s'))",
              identity, digest);
     if (!status)
@@ -1200,7 +1200,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s)
             s = p->host.append(params, values, 5);
         ud_read_options insert = {
-            .sql = {"INSERT INTO ud_sdk_receipts_v10(tenant,job,batch_id,digest,source_position) "
+            .sql = {"INSERT INTO ud_sdk_receipts_v11(tenant,job,batch_id,digest,source_position) "
                     "VALUES(:p1,:p2,:p3,:p4,:p5)",
                     97},
             .parameters = params};

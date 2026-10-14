@@ -1,0 +1,15 @@
+Internal ctest changing into directory: /tmp/ud-next-build
+Test project /tmp/ud-next-build
+    Start 105: ssis_microsoft_golden
+1/1 Test #105: ssis_microsoft_golden ............***Skipped   0.03 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+ssis-golden         =   0.03 sec*proc (1 test)
+windows-resource    =   0.03 sec*proc (1 test)
+
+Total Test time (real) =   0.04 sec
+
+The following tests did not run:
+	105 - ssis_microsoft_golden (Skipped)

@@ -69,7 +69,8 @@ int main(int argc, char **argv) {
                                  .invoke = effect};
     OK(ud_registry_register(registry, &d));
     const char *package =
-        "{\"version\":10,\"id\":\"history-package\",\"parameters\":{\"secret\":{\"type\":\"utf8\"}},"
+        "{\"version\":11,\"id\":\"history-package\",\"parameters\":{\"secret\":{\"type\":\"utf8\"}}"
+        ","
         "\"project\":{\"id\":\"project\"},\"deployment\":{\"id\":\"deployment\",\"revision\":1,"
         "\"project\":{\"id\":\"project\",\"revision\":1},\"package\":{\"id\":\"history-package\","
         "\"revision\":2},\"environment\":{\"id\":\"environment\",\"revision\":3}},"

@@ -1,10 +1,11 @@
 """Sealed six-workload Linux matrix. Native driver reports CPU/RSS/owner metrics."""
 import argparse, shutil, hashlib, json, os, pathlib, platform, sqlite3, subprocess, tempfile, time
+PROTOCOL=json.loads((pathlib.Path(__file__).resolve().parents[1]/'metadata/product.json').read_text())['product']['protocolVersion']
 
 def field(name,kind='int64'): return dict(name=name,type=kind,nullable=False)
 def component(id,kind,**config): return dict(id=id,component=kind,config=config)
 def edge(a,b,output=0,input=0): return {'from':a,'to':b,'output':output,'input':input}
-def schema(fields):return dict(version=10,fields=fields)
+def schema(fields):return dict(version=PROTOCOL,fields=fields)
 def digest(path):
     total=0;count=0
     with path.open() as stream:
@@ -58,7 +59,7 @@ def main():
                     nodes.extend([component('fan','multicast'),component('lookup','cacheLookup',cache='ref',keys=[1],errorPolicy='fail'),component('lookup2','cacheLookup',cache='ref',keys=[1],errorPolicy='fail'),component('output','file.ndjson.destination',connection='output'),component('second','file.ndjson.destination',connection='second')]);paths=[edge('source','fan'),edge('fan','lookup'),edge('fan','lookup2',1),edge('lookup','output'),edge('lookup2','second')]
                 tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='flow'))];constraints=[]
                 if build:tasks.insert(0,dict(id='build',kind='dataFlow',config=dict(pipeline='build')));constraints=[{'from':'build','to':'flow','on':'success'}]
-                doc=dict(version=10,id='r5',connections=connections,caches=caches,policy=dict(maxConcurrency=workers,buffers=dict(connection='spill',residentBytes=65536,workingBytes=4194304,spillBytes=1000000000,maxBlocks=50000)),controlFlow=dict(tasks=tasks,constraints=constraints),dataFlows=([build] if build else [])+[dict(id='flow',components=nodes,paths=paths)])
+                doc=dict(version=PROTOCOL,id='r5',connections=connections,caches=caches,policy=dict(maxConcurrency=workers,buffers=dict(connection='spill',residentBytes=65536,workingBytes=4194304,spillBytes=1000000000,maxBlocks=50000)),controlFlow=dict(tasks=tasks,constraints=constraints),dataFlows=([build] if build else [])+[dict(id='flow',components=nodes,paths=paths)])
                 if workload=='incrementalResume':doc['durable']=True;interrupted=run(args.driver,doc,root,workers,kill=True);facts=run(args.driver,doc,root,workers,resume=True);facts['interruption']=interrupted;facts['totalSeconds']=interrupted['seconds']+facts['seconds'];db=sqlite3.connect(root/'target.db');assert db.execute('SELECT count(*),min(id),max(id) FROM output').fetchone()==(args.rows,0,args.rows-1);assert db.execute('SELECT count(*) FROM output WHERE fk != id % ?', (args.references,)).fetchone()[0]==0;db.close();signature={'rows':args.rows,'correctUpsertKeys':True,'correctForeignKeys':True}
                 else:
                     facts=run(args.driver,doc,root,workers);signature=digest(root/'output.ndjson')

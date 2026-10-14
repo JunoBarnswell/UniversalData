@@ -16,12 +16,15 @@ int main(int argc,char **argv) {
     ud_catalog_lease_request request={sizeof(request),UD_ABI_VERSION,UD_CATALOG_AUDIT,text("run/one"),text("node-a"),text("workers"),300,2};
     uint64_t generation=0,until=0;
     ud_catalog_key key={sizeof(key),UD_ABI_VERSION,UD_CATALOG_AUDIT,text("run/one"),1};
-    const char *queued="{\"version\":10,\"id\":\"run/one\",\"state\":\"Queued\"}";
+    const char *queued = "{\"version\":11,\"id\":\"run/one\",\"state\":\"Queued\"}";
     if (!strcmp(argv[2],"crash")) {
         OK(ud_catalog_compare_exchange(first,&key,text(queued),0,NULL));
         OK(ud_catalog_lease_acquire(first,&request,&generation,&until));CHECK(generation==1 && until>0);
         ud_catalog_lease lease={sizeof(lease),UD_ABI_VERSION,key.kind,key.id,request.owner,generation};
-        key.revision=2;OK(ud_catalog_compare_exchange(first,&key,text("{\"version\":10,\"id\":\"run/one\",\"state\":\"Running\"}"),1,&lease));
+        key.revision = 2;
+        OK(ud_catalog_compare_exchange(
+            first, &key, text("{\"version\":11,\"id\":\"run/one\",\"state\":\"Running\"}"), 1,
+            &lease));
         fflush(NULL);_exit(86); /* No close/release: authority must expire durably. */
     }
     CHECK(!strcmp(argv[2],"recover"));
@@ -32,7 +35,8 @@ int main(int argc,char **argv) {
     old.owner=text("node-a");old.generation=1;
     CHECK(ud_catalog_lease_renew(first,&old,30000,&until)==UD_FENCED);
     CHECK(ud_catalog_lease_release(first,&old)==UD_FENCED);
-    key.revision=3;const char *recovery="{\"version\":10,\"id\":\"run/one\",\"state\":\"RecoveryRequired\"}";
+    key.revision = 3;
+    const char *recovery = "{\"version\":11,\"id\":\"run/one\",\"state\":\"RecoveryRequired\"}";
     CHECK(ud_catalog_compare_exchange(first,&key,text(recovery),2,&old)==UD_FENCED);
     CHECK(ud_catalog_put(first,&key,text(recovery))==UD_FENCED);
     OK(ud_catalog_compare_exchange(second,&key,text(recovery),2,&lease));

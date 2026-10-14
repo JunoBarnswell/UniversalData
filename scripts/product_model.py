@@ -41,7 +41,7 @@ def projections(model):
     type_names = {"BOOL":"Bool", "INT64":"Int64", "FLOAT64":"Float64", "UTF8":"Utf8",
         "DECIMAL128":"Decimal128", "DATE32":"Date32", "TIME64":"Time64", "TIMESTAMP":"Timestamp",
         "BINARY":"Binary", "UINT64":"UInt64", "DURATION":"Duration", "INTERVAL":"Interval",
-        "STRUCT":"Struct", "LIST":"List", "MAP":"Map"}
+        "DATETIME":"DateTime", "STRUCT":"Struct", "LIST":"List", "MAP":"Map"}
     cs_types = "// Generated from include/ud/data.h; Native owns value semantics.\nnamespace UniversalData;\npublic enum DataType\n{\n"
     cs_types += ",\n".join("    " + type_names[name] + " = " + number for name,number in native_types) + "\n}\n"
     cs_types += "public readonly record struct Duration(long Microseconds);\npublic readonly record struct Interval(int Months, int Days, long Microseconds);\n"
@@ -68,6 +68,15 @@ def projections(model):
                     items=model["goals"], designReviews=model["productAlignment"]["designReviews"])
     status = dict(facts, components="docs/product/component-catalog.md",
                   items=model["goals"], limitations=model["limitations"])
+    strict = dict(generatedFrom=marker, sdkVersion=version, abi=abi,
+                  **model["productAlignment"].get("strictParity", {}))
+    strict_md = "# SSIS strict parity evidence\n\nGenerated from `metadata/product.json`; this is a projection of the existing product model.\n\n"
+    strict_md += "Native checks establish the stated invariants only. They do not establish Microsoft equivalence. No item is GoldenVerified without a real Windows SSIS capture.\n\n"
+    strict_md += "| ID | Requirement | Current code | Native evidence | Remaining code / reference proof |\n|---|---|---|---|---|\n"
+    for row in strict.get("matrix", []):
+        cells = [row["id"], row["name"], ", ".join(row["source"]),
+                 ", ".join(row.get("nativeChecks", [])), row.get("remaining", "")]
+        strict_md += "| " + " | ".join(str(cell).replace("|", "\\|").replace("\n", " ") for cell in cells) + " |\n"
     goals = {"generatedFrom": marker, "goalVersion": protocol,
              "completionRule": "All 50 applicable items require current source and behavior evidence; ETL-039/040 are NotApplicable. Missing environments are Blocked.",
              "automaticMergeOrReleaseAuthorized": False, "items": model["goals"]}
@@ -103,7 +112,11 @@ def projections(model):
     advanced_trace="# PR #5 历史基础与高级能力追踪\n\n<!-- Generated from metadata/product.json history. -->\n\n以下是 main 基线之前的历史事实，不计入 SDK 2.0 验收。当前 Linux 与 Windows 均须验收。\n\n| ID | 能力 | 实现状态 | 验收 |\n|---|---|---|---|\n"
     for item in history["advancedWorkItems"]:
         advanced_trace+="| "+item["id"]+" | "+item["name"]+" | "+item["state"]+" | "+item["verification"]+" |\n"
+    designer_package=json.loads((ROOT/"products/designer/package.json").read_text());designer_package["version"]=version
+    designer_lock=json.loads((ROOT/"products/designer/package-lock.json").read_text());designer_lock["version"]=version;designer_lock["packages"][""]["version"]=version
     return {
+        "products/designer/package.json": encoded(designer_package),
+        "products/designer/package-lock.json": encoded(designer_lock),
         "products/designer/src/dataTypes.ts": "// Generated from include/ud/data.h. Native owns type semantics.\nexport const DATA_TYPES = " + json.dumps([name.lower() for name, _ in native_types]) + " as const;\n",
         "bindings/dotnet/UniversalData/DataType.cs": cs_types,
         "bindings/java/src/main/java/org/universaldata/DataType.java": java_types,
@@ -140,6 +153,8 @@ def projections(model):
             '    private static native int nativeAbi();\n}\n',
         "docs/acceptance/progress.json": encoded(progress),
         "docs/acceptance/ssis-status.json": encoded(status),
+        "docs/acceptance/ssis-strict-parity.json": encoded(strict),
+        "docs/acceptance/ssis-strict-parity.md": strict_md,
         "docs/acceptance/completion-goal.json": encoded(goals),
         "docs/acceptance/gates.json": encoded(gates),
         "docs/acceptance/progress.md": progress_md,

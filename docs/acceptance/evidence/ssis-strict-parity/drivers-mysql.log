@@ -1,0 +1,25 @@
+Internal ctest changing into directory: /tmp/ud-next-build
+Test project /tmp/ud-next-build
+    Start 70: integration_mysql_sql
+1/6 Test #70: integration_mysql_sql ....................   Passed    0.09 sec
+    Start 71: integration_mysql_cdc
+2/6 Test #71: integration_mysql_cdc ....................   Passed    0.22 sec
+    Start 72: integration_mysql_row_command
+3/6 Test #72: integration_mysql_row_command ............   Passed    0.11 sec
+    Start 73: integration_mysql_type_domains
+4/6 Test #73: integration_mysql_type_domains ...........   Passed    0.05 sec
+    Start 74: integration_mysql_native_bulk
+5/6 Test #74: integration_mysql_native_bulk ............   Passed    0.08 sec
+    Start 75: integration_mysql_participant_recovery
+6/6 Test #75: integration_mysql_participant_recovery ...   Passed    0.41 sec
+
+100% tests passed, 0 tests failed out of 6
+
+Label Time Summary:
+crash-recovery      =   0.41 sec*proc (1 test)
+mysql               =   0.95 sec*proc (6 tests)
+native-bulk         =   0.08 sec*proc (1 test)
+real-integration    =   0.95 sec*proc (6 tests)
+row-command         =   0.11 sec*proc (1 test)
+
+Total Test time (real) =   0.96 sec

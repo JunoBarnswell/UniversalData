@@ -79,7 +79,11 @@ UD_API ud_status ud_execution_id(const ud_execution *, ud_string *);
 UD_API ud_status ud_activation_raise(ud_activation *, int32_t event_kind,
                                      ud_status original_result);
 /* Pure callback-owned field namespace. Returns owned Native text. */
+UD_API ud_status ud_component_source_identity(const ud_component_context *, ud_batch *, uint32_t,
+                                              uint64_t, ud_string);
 UD_API ud_status ud_component_schema_namespace(const ud_component_context *, char **, uint32_t *);
+UD_API ud_status ud_execution_compile_expression(ud_execution *, ud_string schema, ud_string source,
+                                                 char **, uint32_t *);
 UD_API ud_status ud_execution_component_catalog(ud_execution *, char **, uint32_t *);
 /* Pure metadata binding for designer ports; uses the same pipeline binder. */
 UD_API ud_status ud_execution_component_ports(ud_execution *, ud_string pipeline_id,

@@ -25,8 +25,29 @@ ud_status ud_record_options_validate(ud_context *ctx, const ud_record_options *o
 }
 ud_status ud_error_schema(const ud_error_context *c, const ud_batch *input, int include,
                           ud_batch **out) {
-    (void)input;
-    return ud_error_batch(c, include, 0, out);
+    ud_batch *base = NULL;
+    UD_TRY(ud_error_batch(c, include, 0, &base));
+    if (!include || !input) {
+        *out = base;
+        return UD_OK;
+    }
+    ud_field fields[17] = {0};
+    for (uint32_t j = 0; j < 16; j++)
+        fields[j] = base->schema->fields[j];
+    fields[16] = (ud_field){.name = "inputValues",
+                            .name_length = 11,
+                            .type = UD_STRUCT,
+                            .nullable = 1,
+                            .children = input->schema->fields,
+                            .child_count = input->columns};
+    char scope[33];
+    ud_id_format(c->field_scope, scope);
+    ud_status status = ud_id_make(c->memory, (ud_string){scope, 32}, (ud_string){"inputValues", 11},
+                                  &fields[16].identity);
+    if (!status)
+        status = ud_batch_create(c->memory, fields, 17, 0, out);
+    ud_batch_destroy(base);
+    return status;
 }
 ud_status ud_error_batch(const ud_error_context *c, int include, uint32_t capacity,
                          ud_batch **out) {
@@ -38,7 +59,7 @@ ud_status ud_error_batch(const ud_error_context *c, int include, uint32_t capaci
                                   "ruleId",      "ruleVersion", "columnId",   "sourceRowId",
                                   "errorCode",   "policy",      "errorKind",  "providerCode",
                                   "inputFormat"};
-    uint32_t n = 13 + (include ? 1 : 0);
+    uint32_t n = 15 + (include ? 1 : 0);
     ud_field *fields = ud_alloc(c->memory, (size_t)n * sizeof(*fields));
     if (!fields)
         return UD_RESOURCE;
@@ -52,10 +73,20 @@ ud_status ud_error_batch(const ud_error_context *c, int include, uint32_t capaci
         status = ud_id_make(c->memory, (ud_string){scope, 32},
                             (ud_string){names[i], fields[i].name_length}, &fields[i].identity);
     }
-    if (!status && include) {
-        fields[13] = (ud_field){.name = "input", .name_length = 5, .type = UD_BINARY};
-        status = ud_id_make(c->memory, (ud_string){scope, 32}, (ud_string){"input", 5},
+    if (!status) {
+        fields[13] = (ud_field){
+            .name = "sourcePosition", .name_length = 14, .type = UD_UINT64, .nullable = 1};
+        fields[14] = (ud_field){.name = "packageId", .name_length = 9, .type = UD_UTF8};
+        status = ud_id_make(c->memory, (ud_string){scope, 32}, (ud_string){"sourcePosition", 14},
                             &fields[13].identity);
+        if (!status)
+            status = ud_id_make(c->memory, (ud_string){scope, 32}, (ud_string){"packageId", 9},
+                                &fields[14].identity);
+    }
+    if (!status && include) {
+        fields[15] = (ud_field){.name = "input", .name_length = 5, .type = UD_BINARY};
+        status = ud_id_make(c->memory, (ud_string){scope, 32}, (ud_string){"input", 5},
+                            &fields[15].identity);
     }
     if (!status)
         status = ud_batch_create(c->memory, fields, n, capacity, out);
@@ -64,7 +95,7 @@ ud_status ud_error_batch(const ud_error_context *c, int include, uint32_t capaci
 }
 ud_status ud_error_append(const ud_error_context *c, ud_batch *out, const ud_record_error *error) {
     if (!c || !out || !error || !c->memory || out->ctx != c->memory ||
-        (out->columns != 13 && out->columns != 14) || error->policy < 0 || error->policy > 2 ||
+        (out->columns < 15 || out->columns > 17) || error->policy < 0 || error->policy > 2 ||
         error->kind < 0 || error->kind > UD_RECORD_EXECUTION || !error->rule.data ||
         !error->rule.length || (error->raw_length && !error->raw))
         return UD_INVALID;
@@ -110,12 +141,18 @@ ud_status ud_error_append(const ud_error_context *c, ud_batch *out, const ud_rec
         values[i] =
             i == 5 || i == 8
                 ? (ud_value){.type = UD_INT64,
-                             .integer = i == 5 ? error->rule_version : error->code}
+                             .integer =
+                                 i == 5 ? (int64_t)error->rule_version : (int64_t)error->code}
                 : (ud_value){.type = UD_UTF8, .text = text[i].data, .text_length = text[i].length};
+    values[13] = (ud_value){.type = UD_UINT64,
+                            .is_null = !info.has_source_position,
+                            .unsigned_integer = info.source_position};
+    values[14] = (ud_value){
+        .type = UD_UTF8, .text = c->package_id.data, .text_length = c->package_id.length};
     ud_status status = UD_OK;
     uint8_t *payload = NULL;
     uint64_t payload_size = 0;
-    if (out->columns == 14) {
+    if (out->columns >= 16) {
         if (input) {
             ud_batch *record = NULL;
             status = ud_batch_create(c->memory, input->schema->fields, input->columns, 1, &record);
@@ -127,12 +164,36 @@ ud_status ud_error_append(const ud_error_context *c, ud_batch *out, const ud_rec
         }
         if (!status && payload_size > UINT32_MAX)
             status = UD_RESOURCE;
-        values[13] = (ud_value){.type = UD_BINARY,
+        values[15] = (ud_value){.type = UD_BINARY,
                                 .text = input ? (const char *)payload : (const char *)error->raw,
                                 .text_length = input ? (uint32_t)payload_size : error->raw_length};
     }
+    ud_value *original = NULL;
+    if (!status && out->columns == 17) {
+        values[16] = (ud_value){.type = UD_STRUCT, .is_null = !input};
+        if (input) {
+            const ud_field *field = out->schema->fields + 16;
+            if (input->columns != field->child_count)
+                status = UD_SCHEMA;
+            if (!status) {
+                original = ud_alloc(c->memory, input->columns * sizeof(*original));
+                if (!original)
+                    status = UD_RESOURCE;
+            }
+            for (uint32_t j = 0; !status && j < input->columns; j++) {
+                if (!ud_field_matches(input->schema->fields + j, field->children + j,
+                                      UD_FIELD_PORT))
+                    status = UD_SCHEMA;
+                else
+                    status = ud_batch_get(input, error->row, j, original + j);
+            }
+            values[16].children = original;
+            values[16].child_count = input->columns;
+        }
+    }
     if (!status)
         status = ud_batch_append(out, values, out->columns);
+    ud_free(original);
     if (!status) {
         info.flags |= UD_ROW_ERROR;
         info.operation = 0;

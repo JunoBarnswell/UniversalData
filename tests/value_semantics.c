@@ -235,7 +235,7 @@ static int float_operators(ud_context *ctx) {
     OK(ud_operator_destroy(join_op));
     qo.buffers = join_buffers;
     const char *commands =
-        "{\"version\":10,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*"
+        "{\"version\":11,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*"
         "\",\"name\":\"cnt\"},{\"function\":\"min\",\"column\":\"key\",\"name\":\"lo\"},{"
         "\"function\":\"max\",\"column\":\"key\",\"name\":\"hi\"}]}";
     ud_field left_fields[2];
@@ -392,7 +392,7 @@ static int expressions(ud_context *ctx) {
     o.schema = batch;
     CHECK(ud_expression_create(
               ctx, str("{\"op\":\"eq\",\"args\":[{\"column\":\"a\"},{\"column\":\"b\"}]}"), &o,
-              &e) == UD_SCHEMA);
+              &e) == UD_OVERFLOW);
     ud_batch_destroy(batch);
     o.schema = NULL;
     OK(ud_expression_create(ctx,
@@ -504,7 +504,7 @@ static int allocation_failures(void) {
             qo.buffers = buffers;
             OK(ud_batch_seal(left));
             OK(ud_batch_seal(right));
-            const char *commands = "{\"version\":10,\"group\":[\"key\"],\"aggregates\":[{"
+            const char *commands = "{\"version\":11,\"group\":[\"key\"],\"aggregates\":[{"
                                    "\"function\":\"count\",\"column\":\"*\",\"name\":\"cnt\"}]}";
             OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1,
                                      (ud_string){commands, (uint32_t)strlen(commands)}, NULL,
@@ -555,6 +555,30 @@ static int allocation_failures(void) {
 int main(void) {
     ud_context *ctx = NULL;
     OK(ud_context_create(NULL, &ctx));
+    /* A wall clock has no implied UTC zone. Explicit offsets identifying the
+     * same instant share a key; an unzoned wall value is a distinct domain. */
+    ud_value times[] = {{.type = UD_DATETIME, .datetime = {.ticks = INT64_C(638960400000000000)}},
+                        {.type = UD_DATETIME, .datetime = {.ticks = INT64_C(638960400000000000), .has_offset = 1}},
+                        {.type = UD_DATETIME, .datetime = {.ticks = INT64_C(638960436000000000), .offset_minutes = 60, .has_offset = 1}}};
+    CHECK(ud_value_compare(times, times + 1) != 0);
+    CHECK(ud_value_hash(times, 123) != ud_value_hash(times + 1, 123));
+    CHECK(!ud_value_compare(times + 1, times + 2));
+    CHECK(ud_value_hash(times + 1, 123) == ud_value_hash(times + 2, 123));
+    ud_field moment = {.name = "moment", .name_length = 6, .type = UD_DATETIME};
+    ud_batch *moments = NULL, *time_groups = NULL;
+    OK(ud_batch_create(ctx, &moment, 1, 3, &moments));
+    for (uint32_t at = 0; at < 3; at++)
+        OK(ud_batch_append(moments, times + at, 1));
+    OK(ud_batch_seal(moments));
+    const char *time_plan_json = "{\"version\":11,\"group\":[\"moment\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
+    ud_plan *time_plan = NULL;
+    OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &moment, 1,
+                            str(time_plan_json), NULL, &time_plan));
+    OK(ud_compute_apply(time_plan, moments, &time_groups));
+    CHECK(ud_batch_rows(time_groups) == 2);
+    ud_batch_destroy(time_groups);
+    ud_plan_destroy(time_plan);
+    ud_batch_destroy(moments);
     ud_value a = {.type = UD_FLOAT64, .real = 0}, b = {.type = UD_FLOAT64, .real = -0.0};
     CHECK(!ud_value_compare(&a, &b) && ud_value_hash(&a, 123) == ud_value_hash(&b, 123));
     for (uint64_t bits = 1; bits < 512; bits++) {

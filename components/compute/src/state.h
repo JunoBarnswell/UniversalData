@@ -13,7 +13,7 @@ typedef struct ud_state {
     ud_batch *schema, *chunk;
     ud_state_page *pages;
     uint32_t count, capacity, batch_size;
-    uint64_t rows;
+    uint64_t rows, page_limit, chunk_bytes;
     int sealed;
 } ud_state;
 typedef struct ud_state_reader {

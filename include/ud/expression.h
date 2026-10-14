@@ -19,6 +19,17 @@ typedef struct ud_expression_options {
     ud_registry *registry;          /* Optional pure functions; leased for expression lifetime. */
     uint64_t function_capabilities; /* Additional required function capabilities. */
 } ud_expression_options;
+typedef struct ud_expression_diagnostic {
+    uint32_t struct_size, abi_version, start, length;
+    int32_t status;
+    char message[256];
+} ud_expression_diagnostic;
+/* A string JSON value or direct formula is parsed as SSIS syntax; an object
+ * is the JSON AST frontend. Both bind the identical typed Native IR. */
+UD_API ud_status ud_expression_compile(ud_context *, ud_string, const ud_expression_options *,
+                                       ud_expression_diagnostic *, ud_expression **);
+UD_API ud_status ud_expression_language_catalog(ud_context *, char **, uint32_t *);
+UD_API ud_status ud_expression_describe(const ud_expression *, char **, uint32_t *);
 /* Strict JSON AST: {literal: value, type: bool|int64|float64|utf8}, {ref:name},
  * {column:name}, {op:add|sub|mul|eq|ne|lt|le|gt|ge|and|or|not|isnull,args:[...]},
  * {function:id,args:[...]}. Functions are pure native Registry descriptors.
@@ -43,6 +54,12 @@ UD_API ud_status ud_expression_evaluate_batch(const ud_expression *, const ud_ba
  * SQL string and typed parameters are owned by the caller. */
 UD_API ud_status ud_expression_sql(ud_expression *,int32_t,ud_string *,ud_batch **);
 UD_API void ud_expression_destroy(ud_expression *);
+/* Language projections use owned Native batches for argument metadata/data.
+ * No JSON or language-specific value interpreter participates in evaluation. */
+UD_API ud_status ud_function_argument_schema(ud_context *, const ud_field *, uint32_t, ud_batch **);
+UD_API ud_status ud_function_arguments(ud_context *, const ud_field *, const ud_value *, uint32_t,
+                                       ud_batch **);
+UD_API ud_status ud_function_result(ud_context *, const ud_batch *, const ud_field *, ud_value *);
 /* Registers the native pure scalar catalog atomically in the same Registry. */
 UD_API ud_status ud_expression_register_functions(ud_registry *);
 #ifdef __cplusplus

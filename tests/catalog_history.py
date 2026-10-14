@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix="ud-history-") as temporary:
         if kind != 5:
             continue
         record = json.loads(document)
-        assert record["version"] == 10
+        assert record["version"] == 11
         assert record["parametersHash"] == expected_hash
         assert len(record["definitionHash"]) == 64
         assert record["projectId"] == "project"
