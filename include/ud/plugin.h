@@ -73,6 +73,7 @@ typedef struct ud_host_api {
                             ud_batch **);
     ud_status (*schema_bind_identity)(ud_context *, const ud_batch *, const ud_batch *,
                                       ud_batch **);
+    ud_status (*record_target)(ud_context *,ud_string,ud_string *,ud_string *);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;

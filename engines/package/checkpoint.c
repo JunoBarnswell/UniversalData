@@ -462,26 +462,50 @@ static ud_status ud_checkpoint_file_done_record(ud_activation *e, const char *pa
     return e->execution->journal ? file_record(e->execution->journal, e, RECORD_FILE_DONE, path)
                                  : UD_OK;
 }
-static int ud_checkpoint_batch_seen_record(ud_activation *e, ud_string identity) {
-    checkpoint_journal *j = e->execution->journal;
-    return j && find(j, RECORD_BATCH_INTENT, identity) != NULL;
-}
-static ud_status ud_checkpoint_batch_record(ud_activation *e, ud_string identity,
-                                            const uint8_t digest[32], int committed) {
-    checkpoint_journal *j = e->execution->journal;
-    if (!j)
-        return UD_OK;
-    uint64_t kind = committed ? RECORD_BATCH_DONE : RECORD_BATCH_INTENT;
-    char encoded[65], payload[68];
-    hex(digest, encoded);
-    snprintf(payload, sizeof(payload), "\"%s\"", encoded);
-    const ud_json *entry = find(j, kind, identity);
-    if (entry) {
-        ud_string hash;
-        UD_TRY(ud_json_string(entry, &hash));
-        return ud_named(hash, encoded) ? UD_OK : UD_CORRUPT;
+static ud_status effect_parse(checkpoint_journal *journal,const ud_json *entry,const uint8_t digest[32],ud_command_result *out) {
+    ud_string recorded = {0},provider = {0}; char expected[65]; hex(digest,expected);
+    uint64_t state = 0,result = 0,rows = 0;
+    static const char *keys[] = {"digest","state","result","rows","providerCode"};
+    UD_TRY(ud_json_keys(entry,keys,5));
+    UD_TRY(ud_json_string(ud_member(entry,"digest"),&recorded));
+    if (!ud_named(recorded,expected)) return UD_CORRUPT;
+    UD_TRY(ud_json_uint(ud_member(entry,"state"),&state));
+    UD_TRY(ud_json_uint(ud_member(entry,"result"),&result));
+    UD_TRY(ud_json_uint(ud_member(entry,"rows"),&rows));
+    if (ud_json_kind(ud_member(entry,"providerCode")) != UD_JSON_STRING) return UD_CORRUPT;
+    UD_TRY(ud_json_text(ud_member(entry,"providerCode"),&provider.data,&provider.length));
+    if (provider.length > 128 || (provider.length && memchr(provider.data,0,provider.length))) return UD_CORRUPT;
+    if (state < UD_COMMAND_PENDING || state > UD_COMMAND_REJECTED || result > UD_TRUNCATED || result == UD_END || result == UD_MORE ||
+        (state == UD_COMMAND_REJECTED && !result) ||
+        ((state == UD_COMMAND_APPLIED || state == UD_COMMAND_COMMITTED || state == UD_COMMAND_PENDING) && result)) return UD_CORRUPT;
+    out->state = (int32_t)state; out->result = (ud_status)result; out->affected_rows = rows;
+    if (provider.length) {
+        out->provider_code = (ud_string){ud_strdup_n(journal->execution->ctx,provider.data,provider.length),provider.length};
+        if (!out->provider_code.data) return UD_RESOURCE;
     }
-    return append(j, e, kind, identity, (ud_string){payload, 66});
+    return UD_OK;
+}
+static ud_status effect_record(ud_activation *activation,ud_string identity,const uint8_t digest[32],const ud_command_result *result) {
+    checkpoint_journal *journal = activation->execution->journal;
+    if (!journal) return UD_OK;
+    uint64_t kind = result->state == UD_COMMAND_PENDING ? RECORD_BATCH_INTENT : RECORD_BATCH_DONE;
+    const ud_json *existing = find(journal,kind,identity);
+    if (existing) {
+        ud_command_result prior = {.struct_size = sizeof(prior),.abi_version = UD_ABI_VERSION};
+        ud_status status = effect_parse(journal,existing,digest,&prior);
+        if (!status && (prior.state != result->state || prior.result != result->result || prior.affected_rows != result->affected_rows ||
+            !ud_same(prior.provider_code,result->provider_code))) status = UD_CORRUPT;
+        ud_command_result_clear(&prior); return status;
+    }
+    char encoded[65],head[192]; hex(digest,encoded);
+    int length = snprintf(head,sizeof(head),"{\"digest\":\"%s\",\"state\":%d,\"result\":%d,\"rows\":%llu,\"providerCode\":",
+        encoded,result->state,result->result,(unsigned long long)result->affected_rows);
+    ud_bytes bytes = {.ctx = activation->execution->ctx};
+    ud_status status = ud_bytes_put(&bytes,head,(size_t)length);
+    if (!status) status = ud_json_quote(&bytes,result->provider_code.data ? result->provider_code.data : "",result->provider_code.length);
+    if (!status) status = ud_bytes_put(&bytes,"}",1);
+    if (!status) status = append(journal,activation,kind,identity,(ud_string){(char *)bytes.data,(uint32_t)bytes.size});
+    ud_bytes_clear(&bytes); return status;
 }
 void ud_checkpoint_close(ud_execution *e) {
     checkpoint_journal *j = e->journal;
@@ -576,30 +600,52 @@ ud_status ud_checkpoint_file_done(ud_activation *e, const char *path) {
     return result;
 }
 
-int ud_checkpoint_batch_seen(ud_activation *e, ud_string identity) {
-    ud_mutex_lock(&e->execution->journal_lock);
-    int result = ud_checkpoint_batch_seen_record(e, identity);
-    ud_mutex_unlock(&e->execution->journal_lock);
-    return result;
-}
-int ud_checkpoint_batch_completed(ud_activation *activation, ud_string identity) {
-    if (!activation || !activation->execution->journal)
-        return 0;
+ud_status ud_checkpoint_effect_read(ud_activation *activation,ud_string identity,const uint8_t digest[32],ud_command_result *out) {
+    if (!activation || !out || out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION || out->provider_code.data) return UD_INVALID;
+    *out = (ud_command_result){.struct_size = sizeof(*out),.abi_version = UD_ABI_VERSION};
     checkpoint_journal *journal = activation->execution->journal;
+    if (!journal) return UD_OK;
     ud_mutex_lock(&activation->execution->journal_lock);
-    int completed = find(journal, RECORD_BATCH_DONE, identity) != NULL;
+    const ud_json *entry = find(journal,RECORD_BATCH_DONE,identity);
+    if (!entry) entry = find(journal,RECORD_BATCH_INTENT,identity);
+    ud_status status = entry ? effect_parse(journal,entry,digest,out) : UD_OK;
     ud_mutex_unlock(&activation->execution->journal_lock);
-    return completed;
+    if (status) ud_command_result_clear(out);
+    return status;
 }
-
-ud_status ud_checkpoint_batch(ud_activation *e, ud_string identity, const uint8_t digest[32],
-                              int committed) {
-    UD_TRY(checkpoint_before(e, NULL));
-    ud_mutex_lock(&e->execution->journal_lock);
-    ud_status result = ud_checkpoint_batch_record(e, identity, digest, committed);
-    ud_mutex_unlock(&e->execution->journal_lock);
-    checkpoint_after(e, result);
-    return result;
+ud_status ud_checkpoint_effect_intent(ud_activation *activation,ud_string identity,const uint8_t digest[32]) {
+    UD_TRY(checkpoint_before(activation,NULL));
+    ud_command_result result = {.struct_size = sizeof(result),.abi_version = UD_ABI_VERSION,.state = UD_COMMAND_PENDING};
+    ud_mutex_lock(&activation->execution->journal_lock);
+    ud_status status = effect_record(activation,identity,digest,&result);
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    checkpoint_after(activation,status); return status;
+}
+ud_status ud_checkpoint_effect_retry(ud_activation *activation,ud_string identity,const uint8_t digest[32]) {
+    if (!activation || !activation->execution->options.resume || ud_transaction_active(activation)) return UD_INVALID;
+    checkpoint_journal *journal=activation->execution->journal;
+    if (!journal) return UD_INVALID;
+    UD_TRY(checkpoint_before(activation,NULL));
+    ud_mutex_lock(&activation->execution->journal_lock);
+    ud_command_result prior={.struct_size=sizeof(prior),.abi_version=UD_ABI_VERSION};
+    const ud_json *entry=find(journal,RECORD_BATCH_DONE,identity);
+    ud_status status=entry ? effect_parse(journal,entry,digest,&prior) : UD_CORRUPT;
+    if (!status && prior.state!=UD_COMMAND_REJECTED) status=UD_INVALID;
+    /* Retire only proven rollback. The original durable intent remains: a kill
+     * after retirement and before a new result is conservatively UNKNOWN. */
+    if (!status) status=ud_journal_forget(journal->store,RECORD_BATCH_DONE,identity);
+    ud_command_result_clear(&prior);
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    checkpoint_after(activation,status); return status;
+}
+ud_status ud_checkpoint_effect_complete(ud_activation *activation,ud_string identity,const uint8_t digest[32],const ud_command_result *result) {
+    if (!result || result->struct_size != sizeof(*result) || result->abi_version != UD_ABI_VERSION ||
+        result->state < UD_COMMAND_APPLIED || result->state > UD_COMMAND_REJECTED) return UD_INVALID;
+    UD_TRY(checkpoint_before(activation,NULL));
+    ud_mutex_lock(&activation->execution->journal_lock);
+    ud_status status = effect_record(activation,identity,digest,result);
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    checkpoint_after(activation,status); return status;
 }
 ud_status ud_checkpoint_enumerator(ud_activation *e, const uint8_t digest[32]) {
     checkpoint_journal *j = e->execution->journal;

@@ -103,7 +103,7 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         if (kind == SQL_SOURCE)
             caps |= UD_CONNECT_RECORD_ERRORS;
         if (kind == SQL_COMMAND)
-            caps = UD_CONNECT_EXECUTE_SQL;
+            caps = UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_TRANSACTIONAL_DML;
         if (kind == SQL_SINK || kind == REST_SINK)
             caps = b->mode == UD_WRITE_APPEND   ? UD_CONNECT_APPEND
                    : b->mode == UD_WRITE_UPSERT ? UD_CONNECT_UPSERT

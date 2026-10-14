@@ -30,7 +30,8 @@ enum {
     UD_CONNECT_NATIVE_BULK = 524288, /* Genuine native append transport; not parameter batching. */
     UD_CONNECT_TRANSACTION_PARTICIPANT = 1048576,
     UD_CONNECT_PARAMETER_ARRAY = 2097152,
-    UD_CONNECT_RECORD_ERRORS = 4194304 /* Complete SQL record notifications and isolation. */
+    UD_CONNECT_RECORD_ERRORS = 4194304, /* Complete SQL record notifications and isolation. */
+    UD_CONNECT_TRANSACTIONAL_DML = 8388608 /* Accepted row DML is governed by transaction/savepoint rollback. */
 };
 enum { UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE };
 enum {
@@ -121,6 +122,22 @@ typedef struct ud_read_options {
     void *record_user;
     ud_read_record_fn record;
 } ud_read_options;
+enum {
+    UD_COMMAND_NOT_EXECUTED = 0, UD_COMMAND_PENDING, UD_COMMAND_APPLIED,
+    UD_COMMAND_COMMITTED, UD_COMMAND_REJECTED, UD_COMMAND_UNKNOWN
+};
+/* APPLIED belongs to the caller's still-open transaction; COMMITTED is a
+ * completed local transaction. A rejection is safe only after rollback proof.
+ * provider_code is owned Native memory; release with result_clear. */
+typedef struct ud_command_result {
+    uint32_t struct_size, abi_version;
+    int32_t state;
+    ud_status result;
+    uint64_t affected_rows;
+    ud_string provider_code;
+} ud_command_result;
+UD_API void ud_command_result_clear(ud_command_result *);
+UD_API ud_status ud_connection_execute_record(ud_connection *, const ud_read_options *, ud_command_result *);
 typedef struct ud_write_options {
     uint32_t struct_size, abi_version;
     int32_t mode;
@@ -186,6 +203,11 @@ typedef struct ud_connector_api {
     ud_status (*record_diagnostic)(void *,
                                    ud_string *provider_code); /* Owned code only; consumes it. */
     ud_status (*cdc_rebind)(void *, const ud_batch *, uint64_t schema_version);
+    /* Driver primitive for Native-compiled transaction control. Required by TRANSACTIONAL_DML. It
+     * bypasses user SQL restrictions, never authorizes arbitrary product SQL. */
+    ud_status (*savepoint)(void *, ud_string native_statement);
+    /* Optional provider proof inside the row transaction, before business mutation. */
+    ud_status (*record_validate)(void *,const ud_read_options *);
 } ud_connector_api;
 UD_API ud_status ud_connection_savepoint(ud_connection *, ud_string, int32_t);
 UD_API ud_status ud_connection_record_diagnostic(ud_connection *, ud_string *);

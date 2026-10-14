@@ -39,9 +39,25 @@ int main(int argc, char **argv) {
     }
     OK(ud_connection_provision(connection));
     double durations[2] = {0};
+    uint8_t expected_signature[32]={0};
+    static const char label[] = "远程\tbulk\n\\copy 😀";
+    ud_field signature_fields[]={{.name="rows",.name_length=4,.type=UD_INT64},
+        {.name="hash",.name_length=4,.type=UD_BINARY}};
+    for (uint32_t at=0; at<2; at++)
+        OK(ud_id_make(ctx,str("bulk-verification"),(ud_string){signature_fields[at].name,signature_fields[at].name_length},&signature_fields[at].identity));
+    struct timespec run_time; CHECK(timespec_get(&run_time,TIME_UTC)==TIME_UTC);
+    char seed[96],run_id[33];
+    snprintf(seed,sizeof(seed),"%lld/%ld/%lu",(long long)run_time.tv_sec,run_time.tv_nsec,(unsigned long)
+#ifdef _WIN32
+        _getpid()
+#else
+        getpid()
+#endif
+    );
+    ud_id run_identity; OK(ud_id_make(ctx,str("bulk-benchmark"),str(seed),&run_identity)); ud_id_format(run_identity,run_id);
     const uint32_t capacity = 16384;
     for (int pass = 0; pass < 2; pass++) {
-        const char *table = pass ? "ud_bulk_native" : "ud_bulk_parameters";
+        char table[64]; snprintf(table,sizeof(table),"ud_bulk_%s_%s",run_id,pass ? "native" : "parameters");
         char sql_table[64];
         snprintf(sql_table, sizeof(sql_table), dialect == UD_SQL_ORACLE ? "\"%s\"" : "%s", table);
         char statement[512];
@@ -82,7 +98,6 @@ int main(int argc, char **argv) {
                 OK(ud_value_parse_field(ctx, fields, id, id_size, UD_ROUND_EXACT, row));
                 OK(ud_value_parse_field(ctx, fields + 1, amount, amount_size, UD_ROUND_EXACT,
                                         row + 1));
-                static const char label[] = "远程\tbulk\n\\copy 😀";
                 row[2] =
                     (ud_value){.type = UD_UTF8, .text = label, .text_length = sizeof(label) - 1};
                 OK(ud_batch_append(batch, row, 3));
@@ -143,6 +158,36 @@ int main(int argc, char **argv) {
         OK(ud_connection_read_close(connection));
         ud_batch_destroy(actual);
         ud_batch_destroy(check_schema);
+        double verification_started=seconds();
+        /* Read every actual field back through the public driver API. SQL
+         * aggregates alone would not detect damaged labels or transport escapes. */
+        snprintf(statement,sizeof(statement),"SELECT id,amount,label FROM %s ORDER BY id",sql_table);
+        if (dialect==UD_SQL_ORACLE)
+            snprintf(statement,sizeof(statement),"SELECT \"id\",\"amount\",\"label\" FROM %s ORDER BY \"id\"",sql_table);
+        read.batch_size=capacity; read.sql=str(statement);
+        OK(ud_connection_read_open(connection,&read,schema));
+        ud_batch *signatures=NULL; OK(ud_batch_create(ctx,signature_fields,2,(uint32_t)batches,&signatures));
+        uint64_t verified=0;
+        for (;;) {
+            actual=NULL; ud_status status=ud_connection_read_next(connection,&actual);
+            if (status==UD_END) break;
+            OK(status); uint32_t rows=ud_batch_rows(actual);
+            for (uint32_t row=0; row<rows; row++) {
+                ud_value value; OK(ud_batch_get(actual,row,2,&value));
+                CHECK(!value.is_null && value.type==UD_UTF8 && value.text_length==sizeof(label)-1 &&
+                    !memcmp(value.text,label,sizeof(label)-1));
+            }
+            uint8_t digest[32]; OK(ud_batch_fingerprint(actual,digest));
+            ud_value signature[]={{.type=UD_INT64,.integer=rows},{.type=UD_BINARY,.text=(const char *)digest,.text_length=32}};
+            OK(ud_batch_append(signatures,signature,2)); verified+=rows; ud_batch_destroy(actual);
+        }
+        CHECK(verified==total); OK(ud_connection_read_close(connection)); OK(ud_batch_seal(signatures));
+        uint8_t signature[32]; OK(ud_batch_fingerprint(signatures,signature)); ud_batch_destroy(signatures);
+        if (!pass) memcpy(expected_signature,signature,32);
+        else CHECK(!memcmp(expected_signature,signature,32));
+        char encoded_signature[65];
+        for (uint32_t at=0; at<32; at++) snprintf(encoded_signature+at*2,3,"%02x",signature[at]);
+        double verification_seconds=seconds()-verification_started;
         ud_batch_destroy(schema);
         durations[pass] = elapsed;
         long rss = 0;
@@ -154,10 +199,10 @@ int main(int argc, char **argv) {
         printf("{\"mode\":\"%s\",\"dialect\":%d,\"rows\":%llu,\"batches\":%llu,"
                "\"batchRows\":%u,\"writeSeconds\":%.6f,\"generationSeconds\":%.6f,"
                "\"cpuSeconds\":%.6f,\"peakRssKiB\":%ld,\"rowsPerSecond\":%.0f,"
-               "\"verifiedRowsAndReceipts\":true}\n",
+               "\"verifiedRowsAndReceipts\":true,\"outputSignature\":\"%s\",\"verificationSeconds\":%.6f,\"table\":\"%s\"}\n",
                pass ? "native" : "parameters", dialect, (unsigned long long)total,
                (unsigned long long)batches, capacity, elapsed, generation, cpu_seconds, rss,
-               total / elapsed);
+               total / elapsed,encoded_signature,verification_seconds,table);
         fflush(stdout);
         if (argc < 5 || strcmp(argv[4], "retain")) {
             snprintf(statement, sizeof(statement), "DROP TABLE %s", sql_table);

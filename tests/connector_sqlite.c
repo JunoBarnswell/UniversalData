@@ -3,6 +3,11 @@
 #include <sqlite3.h>
 #include <string.h>
 #include <math.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
 static ud_status authorize(void *user, ud_string tenant, ud_string resource, int32_t action) {
     (void)resource;
     (void)action;
@@ -30,6 +35,48 @@ static ud_status resolve(void *user, ud_context *ctx, ud_string tenant, ud_strin
     memcpy(copy, paths[index], length);
     *out = (ud_string){copy, length};
     return UD_OK;
+}
+typedef struct record_worker { ud_connection *connection; uint32_t first; int failed; } record_worker;
+#ifdef _WIN32
+static DWORD WINAPI parallel_records(LPVOID user) {
+#else
+static void *parallel_records(void *user) {
+#endif
+    record_worker *worker=user;
+    for (uint32_t at=0; at<20 && !worker->failed; at++) {
+        char sql[128]; int length=snprintf(sql,sizeof(sql),"INSERT INTO commands VALUES(%u,'parallel')",worker->first+at);
+        ud_read_options options={.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,.sql={sql,(uint32_t)length}};
+        ud_command_result result={.struct_size=sizeof(result),.abi_version=UD_ABI_VERSION};
+        ud_status status=ud_connection_execute_record(worker->connection,&options,&result);
+        worker->failed=status!=UD_OK || result.state!=UD_COMMAND_APPLIED;
+        ud_command_result_clear(&result);
+        if (!worker->failed) {
+            status=ud_connection_execute_record(worker->connection,&options,&result);
+            worker->failed=status!=UD_QUALITY || result.state!=UD_COMMAND_REJECTED;
+            ud_command_result_clear(&result);
+        }
+    }
+#ifdef _WIN32
+    return 0;
+#else
+    return NULL;
+#endif
+}
+static int concurrent_records(ud_connection *connection) {
+    record_worker workers[]={{connection,100,0},{connection,200,0}};
+    OK(ud_connection_begin(connection,UD_ISOLATION_SERIALIZABLE));
+#ifdef _WIN32
+    HANDLE threads[2];
+    for (uint32_t at=0; at<2; at++) { threads[at]=CreateThread(NULL,0,parallel_records,workers+at,0,NULL); CHECK(threads[at]); }
+    CHECK(WaitForMultipleObjects(2,threads,TRUE,30000)==WAIT_OBJECT_0);
+    for (uint32_t at=0; at<2; at++) CHECK(CloseHandle(threads[at]));
+#else
+    pthread_t threads[2];
+    for (uint32_t at=0; at<2; at++) CHECK(!pthread_create(threads+at,NULL,parallel_records,workers+at));
+    for (uint32_t at=0; at<2; at++) CHECK(!pthread_join(threads[at],NULL));
+#endif
+    CHECK(!workers[0].failed && !workers[1].failed);
+    OK(ud_connection_commit(connection)); return 0;
 }
 static int transfer(ud_context *ctx, ud_connection *source, ud_connection *target, const char *sql,
                     const char *job) {
@@ -213,6 +260,46 @@ int main(int argc, char **argv) {
     CHECK(sqlite3_step(right) == SQLITE_ROW && sqlite3_column_type(right, 0) == SQLITE_FLOAT &&
           sqlite3_column_double(right, 0) == -INFINITY);
     CHECK(sqlite3_step(right) == SQLITE_DONE);
+    sqlite3_finalize(right);
+    /* One physical record command owns begin/savepoint, execute and resolution.
+     * A constraint rejection is known only after the row rollback succeeds. */
+    CHECK(exec_fixture(target,"CREATE TABLE commands(id INTEGER PRIMARY KEY, value TEXT NOT NULL)"));
+    ud_read_options command = {.struct_size=sizeof(command),.abi_version=UD_ABI_VERSION,
+        .sql={"INSERT INTO commands VALUES(1,'accepted')",40}};
+    command.sql.length=(uint32_t)strlen(command.sql.data);
+    ud_command_result outcome={.struct_size=sizeof(outcome),.abi_version=UD_ABI_VERSION};
+    OK(ud_connection_execute_record(dst,&command,&outcome));
+    CHECK(outcome.state==UD_COMMAND_COMMITTED && outcome.affected_rows==1);
+    ud_command_result_clear(&outcome);
+    CHECK(ud_connection_execute_record(dst,&command,&outcome)==UD_QUALITY);
+    CHECK(outcome.state==UD_COMMAND_REJECTED && outcome.provider_code.length);
+    ud_command_result_clear(&outcome);
+    OK(ud_connection_begin(dst,UD_ISOLATION_SERIALIZABLE));
+    command.sql=(ud_string){"INSERT INTO commands VALUES(2,'tentative')",41};
+    command.sql.length=(uint32_t)strlen(command.sql.data);
+    OK(ud_connection_execute_record(dst,&command,&outcome));
+    CHECK(outcome.state==UD_COMMAND_APPLIED && outcome.affected_rows==1);
+    ud_command_result_clear(&outcome);
+    CHECK(ud_connection_execute_record(dst,&command,&outcome)==UD_QUALITY);
+    CHECK(outcome.state==UD_COMMAND_REJECTED);
+    ud_command_result_clear(&outcome);
+    command.sql=(ud_string){"INSERT INTO commands VALUES(3,'after rejection')",46};
+    command.sql.length=(uint32_t)strlen(command.sql.data);
+    OK(ud_connection_execute_record(dst,&command,&outcome));
+    CHECK(outcome.state==UD_COMMAND_APPLIED);
+    ud_command_result_clear(&outcome);
+    OK(ud_connection_rollback(dst));
+    CHECK(sqlite3_prepare_v2(target,"SELECT count(*) FROM commands",-1,&right,NULL)==SQLITE_OK);
+    CHECK(sqlite3_step(right)==SQLITE_ROW && sqlite3_column_int64(right,0)==1);
+    sqlite3_finalize(right);
+    command.sql=(ud_string){"DELETE FROM commands; COMMIT",28};
+    command.sql.length=(uint32_t)strlen(command.sql.data);
+    CHECK(ud_connection_execute_record(dst,&command,&outcome)==UD_UNSUPPORTED);
+    CHECK(outcome.state==UD_COMMAND_NOT_EXECUTED);
+    ud_command_result_clear(&outcome);
+    CHECK(!concurrent_records(dst));
+    CHECK(sqlite3_prepare_v2(target,"SELECT count(*),count(DISTINCT id) FROM commands",-1,&right,NULL)==SQLITE_OK);
+    CHECK(sqlite3_step(right)==SQLITE_ROW && sqlite3_column_int64(right,0)==41 && sqlite3_column_int64(right,1)==41);
     sqlite3_finalize(right);
     allowed = 0;
     CHECK(ud_connection_test(dst) == UD_AUTH);

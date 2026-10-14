@@ -71,7 +71,7 @@ endif()
 if(TARGET ud_connector_sqlite)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
   add_executable(test_connector_sqlite connector_sqlite.c)
-  target_link_libraries(test_connector_sqlite PRIVATE ud_plugins SQLite::SQLite3)
+  target_link_libraries(test_connector_sqlite PRIVATE ud_plugins SQLite::SQLite3 Threads::Threads)
   add_test(NAME sqlite_receipts_upsert COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/connector_sqlite.py $<TARGET_FILE:test_connector_sqlite> $<TARGET_FILE:ud_connector_sqlite>)
   set_tests_properties(sqlite_receipts_upsert PROPERTIES TIMEOUT 130)
 endif()
@@ -132,6 +132,11 @@ if(TARGET ud_package)
   add_test(NAME package_failure_boundaries COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/package_failures.py $<TARGET_FILE:test_package_outcome>)
 endif()
 if(TARGET ud_package AND TARGET ud_connector_sqlite)
+  add_executable(test_sql_command_records sql_command_records.c)
+  target_link_libraries(test_sql_command_records PRIVATE ud_package SQLite::SQLite3)
+  add_test(NAME sql_command_records_recovery COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/sql_command_records.py $<TARGET_FILE:test_sql_command_records> $<TARGET_FILE:ud_connector_sqlite>)
+  set_tests_properties(sql_command_records_recovery PROPERTIES TIMEOUT 180)
   add_executable(test_four_engine_connections four_engine_connections.c)
   target_link_libraries(test_four_engine_connections PRIVATE ud_package)
   add_test(NAME four_engine_connections_enumerators COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/four_engine_connections.py $<TARGET_FILE:test_four_engine_connections> $<TARGET_FILE:ud_connector_sqlite>)
@@ -351,6 +356,12 @@ if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
           SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;${driver}"
           RESOURCE_LOCK ud_integration_${driver})
       endforeach()
+      add_test(NAME integration_${driver}_row_command COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
+        $<TARGET_FILE:test_advanced_sql> $<TARGET_FILE:ud_connector_${driver}> row-command)
+      set_tests_properties(integration_${driver}_row_command PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;row-command;${driver}"
+        RESOURCE_LOCK ud_integration_${driver})
       if(driver MATCHES "^(mysql|mariadb)$")
         add_test(NAME integration_${driver}_type_domains COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG

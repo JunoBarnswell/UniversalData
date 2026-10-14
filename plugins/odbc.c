@@ -1303,6 +1303,13 @@ static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **
     }
     return s;
 }
+static ud_status savepoint(void *state,ud_string statement) {
+    odbc_state *p=state;
+    if (!p->transaction) return UD_UNSUPPORTED;
+    char *sql=plugin_string(&p->host,statement.data,statement.length);
+    if (!sql) return UD_RESOURCE;
+    ud_status status=ud_odbc_command(p,sql); p->host.deallocate(sql); return status;
+}
 ud_status ud_odbc_execute(void *state, const ud_read_options *o, uint64_t *processed) {
     return command(state, o->sql, o->parameters, processed);
 }
@@ -1535,6 +1542,10 @@ static ud_status initialize(const ud_host_api *h, const char *configuration, uin
                 !encrypted || trust)
                 s = UD_AUTH;
         }
+        if ((p->capabilities & UD_CONNECT_TRANSACTION) &&
+            (p->dialect == DIALECT_MSSQL || p->dialect == DIALECT_POSTGRES || p->dialect == DIALECT_ORACLE ||
+             p->dialect == DIALECT_SQLITE || p->dialect == DIALECT_DB2))
+            p->capabilities |= UD_CONNECT_TRANSACTIONAL_DML;
     }
     if (!s && p->dialect == DIALECT_MSSQL) {
         int enabled = 0;
@@ -1564,7 +1575,7 @@ static int32_t session_dialect(void *state) {
 static const ud_connector_api connector = {
     .struct_size = sizeof(ud_connector_api),
     .abi_version = UD_ABI_VERSION,
-    .capabilities =
+    .capabilities = UD_CONNECT_TRANSACTIONAL_DML |
         UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
         UD_CONNECT_DELETE | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS |
         UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
@@ -1587,6 +1598,7 @@ static const ud_connector_api connector = {
     .reset_session = reset,
     .session_capabilities = capabilities,
     .record_diagnostic = record_diagnostic,
+    .savepoint = savepoint,
     .provision = provision,
     .parameter_style = UD_SQL_PARAMETER_QUESTION,
     .metadata_dialect = UD_SQL_CANONICAL,

@@ -5,7 +5,7 @@
     "sdkVersion": "2.0.0",
     "abiVersion": 10,
     "protocolVersion": 10,
-    "checkpointRevision": 1,
+    "checkpointRevision": 2,
     "state": "SDK 2.0 / ABI and protocol family 10. PR #7 extends the unique Native runtime with authenticated tenant-scoped product entry, protected parameter references, managed lifecycle/control/recovery and Native Avro/profiling contracts. Current implementation is not release certified.",
     "acceptanceResources": "User confirmed on 2026-10-14 that independent Windows, SSAS, FTP/SFTP, object storage and SMTP resources are unavailable: Blocked. Task-owned isolated PostgreSQL, MySQL, MariaDB and SQL Server databases were subsequently provisioned and accepted without changing historical business data. An isolated Oracle schema was created, but the OCI TCPS session attach times out (ORA-12170): live Oracle acceptance is Blocked. Windows remains required and Blocked, never exempt."
   },
@@ -940,8 +940,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "sql.command uses Native per-row parameter binding, common error ports/savepoints and external-write intents. Unknown response cannot replay automatically and accepted facts share the transaction journal. Compilation passed; dedicated row-command constraint/recovery behavior still requires acceptance.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "progress": "Native row commands now own a local transaction or a complete shared-transaction Savepoint operation, bind repeated fields, and share typed target outcome records. Mixed errors, actual process kills, rollback retry and unknown fencing passed on SQLite; real PostgreSQL/MySQL/MariaDB/SQL Server row-command tests passed. Windows/OCI and the wider connection-fault matrix remain unverified.",
+      "verificationScope": "Current PR #7 native row-command and driver acceptance; wider platform/fault coverage remains Partial.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [
@@ -8852,7 +8852,7 @@
             "metadata/ci.yml.in",
             "scripts/ctest_release_gate.py"
           ],
-          "verification": "Linux PRODUCT build and source/Designer checks passed; current GitHub jobs did not start",
+          "verification": "Linux Release PRODUCT, explicit CORE ASan/UBSan and source/Designer builds passed. Fixed unconditional component registration declarations previously hidden by the XML feature guard. GitHub jobs remain unable to start.",
           "remaining": "Remote Linux/Windows CI is blocked by GitHub account billing. Windows, full independent driver/delivery gates still have no current success record."
         },
         {
@@ -8943,12 +8943,15 @@
         {
           "id": "P1-05",
           "name": "SQL command row effects and recovery",
-          "status": "Partial",
+          "status": "Code Complete",
           "source": [
-            "engines/data-flow/sql_task.c"
+            "engines/data-flow/sql_task.c",
+            "components/contracts/src/plugin.c",
+            "engines/package/checkpoint.c",
+            "plugins/mysql_family.c"
           ],
-          "verification": "No new acceptance claimed for this task in the current iteration",
-          "remaining": "sql.command redirects/ignores only inside an existing transaction. Standalone row transaction ownership and durable known-rejection outcomes are missing; parameter mappings also reject repeated input columns."
+          "verification": "Real SQLite mixed records, repeated parameter fields, concurrent savepoints, actual process kills, known rollback manual resume and unknown-commit fencing passed. PostgreSQL/MySQL/MariaDB/SQL Server real row-command, SQL and native bulk tests passed.",
+          "remaining": "Windows and OCI TCPS acceptance remain unexecuted. The complete live connection-loss/cancel/timeout fault matrix is not run. MySQL accepts only the proved single-target, no-trigger DML subset; role-only TRIGGER visibility is rejected."
         },
         {
           "id": "P1-06",
@@ -9149,10 +9152,13 @@
         {
           "id": "P2-08",
           "name": "MySQL/MariaDB Local Infile",
-          "status": "Partial",
-          "source": [],
-          "verification": "No current-iteration independent specialty acceptance",
-          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
+          "status": "Code Complete",
+          "source": [
+            "plugins/mysql_family.c",
+            "components/data/src/bulk.c"
+          ],
+          "verification": "Actual controlled LOCAL INFILE on MySQL and MariaDB passed typed SQL/native bulk acceptance plus independent one-million-row parameter/native comparisons with full readback and matching output signatures.",
+          "remaining": "Windows and the full network interruption/during-load fault matrix remain unexecuted. Native append is capability-qualified and never claims unsupported native update/delete modes."
         },
         {
           "id": "P2-09",
@@ -9565,7 +9571,9 @@
           "jobsHaveSteps": false,
           "annotation": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the Billing & plans section in your settings"
         },
-        "evidenceDirectory": "docs/acceptance/evidence/pr7-foundation"
+        "evidenceDirectory": "docs/acceptance/evidence/pr7-foundation",
+        "checkpointRevision": 2,
+        "rowCommandContract": "docs/architecture/connection-and-plugin-model.md"
       }
     }
   }

@@ -1401,10 +1401,16 @@ ud_status ud_oci_initialize(const ud_host_api *h, const char *text, uint32_t len
     *out = p;
     return UD_OK;
 }
+static ud_status savepoint(void *state,ud_string statement) {
+    oracle *p=state;
+    if (!p->transaction) return UD_UNSUPPORTED;
+    ud_read_options options={.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,.sql=statement};
+    return execute(state,&options,NULL);
+}
 static const ud_connector_api api = {
     .struct_size = sizeof(api),
     .abi_version = UD_ABI_VERSION,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND |
+    .capabilities = UD_CONNECT_TRANSACTIONAL_DML | UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND |
                     UD_CONNECT_UPSERT | UD_CONNECT_DELETE | UD_CONNECT_CHANGESET |
                     UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
                     UD_CONNECT_METADATA | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
@@ -1428,6 +1434,7 @@ static const ud_connector_api api = {
     .reset_session = reset,
     .session_capabilities = session_capabilities,
     .record_diagnostic = record_diagnostic,
+    .savepoint = savepoint,
     .provision = provision,
     .parameter_style = UD_SQL_PARAMETER_NAMED,
     .metadata_dialect = UD_SQL_ORACLE,
