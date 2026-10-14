@@ -3,94 +3,351 @@
   "version": 11,
   "sdkVersion": "2.1.0",
   "abi": 11,
-  "sourceFingerprint": "",
+  "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
   "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
   "windows": "Required — complete driver build, native/language/install and platform acceptance",
   "gates": [
     {
       "id": "linux-full-build",
-      "status": "Partial",
-      "scope": "Linux Release PRODUCT; all six driver SDKs, BCP/OCI, HTTP/XML/network, Arrow, JNI, .NET 10 and designer",
-      "evidence": [],
-      "currentEvidence": "Linux Release PRODUCT build at 22f189c; /tmp/ud-next-22f189c-build.log",
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "status": "Passed",
+      "scope": "Linux Release PRODUCT compiles all six drivers and codecs, BCP/OCI client entry points, HTTP/XML/network, Arrow, JNI, .NET 10 and designer.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/product-build.log",
+          "sha256": "d03fa6eee9b431d16d3b3808ca135a75aafe55a1f0b7df6afd8dd121a4dda8d8"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/datetime-build.log",
+          "sha256": "5154303676d7017b43136925e11c093d60f86dd5effe5e41e61768bd2e901c72"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
+          "sha256": "1af96d3860be166140510c6f1f514c3b779ab754781ea09f12e9e49ce98de642"
+        }
+      ],
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/product-build.log",
+          "docs/acceptance/evidence/ssis-strict-parity/datetime-build.log",
+          "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
+        ]
+      },
+      "reason": "Linux Release PRODUCT compiles all six drivers and codecs, BCP/OCI client entry points, HTTP/XML/network, Arrow, JNI, .NET 10 and designer.",
+      "description": "Linux Release PRODUCT compiles all six drivers and codecs, BCP/OCI client entry points, HTTP/XML/network, Arrow, JNI, .NET 10 and designer.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf"
     },
     {
       "id": "windows-full-build",
       "status": "Blocked",
-      "scope": "Required Windows PRODUCT build; no Windows host/runner supplied",
-      "evidence": [],
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "scope": "Independent Windows PRODUCT/installed acceptance is required and unavailable; remote jobs did not start.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+          "sha256": "806c81a3e6e8d3ab848a7683e78bf0a37cae76872df1a2b6760902febec6558e"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/ci.json",
+          "sha256": "63df411c5aa03b812155717ded79a305513c1ef85d1a56952011207c092e6b82"
+        }
+      ],
+      "reason": "Independent Windows PRODUCT/installed acceptance is required and unavailable; remote jobs did not start.",
+      "description": "Independent Windows PRODUCT/installed acceptance is required and unavailable; remote jobs did not start.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+          "docs/acceptance/evidence/ssis-strict-parity/ci.json"
+        ]
+      }
     },
     {
       "id": "correctness",
       "status": "Partial",
-      "scope": "78 Linux cases and real four-driver/domain cases passed; complete schema physical-identity and missing live scenarios remain unverified",
-      "evidence": [],
-      "currentEvidence": "67 registered core tests passed at 22f189c; broad new feature correctness remains incomplete",
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "scope": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+          "sha256": "7be9c09b6757d57b0dfe694e654652f7a040d5382176b30c0bec06199ce498fc"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/matrix.json",
+          "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
+        }
+      ],
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+          "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+        ]
+      },
+      "reason": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
+      "description": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf"
     },
     {
       "id": "recovery",
       "status": "Partial",
-      "scope": "Real Native file/source/dual-target/Journal and three-provider prepared-branch kills plus installed Worker recovery passed; complete live CDC/coordinator kill matrix remains unverified",
-      "evidence": [],
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "scope": "Current file/dual-target/managed Worker and prepared-participant recovery pass; 50K input/commit deaths, same-ID resume and confirmation counters pass. Missing provider/Windows/full CDC cases remain explicit.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+          "sha256": "7be9c09b6757d57b0dfe694e654652f7a040d5382176b30c0bec06199ce498fc"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+          "sha256": "5cace55b805507f6542c3a3bbb68d1c68f3ee39fc208e1b382a390c0fbca5c23"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+          "sha256": "1803d76a25069ca2ce15e388a40e833fbfdc7ed9dc590bbce1f80e463e98cbf6"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/matrix.json",
+          "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
+        }
+      ],
+      "reason": "Current file/dual-target/managed Worker and prepared-participant recovery pass; 50K input/commit deaths, same-ID resume and confirmation counters pass. Missing provider/Windows/full CDC cases remain explicit.",
+      "description": "Current file/dual-target/managed Worker and prepared-participant recovery pass; 50K input/commit deaths, same-ID resume and confirmation counters pass. Missing provider/Windows/full CDC cases remain explicit.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+          "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+          "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+          "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+        ]
+      }
     },
     {
       "id": "external-integration",
       "status": "Blocked",
-      "scope": "Four genuine SQL/CDC/native drivers accepted; Oracle TCPS and independent SMTP/FTP/SFTP/Azure/S3/SSAS/WMI resources remain Blocked",
-      "evidence": [],
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "scope": "22 genuine database cases pass; 7 unavailable/unsupported participant/Oracle cases are skipped, and independent vendor resources remain unavailable.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+          "sha256": "5cace55b805507f6542c3a3bbb68d1c68f3ee39fc208e1b382a390c0fbca5c23"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+          "sha256": "1803d76a25069ca2ce15e388a40e833fbfdc7ed9dc590bbce1f80e463e98cbf6"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+          "sha256": "806c81a3e6e8d3ab848a7683e78bf0a37cae76872df1a2b6760902febec6558e"
+        }
+      ],
+      "reason": "22 genuine database cases pass; 7 unavailable/unsupported participant/Oracle cases are skipped, and independent vendor resources remain unavailable.",
+      "description": "22 genuine database cases pass; 7 unavailable/unsupported participant/Oracle cases are skipped, and independent vendor resources remain unavailable.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+          "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+          "docs/acceptance/evidence/ssis-strict-parity/resources.json"
+        ]
+      }
     },
     {
       "id": "language-parity",
       "status": "Partial",
-      "scope": "Independent public C, offline NuGet/.NET, Maven/Java/JNI and Native Registry/Observer/Catalog lifecycle on Linux",
-      "evidence": [],
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "scope": "Current C/.NET/Java/CLI installed consumption and Native callback lifecycles pass; full Java plan/variable surfaces and Windows are incomplete.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+          "sha256": "7be9c09b6757d57b0dfe694e654652f7a040d5382176b30c0bec06199ce498fc"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/installed.json",
+          "sha256": "fb3f708d42b1c3a6caa5d5ba3ae91e5e9f4b7c5ea5900a3e11b2a656702d2962"
+        }
+      ],
+      "reason": "Current C/.NET/Java/CLI installed consumption and Native callback lifecycles pass; full Java plan/variable surfaces and Windows are incomplete.",
+      "description": "Current C/.NET/Java/CLI installed consumption and Native callback lifecycles pass; full Java plan/variable surfaces and Windows are incomplete.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+          "docs/acceptance/evidence/ssis-strict-parity/installed.json"
+        ]
+      }
     },
     {
       "id": "web",
       "status": "Partial",
-      "scope": "Typecheck/lint/build; real edit/save/reload/deploy/output/log/debug and same-ID killed-Worker recovery from both build and installed assets",
-      "evidence": [],
-      "currentEvidence": "Real browser flow passed; advanced new feature UI remains incomplete",
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "scope": "Published Chromium editor/compile/mapping/split/save/deploy/log/debug/kill/resume passes; complete specialized editors and arbitrary-node preview remain incomplete.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/browser.json",
+          "sha256": "c106442752afc8e9db8c01b380bdf61693c9fe4913b33a2fb0ba25c2f06a346f"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/qa.json",
+          "sha256": "a6ee8722ddbe7ca83966a1ab0b2030f3cc06a54eaaac064ffa2f8548a5ea4f04"
+        }
+      ],
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/browser.json",
+          "docs/acceptance/evidence/ssis-strict-parity/qa.json"
+        ]
+      },
+      "reason": "Published Chromium editor/compile/mapping/split/save/deploy/log/debug/kill/resume passes; complete specialized editors and arbitrary-node preview remain incomplete.",
+      "description": "Published Chromium editor/compile/mapping/split/save/deploy/log/debug/kill/resume passes; complete specialized editors and arbitrary-node preview remain incomplete.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf"
     },
     {
       "id": "performance",
       "status": "Partial",
-      "scope": "Linux six requested 1M/100k workloads at 1/2/4 workers and genuine remote native/parameter comparisons for four available databases; Oracle comparison Blocked",
-      "evidence": [],
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "scope": "Four genuine one-million-row native/parameter comparisons and the 50K batch/concurrency/recovery matrix record CPU/RSS/spill and full readback signatures. Broader workloads and Windows are unverified.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/performance.json",
+          "sha256": "a4916ff09ccef9527d7b352e49857ecf06627cdebc2493b246c5167fd3f5f7dc"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/matrix.json",
+          "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
+        }
+      ],
+      "reason": "Four genuine one-million-row native/parameter comparisons and the 50K batch/concurrency/recovery matrix record CPU/RSS/spill and full readback signatures. Broader workloads and Windows are unverified.",
+      "description": "Four genuine one-million-row native/parameter comparisons and the 50K batch/concurrency/recovery matrix record CPU/RSS/spill and full readback signatures. Broader workloads and Windows are unverified.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/performance.json",
+          "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+        ]
+      }
     },
     {
       "id": "installed-consumers",
       "status": "Partial",
-      "scope": "Same-source Linux C/.NET/Java/CLI/Web/Worker all passed; required Windows installed consumers remain Blocked",
-      "evidence": [],
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "scope": "Same-source Linux C, offline NuGet, Maven/JNI, CLI, Worker and Web pass all 15 commands and 273 file checks; required Windows consumption is unavailable.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/installed.json",
+          "sha256": "fb3f708d42b1c3a6caa5d5ba3ae91e5e9f4b7c5ea5900a3e11b2a656702d2962"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
+          "sha256": "1af96d3860be166140510c6f1f514c3b779ab754781ea09f12e9e49ce98de642"
+        }
+      ],
+      "reason": "Same-source Linux C, offline NuGet, Maven/JNI, CLI, Worker and Web pass all 15 commands and 273 file checks; required Windows consumption is unavailable.",
+      "description": "Same-source Linux C, offline NuGet, Maven/JNI, CLI, Worker and Web pass all 15 commands and 273 file checks; required Windows consumption is unavailable.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/installed.json",
+          "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
+        ]
+      }
     },
     {
       "id": "source-contracts",
-      "status": "Partial",
-      "scope": "Static public-function/ownership/version-model checks passed; qualified SQL Server participants, complete online identity proof and broader Avro coverage remain incomplete",
-      "evidence": [],
-      "currentEvidence": "product_model.py check and static_check.py passed",
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "status": "Passed",
+      "scope": "Public function, ownership/version model and JSON/XML static checks pass.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/source-contracts.log",
+          "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+        }
+      ],
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/source-contracts.log"
+        ]
+      },
+      "reason": "Public function, ownership/version model and JSON/XML static checks pass.",
+      "description": "Public function, ownership/version model and JSON/XML static checks pass.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf"
     },
     {
       "id": "release-integrity",
       "status": "Partial",
-      "scope": "Linux PRODUCT manifest, 267 file checksums, same-source fingerprint, offline NuGet closure and relocatable Native/host assets passed; Windows/full-product certification remains Blocked",
-      "evidence": [],
-      "reason": "Protocol 11 evidence is being sealed; protocol 10 results remain historical and do not certify this candidate."
+      "scope": "Current Linux PRODUCT archive checksums, 273 files, source fingerprint and relocated native/host assets pass; Windows/full-product certification and GitHub runner execution remain blocked.",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
+          "sha256": "1af96d3860be166140510c6f1f514c3b779ab754781ea09f12e9e49ce98de642"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/installed.json",
+          "sha256": "fb3f708d42b1c3a6caa5d5ba3ae91e5e9f4b7c5ea5900a3e11b2a656702d2962"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+          "sha256": "806c81a3e6e8d3ab848a7683e78bf0a37cae76872df1a2b6760902febec6558e"
+        },
+        {
+          "path": "docs/acceptance/evidence/ssis-strict-parity/ci.json",
+          "sha256": "63df411c5aa03b812155717ded79a305513c1ef85d1a56952011207c092e6b82"
+        }
+      ],
+      "reason": "Current Linux PRODUCT archive checksums, 273 files, source fingerprint and relocated native/host assets pass; Windows/full-product certification and GitHub runner execution remain blocked.",
+      "description": "Current Linux PRODUCT archive checksums, 273 files, source fingerprint and relocated native/host assets pass; Windows/full-product certification and GitHub runner execution remain blocked.",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "currentEvidence": {
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
+          "docs/acceptance/evidence/ssis-strict-parity/installed.json",
+          "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+          "docs/acceptance/evidence/ssis-strict-parity/ci.json"
+        ]
+      }
     }
   ],
   "delivery": {
-    "status": "No current-source release artifact; prior PR #6 artifact is archived in history.product2FirstDelivery",
-    "published": false
+    "archive": "artifacts/ssis-strict-parity/UniversalData-2.1.0-linux-x64.zip",
+    "sha256": "4ac9171df0cf469f50e1f035a780a5caf918e83ef1179fc655b6017554400d90",
+    "manifest": "artifacts/ssis-strict-parity/bundle/manifest.json",
+    "runtimeIdentifier": "linux-x64",
+    "sdkVersion": "2.1.0",
+    "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d"
   }
 }

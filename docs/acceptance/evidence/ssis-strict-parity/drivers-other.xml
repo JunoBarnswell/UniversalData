@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="23"
+	failures="0"
+	disabled="0"
+	skipped="7"
+	hostname=""
+	time="13"
+	timestamp="2026-10-14T21:10:00"
+	>
+	<testcase name="integration_postgresql_physical_schema" classname="integration_postgresql_physical_schema" time="0.0582764" status="run">
+		<properties>
+			<property name="cmake_labels" value="postgresql;real-integration"/>
+		</properties>
+		<system-out>Real PostgreSQL DDL: rename and cross-Package physical identity, correct row projection, drop/re-add incarnation refusal passed
+</system-out>
+	</testcase>
+	<testcase name="integration_postgresql_sql" classname="integration_postgresql_sql" time="0.089574" status="run">
+		<properties>
+			<property name="cmake_labels" value="postgresql;real-integration"/>
+		</properties>
+		<system-out>NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+{"nativeBulk":false,"dialect":2,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_postgresql_cdc" classname="integration_postgresql_cdc" time="0.135634" status="run">
+		<properties>
+			<property name="cmake_labels" value="postgresql;real-integration"/>
+		</properties>
+		<system-out>opening CDC
+snapshot
+log changes
+opening CDC
+{"dialect":2,"snapshotFence":true,"logInsertUpdateDelete":true,"beforeImages":true,"resume":true,"revoke":true,"schemaChangeFence":null}
+</system-out>
+	</testcase>
+	<testcase name="integration_postgresql_row_command" classname="integration_postgresql_row_command" time="0.0603764" status="run">
+		<properties>
+			<property name="cmake_labels" value="postgresql;real-integration;row-command"/>
+		</properties>
+		<system-out>NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows
+</system-out>
+	</testcase>
+	<testcase name="integration_postgresql_native_bulk" classname="integration_postgresql_native_bulk" time="0.068674" status="run">
+		<properties>
+			<property name="cmake_labels" value="native-bulk;postgresql;real-integration"/>
+		</properties>
+		<system-out>NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+{"nativeBulk":true,"dialect":2,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_postgresql_participant_recovery" classname="integration_postgresql_participant_recovery" time="0.454383" status="run">
+		<properties>
+			<property name="cmake_labels" value="crash-recovery;postgresql;real-integration"/>
+		</properties>
+		<system-out>NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+Real two-connection prepare/rollback, commit, partial-commit recovery passed
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_sql" classname="integration_mariadb_sql" time="0.107927" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":false,"dialect":4,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_cdc" classname="integration_mariadb_cdc" time="0.243846" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;real-integration"/>
+		</properties>
+		<system-out>opening CDC
+snapshot
+log changes
+opening CDC
+{"dialect":4,"snapshotFence":true,"logInsertUpdateDelete":true,"beforeImages":true,"resume":true,"revoke":true,"schemaChangeFence":true}
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_row_command" classname="integration_mariadb_row_command" time="0.108313" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;real-integration;row-command"/>
+		</properties>
+		<system-out>row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_type_domains" classname="integration_mariadb_type_domains" time="0.0562772" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;real-integration"/>
+		</properties>
+		<system-out>Actual unsigned boundary, negative long TIME, JSON numeric range and ENUM/SET dictionaries passed
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_native_bulk" classname="integration_mariadb_native_bulk" time="0.0818517" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;native-bulk;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":true,"dialect":4,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_participant_recovery" classname="integration_mariadb_participant_recovery" time="0.415412" status="run">
+		<properties>
+			<property name="cmake_labels" value="crash-recovery;mariadb;real-integration"/>
+		</properties>
+		<system-out>Real two-connection prepare/rollback, commit, partial-commit recovery passed
+</system-out>
+	</testcase>
+	<testcase name="integration_odbc_sql" classname="integration_odbc_sql" time="0.391017" status="run">
+		<properties>
+			<property name="cmake_labels" value="odbc;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":false,"dialect":5,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_odbc_cdc" classname="integration_odbc_cdc" time="11.2059" status="run">
+		<properties>
+			<property name="cmake_labels" value="odbc;real-integration"/>
+		</properties>
+		<system-out>opening CDC
+snapshot
+log changes
+opening CDC
+{"dialect":5,"snapshotFence":true,"logInsertUpdateDelete":true,"beforeImages":true,"resume":true,"revoke":true,"schemaChangeFence":null}
+</system-out>
+	</testcase>
+	<testcase name="integration_odbc_row_command" classname="integration_odbc_row_command" time="0.0811728" status="run">
+		<properties>
+			<property name="cmake_labels" value="odbc;real-integration;row-command"/>
+		</properties>
+		<system-out>row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows
+</system-out>
+	</testcase>
+	<testcase name="integration_odbc_native_bulk" classname="integration_odbc_native_bulk" time="0.115027" status="run">
+		<properties>
+			<property name="cmake_labels" value="native-bulk;odbc;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":true,"dialect":5,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_odbc_participant_recovery" classname="integration_odbc_participant_recovery" time="0.0656323" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="crash-recovery;odbc;real-integration"/>
+		</properties>
+		<system-out>Blocked: resource has no durable participant capability (SQL Server XA request failed (ODBC -3, XA -3))
+</system-out>
+	</testcase>
+	<testcase name="integration_oracle_oci_sql" classname="integration_oracle_oci_sql" time="0.0260609" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="oracle_oci;real-integration"/>
+		</properties>
+		<system-out>Blocked: real integration resource UD_TEST_ORACLE_OCI_CONFIG is not configured
+</system-out>
+	</testcase>
+	<testcase name="integration_oracle_oci_cdc" classname="integration_oracle_oci_cdc" time="0.0264302" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="oracle_oci;real-integration"/>
+		</properties>
+		<system-out>Blocked: real integration resource UD_TEST_ORACLE_OCI_CONFIG is not configured
+</system-out>
+	</testcase>
+	<testcase name="integration_oracle_oci_row_command" classname="integration_oracle_oci_row_command" time="0.0252505" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="oracle_oci;real-integration;row-command"/>
+		</properties>
+		<system-out>Blocked: real integration resource UD_TEST_ORACLE_OCI_CONFIG is not configured
+</system-out>
+	</testcase>
+	<testcase name="integration_oracle_oci_native_bulk" classname="integration_oracle_oci_native_bulk" time="0.0288815" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="native-bulk;oracle_oci;real-integration"/>
+		</properties>
+		<system-out>Blocked: real integration resource UD_TEST_ORACLE_OCI_CONFIG is not configured
+</system-out>
+	</testcase>
+	<testcase name="integration_oracle_oci_participant_recovery" classname="integration_oracle_oci_participant_recovery" time="0.0295383" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="crash-recovery;oracle_oci;real-integration"/>
+		</properties>
+		<system-out>Blocked: real participant resource UD_TEST_ORACLE_OCI_CONFIG is not configured
+</system-out>
+	</testcase>
+	<testcase name="integration_mssql_postgresql_participant_recovery" classname="integration_mssql_postgresql_participant_recovery" time="0.0729572" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties>
+			<property name="cmake_labels" value="crash-recovery;odbc;postgresql;real-integration"/>
+		</properties>
+		<system-out>Blocked: resource has no durable participant capability (SQL Server XA request failed (ODBC -3, XA -3))
+</system-out>
+	</testcase>
+</testsuite>

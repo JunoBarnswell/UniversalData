@@ -1,0 +1,1565 @@
+{
+  "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+  "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+  "abi": 11,
+  "caseCount": 24,
+  "ssisGolden": "VerificationBlocked",
+  "cases": [
+    {
+      "case": "csv-clean-single",
+      "runId": "csv-clean-single-8c9d84ae3759",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "single",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 7.6620620469911955,
+      "rowsPerSecond": 6525.66,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3008,
+          "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+        },
+        "REFUND": {
+          "count": 15342,
+          "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+        },
+        "PAID_OTHER": {
+          "count": 14298,
+          "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "csv-clean-single-8c9d84ae3759-readback.zip",
+      "readbackSha256": "c676a613d40fc628013faaa4237ab24e5b6a26c86cbc3df37dd1ef5d377fe9ec",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 59548,
+        "cpuSeconds": 6.416775,
+        "spillBytes": 300338982
+      },
+      "buffers": {
+        "residentPeak": 1047828,
+        "workingPeak": 7645162,
+        "spillPeak": 72561962,
+        "totalSpill": 300338982,
+        "encodes": 186,
+        "decodes": 161,
+        "encodedBytes": 300338982,
+        "readBytes": 237819837,
+        "writeBytes": 300338982,
+        "encodeCpuNs": 359397757,
+        "decodeCpuNs": 1355256710,
+        "readMs": 128,
+        "writeMs": 218
+      }
+    },
+    {
+      "case": "csv-clean-multi",
+      "runId": "csv-clean-multi-a26688809133",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 7.329688780999277,
+      "rowsPerSecond": 6821.57,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3008,
+          "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+        },
+        "REFUND": {
+          "count": 15342,
+          "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+        },
+        "PAID_OTHER": {
+          "count": 14298,
+          "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "csv-clean-multi-a26688809133-readback.zip",
+      "readbackSha256": "bee43fe3858d7e383803e02e0b5c3b1af535de2ec482f83208ba0dffa06a930a",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 254804,
+        "cpuSeconds": 6.165255,
+        "spillBytes": 298161497
+      },
+      "buffers": {
+        "residentPeak": 1047710,
+        "workingPeak": 7645162,
+        "spillPeak": 72447795,
+        "totalSpill": 298161497,
+        "encodes": 185,
+        "decodes": 160,
+        "encodedBytes": 298161497,
+        "readBytes": 235740656,
+        "writeBytes": 298161497,
+        "encodeCpuNs": 338112434,
+        "decodeCpuNs": 1291015400,
+        "readMs": 116,
+        "writeMs": 189
+      }
+    },
+    {
+      "case": "csv-dirty-single",
+      "runId": "csv-dirty-single-ade7c311fe55",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "single",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 8.305263301997911,
+      "rowsPerSecond": 6020.28,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "csv-dirty-single-ade7c311fe55-readback.zip",
+      "readbackSha256": "e6fda56b2efb45ca445aeee168adcb66467868a2070e49d21e7cfc702203dccd",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 255736,
+        "cpuSeconds": 6.897372,
+        "spillBytes": 300350145
+      },
+      "buffers": {
+        "residentPeak": 1047624,
+        "workingPeak": 7644346,
+        "spillPeak": 72497977,
+        "totalSpill": 300350145,
+        "encodes": 202,
+        "decodes": 177,
+        "encodedBytes": 300350145,
+        "readBytes": 237893228,
+        "writeBytes": 300350145,
+        "encodeCpuNs": 368984413,
+        "decodeCpuNs": 1464443628,
+        "readMs": 118,
+        "writeMs": 218
+      }
+    },
+    {
+      "case": "csv-dirty-multi",
+      "runId": "csv-dirty-multi-d138a58a3b41",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 8.03034306698828,
+      "rowsPerSecond": 6226.38,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "csv-dirty-multi-d138a58a3b41-readback.zip",
+      "readbackSha256": "089d6c460d6269bf32175fd23f7fb0de30e03ea23d1708edf49aa15a298c2c1c",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 256456,
+        "cpuSeconds": 6.594754,
+        "spillBytes": 298142453
+      },
+      "buffers": {
+        "residentPeak": 1048428,
+        "workingPeak": 7644346,
+        "spillPeak": 72383922,
+        "totalSpill": 298142453,
+        "encodes": 200,
+        "decodes": 175,
+        "encodedBytes": 298142453,
+        "readBytes": 235783742,
+        "writeBytes": 298142453,
+        "encodeCpuNs": 353117745,
+        "decodeCpuNs": 1395091387,
+        "readMs": 116,
+        "writeMs": 213
+      }
+    },
+    {
+      "case": "xlsx-clean-single",
+      "runId": "xlsx-clean-single-404fe542bf47",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "single",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 8.189390465006,
+      "rowsPerSecond": 6105.46,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3008,
+          "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+        },
+        "REFUND": {
+          "count": 15342,
+          "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+        },
+        "PAID_OTHER": {
+          "count": 14298,
+          "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "xlsx-clean-single-404fe542bf47-readback.zip",
+      "readbackSha256": "91902d2a133b1685dd271dda226597c28e4e5c4feedd67104bfcdd7dec3f902b",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 257232,
+        "cpuSeconds": 7.004277,
+        "spillBytes": 300963150
+      },
+      "buffers": {
+        "residentPeak": 1043343,
+        "workingPeak": 7645162,
+        "spillPeak": 72676129,
+        "totalSpill": 300963150,
+        "encodes": 187,
+        "decodes": 162,
+        "encodedBytes": 300963150,
+        "readBytes": 238345701,
+        "writeBytes": 300963150,
+        "encodeCpuNs": 372471659,
+        "decodeCpuNs": 1345551938,
+        "readMs": 115,
+        "writeMs": 199
+      }
+    },
+    {
+      "case": "xlsx-clean-multi",
+      "runId": "xlsx-clean-multi-611ca7f6d58c",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 7.8424874860211276,
+      "rowsPerSecond": 6375.53,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3008,
+          "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+        },
+        "REFUND": {
+          "count": 15342,
+          "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+        },
+        "PAID_OTHER": {
+          "count": 14298,
+          "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "xlsx-clean-multi-611ca7f6d58c-readback.zip",
+      "readbackSha256": "40413b1eff4bad66c46668b94dd4d361c3dd9f8dcecc5dabf3e61f3f10882226",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 258212,
+        "cpuSeconds": 6.591634,
+        "spillBytes": 300338982
+      },
+      "buffers": {
+        "residentPeak": 1047828,
+        "workingPeak": 7645162,
+        "spillPeak": 72561962,
+        "totalSpill": 300338982,
+        "encodes": 186,
+        "decodes": 161,
+        "encodedBytes": 300338982,
+        "readBytes": 237819837,
+        "writeBytes": 300338982,
+        "encodeCpuNs": 324348854,
+        "decodeCpuNs": 1265842418,
+        "readMs": 102,
+        "writeMs": 287
+      }
+    },
+    {
+      "case": "xlsx-dirty-single",
+      "runId": "xlsx-dirty-single-4d9950dc50be",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "single",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 8.58895384898642,
+      "rowsPerSecond": 5821.43,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "xlsx-dirty-single-4d9950dc50be-readback.zip",
+      "readbackSha256": "c217b8d3a5bdd6783f909414919b100c559f582acbe0d8d67fbe3f251cb06604",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 259092,
+        "cpuSeconds": 7.035461,
+        "spillBytes": 300974023
+      },
+      "buffers": {
+        "residentPeak": 1042731,
+        "workingPeak": 7644346,
+        "spillPeak": 72612032,
+        "totalSpill": 300974023,
+        "encodes": 203,
+        "decodes": 178,
+        "encodedBytes": 300974023,
+        "readBytes": 238418900,
+        "writeBytes": 300974023,
+        "encodeCpuNs": 344414187,
+        "decodeCpuNs": 1343178824,
+        "readMs": 104,
+        "writeMs": 234
+      }
+    },
+    {
+      "case": "xlsx-dirty-multi",
+      "runId": "xlsx-dirty-multi-d854d6551b2a",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 8.85485047000111,
+      "rowsPerSecond": 5646.62,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "xlsx-dirty-multi-d854d6551b2a-readback.zip",
+      "readbackSha256": "e4d24245aa7fafad7825ead36820c624fe1e8071a81d9aeb2668c651c9aec5aa",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 259764,
+        "cpuSeconds": 7.327384,
+        "spillBytes": 300350145
+      },
+      "buffers": {
+        "residentPeak": 1047624,
+        "workingPeak": 7644346,
+        "spillPeak": 72497977,
+        "totalSpill": 300350145,
+        "encodes": 202,
+        "decodes": 177,
+        "encodedBytes": 300350145,
+        "readBytes": 237893228,
+        "writeBytes": 300350145,
+        "encodeCpuNs": 366012519,
+        "decodeCpuNs": 1400987981,
+        "readMs": 121,
+        "writeMs": 262
+      }
+    },
+    {
+      "case": "csv-clean-batch1",
+      "runId": "csv-clean-batch1-0b36d43c7857",
+      "batchRows": 1,
+      "workers": 2,
+      "transaction": "single",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 661.0041471000004,
+      "rowsPerSecond": 75.64,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3008,
+          "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+        },
+        "REFUND": {
+          "count": 15342,
+          "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+        },
+        "PAID_OTHER": {
+          "count": 14298,
+          "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "csv-clean-batch1-0b36d43c7857-readback.zip",
+      "readbackSha256": "3e719bd5d3838da914f000ca4bfb6f0e91126497a01d86af0fdfc4625d4df362",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 849376,
+        "cpuSeconds": 223.890869,
+        "spillBytes": 1217074122
+      },
+      "buffers": {
+        "residentPeak": 1048275,
+        "workingPeak": 114326,
+        "spillPeak": 742636399,
+        "totalSpill": 1217074122,
+        "encodes": 549632,
+        "decodes": 449707,
+        "encodedBytes": 1217074122,
+        "readBytes": 689686311,
+        "writeBytes": 1217074122,
+        "encodeCpuNs": 1063290201,
+        "decodeCpuNs": 4153349129,
+        "readMs": 9740,
+        "writeMs": 190025
+      }
+    },
+    {
+      "case": "csv-clean-batch64",
+      "runId": "csv-clean-batch64-34878eb5c338",
+      "batchRows": 64,
+      "workers": 2,
+      "transaction": "single",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 28.12134259499726,
+      "rowsPerSecond": 1778.01,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3008,
+          "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+        },
+        "REFUND": {
+          "count": 15342,
+          "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+        },
+        "PAID_OTHER": {
+          "count": 14298,
+          "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "csv-clean-batch64-34878eb5c338-readback.zip",
+      "readbackSha256": "2ef982eeb33b7672f8ae4277c944f3d4db73cb38daf8437951f6206f03162bac",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 261676,
+        "cpuSeconds": 9.999079,
+        "spillBytes": 171314657
+      },
+      "buffers": {
+        "residentPeak": 1048464,
+        "workingPeak": 3145848,
+        "spillPeak": 77350171,
+        "totalSpill": 171314657,
+        "encodes": 7029,
+        "decodes": 6997,
+        "encodedBytes": 171314657,
+        "readBytes": 105453139,
+        "writeBytes": 171314657,
+        "encodeCpuNs": 151303054,
+        "decodeCpuNs": 648424026,
+        "readMs": 115,
+        "writeMs": 3023
+      }
+    },
+    {
+      "case": "csv-clean-batch1024",
+      "runId": "csv-clean-batch1024-7e213f6a528d",
+      "batchRows": 1024,
+      "workers": 2,
+      "transaction": "single",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 6.075297712988686,
+      "rowsPerSecond": 8230.05,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3008,
+          "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+        },
+        "REFUND": {
+          "count": 15342,
+          "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+        },
+        "PAID_OTHER": {
+          "count": 14298,
+          "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "csv-clean-batch1024-7e213f6a528d-readback.zip",
+      "readbackSha256": "9157bb45b40ae4d5938f0000e1d2a48762193a04d8b208499e865e2690f985e7",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 262496,
+        "cpuSeconds": 4.106197,
+        "spillBytes": 143297915
+      },
+      "buffers": {
+        "residentPeak": 1045424,
+        "workingPeak": 3145848,
+        "spillPeak": 63934010,
+        "totalSpill": 143297915,
+        "encodes": 531,
+        "decodes": 499,
+        "encodedBytes": 143297915,
+        "readBytes": 80188913,
+        "writeBytes": 143297915,
+        "encodeCpuNs": 117629759,
+        "decodeCpuNs": 405447380,
+        "readMs": 25,
+        "writeMs": 276
+      }
+    },
+    {
+      "case": "csv-clean-parameters",
+      "runId": "csv-clean-parameters-0daa778dc82a",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "single",
+      "loadMode": "parameters",
+      "fault": null,
+      "seconds": 8.371551449992694,
+      "rowsPerSecond": 5972.61,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3008,
+          "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+        },
+        "REFUND": {
+          "count": 15342,
+          "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+        },
+        "PAID_OTHER": {
+          "count": 14298,
+          "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "csv-clean-parameters-0daa778dc82a-readback.zip",
+      "readbackSha256": "b6fb8bec3c460f26e821686c4513cdf4115eb528c215cf2528af35422e210875",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 263256,
+        "cpuSeconds": 6.585861,
+        "spillBytes": 302241777
+      },
+      "buffers": {
+        "residentPeak": 1043343,
+        "workingPeak": 7776234,
+        "spillPeak": 73018630,
+        "totalSpill": 302241777,
+        "encodes": 187,
+        "decodes": 162,
+        "encodedBytes": 302241777,
+        "readBytes": 239329416,
+        "writeBytes": 302241777,
+        "encodeCpuNs": 346478488,
+        "decodeCpuNs": 1265667992,
+        "readMs": 98,
+        "writeMs": 201
+      }
+    },
+    {
+      "case": "csv-clean-small-batch",
+      "runId": "csv-clean-small-batch-2f2e221745a9",
+      "batchRows": 127,
+      "workers": 1,
+      "transaction": "single",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 19.966240153007675,
+      "rowsPerSecond": 2504.23,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3008,
+          "rowIdsSha256": "486088f430071cb9569843d296fde53ad641c98fcbf19b0e2325759edbd53888"
+        },
+        "REFUND": {
+          "count": 15342,
+          "rowIdsSha256": "3672edfa696b16caa6783fb202ed87a4cdb7a2ef2247de33ecda998f06d7ddd8"
+        },
+        "PAID_OTHER": {
+          "count": 14298,
+          "rowIdsSha256": "6c1e4fcf031e879c79289fb95ff2f0326c0268c0e7ceed26a1fe2c4993d269cd"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "csv-clean-small-batch-2f2e221745a9-readback.zip",
+      "readbackSha256": "f94eda057b07eb35f99f7151d4fb95227811a5305074121b8f028df2457d7daf",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 264272,
+        "cpuSeconds": 8.339274,
+        "spillBytes": 191593273
+      },
+      "buffers": {
+        "residentPeak": 1048448,
+        "workingPeak": 3145848,
+        "spillPeak": 71073534,
+        "totalSpill": 191593273,
+        "encodes": 3941,
+        "decodes": 3909,
+        "encodedBytes": 191593273,
+        "readBytes": 126066839,
+        "writeBytes": 191593273,
+        "encodeCpuNs": 186232500,
+        "decodeCpuNs": 802852007,
+        "readMs": 94,
+        "writeMs": 2022
+      }
+    },
+    {
+      "case": "csv-dirty-large-batch",
+      "runId": "csv-dirty-large-batch-f84400418b73",
+      "batchRows": 8192,
+      "workers": 8,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 7.343229188001715,
+      "rowsPerSecond": 6808.99,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "csv-dirty-large-batch-f84400418b73-readback.zip",
+      "readbackSha256": "ddbf1fe02fca1e37780d30480ee74e5dbcb68dc67d4f0d228bdc309882876d7d",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 264992,
+        "cpuSeconds": 6.349129,
+        "spillBytes": 316392926
+      },
+      "buffers": {
+        "residentPeak": 963262,
+        "workingPeak": 15539061,
+        "spillPeak": 83906674,
+        "totalSpill": 316392926,
+        "encodes": 110,
+        "decodes": 98,
+        "encodedBytes": 316392926,
+        "readBytes": 253501406,
+        "writeBytes": 316392926,
+        "encodeCpuNs": 371081602,
+        "decodeCpuNs": 1296592045,
+        "readMs": 116,
+        "writeMs": 152
+      }
+    },
+    {
+      "case": "csv-dirty-kill",
+      "runId": "csv-dirty-kill-adf82f79b002",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": "coordinator-committed",
+      "seconds": 0.04673832101980224,
+      "rowsPerSecond": null,
+      "crashExecutionSeconds": 7.3826138809963595,
+      "recoverySeconds": 0.04673832101980224,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "csv-dirty-kill-adf82f79b002-readback.zip",
+      "readbackSha256": "076628a5f511fb0b3a16c0939e93fce82554c088b75291ff856c78ee3752871d",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 265748,
+        "cpuSeconds": 0.043749,
+        "spillBytes": 0
+      },
+      "buffers": {
+        "residentPeak": 0,
+        "workingPeak": 0,
+        "spillPeak": 0,
+        "totalSpill": 0,
+        "encodes": 0,
+        "decodes": 0,
+        "encodedBytes": 0,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "encodeCpuNs": 0,
+        "decodeCpuNs": 0,
+        "readMs": 0,
+        "writeMs": 0
+      }
+    },
+    {
+      "case": "csv-dirty-read-kill-5000",
+      "runId": "csv-dirty-read-kill-5000-00fa8ead2751",
+      "batchRows": 1000,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": "input-row-durability-boundary",
+      "seconds": 7.446449412993388,
+      "rowsPerSecond": null,
+      "crashExecutionSeconds": 0.3432660700054839,
+      "recoverySeconds": 7.446449412993388,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "csv-dirty-read-kill-5000-00fa8ead2751-readback.zip",
+      "readbackSha256": "b5cd775e87fe16612f42b2e1c792ff89a8c75335bb3e6233a865b397640e9de0",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 265848,
+        "cpuSeconds": 5.082658,
+        "spillBytes": 201742054
+      },
+      "buffers": {
+        "residentPeak": 1048561,
+        "workingPeak": 3520575,
+        "spillPeak": 64110182,
+        "totalSpill": 201742054,
+        "encodes": 560,
+        "decodes": 528,
+        "encodedBytes": 201742054,
+        "readBytes": 139684382,
+        "writeBytes": 201742054,
+        "encodeCpuNs": 179579084,
+        "decodeCpuNs": 754265701,
+        "readMs": 50,
+        "writeMs": 351
+      }
+    },
+    {
+      "case": "csv-dirty-read-kill-25000",
+      "runId": "csv-dirty-read-kill-25000-515208c6f0e3",
+      "batchRows": 1000,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": "input-row-durability-boundary",
+      "seconds": 7.724201982986415,
+      "rowsPerSecond": null,
+      "crashExecutionSeconds": 3.240174748003483,
+      "recoverySeconds": 7.724201982986415,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "csv-dirty-read-kill-25000-515208c6f0e3-readback.zip",
+      "readbackSha256": "08021fc4ad8c28aa634c73bae9cf5d7f47000db803cf4070fc8369f641ea7982",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 266668,
+        "cpuSeconds": 5.311795,
+        "spillBytes": 202003320
+      },
+      "buffers": {
+        "residentPeak": 1048561,
+        "workingPeak": 3520575,
+        "spillPeak": 64209083,
+        "totalSpill": 202003320,
+        "encodes": 560,
+        "decodes": 528,
+        "encodedBytes": 202003320,
+        "readBytes": 139849744,
+        "writeBytes": 202003320,
+        "encodeCpuNs": 187233103,
+        "decodeCpuNs": 777519143,
+        "readMs": 37,
+        "writeMs": 368
+      }
+    },
+    {
+      "case": "csv-dirty-read-kill-49999",
+      "runId": "csv-dirty-read-kill-49999-6e84641650b0",
+      "batchRows": 9999,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": "input-row-durability-boundary",
+      "seconds": 7.089979357988341,
+      "rowsPerSecond": null,
+      "crashExecutionSeconds": 4.571375180006726,
+      "recoverySeconds": 7.089979357988341,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "csv-dirty-read-kill-49999-6e84641650b0-readback.zip",
+      "readbackSha256": "8ed1d30f0486acf02a5df6e89056bd10cbc2ecf9993794392d1fb1e580956371",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 267688,
+        "cpuSeconds": 6.231117,
+        "spillBytes": 321603992
+      },
+      "buffers": {
+        "residentPeak": 803085,
+        "workingPeak": 16051291,
+        "spillPeak": 89592318,
+        "totalSpill": 321603992,
+        "encodes": 88,
+        "decodes": 78,
+        "encodedBytes": 321603992,
+        "readBytes": 257244744,
+        "writeBytes": 321603992,
+        "encodeCpuNs": 353973929,
+        "decodeCpuNs": 1327347294,
+        "readMs": 98,
+        "writeMs": 133
+      }
+    },
+    {
+      "case": "csv-dirty-package-commit-kill",
+      "runId": "csv-dirty-package-commit-kill-2a12550dd21a",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "package",
+      "loadMode": "native",
+      "fault": "coordinator-committed",
+      "seconds": 0.0492846230044961,
+      "rowsPerSecond": null,
+      "crashExecutionSeconds": 7.39738539699465,
+      "recoverySeconds": 0.0492846230044961,
+      "history": null,
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "csv-dirty-package-commit-kill-2a12550dd21a-readback.zip",
+      "readbackSha256": "4d4dece61a127d9b70a72d4b8f4e936f4f97d3a65e4cb841d677a5611236d366",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 0,
+        "maxRssKiB": 268696,
+        "cpuSeconds": 0.046489,
+        "spillBytes": 0
+      },
+      "buffers": {
+        "residentPeak": 0,
+        "workingPeak": 0,
+        "spillPeak": 0,
+        "totalSpill": 0,
+        "encodes": 0,
+        "decodes": 0,
+        "encodedBytes": 0,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "encodeCpuNs": 0,
+        "decodeCpuNs": 0,
+        "readMs": 0,
+        "writeMs": 0
+      }
+    },
+    {
+      "case": "csv-clean-reordered",
+      "runId": "csv-clean-reordered-632dfa12e5f3",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 6.977148020989262,
+      "rowsPerSecond": 7166.25,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": null,
+      "businessRows": 50000,
+      "errorRows": 0,
+      "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+      "branchSignatures": {
+        "VIP": {
+          "count": 0,
+          "rowIdsSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "REFUND": {
+          "count": 12670,
+          "rowIdsSha256": "f674cefdcd446779d79f1c1500a8c395b51ba482b202216d832fce72a03e5616"
+        },
+        "PAID_OTHER": {
+          "count": 19978,
+          "rowIdsSha256": "c9058f4af14073a737b56b96032a27dc4c61e242f5fbaa99bfe64c429ae364e5"
+        },
+        "OTHER": {
+          "count": 17352,
+          "rowIdsSha256": "1ece84f04e50d54bac0279dc98951452055b8c8af01176b4bd98cb08bb57934d"
+        }
+      },
+      "readbackArchive": "csv-clean-reordered-632dfa12e5f3-readback.zip",
+      "readbackSha256": "e1655a38f537932e8640d1bc8ea19d506126dfdf0d9cd11b79fdcea590863347",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 268736,
+        "cpuSeconds": 5.968713,
+        "spillBytes": 295626174
+      },
+      "buffers": {
+        "residentPeak": 1048434,
+        "workingPeak": 7645162,
+        "spillPeak": 72905630,
+        "totalSpill": 295626174,
+        "encodes": 165,
+        "decodes": 139,
+        "encodedBytes": 295626174,
+        "readBytes": 232811406,
+        "writeBytes": 295626174,
+        "encodeCpuNs": 320176525,
+        "decodeCpuNs": 1243820999,
+        "readMs": 110,
+        "writeMs": 202
+      }
+    },
+    {
+      "case": "csv-dirty-history",
+      "runId": "csv-dirty-history-0166cf298223",
+      "batchRows": 4096,
+      "workers": 4,
+      "transaction": "multi",
+      "loadMode": "native",
+      "fault": null,
+      "seconds": 7.213891010003863,
+      "rowsPerSecond": 6931.07,
+      "crashExecutionSeconds": null,
+      "recoverySeconds": null,
+      "history": {
+        "firstRunId": "csv-dirty-history-0166cf298223",
+        "secondRunId": "csv-dirty-history-ef7a528c7081",
+        "secondExecutionSeconds": 7.256077425990952,
+        "secondReadback": {
+          "businessRows": 49950,
+          "errorRows": 50,
+          "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+          "branchSignatures": {
+            "VIP": {
+              "count": 3004,
+              "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+            },
+            "REFUND": {
+              "count": 15327,
+              "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+            },
+            "PAID_OTHER": {
+              "count": 14284,
+              "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+            },
+            "OTHER": {
+              "count": 17335,
+              "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+            }
+          },
+          "readbackArchive": "csv-dirty-history-ef7a528c7081-readback.zip",
+          "readbackSha256": "7cf0dcd8c0a9be5863e99e133bb661e141ca920ef093e983f103713420ae54b1"
+        }
+      },
+      "businessRows": 49950,
+      "errorRows": 50,
+      "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+      "branchSignatures": {
+        "VIP": {
+          "count": 3004,
+          "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+        },
+        "REFUND": {
+          "count": 15327,
+          "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+        },
+        "PAID_OTHER": {
+          "count": 14284,
+          "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+        },
+        "OTHER": {
+          "count": 17335,
+          "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+        }
+      },
+      "readbackArchive": "csv-dirty-history-0166cf298223-readback.zip",
+      "readbackSha256": "1d438c99a24f1b998574cc8301d5db0442c31bb437d3e4e313335b9d476a958a",
+      "native": {
+        "result": 0,
+        "state": 5,
+        "input": 50000,
+        "committed": 50011,
+        "acknowledged": 50011,
+        "errorRows": 50,
+        "committedErrors": 50,
+        "acknowledgedErrors": 50,
+        "workerHighWater": 1,
+        "maxRssKiB": 279728,
+        "cpuSeconds": 6.012151,
+        "spillBytes": 300974023
+      },
+      "buffers": {
+        "residentPeak": 1042731,
+        "workingPeak": 7644346,
+        "spillPeak": 72612032,
+        "totalSpill": 300974023,
+        "encodes": 203,
+        "decodes": 178,
+        "encodedBytes": 300974023,
+        "readBytes": 238418900,
+        "writeBytes": 300974023,
+        "encodeCpuNs": 325602990,
+        "decodeCpuNs": 1223314979,
+        "readMs": 95,
+        "writeMs": 203
+      }
+    },
+    {
+      "case": "csv-dirty-connection-failure",
+      "runId": "csv-dirty-connection-failure-6c8de35c0519",
+      "expectedFailure": true,
+      "result": 15,
+      "remainingRows": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "seconds": 0.05061723699327558,
+      "native": {
+        "result": 15,
+        "state": 6,
+        "input": 0,
+        "committed": 0,
+        "acknowledged": 0,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 280592,
+        "cpuSeconds": 0.03632,
+        "spillBytes": 0
+      },
+      "buffers": {
+        "residentPeak": 0,
+        "workingPeak": 0,
+        "spillPeak": 0,
+        "totalSpill": 0,
+        "encodes": 0,
+        "decodes": 0,
+        "encodedBytes": 0,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "encodeCpuNs": 0,
+        "decodeCpuNs": 0,
+        "readMs": 0,
+        "writeMs": 0
+      }
+    },
+    {
+      "case": "csv-dirty-unique-conflict",
+      "runId": "csv-dirty-unique-conflict-b0d06088f1ef",
+      "expectedFailure": true,
+      "result": 5,
+      "remainingRows": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "seconds": 1.7085289800015744,
+      "native": {
+        "result": 5,
+        "state": 6,
+        "input": 20480,
+        "committed": 0,
+        "acknowledged": 0,
+        "errorRows": 20,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 1,
+        "maxRssKiB": 280592,
+        "cpuSeconds": 1.532734,
+        "spillBytes": 74012003
+      },
+      "buffers": {
+        "residentPeak": 1028546,
+        "workingPeak": 7775418,
+        "spillPeak": 28763315,
+        "totalSpill": 74012003,
+        "encodes": 45,
+        "decodes": 29,
+        "encodedBytes": 74012003,
+        "readBytes": 46825413,
+        "writeBytes": 74012003,
+        "encodeCpuNs": 102833360,
+        "decodeCpuNs": 276886392,
+        "readMs": 28,
+        "writeMs": 61
+      }
+    },
+    {
+      "case": "csv-dirty-source-changed",
+      "runId": "csv-dirty-source-changed-4b69677f2985",
+      "expectedFailure": true,
+      "result": 9,
+      "remainingRows": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "seconds": 0.04159658699063584,
+      "native": {
+        "result": 9,
+        "state": 6,
+        "input": 0,
+        "committed": 0,
+        "acknowledged": 0,
+        "errorRows": 0,
+        "committedErrors": 0,
+        "acknowledgedErrors": 0,
+        "workerHighWater": 0,
+        "maxRssKiB": 280592,
+        "cpuSeconds": 0.039009,
+        "spillBytes": 0
+      },
+      "buffers": {
+        "residentPeak": 0,
+        "workingPeak": 0,
+        "spillPeak": 0,
+        "totalSpill": 0,
+        "encodes": 0,
+        "decodes": 0,
+        "encodedBytes": 0,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "encodeCpuNs": 0,
+        "decodeCpuNs": 0,
+        "readMs": 0,
+        "writeMs": 0
+      }
+    }
+  ],
+  "fullEvidence": {
+    "path": "artifacts/ssis-strict-parity/ssis-50000-evidence.zip",
+    "sha256": "a924523f75ff750abf559fa94d6b2c6f355250110c464805636f817eb4158836",
+    "bytes": 36307594
+  },
+  "independentOracle": "Python/OOXML fixtures are business validation tools, not Microsoft Golden"
+}

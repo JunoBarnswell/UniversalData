@@ -1,0 +1,45 @@
+{
+  "status": "Passed",
+  "packageId": "browser-96803e6d2d1f4bdf8ef30f7a30966631",
+  "edit": true,
+  "dragUndoRedo": true,
+  "saveReload": true,
+  "deployment": true,
+  "nativeOutput": true,
+  "logs": true,
+  "actualWorkerTermination": true,
+  "resumeSameNativeId": true,
+  "debugPause": true,
+  "nativeFormulaCompile": true,
+  "derivedAddReplace": true,
+  "formulaErrorLocation": true,
+  "splitPriorityAndOutputConnections": true,
+  "browserErrors": [],
+  "consoleMessages": [
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "httpErrors": [
+    {
+      "status": 401,
+      "path": "/api/auth/session"
+    }
+  ],
+  "browserPlugin": "Browser plugin not available",
+  "viewports": [
+    {
+      "width": 1505,
+      "height": 1000
+    },
+    {
+      "width": 768,
+      "height": 900
+    }
+  ]
+}

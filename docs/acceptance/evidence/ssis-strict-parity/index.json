@@ -1,0 +1,183 @@
+{
+  "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+  "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+  "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/8",
+  "status": "Partial: Native Linux invariants accepted; complete SSIS and production readiness remain incomplete",
+  "files": [
+    {
+      "path": "browser.json",
+      "bytes": 1019,
+      "sha256": "c106442752afc8e9db8c01b380bdf61693c9fe4913b33a2fb0ba25c2f06a346f"
+    },
+    {
+      "path": "ci-annotations.json",
+      "bytes": 235,
+      "sha256": "539d2d950648d967674e73c0b661c54ce82649f3618231ccbf3c23d2629a9c7e"
+    },
+    {
+      "path": "ci.json",
+      "bytes": 1307,
+      "sha256": "63df411c5aa03b812155717ded79a305513c1ef85d1a56952011207c092e6b82"
+    },
+    {
+      "path": "core.log",
+      "bytes": 9933,
+      "sha256": "4b1ad320002743d74221da5ff814afc64d3a43cce1f4280eb5e0d7b9ae8895b7"
+    },
+    {
+      "path": "core.xml",
+      "bytes": 22489,
+      "sha256": "7be9c09b6757d57b0dfe694e654652f7a040d5382176b30c0bec06199ce498fc"
+    },
+    {
+      "path": "datetime-build.log",
+      "bytes": 9535,
+      "sha256": "5154303676d7017b43136925e11c093d60f86dd5effe5e41e61768bd2e901c72"
+    },
+    {
+      "path": "designer-compact.png",
+      "bytes": 80487,
+      "sha256": "1abea32197e6e70cfe7bccd3e3ed95af33ed62f1d465677678ea8708b5cdb020"
+    },
+    {
+      "path": "designer.png",
+      "bytes": 154725,
+      "sha256": "7950dccbd874350f5e7ef65a516bd33f01b5d71ece7ba0d3b232a3c0670631e0"
+    },
+    {
+      "path": "drivers-mysql.log",
+      "bytes": 1156,
+      "sha256": "f2e8d8bf7e51f606ada280e634abfb70a17ef1c8ecb905c64c1619fd62c7ad39"
+    },
+    {
+      "path": "drivers-mysql.xml",
+      "bytes": 2609,
+      "sha256": "1803d76a25069ca2ce15e388a40e833fbfdc7ed9dc590bbce1f80e463e98cbf6"
+    },
+    {
+      "path": "drivers-other.log",
+      "bytes": 4198,
+      "sha256": "357fed1c4fc398f7aba8f48eee0a4ba55d1d8b8641969c06ceb27cd460a56b57"
+    },
+    {
+      "path": "drivers-other.xml",
+      "bytes": 11003,
+      "sha256": "5cace55b805507f6542c3a3bbb68d1c68f3ee39fc208e1b382a390c0fbca5c23"
+    },
+    {
+      "path": "executions.png",
+      "bytes": 94603,
+      "sha256": "4488114989f7599909938ce66720a773c75ddaa1ff1d9e1a3e82ffcedcf22249"
+    },
+    {
+      "path": "golden.log",
+      "bytes": 468,
+      "sha256": "1bd7e04d11c299dc89efff1dc83d181fba3bfae3aa52dcd61063bb010167a5dd"
+    },
+    {
+      "path": "golden.xml",
+      "bytes": 577,
+      "sha256": "c2cac17c2eeb141a080b1c46ce354a91d8a7f7faf687451054018a45a5fb2ab6"
+    },
+    {
+      "path": "installed.json",
+      "bytes": 9726,
+      "sha256": "fb3f708d42b1c3a6caa5d5ba3ae91e5e9f4b7c5ea5900a3e11b2a656702d2962"
+    },
+    {
+      "path": "installed.log",
+      "bytes": 600,
+      "sha256": "60c3dde7f54d1268033720fe3e874f631967f30d75786438d5b8bbcc32bc91ee"
+    },
+    {
+      "path": "manifest.json",
+      "bytes": 58986,
+      "sha256": "1af96d3860be166140510c6f1f514c3b779ab754781ea09f12e9e49ce98de642"
+    },
+    {
+      "path": "matrix.json",
+      "bytes": 49254,
+      "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
+    },
+    {
+      "path": "matrix.log",
+      "bytes": 23777,
+      "sha256": "33932cb5f3a58054b7ac2b68787c6040ddeb3904bfd789ba78355ad853143354"
+    },
+    {
+      "path": "packaging.log",
+      "bytes": 37495,
+      "sha256": "074f41fd74d51b0fd86f8d7fe6e079ef55d960e5b781dfeccaa81f2d6fbaec81"
+    },
+    {
+      "path": "performance.json",
+      "bytes": 5412,
+      "sha256": "a4916ff09ccef9527d7b352e49857ecf06627cdebc2493b246c5167fd3f5f7dc"
+    },
+    {
+      "path": "product-build.log",
+      "bytes": 15530,
+      "sha256": "d03fa6eee9b431d16d3b3808ca135a75aafe55a1f0b7df6afd8dd121a4dda8d8"
+    },
+    {
+      "path": "qa.json",
+      "bytes": 2037,
+      "sha256": "a6ee8722ddbe7ca83966a1ab0b2030f3cc06a54eaaac064ffa2f8548a5ea4f04"
+    },
+    {
+      "path": "release-readiness.log",
+      "bytes": 463,
+      "sha256": "6e5f80f8df270fe9e796d1e5ecfff84cba75c5bd4b9372bfd7ad051720b89412"
+    },
+    {
+      "path": "resources.json",
+      "bytes": 1260,
+      "sha256": "806c81a3e6e8d3ab848a7683e78bf0a37cae76872df1a2b6760902febec6558e"
+    },
+    {
+      "path": "sanitizer.log",
+      "bytes": 1075,
+      "sha256": "c931e115f65f9071e687bca62567e43d3ae32c0629e81e4c92b0220acb9634e5"
+    },
+    {
+      "path": "sanitizer.xml",
+      "bytes": 2412,
+      "sha256": "e5c7f0b15a78be635bc13221b608a372826ebbdcfaa9be0e9b033478c241596d"
+    },
+    {
+      "path": "source-contracts.log",
+      "bytes": 89,
+      "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+    },
+    {
+      "path": "ssis-derived-native-compile.png",
+      "bytes": 91133,
+      "sha256": "67c407e8ac052c78fab36d3d902ededecc4d78d10143c53a46593f03b92344e3"
+    },
+    {
+      "path": "ssis-split-reorder.png",
+      "bytes": 153921,
+      "sha256": "dd591495e34285d078a13cd5db7a62f50310068c75c4f08af263998f19a35942"
+    },
+    {
+      "path": "ud-strict-bulk-mariadb-current.log",
+      "bytes": 828,
+      "sha256": "c71cba4cd4052f9bc40bd84d046af7a58f156f7e027b551b19123efac027bf81"
+    },
+    {
+      "path": "ud-strict-bulk-mysql-current.log",
+      "bytes": 828,
+      "sha256": "82c0e94d346bd697eb7dd87e6ed8e3a8db558bd75b3f4e7c21a79cf06476b500"
+    },
+    {
+      "path": "ud-strict-bulk-odbc-current.log",
+      "bytes": 828,
+      "sha256": "aa3cedf795dc3346fdb9f9f635bb205920284b8272dff23b0a057f7ee7e13601"
+    },
+    {
+      "path": "ud-strict-bulk-postgresql-current.log",
+      "bytes": 961,
+      "sha256": "5ca4defb26c26e2a52056a77599bc044fbffea9aaefae10a65a6db0545a6c648"
+    }
+  ]
+}

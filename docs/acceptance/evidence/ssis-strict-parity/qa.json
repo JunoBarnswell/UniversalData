@@ -1,0 +1,62 @@
+{
+  "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+  "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+  "browser": {
+    "status": "Passed",
+    "packageId": "browser-96803e6d2d1f4bdf8ef30f7a30966631",
+    "edit": true,
+    "dragUndoRedo": true,
+    "saveReload": true,
+    "deployment": true,
+    "nativeOutput": true,
+    "logs": true,
+    "actualWorkerTermination": true,
+    "resumeSameNativeId": true,
+    "debugPause": true,
+    "nativeFormulaCompile": true,
+    "derivedAddReplace": true,
+    "formulaErrorLocation": true,
+    "splitPriorityAndOutputConnections": true,
+    "browserErrors": [],
+    "consoleMessages": [
+      {
+        "level": "error",
+        "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      },
+      {
+        "level": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      }
+    ],
+    "httpErrors": [
+      {
+        "status": 401,
+        "path": "/api/auth/session"
+      }
+    ],
+    "browserPlugin": "Browser plugin not available",
+    "viewports": [
+      {
+        "width": 1505,
+        "height": 1000
+      },
+      {
+        "width": 768,
+        "height": 900
+      }
+    ]
+  },
+  "views": [
+    "designer.png",
+    "designer-compact.png",
+    "executions.png",
+    "ssis-derived-native-compile.png",
+    "ssis-split-reorder.png"
+  ],
+  "inspection": "Desktop and compact browser captures inspected; replacement selection, formula metadata and connected split destinations are visible. Native compile, deployment and actual Worker kill/resume passed.",
+  "limitations": [
+    "Only the pre-login /api/auth/session 401 is expected in the final HTTP capture; no JavaScript page errors were recorded.",
+    "The optional Browser plugin was unavailable; installed Chromium with Playwright exercised the actual published service.",
+    "The complete arbitrary-node preview workflow and all advanced specialized editors remain code gaps."
+  ]
+}

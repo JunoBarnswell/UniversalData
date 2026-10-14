@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="6"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="0"
+	timestamp="2026-10-14T21:21:27"
+	>
+	<testcase name="integration_mysql_sql" classname="integration_mysql_sql" time="0.0915904" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":false,"dialect":3,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_cdc" classname="integration_mysql_cdc" time="0.216103" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;real-integration"/>
+		</properties>
+		<system-out>opening CDC
+snapshot
+log changes
+opening CDC
+{"dialect":3,"snapshotFence":true,"logInsertUpdateDelete":true,"beforeImages":true,"resume":true,"revoke":true,"schemaChangeFence":true}
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_row_command" classname="integration_mysql_row_command" time="0.107629" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;real-integration;row-command"/>
+		</properties>
+		<system-out>row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_type_domains" classname="integration_mysql_type_domains" time="0.050882" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;real-integration"/>
+		</properties>
+		<system-out>Actual unsigned boundary, negative long TIME, JSON numeric range and ENUM/SET dictionaries passed
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_native_bulk" classname="integration_mysql_native_bulk" time="0.0770903" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;native-bulk;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":true,"dialect":3,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_participant_recovery" classname="integration_mysql_participant_recovery" time="0.409445" status="run">
+		<properties>
+			<property name="cmake_labels" value="crash-recovery;mysql;real-integration"/>
+		</properties>
+		<system-out>Real two-connection prepare/rollback, commit, partial-commit recovery passed
+</system-out>
+	</testcase>
+</testsuite>

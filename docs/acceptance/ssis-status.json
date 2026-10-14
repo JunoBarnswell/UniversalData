@@ -19,22 +19,66 @@
   },
   "candidate": {
     "branch": "codex/ssis-strict-parity",
-    "state": "Native contract implementation committed for concentrated Linux acceptance; complete SSIS parity remains Partial.",
-    "sourceCommit": "",
-    "sourceFingerprint": "",
+    "state": "Draft PR #8. Native core implemented and Linux acceptance sealed; complete SSIS parity remains Partial.",
+    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+    "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
     "mergeEvidence": null,
-    "pullRequest": null
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/8"
   },
   "remoteCI": {
-    "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
-    "runId": 38556015263,
-    "status": "Verification Blocked",
-    "reason": "GitHub account billing/spending limit prevented jobs from starting; no build steps executed",
-    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38556015263"
+    "state": "VerificationBlocked",
+    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38637673809",
+    "status": "completed",
+    "conclusion": "failure",
+    "jobs": [
+      {
+        "id": 116104898127,
+        "name": "source-and-designer",
+        "conclusion": "failure",
+        "steps": 0
+      },
+      {
+        "id": 116104898465,
+        "name": "native-core (ubuntu-24.04)",
+        "conclusion": "failure",
+        "steps": 0
+      },
+      {
+        "id": 116104898543,
+        "name": "native-core (windows-2025)",
+        "conclusion": "failure",
+        "steps": 0
+      },
+      {
+        "id": 116104899923,
+        "name": "complete-drivers-and-delivery",
+        "conclusion": "skipped",
+        "steps": 0
+      },
+      {
+        "id": 116104920549,
+        "name": "release-readiness",
+        "conclusion": "failure",
+        "steps": 0
+      }
+    ],
+    "annotations": [
+      {
+        "level": "failure",
+        "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      }
+    ],
+    "reason": "GitHub did not start build steps because of account billing/spending restrictions. Skipped complete-product delivery is not accepted as a pass."
   },
   "artifacts": {
-    "status": "No current-source release artifact; prior PR #6 artifact is archived in history.product2FirstDelivery",
-    "published": false
+    "archive": "artifacts/ssis-strict-parity/UniversalData-2.1.0-linux-x64.zip",
+    "sha256": "4ac9171df0cf469f50e1f035a780a5caf918e83ef1179fc655b6017554400d90",
+    "manifest": "artifacts/ssis-strict-parity/bundle/manifest.json",
+    "runtimeIdentifier": "linux-x64",
+    "sdkVersion": "2.1.0",
+    "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d"
   },
   "components": "docs/product/component-catalog.md",
   "items": [

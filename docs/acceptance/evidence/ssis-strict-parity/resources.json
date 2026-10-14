@@ -1,0 +1,13 @@
+{
+  "windows": "VerificationBlocked: no independent Windows/SSIS host supplied",
+  "ssisGolden": "VerificationBlocked: no real Microsoft SSIS capture",
+  "sqlServerXA": "VerificationBlocked: SQL Server Linux returns XA-3 for the formal XA qualification; ordinary SQL/CDC/BCP accepted",
+  "oracle": "VerificationBlocked: OCI TCPS timed out; the task-owned Oracle instance was subsequently stopped, fully retained as a verified filesystem delta and private container configuration, and retired to recover disk space",
+  "vendorServices": "VerificationBlocked: independent FTP/SFTP/SMTP/S3/Azure/SSAS/WMI acceptance resources unavailable",
+  "diskCleanup": "Only regenerable caches, verified duplicate SDK expansions and the fully archived task-owned Oracle instance were removed/relocated. Historical artifacts and raw database/wallet data remain retained.",
+  "historicalFailures": [
+    "One pre-seal BatchSize=1 attempt exhausted the temporary filesystem; it was not counted as passed.",
+    "An installed Maven attempt lacked the system CA trust store; the final run uses the system trust store and passes without disabling TLS.",
+    "An environment transition terminated two running groups; both were rerun, and interrupted groups were not counted."
+  ]
+}

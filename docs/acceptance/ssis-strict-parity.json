@@ -4037,5 +4037,495 @@
     "parallelism": "Configured Worker concurrency is recorded alongside actual Native high-water marks; a shared serializable transaction can serialize pipeline work.",
     "throughput": "Nominal execution and crash/recovery timings are separate. Fast confirmation of already committed data is not bulk throughput.",
     "codeGapsAreNotEnvironmentBlockers": true
+  },
+  "latestAcceptance": {
+    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+    "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+    "core": {
+      "tests": 74,
+      "failures": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "native_checkpoint_contract_revision",
+          "status": "Passed"
+        },
+        {
+          "name": "native_catalog_secret_migration",
+          "status": "Passed"
+        },
+        {
+          "name": "transaction_fact_publication",
+          "status": "Passed"
+        },
+        {
+          "name": "execution_identity",
+          "status": "Passed"
+        },
+        {
+          "name": "foundation",
+          "status": "Passed"
+        },
+        {
+          "name": "json_document",
+          "status": "Passed"
+        },
+        {
+          "name": "schema_physical_identity_and_nested_evolution",
+          "status": "Passed"
+        },
+        {
+          "name": "unified_file_schema_discovery",
+          "status": "Passed"
+        },
+        {
+          "name": "native_type_domains_2",
+          "status": "Passed"
+        },
+        {
+          "name": "source_record_errors",
+          "status": "Passed"
+        },
+        {
+          "name": "sql_bulk_streaming",
+          "status": "Passed"
+        },
+        {
+          "name": "columnar",
+          "status": "Passed"
+        },
+        {
+          "name": "extended_scalar_types",
+          "status": "Passed"
+        },
+        {
+          "name": "json_nested_format",
+          "status": "Passed"
+        },
+        {
+          "name": "compute_plan",
+          "status": "Passed"
+        },
+        {
+          "name": "nested_columnar_arrow",
+          "status": "Passed"
+        },
+        {
+          "name": "regex_pcre2",
+          "status": "Passed"
+        },
+        {
+          "name": "field_mapping",
+          "status": "Passed"
+        },
+        {
+          "name": "quality_classification",
+          "status": "Passed"
+        },
+        {
+          "name": "sqlite_receipts_upsert",
+          "status": "Passed"
+        },
+        {
+          "name": "postgresql_cursor_cancellation",
+          "status": "Passed"
+        },
+        {
+          "name": "architecture_foundation",
+          "status": "Passed"
+        },
+        {
+          "name": "shared_value_semantics",
+          "status": "Passed"
+        },
+        {
+          "name": "four_engine_scheduling_operators",
+          "status": "Passed"
+        },
+        {
+          "name": "block_store_ownership",
+          "status": "Passed"
+        },
+        {
+          "name": "pipeline_tree_parallelism",
+          "status": "Passed"
+        },
+        {
+          "name": "indexed_segment_journal",
+          "status": "Passed"
+        },
+        {
+          "name": "logical_durable_task_facts",
+          "status": "Passed"
+        },
+        {
+          "name": "core_runtime_resources",
+          "status": "Passed"
+        },
+        {
+          "name": "core_pipeline_components",
+          "status": "Passed"
+        },
+        {
+          "name": "package_execution",
+          "status": "Passed"
+        },
+        {
+          "name": "value_semantics_pipeline",
+          "status": "Passed"
+        },
+        {
+          "name": "package_failure_boundaries",
+          "status": "Passed"
+        },
+        {
+          "name": "sql_command_records_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "four_engine_connections_enumerators",
+          "status": "Passed"
+        },
+        {
+          "name": "package_sql_integration",
+          "status": "Passed"
+        },
+        {
+          "name": "package_durable_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "catalog_leases_process_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "catalog_immutable_store",
+          "status": "Passed"
+        },
+        {
+          "name": "project_environment_deployment",
+          "status": "Passed"
+        },
+        {
+          "name": "child_package_execution",
+          "status": "Passed"
+        },
+        {
+          "name": "catalog_execution_history",
+          "status": "Passed"
+        },
+        {
+          "name": "filesystem_task_execution",
+          "status": "Passed"
+        },
+        {
+          "name": "process_task_execution",
+          "status": "Passed"
+        },
+        {
+          "name": "http_task_execution",
+          "status": "Passed"
+        },
+        {
+          "name": "profile_statistics_kernel",
+          "status": "Passed"
+        },
+        {
+          "name": "profile_task_execution",
+          "status": "Passed"
+        },
+        {
+          "name": "native_custom_task",
+          "status": "Passed"
+        },
+        {
+          "name": "next_phase_native_contracts",
+          "status": "Passed"
+        },
+        {
+          "name": "next_phase_pipeline_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "ssis_native_features",
+          "status": "Passed"
+        },
+        {
+          "name": "pr5_foundation",
+          "status": "Passed"
+        },
+        {
+          "name": "advanced_native_semantics",
+          "status": "Passed"
+        },
+        {
+          "name": "advanced_formats_tls_rest",
+          "status": "Passed"
+        },
+        {
+          "name": "advanced_catalog_ten_table_template",
+          "status": "Passed"
+        },
+        {
+          "name": "management_multi_process_claim_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "management_authenticated_native_worker",
+          "status": "Passed"
+        },
+        {
+          "name": "hosting_identity_secret_resource_contracts",
+          "status": "Passed"
+        },
+        {
+          "name": "worker_protocol",
+          "status": "Passed"
+        },
+        {
+          "name": "managed_native_epoch_process_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "managed_product_worker_process_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "managed_registry_scripts_debug_lifecycle",
+          "status": "Passed"
+        },
+        {
+          "name": "java_registry_observer_catalog_lifecycle",
+          "status": "Passed"
+        },
+        {
+          "name": "native_enterprise_file_layout",
+          "status": "Passed"
+        },
+        {
+          "name": "file_generation_process_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "native_component_product_semantics",
+          "status": "Passed"
+        },
+        {
+          "name": "native_sql_source_record_errors",
+          "status": "Passed"
+        },
+        {
+          "name": "native_xlsx_preserving_append",
+          "status": "Passed"
+        },
+        {
+          "name": "native_avro_interoperability",
+          "status": "Passed"
+        },
+        {
+          "name": "apache_avro_native_pipeline_resolution",
+          "status": "Passed"
+        },
+        {
+          "name": "native_xml_source_xpath_xslt_xsd",
+          "status": "Passed"
+        },
+        {
+          "name": "native_object_transfer_sequence",
+          "status": "Passed"
+        },
+        {
+          "name": "ssis_native_expression_contract",
+          "status": "Passed"
+        },
+        {
+          "name": "ssis_row_error_atomicity_recovery",
+          "status": "Passed"
+        }
+      ]
+    },
+    "sanitizer": {
+      "tests": 8,
+      "failures": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "source_record_errors",
+          "status": "Passed"
+        },
+        {
+          "name": "compute_plan",
+          "status": "Passed"
+        },
+        {
+          "name": "shared_value_semantics",
+          "status": "Passed"
+        },
+        {
+          "name": "sql_command_records_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "package_durable_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "native_sql_source_record_errors",
+          "status": "Passed"
+        },
+        {
+          "name": "ssis_native_expression_contract",
+          "status": "Passed"
+        },
+        {
+          "name": "ssis_row_error_atomicity_recovery",
+          "status": "Passed"
+        }
+      ]
+    },
+    "driversOther": {
+      "tests": 23,
+      "failures": 0,
+      "skipped": 7,
+      "cases": [
+        {
+          "name": "integration_postgresql_physical_schema",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_postgresql_sql",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_postgresql_cdc",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_postgresql_row_command",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_postgresql_native_bulk",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_postgresql_participant_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mariadb_sql",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mariadb_cdc",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mariadb_row_command",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mariadb_type_domains",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mariadb_native_bulk",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mariadb_participant_recovery",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_odbc_sql",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_odbc_cdc",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_odbc_row_command",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_odbc_native_bulk",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_odbc_participant_recovery",
+          "status": "Skipped"
+        },
+        {
+          "name": "integration_oracle_oci_sql",
+          "status": "Skipped"
+        },
+        {
+          "name": "integration_oracle_oci_cdc",
+          "status": "Skipped"
+        },
+        {
+          "name": "integration_oracle_oci_row_command",
+          "status": "Skipped"
+        },
+        {
+          "name": "integration_oracle_oci_native_bulk",
+          "status": "Skipped"
+        },
+        {
+          "name": "integration_oracle_oci_participant_recovery",
+          "status": "Skipped"
+        },
+        {
+          "name": "integration_mssql_postgresql_participant_recovery",
+          "status": "Skipped"
+        }
+      ]
+    },
+    "driversMySQL": {
+      "tests": 6,
+      "failures": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "integration_mysql_sql",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mysql_cdc",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mysql_row_command",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mysql_type_domains",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mysql_native_bulk",
+          "status": "Passed"
+        },
+        {
+          "name": "integration_mysql_participant_recovery",
+          "status": "Passed"
+        }
+      ]
+    },
+    "mysql50000Cases": 24,
+    "installed": {
+      "exitCode": 0,
+      "files": 273,
+      "commands": 15,
+      "browser": "Passed"
+    },
+    "goldenVerified": 0,
+    "remainingCode": "See each matrix entry; complete cast legality, LCID inheritance/comparison, exact type inference, proprietary transforms, complete script/preview surfaces and older enterprise extensions are not complete."
+  },
+  "artifacts": {
+    "sdkArchive": "artifacts/ssis-strict-parity/UniversalData-2.1.0-linux-x64.zip",
+    "readbacks": "artifacts/ssis-strict-parity/ssis-50000-evidence.zip",
+    "readbackSha256": "a924523f75ff750abf559fa94d6b2c6f355250110c464805636f817eb4158836"
   }
 }
