@@ -9,13 +9,14 @@ static ud_status check_buffers(void *user) {
     UD_TRY(ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_WRITE));
     return ud_connection_lease_authorize(e->buffer_lease, UD_ACCESS_DELETE);
 }
-ud_status ud_execution_buffer_options(ud_execution *e,ud_buffer_options *out) {
+ud_status ud_execution_buffer_options(ud_execution *e, ud_buffer_options *out) {
     const ud_json *policy = ud_member(ud_member(e->package->document, "policy"), "buffers");
     ud_buffer_options options = {.struct_size = sizeof(options),
                                  .abi_version = UD_ABI_VERSION,
                                  .max_blocks = 16384,
                                  .resident_limit = UINT64_C(67108864),
                                  .working_limit = UINT64_C(67108864),
+                                 .spill_limit = UINT64_C(1073741824),
                                  .check = check_buffers,
                                  .user = e};
     if (e->options.context.memory_limit) {
@@ -38,7 +39,8 @@ ud_status ud_execution_buffer_options(ud_execution *e,ud_buffer_options *out) {
         s = ud_json_uint(ud_member(policy, "maxBlocks"), &value);
         options.max_blocks = (uint32_t)value;
     }
-    if (!s) *out = options;
+    if (!s)
+        *out = options;
     return s;
 }
 ud_status ud_execution_prepare_buffers(ud_execution *e) {
@@ -49,7 +51,7 @@ ud_status ud_execution_prepare_buffers(ud_execution *e) {
         ud_string id;
         s = ud_json_string(ud_member(policy, "connection"), &id);
         if (!s)
-            s = ud_acquire_file_connection(&e->root, id, &e->buffer_lease);
+            s = ud_acquire_file_connection(&e->root, id, UD_CONNECT_APPEND, &e->buffer_lease);
         if (!s)
             s = ud_connection_lease_path(e->buffer_lease, &options.directory);
         if (!s)

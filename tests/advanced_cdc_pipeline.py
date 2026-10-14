@@ -21,9 +21,9 @@ with tempfile.TemporaryDirectory(prefix='ud-actual-cdc-epoch-') as folder:
     if a.added_column: fields.append(dict(name='added',type='int64',nullable=True))
     with sqlite3.connect(target) as db:
         db.execute('CREATE TABLE output(id INTEGER NOT NULL PRIMARY KEY,name TEXT,rev INTEGER NOT NULL'+(',added INTEGER' if a.added_column else '')+')')
-    source = dict(connection='source',table='ud_advanced_cdc',schema=dict(version=9,fields=fields),serverId=64029,maxTransactions=1)
+    source = dict(connection='source',table='ud_advanced_cdc',schema=dict(version=10,fields=fields),serverId=64029,maxTransactions=1)
     if a.slot: source['slot'] = a.slot
-    package = dict(version=9,id='actual-cdc-epoch',
+    package = dict(version=10,id='actual-cdc-epoch',
         connections=[dict(id='source',driver=str(a.driver.resolve()),resource='actual-source',credentialReference='file:'+str(a.credentials.resolve())),
                      dict(id='target',driver=str(build / 'plugins/ud_connector_sqlite.so'),resource=str(target),credentialReference='fixture'),
                      dict(id='spill',driver='file',resource=str(spill))],
@@ -42,6 +42,6 @@ with tempfile.TemporaryDirectory(prefix='ud-actual-cdc-epoch-') as folder:
     with sqlite3.connect(target) as db:
         rows = db.execute('SELECT * FROM output ORDER BY id').fetchall()
         assert rows == [(1,'updated',2,None) if a.added_column else (1,'updated',2)],rows
-        assert db.execute('SELECT COUNT(*) FROM ud_sdk_receipts_v2').fetchone()[0] > 0
+        assert db.execute('SELECT COUNT(*) FROM ud_sdk_receipts_v10').fetchone()[0] > 0
     assert not list(spill.glob('*.udw'))
 print(json.dumps(dict(component=a.component,actualSource=True,nativeEpoch=True,targetCommitCrash=True,typedReceiptResume=True,bufferSpillCleanup=True)))

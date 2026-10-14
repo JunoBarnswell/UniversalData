@@ -31,13 +31,19 @@ ud_status ud_builtin_cast_rows(builtin *b, const ud_batch *input) {
             status = ud_batch_append(accepted, values, b->columns);
             if (!status)
                 status = ud_batch_copy_row_info(accepted, accepted->rows - 1, input, row);
-        } else if (!status && (policy == UD_ERROR_FAIL || conversion == UD_RESOURCE ||
-                               conversion == UD_CANCELLED || conversion == UD_TIMEOUT ||
-                               conversion == UD_AUTH))
+        } else if (!status && (policy == UD_ERROR_FAIL || !ud_record_error_recoverable(conversion)))
             status = conversion;
         else if (!status && policy == UD_ERROR_REDIRECT) {
-            status = ud_error_append(&b->context.errors, errors, input, row, (ud_string){"cast", 4},
-                                     1, input->column[bad].field.identity, conversion, policy);
+            status = ud_error_append(&b->context.errors, errors,
+                                     &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                                        .abi_version = UD_ABI_VERSION,
+                                                        .input = input,
+                                                        .row = row,
+                                                        .rule = (ud_string){"cast", 4},
+                                                        .rule_version = 1,
+                                                        .column = input->column[bad].field.identity,
+                                                        .code = conversion,
+                                                        .policy = policy});
             if (!status)
                 ud_task_rows(b->context.activation, 0, 0, 1);
         }
@@ -58,6 +64,14 @@ ud_status ud_builtin_transformed(builtin *b, const ud_batch *in) {
     int kind = b->kind;
     ud_status s = UD_OK;
     uint32_t output_count = b->context.output_count;
+    if (kind == BALANCED) {
+        uint32_t selected = (uint32_t)(b->number % output_count);
+        if (b->number == UINT64_MAX)
+            return UD_RESOURCE;
+        UD_TRY(b->context.emit(b->context.emit_user, selected, (ud_batch *)in));
+        b->number++;
+        return UD_OK;
+    }
     ud_batch **output = ud_alloc(b->context.memory, (output_count + 1) * sizeof(*output));
     if (!output)
         return UD_RESOURCE;
@@ -87,9 +101,15 @@ ud_status ud_builtin_transformed(builtin *b, const ud_batch *in) {
         ud_free(output);
         return ud_builtin_cast_rows(b, in);
     }
+    int policy = UD_ERROR_FAIL;
+    s = ud_error_policy(b->config, "errorPolicy", UD_ERROR_FAIL, &policy);
+    uint32_t error_port = output_count - 1;
     {
         for (uint32_t p = 0; !s && p < output_count; p++)
-            s = ud_batch_create(b->context.memory, b->fields, b->columns, in->rows, output + p);
+            s = p == error_port ? ud_batch_create(b->context.memory, b->errors->schema->fields,
+                                                  b->errors->columns, in->rows, output + p)
+                                : ud_batch_create(b->context.memory, b->fields, b->columns,
+                                                  in->rows, output + p);
         ud_value *values = ud_alloc(b->context.memory, b->columns * sizeof(*values));
         if (!values && !s)
             s = UD_RESOURCE;
@@ -98,20 +118,43 @@ ud_status ud_builtin_transformed(builtin *b, const ud_batch *in) {
             for (uint32_t j = 0; !s && j < in->columns; j++)
                 s = ud_batch_get(in, row, j, values + j);
             uint32_t port = 0;
+            ud_status record_status = UD_OK;
+            ud_id column = {0};
             if (kind == SPLIT) {
                 port = b->expression_count;
-                for (uint32_t p = 0; !s && p < b->expression_count; p++) {
+                for (uint32_t p = 0; !s && !record_status && p < b->expression_count; p++) {
                     ud_value value = {0};
-                    s = ud_expression_evaluate(b->expressions[p], in, row, &value);
-                    if (!s && !value.is_null && value.integer) {
+                    record_status = ud_expression_evaluate(b->expressions[p], in, row, &value);
+                    if (!record_status && !value.is_null && value.integer) {
                         port = p;
                         break;
                     }
                 }
             } else
-                for (uint32_t j = 0; !s && j < b->expression_count; j++)
-                    s = ud_expression_evaluate(b->expressions[j], in, row,
-                                               values + in->columns + j);
+                for (uint32_t j = 0; !s && !record_status && j < b->expression_count; j++) {
+                    column = b->fields[in->columns + j].identity;
+                    record_status = ud_expression_evaluate(b->expressions[j], in, row,
+                                                           values + in->columns + j);
+                }
+            if (!s && record_status) {
+                if (policy == UD_ERROR_FAIL || !ud_record_error_recoverable(record_status))
+                    s = record_status;
+                else if (policy == UD_ERROR_REDIRECT)
+                    s = ud_error_append(
+                        &b->context.errors, output[error_port],
+                        &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                           .abi_version = UD_ABI_VERSION,
+                                           .input = in,
+                                           .row = row,
+                                           .rule = kind == SPLIT
+                                                       ? (ud_string){"split.condition", 15}
+                                                       : (ud_string){"derive", 6},
+                                           .rule_version = 1,
+                                           .column = column,
+                                           .code = record_status,
+                                           .policy = policy});
+                continue;
+            }
             if (!s)
                 s = ud_batch_append(output[port], values, b->columns);
             if (!s)

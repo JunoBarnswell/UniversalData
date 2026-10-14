@@ -1,3328 +1,1494 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "1.5.0",
-  "abi": 9,
+  "sdkVersion": "2.0.0",
+  "abi": 10,
   "scope": {
-    "name": "PR #5 Native foundation, extension platform and advanced ETL",
-    "linux": "Required — native/JNI/.NET, sanitizers, install consumption, transactions/recovery, million-row comparison",
-    "extensions": "Tracked independently; Planned/Partial remain incomplete",
-    "windows": "Exempt — explicit current user instruction"
+    "name": "UniversalData 2.0 SSIS current capabilities and complete ETL product",
+    "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
+    "windows": "Required — complete driver build, native/language/install and platform acceptance",
+    "extensions": "50 applicable audit items require current source and behavior evidence; ETL-039/040 NotApplicable"
   },
   "baseline": {
-    "mainCommit": "d2d44131423963185c82a1c0ec6ff5e2330db191",
+    "mainCommit": "7e706d28e18676975b6d5da22bf1d29bdacc74b9",
     "merged": true,
+    "sdkVersion": "1.5.0",
+    "abiVersion": 9,
     "mergeEvidence": {
-      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/4",
-      "mergedAt": "2026-10-12T20:33:45Z",
-      "headCommit": "45c1d056a3d771389b1e115d28cc7977bcd2541b"
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
     }
   },
   "candidate": {
-    "branch": "codex/etl-next-phase-r1-r5",
-    "state": "PR #5 advanced ETL implementation in progress; ABI 9 verification pending",
-    "sourceCommit": "fd03e6508b0a13c4e418225c91bd60e56c547418",
-    "sourceFingerprint": null,
+    "branch": "codex/etl-ssis-product-alignment",
+    "state": "Draft PR #6 Linux delivery: complete PRODUCT build, 78 actual CTest passes with 4 Oracle environment skips, real four-driver SQL/CDC/native bulk, six performance workloads, browser and independent installed C/.NET/Java/CLI/Web/Worker acceptance passed. 25 audit items have current scoped behavior passes, 17 remain Partial, 8 are Blocked, and 039/040 are NotApplicable; 4 source items remain Partial. Complete 50-item certification is not claimed.",
+    "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27",
+    "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
     "mergeEvidence": null,
-    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/5"
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/6"
   },
   "remoteCI": {
     "state": "Blocked",
-    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38325912089",
-    "sourceCommit": "a698129fff37349d6e29b51dcd47ebc8583b4e80",
+    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38496784093",
+    "sourceCommit": "64619b913266f4d0e156e22778f575bc60fa5f7e",
     "startedSteps": 0,
-    "reason": "Blocked before code execution: GitHub account payment/spending-limit restriction",
-    "evidence": "docs/acceptance/evidence/etl-next-phase-linux/remote-ci.json"
+    "reason": "GitHub check-run: The job was not started because recent account payments have failed or your spending limit needs to be increased. Independent Windows/full-resource runners are also unavailable."
   },
   "artifacts": {
-    "status": "Pending ABI 8 Linux build and installed consumers"
+    "status": "Linux candidate accepted; complete release blocked by required gates",
+    "archive": "artifacts/universaldata-2-linux/UniversalData-2.0.0-linux-x64.zip",
+    "manifest": "artifacts/universaldata-2-linux/bundle/manifest.json",
+    "sha256": "145ad32ecf5939cc531d5df3ed1aba4ad3d17ef47e994969dd7d5022a3ecb49c",
+    "runtimeIdentifier": "linux-x64",
+    "sdkVersion": "2.0.0",
+    "abiVersion": 10,
+    "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
+    "published": false,
+    "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
   },
   "components": "docs/product/component-catalog.md",
-  "remediations": [
+  "items": [
     {
-      "id": "R01",
-      "state": "Implemented",
-      "name": "Registry and native module lifecycle",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
-    },
-    {
-      "id": "R02",
-      "state": "Implemented",
-      "name": "Physical Block Store ownership",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
-    },
-    {
-      "id": "R03",
-      "state": "Implemented",
-      "name": "Shared executor and physical Execution Trees",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
-    },
-    {
-      "id": "R04",
-      "state": "Implemented",
-      "name": "Indexed segmented Journal and snapshots",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
-    },
-    {
-      "id": "R05",
-      "state": "Implemented",
-      "name": "Task facts, durability metrics and events",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
-    },
-    {
-      "id": "R06",
-      "state": "Implemented",
-      "name": "Single version and acceptance model",
-      "verification": "Verified on ABI 7 Linux; Windows Exempt"
-    }
-  ],
-  "workItems": [
-    {
-      "id": "CF-01",
-      "name": "ExecutableDefinition",
+      "id": "ETL-001",
+      "phase": 4,
+      "name": "Complete product dependency closure",
       "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "CMakeLists.txt",
+        "plugins/CMakeLists.txt"
       ],
-      "goals": [
-        "G08",
-        "G09"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
+      "trigger": "A complete product build is requested with a missing dependency.",
+      "baselineFinding": "Drivers, HTTP and Arrow file support currently default OFF; full product profile is absent.",
+      "acceptance": "A complete product build is requested with a missing dependency. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
       "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
+        "docs/acceptance/evidence/universaldata-2-linux/configure.log",
+        "docs/acceptance/evidence/universaldata-2-linux/build.log"
+      ],
+      "progress": "Complete Linux PRODUCT build enables all six database drivers, genuine BCP/OCI client SDKs, Arrow/Parquet, HTTP/XML/network, JNI, .NET 10 hosts and the built designer. Missing dependencies fail configuration. Linux closure passed; Windows PRODUCT closure is Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
     },
     {
-      "id": "CF-02",
-      "name": "Task Host",
+      "id": "ETL-002",
+      "phase": 4,
+      "name": "SQL parameter arrays and truthful bulk capabilities",
       "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/odbc.c",
+        "include/ud/connector.h"
       ],
-      "goals": [
-        "G07",
-        "G20"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
+      "trigger": "A bulk destination binds a driver or requests a native loading guarantee.",
+      "baselineFinding": "ODBC is the sole SQL Server path; array batching and native BCP must be distinguished.",
+      "acceptance": "A bulk destination binds a driver or requests a native loading guarantee. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
       "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "ODBC row offsets, processed counts and per-row statuses are checked. Native BCP and parameter arrays have distinct capabilities. Generic transactional array append selects response delivery and refuses uncertain replay. Actual SQL Server parameter/BCP integration passed; an independent unknown-DBMS ODBC array resource is unavailable.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
     },
     {
-      "id": "CF-03",
-      "name": "Control Graph Binder",
+      "id": "ETL-003",
+      "phase": 3,
+      "name": "Native execution identity",
       "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/package/runtime.c",
+        "include/ud/package.h"
       ],
-      "goals": [
-        "G05",
-        "G09",
-        "G11"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
+      "trigger": "A new execution omits its ID or resume omits the original ID.",
+      "baselineFinding": "runtime.c copies an empty options.execution_id; CLI substitutes constant cli; no identity getter exists.",
+      "acceptance": "A new execution omits its ID or resume omits the original ID. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
       "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "Native generates one UUID when a new execution omits its ID, exposes it to all hosts and requires the original identity for recovery. Native, managed, Java and killed-Worker browser cases passed on Linux.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "execution_identity",
+        "managed_registry_scripts_debug_lifecycle",
+        "java_registry_observer_catalog_lifecycle"
       ]
     },
     {
-      "id": "CF-04",
-      "name": "Precedence Evaluator",
+      "id": "ETL-004",
+      "phase": 2,
+      "name": "Source record error ports",
       "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G05",
-        "G11"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-05",
-      "name": "Task State / Outcome",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G06",
-        "G45",
-        "G46"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-06",
-      "name": "Ready Scheduler",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G12",
-        "G23"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-07",
-      "name": "Sequence Container",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G08",
-        "G10",
-        "G46"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-08",
-      "name": "For Loop",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G08",
-        "G10"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-09",
-      "name": "Foreach Loop",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G10",
-        "G45"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-10",
-      "name": "Enumerator Registry",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/enumerator.c",
-        "components/contracts/src/registry.c"
-      ],
-      "goals": [
-        "G07",
-        "G10",
-        "G25"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-11",
-      "name": "Scoped Variables",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G02",
-        "G05",
-        "G08"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-12",
-      "name": "Event Handlers",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G12",
-        "G48"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-13",
-      "name": "Failure Propagation",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G06",
-        "G12"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-14",
-      "name": "Transaction Policy",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G25",
-        "G46"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-15",
-      "name": "Deadline / Cancel",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G12",
-        "G16",
-        "G17",
-        "G18"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-16",
-      "name": "Retry Semantics",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G20",
-        "G46"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-17",
-      "name": "Child Package",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G17",
-        "G45"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CF-18",
-      "name": "Control Diagnostics",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/control-flow/control.c",
-        "engines/control-flow/enumerator.c",
-        "engines/package/runtime.c"
-      ],
-      "goals": [
-        "G48"
-      ],
-      "phase": "R2",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "four_engine_connections_enumerators",
-        "package_execution",
-        "package_durable_recovery",
-        "child_package_execution"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-01",
-      "name": "Pipeline Definition",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G09",
-        "G13",
-        "G21"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-02",
-      "name": "Component Metadata",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G07",
-        "G21"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-03",
-      "name": "Schema Binder",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G02",
-        "G04",
-        "G05",
-        "G21"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-04",
-      "name": "Physical Planner",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G23"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-05",
-      "name": "Synchronous Execution",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G03",
-        "G22",
-        "G32",
-        "G35"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-06",
-      "name": "Asynchronous Execution",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G23",
-        "G24"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-07",
-      "name": "Component Lifecycle",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G21",
-        "G46"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-08",
-      "name": "Multiport Routing",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G22",
-        "G34",
-        "G35",
-        "G36",
-        "G42"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-09",
-      "name": "Error Policies",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G30",
-        "G42"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-10",
-      "name": "Backpressure",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G22",
-        "G23"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-11",
-      "name": "Buffer Ownership",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G03",
-        "G23"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-12",
-      "name": "Buffer Layout",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G02",
-        "G03",
-        "G32"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-13",
-      "name": "Spill",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G23",
-        "G24",
-        "G52"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-14",
-      "name": "Shared Compute",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G24",
-        "G37",
-        "G38",
-        "G39",
-        "G40",
-        "G58"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-15",
-      "name": "Early Validation",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G02",
-        "G09",
-        "G21",
-        "G25"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-16",
-      "name": "Explain / Inspector",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G23",
-        "G48"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-17",
-      "name": "Detailed Metrics",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G48"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "DF-18",
-      "name": "Recoverable Pipeline",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "engines/data-flow/pipeline.c",
-        "engines/data-flow/builtins.c",
-        "components/execution/src/buffer.c"
-      ],
-      "goals": [
-        "G45",
-        "G46"
-      ],
-      "phase": "R3",
-      "acceptance": [
-        "core_pipeline_components",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "value_semantics_pipeline",
-        "package_durable_recovery"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-01",
-      "name": "Connection Definition",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/source.c",
+        "plugins/common.h",
         "plugins/sqlite.c",
-        "plugins/postgresql.c"
+        "plugins/postgresql.c",
+        "plugins/mysql_family.c",
+        "plugins/odbc.c",
+        "plugins/oracle_oci.c"
       ],
-      "goals": [
-        "G08",
-        "G25"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
+      "trigger": "A recoverable CSV/NDJSON/SQL record contains invalid field content.",
+      "baselineFinding": "Data cursors return field parse errors and SQL source has no unified per-record error channel.",
+      "acceptance": "A recoverable CSV/NDJSON/SQL record contains invalid field content. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
       "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "Canonical source error ports preserve field/component/source-row identity, classify conversion/truncation/constraint faults and retain raw contents only when requested. CSV/NDJSON/multiline JSON array and real SQLite mixed-result conversion cases passed; ambiguous record framing remains fatal.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "source_record_errors",
+        "native_sql_source_record_errors"
       ]
     },
     {
-      "id": "CM-02",
-      "name": "Scope Resolution",
+      "id": "ETL-005",
+      "phase": 2,
+      "name": "Expression transform row errors",
       "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/row_transform.c",
+        "components/expression"
       ],
-      "goals": [
-        "G08",
-        "G17",
-        "G25"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
+      "trigger": "A Derived Column or Conditional Split expression fails for one record.",
+      "baselineFinding": "Expression row evaluation can fail an activation; recoverable row attribution must share Data error metadata.",
+      "acceptance": "A Derived Column or Conditional Split expression fails for one record. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
       "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
+      ],
+      "progress": "Derived Column and Conditional Split redirect a real overflow surrounded by valid rows in one batch, retain shared error identity/raw Wire and continue valid records. Derived output field attribution is retained. Fatal execution statuses never become rejected records.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_component_product_semantics"
       ]
     },
     {
-      "id": "CM-03",
-      "name": "Registry Consistency",
+      "id": "ETL-006",
+      "phase": 2,
+      "name": "Destination isolation and error barrier",
       "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/destination.c",
+        "engines/data-flow/error.c"
       ],
-      "goals": [
-        "G07",
-        "G25"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
+      "trigger": "Normal and rejected rows share a batch or a SQL statement fails for a record.",
+      "baselineFinding": "Destination ordinary failures stop flow; both error and regular target confirmation must remain one barrier.",
+      "acceptance": "Normal and rejected rows share a batch or a SQL statement fails for a record. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
       "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "SQL rejected records use the same Native error schema and actual savepoints/parameter binding under declared transactions. Native dual SQL/file destinations and separate-process kills after normal/error commits passed. The complete cross-driver constraint/error-target transaction crash matrix remains unverified.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "next_phase_pipeline_recovery"
       ]
     },
     {
-      "id": "CM-04",
-      "name": "Factory",
+      "id": "ETL-007",
+      "phase": 1,
+      "name": "Complete unsigned integer domain",
       "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-05",
-      "name": "Lease",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25",
-        "G52"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-06",
-      "name": "Capabilities",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25",
-        "G28",
-        "G29"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-07",
-      "name": "Credentials",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G08",
-        "G25"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-08",
-      "name": "Authorization",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G15",
-        "G16",
-        "G18",
-        "G25"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-09",
-      "name": "Pool",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-10",
-      "name": "Session Isolation",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25",
-        "G46"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-11",
-      "name": "Thread Affinity",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G07",
-        "G25"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-12",
-      "name": "Transaction Enlistment",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25",
-        "G46"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-13",
-      "name": "Metadata Discovery",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25",
-        "G28",
-        "G29"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-14",
-      "name": "Schema Evolution",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G02",
-        "G25",
-        "G28",
-        "G29"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-15",
-      "name": "Bulk Reader / Writer",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25",
-        "G28",
-        "G29"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-16",
-      "name": "Retry / Reconnect",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25",
-        "G46"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-17",
-      "name": "Error Normalization",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G06",
-        "G25",
-        "G46"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-18",
-      "name": "Metrics",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G25",
-        "G48"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-19",
-      "name": "Resource Unification",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G14",
-        "G15",
-        "G16",
-        "G18",
-        "G25"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "CM-20",
-      "name": "Native Driver Plugin",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "connectors/manager.c",
-        "components/contracts/src/plugin.c",
-        "include/ud/connector.h",
-        "plugins/sqlite.c",
-        "plugins/postgresql.c"
-      ],
-      "goals": [
-        "G07",
-        "G20",
-        "G25",
-        "G50"
-      ],
-      "phase": "R4",
-      "acceptance": [
-        "four_engine_connections_enumerators",
-        "sqlite_receipts_upsert",
-        "project_environment_deployment",
-        "http_task_execution",
-        "process_task_execution",
-        "four_engine_postgresql.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-01",
-      "name": "Execution Tree Builder",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G23"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-02",
-      "name": "Tree Graph",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G22",
-        "G23"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-03",
-      "name": "Shared Worker Pool",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G12",
-        "G23"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-04",
-      "name": "Unified Work Scheduling",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G12",
-        "G23",
-        "G24",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-05",
-      "name": "Work Item Identity",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G09",
-        "G23",
-        "G45",
-        "G48"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-06",
-      "name": "Event-driven Ready Queue",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G22",
-        "G23"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-07",
-      "name": "Cross-Tree Backpressure",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G22",
-        "G23"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-08",
-      "name": "Source Partitioning",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G26",
-        "G27",
-        "G45",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-09",
-      "name": "Partition Strategies",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G04",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-10",
-      "name": "Parallel Aggregate",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G24",
-        "G38",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-11",
-      "name": "Parallel Join",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G24",
-        "G37",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-12",
-      "name": "Parallel Sort",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G24",
-        "G39",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-13",
-      "name": "Ordering Contract",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G04",
-        "G23",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-14",
-      "name": "Component Concurrency",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G07",
-        "G21"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-15",
-      "name": "Driver Concurrency",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G07",
-        "G25",
-        "G46"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-16",
-      "name": "Shared Resource Budget",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G23",
-        "G25",
-        "G52"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-17",
-      "name": "Cancellation",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G12",
-        "G23",
-        "G52"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-18",
-      "name": "Checkpoint Barrier",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G45",
-        "G46",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-19",
-      "name": "Deterministic Semantics",
-      "priority": "P0",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G04",
-        "G24",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-20",
-      "name": "Detailed Scheduler Metrics",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G23",
-        "G48"
-      ],
-      "phase": "R5",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    },
-    {
-      "id": "PP-21",
-      "name": "Adaptive Scheduling",
-      "priority": "P2",
-      "state": "Planned",
-      "verification": "P2 — not in R1–R5 scope",
-      "owner": [
-        "components/execution/src/executor.c",
-        "engines/data-flow/pipeline.c",
-        "components/compute/src/operator.c",
-        "components/compute/src/partition.c"
-      ],
-      "goals": [
-        "G23",
-        "G58"
-      ],
-      "phase": "R5",
-      "acceptance": [],
-      "evidence": []
-    },
-    {
-      "id": "PP-22",
-      "name": "Benchmark Harness",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified by current ABI 7 Linux regression within documented capability boundaries",
-      "owner": [
-        "benchmarks/four_engines.py"
-      ],
-      "goals": [
-        "G23",
-        "G24",
-        "G52",
-        "G53",
-        "G58"
-      ],
-      "phase": "R7",
-      "acceptance": [
-        "four_engine_scheduling_operators",
-        "pipeline_tree_parallelism",
-        "block_store_ownership",
-        "indexed_segment_journal",
-        "logical_durable_task_facts",
-        "benchmarks/four_engines.py"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json"
-      ]
-    }
-  ],
-  "nextPhaseWorkItems": [
-    {
-      "id": "DQ-01",
-      "phase": "R1",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute/src/quality.c",
-        "engines/data-flow/quality.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "完成 `foreignKey` 规则的 Pipeline 配置绑定，支持独立 Reference 输入和快照/元数据校验；拒绝无一致性证明的 Resume"
-    },
-    {
-      "id": "DQ-02",
-      "phase": "R1",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute/src/quality.c",
-        "engines/data-flow/quality.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "保留已有 NotNull、Unique、PrimaryKey、Range、Regex、RowCount；统一 Rule ID/Version/Schema 约束"
-    },
-    {
-      "id": "DQ-03",
-      "phase": "R1",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute/src/quality.c",
-        "engines/data-flow/quality.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "对每规则明确 Fail/Redirect/Ignore 语义；现有 `ud_quality` 只有 Abort/Reject，可按严格规则扩展**唯一政策模型**，不要将 ignore 当成 committed"
-    },
-    {
-      "id": "DQ-04",
-      "phase": "R1",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute/src/quality.c",
-        "engines/data-flow/quality.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "多规则命中同一行时明确：保留一条数据、多个 Violation，或每规则独立错误行；协议必须定义确定性，避免行号错位"
-    },
-    {
-      "id": "DQ-05",
-      "phase": "R1",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute/src/quality.c",
-        "engines/data-flow/quality.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "正规错误记录含 `executionId`, `taskId`, `pipelineId`, `componentId`, `ruleId`, `ruleVersion`, `columnId`, `sourceRowId`, `errorCode`, `policy`；错误数据内容受权限/脱敏限制"
-    },
-    {
-      "id": "DQ-06",
-      "phase": "R1",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute/src/quality.c",
-        "engines/data-flow/quality.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "持久隔离写入复用 File/SQL Destination、Connection Lease、Journal 与 Receipt；普通与错误目标的部分提交不得误判为事务原子性"
-    },
-    {
-      "id": "DQ-07",
-      "phase": "R1",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute/src/quality.c",
-        "engines/data-flow/quality.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "规则级统计区分 evaluated、matched/failed、rejected、committed、acknowledged、unknown"
-    },
-    {
-      "id": "DQ-08",
-      "phase": "R1",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute/src/quality.c",
-        "engines/data-flow/quality.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "资源有界：大 Reference 集合允许使用统一 Buffer/Spill，支持取消清理；不新增私有文件格式"
-    },
-    {
-      "id": "DQ-09",
-      "phase": "R1",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute/src/quality.c",
-        "engines/data-flow/quality.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "对外公开规则描述、端口信息、错误列元数据，使后续设计器按 Registry discovery 自动识别"
-    },
-    {
-      "id": "INC-01",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "Source Capability/Incremental Policy 描述"
-    },
-    {
-      "id": "INC-02",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "规范化 Cursor 数据模型"
-    },
-    {
-      "id": "INC-03",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "Watermark / Composite Cursor Binder"
-    },
-    {
-      "id": "INC-04",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "SQLite/PostgreSQL 在支持范围内提供确定性增量游标"
-    },
-    {
-      "id": "INC-05",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "对 CSV/NDJSON 使用已有文件身份、位置、稳定边界"
-    },
-    {
-      "id": "INC-06",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "`ReadBatch → receipt → Journal → cursor advancement` 同一确认语义"
-    },
-    {
-      "id": "INC-07",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "Replay 与 Resume"
-    },
-    {
-      "id": "INC-08",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "Late Arrival / Overlap Policy"
-    },
-    {
-      "id": "INC-09",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "Snapshot/Schema/Policy Change Detection"
-    },
-    {
-      "id": "INC-10",
-      "phase": "R2",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "engines/data-flow/builtins.c",
-        "engines/package/checkpoint.c",
-        "components/data"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "Cursor Diagnostics"
-    },
-    {
-      "id": "SD-01",
-      "phase": "R3",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/data.h",
         "components/data",
-        "connectors/manager.c",
+        "bindings"
+      ],
+      "trigger": "A UINT64 value exceeds INT64_MAX.",
+      "baselineFinding": "ud_type has no UINT64 and all integral scalar storage uses signed int64.",
+      "acceptance": "A UINT64 value exceeds INT64_MAX. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "UINT64_MAX and overflow/negative boundaries, compare/hash/arithmetic, Wire/Arrow and enum/set dictionaries passed Native domain tests. Actual MySQL/MariaDB unsigned values and common Data semantics passed; bindings project the sole Native type domain.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_type_domains_2",
+        "shared_value_semantics",
+        "integration_mysql_type_domains",
+        "integration_mariadb_type_domains"
+      ]
+    },
+    {
+      "id": "ETL-008",
+      "phase": 1,
+      "name": "Duration and calendar Interval",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/data.h",
+        "components/data",
         "plugins"
       ],
+      "trigger": "A negative/long SQL TIME or month/day/microsecond interval is read.",
+      "baselineFinding": "TIME64 is microseconds since midnight; negative/long duration and calendar interval have no domain.",
+      "acceptance": "A negative/long SQL TIME or month/day/microsecond interval is read. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
       "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
       ],
-      "name": "Connector Metadata → Canonical `ud_field`"
-    },
-    {
-      "id": "SD-02",
-      "phase": "R3",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/data",
-        "connectors/manager.c",
-        "plugins"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "Canonical Schema Fingerprint"
-    },
-    {
-      "id": "SD-03",
-      "phase": "R3",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/data",
-        "connectors/manager.c",
-        "plugins"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "Schema Diff"
-    },
-    {
-      "id": "SD-04",
-      "phase": "R3",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/data",
-        "connectors/manager.c",
-        "plugins"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "三种兼容策略"
-    },
-    {
-      "id": "SD-05",
-      "phase": "R3",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/data",
-        "connectors/manager.c",
-        "plugins"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "Binder Preflight"
-    },
-    {
-      "id": "SD-06",
-      "phase": "R3",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/data",
-        "connectors/manager.c",
-        "plugins"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "恢复绑定"
-    },
-    {
-      "id": "SD-07",
-      "phase": "R3",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/data",
-        "connectors/manager.c",
-        "plugins"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "元数据发现"
-    },
-    {
-      "id": "SD-08",
-      "phase": "R3",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/data",
-        "connectors/manager.c",
-        "plugins"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-live.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/installed-sdk.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/postgresql-vertical.json"
-      ],
-      "name": "C / .NET / Java 查询能力"
-    },
-    {
-      "id": "LC-01",
-      "phase": "R4",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute",
-        "engines/data-flow",
-        "engines/package"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "Cache Transform 正式组件"
-    },
-    {
-      "id": "LC-02",
-      "phase": "R4",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute",
-        "engines/data-flow",
-        "engines/package"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "复合键、NULL、Decimal、UTF-8、Date、Nested 规则"
-    },
-    {
-      "id": "LC-03",
-      "phase": "R4",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute",
-        "engines/data-flow",
-        "engines/package"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "重复键政策"
-    },
-    {
-      "id": "LC-04",
-      "phase": "R4",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute",
-        "engines/data-flow",
-        "engines/package"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "Cache Scope"
-    },
-    {
-      "id": "LC-05",
-      "phase": "R4",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute",
-        "engines/data-flow",
-        "engines/package"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "Cache Quota/Spill"
-    },
-    {
-      "id": "LC-06",
-      "phase": "R4",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute",
-        "engines/data-flow",
-        "engines/package"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "Snapshot/Fingerprint"
-    },
-    {
-      "id": "LC-07",
-      "phase": "R4",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute",
-        "engines/data-flow",
-        "engines/package"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "Lookup Miss / Error Paths"
-    },
-    {
-      "id": "LC-08",
-      "phase": "R4",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/compute",
-        "engines/data-flow",
-        "engines/package"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/native-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/sanitizer-tests.txt",
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json"
-      ],
-      "name": "Metrics"
-    },
-    {
-      "id": "OBS-01",
-      "phase": "R5",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/execution",
-        "engines/data-flow/pipeline.c",
-        "benchmarks"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
-      ],
-      "name": "Tree ready/running/blocked/end 时间"
-    },
-    {
-      "id": "OBS-02",
-      "phase": "R5",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/execution",
-        "engines/data-flow/pipeline.c",
-        "benchmarks"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
-      ],
-      "name": "Scheduler wakeup、quantum、Batch/rows"
-    },
-    {
-      "id": "OBS-03",
-      "phase": "R5",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/execution",
-        "engines/data-flow/pipeline.c",
-        "benchmarks"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
-      ],
-      "name": "Buffer 峰值、codec 与读写量"
-    },
-    {
-      "id": "OBS-04",
-      "phase": "R5",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/execution",
-        "engines/data-flow/pipeline.c",
-        "benchmarks"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
-      ],
-      "name": "Source/Operator/Destination CPU 与 I/O"
-    },
-    {
-      "id": "OBS-05",
-      "phase": "R5",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/execution",
-        "engines/data-flow/pipeline.c",
-        "benchmarks"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
-      ],
-      "name": "分区源扫描归因与恢复"
-    },
-    {
-      "id": "OBS-06",
-      "phase": "R5",
-      "priority": "P1",
-      "state": "Implemented",
-      "verification": "Verified on Linux; documented supported scope",
-      "owner": [
-        "components/execution",
-        "engines/data-flow/pipeline.c",
-        "benchmarks"
-      ],
-      "evidence": [
-        "docs/acceptance/evidence/etl-next-phase-linux/benchmark.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/sort-comparison.json",
-        "docs/acceptance/evidence/etl-next-phase-linux/validation.json"
-      ],
-      "name": "六负载并发矩阵与一致性"
-    }
-  ],
-  "nativeFeatureWorkItems": [
-    {
-      "id": "N1",
-      "priority": "P1",
-      "name": "Sorted Merge and Merge Join",
-      "state": "In progress",
-      "verification": "Pending",
-      "goals": [
-        "G37"
+      "progress": "Signed microsecond Duration includes INT64_MIN and negative long TIME; calendar Interval preserves independent signed month/day/microsecond extrema through Wire/Arrow. Actual MySQL/MariaDB -123:45:56.123456 decoded exactly; Native boundary tests passed.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_type_domains_2",
+        "integration_mysql_type_domains",
+        "integration_mariadb_type_domains"
       ]
     },
     {
-      "id": "N2",
-      "priority": "P1",
-      "name": "Pivot and Unpivot",
-      "state": "In progress",
-      "verification": "Pending",
-      "goals": [
-        "G41"
+      "id": "ETL-009",
+      "phase": 1,
+      "name": "JSON and dictionary fidelity",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/mysql.c",
+        "plugins/mariadb.c",
+        "components/data"
+      ],
+      "trigger": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata.",
+      "baselineFinding": "No schema dictionary annotation exists in ud_field.",
+      "acceptance": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "Actual MySQL/MariaDB JSON keeps the UINT64_MAX lexeme; ENUM numeric/empty labels and SET empty labels/bitmaps retain ordered dictionaries. Native schema/Wire/Arrow dictionary and physical-provider cases passed.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_type_domains_2",
+        "integration_mysql_type_domains",
+        "integration_mariadb_type_domains"
       ]
     },
     {
-      "id": "N3",
-      "priority": "P1",
-      "name": "Row and Percentage Sampling",
-      "state": "In progress",
-      "verification": "Pending",
-      "goals": [
-        "G69"
+      "id": "ETL-010",
+      "phase": 3,
+      "name": "CDC TRUNCATE semantics",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/cdc.c",
+        "include/ud/connector.h",
+        "include/ud/cdc.h",
+        "components/data/src/sql.c",
+        "plugins/binlog.c",
+        "plugins/postgresql_cdc.c"
+      ],
+      "trigger": "A source transaction truncates a captured table.",
+      "baselineFinding": "ud_cdc_event has no TRUNCATE event.",
+      "acceptance": "A source transaction truncates a captured table. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "PG and MySQL-family TRUNCATE emit the common ChangeSet event. Authorized SQL reset compiles to transactional DELETE without sequence reset. Ordinary SQL/CDC integration passed; a real TRUNCATE kill/confirmation boundary has not been accepted.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "integration_postgresql_cdc",
+        "integration_mysql_cdc",
+        "integration_mariadb_cdc"
       ]
     },
     {
-      "id": "N4",
-      "priority": "P1",
-      "name": "Native XLSX source and destination",
-      "state": "In progress",
-      "verification": "Pending",
-      "goals": [
-        "G66"
+      "id": "ETL-011",
+      "phase": 3,
+      "name": "Recoverable transaction participants",
+      "priority": "P0",
+      "code": "Partial",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors/manager.c",
+        "components/contracts/src/plugin.c"
+      ],
+      "trigger": "A required transaction includes multiple connections.",
+      "baselineFinding": "ud_transaction owns a single lease; required transaction rejects another connection.",
+      "acceptance": "A required transaction includes multiple connections. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Connection Manager preflights participants before effects; PostgreSQL PREPARE TRANSACTION and MySQL/MariaDB XA survived real process death, rollback, commit and partial commit across two connections. OCI participant code compiles but TCPS attach is Blocked. Capability-qualified SQL Server/MSDTC participation is not implemented; unsupported resources fail before effects.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "integration_postgresql_participant_recovery",
+        "integration_mysql_participant_recovery",
+        "integration_mariadb_participant_recovery"
       ]
     },
     {
-      "id": "N5",
-      "priority": "P2",
-      "name": "Atomic SCD Type 1 and Type 2",
-      "state": "In progress",
-      "verification": "Pending",
-      "goals": [
-        "G54"
+      "id": "ETL-012",
+      "phase": 3,
+      "name": "Durable coordinator decisions",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/package/checkpoint.c",
+        "components/execution/src/journal.c"
+      ],
+      "trigger": "The process stops before/after prepare, decision or participant commit.",
+      "baselineFinding": "Required transactions reject a state directory; no durable prepare/decision/recover protocol exists.",
+      "acceptance": "The process stops before/after prepare, decision or participant commit. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Journal durably stages and publishes transaction-owned task/batch/cursor/epoch facts. Real killed-process fact publication and three-provider two-phase recovery passed, together with pipeline source/dual-target and file-publication kills. A single end-to-end live CDC/coordinator kill matrix remains unverified.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "transaction_fact_publication",
+        "file_generation_process_recovery",
+        "next_phase_pipeline_recovery"
+      ]
+    },
+    {
+      "id": "ETL-013",
+      "phase": 4,
+      "name": "PostgreSQL COPY loading",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/postgresql.c"
+      ],
+      "trigger": "A high-volume PostgreSQL destination is bound.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A high-volume PostgreSQL destination is bound. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/postgresql-bulk-performance.jsonl"
+      ],
+      "progress": "Authenticated libpq COPY FROM STDIN shares the business/receipt transaction and checks delivered rows. Genuine remote SQL/native integration and one million rows with Unicode/control bytes, integer checks and every receipt passed; native write time was 2.944x faster than parameter transport.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-014",
+      "phase": 4,
+      "name": "MySQL and MariaDB native loading",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/mysql.c",
+        "plugins/mariadb.c"
+      ],
+      "trigger": "A native bulk destination receives controlled input bytes.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A native bulk destination receives controlled input bytes. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/mysql-bulk-performance.jsonl",
+        "docs/acceptance/evidence/universaldata-2-linux/mariadb-bulk-performance.jsonl"
+      ],
+      "progress": "Genuine MySQL/MariaDB LOCAL INFILE reads only the retained Native Batch token; no server-selected path is opened. Session capability follows local_infile, warnings/row mismatches fail. Real SQL/CDC/native integration and one-million-row receipts passed; gains were 1.768x and 1.372x.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-015",
+      "phase": 4,
+      "name": "SQL Server BCP loading",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/odbc.c"
+      ],
+      "trigger": "A SQL Server driver declares the native BCP loading capability.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A SQL Server driver declares the native BCP loading capability. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/mssql-bulk-performance.jsonl",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Actual Microsoft BCP uses the connected application HDBC and controlled temporary staging, then original-connection business/receipt commit. Linux real SQL/CDC/native integration and one million rows passed, with 1.980x speedup. Windows BCP acceptance remains Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-016",
+      "phase": 4,
+      "name": "OCI staged Direct Path loading",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Blocked",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "plugins/oracle_oci.c"
+      ],
+      "trigger": "Direct Path independently commits staging before transactional business writes.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "Direct Path independently commits staging before transactional business writes. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/build.log",
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-oracle.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "OCI Direct Path stages on a dedicated loader; original business apply/receipt remain transactional and cleanup waits for branch resolution. Full client/DP/XA compilation passed. An isolated Oracle schema exists, but OCI TCPS session attach times out ORA-12170; live behavior, kill recovery and performance are Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-017",
+      "phase": 4,
+      "name": "Enterprise file layouts and publication",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/package/file_generation.c",
+        "components/data/src/csv.c",
+        "connectors/xlsx.c"
+      ],
+      "trigger": "Encoding/layout settings or append/overwrite requires restart-safe publication.",
+      "baselineFinding": "Publication facts and file checksums exist but enterprise format/append generation rules are incomplete.",
+      "acceptance": "Encoding/layout settings or append/overwrite requires restart-safe publication. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "Enterprise CSV layouts and Journal-backed create/overwrite/append passed real file-publication process kills. XLSX append preserves other sheet/formula/custom-part bytes and exact integer cells; a mismatched header rejects publication without changing the original file.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_enterprise_file_layout",
+        "file_generation_process_recovery",
+        "native_xlsx_preserving_append"
+      ]
+    },
+    {
+      "id": "ETL-018",
+      "phase": 3,
+      "name": "Incremental overlap target capability proof",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/binding.c",
+        "engines/data-flow/source.c"
+      ],
+      "trigger": "An overlapping incremental source binds to an idempotent/receipted destination.",
+      "baselineFinding": "Incremental binding currently depends on SQL upsert configuration rather than an explicit target guarantee.",
+      "acceptance": "An overlapping incremental source binds to an idempotent/receipted destination. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Incremental overlap uses KEYED_REPLACE effects and declared-key lineage rather than destination names or a fixed SQL-Upsert requirement. Native overlapping/resume and receipt tests passed; an independent HTTP keyed-replace overlap recovery scenario remains unverified.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-019",
+      "phase": 1,
+      "name": "Unified file and database discovery",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/source.c",
+        "components/data/src/schema_json.c",
+        "connectors/manager.c"
+      ],
+      "trigger": "A designer/SDK discovers a file or database schema.",
+      "baselineFinding": "Database metadata maps to Data Schema; file inference is not unified.",
+      "acceptance": "A designer/SDK discovers a file or database schema. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "File/database discovery returns the same Native Data Schema. Bounded CSV/JSON inference preserves UINT64/Decimal/date/nullability, leading-zero text and stable identities. Native inference and real four-driver schema discovery passed; ambiguous unions are explicitly rejected.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "unified_file_schema_discovery"
+      ]
+    },
+    {
+      "id": "ETL-020",
+      "phase": 6,
+      "name": "One SDK and protocol family",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "metadata/product.json",
+        "scripts/product_model.py",
+        "include/ud/version.h"
+      ],
+      "trigger": "A package/plugin/wire/checkpoint built for the old epoch is consumed.",
+      "baselineFinding": "The baseline product authority reports SDK 1.5.0 / ABI 9; old document versions are strictly checked.",
+      "acceptance": "A package/plugin/wire/checkpoint built for the old epoch is consumed. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "One generated source defines SDK 2.0.0 and ABI/Package/Wire/Plugin/Checkpoint/Worker family 10 for C, .NET and Java. Old ABI/packages and Worker requests are rejected; historical raw data and artifacts are preserved. Linux protocol/installed-native checks passed.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-021",
+      "phase": 6,
+      "name": "SQLite indexed Native Catalog",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog/catalog.c",
+        "include/ud/catalog.h"
+      ],
+      "trigger": "Catalog versions, executions or events are queried with concurrent workers.",
+      "baselineFinding": "ud_catalog_list enumerates every .udc file, parses and validates all envelopes.",
+      "acceptance": "Catalog versions, executions or events are queried with concurrent workers. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "Native SQLite Catalog owns immutable versioned documents, indices, executions/events and jobs under WAL/FULL transactions. Concurrent first-open/read/write and killed writer tests passed; existing readers do not acquire a bootstrap writer lock. No .udc directory scan remains.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "catalog_immutable_store",
+        "catalog_execution_history"
+      ]
+    },
+    {
+      "id": "ETL-022",
+      "phase": 6,
+      "name": "Durable execution logs",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog/catalog.c",
+        "engines/package/runtime.c",
+        "bindings/dotnet/UniversalData/Catalog.cs",
+        "products/UniversalData.Management/Program.cs"
+      ],
+      "trigger": "An execution produces task/component/error events or logs are paginated.",
+      "baselineFinding": "Native observer events are versioned/sequenced but persistent indexed query/retention is absent.",
+      "acceptance": "An execution produces task/component/error events or logs are paginated. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "Native event sequence and UTC wall timestamps persist with execution/task/component/error linkage. Managed and Java observers record into the same Catalog; pagination, error retention and sequence-preserving pruning passed. Real browser logs have current UTC dates.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "managed_registry_scripts_debug_lifecycle",
+        "java_registry_observer_catalog_lifecycle"
+      ]
+    },
+    {
+      "id": "ETL-023",
+      "phase": 6,
+      "name": "Deployment and execution management",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "catalog/deployment.c",
+        "hosts",
+        "products/UniversalData.Management/Program.cs",
+        "products/UniversalData.Management/RunDispatcher.cs",
+        "bindings/dotnet/UniversalData/Catalog.cs"
+      ],
+      "trigger": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered.",
+      "baselineFinding": "Immutable deployment binding exists; process manager and enable/disable state are absent.",
+      "acceptance": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "Management uses Native immutable revisions/deployments and independent Workers. Real browser deploy/execute/logs, SIGKILL of a Native-owning Worker, RecoveryRequired and manual same-ID recovery passed with exact output and no automatic replay.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-024",
+      "phase": 5,
+      "name": "CLI resource policy",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors/manager.c",
+        "products/UniversalData.CommandLine/Program.cs",
+        "products/UniversalData.Hosting/HostPolicy.cs",
+        "hosts/CMakeLists.txt"
+      ],
+      "trigger": "CLI resolves authorized resources and credential references.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "CLI resolves authorized resources and credential references. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "CLI, Worker and management share HostPolicy resource scopes and credential-file references. Actual installed/product CLI pipelines use this shared policy; outside grants and revoked resources fail in Native before effects. No retired C CLI host remains.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-025",
+      "phase": 1,
+      "name": "Online Schema Change barrier",
+      "priority": "P0",
+      "code": "Partial",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "components/data/src/schema_evolution.c",
+        "engines/data-flow/cdc.c",
+        "engines/data-flow/pipeline.c"
+      ],
+      "trigger": "A compatible/incompatible runtime schema event reaches an epoch boundary.",
+      "baselineFinding": "Pipeline routes SCHEMA_CHANGE but returns incompatible instead of rebinding at a barrier.",
+      "acceptance": "A compatible/incompatible runtime schema event reaches an epoch boundary. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Schema/version/position events are durable before admission; the existing checkpoint barrier rebinds affected components and fences incompatible changes. Native schema guards and MySQL-family schema-change fencing passed. Provider physical field identity across drop/re-add and complete online/restart compatibility proof remain incomplete.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "next_phase_pipeline_recovery"
+      ]
+    },
+    {
+      "id": "ETL-026",
+      "phase": 1,
+      "name": "CDC field presence and key images",
+      "priority": "P0",
+      "code": "Partial",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/connector.h",
+        "plugins/postgresql.c",
+        "plugins/mysql.c",
+        "plugins/mariadb.c"
+      ],
+      "trigger": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded.",
+      "baselineFinding": "CDC batches carry before/after values but no explicit field-presence or key-image contract.",
+      "acceptance": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Batch/Wire presence distinguishes absent from NULL; MySQL MINIMAL/NOBLOB images retain presence and binary JSON/dictionaries preserve full domains. Real four-provider insert/update/delete/resume tests passed. PostgreSQL default replica-identity partial-image, broader binlog type and online field-identity acceptance are not complete.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_type_domains_2",
+        "integration_postgresql_cdc",
+        "integration_mysql_cdc",
+        "integration_mariadb_cdc"
+      ]
+    },
+    {
+      "id": "ETL-027",
+      "phase": 3,
+      "name": "Plain REST and receipt guarantees",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors/rest.c",
+        "engines/data-flow/destination.c"
+      ],
+      "trigger": "A normal HTTP response is lost after the server may have committed.",
+      "baselineFinding": "REST destination requires receiptUrl, so plain response acknowledgement is unavailable.",
+      "acceptance": "A normal HTTP response is lost after the server may have committed. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "REST response/idempotent/receipt modes bind to the one Native write/Journal path. Ordinary writes issue once and unresolved intent returns CommitUnknown; local real TLS/receipt flows and HTTP ambiguous-failure cases passed. External receipt-service process-kill acceptance remains unavailable.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-028",
+      "phase": 5,
+      "name": "Row SQL command parameter binding",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/sql_task.c",
+        "include/ud/connector.h"
+      ],
+      "trigger": "Each input row invokes a parameterized external SQL command.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "Each input row invokes a parameterized external SQL command. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "sql.command uses Native per-row parameter binding, common error ports/savepoints and external-write intents. Unknown response cannot replay automatically and accepted facts share the transaction journal. Compilation passed; dedicated row-command constraint/recovery behavior still requires acceptance.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-029",
+      "phase": 5,
+      "name": "Public managed Registry and native callback ownership",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "bindings/dotnet/UniversalData/Registry.cs",
+        "bindings/dotnet/UniversalData/ManagedDataFlow.cs",
+        "bindings/dotnet/UniversalData/ManagedModules.cs",
+        "bindings/java/src/main/java/org/universaldata/Registry.java",
+        "bindings/java/native/bridge.c"
+      ],
+      "trigger": "A managed component/task is registered and an exception escapes its callback.",
+      "baselineFinding": ".NET ExecutionOptions carries registry/observer pointers internally but public APIs do not expose them.",
+      "acceptance": "A managed component/task is registered and an exception escapes its callback. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "Public C# Registry task/component and Java task registrations use leased Native instances. GC pressure, busy disposal, exactly-once finish/close, expired borrowed access, observer exceptions and actual cancellation passed. Failed module registration retains instances/assembly owners until Native teardown.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "managed_registry_scripts_debug_lifecycle",
+        "java_registry_observer_catalog_lifecycle"
+      ]
+    },
+    {
+      "id": "ETL-030",
+      "phase": 5,
+      "name": "Deployment-compiled C# scripts",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "bindings/dotnet/UniversalData",
+        "hosts",
+        "bindings/dotnet/UniversalData/ManagedModules.cs",
+        "products/UniversalData.CommandLine/Program.cs",
+        "products/UniversalData.Worker/Program.cs"
+      ],
+      "trigger": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry.",
+      "baselineFinding": "No common managed deployment assembly loader exists for Native hosts.",
+      "acceptance": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Deployment compiles a deterministic fixed C# assembly with protocol/digest attributes. SDK, CLI and Worker use Registry.LoadPackageExtensions with host execute grants and registry-owned module lifetime. Real managed deployment/assembly load passed; equivalent script execution through every installed host is not yet independently accepted.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "managed_registry_scripts_debug_lifecycle"
+      ]
+    },
+    {
+      "id": "ETL-031",
+      "phase": 5,
+      "name": "Balanced batch dispatch",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/transforms.c"
+      ],
+      "trigger": "A batch is distributed to exactly one output while Multicast retains replication.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A batch is distributed to exactly one output while Multicast retains replication. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
+      ],
+      "progress": "Actual 67-row/seven-row-batch pipelines send each whole batch, including the tail, to exactly one balanced output; Multicast delivers a complete copy to each output. The common Native dispatch state remains checkpointed; no alternate executor was added.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_component_product_semantics"
+      ]
+    },
+    {
+      "id": "ETL-032",
+      "phase": 5,
+      "name": "Import and Export Column",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/column_file.c",
+        "connectors/manager.c",
+        "engines/package/file_generation.c"
+      ],
+      "trigger": "A row reads/writes an authorized external column resource.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A row reads/writes an authorized external column resource. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
+      ],
+      "progress": "Actual Native Import/Export Column pipeline reads and publishes exact UTF8 Unicode/multiline payloads through authorized relative Connection Manager resources. Source identity, bounded Binary/UTF8 and canonical error output use common contracts; export uses Journal-backed file generations.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_component_product_semantics"
+      ]
+    },
+    {
+      "id": "ETL-033",
+      "phase": 5,
+      "name": "XML Source",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors/xml.c",
+        "engines/data-flow/xml.c"
+      ],
+      "trigger": "XML records are parsed into the canonical Data Schema.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "XML records are parsed into the canonical Data Schema. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "Native bounded Expat record framing and XPath extraction feed canonical Data batches and common error ports; quota-owned buffers and inherited namespaces are preserved. Actual XML Source records, invalid-record handling and XML task pipelines passed on Linux.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_xml_source_xpath_xslt_xsd"
+      ]
+    },
+    {
+      "id": "ETL-034",
+      "phase": 5,
+      "name": "XPath XSLT and XSD tasks",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow/xml.c",
+        "connectors/xml.c"
+      ],
+      "trigger": "An XML task applies a query, stylesheet or schema validation.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An XML task applies a query, stylesheet or schema validation. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "Actual XPath, XSLT and XSD tasks passed through Native file leases and generation publication. DTD, external entity and implicit schema/stylesheet loads are rejected; no independent XML execution or file authorization path exists.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_xml_source_xpath_xslt_xsd"
+      ]
+    },
+    {
+      "id": "ETL-035",
+      "phase": 7,
+      "name": "SMTP task",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Blocked",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow/network.c",
+        "connectors/http.c"
+      ],
+      "trigger": "An authorized mail connection sends a message with cancellation handling.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized mail connection sends a message with cancellation handling. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/build.log",
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "smtp.send uses the sole Native curl owner, credential references, UTF8 subject/MIME encoding and cancellation/deadlines. Interrupted sends retain unknown commit. A genuine independent SMTP acceptance resource is unavailable per user: Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-036",
+      "phase": 7,
+      "name": "Windows WMI tasks",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Blocked",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow/wmi.c"
+      ],
+      "trigger": "A Windows host invokes a WMI query/event task.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A Windows host invokes a WMI query/event task. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/build.log",
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Native Windows COM WMI query/event tasks support bounded scalar/array/embedded-object JSON with exact signed/unsigned integer lexemes and common authorization/cancellation. Non-Windows binding rejects. Windows compile/runtime and independent WMI resources are unavailable: Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-037",
+      "phase": 5,
+      "name": "FTP and SFTP resources",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Blocked",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow/network.c",
+        "connectors/http.c",
+        "connectors/manager.c"
+      ],
+      "trigger": "An authorized remote file transfer participates in cancellation/publication.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized remote file transfer participates in cancellation/publication. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/build.log",
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Native FTP/SFTP transfers share Connection Manager grants, credential references, curl cancellation and local generation publication. SFTP requires explicitly granted known-hosts; remote replacement declares uncertain effects. Genuine independent FTP/SFTP resources are unavailable: Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-038",
+      "phase": 7,
+      "name": "Avro IO",
+      "priority": "P1",
+      "code": "Partial",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "connectors/avro.c",
+        "engines/data-flow/avro.c",
+        "connectors/manager.c"
+      ],
+      "trigger": "An Avro schema and records are imported/exported without lossy type coercion.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An Avro schema and records are imported/exported without lossy type coercion. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "Native Avro OCF null/deflate, signed integer extrema and UTF8 interoperability passed independent framing fixtures; malformed OCF fails. Primitive/nested/logical types and explicit lossless UINT64/Duration/Interval extensions are connected. Named references and ambiguous/general unions remain unsupported and are rejected; their complete product coverage is not claimed.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_avro_interoperability"
+      ]
+    },
+    {
+      "id": "ETL-039",
+      "phase": 0,
+      "name": "DQS removed by Microsoft",
+      "priority": "P1",
+      "code": "NotApplicable",
+      "verification": "NotApplicable",
+      "requiredThisDelivery": false,
+      "implementation": [],
+      "trigger": "The historical DQS capability is compared with current SSIS support.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "The historical DQS capability is compared with current SSIS support. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "officialEvidence": [
+        "https://learn.microsoft.com/en-us/sql/data-quality-services/data-quality-services?view=sql-server-ver16"
+      ]
+    },
+    {
+      "id": "ETL-040",
+      "phase": 0,
+      "name": "SSAS Data Mining no longer supported",
+      "priority": "P1",
+      "code": "NotApplicable",
+      "verification": "NotApplicable",
+      "requiredThisDelivery": false,
+      "implementation": [],
+      "trigger": "The historical Data Mining capability is compared with current SSIS support.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "The historical Data Mining capability is compared with current SSIS support. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [],
+      "officialEvidence": [
+        "https://learn.microsoft.com/en-us/analysis-services/data-mining/data-mining-ssas"
+      ]
+    },
+    {
+      "id": "ETL-041",
+      "phase": 7,
+      "name": "SQL Server maintenance Agent and SSAS XMLA",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Blocked",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow/sqlserver.c"
+      ],
+      "trigger": "A specialized database/Agent/XMLA task is deployed.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A specialized database/Agent/XMLA task is deployed. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/build.log",
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Native SQL Server maintenance/Agent tasks use common parameterized SQL leases and backup file grants; SSAS XMLA uses common bounded XML/HTTP and unknown-commit semantics. SQL Server SQL/CDC/BCP resources were accepted, but independent maintenance/Agent/SSAS-specific resources were not supplied: Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-042",
+      "phase": 2,
+      "name": "Exact Distinct profiling with shared Compute budget",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "components/compute/src/profile.c",
+        "components/compute/src/stat.c"
+      ],
+      "trigger": "Profiling requires exact distinct counts under memory and spill limits.",
+      "baselineFinding": "profile.c uses approximate HLL while exact value_set is already owned by Compute.",
+      "acceptance": "Profiling requires exact distinct counts under memory and spill limits. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "Exact Distinct uses the existing Compute value set and resource budgets. Profile kernel, pipeline statistics and shared comparison tests passed; approximation remains explicitly named approxDistinct only.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "profile_statistics_kernel",
+        "profile_task_execution"
+      ]
+    },
+    {
+      "id": "ETL-043",
+      "phase": 6,
+      "name": "Durable job queue and schedules",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "products/UniversalData.Management/RunDispatcher.cs",
+        "catalog/catalog.c"
+      ],
+      "trigger": "A timer enqueues work, service restarts or a worker fails with unknown commit.",
+      "baselineFinding": "No durable scheduler/queue exists in the Catalog.",
+      "acceptance": "A timer enqueues work, service restarts or a worker fails with unknown commit. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Native persistent Catalog jobs bind immutable deployment revisions, deduplicate due times and persist queue/concurrency/retry state. Unknown worker outcomes stop automatic retry. Native Catalog/job state and real Worker recovery passed; a timed schedule/service-restart/retry browser scenario remains unverified.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-044",
+      "phase": 4,
+      "name": "Proven filter pushdown and streaming JSON array",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/data-flow/source.c",
+        "components/data/src/json.c",
+        "components/expression"
+      ],
+      "trigger": "A provider filter needs semantic proof or a large JSON array must stream.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "A provider filter needs semantic proof or a large JSON array must stream. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "One bounded JSON Reader handles NDJSON and multiline arrays, shared record errors and checked resume offsets; malformed framing is fatal. Real array/error/resume tests passed. Complete provider-specific filter-pushdown comparison proof remains unverified; unproved predicates retain Native evaluation.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "source_record_errors",
+        "unified_file_schema_discovery"
+      ]
+    },
+    {
+      "id": "ETL-045",
+      "phase": 5,
+      "name": "Azure Blob and ADLS Gen2",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Blocked",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow/network.c",
+        "connectors/http.c"
+      ],
+      "trigger": "An authorized Azure object resource is read/published/recovered.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized Azure object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/build.log",
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Native Azure Blob PUT and ADLS create/append/flush share curl, credential scopes and generations. Real local HTTP protocol/byte/publication-sequence tests passed. This is not independent Azure authentication/service acceptance; external resources are unavailable: Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_object_transfer_sequence"
+      ]
+    },
+    {
+      "id": "ETL-046",
+      "phase": 5,
+      "name": "S3 and MinIO",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Blocked",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow/network.c",
+        "connectors/http.c"
+      ],
+      "trigger": "An authorized S3 object resource is read/published/recovered.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "An authorized S3 object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/build.log",
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "S3/MinIO streaming transfer and SigV4 credentials use the common Native transport/grants/cancellation and explicit exclusive-create/replacement guarantees. Local actual HTTP bytes/conditional-header tests passed. Independent signed S3/MinIO service acceptance is unavailable: Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "native_object_transfer_sequence"
+      ]
+    },
+    {
+      "id": "ETL-047",
+      "phase": 6,
+      "name": "ASP.NET Core 10 management and isolated workers",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "hosts",
+        "bindings/dotnet",
+        "products/UniversalData.Management/Program.cs",
+        "products/UniversalData.Worker/Program.cs",
+        "products/UniversalData.Hosting/HostPolicy.cs",
+        "products/UniversalData.Hosting/WorkerControl.cs"
+      ],
+      "trigger": "A management request creates/queries/controls an independent native execution process.",
+      "baselineFinding": "No ASP.NET management product or execution process ownership exists.",
+      "acceptance": "A management request creates/queries/controls an independent native execution process. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "Actual ASP.NET Core 10 loopback management dispatches separate Worker processes owning Native Execution/Registry/Catalog. Bounded Worker protocol lines and debug queues use one shared host protocol. Build and real browser management, cancellation/debug lifecycle and killed-Worker recovery passed.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-048",
+      "phase": 7,
+      "name": "React Flow package designer",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "products/designer/src/Editor.tsx",
+        "products/designer/src/FieldMapping.tsx",
+        "engines/data-flow/pipeline.c",
+        "engines/package/model.c"
+      ],
+      "trigger": "A user edits control/data flow, ports, mappings, connections, metadata or package layout.",
+      "baselineFinding": "No React/TypeScript/React Flow package designer exists.",
+      "acceptance": "A user edits control/data flow, ports, mappings, connections, metadata or package layout. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "React Flow designer uses Native metadata/bound dynamic ports, stable package IDs/layout, field mapping and configuration validation. Typecheck/lint/build and actual drag/undo/redo, save/reload, deploy/execute and desktop/compact screenshots passed; no fabricated product records or validation evaluator.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-049",
+      "phase": 7,
+      "name": "Safe native runtime debugging",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "include/ud/package.h",
+        "engines/package/runtime.c",
+        "engines/data-flow/pipeline.c",
+        "engines/package/debug.c",
+        "bindings/dotnet/UniversalData/Execution.cs",
+        "products/UniversalData.Hosting/WorkerControl.cs",
+        "products/designer/src/Executions.tsx"
+      ],
+      "trigger": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary.",
+      "baselineFinding": "Execution exposes cancel/wait but no native debug controller.",
+      "acceptance": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+      ],
+      "progress": "Native task/batch/safe-epoch boundaries, bounded output preview, pause/continue and single-batch stepping passed managed lifecycle tests. Real browser task pause, Worker termination and same-ID recovery passed. Transactions never park at an unsafe boundary; cancellation stays Native-owned.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "managed_registry_scripts_debug_lifecycle"
+      ]
+    },
+    {
+      "id": "ETL-050",
+      "phase": 6,
+      "name": "Full Linux and Windows driver CI",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Blocked",
+      "requiredThisDelivery": true,
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "tests/CMakeLists.txt",
+        "tests/require_integration_resources.py"
+      ],
+      "trigger": "CI must compile every declared driver and register SQL/CDC real integrations.",
+      "baselineFinding": "Current CI is Linux-centric; Windows exemptions and advanced integration registration need removal.",
+      "acceptance": "CI must compile every declared driver and register SQL/CDC real integrations. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/build.log",
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "CI registers advanced SQL/CDC/native bulk/real participant recovery and explicit Linux/Windows PRODUCT matrices with required dependency/resource preflight. Local Linux complete-driver build and registered tests passed. Windows/self-hosted full-resource CI execution remains unavailable: Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-051",
+      "phase": 6,
+      "name": "Independent release consumers and capability manifests",
+      "priority": "P0",
+      "code": "Implemented",
+      "verification": "Partial",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "packaging/package-linux.py",
+        "packaging/package.ps1",
+        "hosts/CMakeLists.txt",
+        "scripts/release_guard.py"
+      ],
+      "trigger": "An independent directory consumes C, .NET, Java, CLI and Web release products.",
+      "baselineFinding": "1.5 artifacts are historical and must remain preserved; no ABI 10 consumer validation exists.",
+      "acceptance": "An independent directory consumes C, .NET, Java, CLI and Web release products. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json",
+        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+      ],
+      "progress": "Relocatable same-source Linux PRODUCT bundle passed 267-file/SHA256/protocol checks, independent public C/CMake, offline NuGet/.NET, Maven/Java/JNI, actual installed CLI, three-language Package/Data/Schema parity and installed management/Worker browser process-kill recovery. The package contains all enabled driver modules, host/designer assets and dependency inventories. Windows release consumption remains Blocked.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+    },
+    {
+      "id": "ETL-052",
+      "phase": 5,
+      "name": "HTTP response variable mappings",
+      "priority": "P1",
+      "code": "Implemented",
+      "verification": "Passed",
+      "requiredThisDelivery": true,
+      "implementation": [
+        "engines/control-flow/http.c"
+      ],
+      "trigger": "HTTP status/body/header output is bound to a declared native variable.",
+      "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
+      "acceptance": "HTTP status/body/header output is bound to a declared native variable. Current ABI 10 source and behavioral evidence required.",
+      "dependsOn": [],
+      "externalPrerequisites": [],
+      "evidence": [
+        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+      ],
+      "progress": "HTTP Task maps actual status/body/header responses into typed Native variables, including rejected statuses and UTF8/BINARY bodies. Real HTTP execution tests passed; ambiguous external writes return CommitUnknown without automatic replay.",
+      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "acceptanceCases": [
+        "http_task_execution"
       ]
     }
   ],
   "limitations": [
-    "No arbitrary global distributed transaction or general exactly-once guarantee",
-    "Advanced protocols, CDC/SCD/Fuzzy and BI Planner remain outside the current core acceptance",
-    "Single-session container transactions; arbitrary resource combinations and transactional child checkpoints are rejected before effects",
-    "Query/Schema enumerators have no reproducible external snapshot token and reject checkpoint resume",
-    "Recovery plans serialize tree scheduling; operator partitions merge in deterministic partition order",
-    "Source ranges and round-robin partitions are stable logical row positions; file partitions scan the authorized immutable source instead of assuming record-safe byte offsets",
-    "Driver/external RSS is outside the native allocator quota; benchmark RSS is measured separately",
-    "Advanced SSIS components and BI Planner remain their existing Planned/Partial status; all 69 goals are retained",
-    "Pool reuse requires UD_CONNECT_POOL and a successful native reset_session; unknown third-party session state is closed instead of reused",
-    "PostgreSQL module requires libpq >=17 for nonblocking cancellation; tested against a disposable local server, without production connections",
-    "Float64 SUM preserves serial input order and reports effective partition count 1; integer/Decimal SUM uses exact private 256-bit partial state and checks the public range only at final output",
-    "Runtime task/pipeline diagnostic records are bounded at 1024/256 and report dropped counts; callback events remain the complete optional host stream",
-    "Windows is exempt by explicit user instruction; no Windows compilation, runtime or binary certification is claimed",
-    "Execution caches require one builder and do not publish from an active transaction; cross-execution reuse is not implicit.",
-    "Incremental confirmation is a whole-DataFlow receipt barrier; active-transaction incremental sources are explicitly Unsupported.",
-    "Canonical SQLite exact NUMERIC/Decimal and PostgreSQL unbounded numeric or timestamp without time zone require a supported declared domain instead of guessed conversions.",
-    "Immutable journal Wire payloads remain owned by the state directory through resume; the host retires that directory after retention requirements are met.",
-    "ABI 7 row identity/rule metadata increases sort spill traffic. The matching CSV workload regressed against the historical ABI 6 baseline; six workload results do not imply a universal speedup."
+    "No Microsoft .dtsx/COM/SSISDB compatibility layer; native C17 is the sole execution owner",
+    "All 50 applicable audit items remain incomplete until current source AND behavior evidence exists",
+    "Current Linux PRODUCT build and real four-driver SQL/CDC/native bulk acceptance passed; Windows, Oracle TCPS and independent SMTP/FTP/SFTP/Azure/S3/SSAS/WMI acceptance are Blocked.",
+    "Qualified SQL Server distributed transaction participation, complete online schema physical-identity proof and broader Avro named-reference/union coverage are not certified complete; see existing audit items.",
+    "Historical ABI 9 documents and results do not certify SDK 2.0 / ABI 10",
+    "Raw data, old packages, plugins and recovery directories remain preserved; old protocols are rejected rather than migrated in place"
   ]
 }

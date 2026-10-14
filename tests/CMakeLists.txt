@@ -1,6 +1,15 @@
 if(TARGET ud_package OR TARGET ud_worker)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
 endif()
+if(TARGET ud_package)
+  add_executable(test_transaction_facts transaction_facts.c)
+  target_link_libraries(test_transaction_facts PRIVATE ud_runtime)
+  add_test(NAME transaction_fact_publication COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/transaction_facts.py $<TARGET_FILE:test_transaction_facts>)
+  add_executable(test_execution_identity execution_identity.c)
+  target_link_libraries(test_execution_identity PRIVATE ud_package)
+  add_test(NAME execution_identity COMMAND test_execution_identity)
+endif()
 if(TARGET ud_foundation)
   add_executable(test_foundation foundation.c)
   target_link_libraries(test_foundation PRIVATE ud_foundation)
@@ -10,6 +19,18 @@ if(TARGET ud_foundation)
   add_test(NAME json_document COMMAND test_json)
 endif()
 if(TARGET ud_columnar)
+  add_executable(test_schema_discovery schema_discovery.c)
+  target_link_libraries(test_schema_discovery PRIVATE ud_columnar)
+  add_test(NAME unified_file_schema_discovery COMMAND test_schema_discovery ${CMAKE_CURRENT_BINARY_DIR}/schema-discovery-fixture.txt)
+  add_executable(test_type_domains type_domains.c)
+  target_link_libraries(test_type_domains PRIVATE ud_columnar)
+  add_test(NAME native_type_domains_2 COMMAND test_type_domains)
+  add_executable(test_record_errors record_errors.c)
+  target_link_libraries(test_record_errors PRIVATE ud_columnar)
+  add_test(NAME source_record_errors COMMAND test_record_errors ${CMAKE_CURRENT_BINARY_DIR}/record-errors-fixture.txt)
+  add_executable(test_sql_bulk sql_bulk.c)
+  target_link_libraries(test_sql_bulk PRIVATE ud_columnar)
+  add_test(NAME sql_bulk_streaming COMMAND test_sql_bulk)
   add_executable(test_columnar columnar.c)
   target_link_libraries(test_columnar PRIVATE ud_columnar)
   add_test(NAME columnar COMMAND test_columnar)
@@ -242,6 +263,8 @@ if(TARGET ud_package)
 endif()
 
 if(TARGET ud_plugins)
+  add_executable(test_transaction_participants transaction_participants.c)
+  target_link_libraries(test_transaction_participants PRIVATE ud_plugins)
   add_executable(test_advanced_cdc advanced_cdc.c)
   target_link_libraries(test_advanced_cdc PRIVATE ud_plugins)
 endif()
@@ -258,4 +281,104 @@ if(TARGET test_next_phase_queries AND TARGET ud_connector_sqlite)
     ${CMAKE_CURRENT_SOURCE_DIR}/advanced_metadata.py --query $<TARGET_FILE:test_next_phase_queries>
     --sqlite $<TARGET_FILE:ud_connector_sqlite>)
   set_tests_properties(advanced_catalog_ten_table_template PROPERTIES TIMEOUT 180)
+endif()
+
+# Advanced SQL/CDC are actual registered acceptance entries, not unregistered
+if(UD_BUILD_HOSTS)
+  add_custom_target(ud_managed_product_test ALL
+    COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_product/ManagedProduct.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/managed-product
+    VERBATIM)
+  add_test(NAME managed_registry_scripts_debug_lifecycle COMMAND ${UD_DOTNET}
+    ${CMAKE_CURRENT_BINARY_DIR}/managed-product/ManagedProduct.dll $<TARGET_FILE:ud_data>)
+  set_tests_properties(managed_registry_scripts_debug_lifecycle PROPERTIES TIMEOUT 60)
+endif()
+if(TARGET ud_java)
+  find_package(Java REQUIRED COMPONENTS Development Runtime)
+  file(GLOB_RECURSE UD_JAVA_PRODUCT_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/bindings/java/src/main/java/*.java)
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/java-product/JavaProduct.class
+    COMMAND ${Java_JAVAC_EXECUTABLE} -encoding UTF-8 -d ${CMAKE_CURRENT_BINARY_DIR}/java-product
+      ${UD_JAVA_PRODUCT_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/JavaProduct.java
+    DEPENDS ${UD_JAVA_PRODUCT_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/JavaProduct.java VERBATIM)
+  add_custom_target(ud_java_product_test ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/java-product/JavaProduct.class)
+  add_test(NAME java_registry_observer_catalog_lifecycle COMMAND ${Java_JAVA_EXECUTABLE}
+    -Djava.library.path=$<TARGET_FILE_DIR:ud_java> -cp ${CMAKE_CURRENT_BINARY_DIR}/java-product JavaProduct)
+  set_tests_properties(java_registry_observer_catalog_lifecycle PROPERTIES TIMEOUT 60)
+endif()
+# Advanced SQL/CDC are actual registered acceptance entries, not unregistered
+# binaries. No credential is stored in a CMake cache or echoed to CTest output.
+if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
+  add_executable(test_mysql_domains mysql_domains.c)
+  target_link_libraries(test_mysql_domains PRIVATE ud_plugins)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  foreach(driver postgresql mysql mariadb odbc oracle_oci)
+    if(TARGET ud_connector_${driver})
+      string(TOUPPER "${driver}" fixture)
+      foreach(suite sql cdc)
+        add_test(NAME integration_${driver}_${suite} COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
+          $<TARGET_FILE:test_advanced_${suite}> $<TARGET_FILE:ud_connector_${driver}>)
+        set_tests_properties(integration_${driver}_${suite} PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;${driver}"
+          RESOURCE_LOCK ud_integration_${driver})
+      endforeach()
+      if(driver MATCHES "^(mysql|mariadb)$")
+        add_test(NAME integration_${driver}_type_domains COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
+          $<TARGET_FILE:test_mysql_domains> $<TARGET_FILE:ud_connector_${driver}>)
+        set_tests_properties(integration_${driver}_type_domains PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 120 LABELS "real-integration;${driver}"
+          RESOURCE_LOCK ud_integration_${driver})
+      endif()
+      if(driver MATCHES "^(postgresql|mysql|mariadb|odbc|oracle_oci)$")
+        add_test(NAME integration_${driver}_native_bulk COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
+          $<TARGET_FILE:test_advanced_sql> $<TARGET_FILE:ud_connector_${driver}> native)
+        set_tests_properties(integration_${driver}_native_bulk PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;native-bulk;${driver}"
+          RESOURCE_LOCK ud_integration_${driver})
+      endif()
+      if(driver MATCHES "^(postgresql|mysql|mariadb|oracle_oci)$")
+        add_test(NAME integration_${driver}_participant_recovery COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/transaction_participants.py UD_TEST_${fixture}_CONFIG
+          $<TARGET_FILE:test_transaction_participants> $<TARGET_FILE:ud_connector_${driver}>)
+        set_tests_properties(integration_${driver}_participant_recovery PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS "real-integration;crash-recovery;${driver}"
+          RESOURCE_LOCK ud_integration_${driver})
+      endif()
+    endif()
+  endforeach()
+endif()
+
+if(TARGET ud_columnar)
+  add_executable(test_file_layout file_layout.c)
+  target_link_libraries(test_file_layout PRIVATE ud_columnar)
+  add_test(NAME native_enterprise_file_layout COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/file_layout.py $<TARGET_FILE:test_file_layout>)
+endif()
+
+if(TARGET ud_package)
+  add_executable(test_file_generation file_generation.c)
+  target_link_libraries(test_file_generation PRIVATE ud_package)
+  add_test(NAME file_generation_process_recovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/file_generation.py $<TARGET_FILE:test_file_generation>)
+endif()
+
+if(TARGET ud_package)
+  add_executable(test_product_native product_native.c)
+  target_link_libraries(test_product_native PRIVATE ud_package)
+  add_test(NAME native_component_product_semantics COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/component_product.py $<TARGET_FILE:test_product_native>)
+  if(UD_WITH_SQLITE)
+    add_test(NAME native_sql_source_record_errors COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/sql_source_records.py $<TARGET_FILE:test_product_native> $<TARGET_FILE:ud_connector_sqlite>)
+  endif()
+  add_test(NAME native_xlsx_preserving_append COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/xlsx_append_product.py $<TARGET_FILE:test_product_native>)
+  add_test(NAME native_avro_interoperability COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/avro_product.py $<TARGET_FILE:test_product_native>)
+  if(UD_WITH_XML)
+    add_test(NAME native_xml_source_xpath_xslt_xsd COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/xml_product.py $<TARGET_FILE:test_product_native>)
+    set_tests_properties(native_xml_source_xpath_xslt_xsd PROPERTIES TIMEOUT 180)
+  endif()
+  if(UD_WITH_NETWORK)
+    add_test(NAME native_object_transfer_sequence COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/network_product.py $<TARGET_FILE:test_product_native>)
+    set_tests_properties(native_object_transfer_sequence PROPERTIES TIMEOUT 180)
+  endif()
 endif()

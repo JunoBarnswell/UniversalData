@@ -11,6 +11,8 @@ int32_t ud_truth_not(int32_t a) {
     return a < 0 ? -1 : !a;
 }
 int32_t ud_value_compare(const ud_value *a, const ud_value *b) {
+    if (a->is_absent || b->is_absent)
+        return a->is_absent && b->is_absent ? 0 : a->is_absent ? -1 : 1;
     if (a->is_null || b->is_null)
         return a->is_null && b->is_null ? 0 : a->is_null ? -1 : 1;
     if (a->type == UD_UTF8 || a->type == UD_BINARY) {
@@ -26,6 +28,18 @@ int32_t ud_value_compare(const ud_value *a, const ud_value *b) {
     }
     if (a->type == UD_DECIMAL128)
         return ud_decimal_compare(a->decimal, b->decimal);
+    if (a->type == UD_UINT64)
+        return (a->unsigned_integer > b->unsigned_integer) -
+               (a->unsigned_integer < b->unsigned_integer);
+    if (a->type == UD_INTERVAL) {
+        if (a->interval.months != b->interval.months)
+            return (a->interval.months > b->interval.months) -
+                   (a->interval.months < b->interval.months);
+        if (a->interval.days != b->interval.days)
+            return (a->interval.days > b->interval.days) - (a->interval.days < b->interval.days);
+        return (a->interval.microseconds > b->interval.microseconds) -
+               (a->interval.microseconds < b->interval.microseconds);
+    }
     if (a->type >= UD_STRUCT) {
         uint32_t count = a->child_count < b->child_count ? a->child_count : b->child_count;
         for (uint32_t j = 0; j < count; j++) {
@@ -52,6 +66,8 @@ ud_status ud_value_canonical(const ud_value *v, ud_status (*emit)(void *, const 
     if (!v || !emit || depth > 32)
         return UD_SCHEMA;
     UD_TRY(canonical_integer(emit, user, (uint64_t)v->type));
+    uint8_t absent = (uint8_t)!!v->is_absent;
+    UD_TRY(emit(user, &absent, 1));
     uint8_t null = (uint8_t)!!v->is_null;
     UD_TRY(emit(user, &null, 1));
     if (null)
@@ -70,6 +86,13 @@ ud_status ud_value_canonical(const ud_value *v, ud_status (*emit)(void *, const 
         UD_TRY(canonical_integer(emit, user, v->decimal.low));
         return canonical_integer(emit, user, (uint64_t)v->decimal.high);
     }
+    if (v->type == UD_INTERVAL) {
+        UD_TRY(canonical_integer(emit, user, (uint64_t)(int64_t)v->interval.months));
+        UD_TRY(canonical_integer(emit, user, (uint64_t)(int64_t)v->interval.days));
+        return canonical_integer(emit, user, (uint64_t)v->interval.microseconds);
+    }
+    if (v->type == UD_UINT64)
+        return canonical_integer(emit, user, v->unsigned_integer);
     uint64_t bits = (uint64_t)v->integer;
     if (v->type == UD_FLOAT64) {
         bits = 0;

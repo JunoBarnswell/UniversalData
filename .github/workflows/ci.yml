@@ -1,4 +1,4 @@
-name: package-sdk-ci
+name: native-product-contracts
 on:
   push:
     branches: [main, 'codex/**']
@@ -7,62 +7,98 @@ on:
 permissions:
   contents: read
 jobs:
-  package-and-bindings:
+  source-and-designer:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-node@v4
         with:
-          dotnet-version: '8.0.x'
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: products/designer/package-lock.json
+      - run: python scripts/product_model.py check
+      - run: npm ci --no-audit --no-fund
+        working-directory: products/designer
+      - run: npm run typecheck && npm run lint && npm run build
+        working-directory: products/designer
+      - run: python scripts/static_check.py
+  native-core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Product authority
-        run: python scripts/product_model.py check
-      - name: Pinned SQLite and HTTP dependency
-        run: |
-          python scripts/fetch_deps.py --platform linux --output build/deps
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev
-      - name: Linux Release native and JNI
-        run: |
-          cmake -S . -B build/full -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$PWD/build/deps/sqlite/sqlite-amalgamation-3490100" -DUD_WITH_HTTP=ON -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/full --parallel 4
-          ctest --test-dir build/full --output-on-failure --parallel 4
-      - name: Linux distributable and independent C, NuGet and Maven consumers
-        run: |
-          python packaging/package-linux.py --build build/full --output build/delivery
-          python tests/installed_sdk.py --bundle build/UniversalData-1.5.0-linux-x64.zip --work "$RUNNER_TEMP/ud-sdk-$GITHUB_RUN_ID" --evidence build/sdk-consumers.json
-      - name: Six workloads, million rows and bounded spill
-        run: python benchmarks/next_phase.py build/full/tests/test_next_phase_execution build/full/plugins/ud_connector_sqlite.so --output build/next-phase-benchmark.json
-      - name: Public contracts and removed legacy exports
-        run: python scripts/static_check.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          name: package-sdk-linux-x64
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare explicit CORE dependency subset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
+          python scripts/fetch_deps.py --platform ${{ runner.os == 'Windows' && 'windows' || 'linux' }} --output build/deps
+          vcpkg install icu:x64-${{ runner.os == 'Windows' && 'windows' || 'linux' }} pcre2:x64-${{ runner.os == 'Windows' && 'windows' || 'linux' }} expat:x64-${{ runner.os == 'Windows' && 'windows' || 'linux' }} zlib:x64-${{ runner.os == 'Windows' && 'windows' || 'linux' }}
+      - name: Native, JNI and .NET 10 product hosts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
+          $triplet = 'x64-' + '${{ runner.os == 'Windows' && 'windows' || 'linux' }}'
+          cmake -S . -B build/core -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=$triplet -DUD_BUILD_PROFILE=CORE -DUD_BUILD_HOSTS=ON -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$PWD/build/deps/sqlite/sqlite-amalgamation-3490100" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/core --config Release --parallel 4
+          ctest --test-dir build/core -C Release --output-on-failure --parallel 4 -LE real-integration
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-${{ matrix.os }}-evidence
+          path: build/core/Testing
+  complete-drivers-and-delivery:
+    # Configured independent resources are required for complete PRODUCT gates.
+    if: vars.UD_PRODUCT_ACCEPTANCE_ENABLED == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux, windows]
+    runs-on: [self-hosted, '${{ matrix.platform }}', universaldata-product]
+    environment: universaldata-product-acceptance
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full driver, codec and TLS dependency closure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
+          if (!$env:UD_PRODUCT_TOOLCHAIN) { throw 'Blocked: complete product toolchain is not configured' }
+          cmake -S . -B build/product -DCMAKE_TOOLCHAIN_FILE="$env:UD_PRODUCT_TOOLCHAIN" -DUD_BUILD_PROFILE=PRODUCT -DUD_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/product --config Release --parallel 4
+      - name: Registered real driver, CDC and crash-recovery gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
+          python tests/require_integration_resources.py
+          ctest --test-dir build/product -C Release --output-on-failure --parallel 4
+      - name: Workloads, Web and independently installed consumers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
+          if (!$env:UD_PRODUCT_ACCEPTANCE_COMMAND) { throw 'Blocked: independent acceptance runner is not configured' }
+          & $env:UD_PRODUCT_ACCEPTANCE_COMMAND -BuildDirectory "$PWD/build/product" -SourceDirectory "$PWD"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: complete-product-${{ matrix.platform }}
           path: |
-            build/delivery
-            build/UniversalData-1.5.0-linux-x64.zip
-            build/sdk-consumers.json
-            build/next-phase-benchmark.json
-  minimal-components:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - run: cmake --preset core-only
-      - run: cmake --build --preset core-only --parallel 2
-      - run: ctest --preset core-only
-      - run: cmake --install build/core --prefix "$PWD/build/sdk"
-      - run: cmake -S examples/c -B build/consumer -DCMAKE_PREFIX_PATH="$PWD/build/sdk"
-      - run: cmake --build build/consumer && build/consumer/consumer
-  memory-check:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - run: cmake -S . -B build/asan -DUD_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
-      - run: cmake --build build/asan --parallel 2
-      - run: ctest --test-dir build/asan --output-on-failure
+            build/product/Testing
+            artifacts

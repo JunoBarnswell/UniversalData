@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
     binding.package_parameters = str("{\"shadow\":false}");
     CHECK(ud_project_bind(project, package, &binding, &bound, &params, &n) == UD_SCHEMA);
     binding.package_parameters = str("{}");
-    binding.environment = str("{\"version\":9,\"id\":\"env\",\"projectId\":\"wrong\"}");
+    binding.environment = str("{\"version\":10,\"id\":\"env\",\"projectId\":\"wrong\"}");
     CHECK(ud_project_bind(project, package, &binding, &bound, &params, &n) == UD_SCHEMA);
     char *invalid = load(argv[1], "readonly.json");
     CHECK(invalid);
@@ -150,7 +150,7 @@ int main(int argc, char **argv) {
     ud_catalog_key deploy = {sizeof(deploy), UD_ABI_VERSION, UD_CATALOG_DEPLOYMENT, str("broken"),
                              1};
     CHECK(ud_catalog_put(catalog, &deploy,
-                         str("{\"version\":9,\"id\":\"broken\",\"project\":{\"id\":\"absent\","
+                         str("{\"version\":10,\"id\":\"broken\",\"project\":{\"id\":\"absent\","
                              "\"revision\":1}}")) == UD_SCHEMA);
     ud_catalog_close(catalog);
     catalog = NULL;

@@ -32,7 +32,7 @@ static ud_status append_reference(ud_context *ctx, ud_cache *cache, const ud_bat
 }
 static int records_and_cache(ud_context *ctx, const char *directory) {
     const char *schema =
-        "{\"version\":9,\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{"
+        "{\"version\":10,\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{"
         "\"name\":\"name\",\"type\":\"utf8\",\"nullable\":false},{\"name\":\"f\",\"type\":"
         "\"float64\",\"nullable\":false},{\"name\":\"d\",\"type\":\"decimal128\",\"precision\":38,"
         "\"scale\":2,\"nullable\":false},{\"name\":\"nested\",\"type\":\"struct\",\"nullable\":"
@@ -144,7 +144,7 @@ static int records_and_cache(ud_context *ctx, const char *directory) {
 }
 static int cursor_and_schema(ud_context *ctx) {
     const char *schema =
-        "{\"version\":9,\"fields\":[{\"name\":\"water\",\"type\":\"timestamp\",\"timezone\":"
+        "{\"version\":10,\"fields\":[{\"name\":\"water\",\"type\":\"timestamp\",\"timezone\":"
         "\"UTC\",\"nullable\":false},{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}";
     ud_batch *input = NULL, *selected = NULL;
     OK(batch(ctx, schema,
@@ -171,9 +171,9 @@ static int cursor_and_schema(ud_context *ctx) {
     ud_cursor_destroy(cursor);
     ud_batch_destroy(input);
     const char *expected =
-        "{\"version\":9,\"fields\":[{\"name\":\"a\",\"type\":\"int64\",\"nullable\":false},{"
+        "{\"version\":10,\"fields\":[{\"name\":\"a\",\"type\":\"int64\",\"nullable\":false},{"
         "\"name\":\"b\",\"type\":\"utf8\",\"nullable\":true}]}";
-    const char *actual = "{\"version\":9,\"fields\":[{\"name\":\"b\",\"type\":\"utf8\","
+    const char *actual = "{\"version\":10,\"fields\":[{\"name\":\"b\",\"type\":\"utf8\","
                          "\"nullable\":false},{\"name\":\"a\",\"type\":\"int64\",\"nullable\":"
                          "false},{\"name\":\"c\",\"type\":\"int64\",\"nullable\":true}]}";
     OK(ud_schema_compare_json(ctx, str(expected), str(actual), str("{\"policy\":\"strict\"}"),
@@ -186,9 +186,9 @@ static int cursor_and_schema(ud_context *ctx) {
           strstr(diagnostics, "Added"));
     ud_free(diagnostics);
     const char *target =
-        "{\"version\":9,\"fields\":[{\"name\":\"number\",\"type\":\"int64\",\"nullable\":false}]}";
+        "{\"version\":10,\"fields\":[{\"name\":\"number\",\"type\":\"int64\",\"nullable\":false}]}";
     const char *text =
-        "{\"version\":9,\"fields\":[{\"name\":\"string\",\"type\":\"utf8\",\"nullable\":false}]}";
+        "{\"version\":10,\"fields\":[{\"name\":\"string\",\"type\":\"utf8\",\"nullable\":false}]}";
     const char *mapping = "{\"policy\":\"explicitMapping\",\"mapping\":[{\"expected\":\"number\","
                           "\"actual\":\"string\"}]}";
     OK(ud_schema_compare_json(ctx, str(target), str(text), str(mapping), &diagnostics, &length));

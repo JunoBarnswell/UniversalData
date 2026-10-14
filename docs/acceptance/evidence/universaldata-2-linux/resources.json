@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-14",
+  "policy": "User: 暂时没有，缺失项记录 Blocked",
+  "scope": "Isolated task-owned Linux acceptance only; no historical business databases or artifacts overwritten.",
+  "accepted": [
+    "PostgreSQL 17 TCP/TLS",
+    "MySQL 8.4 TCP/TLS",
+    "MariaDB TCP/TLS",
+    "Microsoft SQL Server / vendor ODBC 18.7 BCP TCP/TLS"
+  ],
+  "blocked": [
+    {
+      "resource": "Windows PRODUCT and WMI",
+      "reason": "No Windows machine or runner supplied"
+    },
+    {
+      "resource": "Oracle OCI TCPS",
+      "reason": "SDK/Direct Path/XA compile passed; isolated schema created; actual OCI session attach ORA-12170"
+    },
+    {
+      "resource": "Generic unknown-DBMS ODBC arrays",
+      "reason": "No independent unknown-DBMS array-capable provider"
+    },
+    {
+      "resource": "SMTP, FTP/SFTP, Azure/ADLS, S3/MinIO",
+      "reason": "Independent authenticated service resources unavailable; local HTTP protocol checks do not certify them"
+    },
+    {
+      "resource": "SQL Server maintenance/Agent and SSAS XMLA",
+      "reason": "Independent specialized acceptance grants/services unavailable"
+    },
+    {
+      "resource": "SQL Server qualified distributed transaction driver",
+      "reason": "Driver participant contract is not implemented; unsupported join is refused before effects"
+    }
+  ]
+}

@@ -17,6 +17,11 @@ void ud_activation_notify_kind(ud_activation *e, int32_t kind, ud_execution_stat
     if (!e->execution->options.observe)
         return;
     ud_mutex_lock(&e->execution->events_lock);
+    if (e->execution->event_sequence == UINT64_MAX) {
+        atomic_store(&e->execution->observer_fault, UD_RESOURCE);
+        ud_mutex_unlock(&e->execution->events_lock);
+        return;
+    }
     ud_execution_event event = {sizeof(event),
                                 UD_ABI_VERSION,
                                 e->package->id,
@@ -26,12 +31,50 @@ void ud_activation_notify_kind(ud_activation *e, int32_t kind, ud_execution_stat
                                 e->component_id,
                                 state,
                                 result,
-                                ud_now_ms(),
+                                ud_wall_ms(),
                                 kind,
                                 ++e->execution->event_sequence,
                                 e};
+    ud_bytes chain = {.ctx = e->execution->ctx, .limit = 65536};
+    if (result != UD_OK && result != UD_BUSY && result != UD_MORE && result != UD_END) {
+        ud_status encoded = ud_bytes_put(&chain, "[", 1);
+        uint32_t depth = 0;
+        for (const ud_activation *frame = e; !encoded && frame && depth < 32;
+             frame = frame->parent, depth++) {
+            if (depth)
+                encoded = ud_bytes_put(&chain, ",", 1);
+            if (!encoded)
+                encoded = ud_bytes_put(&chain, "{\"taskId\":", 10);
+            if (!encoded)
+                encoded = ud_json_quote(&chain, frame->task_id.data ? frame->task_id.data : "",
+                                        frame->task_id.length);
+            if (!encoded)
+                encoded = ud_bytes_put(&chain, ",\"pipelineId\":", 14);
+            if (!encoded)
+                encoded =
+                    ud_json_quote(&chain, frame->pipeline_id.data ? frame->pipeline_id.data : "",
+                                  frame->pipeline_id.length);
+            if (!encoded)
+                encoded = ud_bytes_put(&chain, ",\"componentId\":", 15);
+            if (!encoded)
+                encoded =
+                    ud_json_quote(&chain, frame->component_id.data ? frame->component_id.data : "",
+                                  frame->component_id.length);
+            char code[32];
+            int length = snprintf(code, sizeof(code), ",\"result\":%d}", result);
+            if (!encoded)
+                encoded = ud_bytes_put(&chain, code, (size_t)length);
+        }
+        if (!encoded)
+            encoded = ud_bytes_put(&chain, "]", 1);
+        if (!encoded)
+            event.error_chain = (ud_string){(const char *)chain.data, (uint32_t)chain.size};
+        else
+            atomic_store(&e->execution->observer_fault, encoded);
+    }
     event.kind = kind;
     e->execution->options.observe(e->execution->options.observe_user, &event);
+    ud_bytes_clear(&chain);
     ud_mutex_unlock(&e->execution->events_lock);
 }
 void ud_activation_notify(ud_activation *e, ud_execution_state state, ud_status result) {
@@ -74,6 +117,8 @@ void ud_task_fact(ud_activation *activation, uint32_t fact) {
                                   fact == UD_TASK_UNCERTAIN ? UD_COMMIT_UNKNOWN : UD_OK);
 }
 uint32_t ud_execution_concurrency(const ud_activation *activation) {
+    if (ud_debug_enabled(activation->execution))
+        return 1;
     uint32_t concurrency = activation->execution->options.max_concurrency;
     for (const ud_activation *a = activation; a; a = a->parent) {
         const ud_json *policy = ud_member(a->package->document, "policy");
@@ -90,6 +135,9 @@ uint32_t ud_execution_concurrency(const ud_activation *activation) {
 ud_status ud_activation_check(const ud_activation *e) {
     if (!e)
         return UD_INVALID;
+    ud_status observer = atomic_load(&e->execution->observer_fault);
+    if (observer)
+        return observer;
     if (ud_is_cancelled(e->execution->ctx))
         return UD_CANCELLED;
     uint64_t now = ud_now_ms();
@@ -99,6 +147,18 @@ ud_status ud_activation_check(const ud_activation *e) {
         else if (a->deadline && now >= a->deadline)
             return UD_TIMEOUT;
     return UD_OK;
+}
+ud_status ud_activation_report_fault(const ud_activation *activation, ud_status status,
+                                     ud_string message) {
+    if (!activation)
+        return UD_INVALID;
+    ud_status reported = ud_context_report(activation->execution->ctx, status, message);
+    if (reported != status)
+        return reported;
+    int expected = UD_OK;
+    if (atomic_compare_exchange_strong(&activation->execution->observer_fault, &expected, status))
+        atomic_fetch_add(&activation->execution->error_count, 1);
+    return status;
 }
 ud_status ud_component_lookup(ud_activation *e, ud_string id, ud_component_descriptor *out) {
     return ud_registry_find(e->execution->registry, id, out);
@@ -159,8 +219,17 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     if (!options->edge_capacity || options->edge_capacity > 65536 || !options->max_batch_rows ||
         options->max_batch_rows > 65536 || !options->max_depth || options->max_depth > 64 ||
         options->resume < 0 || options->resume > 1 ||
-        (options->resume && !options->state_directory.length) || options->max_concurrency > 64)
+        (options->resume && (!options->state_directory.length || !options->execution_id.length)) ||
+        options->execution_id.length > 255 ||
+        (options->execution_id.length &&
+         (!options->execution_id.data ||
+          !ud_utf8_valid(options->execution_id.data, options->execution_id.length))) ||
+        options->max_concurrency > 64)
         return UD_INVALID;
+    for (uint32_t i = 0; i < options->execution_id.length; i++)
+        if ((unsigned char)options->execution_id.data[i] < 32 ||
+            (unsigned char)options->execution_id.data[i] == 127)
+            return UD_INVALID;
     ud_context *ctx = NULL;
     UD_TRY(ud_context_create(&options->context, &ctx));
     ud_execution *e = ud_alloc(ctx, sizeof(*e));
@@ -169,6 +238,7 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         return UD_RESOURCE;
     }
     e->ctx = ctx;
+    atomic_init(&e->observer_fault, UD_OK);
     e->root.execution = e;
     e->root.definition = &e->root;
     atomic_init(&e->root.cancelled, 0);
@@ -194,6 +264,7 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     ud_mutex_init(&e->cancellation_lock);
     ud_condition_init(&e->cancellation_changed);
     e->options = *options;
+    e->event_sequence = options->event_sequence_start;
     if (!e->options.max_concurrency)
         e->options.max_concurrency = 1;
     e->options.parameters = (ud_string){0};
@@ -224,8 +295,27 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     ud_status s = ud_executor_create(ctx, e->options.max_concurrency, &e->executor);
     if (!s)
         s = copy_string(ctx, options->tenant, &e->options.tenant);
-    if (!s)
+    if (!s && options->execution_id.length)
         s = copy_string(ctx, options->execution_id, &e->options.execution_id);
+    else if (!s) {
+        uint8_t random[16];
+        s = ud_random_bytes(ctx, random, sizeof(random));
+        if (!s) {
+            random[6] = (uint8_t)((random[6] & 15) | 64);
+            random[8] = (uint8_t)((random[8] & 63) | 128);
+            static const char digits[] = "0123456789abcdef";
+            char id[37];
+            uint32_t at = 0;
+            for (uint32_t i = 0; i < 16; i++) {
+                if (i == 4 || i == 6 || i == 8 || i == 10)
+                    id[at++] = '-';
+                id[at++] = digits[random[i] >> 4];
+                id[at++] = digits[random[i] & 15];
+            }
+            id[at] = 0;
+            s = copy_string(ctx, (ud_string){id, at}, &e->options.execution_id);
+        }
+    }
     if (!s)
         s = copy_string(ctx, options->state_directory, &e->options.state_directory);
     if (!s)
@@ -305,6 +395,12 @@ ud_status ud_execution_create(const ud_package *p, const ud_execution_options *o
     ud_status s = ud_execution_create_json((ud_string){json, n}, o, out);
     ud_free(json);
     return s;
+}
+ud_status ud_execution_id(const ud_execution *e, ud_string *out) {
+    if (!e || !out)
+        return UD_INVALID;
+    *out = e->options.execution_id;
+    return UD_OK;
 }
 ud_status ud_activation_run_definition(ud_activation *e) {
     const ud_json *handlers = ud_member(e->package->document, "eventHandlers");
@@ -536,6 +632,7 @@ ud_status ud_execution_destroy(ud_execution *e) {
         ud_bytes_clear(&e->schema_reports);
         ud_bytes_clear(&e->bound_plans);
         ud_bytes_clear(&e->control_reports);
+        ud_debug_destroy(e);
         e->disposed = 1;
     }
     if (ud_memory_used(ctx) != ud_allocation_bytes(e)) {
@@ -773,8 +870,8 @@ ud_status ud_execution_discover_schema(ud_execution *e, ud_string connection, ud
     char scope[33];
     ud_status status = ud_connection_field_namespace(&e->root, connection, table, scope);
     if (!status)
-        status =
-            ud_activation_acquire_connection(&e->root, connection, UD_CONNECT_METADATA, &lease);
+        status = ud_activation_acquire_connection(&e->root, connection,
+                                                  UD_CONNECT_READ | UD_CONNECT_METADATA, &lease);
     if (!status)
         status = ud_connection_lease_schema(lease, table, (ud_string){scope, 32}, &schema);
     if (!status)
@@ -824,6 +921,48 @@ ud_status ud_schema_report(ud_activation *a, ud_string diff, ud_status result) {
 }
 
 ud_status ud_execution_component_catalog(ud_execution *e, char **out, uint32_t *length) {
-    if (!e) return UD_INVALID;
-    return ud_registry_describe(e->registry, out, length);
+    if (!e)
+        return UD_INVALID;
+    if (!out || !length)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    char *registered = NULL;
+    uint32_t size = 0;
+    ud_status status = ud_registry_describe(e->registry, &registered, &size);
+    ud_bytes catalog = {.ctx = e->ctx};
+    if (!status && (!size || registered[size - 1] != ']'))
+        status = UD_CORRUPT;
+    if (!status)
+        status = ud_bytes_put(&catalog, registered, size - 1);
+    if (!status)
+        status = ud_control_catalog(&catalog);
+    if (!status)
+        status = ud_bytes_put(&catalog, "]", 1);
+    if (!status)
+        status = ud_bytes_put(&catalog, "", 1);
+    if (!status) {
+        *out = (char *)catalog.data;
+        *length = (uint32_t)catalog.size - 1;
+        catalog.data = NULL;
+    }
+    ud_free(registered);
+    ud_bytes_clear(&catalog);
+    return status;
+}
+
+ud_status ud_component_schema_namespace(const ud_component_context *context, char **out,
+                                        uint32_t *length) {
+    if (!context || !out || !length || context->struct_size != sizeof(*context) ||
+        context->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    *out = NULL;
+    *length = 0;
+    char scope[33];
+    UD_TRY(ud_pipeline_field_namespace(context, scope));
+    *out = ud_strdup_n(context->memory, scope, 32);
+    if (!*out)
+        return UD_RESOURCE;
+    *length = 32;
+    return UD_OK;
 }

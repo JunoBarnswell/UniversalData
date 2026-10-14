@@ -1,6 +1,6 @@
 #include "common.h"
 #include <oci.h>
-#include <pthread.h>
+#include "../components/foundation/thread.h"
 #include <stdatomic.h>
 #include <stdio.h>
 #define OCI_TRY(call)                                                                              \
@@ -12,7 +12,10 @@
 /* Independent OCI driver; every external handle belongs to the existing leased
  * connection. Values use OCI binds/defines, never SQL literal interpolation. */
 #include "oracle_internal.h"
+static const ud_connector_api api;
 ud_status ud_oci_control(oracle *p) {
+    if (p->cleanup)
+        return UD_OK;
     if (atomic_load(&p->cancelled) || p->host.cancelled(p->host.context))
         return UD_CANCELLED;
     return p->check ? p->check(p->user) : UD_OK;
@@ -28,6 +31,7 @@ static ud_status failure(oracle *p, sword rc) {
     sb4 code = 0;
     OraText text[2];
     OCIErrorGet(p->error, 1, NULL, &code, text, sizeof(text), OCI_HTYPE_ERROR);
+    p->record_code = code;
     char safe[80];
     snprintf(safe, sizeof(safe), "OCI operation failed (Oracle code %ld)", (long)code);
     p->host.report(p->host.context, UD_IO, safe);
@@ -45,11 +49,28 @@ static ud_status failure(oracle *p, sword rc) {
         p->broken = 1;
         return UD_TRANSIENT;
     }
-    if (code == 1)
+    if (code == 1 || code == 1400 || code == 2290 || code == 2291 || code == 2292)
         return UD_QUALITY;
+    if (code == 12899)
+        return UD_TRUNCATED;
+    if (code == 1438)
+        return UD_OVERFLOW;
+    if (code == 1722 || code == 1841 || code == 1843 || code == 1861)
+        return UD_PARSE;
     if (code == 942 || code == 904)
         return UD_SCHEMA;
     return UD_IO;
+}
+static ud_status record_diagnostic(void *state, ud_string *out) {
+    oracle *p = state;
+    char code[32];
+    int length = p->record_code ? snprintf(code, sizeof(code), "%ld", (long)p->record_code) : 0;
+    *out = (ud_string){length ? plugin_string(&p->host, code, (uint32_t)length) : NULL,
+                       (uint32_t)length};
+    if (length && !out->data)
+        return UD_RESOURCE;
+    p->record_code = 0;
+    return UD_OK;
 }
 static void cells_clear(oracle *p, cell *v, uint32_t n) {
     if (!v)
@@ -85,8 +106,8 @@ static ud_status bind_value(oracle *p, OCIStmt *stmt, uint32_t at, const ud_valu
     c->length = 0;
     sb8 size = 0;
     void *data = NULL;
-    if (v->type == UD_INT64 || v->type == UD_BOOL) {
-        c->type = SQLT_INT;
+    if (v->type == UD_INT64 || v->type == UD_UINT64 || v->type == UD_BOOL) {
+        c->type = v->type == UD_UINT64 ? SQLT_UIN : SQLT_INT;
         c->integer = v->integer;
         data = &c->integer;
         size = 8;
@@ -226,6 +247,7 @@ static ud_status literal(oracle *p, const char *sql) {
 }
 ud_status ud_oci_read_close(void *state) {
     oracle *p = state;
+    memset(&p->record_options, 0, sizeof(p->record_options));
     release(p, p->cursor);
     p->cursor = NULL;
     cells_clear(p, p->columns, p->count);
@@ -259,6 +281,7 @@ ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch
     if (!s && count != p->host.columns(schema))
         s = UD_SCHEMA;
     p->batch = o->batch_size;
+    p->record_options = *o;
     p->count = count;
     if (!s) {
         p->host.batch_destroy(p->schema);
@@ -296,8 +319,8 @@ ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch
             OCIDescriptorFree(param, OCI_DTYPE_PARAM);
         void *data = NULL;
         sb8 size = 0;
-        if (c->field.type == UD_INT64 || c->field.type == UD_BOOL) {
-            c->type = SQLT_INT;
+        if (c->field.type == UD_INT64 || c->field.type == UD_UINT64 || c->field.type == UD_BOOL) {
+            c->type = c->field.type == UD_UINT64 ? SQLT_UIN : SQLT_INT;
             data = &c->integer;
             size = 8;
         } else if (c->field.type == UD_FLOAT64) {
@@ -370,18 +393,20 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
     oracle *p = state;
     *out = NULL;
     if (!p->cursor)
-        return UD_INVALID;
+        return UD_END;
     ud_field *f = NULL;
     ud_status s = plugin_fields(&p->host, p->schema, &f);
     if (!s)
         s = p->host.batch_create(p->host.context, f, p->count, p->batch, out);
-    p->host.deallocate(f);
     ud_value *v = p->host.allocate(p->host.context, p->count * sizeof(*v));
     void **owned = p->host.allocate(p->host.context, p->count * sizeof(*owned));
-    if (!v || !owned)
+    ud_value *raw = p->host.allocate(p->host.context, p->count * sizeof(*raw));
+    char *formatted = p->host.allocate(p->host.context, (size_t)p->count * 256);
+    uint32_t fetched = 0, bad = UINT32_MAX;
+    if (!v || !owned || !raw || !formatted)
         s = UD_RESOURCE;
     int end = 0;
-    while (!s && p->host.rows(*out) < p->batch) {
+    while (!s && fetched < p->batch) {
         s = ud_oci_control(p);
         if (s)
             break;
@@ -393,19 +418,28 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
         s = failure(p, rc);
         if (s)
             break;
+        fetched++;
+        ud_status conversion = UD_OK;
+        memset(raw, 0, p->count * sizeof(*raw));
         for (uint32_t i = 0; !s && i < p->count; i++) {
             cell *c = p->columns + i;
             v[i] = (ud_value){.type = c->field.type,
                               .precision = c->field.precision,
                               .scale = c->field.scale,
                               .is_null = c->indicator == -1};
+            raw[i] = (ud_value){.type = UD_BINARY, .is_null = v[i].is_null};
             if (v[i].is_null)
                 continue;
             if (c->indicator == -2 || c->code) {
-                s = UD_SCHEMA;
-                break;
+                if (!conversion) {
+                    conversion = UD_TRUNCATED;
+                    bad = i;
+                }
+                raw[i].is_absent = 1;
+                raw[i].is_null = 1;
+                continue;
             }
-            if (v[i].type == UD_INT64 || v[i].type == UD_BOOL) {
+            if (v[i].type == UD_INT64 || v[i].type == UD_UINT64 || v[i].type == UD_BOOL) {
                 v[i].integer = c->integer;
                 if (v[i].type == UD_BOOL && c->integer != 0 && c->integer != 1)
                     s = UD_SCHEMA;
@@ -437,6 +471,10 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
                         length = lob ? (uint32_t)bytes : 0;
                     }
                 }
+                if (!s) {
+                    raw[i].text = text;
+                    raw[i].text_length = length;
+                }
                 if (!s && v[i].type == UD_BINARY) {
                     v[i].text = text;
                     v[i].text_length = length;
@@ -444,17 +482,38 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
                     s = p->host.parse_field(p->host.context, &c->field, text, length,
                                             UD_ROUND_EXACT, v + i);
             }
+            if (!s && !raw[i].text && !raw[i].is_null) {
+                uint32_t required = 0;
+                s = p->host.format_value(v + i, formatted + (size_t)i * 256, 256, &required);
+                if (!s) {
+                    raw[i].text = formatted + (size_t)i * 256;
+                    raw[i].text_length = required - 1;
+                }
+            }
+            if (plugin_record_conversion(s)) {
+                v[i].is_absent = 1;
+                v[i].is_null = 1;
+                if (!conversion) {
+                    conversion = s;
+                    bad = i;
+                }
+                s = UD_OK;
+            }
         }
         if (!s)
-            s = p->host.append(*out, v, p->count);
+            s = plugin_record_finish(&p->host, &p->record_options, *out, f, v, raw, p->count,
+                                     conversion, bad);
         for (uint32_t i = 0; i < p->count; i++) {
             p->host.deallocate(owned[i]);
             owned[i] = NULL;
         }
     }
     p->host.deallocate(v);
+    p->host.deallocate(raw);
+    p->host.deallocate(formatted);
+    p->host.deallocate(f);
     p->host.deallocate(owned);
-    if (s || (!p->host.rows(*out) && end)) {
+    if (s || (!p->host.rows(*out) && end && !fetched)) {
         p->host.batch_destroy(*out);
         *out = NULL;
     }
@@ -608,6 +667,8 @@ static ud_status rollback(void *state) {
     ud_status s = failure(p, OCITransRollback(p->service, p->error, OCI_DEFAULT));
     if (!s)
         p->transaction = 0;
+    if (!s && !p->branch_id[0])
+        s = ud_oci_bulk_cleanup(p);
     return s;
 }
 static ud_status commit(void *state) {
@@ -619,6 +680,8 @@ static ud_status commit(void *state) {
         s = UD_COMMIT_UNKNOWN;
         p->broken = 1;
     }
+    if (!s && !p->branch_id[0])
+        s = ud_oci_bulk_cleanup(p);
     return s;
 }
 static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string batch,
@@ -632,7 +695,7 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
     ud_status s =
         ud_oci_query(p,
                      "SELECT digest AS \"digest\",source_position AS \"source_position\" FROM "
-                     "ud_sdk_receipts_v2 WHERE tenant=:p1 AND job=:p2 AND batch_id=:p3 FOR UPDATE",
+                     "ud_sdk_receipts_v10 WHERE tenant=:p1 AND job=:p2 AND batch_id=:p3 FOR UPDATE",
                      args, 3, f, 2, &b);
     if (!s && p->host.rows(b)) {
         ud_value d, v;
@@ -658,11 +721,193 @@ static ud_status provision(void *state) {
     oracle *p = state;
     if (p->transaction || p->cursor)
         return UD_BUSY;
-    return literal(
-        p, "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_receipts_v2(tenant VARCHAR2(256 BYTE) NOT "
-           "NULL,job VARCHAR2(256 BYTE) NOT NULL,batch_id VARCHAR2(256 BYTE) NOT NULL,digest "
-           "RAW(32) NOT NULL,source_position CLOB,PRIMARY KEY(tenant,job,batch_id))'; EXCEPTION "
-           "WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;");
+    ud_status status = literal(
+        p,
+        "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_receipts_v10(tenant VARCHAR2(256 BYTE) NOT "
+        "NULL,job VARCHAR2(256 BYTE) NOT NULL,batch_id VARCHAR2(256 BYTE) NOT NULL,digest "
+        "RAW(32) NOT NULL,source_position CLOB,PRIMARY KEY(tenant,job,batch_id))'; EXCEPTION "
+        "WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;");
+    if (!status)
+        status = literal(p, "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_tx_receipts_v10("
+                            "branch_id RAW(64) PRIMARY KEY,digest RAW(32) NOT NULL)'; EXCEPTION "
+                            "WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;");
+    return status;
+}
+static ud_status transaction_recover(void *state, const ud_transaction_branch *branch,
+                                     int32_t *result) {
+    oracle *p = state;
+    *result = UD_TX_UNKNOWN;
+    if (p->branch_state == UD_TX_ACTIVE && !memcmp(p->branch_id, branch->id.data, 64)) {
+        *result = UD_TX_ACTIVE;
+        return UD_OK;
+    }
+    int cleanup = p->cleanup;
+    p->cleanup = 1;
+    ud_string argument = branch->id;
+    ud_field fields[] = {{.name = "gtrid", .name_length = 5, .type = UD_BINARY}};
+    ud_batch *rows = NULL;
+    ud_status status = ud_oci_query(p,
+                                    "SELECT x.gtrid AS \"gtrid\" FROM TABLE(DBMS_XA.XA_RECOVER) x "
+                                    "WHERE x.formatid=1 AND x.gtrid=UTL_RAW.CAST_TO_RAW(:p1)",
+                                    &argument, 1, fields, 1, &rows);
+    if (!status && p->host.rows(rows) > 1)
+        status = UD_CORRUPT;
+    if (!status && p->host.rows(rows) == 1)
+        *result = UD_TX_PREPARED;
+    p->host.batch_destroy(rows);
+    rows = NULL;
+    ud_field digest = {.name = "digest", .name_length = 6, .type = UD_BINARY};
+    if (!status && *result != UD_TX_PREPARED)
+        status = ud_oci_query(p,
+                              "SELECT digest AS \"digest\" FROM ud_sdk_tx_receipts_v10 "
+                              "WHERE branch_id=UTL_RAW.CAST_TO_RAW(:p1)",
+                              &argument, 1, &digest, 1, &rows);
+    if (!status && rows) {
+        if (p->host.rows(rows) > 1)
+            status = UD_CORRUPT;
+        else if (p->host.rows(rows) == 1) {
+            ud_value value;
+            status = p->host.get(rows, 0, 0, &value);
+            if (!status && (value.is_null || value.text_length != 32))
+                status = UD_CORRUPT;
+            if (!status && memcmp(value.text, branch->digest, 32))
+                status = UD_FENCED;
+            if (!status)
+                *result = UD_TX_COMMITTED;
+        } else
+            *result = UD_TX_NOT_FOUND;
+    }
+    p->host.batch_destroy(rows);
+    p->cleanup = cleanup;
+    return status;
+}
+static ud_status transaction_begin(void *state, const ud_transaction_branch *branch) {
+    oracle *p = state;
+    if (!p->participant_enabled)
+        return UD_UNSUPPORTED;
+    if (p->transaction || p->cursor || p->branch_id[0])
+        return UD_BUSY;
+    if (branch->isolation == UD_ISOLATION_REPEATABLE_READ)
+        return UD_UNSUPPORTED;
+    if (p->branch_handle) {
+        OCIHandleFree(p->branch_handle, OCI_HTYPE_TRANS);
+        p->branch_handle = NULL;
+    }
+    ud_status status =
+        failure(p, OCIHandleAlloc(p->env, (void **)&p->branch_handle, OCI_HTYPE_TRANS, 0, NULL));
+    XID xid = {.formatID = 1, .gtrid_length = 64, .bqual_length = 0};
+    memcpy(xid.data, branch->id.data, 64);
+    if (!status)
+        status = failure(p, OCIAttrSet(p->branch_handle, OCI_HTYPE_TRANS, &xid, sizeof(xid),
+                                       OCI_ATTR_XID, p->error));
+    if (!status)
+        status = failure(p, OCIAttrSet(p->service, OCI_HTYPE_SVCCTX, p->branch_handle, 0,
+                                       OCI_ATTR_TRANS, p->error));
+    if (!status)
+        status = failure(p, OCITransStart(p->service, p->error, 60,
+                                          OCI_TRANS_NEW | OCI_TRANS_LOOSE |
+                                              (branch->isolation == UD_ISOLATION_SERIALIZABLE
+                                                   ? OCI_TRANS_SERIALIZABLE
+                                                   : OCI_TRANS_READWRITE)));
+    if (!status) {
+        p->transaction = 1;
+        p->branch_state = UD_TX_ACTIVE;
+        memcpy(p->branch_id, branch->id.data, 64);
+        p->branch_id[64] = 0;
+    }
+    static const char alphabet[] = "0123456789abcdef";
+    char identity[129], digest[65];
+    for (uint32_t index = 0; index < 64; index++) {
+        unsigned byte = (unsigned char)branch->id.data[index];
+        identity[2 * index] = alphabet[byte >> 4];
+        identity[2 * index + 1] = alphabet[byte & 15];
+    }
+    identity[128] = 0;
+    for (uint32_t index = 0; index < 32; index++) {
+        digest[2 * index] = alphabet[branch->digest[index] >> 4];
+        digest[2 * index + 1] = alphabet[branch->digest[index] & 15];
+    }
+    digest[64] = 0;
+    char statement_text[384];
+    snprintf(statement_text, sizeof(statement_text),
+             "INSERT INTO ud_sdk_tx_receipts_v10(branch_id,digest) "
+             "VALUES(HEXTORAW('%s'),HEXTORAW('%s'))",
+             identity, digest);
+    if (!status)
+        status = literal(p, statement_text);
+    if (status && p->transaction) {
+        p->cleanup = 1;
+        ud_status rolled_back = rollback(p);
+        p->cleanup = 0;
+        if (rolled_back)
+            status = UD_COMMIT_UNKNOWN;
+        else {
+            p->branch_state = 0;
+            memset(p->branch_id, 0, sizeof(p->branch_id));
+        }
+    }
+    return status;
+}
+static ud_status transaction_prepare(void *state, const ud_transaction_branch *branch) {
+    oracle *p = state;
+    if (p->branch_state != UD_TX_ACTIVE || memcmp(p->branch_id, branch->id.data, 64))
+        return UD_FENCED;
+    ud_status status = failure(p, OCITransPrepare(p->service, p->error, OCI_DEFAULT));
+    if (!status) {
+        p->transaction = 0;
+        p->branch_state = UD_TX_PREPARED;
+    }
+    if (!status)
+        status = failure(p, OCITransDetach(p->service, p->error, OCI_DEFAULT));
+    return status;
+}
+static ud_status transaction_resolve(void *state, const ud_transaction_branch *branch,
+                                     int32_t decision) {
+    oracle *p = state;
+    if (p->branch_state == UD_TX_ACTIVE) {
+        if (decision != UD_TX_ROLLBACK || memcmp(p->branch_id, branch->id.data, 64))
+            return UD_FENCED;
+        p->cleanup = 1;
+        ud_status status = rollback(p);
+        p->cleanup = 0;
+        if (!status) {
+            p->branch_state = 0;
+            memset(p->branch_id, 0, sizeof(p->branch_id));
+            status = ud_oci_bulk_cleanup(p);
+        }
+        return status;
+    }
+    /* DBMS_XA resolves a prepared OCI XID from a fresh authenticated session. */
+    static const char alphabet[] = "0123456789abcdef";
+    char identity[129];
+    for (uint32_t index = 0; index < 64; index++) {
+        unsigned byte = (unsigned char)branch->id.data[index];
+        identity[2 * index] = alphabet[byte >> 4];
+        identity[2 * index + 1] = alphabet[byte & 15];
+    }
+    identity[128] = 0;
+    char statement_text[384];
+    snprintf(statement_text, sizeof(statement_text),
+             "DECLARE r PLS_INTEGER; BEGIN r:=DBMS_XA.XA_%s(DBMS_XA_XID(1,HEXTORAW('%s'),NULL)%s); "
+             "IF r!=0 THEN RAISE_APPLICATION_ERROR(-20001,'Native transaction resolution failed'); "
+             "END IF; END;",
+             decision == UD_TX_COMMIT ? "COMMIT" : "ROLLBACK", identity,
+             decision == UD_TX_COMMIT ? ",FALSE" : "");
+    p->cleanup = 1;
+    ud_status status = literal(p, statement_text);
+    p->cleanup = 0;
+    if (!status) {
+        p->transaction = p->branch_state = 0;
+        memset(p->branch_id, 0, sizeof(p->branch_id));
+        status = ud_oci_bulk_cleanup(p);
+    }
+    return status;
+}
+static uint64_t session_capabilities(void *state) {
+    oracle *p = state;
+    return p->participant_enabled
+               ? api.capabilities
+               : api.capabilities & ~(uint64_t)UD_CONNECT_TRANSACTION_PARTICIPANT;
 }
 static ud_status execute(void *state, const ud_read_options *o, uint64_t *affected) {
     oracle *p = state;
@@ -811,6 +1056,8 @@ static ud_status verify_preimage(oracle *p, const ud_write_options *options, con
     for (uint32_t i = 0; !s && i < p->host.columns(b); i++) {
         ud_value expected, value;
         s = p->host.get(options->before, row, i, &expected);
+        if (!s && expected.is_absent)
+            continue;
         if (!s)
             s = p->host.get(actual, 0, i, &value);
         if (!s && p->host.compare_value(&expected, &value))
@@ -833,8 +1080,6 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     oracle *p = state;
     if (p->cursor)
         return UD_BUSY;
-    if (p->transaction && o->mode == UD_WRITE_CHANGESET)
-        return UD_UNSUPPORTED;
     int own = !p->transaction;
     ud_status s = own ? begin(p, UD_ISOLATION_SERIALIZABLE) : UD_OK;
     if (!s && o->mode == UD_WRITE_CHANGESET && o->current_column != UINT32_MAX) {
@@ -863,12 +1108,37 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
                                               o->source_position.data, o->source_position.length))))
         s = UD_CORRUPT;
     p->host.deallocate((void *)previous.source_position.data);
-    uint32_t limit = p->host.columns(b) ? p->host.parameter_limit(UD_SQL_ORACLE) / p->host.columns(b) : 0;
+    oracle *bulk = NULL;
+    ud_string stage = {0};
+    int native = !s && !exists && o->mode == UD_WRITE_APPEND && o->load_mode != UD_LOAD_PARAMETERS;
+    if (native) {
+        s = ud_oci_bulk_stage(p, o, b, &bulk, &stage);
+        if (s == UD_UNSUPPORTED && o->load_mode == UD_LOAD_AUTO) {
+            s = UD_OK;
+            native = 0;
+        }
+        ud_string apply = {0};
+        if (!s && native)
+            s = p->host.compile_stage(p->host.context, UD_SQL_ORACLE, o, b, stage,
+                                      UD_SQL_STAGE_APPLY, &apply);
+        uint64_t affected = 0;
+        if (!s && native)
+            s = execute(p,
+                        &(ud_read_options){.struct_size = sizeof(ud_read_options),
+                                           .abi_version = UD_ABI_VERSION,
+                                           .sql = apply},
+                        &affected);
+        if (!s && native && affected != p->host.rows(b))
+            s = UD_FENCED;
+        p->host.deallocate((void *)apply.data);
+    }
+    uint32_t limit =
+        p->host.columns(b) ? p->host.parameter_limit(UD_SQL_ORACLE) / p->host.columns(b) : 0;
     if (!limit)
         s = UD_RESOURCE;
     if (limit > 128)
         limit = 128;
-    for (uint32_t row = 0; !s && !exists && row < p->host.rows(b);) {
+    for (uint32_t row = 0; !s && !exists && !native && row < p->host.rows(b);) {
         uint32_t count = o->mode == UD_WRITE_CHANGESET ? 1 : p->host.rows(b) - row;
         if (count > limit)
             count = limit;
@@ -902,7 +1172,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s)
             s = execute_statement(p, stmt, 1, &affected);
         if (!s && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT &&
-            affected != 1)
+            o->operations[row] != UD_CHANGE_TRUNCATE && affected != 1)
             s = UD_FENCED;
         release(p, stmt);
         cells_clear(p, values, plan.parameter_count);
@@ -930,7 +1200,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s)
             s = p->host.append(params, values, 5);
         ud_read_options insert = {
-            .sql = {"INSERT INTO ud_sdk_receipts_v2(tenant,job,batch_id,digest,source_position) "
+            .sql = {"INSERT INTO ud_sdk_receipts_v10(tenant,job,batch_id,digest,source_position) "
                     "VALUES(:p1,:p2,:p3,:p4,:p5)",
                     97},
             .parameters = params};
@@ -948,6 +1218,17 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     p->host.deallocate(p->write_types);
     p->write_types = NULL;
     p->write_count = 0;
+    if (bulk) {
+        ud_status disposed = UD_OK;
+        if (!own || p->transaction) {
+            disposed = ud_oci_bulk_defer(p, o, b, stage);
+            ud_oci_destroy(bulk); /* Loaded staging persists until the branch resolves. */
+        } else
+            disposed = ud_oci_bulk_dispose(bulk, o, b, stage);
+        if (!s && disposed)
+            s = disposed;
+    }
+    p->host.deallocate((void *)stage.data);
     return s;
 }
 static ud_status test(void *state) {
@@ -960,10 +1241,10 @@ static ud_status test(void *state) {
 static void cancel(void *state) {
     oracle *p = state;
     atomic_store(&p->cancelled, 1);
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     if (p->service)
         OCIBreak(p->service, p->error);
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
 }
 static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     oracle *p = state;
@@ -992,7 +1273,7 @@ static ud_status session_policy(oracle *p) {
 }
 static ud_status reset(void *state) {
     oracle *p = state;
-    if (p->broken || p->cursor || p->cdc)
+    if (p->broken || p->cursor || p->cdc || p->branch_id[0] || p->bulk_drops)
         return UD_IO;
     atomic_store(&p->cancelled, 0);
     ud_status s = rollback(p);
@@ -1006,20 +1287,29 @@ void ud_oci_destroy(void *state) {
         return;
     ud_oracle_cdc_close(p);
     ud_oci_read_close(p);
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     if (p->service)
         OCILogoff(p->service, p->error);
     p->service = NULL;
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
+    if (p->branch_handle)
+        OCIHandleFree(p->branch_handle, OCI_HTYPE_TRANS);
     if (p->error)
         OCIHandleFree(p->error, OCI_HTYPE_ERROR);
     if (p->env)
         OCIHandleFree(p->env, OCI_HTYPE_ENV);
-    pthread_mutex_destroy(&p->ownership);
+    ud_mutex_destroy(&p->ownership);
     p->host.deallocate(p->write_types);
+    ud_oci_bulk_forget(p); /* Unknown prepared branches preserve their physical staging data. */
+    if (p->configuration) {
+        volatile char *bytes = p->configuration;
+        for (uint32_t index = 0; index < p->configuration_length; index++)
+            bytes[index] = 0;
+        p->host.deallocate(p->configuration);
+    }
     p->host.deallocate(p);
 }
-static ud_status initialize(const ud_host_api *h, const char *text, uint32_t length, void **out) {
+ud_status ud_oci_initialize(const ud_host_api *h, const char *text, uint32_t length, void **out) {
     *out = NULL;
     oracle *p = h->allocate(h->context, sizeof(*p));
     if (!p)
@@ -1029,8 +1319,11 @@ static ud_status initialize(const ud_host_api *h, const char *text, uint32_t len
     p->user = h->control_user;
     p->check = h->check_io;
     atomic_init(&p->cancelled, 0);
-    if (pthread_mutex_init(&p->ownership, NULL)) {
-        h->deallocate(p);
+    ud_mutex_init(&p->ownership);
+    p->configuration = plugin_string(h, text, length);
+    p->configuration_length = length;
+    if (!p->configuration) {
+        ud_oci_destroy(p);
         return UD_RESOURCE;
     }
     ud_json *config = NULL;
@@ -1091,6 +1384,15 @@ static ud_status initialize(const ud_host_api *h, const char *text, uint32_t len
                                   p->error));
     if (!s)
         s = session_policy(p);
+    if (!s) {
+        ud_field probe = {.name = "available", .name_length = 9, .type = UD_INT64};
+        ud_batch *rows = NULL;
+        ud_status probed =
+            ud_oci_query(p, "SELECT COUNT(*) AS \"available\" FROM TABLE(DBMS_XA.XA_RECOVER)", NULL,
+                         0, &probe, 1, &rows);
+        p->participant_enabled = !probed && p->host.rows(rows) == 1;
+        p->host.batch_destroy(rows);
+    }
     h->json_destroy(config);
     if (s) {
         ud_oci_destroy(p);
@@ -1102,11 +1404,13 @@ static ud_status initialize(const ud_host_api *h, const char *text, uint32_t len
 static const ud_connector_api api = {
     .struct_size = sizeof(api),
     .abi_version = UD_ABI_VERSION,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-                    UD_CONNECT_CHANGESET | UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL |
-                    UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_PREPARED |
-                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION | UD_CONNECT_POOL |
-                    UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT,
+    .capabilities = UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND |
+                    UD_CONNECT_UPSERT | UD_CONNECT_DELETE | UD_CONNECT_CHANGESET |
+                    UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
+                    UD_CONNECT_METADATA | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
+                    UD_CONNECT_PROVISION | UD_CONNECT_POOL | UD_CONNECT_CDC |
+                    UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT |
+                    UD_CONNECT_TRANSACTION_PARTICIPANT | UD_CONNECT_NATIVE_BULK,
     .test = test,
     .discover = discover,
     .read_open = ud_oci_read_open,
@@ -1122,13 +1426,19 @@ static const ud_connector_api api = {
     .metadata = metadata,
     .set_control = set_control,
     .reset_session = reset,
+    .session_capabilities = session_capabilities,
+    .record_diagnostic = record_diagnostic,
     .provision = provision,
     .parameter_style = UD_SQL_PARAMETER_NAMED,
     .metadata_dialect = UD_SQL_ORACLE,
     .cdc_open = ud_oracle_cdc_open,
     .cdc_next = ud_oracle_cdc_next,
     .cdc_confirm = ud_oracle_cdc_confirm,
-    .cdc_close = ud_oracle_cdc_close};
+    .cdc_close = ud_oracle_cdc_close,
+    .transaction_begin = transaction_begin,
+    .transaction_prepare = transaction_prepare,
+    .transaction_resolve = transaction_resolve,
+    .transaction_recover = transaction_recover};
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
         return UD_INCOMPATIBLE;
@@ -1139,7 +1449,7 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
                            .roles = UD_PLUGIN_CONNECTOR,
                            .capabilities = UD_CAP_READ | UD_CAP_WRITE | UD_CAP_SQL |
                                            UD_CAP_TRANSACTION | UD_CAP_THREAD_SAFE,
-                           .initialize = initialize,
+                           .initialize = ud_oci_initialize,
                            .destroy = ud_oci_destroy,
                            .shutdown = plugin_shutdown,
                            .connector = &api};

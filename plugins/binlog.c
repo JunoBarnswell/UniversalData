@@ -13,15 +13,45 @@ struct ud_binlog {
     ud_batch *schema;
     char *database, *table, *transaction, *incarnation;
     uint8_t *types, *meta, *unsigned_columns;
+    uint8_t *before_map, *after_map;
     uint32_t columns, batch_rows;
     uint64_t table_id, version;
     int maria, begun, checksum;
     uint8_t *pending;
     size_t pending_size, pending_at;
-    int pending_action;
+    int pending_action, pending_control;
     ud_string pending_position;
     int64_t pending_watermark;
+    char **owned_values;
+    uint32_t owned_count, owned_capacity;
 };
+static ud_status own_value(ud_binlog *decoder, char *value) {
+    if (decoder->owned_count == decoder->owned_capacity) {
+        uint32_t capacity = decoder->owned_capacity ? decoder->owned_capacity * 2 : 16;
+        if (capacity < decoder->owned_capacity || (uint64_t)capacity * sizeof(char *) > SIZE_MAX) {
+            decoder->host.deallocate(value);
+            return UD_RESOURCE;
+        }
+        char **values =
+            decoder->host.allocate(decoder->host.context, (size_t)capacity * sizeof(*values));
+        if (!values) {
+            decoder->host.deallocate(value);
+            return UD_RESOURCE;
+        }
+        if (decoder->owned_count)
+            memcpy(values, decoder->owned_values, (size_t)decoder->owned_count * sizeof(*values));
+        decoder->host.deallocate(decoder->owned_values);
+        decoder->owned_values = values;
+        decoder->owned_capacity = capacity;
+    }
+    decoder->owned_values[decoder->owned_count++] = value;
+    return UD_OK;
+}
+static void clear_values(ud_binlog *decoder) {
+    for (uint32_t j = 0; j < decoder->owned_count; j++)
+        decoder->host.deallocate(decoder->owned_values[j]);
+    decoder->owned_count = 0;
+}
 typedef struct bytes {
     const uint8_t *p;
     size_t n, at;
@@ -113,16 +143,20 @@ static ud_status map(ud_binlog *d, bytes *b) {
             : field.type == UD_INT64
                 ? type == 1 || type == 2 || type == 3 || type == 8 || type == 9 || type == 13
             : field.type == UD_FLOAT64    ? type == 4 || type == 5
+            : field.type == UD_UINT64     ? (field.dictionary_kind ? type == 254 : type == 8)
             : field.type == UD_DECIMAL128 ? type == 246 || type == 8
             : field.type == UD_UTF8 ? type == 15 || type == 253 || type == 254 || type == 245 ||
                                           (type >= 249 && type <= 252)
             : field.type == UD_BINARY ? type == 16 || type == 15 || type == 253 || type == 254 ||
                                             (type >= 249 && type <= 252)
-            : field.type == UD_DATE32    ? type == 10 || type == 14
-            : field.type == UD_TIME64    ? type == 11 || type == 19
+            : field.type == UD_DATE32                              ? type == 10 || type == 14
+            : field.type == UD_TIME64 || field.type == UD_DURATION ? type == 11 || type == 19
             : field.type == UD_TIMESTAMP ? type == 7 || type == 12 || type == 17 || type == 18
                                          : 0;
         if (!compatible)
+            return UD_INCOMPATIBLE;
+        if (type == 254 && (metadata[at] == 247 || metadata[at] == 248) &&
+            field.dictionary_kind != (metadata[at] == 247 ? UD_DICTIONARY_ENUM : UD_DICTIONARY_SET))
             return UD_INCOMPATIBLE;
         if (type == 246 && (metadata[at] != field.precision || metadata[at + 1] != field.scale))
             return UD_INCOMPATIBLE;
@@ -274,12 +308,17 @@ static ud_status value(ud_binlog *d, bytes *b, uint32_t column, const ud_field *
             int32_t signed_time = (int32_t)raw;
             if (raw & 0x800000)
                 signed_time |= (int32_t)0xff000000;
-            if (signed_time < 0)
-                return UD_UNSUPPORTED;
-            int64_t micros = ((signed_time / 10000) * 3600 + (signed_time / 100 % 100) * 60 +
-                              signed_time % 100) *
-                             INT64_C(1000000);
-            if (micros >= INT64_C(86400000000))
+            int negative = signed_time < 0;
+            uint32_t magnitude =
+                negative ? (uint32_t)(-(int64_t)signed_time) : (uint32_t)signed_time;
+            uint32_t hour = magnitude / 10000, minute = magnitude / 100 % 100,
+                     second = magnitude % 100;
+            if (hour > 838 || minute >= 60 || second >= 60)
+                return UD_CORRUPT;
+            int64_t micros = ((int64_t)hour * 3600 + minute * 60 + second) * 1000000;
+            if (negative)
+                micros = -micros;
+            if (f->type == UD_TIME64 && (micros < 0 || micros >= 86400000000LL))
                 return UD_UNSUPPORTED;
             v->integer = micros;
             return UD_OK;
@@ -289,8 +328,14 @@ static ud_status value(ud_binlog *d, bytes *b, uint32_t column, const ud_field *
             return UD_OK;
         }
         if (f->type == UD_DECIMAL128) {
-            v->decimal = (ud_decimal128){raw, 0};
-            return UD_OK;
+            char text[32];
+            int64_t signed_value;
+            memcpy(&signed_value, &raw, 8);
+            int length = d->unsigned_columns[column]
+                             ? snprintf(text, sizeof(text), "%llu", (unsigned long long)raw)
+                             : snprintf(text, sizeof(text), "%lld", (long long)signed_value);
+            return d->host.parse_field(d->host.context, f, text, (uint32_t)length, UD_ROUND_EXACT,
+                                       v);
         }
         if (!d->unsigned_columns[column] && width < 8 && (raw & (UINT64_C(1) << (width * 8 - 1))))
             raw |= UINT64_MAX << (width * 8);
@@ -310,26 +355,34 @@ static ud_status value(ud_binlog *d, bytes *b, uint32_t column, const ud_field *
         const uint8_t *decimal;
         if (!take(b, bytes, &decimal))
             return UD_CORRUPT;
-        uint32_t micros = (uint32_t)big(decimal, bytes);
+        uint32_t raw_fraction = (uint32_t)big(decimal, bytes);
+        int64_t fractional = raw_fraction;
+        int64_t packed_time = (int64_t)raw - 0x800000;
+        if (type == 19 && packed_time < 0 && raw_fraction) {
+            packed_time++;
+            fractional -= (INT64_C(1) << (bytes * 8));
+        }
         if (bytes == 1)
-            micros *= 10000;
+            fractional *= 10000;
         else if (bytes == 2)
-            micros *= 100;
-        if (micros >= 1000000)
+            fractional *= 100;
+        if (fractional <= -1000000 || fractional >= 1000000)
             return UD_CORRUPT;
+        uint32_t micros = (uint32_t)fractional;
         if (type == 17) {
-            v->integer = (int64_t)raw * 1000000 + micros;
+            v->integer = (int64_t)raw * 1000000 + fractional;
             return UD_OK;
         }
         if (type == 19) {
-            int64_t time = (int64_t)raw - 0x800000;
-            if (time < 0)
+            uint64_t magnitude = packed_time < 0 ? (uint64_t)-packed_time : (uint64_t)packed_time;
+            uint32_t hour = (uint32_t)(magnitude >> 12), minute = (uint32_t)(magnitude >> 6) & 63,
+                     second = (uint32_t)magnitude & 63;
+            if (hour > 838 || minute >= 60 || second >= 60)
+                return UD_CORRUPT;
+            int64_t seconds = (int64_t)hour * 3600 + minute * 60 + second;
+            v->integer = (packed_time < 0 ? -seconds : seconds) * 1000000 + fractional;
+            if (f->type == UD_TIME64 && (v->integer < 0 || v->integer >= 86400000000LL))
                 return UD_UNSUPPORTED;
-            uint32_t h = (uint32_t)(time >> 12), m = (uint32_t)(time >> 6) & 63,
-                     s = (uint32_t)time & 63;
-            if (h >= 24 || m >= 60 || s >= 60)
-                return UD_UNSUPPORTED;
-            v->integer = ((int64_t)h * 3600 + m * 60 + s) * 1000000 + micros;
             return UD_OK;
         }
         if (raw < UINT64_C(0x8000000000))
@@ -348,8 +401,17 @@ static ud_status value(ud_binlog *d, bytes *b, uint32_t column, const ud_field *
         if (type == 254) {
             uint32_t meta = ((uint32_t)d->meta[column * 2] << 8) | d->meta[column * 2 + 1];
             uint32_t real = meta >> 8;
-            if (real == 247 || real == 248)
-                return UD_UNSUPPORTED;
+            if (real == 247 || real == 248) {
+                width = meta & 255;
+                if (!width || width > (real == 247 ? 2u : 8u) || !take(b, width, &p))
+                    return UD_CORRUPT;
+                uint64_t index = little(p, width);
+                if ((real == 247 && index > f->dictionary_count) ||
+                    (real == 248 && f->dictionary_count < 64 && (index >> f->dictionary_count)))
+                    return UD_CORRUPT;
+                v->unsigned_integer = index;
+                return UD_OK;
+            }
             maximum = ((meta >> 4) & 0x300) ^ (meta & 255);
         }
         width = maximum > 255 ? 2 : 1;
@@ -364,12 +426,19 @@ static ud_status value(ud_binlog *d, bytes *b, uint32_t column, const ud_field *
         if (width < 1 || width > 4 || !take(b, width, &p))
             return UD_CORRUPT;
         length = little(p, width);
-        if (type == 245)
-            return UD_UNSUPPORTED;
     } else
         return UD_UNSUPPORTED;
     if (length > 16777216 || !take(b, (size_t)length, &p))
         return length > 16777216 ? UD_RESOURCE : UD_CORRUPT;
+    if (type == 245) {
+        char *json = NULL;
+        uint32_t n;
+        TRY(d->host.mysql_json_decode(d->host.context, p, (uint32_t)length, &json, &n));
+        TRY(own_value(d, json));
+        v->text = json;
+        v->text_length = n;
+        return UD_OK;
+    }
     if (f->type == UD_BINARY) {
         v->text = (const char *)p;
         v->text_length = (uint32_t)length;
@@ -378,18 +447,26 @@ static ud_status value(ud_binlog *d, bytes *b, uint32_t column, const ud_field *
     return d->host.parse_field(d->host.context, f, (const char *)p, (uint32_t)length,
                                UD_ROUND_EXACT, v);
 }
-static ud_status tuple(ud_binlog *d, bytes *b, ud_value *values) {
+static ud_status tuple(ud_binlog *d, bytes *b, const uint8_t *present, ud_value *values) {
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < d->columns; i++)
+        count += !!(present[i / 8] & (1u << (i % 8)));
     const uint8_t *nulls;
-    if (!take(b, (d->columns + 7) / 8, &nulls))
+    if (!take(b, (count + 7) / 8, &nulls))
         return UD_CORRUPT;
+    uint32_t at = 0;
     for (uint32_t i = 0; i < d->columns; i++) {
         ud_field f;
         TRY(d->host.field(d->schema, i, &f));
-        if (nulls[i / 8] & (1u << (i % 8)))
-            values[i] = (ud_value){
-                .type = f.type, .is_null = 1, .precision = f.precision, .scale = f.scale};
-        else
+        values[i] =
+            (ud_value){.type = f.type, .is_null = 1, .precision = f.precision, .scale = f.scale};
+        if (!(present[i / 8] & (1u << (i % 8)))) {
+            values[i].is_absent = 1;
+            continue;
+        }
+        if (!(nulls[at / 8] & (1u << (at % 8))))
             TRY(value(d, b, i, &f, values + i));
+        at++;
     }
     return UD_OK;
 }
@@ -411,11 +488,17 @@ static ud_status rows_payload(ud_binlog *d, bytes *b, int action, ud_cdc_event *
         if (row == capacity)
             break;
         if (action != UD_CHANGE_INSERT)
-            s = tuple(d, b, before);
+            s = tuple(d, b, d->before_map, before);
         if (!s && action != UD_CHANGE_DELETE)
-            s = tuple(d, b, after);
+            s = tuple(d, b, d->after_map, after);
         if (!s && action == UD_CHANGE_DELETE)
             memcpy(after, before, d->columns * sizeof(*after));
+        for (uint32_t i = 0; !s && action == UD_CHANGE_UPDATE && i < d->columns; i++) {
+            ud_field field;
+            s = d->host.field(d->schema, i, &field);
+            if (!s && field.key_order && after[i].is_absent && !before[i].is_absent)
+                after[i] = before[i];
+        }
         if (!s)
             s = d->host.append(out->after, after, d->columns);
         if (!s && out->before)
@@ -425,6 +508,7 @@ static ud_status rows_payload(ud_binlog *d, bytes *b, int action, ud_cdc_event *
     }
     d->host.deallocate(before);
     d->host.deallocate(after);
+    clear_values(d);
     out->kind = UD_CDC_ROWS;
     return s;
 }
@@ -450,9 +534,10 @@ static ud_status rows(ud_binlog *d, bytes *b, int kind, ud_cdc_event *out) {
     for (uint32_t m = 0; m < maps; m++) {
         if (!take(b, (d->columns + 7) / 8, &p))
             return UD_CORRUPT;
-        for (uint32_t i = 0; i < d->columns; i++)
-            if (!(p[i / 8] & (1u << (i % 8))))
-                return UD_UNSUPPORTED;
+        uint8_t *map = maps == 2                  ? (m ? d->after_map : d->before_map)
+                       : kind == 23 || kind == 30 ? d->after_map
+                                                  : d->before_map;
+        memcpy(map, p, (d->columns + 7) / 8);
     }
     int action = kind == 23 || kind == 30   ? UD_CHANGE_INSERT
                  : kind == 24 || kind == 31 ? UD_CHANGE_UPDATE
@@ -486,6 +571,97 @@ ud_status ud_binlog_packet(const void *raw, size_t size, const uint8_t **out, si
     *out = data;
     *length = size;
     return UD_OK;
+}
+static void sql_space(const char **text, size_t *size) {
+    while (*size && (**text == ' ' || **text == '\t' || **text == '\r' || **text == '\n')) {
+        (*text)++;
+        (*size)--;
+    }
+}
+static int sql_word(const char **text, size_t *size, const char *word) {
+    size_t length = strlen(word);
+    if (*size < length)
+        return 0;
+    for (size_t at = 0; at < length; at++) {
+        unsigned char value = (unsigned char)(*text)[at];
+        if (value >= 'a' && value <= 'z')
+            value -= 'a' - 'A';
+        if (value != (unsigned char)word[at])
+            return 0;
+    }
+    if (*size > length && (*text)[length] != ' ' && (*text)[length] != '\t' &&
+        (*text)[length] != '\n' && (*text)[length] != '\r')
+        return 0;
+    *text += length;
+    *size -= length;
+    sql_space(text, size);
+    return 1;
+}
+static int sql_name(const char **text, size_t *size, char output[257]) {
+    uint32_t length = 0;
+    int quoted = *size && **text == '`';
+    if (quoted) {
+        (*text)++;
+        (*size)--;
+    }
+    int closed = !quoted;
+    while (*size) {
+        unsigned char value = (unsigned char)**text;
+        if (quoted && value == '`') {
+            (*text)++;
+            (*size)--;
+            if (*size && **text == '`') {
+                value = '`';
+            } else {
+                closed = 1;
+                break;
+            }
+        } else if (!quoted && !(value > 127 || (value >= 'a' && value <= 'z') ||
+                                (value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9') ||
+                                value == '_' || value == '$'))
+            break;
+        if (length == 256 || !value)
+            return 0;
+        output[length++] = (char)value;
+        (*text)++;
+        (*size)--;
+    }
+    output[length] = 0;
+    sql_space(text, size);
+    return length && closed;
+}
+static int source_truncate(ud_binlog *decoder, const char *query, size_t size, const char *database,
+                           size_t database_length) {
+    if (!sql_word(&query, &size, "TRUNCATE"))
+        return 0;
+    (void)sql_word(&query, &size, "TABLE");
+    char first[257], second[257];
+    if (!sql_name(&query, &size, first))
+        return 0;
+    const char *table = first, *schema = NULL;
+    if (size && *query == '.') {
+        query++;
+        size--;
+        sql_space(&query, &size);
+        if (!sql_name(&query, &size, second))
+            return 0;
+        schema = first;
+        table = second;
+    }
+    if (size && *query == ';') {
+        query++;
+        size--;
+        sql_space(&query, &size);
+    }
+    if (size || strcmp(table, decoder->table))
+        return 0;
+    if (decoder->database) {
+        if (schema)
+            return !strcmp(schema, decoder->database);
+        return strlen(decoder->database) == database_length &&
+               !memcmp(database, decoder->database, database_length);
+    }
+    return schema == NULL;
 }
 ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string file,
                            ud_cdc_event *out) {
@@ -632,6 +808,28 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
                 out->kind = UD_CDC_BEGIN;
                 s = d->transaction && out->transaction_id.data ? UD_OK : UD_RESOURCE;
             }
+        } else if (source_truncate(d, query, n, (const char *)body.p + 13 + status,
+                                   database_length)) {
+            if (!d->begun) {
+                char identity[320];
+                int length = snprintf(identity, sizeof(identity), "%.*s:%llu", (int)file.length,
+                                      file.data, (unsigned long long)position);
+                if (length < 0 || (size_t)length >= sizeof(identity))
+                    return UD_RESOURCE;
+                d->host.deallocate(d->transaction);
+                d->transaction = plugin_string(&d->host, identity, (uint32_t)length);
+                out->transaction_id = (ud_string){
+                    plugin_string(&d->host, identity, (uint32_t)length), (uint32_t)length};
+                if (!d->transaction || !out->transaction_id.data)
+                    return UD_RESOURCE;
+                d->begun = 1;
+                out->kind = UD_CDC_BEGIN;
+                d->pending_control = 1;
+            } else {
+                out->kind = UD_CDC_TRUNCATE;
+                d->pending_control = 2;
+            }
+            s = UD_OK;
         } else {
             out->kind = UD_CDC_SCHEMA_CHANGE;
             s = UD_OK;
@@ -661,7 +859,7 @@ ud_status ud_binlog_decode(ud_binlog *d, const void *raw, size_t size, ud_string
             return UD_RESOURCE;
         }
         out->position = (ud_string){text, (uint32_t)length};
-        if (d->pending) {
+        if (d->pending || d->pending_control) {
             d->pending_position =
                 (ud_string){plugin_string(&d->host, text, (uint32_t)length), (uint32_t)length};
             d->pending_watermark = out->watermark;
@@ -695,8 +893,11 @@ ud_status ud_binlog_create(const ud_host_api *h, const ud_cdc_options *o, int ma
     d->types = h->allocate(h->context, d->columns);
     d->meta = h->allocate(h->context, d->columns * 2);
     d->unsigned_columns = h->allocate(h->context, d->columns);
+    d->before_map = h->allocate(h->context, (d->columns + 7) / 8);
+    d->after_map = h->allocate(h->context, (d->columns + 7) / 8);
     ud_field *f = NULL;
-    ud_status s = d->incarnation && d->table && d->types && d->meta && d->unsigned_columns
+    ud_status s = d->incarnation && d->table && d->types && d->meta && d->unsigned_columns &&
+                          d->before_map && d->after_map
                       ? plugin_fields(h, o->schema, &f)
                       : UD_RESOURCE;
     if (!s)
@@ -712,12 +913,16 @@ ud_status ud_binlog_create(const ud_host_api *h, const ud_cdc_options *o, int ma
 void ud_binlog_destroy(ud_binlog *d) {
     if (!d)
         return;
+    clear_values(d);
+    d->host.deallocate(d->owned_values);
     d->host.batch_destroy(d->schema);
     d->host.deallocate(d->database);
     d->host.deallocate(d->table);
     d->host.deallocate(d->transaction);
     d->host.deallocate(d->incarnation);
     d->host.deallocate(d->pending);
+    d->host.deallocate(d->before_map);
+    d->host.deallocate(d->after_map);
     d->host.deallocate((void *)d->pending_position.data);
     d->host.deallocate(d->types);
     d->host.deallocate(d->meta);
@@ -725,6 +930,61 @@ void ud_binlog_destroy(ud_binlog *d) {
     d->host.deallocate(d);
 }
 
+ud_status ud_binlog_rebind(ud_binlog *d, const ud_batch *schema, uint64_t version,
+                           ud_string position) {
+    if (d->pending || d->pending_control)
+        return UD_BUSY;
+    ud_field *fields = NULL;
+    ud_batch *owned = NULL;
+    ud_status status = plugin_fields(&d->host, schema, &fields);
+    uint32_t columns = d->host.columns(schema);
+    if (!status)
+        status = d->host.batch_create(d->host.context, fields, columns, 0, &owned);
+    d->host.deallocate(fields);
+    uint8_t *types = NULL, *meta = NULL, *unsigned_columns = NULL, *before = NULL, *after = NULL;
+    if (!status) {
+        types = d->host.allocate(d->host.context, columns);
+        meta = d->host.allocate(d->host.context, columns * 2);
+        unsigned_columns = d->host.allocate(d->host.context, columns);
+        before = d->host.allocate(d->host.context, (columns + 7) / 8);
+        after = d->host.allocate(d->host.context, (columns + 7) / 8);
+        if (!types || !meta || !unsigned_columns || !before || !after)
+            status = UD_RESOURCE;
+    }
+    if (!status) {
+        d->host.batch_destroy(d->schema);
+        d->schema = owned;
+        owned = NULL;
+        d->host.deallocate(d->types);
+        d->host.deallocate(d->meta);
+        d->host.deallocate(d->unsigned_columns);
+        d->host.deallocate(d->before_map);
+        d->host.deallocate(d->after_map);
+        d->types = types;
+        d->meta = meta;
+        d->unsigned_columns = unsigned_columns;
+        d->before_map = before;
+        d->after_map = after;
+        d->columns = columns;
+        d->table_id = 0;
+        d->version = version;
+        if (position.length) {
+            d->pending_position = (ud_string){
+                plugin_string(&d->host, position.data, position.length), position.length};
+            if (!d->pending_position.data)
+                return UD_RESOURCE;
+            d->pending_control = d->begun ? 2 : 3;
+        }
+    } else {
+        d->host.deallocate(types);
+        d->host.deallocate(meta);
+        d->host.deallocate(unsigned_columns);
+        d->host.deallocate(before);
+        d->host.deallocate(after);
+    }
+    d->host.batch_destroy(owned);
+    return status;
+}
 void ud_binlog_unchanged_schema(ud_binlog *d, ud_cdc_event *out) {
     /* Unrelated database DDL still completes its log transaction. It changes
      * no source columns and cannot leave a previously emitted BEGIN open. */
@@ -732,6 +992,38 @@ void ud_binlog_unchanged_schema(ud_binlog *d, ud_cdc_event *out) {
     d->begun = 0;
 }
 ud_status ud_binlog_drain(ud_binlog *d, ud_cdc_event *out) {
+    if (d->pending_control) {
+        memset(out, 0, sizeof(*out));
+        out->struct_size = sizeof(*out);
+        out->abi_version = UD_ABI_VERSION;
+        out->schema_version = d->version;
+        out->watermark = d->pending_watermark;
+        out->position = (ud_string){
+            plugin_string(&d->host, d->pending_position.data, d->pending_position.length),
+            d->pending_position.length};
+        if (!out->position.data)
+            return UD_RESOURCE;
+        if (d->pending_control == 3) {
+            out->kind = UD_CDC_BEGIN;
+            d->begun = 1;
+            d->pending_control = 2;
+            out->transaction_id = (ud_string){
+                plugin_string(&d->host, d->pending_position.data, d->pending_position.length),
+                d->pending_position.length};
+            if (!out->transaction_id.data)
+                return UD_RESOURCE;
+        } else if (d->pending_control == 1) {
+            out->kind = UD_CDC_TRUNCATE;
+            d->pending_control = 2;
+        } else {
+            out->kind = UD_CDC_COMMIT;
+            d->pending_control = 0;
+            d->begun = 0;
+            d->host.deallocate((void *)d->pending_position.data);
+            d->pending_position = (ud_string){0};
+        }
+        return UD_OK;
+    }
     if (!d->pending)
         return UD_BUSY;
     memset(out, 0, sizeof(*out));

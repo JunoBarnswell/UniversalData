@@ -46,6 +46,26 @@ public sealed class Batch : IDisposable
     { get { lock (execution) { EnsureOpen(); return Native.ud_batch_rows(batch); } } }
     public uint Columns
     { get { lock (execution) { EnsureOpen(); return Native.ud_batch_columns(batch); } } }
+    public bool HasAbsentFields
+    { get { lock (execution) { EnsureOpen(); return Native.ud_batch_has_absent(batch) != 0; } } }
+    private Native.ScalarValue Scalar(uint row, uint column, DataType type)
+    {
+        EnsureOpen(); DataOwnership.Check(context, Native.ud_batch_get(batch, row, column, out var value));
+        if (value.Type != (int)type || value.IsNull != 0 || value.IsAbsent != 0)
+            throw new UniversalDataException((int)StatusCode.Incompatible, "Field is absent, null, or has a different native type");
+        return value;
+    }
+    public ulong GetUInt64(uint row, uint column)
+    { lock (execution) { return Scalar(row, column, DataType.UInt64).Unsigned; } }
+    public Duration GetDuration(uint row, uint column)
+    { lock (execution) { return new(unchecked((long)Scalar(row, column, DataType.Duration).Unsigned)); } }
+    public Interval GetInterval(uint row, uint column)
+    { lock (execution) { var value = Scalar(row, column, DataType.Interval).Interval; return new(value.Months, value.Days, value.Microseconds); } }
+    public bool IsFieldPresent(uint row, uint column)
+    {
+        lock (execution) { EnsureOpen(); DataOwnership.Check(context,
+            Native.ud_batch_cell_present(batch, row, column, out var present)); return present != 0; }
+    }
 
     public string ToJson()
     {
@@ -170,6 +190,26 @@ internal sealed class BatchHandle : SafeHandleZeroOrMinusOneIsInvalid
 
 internal static partial class Native
 {
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct IntervalValue { internal int Months, Days; internal long Microseconds; }
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ScalarValue
+    {
+        internal int Type, IsNull;
+        internal ulong Unsigned;
+        internal double Real;
+        internal IntPtr Text;
+        internal uint TextLength;
+        internal ulong DecimalLow, DecimalHigh;
+        internal int Precision, Scale;
+        internal IntPtr Children;
+        internal uint ChildCount;
+        internal IntervalValue Interval;
+        internal int IsAbsent;
+    }
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_get(BatchHandle batch, uint row, uint column, out ScalarValue value);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_has_absent(BatchHandle batch);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_cell_present(BatchHandle batch, uint row, uint column, out int present);
     [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_batch_seal(BatchHandle batch);
     [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] private static extern int ud_pivot_discover_values(ContextHandle context,BatchHandle batch,uint column,StringValue prefix,uint maximum,out IntPtr text,out uint length);
     internal static int DiscoverPivot(ContextHandle context,BatchHandle batch,uint column,byte[] prefix,uint maximum,out IntPtr text,out uint length) {var pin=GCHandle.Alloc(prefix,GCHandleType.Pinned);try{return ud_pivot_discover_values(context,batch,column,new StringValue(pin.AddrOfPinnedObject(),checked((uint)prefix.Length)),maximum,out text,out length);}finally{pin.Free();}}

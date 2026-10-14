@@ -13,11 +13,11 @@ def source_hash():
         "CMakeLists.txt", "CMakePresets.json", "VERSION", ".github/workflows/ci.yml",
         "Directory.Build.props", "Directory.Build.targets", "UniversalData.sln")]
     for folder in ("include", "components", "engines", "connectors", "catalog", "plugins",
-                   "hosts", "bindings", "cmake", "tests", "examples", "scripts", "packaging", "metadata", "benchmarks"):
+                   "hosts", "products", "bindings", "cmake", "tests", "examples", "scripts", "packaging", "metadata", "benchmarks"):
         files.extend(p for p in (ROOT / folder).rglob("*") if p.is_file()
-            and not set(p.relative_to(ROOT).parts) & {"bin", "obj", "target", "build", "__pycache__"}
+            and not set(p.relative_to(ROOT).parts) & {"bin", "obj", "target", "build", "__pycache__", "node_modules", "wwwroot"}
             and p.suffix in {".c", ".h", ".cpp", ".cs", ".java", ".py", ".ps1", ".cmake", ".json",
-                             ".xml", ".csproj", ".vcxproj", ".filters", ".txt", ".props", ".in"}
+                             ".xml", ".csproj", ".vcxproj", ".filters", ".txt", ".props", ".in", ".tsx", ".ts", ".css", ".html", ".js"}
             and p != ROOT / "metadata/product.json")
     digest = hashlib.sha256()
     # Candidate/gate evidence cannot hash itself. Contract product fields are
@@ -71,12 +71,14 @@ def check():
                 or bundle.get("sdkVersion") != version or bundle.get("configuration") != "Release"
                 or bundle.get("runtimeIdentifier") != delivery.get("runtimeIdentifier")):
             errors.append("Artifact manifest differs from current source/ABI")
-        expected = {"sdk/bin/ud_data.dll", "sdk/bin/ud_java.dll", "sdk/bin/ud_cli.exe",
-                    "sdk/bin/ud_worker.exe", f"packages/UniversalData.{version}.nupkg",
+        expected = {"sdk/bin/ud_data.dll", "sdk/bin/ud_java.dll", "sdk/bin/universaldata/cli/ud_cli.exe",
+                    "sdk/bin/universaldata/worker/ud_worker.exe", "sdk/bin/universaldata/management/UniversalData.Management.dll",
+                    "sdk/bin/universaldata/management/wwwroot/index.html", f"packages/UniversalData.{version}.nupkg",
                     f"packages/universal-data-{version}.jar", "sdk/include/ud/version.h",
                     "sdk/include/ud/package.h", "sdk/lib/ud_data.lib"}
         if delivery.get("runtimeIdentifier")=="linux-x64":
-            expected={"sdk/lib/libud_data.so","sdk/lib/libud_java.so","sdk/bin/ud_cli","sdk/bin/ud_worker",
+            expected={"sdk/lib/libud_data.so","sdk/lib/libud_java.so","sdk/bin/universaldata/cli/ud_cli","sdk/bin/universaldata/worker/ud_worker",
+                      "sdk/bin/universaldata/management/UniversalData.Management.dll","sdk/bin/universaldata/management/wwwroot/index.html",
                       f"packages/UniversalData.{version}.nupkg",f"packages/universal-data-{version}.jar",
                       "sdk/include/ud/version.h","sdk/include/ud/package.h"}
         if not expected.issubset({entry["path"] for entry in bundle.get("files", [])}):

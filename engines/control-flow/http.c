@@ -3,6 +3,7 @@
 #include "ud/http.h"
 typedef struct http_config {
     ud_string connection, method, body, content_type, ca, status_variable;
+    ud_string body_variable, headers_variable;
     uint64_t timeout, maximum, attempts, delay, expected;
 } http_config;
 static int body_method(ud_string method) {
@@ -20,11 +21,11 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
     *p = (http_config){
         .method = {"GET", 3}, .timeout = 60000, .maximum = 1048576, .attempts = 1, .delay = 100};
     UD_TRY(ud_json_parse(c->memory, text.data, text.length, out, NULL));
-    static const char *keys[] = {"connection",       "method",        "body",
-                                 "contentType",      "caConnection",  "timeoutMs",
-                                 "maxResponseBytes", "maxAttempts",   "retryDelayMs",
-                                 "expectedStatus",   "statusVariable"};
-    ud_status s = ud_json_keys(*out, keys, 11);
+    static const char *keys[] = {
+        "connection",     "method",           "body",           "contentType",  "caConnection",
+        "timeoutMs",      "maxResponseBytes", "maxAttempts",    "retryDelayMs", "expectedStatus",
+        "statusVariable", "bodyVariable",     "headersVariable"};
+    ud_status s = ud_json_keys(*out, keys, 13);
     if (!s)
         s = ud_json_string(ud_member(*out, "connection"), &p->connection);
     const char *names[] = {"method", "contentType", "caConnection", "statusVariable"};
@@ -65,6 +66,18 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
         if (!s && v->value.type != UD_INT64)
             s = UD_SCHEMA;
     }
+    const char *response_names[] = {"bodyVariable", "headersVariable"};
+    ud_string *response_variables[] = {&p->body_variable, &p->headers_variable};
+    for (uint32_t index = 0; !s && index < 2; index++) {
+        if (!ud_member(*out, response_names[index]))
+            continue;
+        s = ud_json_string(ud_member(*out, response_names[index]), response_variables[index]);
+        ud_variable *variable = NULL;
+        if (!s)
+            s = ud_variable_writable(c->activation, *response_variables[index], &variable);
+        if (!s && variable->value.type != UD_UTF8 && (index || variable->value.type != UD_BINARY))
+            s = UD_SCHEMA;
+    }
     ud_string ids[] = {p->connection, p->ca};
     for (int i = 0; !s && i < 2; i++)
         if (ids[i].length) {
@@ -101,12 +114,53 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
     ud_json *doc = NULL;
     http_config p;
     ud_status s = read_config(c, text, &doc, &p);
-    ud_connection_lease*connection=NULL;
-    if(!s)s=ud_acquire_http_connection(c->activation,p.connection,&connection);
-    ud_http_options options={.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,.method=p.method,.body=p.body,.content_type=p.content_type,.ca=p.ca,.timeout=p.timeout,.maximum=p.maximum,.attempts=p.attempts,.delay=p.delay,.expected=p.expected};
-    ud_http_response response={0};if(!s)s=ud_http_call(c,connection,&options,&response);
-    if(response.status&&p.status_variable.length&&!ud_is_cancelled(c->memory)){ud_value value={.type=UD_INT64,.integer=response.status};ud_status saved=ud_activation_set_variable(c->activation,p.status_variable,&value,NULL);if(!s)s=saved;}
-    ud_http_response_clear(&response);ud_status closed=ud_connection_lease_release(connection);if(!s)s=closed;
+    ud_connection_lease *connection = NULL;
+    if (!s)
+        s = ud_acquire_http_connection(c->activation, p.connection, &connection);
+    ud_http_options options = {.struct_size = sizeof(options),
+                               .abi_version = UD_ABI_VERSION,
+                               .method = p.method,
+                               .body = p.body,
+                               .content_type = p.content_type,
+                               .ca = p.ca,
+                               .timeout = p.timeout,
+                               .maximum = p.maximum,
+                               .attempts = p.attempts,
+                               .delay = p.delay,
+                               .expected = p.expected};
+    ud_http_response response = {0};
+    if (!s)
+        s = ud_http_call(c, connection, &options, &response);
+    if (response.status && p.status_variable.length && !ud_is_cancelled(c->memory)) {
+        ud_value value = {.type = UD_INT64, .integer = response.status};
+        ud_status saved =
+            ud_activation_set_variable(c->activation, p.status_variable, &value, NULL);
+        if (!s)
+            s = saved;
+    }
+    if (s && !ud_named(p.method, "GET") && !ud_named(p.method, "HEAD") && response.attempted &&
+        (!response.completed || response.status >= 500 || response.status == 408))
+        s = UD_COMMIT_UNKNOWN;
+    const ud_string response_variables[] = {p.body_variable, p.headers_variable};
+    const ud_string response_values[] = {response.body, response.headers};
+    for (uint32_t index = 0; response.completed && index < 2; index++) {
+        if (!response_variables[index].length)
+            continue;
+        ud_variable *variable = NULL;
+        ud_status saved = ud_variable_writable(c->activation, response_variables[index], &variable);
+        ud_value value = {.type = variable ? variable->value.type : UD_UTF8,
+                          .text = response_values[index].data,
+                          .text_length = response_values[index].length};
+        if (!saved)
+            saved =
+                ud_activation_set_variable(c->activation, response_variables[index], &value, NULL);
+        if (!s)
+            s = saved;
+    }
+    ud_http_response_clear(&response);
+    ud_status closed = ud_connection_lease_release(connection);
+    if (!s)
+        s = closed;
     ud_json_destroy(doc);
     return s;
 }
@@ -121,12 +175,13 @@ ud_status ud_http_register(ud_registry *registry) {
         "\"maxAttempts\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":3},"
         "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000},"
         "\"expectedStatus\":{\"type\":\"integer\",\"minimum\":100,\"maximum\":599},"
-        "\"statusVariable\":{\"type\":\"string\"}}}";
+        "\"statusVariable\":{\"type\":\"string\"},\"bodyVariable\":{\"type\":\"string\"},"
+        "\"headersVariable\":{\"type\":\"string\"}}}";
     ud_component_descriptor d = {.struct_size = sizeof(d),
                                  .abi_version = UD_ABI_VERSION,
                                  .id = {"http.request", 12},
                                  .name = {"HTTP Request", 12},
-                                 .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION)-1},
+                                 .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
                                  .configuration_schema = {schema, sizeof(schema) - 1},
                                  .category = UD_COMPONENT_TASK,
                                  .synchronous_input = -1,

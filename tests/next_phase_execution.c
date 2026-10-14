@@ -1,5 +1,6 @@
 #include "check.h"
 #include "ud/package.h"
+#include "../engines/package/internal.h"
 #include <string.h>
 #ifdef _WIN32
 #include <process.h>
@@ -143,6 +144,8 @@ int main(int argc, char **argv) {
     f.execution = execution;
     if (!result)
         result = ud_execution_execute(execution);
+    if (result && execution)
+        fprintf(stderr, "Native failure: %s\n", ud_error(execution->ctx));
     if (!execution) {
         printf("{\"result\":%d}\n", result);
         return 0;

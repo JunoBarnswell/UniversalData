@@ -1,6 +1,6 @@
 import hashlib
 import json
-import struct
+import sqlite3
 import pathlib
 import subprocess
 import sys
@@ -9,21 +9,18 @@ import tempfile
 with tempfile.TemporaryDirectory(prefix="ud-history-") as temporary:
     root = pathlib.Path(temporary) / "catalog"
     subprocess.run([sys.argv[1], str(root)], check=True)
-    files = list(root.glob("*.udc"))
-    assert len(list(root.glob("catalog-5-*.udc"))) == 8
-    assert len(list(root.glob("catalog-6-*.udc"))) >= 8
-    assert all(b"FixtureSensitive" not in file.read_bytes() for file in files)
+    database = root / "catalog.sqlite3"
+    with sqlite3.connect(database) as connection:
+        rows = connection.execute("SELECT kind,document FROM documents ORDER BY kind,id,revision").fetchall()
+    assert sum(kind == 5 for kind, _ in rows) == 8
+    assert sum(kind == 6 for kind, _ in rows) >= 8
+    assert all("FixtureSensitive" not in document for _, document in rows)
     expected_hash = hashlib.sha256(b'{"secret":"FixtureSensitive"}').hexdigest()
-    for file in root.glob("catalog-5-*.udc"):
-        data = file.read_bytes()
-        assert hashlib.sha256(data[:-32]).digest() == data[-32:]
-        cursor = 16
-        for _ in range(2):
-            length = struct.unpack_from("<Q", data, cursor)[0]
-            cursor += 8 + length
-        cursor += 8
-        length = struct.unpack_from("<Q", data, cursor)[0]
-        record = json.loads(data[cursor + 8:cursor + 8 + length])
+    for kind, document in rows:
+        if kind != 5:
+            continue
+        record = json.loads(document)
+        assert record["version"] == 10
         assert record["parametersHash"] == expected_hash
         assert len(record["definitionHash"]) == 64
         assert record["projectId"] == "project"

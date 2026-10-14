@@ -1,28 +1,34 @@
+#include "postgresql_metadata.h"
 #include "common.h"
 #include "postgresql_cdc.h"
 #include <libpq-fe.h>
 #include <stdatomic.h>
-#include <pthread.h>
+#include "../components/foundation/thread.h"
 #ifdef _WIN32
 #include <winsock2.h>
 #else
 #include <poll.h>
 #endif
+static const ud_connector_api connector;
 typedef struct {
     ud_host_api host;
     PGconn *db;
     ud_pg_cdc *cdc;
     char *configuration;
     PGcancelConn *cancel;
-    pthread_mutex_t ownership;
+    ud_mutex ownership;
     ud_batch *schema;
     uint32_t batch_size;
+    ud_read_options record_options;
     int reading, finished;
     atomic_int cancelled;
     void *control_user;
     ud_status (*check)(void *);
     ud_status control_status;
     int transaction, cleaning, broken;
+    int prepared_enabled;
+    char branch_id[65];
+    char record_code[6];
 } postgres_state;
 static void interrupt_result(postgres_state *);
 static ud_status control(postgres_state *p) {
@@ -159,6 +165,13 @@ static PGresult *query(postgres_state *p, const char *sql, int n, const Oid *typ
         return NULL;
     /* A completed query drains its protocol; interrupted sessions are retired. */
     PGresult *result = PQgetResult(p->db), *extra;
+    /* COPY hands protocol ownership to the streaming transport. The server
+     * cannot complete this command until the client sends/consumes its data;
+     * attempting the ordinary result drain here deadlocks both sides. */
+    if (result && (PQresultStatus(result) == PGRES_COPY_IN ||
+                   PQresultStatus(result) == PGRES_COPY_OUT ||
+                   PQresultStatus(result) == PGRES_COPY_BOTH))
+        return result;
     while (wait_result(p) && (extra = PQgetResult(p->db)) != NULL) {
         PQclear(result);
         result = extra;
@@ -171,6 +184,9 @@ static PGresult *query(postgres_state *p, const char *sql, int n, const Oid *typ
 }
 static ud_status pg_failure(postgres_state *p, const PGresult *result) {
     const char *code = result ? PQresultErrorField(result, PG_DIAG_SQLSTATE) : NULL;
+    memset(p->record_code, 0, sizeof(p->record_code));
+    if (code)
+        memcpy(p->record_code, code, 5);
     ud_status status = PQstatus(p->db) != CONNECTION_OK ? UD_TRANSIENT : UD_IO;
     if (p->control_status)
         status = p->control_status;
@@ -183,9 +199,13 @@ static ud_status pg_failure(postgres_state *p, const PGresult *result) {
             status = UD_TRANSIENT;
         else if (!strcmp(code, "22003"))
             status = UD_OVERFLOW;
+        else if (!strcmp(code, "22001"))
+            status = UD_TRUNCATED;
         else if (!strncmp(code, "22", 2))
             status = UD_PARSE;
-        else if (!strncmp(code, "23", 2) || !strncmp(code, "42", 2))
+        else if (!strncmp(code, "23", 2))
+            status = UD_QUALITY;
+        else if (!strncmp(code, "42", 2))
             status = UD_SCHEMA;
         else if (!strcmp(code, "57014"))
             status = UD_CANCELLED;
@@ -193,6 +213,15 @@ static ud_status pg_failure(postgres_state *p, const PGresult *result) {
     /* Database diagnostics can echo literal data / credentials; expose classification only. */
     return p->host.report(p->host.context, status,
                           code ? code : "PostgreSQL connection / protocol failure");
+}
+static ud_status record_diagnostic(void *state, ud_string *out) {
+    postgres_state *p = state;
+    uint32_t length = (uint32_t)strlen(p->record_code);
+    *out = (ud_string){length ? plugin_string(&p->host, p->record_code, length) : NULL, length};
+    if (length && !out->data)
+        return UD_RESOURCE;
+    memset(p->record_code, 0, sizeof(p->record_code));
+    return UD_OK;
 }
 static ud_status command(postgres_state *p, const char *sql) {
     PGresult *r = query(p, sql, 0, NULL, NULL, NULL, NULL, 0);
@@ -206,6 +235,8 @@ static ud_status session_settings(postgres_state *p) {
         status = command(p, "SET DateStyle TO ISO, YMD");
     if (!status)
         status = command(p, "SET extra_float_digits TO 3");
+    if (!status)
+        status = command(p, "SET IntervalStyle TO iso_8601");
     return status;
 }
 static ud_status initialize(const ud_host_api *host, const char *config, uint32_t length,
@@ -215,22 +246,22 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
     if (!p)
         return UD_RESOURCE;
     p->host = *host;
-    pthread_mutex_init(&p->ownership, NULL);
+    ud_mutex_init(&p->ownership);
     p->control_user = host->control_user;
     p->check = host->check_io;
     atomic_init(&p->cancelled, 0);
     char *copy = plugin_string(host, config, length);
     if (!copy) {
-        pthread_mutex_destroy(&p->ownership);
+        ud_mutex_destroy(&p->ownership);
         host->deallocate(p);
         return UD_RESOURCE;
     }
     const char *keys[] = {"dbname", "connect_timeout", "application_name", NULL};
-    const char *values[] = {copy, "10", "UniversalDataSDK/1.0.0", NULL};
+    const char *values[] = {copy, "10", "UniversalDataSDK/" UD_SDK_VERSION, NULL};
     p->configuration = plugin_string(host, config, length);
     if (!p->configuration) {
         host->deallocate(copy);
-        pthread_mutex_destroy(&p->ownership);
+        ud_mutex_destroy(&p->ownership);
         host->deallocate(p);
         return UD_RESOURCE;
     }
@@ -274,6 +305,20 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
     if (!s)
         s = session_settings(p);
     if (!s) {
+        PGresult *probe = query(p, "SHOW max_prepared_transactions", 0, NULL, NULL, NULL, NULL, 0);
+        if (!probe || PQresultStatus(probe) != PGRES_TUPLES_OK || PQntuples(probe) != 1)
+            s = pg_failure(p, probe);
+        else {
+            char *end = NULL;
+            unsigned long limit = strtoul(PQgetvalue(probe, 0, 0), &end, 10);
+            if (!end || *end)
+                s = UD_CORRUPT;
+            else
+                p->prepared_enabled = limit != 0;
+        }
+        PQclear(probe);
+    }
+    if (!s) {
         p->cancel = PQcancelCreate(p->db);
         if (!p->cancel)
             s = UD_RESOURCE;
@@ -284,7 +329,7 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
         if (p->cancel)
             PQcancelFinish(p->cancel);
         host->deallocate(p->configuration);
-        pthread_mutex_destroy(&p->ownership);
+        ud_mutex_destroy(&p->ownership);
         host->deallocate(p);
         return host->report(host->context, s,
                             "PostgreSQL initialization failed; connection string is redacted");
@@ -301,64 +346,31 @@ static ud_status test_connection(void *state) {
     PQclear(r);
     return s;
 }
+static ud_status table_name(postgres_state *p, ud_string table, char **out) {
+    ud_string name = {0};
+    ud_status status = p->host.table_identifier(p->host.context, UD_SQL_POSTGRESQL, table, &name);
+    *out = status ? NULL : (char *)name.data;
+    return status;
+}
 static ud_status discover(void *state, ud_string table, ud_batch **out) {
     postgres_state *p = state;
-    ud_host_api *h = &p->host;
-    char *quoted = plugin_identifier(h, table);
-    if (!quoted)
-        return UD_RESOURCE;
+    char *quoted = NULL;
+    ud_status status = table_name(p, table, &quoted);
+    if (status)
+        return status;
     const char *args[] = {quoted};
-    PGresult *r = query(
-        p,
-        "SELECT a.attname,format_type(a.atttypid,a.atttypmod),NOT a.attnotnull,"
-        "COALESCE(array_position(i.indkey::smallint[],a.attnum)-array_lower(i.indkey::smallint[],1)"
-        "+1,0),"
-        "has_column_privilege(a.attrelid,a.attname,'SELECT'),has_column_privilege(a.attrelid,a."
-        "attname,'INSERT'),"
-        "has_column_privilege(a.attrelid,a.attname,'UPDATE'),has_table_privilege(a.attrelid,'"
-        "DELETE') "
-        "FROM pg_attribute a LEFT JOIN pg_index i ON i.indrelid=a.attrelid AND i.indisprimary "
-        "WHERE a.attrelid=$1::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum",
-        1, NULL, args, NULL, NULL, 0);
-    h->deallocate(quoted);
-    if (!r || PQresultStatus(r) != PGRES_TUPLES_OK) {
-        ud_status s = pg_failure(p, r);
-        PQclear(r);
-        return s;
-    }
-    int count = PQntuples(r);
-    if (count < 1 || count > 65536) {
-        PQclear(r);
-        return UD_SCHEMA;
-    }
-    ud_field fields[] = {{.name = "name", .name_length = 4, .type = UD_UTF8},
-                         {.name = "declared_type", .name_length = 13, .type = UD_UTF8},
-                         {.name = "nullable", .name_length = 8, .type = UD_BOOL},
-                         {.name = "key_order", .name_length = 9, .type = UD_INT64},
-                         {.name = "readable", .name_length = 8, .type = UD_BOOL},
-                         {.name = "appendable", .name_length = 10, .type = UD_BOOL},
-                         {.name = "updatable", .name_length = 9, .type = UD_BOOL},
-                         {.name = "deletable", .name_length = 9, .type = UD_BOOL}};
-    ud_status s = h->batch_create(h->context, fields, 8, (uint32_t)count, out);
-    for (int row = 0; !s && row < count; row++) {
-        ud_value v[8] = {{.type = UD_UTF8},  {.type = UD_UTF8}, {.type = UD_BOOL},
-                         {.type = UD_INT64}, {.type = UD_BOOL}, {.type = UD_BOOL},
-                         {.type = UD_BOOL},  {.type = UD_BOOL}};
-        for (int j = 0; j < 2; j++) {
-            v[j].text = PQgetvalue(r, row, j);
-            v[j].text_length = (uint32_t)PQgetlength(r, row, j);
-        }
-        v[2].integer = !strcmp(PQgetvalue(r, row, 2), "t");
-        v[3].integer = strtoll(PQgetvalue(r, row, 3), NULL, 10);
-        for (int j = 4; j < 8; j++)
-            v[j].integer = !strcmp(PQgetvalue(r, row, j), "t");
-        s = h->append(*out, v, 8);
-    }
-    PQclear(r);
-    return s;
+    PGresult *result = query(p, ud_pg_metadata_query(), 1, NULL, args, NULL, NULL, 0);
+    p->host.deallocate(quoted);
+    if (!result || PQresultStatus(result) != PGRES_TUPLES_OK)
+        status = pg_failure(p, result);
+    else
+        status = ud_pg_metadata_decode(&p->host, result, out);
+    PQclear(result);
+    return status;
 }
 static ud_status close_read(void *state) {
     postgres_state *p = state;
+    memset(&p->record_options, 0, sizeof(p->record_options));
     p->cleaning = 1;
     ud_status s = p->reading && !p->transaction && !p->broken ? command(p, "ROLLBACK") : UD_OK;
     p->cleaning = 0;
@@ -369,16 +381,17 @@ static ud_status close_read(void *state) {
     return s;
 }
 static int compatible_oid(ud_type t, Oid oid) {
-    return t == UD_BOOL         ? oid == 16
-           : t == UD_INT64      ? oid == 20 || oid == 21 || oid == 23
-           : t == UD_FLOAT64    ? oid == 701
-           : t == UD_UTF8       ? oid == 25 || oid == 1043
-           : t == UD_DECIMAL128 ? oid == 1700
-           : t == UD_DATE32     ? oid == 1082
-           : t == UD_TIME64     ? oid == 1083
-           : t == UD_TIMESTAMP  ? oid == 1184
-           : t == UD_BINARY     ? oid == 17
-                                : 0;
+    return t == UD_BOOL                           ? oid == 16
+           : t == UD_INT64                        ? oid == 20 || oid == 21 || oid == 23
+           : t == UD_FLOAT64                      ? oid == 701
+           : t == UD_UTF8                         ? oid == 25 || oid == 1043
+           : t == UD_DECIMAL128 || t == UD_UINT64 ? oid == 1700
+           : t == UD_INTERVAL || t == UD_DURATION ? oid == 1186
+           : t == UD_DATE32                       ? oid == 1082
+           : t == UD_TIME64                       ? oid == 1083
+           : t == UD_TIMESTAMP                    ? oid == 1184
+           : t == UD_BINARY                       ? oid == 17
+                                                  : 0;
 }
 typedef struct pg_parameters {
     uint32_t count;
@@ -419,16 +432,17 @@ static ud_status parameters_allocate(postgres_state *p, uint32_t count, pg_param
 static ud_status parameter_value(postgres_state *p, const ud_value *value, pg_parameters *v,
                                  uint32_t i) {
     ud_host_api *h = &p->host;
-    v->types[i] = value->type == UD_BOOL         ? 16
-                  : value->type == UD_INT64      ? 20
-                  : value->type == UD_FLOAT64    ? 701
-                  : value->type == UD_DECIMAL128 ? 1700
-                  : value->type == UD_BINARY     ? 17
-                  : value->type == UD_DATE32     ? 1082
-                  : value->type == UD_TIME64     ? 1083
-                  : value->type == UD_TIMESTAMP  ? 1184
-                  : value->type == UD_UTF8       ? 25
-                                                 : 0;
+    v->types[i] = value->type == UD_BOOL                                     ? 16
+                  : value->type == UD_INT64                                  ? 20
+                  : value->type == UD_FLOAT64                                ? 701
+                  : value->type == UD_DECIMAL128 || value->type == UD_UINT64 ? 1700
+                  : value->type == UD_INTERVAL || value->type == UD_DURATION ? 1186
+                  : value->type == UD_BINARY                                 ? 17
+                  : value->type == UD_DATE32                                 ? 1082
+                  : value->type == UD_TIME64                                 ? 1083
+                  : value->type == UD_TIMESTAMP                              ? 1184
+                  : value->type == UD_UTF8                                   ? 25
+                                                                             : 0;
     if (!v->types[i])
         return UD_UNSUPPORTED;
     if (value->is_null)
@@ -551,6 +565,7 @@ static ud_status open_read(void *state, const ud_read_options *options, const ud
         return s;
     }
     p->batch_size = options->batch_size;
+    p->record_options = *options;
     p->finished = 0;
     return UD_OK;
 }
@@ -558,13 +573,25 @@ static ud_status parse_row(postgres_state *p, const PGresult *r, ud_batch *batch
     ud_host_api *h = &p->host;
     uint32_t columns = h->columns(p->schema);
     ud_value *values = h->allocate(h->context, columns * sizeof(*values));
+    ud_value *raw = h->allocate(h->context, columns * sizeof(*raw));
+    uint32_t bad = UINT32_MAX;
+    ud_field *fields = NULL;
     void **binary = h->allocate(h->context, columns * sizeof(*binary));
-    if (!values || !binary) {
+    if (!values || !binary || !raw) {
         h->deallocate(values);
         h->deallocate(binary);
+        h->deallocate(raw);
         return UD_RESOURCE;
     }
     ud_status s = PQnfields(r) != (int)columns ? UD_SCHEMA : UD_OK;
+    if (!s)
+        s = plugin_fields(h, p->schema, &fields);
+    for (uint32_t j = 0; !s && j < columns; j++)
+        raw[j] = (ud_value){.type = UD_BINARY,
+                            .is_null = PQgetisnull(r, 0, (int)j),
+                            .text = PQgetvalue(r, 0, (int)j),
+                            .text_length = (uint32_t)PQgetlength(r, 0, (int)j)};
+    ud_status conversion = UD_OK;
     for (uint32_t j = 0; !s && j < columns; j++) {
         ud_field field;
         h->field(p->schema, j, &field);
@@ -611,14 +638,26 @@ static ud_status parse_row(postgres_state *p, const PGresult *r, ud_batch *batch
             }
         } else
             s = h->parse_field(h->context, &field, text, length, UD_ROUND_EXACT, v);
+        if (plugin_record_conversion(s)) {
+            if (!conversion) {
+                conversion = s;
+                bad = j;
+            }
+            s = UD_OK;
+            v->is_absent = 1;
+            v->is_null = 1;
+        }
     }
     if (!s)
-        s = h->append(batch, values, columns);
+        s = plugin_record_finish(h, &p->record_options, batch, fields, values, raw, columns,
+                                 conversion, bad);
     for (uint32_t j = 0; j < columns; j++)
         if (binary[j])
             PQfreemem(binary[j]);
     h->deallocate(values);
     h->deallocate(binary);
+    h->deallocate(raw);
+    h->deallocate(fields);
     return s;
 }
 static ud_status next_read(void *state, ud_batch **out) {
@@ -646,6 +685,7 @@ static ud_status next_read(void *state, ud_batch **out) {
     else if (!PQsetSingleRowMode(p->db))
         s = UD_INCOMPATIBLE;
     PGresult *r;
+    uint32_t fetched = 0;
     while (!s) {
         if (!wait_result(p)) {
             s = pg_failure(p, NULL);
@@ -655,9 +695,10 @@ static ud_status next_read(void *state, ud_batch **out) {
         if (!r)
             break;
         ExecStatusType result = PQresultStatus(r);
-        if (!s && result == PGRES_SINGLE_TUPLE)
+        if (!s && result == PGRES_SINGLE_TUPLE) {
+            fetched++;
             s = parse_row(p, r, *out);
-        else if (!s && result != PGRES_TUPLES_OK)
+        } else if (!s && result != PGRES_TUPLES_OK)
             s = pg_failure(p, r);
         PQclear(r);
     }
@@ -667,9 +708,9 @@ static ud_status next_read(void *state, ud_batch **out) {
     if (s)
         return s;
     uint32_t rows = h->rows(*out);
-    if (rows < p->batch_size)
+    if (fetched < p->batch_size)
         p->finished = 1;
-    if (!rows) {
+    if (!rows && !fetched) {
         h->batch_destroy(*out);
         *out = NULL;
         return UD_END;
@@ -679,10 +720,10 @@ static ud_status next_read(void *state, ud_batch **out) {
 static void cancel_operation(void *state) {
     postgres_state *p = state;
     atomic_store(&p->cancelled, 1);
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     if (p->cdc)
         ud_pg_cdc_cancel(p->cdc);
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
 }
 static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string batch_id,
                          ud_commit_receipt *out) {
@@ -698,11 +739,12 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
             s = UD_RESOURCE;
     }
     const char *args[] = {owned[0], owned[1], owned[2]};
-    PGresult *r = !s ? query(p,
-                             "SELECT encode(digest,'hex'),source_position FROM ud_sdk_receipts_v2 "
-                             "WHERE tenant=$1 AND job=$2 AND batch_id=$3",
-                             3, NULL, args, NULL, NULL, 0)
-                     : NULL;
+    PGresult *r =
+        !s ? query(p,
+                   "SELECT encode(digest,'hex'),source_position FROM public.ud_sdk_receipts_v10 "
+                   "WHERE tenant=$1 AND job=$2 AND batch_id=$3",
+                   3, NULL, args, NULL, NULL, 0)
+           : NULL;
     if (!s && (!r || PQresultStatus(r) != PGRES_TUPLES_OK))
         s = h->report(h->context, UD_COMMIT_UNKNOWN,
                       "receipt store is unavailable; source position must not advance");
@@ -743,9 +785,10 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
 }
 static ud_status validate_target(postgres_state *p, ud_string table, const ud_batch *batch) {
     ud_host_api *h = &p->host;
-    char *name = plugin_identifier(h, table);
-    if (!name)
-        return UD_RESOURCE;
+    char *name = NULL;
+    ud_status named = table_name(p, table, &name);
+    if (named)
+        return named;
     const char *args[] = {name};
     PGresult *r = query(p,
                         "SELECT attname,atttypid::text,atttypmod::text FROM pg_attribute WHERE "
@@ -797,6 +840,66 @@ static ud_status validate_target(postgres_state *p, ud_string table, const ud_ba
     return s ? h->report(h->context, s, "target schema would narrow or coerce a typed value")
              : UD_OK;
 }
+/* COPY transports the same sealed typed Batch over the authenticated libpq
+ * session. Receipt reservation and business writes stay in the same transaction. */
+static ud_status copy_batch(postgres_state *p, const ud_write_options *options,
+                            const ud_batch *batch, ud_bulk_reader *reader) {
+    ud_host_api *h = &p->host;
+    ud_string sql = {0};
+    ud_status status = h->compile_bulk(h->context, UD_SQL_POSTGRESQL, options, batch, &sql);
+    PGresult *result = !status ? query(p, sql.data, 0, NULL, NULL, NULL, NULL, 0) : NULL;
+    h->deallocate((void *)sql.data);
+    if (!status && (!result || PQresultStatus(result) != PGRES_COPY_IN))
+        status = pg_failure(p, result);
+    int copying = !status;
+    PQclear(result);
+    char buffer[65536];
+    while (!status) {
+        status = control(p);
+        uint32_t length = 0;
+        if (!status)
+            status = h->bulk_read(reader, buffer, sizeof(buffer), &length);
+        if (status == UD_END) {
+            status = UD_OK;
+            break;
+        }
+        if (status)
+            break;
+        int accepted;
+        do {
+            accepted = PQputCopyData(p->db, buffer, (int)length);
+            if (!accepted && !wait_result(p)) {
+                status = pg_failure(p, NULL);
+                break;
+            }
+        } while (!accepted);
+        if (!status && accepted < 0)
+            status = pg_failure(p, NULL);
+    }
+    if (copying) {
+        int finished;
+        do {
+            finished = PQputCopyEnd(p->db, status ? "Native bulk input failed" : NULL);
+            if (!finished && !wait_result(p)) {
+                if (!status)
+                    status = pg_failure(p, NULL);
+                break;
+            }
+        } while (!finished);
+        if (finished < 0 && !status)
+            status = pg_failure(p, NULL);
+        while (wait_result(p) && (result = PQgetResult(p->db)) != NULL) {
+            if (!status && PQresultStatus(result) != PGRES_COMMAND_OK)
+                status = pg_failure(p, result);
+            if (!status && strtoull(PQcmdTuples(result), NULL, 10) != h->rows(batch))
+                status = UD_CORRUPT;
+            PQclear(result);
+        }
+        if (!status && (p->control_status || p->broken))
+            status = pg_failure(p, NULL);
+    }
+    return status;
+}
 static ud_status write_batch(void *state, ud_string tenant, const ud_write_options *options,
                              const ud_batch *batch, const uint8_t digest[32]) {
     postgres_state *p = state;
@@ -806,15 +909,24 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (h->columns(batch) > 65535)
         return UD_RESOURCE;
     atomic_store(&p->cancelled, 0);
-    if (options->mode == UD_WRITE_CHANGESET && p->transaction)
-        return UD_UNSUPPORTED;
-    int own = !p->transaction;
-    ud_status s = own ? command(p, "BEGIN") : UD_OK;
+    ud_bulk_reader *bulk = NULL;
+    ud_status s = UD_OK;
+    if (options->mode == UD_WRITE_APPEND && options->load_mode != UD_LOAD_PARAMETERS) {
+        s = h->bulk_open(h->context, batch, UD_SQL_POSTGRESQL, &bulk);
+        if (s == UD_UNSUPPORTED && options->load_mode == UD_LOAD_AUTO)
+            s = UD_OK;
+    }
     if (s)
         return s;
-    char *table = plugin_identifier(h, options->table);
-    if (!s && !table)
-        s = UD_RESOURCE;
+    int own = !p->transaction;
+    s = own ? command(p, "BEGIN") : UD_OK;
+    if (s) {
+        h->bulk_close(bulk);
+        return s;
+    }
+    char *table = NULL;
+    if (!s)
+        s = table_name(p, options->table, &table);
     if (!s) {
         size_t size = strlen(table) + 64;
         char *lock = h->allocate(h->context, size);
@@ -846,7 +958,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     int reserve_lengths[] = {0, 0, 0, 32, 0}, reserve_formats[] = {0, 0, 0, 1, 0};
     PGresult *result =
         !s ? query(p,
-                   "INSERT INTO ud_sdk_receipts_v2(tenant,job,batch_id,digest,source_position) "
+                   "INSERT INTO "
+                   "public.ud_sdk_receipts_v10(tenant,job,batch_id,digest,source_position) "
                    "VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING batch_id",
                    5, reserve_types, reserve, reserve_lengths, reserve_formats, 0)
            : NULL;
@@ -867,7 +980,11 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         s = UD_RESOURCE;
     if (limit > 1024)
         limit = 1024;
-    for (uint32_t row = 0; !s && !existing && row < h->rows(batch);) {
+    if (!s && !existing && bulk)
+        s = copy_batch(p, options, batch, bulk);
+    int used_copy = bulk != NULL;
+    h->bulk_close(bulk);
+    for (uint32_t row = 0; !s && !existing && !used_copy && row < h->rows(batch);) {
         s = control(p);
         uint32_t count = options->mode == UD_WRITE_CHANGESET ? 1 : h->rows(batch) - row;
         if (count > limit)
@@ -885,7 +1002,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s && (!changed || PQresultStatus(changed) != PGRES_COMMAND_OK))
             s = pg_failure(p, changed);
         if (!s && options->mode == UD_WRITE_CHANGESET &&
-            options->operations[row] != UD_CHANGE_UPSERT && strcmp(PQcmdTuples(changed), "1"))
+            options->operations[row] != UD_CHANGE_UPSERT &&
+            options->operations[row] != UD_CHANGE_TRUNCATE && strcmp(PQcmdTuples(changed), "1"))
             s = h->report(h->context, UD_FENCED,
                           "changeset preimage or current business-key conflict");
         PQclear(changed);
@@ -916,17 +1034,17 @@ static void destroy(void *state) {
         return;
     p->host.batch_destroy(p->schema);
     p->schema = NULL;
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     ud_pg_cdc *child = p->cdc;
     p->cdc = NULL;
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
     ud_pg_cdc_close(child);
     p->host.deallocate(p->configuration);
     if (p->cancel)
         PQcancelFinish(p->cancel);
     if (p->db)
         PQfinish(p->db);
-    pthread_mutex_destroy(&p->ownership);
+    ud_mutex_destroy(&p->ownership);
     p->host.deallocate(p);
 }
 static int transaction_statement(const char *sql) {
@@ -1128,7 +1246,7 @@ static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **
 }
 static ud_status reset_session(void *state) {
     postgres_state *p = state;
-    if (p->reading || p->transaction || p->cdc || p->broken ||
+    if (p->reading || p->transaction || p->cdc || p->broken || p->branch_id[0] ||
         PQtransactionStatus(p->db) != PQTRANS_IDLE)
         return UD_CORRUPT;
     p->cleaning = 1;
@@ -1139,10 +1257,155 @@ static ud_status reset_session(void *state) {
     return status;
 }
 static ud_status provision(void *state) {
-    return command(state, "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job "
-                          "TEXT NOT NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL "
-                          "CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY "
-                          "KEY(tenant,job,batch_id))");
+    postgres_state *p = state;
+    if (p->transaction || p->reading || p->branch_id[0])
+        return UD_BUSY;
+    ud_status status = command(
+        state, "CREATE TABLE IF NOT EXISTS public.ud_sdk_receipts_v10(tenant TEXT NOT NULL,job "
+               "TEXT NOT NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL "
+               "CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY "
+               "KEY(tenant,job,batch_id))");
+    if (!status)
+        status =
+            command(state, "CREATE TABLE IF NOT EXISTS public.ud_sdk_tx_receipts_v10("
+                           "branch_id TEXT COLLATE \"C\" PRIMARY KEY CHECK(length(branch_id)=64),"
+                           "digest BYTEA NOT NULL CHECK(octet_length(digest)=32))");
+    return status;
+}
+static uint64_t session_capabilities(void *state) {
+    postgres_state *p = state;
+    return p->prepared_enabled
+               ? connector.capabilities
+               : connector.capabilities & ~(uint64_t)UD_CONNECT_TRANSACTION_PARTICIPANT;
+}
+static ud_status transaction_recover_state(void *state, const ud_transaction_branch *branch,
+                                           int32_t *result) {
+    postgres_state *p = state;
+    *result = UD_TX_UNKNOWN;
+    if (p->transaction && !memcmp(p->branch_id, branch->id.data, 64)) {
+        *result = UD_TX_ACTIVE;
+        return UD_OK;
+    }
+    char identity[65];
+    memcpy(identity, branch->id.data, 64);
+    identity[64] = 0;
+    const char *values[] = {identity};
+    PGresult *query_result = query(p,
+                                   "SELECT owner=current_user FROM pg_prepared_xacts "
+                                   "WHERE gid=$1 AND database=current_database()",
+                                   1, NULL, values, NULL, NULL, 0);
+    ud_status status = query_result && PQresultStatus(query_result) == PGRES_TUPLES_OK
+                           ? UD_OK
+                           : pg_failure(p, query_result);
+    if (!status && PQntuples(query_result) > 1)
+        status = UD_CORRUPT;
+    if (!status && PQntuples(query_result) == 1) {
+        if (PQgetisnull(query_result, 0, 0) || strcmp(PQgetvalue(query_result, 0, 0), "t"))
+            status = UD_AUTH;
+        else
+            *result = UD_TX_PREPARED;
+    }
+    PQclear(query_result);
+    if (status || *result == UD_TX_PREPARED)
+        return status;
+    query_result = query(p,
+                         "SELECT encode(digest,'hex') FROM public.ud_sdk_tx_receipts_v10 "
+                         "WHERE branch_id=$1",
+                         1, NULL, values, NULL, NULL, 0);
+    status = query_result && PQresultStatus(query_result) == PGRES_TUPLES_OK
+                 ? UD_OK
+                 : pg_failure(p, query_result);
+    if (!status && PQntuples(query_result) > 1)
+        status = UD_CORRUPT;
+    if (!status && PQntuples(query_result) == 1) {
+        const char *hex = PQgetvalue(query_result, 0, 0);
+        if (PQgetisnull(query_result, 0, 0) || PQgetlength(query_result, 0, 0) != 64)
+            status = UD_CORRUPT;
+        static const char alphabet[] = "0123456789abcdef";
+        for (uint32_t byte = 0; !status && byte < 32; byte++)
+            if (hex[2 * byte] != alphabet[branch->digest[byte] >> 4] ||
+                hex[2 * byte + 1] != alphabet[branch->digest[byte] & 15])
+                status = UD_FENCED;
+        if (!status)
+            *result = UD_TX_COMMITTED;
+    } else if (!status)
+        *result = UD_TX_NOT_FOUND;
+    PQclear(query_result);
+    return status;
+}
+static ud_status transaction_recover(void *state, const ud_transaction_branch *branch,
+                                     int32_t *result) {
+    postgres_state *postgres = state;
+    int cleaning = postgres->cleaning;
+    postgres->cleaning = 1;
+    ud_status status = transaction_recover_state(state, branch, result);
+    postgres->cleaning = cleaning;
+    return status;
+}
+static ud_status transaction_begin(void *state, const ud_transaction_branch *branch) {
+    postgres_state *p = state;
+    if (!p->prepared_enabled)
+        return UD_UNSUPPORTED;
+    if (p->branch_id[0])
+        return UD_BUSY;
+    ud_status status = begin_transaction(p, branch->isolation);
+    char identity[65];
+    memcpy(identity, branch->id.data, 64);
+    identity[64] = 0;
+    const char *values[] = {identity, (const char *)branch->digest};
+    Oid types[] = {25, 17};
+    int lengths[] = {64, 32}, formats[] = {0, 1};
+    PGresult *result = !status
+                           ? query(p,
+                                   "INSERT INTO public.ud_sdk_tx_receipts_v10(branch_id,digest) "
+                                   "VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING branch_id",
+                                   2, types, values, lengths, formats, 0)
+                           : NULL;
+    if (!status && (!result || PQresultStatus(result) != PGRES_TUPLES_OK))
+        status = pg_failure(p, result);
+    if (!status && PQntuples(result) != 1)
+        status = UD_FENCED;
+    PQclear(result);
+    if (!status)
+        memcpy(p->branch_id, identity, sizeof(identity));
+    else if (p->transaction) {
+        ud_status rolled_back = rollback_transaction(p);
+        if (rolled_back)
+            status = UD_COMMIT_UNKNOWN;
+    }
+    return status;
+}
+static ud_status transaction_prepare(void *state, const ud_transaction_branch *branch) {
+    postgres_state *p = state;
+    if (!p->transaction || memcmp(p->branch_id, branch->id.data, 64))
+        return UD_FENCED;
+    char statement[96];
+    snprintf(statement, sizeof(statement), "PREPARE TRANSACTION '%.*s'", 64, branch->id.data);
+    ud_status status = command(p, statement);
+    if (!status)
+        p->transaction = 0;
+    return status;
+}
+static ud_status transaction_resolve(void *state, const ud_transaction_branch *branch,
+                                     int32_t decision) {
+    postgres_state *p = state;
+    ud_status status;
+    if (p->transaction) {
+        if (decision != UD_TX_ROLLBACK || memcmp(p->branch_id, branch->id.data, 64))
+            return UD_FENCED;
+        p->cleaning = 1;
+        status = rollback_transaction(p);
+    } else {
+        p->cleaning = 1;
+        char statement[96];
+        snprintf(statement, sizeof(statement), "%s PREPARED '%.*s'",
+                 decision == UD_TX_COMMIT ? "COMMIT" : "ROLLBACK", 64, branch->id.data);
+        status = command(p, statement);
+    }
+    if (!status)
+        memset(p->branch_id, 0, sizeof(p->branch_id));
+    p->cleaning = 0;
+    return status;
 }
 static ud_status cdc_open(void *state, const ud_cdc_options *options) {
     postgres_state *p = state;
@@ -1154,11 +1417,11 @@ static ud_status cdc_open(void *state, const ud_cdc_options *options) {
     ud_pg_cdc *child = NULL;
     ud_status status = ud_pg_cdc_open(&host, p->configuration, options, &child);
     if (!status) {
-        pthread_mutex_lock(&p->ownership);
+        ud_mutex_lock(&p->ownership);
         p->cdc = child;
         if (atomic_load(&p->cancelled))
             ud_pg_cdc_cancel(child);
-        pthread_mutex_unlock(&p->ownership);
+        ud_mutex_unlock(&p->ownership);
     }
     return status;
 }
@@ -1166,26 +1429,31 @@ static ud_status cdc_next(void *state, ud_cdc_event *out) {
     postgres_state *p = state;
     return p->cdc ? ud_pg_cdc_next(p->cdc, out) : UD_INVALID;
 }
+static ud_status cdc_rebind(void *state, const ud_batch *schema, uint64_t version) {
+    postgres_state *p = state;
+    return p->cdc ? ud_pg_cdc_rebind(p->cdc, schema, version) : UD_INVALID;
+}
 static ud_status cdc_confirm(void *state, ud_string position) {
     postgres_state *p = state;
     return p->cdc ? ud_pg_cdc_confirm(p->cdc, position) : UD_INVALID;
 }
 static ud_status cdc_close(void *state) {
     postgres_state *p = state;
-    pthread_mutex_lock(&p->ownership);
+    ud_mutex_lock(&p->ownership);
     ud_pg_cdc *child = p->cdc;
     p->cdc = NULL;
-    pthread_mutex_unlock(&p->ownership);
+    ud_mutex_unlock(&p->ownership);
     return ud_pg_cdc_close(child);
 }
 static const ud_connector_api connector = {
     .struct_size = sizeof(connector),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-                    UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
-                    UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL |
-                    UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC |
-                    UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
+    .capabilities =
+        UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
+        UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
+        UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
+        UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
+        UD_CONNECT_PROVISION | UD_CONNECT_NATIVE_BULK | UD_CONNECT_TRANSACTION_PARTICIPANT,
     .test = test_connection,
     .discover = discover,
     .read_open = open_read,
@@ -1201,20 +1469,27 @@ static const ud_connector_api connector = {
     .metadata = metadata,
     .set_control = set_control,
     .reset_session = reset_session,
+    .session_capabilities = session_capabilities,
+    .record_diagnostic = record_diagnostic,
     .provision = provision,
     .metadata_dialect = UD_SQL_POSTGRESQL,
     .parameter_style = UD_SQL_PARAMETER_NUMBERED,
     .cdc_open = cdc_open,
     .cdc_next = cdc_next,
     .cdc_confirm = cdc_confirm,
-    .cdc_close = cdc_close};
+    .cdc_close = cdc_close,
+    .cdc_rebind = cdc_rebind,
+    .transaction_begin = transaction_begin,
+    .transaction_prepare = transaction_prepare,
+    .transaction_resolve = transaction_resolve,
+    .transaction_recover = transaction_recover};
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
         return UD_INCOMPATIBLE;
     *out = (ud_plugin_api){sizeof(*out),
                            UD_PLUGIN_ABI,
                            "org.universaldata.connector.postgresql",
-                           "1.0.0",
+                           UD_SDK_VERSION,
                            UD_PLUGIN_CONNECTOR,
                            UD_CAP_TRANSACTION | UD_CAP_THREAD_SAFE,
                            initialize,

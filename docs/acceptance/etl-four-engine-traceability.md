@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-保留 G00–G68，并新增 G69 Sampling，共 70 项目标；下表是附件 78 项工作项的同源投影。Implemented 与 Verified 分开，能力组合边界见权威模型 limitations。
+历史 ABI 9 工作项投影，保留旧证据供追溯，不计入 SDK 2.0 验收。当前 52 项审查以现有 completion-goal.json 与 metadata/product.json 为准。
 
 | ID | 优先级 | 阶段 | 能力 | 代码 | 验收 | 69 项目标映射 |
 |---|---|---|---|---|---|---|

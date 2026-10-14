@@ -27,8 +27,9 @@ typedef struct ud_catalog_options {
     void *authorize_user;
     int32_t create_directory;
 } ud_catalog_options;
-/* Optional embedded immutable document repository, not an executor. Host owns
- * ctx and serializes catalog calls. Metadata stores only supplied documents;
+/* Native SQLite indexed immutable document repository. Host owns
+ * ctx and serializes calls on each handle; independent handles/processes share
+ * the transactional WAL database. Metadata stores only supplied documents;
  * it never reads process credentials or invokes a credential resolver.
  * Versions are append-only; same key/same canonical document is idempotent,
  * different document is CORRUPT. Tenant is part of each physical identity. */
@@ -39,6 +40,14 @@ UD_API ud_status ud_catalog_get(ud_catalog *, const ud_catalog_key *, char **jso
                                 uint32_t *length);
 /* Owned JSON array of {id,revision}; validates all returned envelopes. */
 UD_API ud_status ud_catalog_list(ud_catalog *, int32_t kind, char **json, uint32_t *length);
+/* Indexed bounded query. Strict native JSON: {kind,id?,afterId?,afterRevision?,
+ * sinceMs?,untilMs?,limit?}. Tuple (id,revision) is the stable pagination cursor;
+ * afterRevision without afterId requires an exact id filter. limit defaults to
+ * 100 and must be 1..1000. Returns [{id,revision,document}] as owned JSON.
+ * Time bounds select explicit timestampMs values in stored documents.
+ * Only the current tenant/kind/filter/page is inspected; no directory scan. */
+UD_API ud_status ud_catalog_query(ud_catalog *, ud_string query, char **json, uint32_t *length);
+UD_API ud_status ud_catalog_latest_revision(ud_catalog *, int32_t kind, ud_string id, uint64_t *);
 /* Stores versioned identifiers/state/result/time/kind only, no row/SQL/config
  * data. sequence is explicit; returned errors belong to the host log policy. */
 UD_API ud_status ud_catalog_record_event(ud_catalog *, const ud_execution_event *,
@@ -59,6 +68,11 @@ UD_API ud_status ud_catalog_bind_package(ud_catalog *, const ud_catalog_binding 
  * match. Persists identifiers/fingerprints/metrics, never parameter/config/
  * row/credential values. Errors belong to the host logging policy. */
 UD_API ud_status ud_catalog_record_execution(ud_catalog *, const ud_execution *, uint64_t revision);
+/* Bounded explicit log retention. The last sequence for every execution is
+ * retained so resume cannot reuse event identities. Journal/recovery facts and
+ * package/deployment/job documents are never pruned by log retention. */
+UD_API ud_status ud_catalog_prune_events(ud_catalog *, uint64_t before_ms, uint32_t limit,
+                                         uint64_t *removed);
 UD_API void ud_catalog_close(ud_catalog *);
 #ifdef __cplusplus
 }

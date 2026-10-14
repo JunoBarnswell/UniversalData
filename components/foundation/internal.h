@@ -34,6 +34,11 @@ void ud_sha256_update(ud_sha256 *, const void *, size_t);
 void ud_sha256_finish(ud_sha256 *, uint8_t out[32]);
 void ud_hash(const void *, size_t, uint8_t out[32]);
 size_t ud_allocation_bytes(const void *);
+typedef struct ud_memory_reservation ud_memory_reservation;
+/* Charge bounded buffers owned by third-party codecs without allocating a
+ * second copy. The reservation follows the current component memory domain. */
+ud_status ud_memory_reserve(ud_context *, uint64_t, ud_memory_reservation **);
+void ud_memory_release(ud_memory_reservation *);
 ud_status ud_flush(ud_context *, FILE *);
 ud_status ud_publish(ud_context *, const char *from, const char *to);
 ud_status ud_replace_file(ud_context *, const char *from, const char *to);
@@ -48,8 +53,11 @@ ud_status ud_open_regular(ud_context *, const char *, FILE **);
 ud_status ud_move_noreplace(ud_context *, const char *, const char *);
 ud_status ud_distinct_directories(ud_context *, const char *, const char *);
 uint64_t ud_now_ms(void);
+uint64_t ud_wall_ms(void); /* UTC Unix milliseconds for persisted event timestamps. */
 uint64_t ud_monotonic_ns(void);
 uint64_t ud_thread_cpu_ns(void);
+/* OS entropy only. Never synthesize persistent identity from clocks/counters. */
+ud_status ud_random_bytes(ud_context *, void *, uint32_t);
 void ud_sleep_ms(uint32_t);
 int ud_seek(FILE *, uint64_t);
 int64_t ud_tell(FILE *);
@@ -68,6 +76,7 @@ ud_status ud_put_string(ud_bytes *, const char *, size_t);
 ud_status ud_get_string(ud_bytes *, char **);
 void ud_bytes_clear(ud_bytes *);
 ud_status ud_json_quote(ud_bytes *, const char *, uint32_t);
+ud_status ud_base64_encode(ud_bytes *, const uint8_t *, uint32_t, uint32_t line_width);
 ud_status ud_read_file(ud_context *, const char *, ud_bytes *);
 ud_status ud_write_file(ud_context *, const char *, const void *, size_t);
 ud_status ud_append_file(ud_context *, const char *, const void *, size_t);

@@ -178,9 +178,17 @@ static ud_status pull(relational_component *r) {
                             batch->rows, &errors);
         const char *name = r->kind == UD_OPERATOR_PIVOT ? "pivot.rejected" : "scd.fixedViolation";
         for (uint32_t row = 0; !s && row < batch->rows; row++)
-            s = ud_error_append(&r->context.errors, errors, batch, row,
-                                (ud_string){name, (uint32_t)strlen(name)}, 1, (ud_id){0},
-                                UD_QUALITY, r->policy);
+            s = ud_error_append(
+                &r->context.errors, errors,
+                &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                   .abi_version = UD_ABI_VERSION,
+                                   .input = batch,
+                                   .row = row,
+                                   .rule = (ud_string){name, (uint32_t)strlen(name)},
+                                   .rule_version = 1,
+                                   .column = (ud_id){0},
+                                   .code = UD_QUALITY,
+                                   .policy = r->policy});
         if (!s)
             s = ud_batch_seal(errors);
         if (!s)

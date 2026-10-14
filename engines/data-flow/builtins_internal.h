@@ -2,10 +2,12 @@
 #define UD_BUILTINS_INTERNAL_H
 #include "../package/internal.h"
 #include "ud/connection_manager.h"
+#include "ud/sql.h"
 #include "ud/compute.h"
 #include "ud/operator.h"
 #include "ud/format.h"
 #include "ud/csv.h"
+#include "../package/file_generation.h"
 #include "ud/xlsx.h"
 #include "../../connectors/rest.h"
 #ifdef UD_WITH_ARROW_FILES
@@ -26,6 +28,7 @@ enum {
     DERIVE,
     SPLIT,
     MULTICAST,
+    BALANCED,
     UNION_ALL,
     SORT,
     JOIN,
@@ -40,7 +43,8 @@ enum {
     IPC_SOURCE,
     IPC_SINK,
     IPC_STREAM_SOURCE,
-    IPC_STREAM_SINK
+    IPC_STREAM_SINK,
+    SQL_COMMAND
 };
 
 static inline int file_source(int k) {
@@ -65,7 +69,11 @@ typedef struct builtin {
     uint32_t input_count;
     ud_operator *operator;
     ud_batch *output_pending;
+    ud_batch *source_errors;
     uint32_t output_at;
+    uint32_t output_port;
+    ud_record_options records;
+    uint64_t sql_record_ordinal;
     ud_expression *predicate;
     ud_string read_sql;
     int predicate_pushed;
@@ -88,19 +96,20 @@ typedef struct builtin {
     uint64_t stage_bytes;
     int32_t xlsx_rejected;
     char *path, *temporary, *job;
-    void *lock;
-    int published, existing, temporary_owned;
+    ud_file_generation *generation;
     uint64_t number, source_position, source_begin, source_end, written_rows, written_errors;
     uint32_t source_partitions, source_partition;
     uint32_t *keys, key_count, *write_indices, before_column;
-    int mode;
+    int mode, load_mode;
     struct ud_rule_delivery *delivery;
     ud_cursor *cursor;
     ud_batch *actual_schema, *write_schema, *parameters;
     ud_operator *source_sort;
     ud_buffer_block **snapshot;
+    uint32_t *snapshot_ports;
     uint32_t snapshot_capacity;
-    uint64_t snapshot_count, snapshot_at, snapshot_rows, source_identified, snapshot_read_ms;
+    uint64_t snapshot_count, snapshot_at, snapshot_rows, snapshot_error_rows, source_identified,
+        snapshot_read_ms;
     int materialized;
     uint8_t file_fingerprint[32];
     uint64_t file_hash_ms;
@@ -114,6 +123,11 @@ typedef struct builtin {
 
 ud_status ud_builtin_bind_expr(const ud_component_context *c, const ud_json *value,
                                const ud_batch *schema, ud_expression **out);
+ud_status ud_builtin_describe_sink(void *, const ud_component_context *, ud_string,
+                                   const ud_batch *const *, ud_component_plan *);
+ud_status ud_builtin_sink_records(builtin *, const ud_batch *);
+ud_status ud_builtin_sql_command_prepare(builtin *);
+ud_status ud_builtin_sql_command(builtin *, const ud_batch *);
 ud_status ud_builtin_blocking(builtin *b);
 uint64_t ud_builtin_builtin_demand(void *ptr);
 ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud_string text,
@@ -137,6 +151,7 @@ ud_status ud_builtin_operator_check(void *user);
 ud_status ud_builtin_parameters(const ud_component_context *c, const ud_json *config,
                                 ud_batch **out);
 ud_status ud_builtin_parse(const ud_component_context *c, ud_string config, ud_json **out);
+ud_status ud_builtin_sink_delivery(int kind, const ud_json *config, int32_t *delivery);
 ud_status ud_builtin_restore_state(void *ptr, const ud_batch *state);
 ud_status ud_builtin_schema_config(const ud_component_context *c, const ud_json *config,
                                    ud_batch **out);
@@ -144,7 +159,7 @@ ud_status ud_builtin_sink_batch(builtin *b, const ud_batch *input, ud_batch **ou
                                 ud_batch **before);
 ud_status ud_builtin_sink_schema(builtin *b);
 ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input, const ud_batch *before);
-ud_status ud_builtin_snapshot_store(builtin *b, ud_batch *batch);
+ud_status ud_builtin_snapshot_store(builtin *b, ud_batch *batch, uint32_t port);
 ud_status ud_builtin_source_identity(builtin *b, ud_batch *input, ud_batch **out);
 ud_status ud_builtin_source_next(builtin *b, ud_batch **out);
 ud_status ud_builtin_source_partition(builtin *b, ud_batch *input, ud_batch **out);
@@ -159,4 +174,5 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
                             const ud_write_options *options, const ud_batch *input);
 ud_status ud_builtin_source_finish(builtin *);
 ud_status ud_builtin_sink_finish(builtin *);
+ud_status ud_builtin_sink_append_original(builtin *);
 #endif

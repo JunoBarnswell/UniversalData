@@ -8,7 +8,7 @@ with tempfile.TemporaryDirectory(prefix='ud-postgresql-') as directory:
  root=pathlib.Path(directory);data=root/'data';socket=root/'socket';socket.mkdir();started=False
  try:
   command('initdb','-D',data,'-A','trust','-U','fixture','--no-locale','-E','UTF8')
-  command('pg_ctl','-D',data,'-l',root/'server.txt','-o',f"-F -k {socket} -h ''",'-w','start');started=True
+  command('pg_ctl','-D',data,'-l',root/'server.txt','-o',f"-F -k {socket} -h '' -c max_prepared_transactions=32",'-w','start');started=True
   config=f'host={socket} user=fixture dbname=postgres';(root/'config.txt').write_text(config)
   driver=build/'plugins/ud_connector_postgresql.so'
   result=subprocess.run([str(build/'tests/test_postgresql_values'),str(driver),str(root/'config.txt')],check=True,capture_output=True,text=True,timeout=30);print(result.stdout.strip(),flush=True)
@@ -19,12 +19,12 @@ with tempfile.TemporaryDirectory(prefix='ud-postgresql-') as directory:
   runner=build/'tests/test_four_engine_connections'
   def run(package,status=0,total=0):
    path=root/'package.json';path.write_text(json.dumps(package))
-   result=subprocess.run([str(runner),str(path),config,str(status),str(total)],capture_output=True,text=True,timeout=20)
+   result=subprocess.run([str(runner),str(path),config,str(status),str(total),str(pathlib.Path(tempfile.mkdtemp(prefix='state-',dir=root)))],capture_output=True,text=True,timeout=20)
    assert result.returncode==0,result.stdout+result.stderr
    return json.loads(result.stdout)
   def task(name,statement):return {'id':name,'kind':'sql.execute','config':{'connection':'db','statement':statement}}
   children={'tasks':[task('first','INSERT INTO data VALUES(1)'),task('second','INSERT INTO data VALUES(2)')],'constraints':[{'from':'first','to':'second','on':'success'}]}
-  transaction={'id':'transaction','kind':'sequence','config':{},'transaction':{'mode':'required','connection':'db'},'children':children}
+  transaction={'id':'transaction','kind':'sequence','config':{},'transaction':{'mode':'required','participants':['db'],'provisionReceipts':True},'children':children}
   q=copy.deepcopy(base);q['controlFlow']['tasks']=[transaction];assert run(q)['connections']['commits']==1;assert sql('SELECT COUNT(*) FROM data')=='2'
   sql('DELETE FROM data');q=copy.deepcopy(base);q['variables']['huge']={'type':'int64','default':9223372036854775807};q['controlFlow']['tasks']=[copy.deepcopy(transaction)]
   q['controlFlow']['tasks'][0]['children']['tasks'].append({'id':'bad','kind':'set','config':{'name':'total','value':{'op':'add','args':[{'ref':'huge'},{'literal':1,'type':'int64'}]}}})

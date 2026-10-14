@@ -9,7 +9,10 @@ typedef struct cdc_source {
     ud_component_context context;
     ud_json *config;
     ud_connection_lease *lease;
-    ud_batch *input, *output;
+    ud_batch *input, *output, *actual;
+    char *schema_policy;
+    uint32_t schema_policy_length;
+    int schema_pending;
     ud_buffer_block **blocks;
     uint32_t count, capacity, at, output_at;
     ud_buffer_view *output_view;
@@ -81,6 +84,8 @@ static void dispose(void *instance, ud_status status) {
     ud_connection_lease_release(s->lease);
     ud_batch_destroy(s->input);
     ud_batch_destroy(s->output);
+    ud_batch_destroy(s->actual);
+    ud_free(s->schema_policy);
     ud_free((void *)s->position.data);
     ud_free((void *)s->transaction.data);
     ud_json_destroy(s->config);
@@ -137,8 +142,19 @@ static ud_status save_intent(cdc_source *s) {
     ud_status status = ud_bytes_put(&payload, start, (size_t)n);
     if (!status)
         status = ud_json_quote(&payload, s->position.data, s->position.length);
+    char *schema_text = NULL;
+    uint32_t schema_length = 0;
     if (!status)
-        status = ud_bytes_put(&payload, "}", 1);
+        status = ud_schema_to_json(s->actual ? s->actual : s->input, &schema_text, &schema_length);
+    if (!status)
+        status = ud_bytes_put(&payload, ",\"decoderSchema\":", 17);
+    if (!status)
+        status = ud_bytes_put(&payload, schema_text, schema_length);
+    if (!status)
+        status = ud_bytes_put(
+            &payload, s->schema_pending ? ",\"schemaPending\":true}" : ",\"schemaPending\":false}",
+            s->schema_pending ? 22 : 23);
+    ud_free(schema_text);
     if (!status)
         status =
             ud_checkpoint_snapshot_seal(s->context.activation, (ud_string){s->intent, 64},
@@ -198,6 +214,23 @@ static ud_status load_intent(cdc_source *s, ud_cdc_options *options) {
             s->count++;
     }
     if (!status) {
+        char *schema_text = NULL;
+        uint32_t length = 0;
+        status = ud_json_serialize(ud_member(entry, "decoderSchema"), &schema_text, &length);
+        if (!status)
+            status = ud_schema_from_json(s->context.memory, schema_text, length, (ud_string){0},
+                                         &s->actual);
+        ud_free(schema_text);
+        const char *pending;
+        uint32_t size;
+        if (!status)
+            status = ud_json_text(ud_member(entry, "schemaPending"), &pending, &size);
+        if (!status)
+            s->schema_pending = size == 4 && !memcmp(pending, "true", 4);
+        if (!status)
+            options->schema = s->actual;
+    }
+    if (!status) {
         options->position = s->position;
         options->mode = UD_CDC_STREAM;
         s->begun = s->committed = 1;
@@ -231,7 +264,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     }
     if (!result)
         result = ud_activation_acquire_connection(
-            c->activation, connection, UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC, &s->lease);
+            c->activation, connection, UD_CONNECT_READ | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC,
+            &s->lease);
     int32_t expected = (int32_t)(intptr_t)user;
     if (!result && ud_connection_lease_dialect(s->lease) != expected)
         result = UD_INCOMPATIBLE;
@@ -294,8 +328,66 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     }
     if (!result && !c->recovery_terminal)
         result = load_intent(s, &options);
+    char namespace_text[33];
+    if (!result)
+        result =
+            ud_connection_field_namespace(c->activation, connection, options.table, namespace_text);
+    if (!result)
+        options.field_namespace = (ud_string){namespace_text, 32};
+    if (!result && ud_member(s->config, "schemaPolicy"))
+        result = ud_json_serialize(ud_member(s->config, "schemaPolicy"), &s->schema_policy,
+                                   &s->schema_policy_length);
+    else if (!result) {
+        const char *policy = "{\"policy\":\"strict\"}";
+        s->schema_policy_length = (uint32_t)strlen(policy);
+        s->schema_policy = ud_strdup_n(c->memory, policy, s->schema_policy_length);
+        if (!s->schema_policy)
+            result = UD_RESOURCE;
+    }
+    if (!result) {
+        ud_json *policy = NULL;
+        result = ud_json_parse(c->memory, s->schema_policy, s->schema_policy_length, &policy, NULL);
+        ud_string mode = {0};
+        if (!result)
+            result = ud_json_string(ud_member(policy, "policy"), &mode);
+        if (!result && ud_named(mode, "explicitMapping")) {
+            char *mapping = NULL;
+            uint32_t size = 0;
+            result = ud_json_serialize(ud_member(policy, "mapping"), &mapping, &size);
+            ud_bytes safe = {.ctx = c->memory};
+            const char *prefix = "{\"policy\":\"evolutionMapping\",\"mapping\":";
+            if (!result)
+                result = ud_bytes_put(&safe, prefix, strlen(prefix));
+            if (!result)
+                result = ud_bytes_put(&safe, mapping, size);
+            if (!result)
+                result = ud_bytes_put(&safe, "}", 1);
+            if (!result) {
+                ud_free(s->schema_policy);
+                s->schema_policy = (char *)safe.data;
+                s->schema_policy_length = (uint32_t)safe.size;
+                safe.data = NULL;
+            }
+            ud_free(mapping);
+            ud_bytes_clear(&safe);
+        }
+        ud_json_destroy(policy);
+    }
+    options.schema_policy = (ud_string){s->schema_policy, s->schema_policy_length};
     if (!result && !c->recovery_terminal)
         result = ud_connection_lease_cdc_open(s->lease, &options);
+    if (!result && !c->recovery_terminal) {
+        ud_batch *actual = NULL;
+        result = ud_connection_lease_cdc_schema(s->lease, &actual);
+        if (!result) {
+            ud_batch_destroy(s->actual);
+            s->actual = actual;
+            actual = NULL;
+        }
+        ud_batch_destroy(actual);
+        if (!result && s->schema_version)
+            result = ud_connection_lease_cdc_rebind(s->lease, s->actual, s->schema_version);
+    }
     if (!result && c->recovery_terminal)
         s->ended = 1;
     if (result) {
@@ -355,7 +447,8 @@ static ud_status rows(cdc_source *s, const ud_cdc_event *event) {
     for (uint32_t row = 0; !status && row < event->after->rows; row++) {
         status = ud_activation_check(s->context.activation);
         int action = event->operations[row];
-        if (!status && (action < UD_CHANGE_INSERT || action > UD_CHANGE_DELETE))
+        if (!status && (action < UD_CHANGE_INSERT ||
+                        (action > UD_CHANGE_DELETE && action != UD_CHANGE_TRUNCATE)))
             status = UD_CORRUPT;
         for (uint32_t col = 0; !status && col < s->input->columns; col++) {
             status = ud_batch_get(event->after, row, col, values + col);
@@ -406,11 +499,38 @@ static ud_status rows(cdc_source *s, const ud_cdc_event *event) {
     ud_free(before);
     return status;
 }
+static ud_status bound_rows(cdc_source *source, const ud_cdc_event *event) {
+    ud_cdc_event bound = *event;
+    bound.after = bound.before = NULL;
+    ud_string policy = {source->schema_policy, source->schema_policy_length};
+    ud_status status =
+        ud_schema_map(source->context.memory, event->after, source->input, policy, &bound.after);
+    if (!status && event->before)
+        status = ud_schema_map(source->context.memory, event->before, source->input, policy,
+                               &bound.before);
+    if (!status)
+        status = rows(source, &bound);
+    ud_batch_destroy(bound.after);
+    ud_batch_destroy(bound.before);
+    return status;
+}
 static ud_status step(void *instance, const ud_component_event *input) {
     (void)input;
     cdc_source *s = instance;
     UD_TRY(ud_connection_lease_authorize(s->lease, UD_ACCESS_READ));
     if (s->committed) {
+        if (s->schema_pending) {
+            ud_component_event change = {.struct_size = sizeof(change),
+                                         .abi_version = UD_ABI_VERSION,
+                                         .kind = UD_COMPONENT_SCHEMA_CHANGE,
+                                         .batch = s->output,
+                                         .epoch = s->epoch + 1,
+                                         .schema_version = s->schema_version,
+                                         .source_position = s->position};
+            UD_TRY(s->context.emit_event(s->context.emit_user, 0, &change));
+            s->schema_pending = 0;
+            return UD_MORE;
+        }
         if (s->at < s->count) {
             if (!s->output_view)
                 UD_TRY(ud_buffer_read(s->blocks[s->at], &s->output_view));
@@ -490,8 +610,40 @@ static ud_status step(void *instance, const ud_component_event *input) {
                 status = UD_RESOURCE;
         }
     } else if (event.kind == UD_CDC_ROWS)
-        status = rows(s, &event);
-    else if (event.kind == UD_CDC_COMMIT) {
+        status = bound_rows(s, &event);
+    else if (event.kind == UD_CDC_TRUNCATE) {
+        if (!s->begun)
+            status = UD_CORRUPT;
+        else {
+            ud_cdc_event reset = event;
+            reset.operations = NULL;
+            reset.after = NULL;
+            reset.before = NULL;
+            int32_t action = UD_CHANGE_TRUNCATE;
+            ud_value *values = ud_alloc(s->context.memory, s->input->columns * sizeof(*values));
+            status = values ? UD_OK : UD_RESOURCE;
+            for (uint32_t col = 0; !status && col < s->input->columns; col++) {
+                const ud_field *field = &s->input->column[col].field;
+                values[col] = (ud_value){.type = field->type,
+                                         .precision = field->precision,
+                                         .scale = field->scale,
+                                         .is_null = 1,
+                                         .is_absent = 1};
+            }
+            if (!status)
+                status = ud_batch_create(s->context.memory, s->input->schema->fields,
+                                         s->input->columns, 1, &reset.after);
+            if (!status)
+                status = ud_batch_append(reset.after, values, s->input->columns);
+            if (!status)
+                status = ud_batch_seal(reset.after);
+            reset.operations = &action;
+            if (!status)
+                status = rows(s, &reset);
+            ud_batch_destroy(reset.after);
+            ud_free(values);
+        }
+    } else if (event.kind == UD_CDC_COMMIT) {
         if (!s->begun || !event.position.length)
             status = UD_CORRUPT;
         else {
@@ -511,9 +663,37 @@ static ud_status step(void *instance, const ud_component_event *input) {
                 status = save_intent(s);
             }
         }
-    } else if (event.kind == UD_CDC_SCHEMA_CHANGE)
-        status = UD_INCOMPATIBLE;
-    else if (event.kind != UD_CDC_HEARTBEAT)
+    } else if (event.kind == UD_CDC_SCHEMA_CHANGE) {
+        ud_batch *mapped = NULL;
+        ud_status compatible =
+            event.after
+                ? ud_schema_map(s->context.memory, event.after, s->input,
+                                (ud_string){s->schema_policy, s->schema_policy_length}, &mapped)
+                : UD_INCOMPATIBLE;
+        ud_batch_destroy(mapped);
+        status = ud_checkpoint_schema_event(s->context.activation, s->context.component_id, &event,
+                                            compatible);
+        if (!status && compatible)
+            status = UD_INCOMPATIBLE;
+        if (!status) {
+            status = ud_connection_lease_cdc_rebind(s->lease, event.after, event.schema_version);
+            if (status) {
+                ud_status recorded = ud_checkpoint_schema_event(
+                    s->context.activation, s->context.component_id, &event, status);
+                if (recorded)
+                    status = recorded;
+            }
+        }
+        if (!status) {
+            ud_batch_destroy(s->actual);
+            s->actual = NULL;
+            status = ud_connection_lease_cdc_schema(s->lease, &s->actual);
+        }
+        if (!status) {
+            s->schema_version = event.schema_version;
+            s->schema_pending = 1;
+        }
+    } else if (event.kind != UD_CDC_HEARTBEAT)
         status = UD_CORRUPT;
     ud_cdc_event_clear(&event);
     return status ? status : UD_MORE;
@@ -523,42 +703,85 @@ static ud_status checkpoint(void *instance, ud_batch **out) {
     if ((!s->committed && !s->ended) || s->at != s->count)
         return UD_BUSY;
     ud_field fields[] = {{.name = "position", .name_length = 8, .type = UD_UTF8},
-                         {.name = "transactions", .name_length = 12, .type = UD_INT64},
-                         {.name = "schemaVersion", .name_length = 13, .type = UD_INT64},
-                         {.name = "ended", .name_length = 5, .type = UD_BOOL}};
+                         {.name = "transactions", .name_length = 12, .type = UD_UINT64},
+                         {.name = "schemaVersion", .name_length = 13, .type = UD_UINT64},
+                         {.name = "ended", .name_length = 5, .type = UD_BOOL},
+                         {.name = "decoderSchema", .name_length = 13, .type = UD_UTF8}};
+    char *schema_text = NULL;
+    uint32_t schema_length = 0;
+    const ud_batch *actual = s->actual ? s->actual : s->input;
+    UD_TRY(ud_schema_to_json(actual, &schema_text, &schema_length));
     ud_value values[] = {
         {.type = UD_UTF8, .text = s->position.data, .text_length = s->position.length},
-        {.type = UD_INT64, .integer = (int64_t)s->transactions},
-        {.type = UD_INT64, .integer = (int64_t)s->schema_version},
-        {.type = UD_BOOL, .integer = s->ended}};
-    UD_TRY(ud_batch_create(s->context.memory, fields, 4, 1, out));
-    ud_status status = ud_batch_append(*out, values, 4);
+        {.type = UD_UINT64, .unsigned_integer = s->transactions},
+        {.type = UD_UINT64, .unsigned_integer = s->schema_version},
+        {.type = UD_BOOL, .integer = s->ended},
+        {.type = UD_UTF8, .text = schema_text, .text_length = schema_length}};
+    ud_status status = ud_batch_create(s->context.memory, fields, 5, 1, out);
+    if (!status)
+        status = ud_batch_append(*out, values, 5);
     if (!status)
         status = ud_batch_seal(*out);
+    ud_free(schema_text);
     if (status) {
         ud_batch_destroy(*out);
         *out = NULL;
     }
     return status;
 }
-static ud_status restore(void *instance, const ud_batch *b) {
-    cdc_source *s = instance;
-    if (b->columns != 4 || b->rows != 1)
+static ud_status restore(void *instance, const ud_batch *batch) {
+    cdc_source *source = instance;
+    if (batch->columns != 5 || batch->rows != 1)
         return UD_CORRUPT;
-    ud_value p, n, v, ended;
-    UD_TRY(ud_batch_get(b, 0, 0, &p));
-    UD_TRY(ud_batch_get(b, 0, 1, &n));
-    UD_TRY(ud_batch_get(b, 0, 2, &v));
-    if (p.is_null || n.is_null || v.is_null || n.integer < 0 || v.integer < 0 ||
-        !ud_same((ud_string){p.text, p.text_length}, s->context.recovery_position))
+    ud_value position, count, version, ended, schema;
+    UD_TRY(ud_batch_get(batch, 0, 0, &position));
+    UD_TRY(ud_batch_get(batch, 0, 1, &count));
+    UD_TRY(ud_batch_get(batch, 0, 2, &version));
+    UD_TRY(ud_batch_get(batch, 0, 3, &ended));
+    UD_TRY(ud_batch_get(batch, 0, 4, &schema));
+    if (position.is_null || count.is_null || version.is_null || ended.is_null || schema.is_null ||
+        count.type != UD_UINT64 || version.type != UD_UINT64 ||
+        !ud_same((ud_string){position.text, position.text_length},
+                 source->context.recovery_position))
         return UD_FENCED;
-    UD_TRY(ud_batch_get(b, 0, 3, &ended));
-    if (ended.is_null || ended.type != UD_BOOL)
-        return UD_CORRUPT;
-    s->ended = (int)ended.integer;
-    s->transactions = (uint64_t)n.integer + (s->committed ? 1 : 0);
-    s->schema_version = (uint64_t)v.integer;
-    return UD_OK;
+    source->ended = (int)ended.integer;
+    if (count.unsigned_integer == UINT64_MAX && source->committed)
+        return UD_RESOURCE;
+    source->transactions = count.unsigned_integer + (source->committed ? 1 : 0);
+    source->schema_version = version.unsigned_integer;
+    ud_batch *actual = NULL, *mapped = NULL;
+    ud_status status = ud_schema_from_json(source->context.memory, schema.text, schema.text_length,
+                                           (ud_string){0}, &actual);
+    if (!status)
+        status = ud_schema_map(source->context.memory, actual, source->input,
+                               (ud_string){source->schema_policy, source->schema_policy_length},
+                               &mapped);
+    ud_batch *current = NULL;
+    if (!status && !source->ended)
+        status = ud_connection_lease_cdc_schema(source->lease, &current);
+    if (!status && current) {
+        ud_batch_destroy(mapped);
+        mapped = NULL;
+        status = ud_schema_map(source->context.memory, current, actual,
+                               (ud_string){source->schema_policy, source->schema_policy_length},
+                               &mapped);
+        if (!status)
+            status = ud_connection_lease_cdc_rebind(source->lease, current, source->schema_version);
+        if (!status) {
+            ud_batch_destroy(actual);
+            actual = current;
+            current = NULL;
+        }
+    }
+    if (!status) {
+        ud_batch_destroy(source->actual);
+        source->actual = actual;
+        actual = NULL;
+    }
+    ud_batch_destroy(current);
+    ud_batch_destroy(actual);
+    ud_batch_destroy(mapped);
+    return status;
 }
 static ud_status confirm_epoch(void *instance, uint64_t epoch, ud_string position) {
     cdc_source *s = instance;
@@ -585,10 +808,13 @@ ud_status ud_cdc_register(ud_registry *registry) {
         "\"snapshotAndStream\"},\"position\":{\"type\":\"string\"},\"slot\":{\"type\":\"string\"},"
         "\"publication\":{\"type\":\"string\"},\"serverId\":{\"type\":\"integer\",\"minimum\":1,"
         "\"maximum\":4294967295},\"maxTransactions\":{\"type\":\"integer\",\"minimum\":0,"
-        "\"default\":0}},\"required\":[\"connection\",\"table\",\"schema\"],"
+        "\"default\":0},\"schemaPolicy\":{\"type\":\"object\"}},\"required\":[\"connection\","
+        "\"table\",\"schema\"],"
         "\"additionalProperties\":false}";
     const char *ids[] = {"mysql.cdc.source", "mariadb.cdc.source", "postgresql.cdc.source",
                          "sqlserver.cdc.source", "oracle.cdc.source"};
+    const char *names[] = {"MySQL CDC Source", "MariaDB CDC Source", "PostgreSQL CDC Source",
+                           "SQL Server CDC Source", "Oracle CDC Source"};
     const int32_t dialects[] = {UD_SQL_MYSQL, UD_SQL_MARIADB, UD_SQL_POSTGRESQL, UD_SQL_SQLSERVER,
                                 UD_SQL_ORACLE};
     for (uint32_t i = 0; i < 5; i++) {
@@ -596,7 +822,7 @@ ud_status ud_cdc_register(ud_registry *registry) {
             .struct_size = sizeof(descriptor),
             .abi_version = UD_ABI_VERSION,
             .id = {ids[i], (uint32_t)strlen(ids[i])},
-            .name = {ids[i], (uint32_t)strlen(ids[i])},
+            .name = {names[i], (uint32_t)strlen(names[i])},
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = {schema, sizeof(schema) - 1},
             .category = UD_COMPONENT_SOURCE,
@@ -606,7 +832,7 @@ ud_status ud_cdc_register(ud_registry *registry) {
             .capabilities =
                 UD_COMPONENT_REPLAY_SAFE | UD_COMPONENT_STATEFUL | UD_COMPONENT_THREAD_SAFE,
             .effects = UD_EFFECT_EXTERNAL_READ,
-            .state_version = 1,
+            .state_version = 2,
             .user = (void *)(intptr_t)dialects[i],
             .configure = configure,
             .prepare = prepare,

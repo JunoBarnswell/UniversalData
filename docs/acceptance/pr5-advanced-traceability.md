@@ -1,8 +1,8 @@
-# PR #5 基础与高级能力追踪
+# PR #5 历史基础与高级能力追踪
 
-<!-- Generated from metadata/product.json. -->
+<!-- Generated from metadata/product.json history. -->
 
-实现状态与验收状态分别记录；当前 ABI 9 的 Linux 验收尚未启动，历史记录不作为当前证明。Windows 豁免。
+以下是 main 基线之前的历史事实，不计入 SDK 2.0 验收。当前 Linux 与 Windows 均须验收。
 
 | ID | 能力 | 实现状态 | 验收 |
 |---|---|---|---|

@@ -249,9 +249,16 @@ static ud_status drain(quality_component *q) {
             if (!status && ud_member(rule, "version"))
                 status = ud_json_uint(ud_member(rule, "version"), &version);
             if (!status)
-                status =
-                    ud_error_append(&q->context.errors, errors, q->pending_input, v->input_row, id,
-                                    (uint32_t)version, v->column_id, UD_QUALITY, v->policy);
+                status = ud_error_append(&q->context.errors, errors,
+                                         &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                                            .abi_version = UD_ABI_VERSION,
+                                                            .input = q->pending_input,
+                                                            .row = v->input_row,
+                                                            .rule = id,
+                                                            .rule_version = (uint32_t)version,
+                                                            .column = v->column_id,
+                                                            .code = UD_QUALITY,
+                                                            .policy = v->policy});
         }
         if (!status && errors->rows)
             status = q->context.emit(q->context.emit_user, 1, errors);

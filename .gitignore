@@ -57,6 +57,7 @@ work/
 output/
 _deps/
 **/bin/
+**/bin
 **/obj/
 **/target/
 __pycache__/
@@ -85,3 +86,8 @@ ipch/
 *.gcda
 *.gcno
 *.py[cod]
+
+# Product frontend generated assets and dependencies
+**/node_modules/
+**/node_modules
+products/UniversalData.Management/wwwroot/

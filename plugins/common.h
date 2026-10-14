@@ -32,6 +32,27 @@ static inline ud_status plugin_fields(const ud_host_api *h, const ud_batch *b, u
         h->field(b, i, *out + i);
     return UD_OK;
 }
+static inline int plugin_record_conversion(ud_status status) {
+    return status == UD_PARSE || status == UD_OVERFLOW || status == UD_TRUNCATED ||
+           status == UD_QUALITY;
+}
+static inline ud_status plugin_record_finish(const ud_host_api *host,
+                                             const ud_read_options *options, ud_batch *batch,
+                                             const ud_field *fields, const ud_value *values,
+                                             const ud_value *raw, uint32_t columns,
+                                             ud_status conversion, uint32_t bad) {
+    for (uint32_t at = 0; !conversion && at < columns; at++)
+        if (values[at].is_null && !fields[at].nullable) {
+            conversion = UD_QUALITY;
+            bad = at;
+        }
+    if (!conversion)
+        conversion = host->append(batch, values, columns);
+    if (options->record && (!conversion || plugin_record_conversion(conversion)))
+        return options->record(options->record_user, batch, conversion, bad, fields, values, raw,
+                               columns);
+    return conversion;
+}
 static inline void plugin_shutdown(void) {}
 static inline char *plugin_identifier(const ud_host_api *h, ud_string name) {
     if (!name.data || !name.length || memchr(name.data, 0, name.length))

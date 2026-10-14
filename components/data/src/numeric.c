@@ -3,9 +3,14 @@
 ud_status ud_numeric_result_field(int32_t op, const ud_field *a, const ud_field *b, ud_field *out) {
     if (!a || !b || !out || op < UD_NUMERIC_ADD || op > UD_NUMERIC_MULTIPLY)
         return UD_INVALID;
+    if (a->dictionary_kind || b->dictionary_kind)
+        return UD_UNSUPPORTED;
     if (!ud_field_matches(a, b, UD_FIELD_VALUE_TYPE) ||
-        (a->type != UD_INT64 && a->type != UD_FLOAT64 && a->type != UD_DECIMAL128))
+        (a->type != UD_INT64 && a->type != UD_UINT64 && a->type != UD_DURATION &&
+         a->type != UD_INTERVAL && a->type != UD_FLOAT64 && a->type != UD_DECIMAL128))
         return UD_SCHEMA;
+    if (op == UD_NUMERIC_MULTIPLY && (a->type == UD_DURATION || a->type == UD_INTERVAL))
+        return UD_UNSUPPORTED;
     *out = *a;
     out->nullable = a->nullable || b->nullable;
     out->identity = (ud_id){0};
@@ -76,8 +81,13 @@ ud_status ud_value_numeric(int32_t op, const ud_value *a, const ud_value *b, con
                            ud_value *out) {
     if (!a || !b || !field || !out || op < UD_NUMERIC_ADD || op > UD_NUMERIC_MULTIPLY)
         return UD_INVALID;
+    if (a->is_absent || b->is_absent)
+        return UD_INCOMPATIBLE;
+    if (field->dictionary_kind)
+        return UD_UNSUPPORTED;
     if (a->type != b->type || a->type != field->type ||
-        (field->type != UD_INT64 && field->type != UD_FLOAT64 && field->type != UD_DECIMAL128))
+        (field->type != UD_INT64 && field->type != UD_UINT64 && field->type != UD_DURATION &&
+         field->type != UD_INTERVAL && field->type != UD_FLOAT64 && field->type != UD_DECIMAL128))
         return UD_SCHEMA;
     /* Inputs may alias the output accumulator. */
     ud_value left = *a, right = *b;
@@ -89,6 +99,45 @@ ud_status ud_value_numeric(int32_t op, const ud_value *a, const ud_value *b, con
         out->is_null = 1;
         return UD_OK;
     }
+    if (field->type == UD_UINT64) {
+        uint64_t x = left.unsigned_integer, y = right.unsigned_integer;
+        if (op == UD_NUMERIC_ADD) {
+            if (x > UINT64_MAX - y)
+                return UD_OVERFLOW;
+            out->unsigned_integer = x + y;
+        } else if (op == UD_NUMERIC_SUBTRACT) {
+            if (x < y)
+                return UD_OVERFLOW;
+            out->unsigned_integer = x - y;
+        } else {
+            if (y && x > UINT64_MAX / y)
+                return UD_OVERFLOW;
+            out->unsigned_integer = x * y;
+        }
+        return UD_OK;
+    }
+    if (field->type == UD_INTERVAL) {
+        if (op == UD_NUMERIC_MULTIPLY)
+            return UD_UNSUPPORTED;
+        int64_t a_parts[] = {left.interval.months, left.interval.days, left.interval.microseconds};
+        int64_t b_parts[] = {right.interval.months, right.interval.days,
+                             right.interval.microseconds},
+                result[3];
+        ud_field part_field = {.type = UD_INT64};
+        for (uint32_t i = 0; i < 3; i++) {
+            ud_value a_value = {.type = UD_INT64, .integer = a_parts[i]},
+                     b_value = {.type = UD_INT64, .integer = b_parts[i]}, v;
+            UD_TRY(ud_value_numeric(op, &a_value, &b_value, &part_field, &v));
+            result[i] = v.integer;
+        }
+        if (result[0] < INT32_MIN || result[0] > INT32_MAX || result[1] < INT32_MIN ||
+            result[1] > INT32_MAX)
+            return UD_OVERFLOW;
+        out->interval = (ud_interval){(int32_t)result[0], (int32_t)result[1], result[2]};
+        return UD_OK;
+    }
+    if (field->type == UD_DURATION && op == UD_NUMERIC_MULTIPLY)
+        return UD_UNSUPPORTED;
     if (field->type == UD_FLOAT64) {
         out->real = op == UD_NUMERIC_ADD        ? left.real + right.real
                     : op == UD_NUMERIC_SUBTRACT ? left.real - right.real

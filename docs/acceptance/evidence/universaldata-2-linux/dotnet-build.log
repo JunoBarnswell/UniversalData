@@ -1,0 +1,9 @@
+  UniversalData -> /workspace/UniversalData-2.0/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /workspace/UniversalData-2.0/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Management -> /workspace/UniversalData-2.0/products/UniversalData.Management/bin/Release/net10.0/UniversalData.Management.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:07.65

@@ -30,14 +30,14 @@ int main(int argc, char **argv) {
         o.abi_version = UD_ABI_VERSION;
         OK(ud_catalog_open(ctx, &o, &c));
         CHECK(ud_catalog_get(c, &key, &json, &length) == UD_END && !json);
-        const char *package = "{\"version\":9,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
+        const char *package = "{\"version\":10,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
                               "\"constraints\":[]},\"dataFlows\":[]}";
         OK(ud_catalog_put(c, &key, str(package)));
         OK(ud_catalog_put(c, &key, str(package)));
-        CHECK(ud_catalog_put(c, &key,
-                             str("{\"version\":9,\"id\":\"test\",\"parameters\":{},\"controlFlow\":"
-                                 "{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}")) ==
-              UD_CORRUPT);
+        CHECK(ud_catalog_put(
+                  c, &key,
+                  str("{\"version\":10,\"id\":\"test\",\"parameters\":{},\"controlFlow\":"
+                      "{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}")) == UD_CORRUPT);
         OK(ud_catalog_get(c, &key, &json, &length));
         CHECK(length == strlen(package) && !strcmp(json, package));
         ud_free(json);
@@ -53,6 +53,19 @@ int main(int argc, char **argv) {
         CHECK(strstr(json, "\"revision\":1") && strstr(json, "\"revision\":2"));
         ud_free(json);
         json = NULL;
+        OK(ud_catalog_query(c, str("{\"kind\":2,\"id\":\"test\",\"limit\":1}"), &json, &length));
+        CHECK(strstr(json, "\"revision\":1") && strstr(json, "\"document\":") &&
+              !strstr(json, "\"revision\":2"));
+        ud_free(json);
+        json = NULL;
+        OK(ud_catalog_query(c, str("{\"kind\":2,\"id\":\"test\",\"afterRevision\":1,\"limit\":1}"),
+                            &json, &length));
+        CHECK(strstr(json, "\"revision\":2") && !strstr(json, "\"revision\":1"));
+        ud_free(json);
+        json = NULL;
+        CHECK(ud_catalog_query(c, str("{\"kind\":2,\"limit\":1001}"), &json, &length) ==
+                  UD_SCHEMA &&
+              !json);
         ud_execution_event event = {.struct_size = sizeof(event),
                                     .abi_version = UD_ABI_VERSION,
                                     .package_id = str("test"),
@@ -97,11 +110,28 @@ int main(int argc, char **argv) {
             CHECK(ud_catalog_get(c, &key, &json, &length) == UD_CORRUPT && !json);
         } else if (!strcmp(argv[2], "renamed")) {
             CHECK(ud_catalog_list(c, UD_CATALOG_PACKAGE, &json, &length) == UD_CORRUPT && !json);
-        } else if (!strcmp(argv[2], "staging")) {
+        } else if (!strcmp(argv[2], "busy")) {
             key.revision = 3;
-            const char *package = "{\"version\":9,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
+            const char *package = "{\"version\":10,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
                                   "\"constraints\":[]},\"dataFlows\":[]}";
             CHECK(ud_catalog_put(c, &key, str(package)) == UD_BUSY);
+        } else if (!strcmp(argv[2], "race")) {
+            key.kind = UD_CATALOG_AUDIT;
+            key.id = str("race");
+            for (uint64_t i = 1; i <= 100; i++) {
+                key.revision = i;
+                OK(ud_catalog_put(c, &key, str("{\"version\":10,\"id\":\"race\",\"timestampMs\":42}")));
+            }
+        } else if (!strcmp(argv[2], "raceRead")) {
+            OK(ud_catalog_query(c,
+                                str("{\"kind\":7,\"id\":\"race\",\"sinceMs\":42,\"untilMs\":42,"
+                                    "\"afterRevision\":99}"),
+                                &json, &length));
+            CHECK(strstr(json, "\"revision\":100") && !strstr(json, "\"revision\":99"));
+        } else if (!strcmp(argv[2], "oldVersion")) {
+            CHECK(ud_catalog_put(c, &key,
+                                 str("{\"version\":9,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
+                                     "\"constraints\":[]},\"dataFlows\":[]}")) == UD_INCOMPATIBLE);
         } else {
             CHECK(0);
         }

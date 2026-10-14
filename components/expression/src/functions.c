@@ -3,12 +3,29 @@
 #include "../../data/internal.h"
 #include <math.h>
 
-enum { ABS, LENGTH, TRIM, UPPER, LOWER, CONCAT, COALESCE, SUBSTRING, UNICODE_UPPER, UNICODE_LOWER, NORMALIZE, UNICODE_TRIM, CASEFOLD };
+enum {
+    ABS,
+    LENGTH,
+    TRIM,
+    UPPER,
+    LOWER,
+    CONCAT,
+    COALESCE,
+    SUBSTRING,
+    UNICODE_UPPER,
+    UNICODE_LOWER,
+    NORMALIZE,
+    UNICODE_TRIM,
+    CASEFOLD
+};
 static ud_status bind_function(void *user, const ud_field *args, uint32_t count, ud_field *out) {
     int kind = (int)(intptr_t)user;
     *out = args[0];
     if (kind == ABS) {
-        if (args[0].type != UD_INT64 && args[0].type != UD_FLOAT64 && args[0].type != UD_DECIMAL128)
+        if (args[0].dictionary_kind)
+            return UD_UNSUPPORTED;
+        if (args[0].type != UD_INT64 && args[0].type != UD_UINT64 && args[0].type != UD_DURATION &&
+            args[0].type != UD_FLOAT64 && args[0].type != UD_DECIMAL128)
             return UD_SCHEMA;
     } else if (kind == COALESCE) {
         out->nullable = 1;
@@ -53,11 +70,18 @@ static ud_status evaluate_function(void *user, ud_context *ctx, const ud_value *
             return ud_copy_value(ctx, args, out, 0);
         return ud_value_numeric(UD_NUMERIC_SUBTRACT, &zero, args, field, out);
     }
-    if(kind>=UNICODE_UPPER) {
-        uint32_t flags=kind==UNICODE_UPPER?UD_TEXT_UPPER:kind==UNICODE_LOWER?UD_TEXT_LOWER:
-                       kind==NORMALIZE?UD_TEXT_NFC:kind==UNICODE_TRIM?UD_TEXT_TRIM:UD_TEXT_NFKC|UD_TEXT_FOLD;
-        char *value=NULL;ud_status status=ud_text_transform(ctx,(ud_string){args[0].text,args[0].text_length},flags,&value,&out->text_length);
-        if(!status)out->text=value;return status;
+    if (kind >= UNICODE_UPPER) {
+        uint32_t flags = kind == UNICODE_UPPER   ? UD_TEXT_UPPER
+                         : kind == UNICODE_LOWER ? UD_TEXT_LOWER
+                         : kind == NORMALIZE     ? UD_TEXT_NFC
+                         : kind == UNICODE_TRIM  ? UD_TEXT_TRIM
+                                                 : UD_TEXT_NFKC | UD_TEXT_FOLD;
+        char *value = NULL;
+        ud_status status = ud_text_transform(ctx, (ud_string){args[0].text, args[0].text_length},
+                                             flags, &value, &out->text_length);
+        if (!status)
+            out->text = value;
+        return status;
     }
     const char *text = args[0].text;
     uint32_t length = args[0].text_length;
@@ -118,15 +142,16 @@ static ud_status evaluate_function(void *user, ud_context *ctx, const ud_value *
     return UD_OK;
 }
 ud_status ud_expression_register_functions(ud_registry *registry) {
-    static const char *ids[] = {"abs",         "length", "trim",     "upper_ascii",
-                                "lower_ascii", "concat", "coalesce", "substring", "upper", "lower", "normalize", "trim_unicode", "casefold"};
+    static const char *ids[] = {
+        "abs",       "length", "trim",  "upper_ascii", "lower_ascii",  "concat",  "coalesce",
+        "substring", "upper",  "lower", "normalize",   "trim_unicode", "casefold"};
     ud_component_descriptor descriptors[13] = {{0}};
     for (uint32_t i = 0; i < 13; i++) {
         ud_component_descriptor *d = descriptors + i;
         d->struct_size = sizeof(*d);
         d->abi_version = UD_ABI_VERSION;
         d->id = d->name = (ud_string){ids[i], (uint32_t)strlen(ids[i])};
-        d->version = (ud_string){UD_SDK_VERSION, sizeof(UD_SDK_VERSION)-1};
+        d->version = (ud_string){UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1};
         d->configuration_schema = (ud_string){"{}", 2};
         d->category = UD_COMPONENT_FUNCTION;
         d->synchronous_input = d->error_output = -1;

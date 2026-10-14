@@ -101,6 +101,9 @@ int main(int argc, char **argv) {
         OK(ud_connection_provision(writer));
     }
     if (dialect == UD_SQL_POSTGRESQL) {
+        OK(command(writer, "DO $$ BEGIN PERFORM pg_drop_replication_slot(slot_name) FROM "
+                           "pg_replication_slots WHERE slot_name='ud_advanced_slot' AND NOT "
+                           "active; END $$"));
         OK(command(writer, "ALTER TABLE ud_advanced_cdc REPLICA IDENTITY FULL"));
         OK(command(writer, "DROP PUBLICATION IF EXISTS ud_advanced_publication"));
         OK(command(writer, "CREATE PUBLICATION ud_advanced_publication FOR TABLE ud_advanced_cdc"));
@@ -190,6 +193,10 @@ int main(int argc, char **argv) {
         CHECK(ud_connection_cdc_next(c, &event) == UD_FENCED);
         OK(ud_connection_cdc_close(c));
     }
+    if (dialect == UD_SQL_POSTGRESQL)
+        OK(command(writer, "DO $$ BEGIN PERFORM pg_drop_replication_slot(slot_name) FROM "
+                           "pg_replication_slots WHERE slot_name='ud_advanced_slot' AND NOT "
+                           "active; END $$"));
     OK(ud_connection_close(writer));
     OK(ud_connection_close(c));
     ud_free((void *)snapshot.data);

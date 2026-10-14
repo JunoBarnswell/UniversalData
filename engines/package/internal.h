@@ -57,7 +57,8 @@ struct ud_activation {
     const ud_json *event_handlers, *task_definition;
     uint32_t event_depth;
     int transaction_serial;
-    ud_string transaction_connection;
+    int transaction_epoch;
+    const ud_json *transaction_participants;
     void *cancel_instance;
     void (*cancel_callback)(void *);
     uint32_t cancel_pins;
@@ -72,6 +73,7 @@ struct ud_execution {
     ud_context *ctx;
     ud_package *package;
     ud_execution_options options;
+    atomic_int observer_fault;
     ud_registry *registry, *external;
     ud_json *parameters;
     uint8_t parameters_fingerprint[32];
@@ -103,6 +105,7 @@ struct ud_execution {
     ud_activation *cancellable;
     ud_mutex events_lock, journal_lock, serial_tasks_lock;
     uint64_t event_sequence;
+    struct ud_debug *debug;
     ud_buffer_manager *buffers;
     struct ud_connection_lease *buffer_lease;
     int threaded;
@@ -129,8 +132,15 @@ ud_status ud_checkpoint_enumerator(ud_activation *, const uint8_t digest[32]);
 ud_status ud_control_execute(ud_activation *, const ud_json *);
 ud_status ud_pipeline_validate(ud_activation *, const ud_json *);
 ud_status ud_pipeline_bind_validate(ud_activation *, const ud_json *);
+ud_status ud_control_catalog(ud_bytes *);
 ud_status ud_control_explain(ud_activation *, const ud_json *, ud_bytes *);
 ud_status ud_pipeline_execute(ud_activation *, const ud_json *);
+enum { UD_DEBUG_TASK = 1, UD_DEBUG_BATCH = 2, UD_DEBUG_EPOCH = 3 };
+int ud_debug_enabled(const ud_execution *);
+ud_status ud_debug_boundary(ud_activation *, int32_t);
+void ud_debug_advance(ud_activation *);
+ud_status ud_debug_preview(ud_activation *, uint32_t, const ud_batch *);
+void ud_debug_destroy(ud_execution *);
 ud_status ud_connection_field_namespace(ud_activation *, ud_string, ud_string, char[33]);
 ud_status ud_pipeline_field_namespace(const ud_component_context *, char output[33]);
 ud_status ud_transforms_register(ud_registry *);
@@ -180,25 +190,46 @@ ud_status ud_connections_release_activation(ud_activation *);
 ud_status ud_connections_diagnostics(ud_execution *, ud_bytes *);
 ud_status ud_transaction_enter(ud_activation *, const ud_json *, int validate);
 ud_status ud_transaction_leave(ud_activation *, ud_status);
+ud_status ud_transaction_fact_position(ud_activation *, ud_string *identity, uint64_t *order);
+int ud_transaction_task_done(ud_activation *);
+ud_status ud_transaction_resource_validate(const ud_activation *, ud_string);
+enum { UD_TX_JOURNAL_MANIFEST = 1, UD_TX_JOURNAL_DECISION = 2, UD_TX_JOURNAL_COMPLETE = 3 };
+ud_status ud_checkpoint_transaction_read(ud_activation *, int32_t, ud_string, char **, uint32_t *);
+ud_status ud_checkpoint_transaction_record(ud_activation *, int32_t, ud_string, ud_string);
+ud_status ud_checkpoint_transaction_facts(ud_activation *, ud_string identity, int commit);
 int ud_transaction_active(const ud_activation *);
-ud_status ud_acquire_file_connection(ud_activation *, ud_string, ud_connection_lease **);
+ud_status ud_transaction_commit_epoch(ud_activation *);
+ud_status ud_acquire_file_connection(ud_activation *, ud_string, uint64_t capabilities,
+                                     ud_connection_lease **);
 ud_status ud_filesystem_register(ud_registry *);
 ud_status ud_process_register(ud_registry *);
 ud_status ud_http_register(ud_registry *);
+#ifdef UD_WITH_XML
+ud_status ud_xml_source_register(ud_registry *);
+ud_status ud_avro_register(ud_registry *);
+ud_status ud_wmi_register(ud_registry *);
+ud_status ud_sqlserver_tasks_register(ud_registry *);
+ud_status ud_xml_tasks_register(ud_registry *);
+#endif
 ud_status ud_profile_register(ud_registry *);
 ud_status ud_acquire_http_connection(ud_activation *, ud_string, ud_connection_lease **);
 ud_status ud_http_connection_resource(ud_connection_lease *, ud_string *);
 ud_status ud_http_connection_credentials(ud_connection_lease *, ud_string *);
+ud_status ud_network_connection_resource(ud_connection_lease *, ud_string *);
+ud_status ud_network_tasks_register(ud_registry *);
+ud_status ud_column_files_register(ud_registry *);
 ud_status ud_acquire_process_connection(ud_activation *, ud_string, ud_connection_lease **);
 ud_status ud_process_connection_path(ud_connection_lease *, ud_string *);
 ud_status ud_checkpoint_open(ud_execution *);
 ud_status ud_checkpoint_task_begin(ud_activation *, ud_string kind, int *completed);
 ud_status ud_checkpoint_task_done(ud_activation *);
 ud_status ud_checkpoint_source(ud_activation *, const char *path);
-ud_status ud_checkpoint_stage(ud_activation *, const char *target, const char *temporary,
-                              int *replaying);
+enum { UD_FILE_BASE = 1, UD_FILE_PREPARED = 2 };
+ud_status ud_checkpoint_file_read(ud_activation *, int32_t, ud_string, char **, uint32_t *);
+ud_status ud_checkpoint_file_record(ud_activation *, int32_t, ud_string, ud_string);
 ud_status ud_checkpoint_file_done(ud_activation *, const char *target);
 int ud_checkpoint_batch_seen(ud_activation *, ud_string identity);
+int ud_checkpoint_batch_completed(ud_activation *, ud_string identity);
 ud_status ud_checkpoint_batch(ud_activation *, ud_string identity, const uint8_t digest[32],
                               int committed);
 
@@ -219,6 +250,7 @@ ud_status ud_checkpoint_epoch_info(ud_activation *, ud_string, char **, uint32_t
 ud_status ud_checkpoint_epoch_commit(ud_activation *, ud_string, ud_string);
 ud_status ud_checkpoint_cursor(ud_activation *, ud_string, ud_string);
 ud_status ud_checkpoint_schema(ud_activation *, ud_string, const ud_batch *);
+ud_status ud_checkpoint_schema_event(ud_activation *, ud_string, const ud_cdc_event *, ud_status);
 
 ud_status ud_assets_create(ud_execution *);
 void ud_assets_destroy(ud_execution *);

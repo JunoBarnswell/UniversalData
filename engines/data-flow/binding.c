@@ -1,4 +1,21 @@
 #include "builtins_internal.h"
+static ud_status error_schema(const ud_component_context *context, const ud_json *config,
+                              const ud_batch *input, uint32_t port, ud_batch **output) {
+    int policy, include = 0;
+    UD_TRY(ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy));
+    const ud_json *flag = ud_member(config, "includeInput");
+    if (flag) {
+        const char *value;
+        uint32_t length;
+        if (ud_json_kind(flag) != UD_JSON_BOOL)
+            return UD_SCHEMA;
+        UD_TRY(ud_json_text(flag, &value, &length));
+        include = length == 4;
+    }
+    if (policy == UD_ERROR_REDIRECT && !(context->connected_outputs & (UINT64_C(1) << port)))
+        return UD_SCHEMA;
+    return ud_error_schema(&context->errors, input, include, output);
+}
 ud_status ud_builtin_clone_schema(ud_context *ctx, const ud_batch *in, ud_batch **out) {
     uint32_t count = ud_batch_columns(in);
     ud_field *fields = ud_alloc(ctx, count * sizeof(*fields));
@@ -129,6 +146,59 @@ ud_status ud_builtin_create_operator(const ud_component_context *c, int kind, co
     return status;
 }
 
+ud_status ud_builtin_sink_delivery(int kind, const ud_json *config, int32_t *delivery) {
+    if (kind == REST_SINK)
+        return ud_rest_delivery(config, delivery);
+    if (kind != SQL_SINK)
+        return UD_INVALID;
+    ud_string value = {"receipt", 7};
+    if (ud_member(config, "delivery"))
+        UD_TRY(ud_json_string(ud_member(config, "delivery"), &value));
+    if (ud_named(value, "receipt"))
+        *delivery = UD_DELIVERY_RECEIPT;
+    else if (ud_named(value, "response"))
+        *delivery = UD_DELIVERY_RESPONSE;
+    else
+        return UD_SCHEMA;
+    return UD_OK;
+}
+
+ud_status ud_builtin_describe_sink(void *user, const ud_component_context *c, ud_string text,
+                                   const ud_batch *const *inputs, ud_component_plan *out) {
+    (void)inputs;
+    int kind = (int)(intptr_t)user;
+    ud_json *config = NULL;
+    UD_TRY(ud_builtin_parse(c, text, &config));
+    ud_string mode = {"append", 6};
+    ud_status status = UD_OK;
+    if (ud_member(config, "mode"))
+        status = ud_json_string(ud_member(config, "mode"), &mode);
+    int32_t delivery = UD_DELIVERY_RECEIPT;
+    if (!status)
+        status = ud_builtin_sink_delivery(kind, config, &delivery);
+    out->effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_COMMIT_UNKNOWN;
+    if (kind == SQL_SINK)
+        out->effects |= UD_EFFECT_TRANSACTIONAL;
+    if (delivery == UD_DELIVERY_RECEIPT)
+        out->effects |= UD_EFFECT_RECEIPTED;
+    if (delivery == UD_DELIVERY_IDEMPOTENT)
+        out->effects |= UD_EFFECT_IDEMPOTENT;
+    int keyed = kind == SQL_SINK;
+    if (!status && kind == REST_SINK && ud_member(config, "keyedReplace")) {
+        const ud_json *value = ud_member(config, "keyedReplace");
+        const char *raw = NULL;
+        uint32_t length = 0;
+        status =
+            ud_json_kind(value) == UD_JSON_BOOL ? ud_json_text(value, &raw, &length) : UD_SCHEMA;
+        keyed = !status && length == 4 && !memcmp(raw, "true", 4);
+    }
+    if (!status && keyed && ud_named(mode, "upsert") &&
+        ud_json_kind(ud_member(config, "keys")) == UD_JSON_ARRAY &&
+        ud_json_size(ud_member(config, "keys")) && delivery != UD_DELIVERY_RESPONSE)
+        out->effects |= UD_EFFECT_KEYED_REPLACE;
+    ud_json_destroy(config);
+    return status;
+}
 ud_status ud_builtin_describe_operator(void *user, const ud_component_context *c, ud_string text,
                                        const ud_batch *const *inputs, ud_component_plan *out) {
     if (!out || out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION)
@@ -173,7 +243,17 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
     }
     if (!s && (source_kind(kind)))
         s = ud_builtin_schema_config(c, config, out);
-    else if (!s && (sink_kind(kind))) { /* No output schemas. */
+    else if (!s && kind == SQL_SINK) {
+        int32_t delivery = UD_DELIVERY_RECEIPT;
+        int policy;
+        s = ud_builtin_sink_delivery(kind, config, &delivery);
+        if (!s)
+            s = ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy);
+        if (!s && policy != UD_ERROR_FAIL && !c->activation->transaction_serial)
+            s = UD_UNSUPPORTED;
+        if (!s)
+            s = error_schema(c, config, in[0], 0, out);
+    } else if (!s && (sink_kind(kind))) { /* No output schemas. */
     } else if (!s && kind == CAST) {
         char *schema = NULL;
         uint32_t length = 0;
@@ -186,26 +266,8 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
         if (!s)
             s = ud_batch_cast_schema(c->memory, in[0], schema, length, (int32_t)rounding, out);
         ud_free(schema);
-        ud_string policy = {"fail", 4};
-        if (!s && ud_member(config, "errorPolicy"))
-            s = ud_json_string(ud_member(config, "errorPolicy"), &policy);
-        if (!s && !ud_named(policy, "fail") && !ud_named(policy, "ignore") &&
-            !ud_named(policy, "redirect"))
-            s = UD_SCHEMA;
-        int include = 0;
-        const ud_json *flag = ud_member(config, "includeInput");
-        if (!s && flag) {
-            const char *p = NULL;
-            uint32_t n = 0;
-            if (ud_json_kind(flag) != UD_JSON_BOOL)
-                s = UD_SCHEMA;
-            else {
-                s = ud_json_text(flag, &p, &n);
-                include = n == 4 && !memcmp(p, "true", 4);
-            }
-        }
         if (!s)
-            s = ud_error_schema(&c->errors, in[0], include, out + 1);
+            s = error_schema(c, config, in[0], 1, out + 1);
     } else if (!s && kind == DERIVE) {
         const ud_json *columns = ud_member(config, "columns");
         uint32_t count = ud_json_size(columns), original = ud_batch_columns(in[0]);
@@ -304,6 +366,8 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
             s = UD_SCHEMA;
         ud_batch_destroy(params);
     }
+    if (!s && (kind == CSV_SOURCE || kind == JSON_SOURCE || kind == SQL_SOURCE))
+        s = error_schema(c, config, out[0], 1, out + 1);
     if (!s && kind == SQL_SOURCE && ud_member(config, "where")) {
         ud_expression *predicate = NULL;
         s = ud_builtin_bind_expr(c, ud_member(config, "where"), out[0], &predicate);
@@ -326,9 +390,32 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
             ud_free(text);
         }
     }
-    if (!s && (kind == SPLIT || kind == MULTICAST))
-        for (uint32_t p = 1; !s && p < c->output_count; p++)
+    if (!s && (kind == SPLIT || kind == MULTICAST || kind == BALANCED))
+        for (uint32_t p = 1; !s && p < c->output_count - (kind == SPLIT); p++)
             s = ud_builtin_clone_schema(c->memory, in[0], out + p);
+    if (!s && (kind == DERIVE || kind == SPLIT || kind == SQL_COMMAND)) {
+        uint32_t port = kind == SPLIT ? c->output_count - 1 : 1;
+        s = error_schema(c, config, in[0], port, out + port);
+        if (!s && kind == SQL_COMMAND) {
+            int policy;
+            s = ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy);
+            if (!s && policy != UD_ERROR_FAIL && !c->activation->transaction_serial)
+                s = UD_UNSUPPORTED;
+            const ud_json *parameters = ud_member(config, "parameters");
+            for (uint32_t at = 0; !s && at < ud_json_size(parameters); at++) {
+                uint64_t column;
+                s = ud_json_uint(ud_json_at(parameters, at), &column);
+                if (!s && column >= in[0]->columns)
+                    s = UD_SCHEMA;
+                for (uint32_t previous = 0; !s && previous < at; previous++) {
+                    uint64_t before;
+                    s = ud_json_uint(ud_json_at(parameters, previous), &before);
+                    if (!s && before == column)
+                        s = UD_SCHEMA;
+                }
+            }
+        }
+    }
     if (!s && kind == SPLIT) {
         const ud_json *branches = ud_member(config, "branches");
         uint32_t count = branches ? ud_json_size(branches) : 1;
@@ -419,13 +506,13 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
     int kind = (int)(intptr_t)user;
     ud_json *config = NULL;
     UD_TRY(ud_builtin_parse(c, text, &config));
-    const ud_json *names = ud_member(config, kind == MULTICAST   ? "outputs"
-                                             : kind == UNION_ALL ? "inputs"
-                                                                 : "branches");
+    const ud_json *names = ud_member(config, kind == MULTICAST || kind == BALANCED ? "outputs"
+                                             : kind == UNION_ALL                   ? "inputs"
+                                                                                   : "branches");
     uint32_t n = names ? ud_json_size(names) : 2;
     ud_status s = UD_OK;
     if (kind == SPLIT)
-        n = names ? ud_json_size(names) + 1 : 2;
+        n = names ? ud_json_size(names) + 2 : 3;
     if (n < 2 || n > 64 || (names && ud_json_kind(names) != UD_JSON_ARRAY))
         s = UD_SCHEMA;
     ports->input_count = kind == UNION_ALL ? n : 1;
@@ -443,18 +530,21 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
             ud_string name = {0};
             char fallback[32];
             const ud_json *value = NULL;
-            if (names && ((kind == UNION_ALL && !direction) || (kind == MULTICAST && direction)))
+            if (names && ((kind == UNION_ALL && !direction) ||
+                          ((kind == MULTICAST || kind == BALANCED) && direction)))
                 value = ud_json_at(names, i);
             if (names && kind == SPLIT && direction) {
-                if (i + 1 < ports->output_count) {
+                if (i + 2 < ports->output_count) {
                     const ud_json *branch = ud_json_at(names, i);
                     static const char *allow[] = {"id", "condition"};
                     s = ud_json_keys(branch, allow, 2);
                     value = ud_member(branch, "id");
-                } else
+                } else if (i + 2 == ports->output_count)
                     value = ud_member(config, "default");
             }
-            if (!s && value)
+            if (!s && kind == SPLIT && direction && i + 1 == ports->output_count)
+                name = (ud_string){"error", 5};
+            else if (!s && value)
                 s = ud_json_string(value, &name);
             else if (!s) {
                 int length =
@@ -465,6 +555,8 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
                 port->name =
                     (ud_string){ud_strdup_n(c->memory, name.data, name.length), name.length};
                 port->flags = UD_PORT_REQUIRED;
+                if (kind == SPLIT && direction && i + 1 == ports->output_count)
+                    port->flags = UD_PORT_ERROR;
                 if (!port->name.data)
                     s = UD_RESOURCE;
             }

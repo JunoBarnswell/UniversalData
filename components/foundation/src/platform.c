@@ -6,6 +6,7 @@
 #include <time.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <bcrypt.h>
 #include <io.h>
 static wchar_t *wide(const char *s) {
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, NULL, 0);
@@ -38,6 +39,31 @@ FILE *ud_fopen(const char *p, const char *mode) {
     return fopen(p, mode);
 }
 #endif
+ud_status ud_random_bytes(ud_context *ctx, void *out, uint32_t length) {
+    if (!out || !length)
+        return UD_INVALID;
+#ifdef _WIN32
+    if (BCryptGenRandom(NULL, out, length, BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0)
+        return ud_fail(ctx, UD_IO, "Cannot obtain execution identity entropy");
+#else
+    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return ud_fail(ctx, UD_IO, "Cannot obtain execution identity entropy");
+    uint32_t used = 0;
+    while (used < length) {
+        ssize_t n = read(fd, (uint8_t *)out + used, length - used);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0) {
+            close(fd);
+            return ud_fail(ctx, UD_IO, "Cannot obtain execution identity entropy");
+        }
+        used += (uint32_t)n;
+    }
+    close(fd);
+#endif
+    return UD_OK;
+}
 ud_status ud_join_path(ud_context *c, const char *a, const char *b, char **out) {
     size_t n = strlen(a), m = strlen(b);
     if (n > SIZE_MAX - m - 2)
@@ -323,6 +349,12 @@ ud_status ud_reserve_file(ud_context *ctx, const char *path) {
     }
     return UD_OK;
 }
+uint64_t ud_wall_ms(void) {
+    struct timespec time;
+    if (timespec_get(&time, TIME_UTC) != TIME_UTC || time.tv_sec < 0)
+        return 0;
+    return (uint64_t)time.tv_sec * 1000 + (uint64_t)time.tv_nsec / 1000000;
+}
 uint64_t ud_now_ms(void) {
 #ifdef _WIN32
     return GetTickCount64();
@@ -515,10 +547,22 @@ ud_status ud_move_noreplace(ud_context *c, const char *from, const char *to) {
     if (!ok)
         return error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS ? UD_BUSY : UD_IO;
 #elif defined(__linux__) && defined(SYS_renameat2)
-    if (syscall(SYS_renameat2, AT_FDCWD, from, AT_FDCWD, to, 1))
-        return errno == EEXIST                      ? UD_BUSY
-               : errno == ENOSYS || errno == EINVAL ? UD_UNSUPPORTED
-                                                    : UD_IO;
+    if (syscall(SYS_renameat2, AT_FDCWD, from, AT_FDCWD, to, 1)) {
+        if (errno == EEXIST)
+            return UD_BUSY;
+        if (errno != ENOSYS && errno != EINVAL && errno != EOPNOTSUPP)
+            return UD_IO;
+        /* The kernel/filesystem may lack RENAME_NOREPLACE. A hard-link
+         * publication still atomically refuses an existing target. Once the
+         * link exists, any unresolved failure is a real unknown outcome. */
+        struct stat source;
+        if (lstat(from, &source) || !S_ISREG(source.st_mode))
+            return UD_UNSUPPORTED;
+        if (link(from, to))
+            return errno == EEXIST ? UD_BUSY : UD_IO;
+        if (ud_sync_parent(c, to) || unlink(from))
+            return UD_COMMIT_UNKNOWN;
+    }
 #else
     (void)c;
     (void)from;

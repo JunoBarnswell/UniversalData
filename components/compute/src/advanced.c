@@ -303,11 +303,19 @@ ud_status ud_advanced_pull(ud_advanced *a, ud_batch **out, uint32_t *output) {
                 target = *out;
             }
             if (!s && selected == a->error_port)
-                s = ud_error_append(&a->options.errors, target, a->pending, row,
-                                    a->options.kind == UD_OPERATOR_CACHE_LOOKUP
-                                        ? (ud_string){"cache.miss", 10}
-                                        : (ud_string){"native.transform", 16}, 1, (ud_id){0}, cause,
-                                    a->policy);
+                s = ud_error_append(
+                    &a->options.errors, target,
+                    &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                       .abi_version = UD_ABI_VERSION,
+                                       .input = a->pending,
+                                       .row = row,
+                                       .rule = a->options.kind == UD_OPERATOR_CACHE_LOOKUP
+                                                   ? (ud_string){"cache.miss", 10}
+                                                   : (ud_string){"native.transform", 16},
+                                       .rule_version = 1,
+                                       .column = (ud_id){0},
+                                       .code = cause,
+                                       .policy = a->policy});
             else if (!s) {
                 s = ud_batch_append(target, v, target->columns);
                 if (!s)

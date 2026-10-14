@@ -38,7 +38,8 @@ enum {
     UD_COMMIT_UNKNOWN = 16,
     UD_FENCED = 17,
     UD_TIMEOUT = 18,
-    UD_MORE = 19 /* Component has bounded pending output; scheduler polls it. */
+    UD_MORE = 19, /* Component has bounded pending output; scheduler polls it. */
+    UD_TRUNCATED = 20
 };
 typedef struct ud_context ud_context;
 UD_API const char *ud_version(void);

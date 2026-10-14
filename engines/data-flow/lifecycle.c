@@ -56,6 +56,7 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
 #endif
     ud_rest_reader_close(b->rest_reader);
     ud_batch_destroy(b->output_pending);
+    ud_batch_destroy(b->source_errors);
     ud_expression_destroy(b->predicate);
     ud_free((void *)b->read_sql.data);
     if (b->xlsx_writer)
@@ -66,11 +67,9 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
         (void)ud_json_writer_close(b->writer);
     if (b->csv_writer)
         (void)ud_csv_writer_close(b->csv_writer);
-    if (b->temporary && b->temporary_owned && !b->published)
-        (void)ud_remove_file(b->context.memory, b->temporary);
+    ud_file_generation_destroy(b->generation);
     if (b->stage_bytes)
         ud_buffer_release_external(b->context.execution->buffers, b->stage_bytes);
-    ud_unlock(b->lock);
     (void)ud_connection_lease_release(b->lease);
     for (uint32_t i = 0; i < b->expression_count; i++)
         ud_expression_destroy(b->expressions[i]);
@@ -83,7 +82,6 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
     (void)ud_operator_destroy(b->operator);
     ud_free(b->fields);
     ud_free(b->path);
-    ud_free(b->temporary);
     ud_free(b->job);
     ud_free(b->keys);
     ud_free(b->write_indices);
@@ -96,6 +94,7 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
     for (uint64_t i = b->snapshot_at; b->snapshot && i < b->snapshot_count; i++)
         ud_buffer_release(b->snapshot[i]);
     ud_free(b->snapshot);
+    ud_free(b->snapshot_ports);
     ud_free(b->schema_diff);
     ud_free((void *)b->schema_policy.data);
     ud_json_destroy(b->config);
@@ -106,12 +105,11 @@ ud_status ud_builtin_checkpoint_state(void *ptr, ud_batch **out) {
     builtin *b = ptr;
     if (b->operator)
         return ud_operator_checkpoint(b->operator, out);
-    if (b->kind != SQL_SINK && b->kind != REST_SINK)
+    if (b->kind != SQL_SINK && b->kind != REST_SINK && b->kind != BALANCED &&
+        b->kind != SQL_COMMAND)
         return UD_UNSUPPORTED;
-    ud_field field = {.name = "nextBatch", .name_length = 9, .type = UD_INT64};
-    ud_value value = {.type = UD_INT64, .integer = (int64_t)b->number};
-    if (b->number > INT64_MAX)
-        return UD_RESOURCE;
+    ud_field field = {.name = "nextBatch", .name_length = 9, .type = UD_UINT64};
+    ud_value value = {.type = UD_UINT64, .unsigned_integer = b->number};
     UD_TRY(ud_batch_create(b->context.memory, &field, 1, 1, out));
     ud_status status = ud_batch_append(*out, &value, 1);
     if (!status)
@@ -127,12 +125,14 @@ ud_status ud_builtin_restore_state(void *ptr, const ud_batch *state) {
     builtin *b = ptr;
     if (b->operator)
         return ud_operator_restore(&b->operator, state);
-    if ((b->kind != SQL_SINK && b->kind != REST_SINK) || state->columns != 1 || state->rows != 1)
+    if ((b->kind != SQL_SINK && b->kind != REST_SINK && b->kind != BALANCED &&
+         b->kind != SQL_COMMAND) ||
+        state->columns != 1 || state->rows != 1)
         return UD_CORRUPT;
     ud_value value;
     UD_TRY(ud_batch_get(state, 0, 0, &value));
-    if (value.type != UD_INT64 || value.is_null || value.integer < 0)
+    if (value.type != UD_UINT64 || value.is_null || value.is_absent)
         return UD_CORRUPT;
-    b->number = (uint64_t)value.integer;
+    b->number = value.unsigned_integer;
     return UD_OK;
 }

@@ -6,7 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <pthread.h>
+#include "../components/foundation/thread.h"
+#ifdef UD_WITH_MSSQL_BCP
+#include <msodbcsql.h>
+#endif
 /* One ODBC owner for every external Driver Manager provider. SQLGetInfo and
  * SQLGetFunctions establish actual capabilities before a lease is admitted. */
 #include "odbc_internal.h"
@@ -35,6 +38,10 @@ static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
         return UD_AUTH;
     if (!strncmp(p->sqlstate, "23", 2))
         return UD_QUALITY;
+    if (!strcmp(p->sqlstate, "22001"))
+        return UD_TRUNCATED;
+    if (!strcmp(p->sqlstate, "22003"))
+        return UD_OVERFLOW;
     if (!strncmp(p->sqlstate, "22", 2))
         return UD_PARSE;
     if (!strncmp(p->sqlstate, "42", 2))
@@ -49,30 +56,33 @@ static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
         return UD_RESOURCE;
     return UD_IO;
 }
+ud_status ud_odbc_diagnostic(odbc_state *state) {
+    return failure(state, SQL_HANDLE_DBC, state->connection);
+}
 /* Registration protects every live statement against concurrent cancellation.
  * Free and ud_odbc_cancel hold the same short ownership lock; I/O does not hold it. */
 static SQLRETURN statement_allocate(odbc_state *p, SQLHSTMT *out) {
-    pthread_mutex_lock(&p->handles_lock);
+    ud_mutex_lock(&p->handles_lock);
     uint32_t i = 0;
     while (i < 16 && p->handles[i])
         i++;
     SQLRETURN rc = i == 16 ? SQL_ERROR : SQLAllocHandle(SQL_HANDLE_STMT, p->connection, out);
     if (SQL_SUCCEEDED(rc))
         p->handles[i] = *out;
-    pthread_mutex_unlock(&p->handles_lock);
+    ud_mutex_unlock(&p->handles_lock);
     return rc;
 }
 static void statement_release(odbc_state *p, SQLHSTMT handle) {
     if (!handle)
         return;
-    pthread_mutex_lock(&p->handles_lock);
+    ud_mutex_lock(&p->handles_lock);
     for (uint32_t i = 0; i < 16; i++)
         if (p->handles[i] == handle) {
             p->handles[i] = NULL;
             break;
         }
     SQLFreeHandle(SQL_HANDLE_STMT, handle);
-    pthread_mutex_unlock(&p->handles_lock);
+    ud_mutex_unlock(&p->handles_lock);
 }
 static ud_status parameter_get(odbc_state *p, const ud_batch *batch, uint32_t first, uint32_t row,
                                const uint32_t *mapping, uint32_t i, const ud_write_options *write,
@@ -80,8 +90,8 @@ static ud_status parameter_get(odbc_state *p, const ud_batch *batch, uint32_t fi
     if (!plan)
         return p->host.get(batch, first + row, mapping ? mapping[i] : i, out);
     ud_sql_parameter ref = plan->parameters[i];
-    return p->host.get(ref.source == UD_SQL_BEFORE ? write->before : batch, ref.row, ref.column,
-                       out);
+    return p->host.get(ref.source == UD_SQL_BEFORE ? write->before : batch, ref.row + row,
+                       ref.column, out);
 }
 static ud_status wide(odbc_state *p, const char *text, uint32_t length, SQLWCHAR **out,
                       SQLINTEGER *units) {
@@ -255,20 +265,21 @@ static ud_status parameters_bind(odbc_state *p, SQLHSTMT stmt, const ud_batch *b
             break;
         parameter *q = v + i;
         q->scale = (SQLSMALLINT)(f.type == UD_TIMESTAMP || f.type == UD_TIME64 ? 6 : f.scale);
-        q->precision = f.type == UD_DECIMAL128  ? (SQLULEN)f.precision
-                       : f.type == UD_TIMESTAMP ? 26
-                       : f.type == UD_TIME64    ? 15
-                                                : 0;
-        q->sql_type = f.type == UD_BOOL         ? SQL_BIT
-                      : f.type == UD_INT64      ? SQL_BIGINT
-                      : f.type == UD_FLOAT64    ? SQL_DOUBLE
-                      : f.type == UD_BINARY     ? SQL_VARBINARY
-                      : f.type == UD_DECIMAL128 ? SQL_DECIMAL
-                      : f.type == UD_DATE32     ? SQL_TYPE_DATE
-                      : f.type == UD_TIME64     ? SQL_TYPE_TIME
-                      : f.type == UD_TIMESTAMP  ? SQL_TYPE_TIMESTAMP
-                      : f.type == UD_UTF8       ? (p->ansi ? SQL_VARCHAR : SQL_WVARCHAR)
-                                                : 0;
+        q->precision = f.type == UD_UINT64       ? 20
+                       : f.type == UD_DECIMAL128 ? (SQLULEN)f.precision
+                       : f.type == UD_TIMESTAMP  ? 26
+                       : f.type == UD_TIME64     ? 15
+                                                 : 0;
+        q->sql_type = f.type == UD_BOOL                                  ? SQL_BIT
+                      : f.type == UD_INT64                               ? SQL_BIGINT
+                      : f.type == UD_FLOAT64                             ? SQL_DOUBLE
+                      : f.type == UD_BINARY                              ? SQL_VARBINARY
+                      : (f.type == UD_DECIMAL128 || f.type == UD_UINT64) ? SQL_DECIMAL
+                      : f.type == UD_DATE32                              ? SQL_TYPE_DATE
+                      : f.type == UD_TIME64                              ? SQL_TYPE_TIME
+                      : f.type == UD_TIMESTAMP                           ? SQL_TYPE_TIMESTAMP
+                      : f.type == UD_UTF8 ? (p->ansi ? SQL_VARCHAR : SQL_WVARCHAR)
+                                          : 0;
         if (!q->sql_type) {
             s = UD_UNSUPPORTED;
             break;
@@ -428,6 +439,9 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
     if (!s && !SQL_SUCCEEDED(rc) && rc != SQL_NO_DATA)
         s = failure(p, SQL_HANDLE_STMT, stmt);
     if (!s && array) {
+        SQLLEN initial_count = 0;
+        if (affected && SQL_SUCCEEDED(SQLRowCount(stmt, &initial_count)) && initial_count > 0)
+            *affected += (uint64_t)initial_count;
         SQLRETURN more;
         while (SQL_SUCCEEDED(more = SQLMoreResults(stmt))) {
             SQLLEN count = 0;
@@ -444,7 +458,7 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
             if (statuses[i] != SQL_PARAM_SUCCESS && statuses[i] != SQL_PARAM_SUCCESS_WITH_INFO)
                 s = UD_IO;
     }
-    if (!s) {
+    if (!s && !array) {
         SQLLEN count = 0;
         if (!SQL_SUCCEEDED(SQLRowCount(stmt, &count)))
             s = failure(p, SQL_HANDLE_STMT, stmt);
@@ -572,6 +586,7 @@ static ud_status get_cell(odbc_state *p, SQLHSTMT stmt, uint32_t column, int bin
 
 ud_status ud_odbc_read_close(void *state) {
     odbc_state *p = state;
+    memset(&p->record_options, 0, sizeof(p->record_options));
     if (p->cursor)
         statement_release(p, p->cursor);
     p->cursor = SQL_NULL_HSTMT;
@@ -619,6 +634,7 @@ ud_status ud_odbc_read_open(void *state, const ud_read_options *o, const ud_batc
         s = p->host.batch_create(p->host.context, fields, (uint32_t)columns, 0, &p->schema);
     p->host.deallocate(fields);
     p->batch_size = o->batch_size;
+    p->record_options = *o;
     if (s)
         ud_odbc_read_close(p);
     return s;
@@ -635,9 +651,11 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
         s = p->host.batch_create(p->host.context, fields, columns, p->batch_size, out);
     ud_value *values = p->host.allocate(p->host.context, columns * sizeof(*values));
     char **owned = p->host.allocate(p->host.context, columns * sizeof(*owned));
-    if (!values || !owned)
+    ud_value *raw = p->host.allocate(p->host.context, columns * sizeof(*raw));
+    uint32_t fetched = 0, bad = UINT32_MAX;
+    if (!values || !owned || !raw)
         s = UD_RESOURCE;
-    while (!s && p->host.rows(*out) < p->batch_size) {
+    while (!s && fetched < p->batch_size) {
         s = ud_odbc_control(p);
         if (s)
             break;
@@ -648,11 +666,16 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
             s = failure(p, SQL_HANDLE_STMT, p->cursor);
             break;
         }
+        fetched++;
+        ud_status conversion = UD_OK;
+        memset(raw, 0, columns * sizeof(*raw));
         for (uint32_t i = 0; !s && i < columns; i++) {
             uint32_t n = 0;
             int null = 0;
             s = get_cell(p, p->cursor, i, fields[i].type == UD_BINARY, owned + i, &n, &null);
             values[i] = (ud_value){.type = fields[i].type, .is_null = null};
+            raw[i] =
+                (ud_value){.type = UD_BINARY, .is_null = null, .text = owned[i], .text_length = n};
             if (s || null)
                 continue;
             if (fields[i].type == UD_BINARY) {
@@ -691,9 +714,19 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
             } else
                 s = p->host.parse_field(p->host.context, fields + i, owned[i], n, UD_ROUND_EXACT,
                                         values + i);
+            if (plugin_record_conversion(s)) {
+                values[i].is_absent = 1;
+                values[i].is_null = 1;
+                if (!conversion) {
+                    conversion = s;
+                    bad = i;
+                }
+                s = UD_OK;
+            }
         }
         if (!s)
-            s = p->host.append(*out, values, columns);
+            s = plugin_record_finish(&p->host, &p->record_options, *out, fields, values, raw,
+                                     columns, conversion, bad);
         for (uint32_t i = 0; i < columns; i++) {
             p->host.deallocate(owned[i]);
             owned[i] = NULL;
@@ -701,8 +734,9 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
     }
     p->host.deallocate(fields);
     p->host.deallocate(values);
+    p->host.deallocate(raw);
     p->host.deallocate(owned);
-    if (s || !p->host.rows(*out)) {
+    if (s || (!p->host.rows(*out) && !fetched)) {
         p->host.batch_destroy(*out);
         *out = NULL;
         return s ? s : UD_END;
@@ -737,6 +771,11 @@ static ud_status end_transaction(odbc_state *p, int commit_requested) {
         return UD_COMMIT_UNKNOWN;
     }
     p->transaction = 0;
+    while (p->bulk_sessions) {
+        odbc_state *bulk = p->bulk_sessions;
+        p->bulk_sessions = bulk->bulk_next;
+        ud_odbc_destroy(bulk);
+    }
     if (!SQL_SUCCEEDED(SQLSetConnectAttr(p->connection, SQL_ATTR_AUTOCOMMIT,
                                          (SQLPOINTER)SQL_AUTOCOMMIT_ON, 0))) {
         p->broken = 1;
@@ -969,7 +1008,7 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
     if (!s)
         s = p->host.append(parameters, values, 3);
     SQLHSTMT stmt = SQL_NULL_HSTMT;
-    const char *sql = "SELECT digest,source_position FROM ud_sdk_receipts_v2 WHERE tenant=? AND "
+    const char *sql = "SELECT digest,source_position FROM ud_sdk_receipts_v10 WHERE tenant=? AND "
                       "job=? AND batch_id=?";
     if (!s)
         s = prepare(p, (ud_string){sql, (uint32_t)strlen(sql)}, &stmt);
@@ -1014,28 +1053,28 @@ static ud_status provision(void *state) {
         return UD_UNSUPPORTED;
     const char *sql =
         p->dialect == DIALECT_MSSQL
-            ? "IF OBJECT_ID(N'ud_sdk_receipts_v2',N'U') IS NULL CREATE TABLE "
-              "ud_sdk_receipts_v2(tenant NVARCHAR(128) NOT NULL,job NVARCHAR(256) NOT "
+            ? "IF OBJECT_ID(N'ud_sdk_receipts_v10',N'U') IS NULL CREATE TABLE "
+              "ud_sdk_receipts_v10(tenant NVARCHAR(128) NOT NULL,job NVARCHAR(256) NOT "
               "NULL,batch_id NVARCHAR(128) NOT NULL,digest BINARY(32) NOT NULL,source_position "
               "NVARCHAR(1024) NOT NULL,PRIMARY KEY(tenant,job,batch_id))"
         : p->dialect == DIALECT_MYSQL
-            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant VARCHAR(128) CHARACTER SET "
+            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v10(tenant VARCHAR(128) CHARACTER SET "
               "utf8mb4 COLLATE utf8mb4_bin NOT NULL,job VARCHAR(256) CHARACTER SET utf8mb4 COLLATE "
               "utf8mb4_bin NOT NULL,batch_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE "
               "utf8mb4_bin NOT NULL,digest BINARY(32) NOT NULL,source_position TEXT CHARACTER SET "
               "utf8mb4 NOT NULL,PRIMARY KEY(tenant,job,batch_id)) ENGINE=InnoDB"
         : p->dialect == DIALECT_POSTGRES
-            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT "
+            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v10(tenant TEXT NOT NULL,job TEXT NOT "
               "NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL,source_position TEXT NOT "
               "NULL,PRIMARY KEY(tenant,job,batch_id))"
         : p->dialect == DIALECT_ORACLE
-            ? "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_receipts_v2(tenant "
+            ? "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_receipts_v10(tenant "
               "VARCHAR2(128 BYTE) NOT NULL,job VARCHAR2(256 BYTE) NOT NULL,batch_id "
               "VARCHAR2(128 BYTE) NOT NULL,digest RAW(32) NOT NULL,source_position "
               "CLOB,PRIMARY KEY(tenant,job,batch_id))'; "
               "EXCEPTION WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;"
         : p->dialect == DIALECT_SQLITE || p->dialect == DIALECT_DUCKDB
-            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT "
+            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v10(tenant TEXT NOT NULL,job TEXT NOT "
               "NULL,batch_id TEXT NOT NULL,digest BLOB NOT NULL,source_position TEXT NOT "
               "NULL,PRIMARY KEY(tenant,job,batch_id))"
             : NULL;
@@ -1059,12 +1098,13 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     odbc_state *p = state;
     if (p->cursor)
         return UD_BUSY;
-    if (o->mode == UD_WRITE_CHANGESET && p->transaction)
-        return UD_UNSUPPORTED;
     int own = !p->transaction;
-    ud_status s = own ? ud_odbc_begin(p, UD_ISOLATION_SERIALIZABLE) : UD_OK;
+    int receipted = (p->capabilities & UD_CONNECT_RECEIPTS) != 0;
+    ud_status s =
+        own ? ud_odbc_begin(p, receipted ? UD_ISOLATION_SERIALIZABLE : UD_ISOLATION_READ_COMMITTED)
+            : UD_OK;
     ud_commit_receipt previous = {0};
-    if (!s)
+    if (!s && receipted)
         s = receipt(p, tenant, o->job, o->batch_id, &previous);
     int existing = previous.committed;
     if (!s && existing &&
@@ -1073,6 +1113,29 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
          memcmp(previous.source_position.data, o->source_position.data, o->source_position.length)))
         s = UD_CORRUPT;
     p->host.deallocate((void *)previous.source_position.data);
+    odbc_state *bulk = NULL;
+    ud_string stage = {0};
+    int native = !s && !existing && o->mode == UD_WRITE_APPEND &&
+                 o->load_mode != UD_LOAD_PARAMETERS && (p->capabilities & UD_CONNECT_NATIVE_BULK);
+#ifdef UD_WITH_MSSQL_BCP
+    if (native) {
+        s = ud_mssql_bulk_stage(p, o, batch, digest, &bulk, &stage);
+        if (s == UD_UNSUPPORTED && o->load_mode == UD_LOAD_AUTO) {
+            s = UD_OK;
+            native = 0;
+        }
+        ud_string apply = {0};
+        if (!s && native)
+            s = p->host.compile_stage(p->host.context, UD_SQL_SQLSERVER, o, batch, stage,
+                                      UD_SQL_STAGE_APPLY, &apply);
+        uint64_t affected = 0;
+        if (!s && native)
+            s = command(p, apply, NULL, &affected);
+        if (!s && native && affected != p->host.rows(batch))
+            s = UD_FENCED;
+        p->host.deallocate((void *)apply.data);
+    }
+#endif
     uint32_t width = o->mode == UD_WRITE_DELETE ? o->key_count : p->host.columns(batch);
     /* SQL Server's prepared RPC also carries the handle, SQL and declarations.
      * Reserve their wire parameters before deriving a deterministic row chunk. */
@@ -1084,28 +1147,29 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         s = UD_RESOURCE;
     if (limit > 1000)
         limit = 1000;
-    for (uint32_t row = 0; !s && !existing && row < p->host.rows(batch);) {
+    for (uint32_t row = 0; !s && !existing && !native && row < p->host.rows(batch);) {
         uint32_t count = o->mode == UD_WRITE_CHANGESET ? 1 : p->host.rows(batch) - row;
         if (count > limit)
             count = limit;
         ud_sql_statement plan = {0};
         SQLHSTMT stmt = SQL_NULL_HSTMT;
+        int array = p->array_parameters && o->mode == UD_WRITE_APPEND;
         s = p->host.compile_write(p->host.context, native_dialect(p), UD_SQL_PARAMETER_QUESTION, o,
-                                  batch, row, count, &plan);
+                                  batch, row, array ? 1 : count, &plan);
         if (!s)
             s = prepare(p, plan.sql, &stmt);
         uint64_t affected = 0;
         if (!s)
-            s = execute_bound(p, stmt, batch, 0, 1, NULL, plan.parameter_count, &affected, o,
-                              &plan);
+            s = execute_bound(p, stmt, batch, 0, array ? count : 1, NULL, plan.parameter_count,
+                              &affected, o, &plan);
         if (!s && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT &&
-            affected != 1)
+            o->operations[row] != UD_CHANGE_TRUNCATE && affected != 1)
             s = p->host.report(p->host.context, UD_FENCED, "changeset preimage conflict");
         statement_release(p, stmt);
         p->host.statement_clear(&plan);
         row += count;
     }
-    if (!s && !existing) {
+    if (!s && !existing && receipted) {
         ud_field f[] = {{.name = "tenant", .name_length = 6, .type = UD_UTF8},
                         {.name = "job", .name_length = 3, .type = UD_UTF8},
                         {.name = "batch", .name_length = 5, .type = UD_UTF8},
@@ -1125,7 +1189,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s)
             s = p->host.append(b, v, 5);
         const char *insert =
-            "INSERT INTO ud_sdk_receipts_v2(tenant,job,batch_id,digest,source_position) "
+            "INSERT INTO ud_sdk_receipts_v10(tenant,job,batch_id,digest,source_position) "
             "VALUES(?,?,?,?,?)";
         if (!s)
             s = command(p, (ud_string){insert, (uint32_t)strlen(insert)}, b, NULL);
@@ -1139,6 +1203,12 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         else if (ud_odbc_rollback(p) != UD_OK)
             s = UD_COMMIT_UNKNOWN;
     }
+    if (bulk && (!own || p->transaction)) {
+        bulk->bulk_next = p->bulk_sessions;
+        p->bulk_sessions = bulk;
+    } else if (bulk)
+        ud_odbc_destroy(bulk);
+    p->host.deallocate((void *)stage.data);
     return s;
 }
 static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **out) {
@@ -1251,12 +1321,12 @@ static ud_status test(void *state) {
 void ud_odbc_cancel(void *state) {
     odbc_state *p = state;
     atomic_store(&p->cancelled, 1);
-    pthread_mutex_lock(&p->handles_lock);
+    ud_mutex_lock(&p->handles_lock);
     ud_mssql_cdc_cancel(p);
     for (uint32_t i = 0; i < 16; i++)
         if (p->handles[i])
             SQLCancelHandle(SQL_HANDLE_STMT, p->handles[i]);
-    pthread_mutex_unlock(&p->handles_lock);
+    ud_mutex_unlock(&p->handles_lock);
 }
 static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     odbc_state *p = state;
@@ -1268,7 +1338,7 @@ static void set_control(void *state, void *user, ud_status (*check)(void *)) {
 }
 static ud_status reset(void *state) {
     odbc_state *p = state;
-    if (p->cursor || p->transaction || p->cdc || p->broken)
+    if (p->cursor || p->transaction || p->cdc || p->broken || p->bulk_sessions)
         return UD_CORRUPT;
     atomic_store(&p->cancelled, 0);
     if (p->dialect == DIALECT_POSTGRES)
@@ -1279,6 +1349,15 @@ static ud_status reset(void *state) {
         return SQL_SUCCEEDED(rc) ? UD_OK : failure(p, SQL_HANDLE_DBC, p->connection);
     }
     return UD_UNSUPPORTED;
+}
+static ud_status record_diagnostic(void *state, ud_string *out) {
+    odbc_state *p = state;
+    uint32_t length = (uint32_t)strlen(p->sqlstate);
+    *out = (ud_string){length ? plugin_string(&p->host, p->sqlstate, length) : NULL, length};
+    if (length && !out->data)
+        return UD_RESOURCE;
+    p->sqlstate[0] = 0;
+    return UD_OK;
 }
 static uint64_t capabilities(void *state) {
     return ((odbc_state *)state)->capabilities;
@@ -1291,13 +1370,18 @@ void ud_odbc_destroy(void *state) {
     ud_odbc_read_close(p);
     if (p->transaction)
         SQLEndTran(SQL_HANDLE_DBC, p->connection, SQL_ROLLBACK);
+    while (p->bulk_sessions) {
+        odbc_state *bulk = p->bulk_sessions;
+        p->bulk_sessions = bulk->bulk_next;
+        ud_odbc_destroy(bulk);
+    }
     if (p->connection) {
         SQLDisconnect(p->connection);
         SQLFreeHandle(SQL_HANDLE_DBC, p->connection);
     }
     if (p->environment)
         SQLFreeHandle(SQL_HANDLE_ENV, p->environment);
-    pthread_mutex_destroy(&p->handles_lock);
+    ud_mutex_destroy(&p->handles_lock);
     p->host.deallocate(p->configuration);
     p->host.deallocate(p);
 }
@@ -1317,23 +1401,21 @@ static int contains(const char *text, const char *word) {
     }
     return 0;
 }
-ud_status ud_odbc_initialize(const ud_host_api *h, const char *configuration, uint32_t length,
-                             void **out) {
+static ud_status initialize(const ud_host_api *h, const char *configuration, uint32_t length,
+                            int bulk, void **out) {
     *out = NULL;
     odbc_state *p = h->allocate(h->context, sizeof(*p));
     if (!p)
         return UD_RESOURCE;
     p->host = *h;
+    p->bulk_session = bulk;
     p->configuration = plugin_string(h, configuration, length);
     p->configuration_length = length;
     if (!p->configuration) {
         h->deallocate(p);
         return UD_RESOURCE;
     }
-    if (pthread_mutex_init(&p->handles_lock, NULL)) {
-        h->deallocate(p);
-        return UD_RESOURCE;
-    }
+    ud_mutex_init(&p->handles_lock);
     p->check = h->check_io;
     p->check_user = h->control_user;
     atomic_init(&p->cancelled, 0);
@@ -1375,6 +1457,15 @@ ud_status ud_odbc_initialize(const ud_host_api *h, const char *configuration, ui
         s = UD_RESOURCE;
     if (!s)
         SQLSetConnectAttr(p->connection, SQL_ATTR_LOGIN_TIMEOUT, (SQLPOINTER)15, 0);
+#ifdef UD_WITH_MSSQL_BCP
+    if (!s && bulk &&
+        !SQL_SUCCEEDED(SQLSetConnectAttr(p->connection, SQL_COPT_SS_BCP, (SQLPOINTER)SQL_BCP_ON,
+                                         SQL_IS_INTEGER)))
+        s = UD_UNSUPPORTED;
+#else
+    if (!s && bulk)
+        s = UD_UNSUPPORTED;
+#endif
     if (!s) {
         SQLRETURN rc;
         if (p->ansi)
@@ -1414,18 +1505,28 @@ ud_status ud_odbc_initialize(const ud_host_api *h, const char *configuration, ui
         SQLGetInfo(p->connection, SQL_PARAM_ARRAY_ROW_COUNTS, &arrays, sizeof(arrays), &size);
         SQLGetFunctions(p->connection, SQL_API_SQLBINDPARAMETER, &prepare_function);
         p->array_parameters = prepare_function == SQL_TRUE && arrays == SQL_PARC_BATCH;
-        p->capabilities =
-            UD_CONNECT_READ | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_METADATA | UD_CONNECT_PREPARED;
+        p->capabilities = UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_EXECUTE_SQL |
+                          UD_CONNECT_METADATA | UD_CONNECT_PREPARED;
         if (transactions != SQL_TC_NONE && p->dialect != DIALECT_GENERIC) {
             p->capabilities |= UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
                                UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS | UD_CONNECT_PROVISION |
                                UD_CONNECT_CHANGESET | UD_CONNECT_BATCH_WRITE;
             if (p->array_parameters)
-                p->capabilities |= UD_CONNECT_BATCH_WRITE;
+                p->capabilities |= UD_CONNECT_PARAMETER_ARRAY;
         }
+        if (transactions != SQL_TC_NONE && p->dialect == DIALECT_GENERIC && p->array_parameters)
+            p->capabilities |= UD_CONNECT_APPEND | UD_CONNECT_TRANSACTION | UD_CONNECT_BATCH_WRITE |
+                               UD_CONNECT_PARAMETER_ARRAY;
         if (p->dialect == DIALECT_POSTGRES || p->dialect == DIALECT_MSSQL)
             p->capabilities |= UD_CONNECT_POOL;
         if (p->dialect == DIALECT_MSSQL) {
+#ifdef UD_WITH_MSSQL_BCP
+            char driver_name[256] = {0};
+            if (SQL_SUCCEEDED(SQLGetInfoA(p->connection, SQL_DRIVER_NAME, driver_name,
+                                          sizeof(driver_name), &size)) &&
+                contains(driver_name, "msodbcsql"))
+                p->capabilities |= UD_CONNECT_NATIVE_BULK;
+#endif
             SQLUINTEGER encrypted = 0, trust = 1;
             if (!SQL_SUCCEEDED(
                     SQLGetConnectAttr(p->connection, 1223, &encrypted, sizeof(encrypted), NULL)) ||
@@ -1449,17 +1550,26 @@ ud_status ud_odbc_initialize(const ud_host_api *h, const char *configuration, ui
     *out = p;
     return UD_OK;
 }
+ud_status ud_odbc_initialize(const ud_host_api *host, const char *configuration, uint32_t length,
+                             void **out) {
+    return initialize(host, configuration, length, 0, out);
+}
+ud_status ud_odbc_initialize_bulk(const ud_host_api *host, const char *configuration,
+                                  uint32_t length, void **out) {
+    return initialize(host, configuration, length, 1, out);
+}
 static int32_t session_dialect(void *state) {
     return native_dialect(state);
 }
 static const ud_connector_api connector = {
     .struct_size = sizeof(ud_connector_api),
     .abi_version = UD_ABI_VERSION,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-                    UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS |
-                    UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_PREPARED |
-                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION | UD_CONNECT_CHANGESET |
-                    UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT,
+    .capabilities =
+        UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
+        UD_CONNECT_DELETE | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS |
+        UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
+        UD_CONNECT_PROVISION | UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC |
+        UD_CONNECT_SNAPSHOT | UD_CONNECT_NATIVE_BULK | UD_CONNECT_PARAMETER_ARRAY,
     .test = test,
     .discover = ud_odbc_discover,
     .read_open = ud_odbc_read_open,
@@ -1476,6 +1586,7 @@ static const ud_connector_api connector = {
     .set_control = set_control,
     .reset_session = reset,
     .session_capabilities = capabilities,
+    .record_diagnostic = record_diagnostic,
     .provision = provision,
     .parameter_style = UD_SQL_PARAMETER_QUESTION,
     .metadata_dialect = UD_SQL_CANONICAL,

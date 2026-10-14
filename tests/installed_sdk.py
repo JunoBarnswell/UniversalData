@@ -7,8 +7,11 @@ import os
 import pathlib
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import time
+import urllib.request
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -20,6 +23,9 @@ parser.add_argument("--cmake", default="cmake")
 parser.add_argument("--dotnet", default="dotnet")
 parser.add_argument("--maven", default="mvn")
 parser.add_argument("--java", default="java")
+parser.add_argument("--maven-settings", type=pathlib.Path)
+parser.add_argument("--browser-python", type=pathlib.Path)
+parser.add_argument("--browser-executable", type=pathlib.Path)
 arguments = parser.parse_args()
 work = arguments.work.resolve()
 bundle = arguments.bundle.resolve()
@@ -74,7 +80,7 @@ with zipfile.ZipFile(bundle) as archive:
             if mode and not entry.is_dir(): (unpacked/entry.filename).chmod(mode)
 manifest = json.loads((unpacked / "manifest.json").read_text(encoding="utf-8"))
 version = manifest["sdkVersion"]
-assert manifest["schemaVersion"] == 1 and manifest["abiVersion"] == json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]["abiVersion"] and manifest["configuration"] == "Release"
+assert manifest["schemaVersion"] == 10 and manifest["abiVersion"] == json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]["abiVersion"] and manifest["configuration"] == "Release"
 assert manifest["runtimeIdentifier"] == ("win-x64" if os.name == "nt" else "linux-x64")
 fingerprint = subprocess.check_output([sys.executable, str(ROOT / "scripts/release_guard.py"), "--fingerprint"],
                                       env=environment, text=True).strip()
@@ -114,7 +120,7 @@ print(f"ZIP integrity: {len(listed)} files; native version {version}; current AB
 # These real consumers use public installed headers and the dynamic Data target.
 c_source = work / "c-source"
 c_source.mkdir()
-for origin, filename in [("hosts/cli.c", "package.c"), ("tests/typed_data_runner.c", "data.c"), ("tests/wire_decode.c", "wire_decode.c"),
+for origin, filename in [("examples/c-package/main.c", "package.c"), ("tests/typed_data_runner.c", "data.c"), ("tests/wire_decode.c", "wire_decode.c"),
                          ("tests/core_runtime.c", "resources.c"), ("tests/package_sql.c", "sql.c"),
                          ("tests/next_phase_queries.c", "query.c"),
                          ("tests/check.h", "check.h")]:
@@ -137,7 +143,7 @@ native_environment = dict(environment)
 native_environment["PATH"] = str(native) + os.pathsep + environment["PATH"]
 native_environment["LD_LIBRARY_PATH"] = str(native)
 run("c-dynamic-resources", [sys.executable, ROOT / "tests/core_runtime.py", c_output / ("consumer_resources" + executable)], native_environment)
-run("installed-host-pipeline", [sys.executable, ROOT / "tests/core_pipeline.py", sdk / "bin" / ("ud_cli" + executable), c_output / ("consumer_wire_decode" + executable)], native_environment)
+run("installed-host-pipeline", [sys.executable, ROOT / "tests/core_pipeline.py", sdk / "bin/universaldata/cli" / ("ud_cli" + executable), c_output / ("consumer_wire_decode" + executable)], native_environment)
 if manifest["capabilities"]["sqlite"]:
     connector = sdk / "lib/UniversalData/plugins" / ("ud_connector_sqlite.dll" if os.name == "nt" else "ud_connector_sqlite.so")
     run("c-dynamic-sqlite", [sys.executable, ROOT / "tests/package_sql.py", c_output / ("consumer_sql" + executable), connector], native_environment)
@@ -177,7 +183,10 @@ for name, source, assembly in [("package", "examples/dotnet/Program.cs", "Consum
 
 java_repository = work / "maven-repository"
 jar = packages / f"universal-data-{version}.jar"
-run("maven-install", [arguments.maven, "-B", "-q", "-f", packages / f"universal-data-{version}.pom",
+maven = [arguments.maven, "-B", "-q"]
+if arguments.maven_settings:
+    maven += ["-s", str(arguments.maven_settings.resolve())]
+run("maven-install", [*maven, "-f", packages / f"universal-data-{version}.pom",
                      "install:install-file", "-Dfile=" + str(jar),
                      "-DpomFile=" + str(packages / f"universal-data-{version}.pom"),
                      "-DlocalRepositoryPath=" + str(java_repository)])
@@ -195,7 +204,7 @@ for filename in ("Consumer.java", "DataConsumer.java"):
     version + '</version></dependency></dependencies><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId>'
     '<artifactId>maven-compiler-plugin</artifactId><version>3.14.0</version></plugin></plugins></build></project>',
     encoding="utf-8")
-run("maven-consumer", [arguments.maven, "-B", "-q", "-f", java_client / "pom.xml",
+run("maven-consumer", [*maven, "-f", java_client / "pom.xml",
                        "-Dmaven.repo.local=" + str(work / "java-cache"), "package"])
 installed_jar = java_repository / f"org/universaldata/universal-data/{version}/universal-data-{version}.jar"
 assert digest(installed_jar) == digest(jar)
@@ -216,6 +225,48 @@ if manifest['capabilities']['sqlite']:
         '--query', c_output / ('consumer_query' + executable), '--sqlite', connector,
         '--dotnet', arguments.dotnet, '--data-dll', dotnet_outputs[1], '--java', arguments.java,
         '--classes', java_client / 'target/classes', '--jar', installed_jar, '--native', native])
+installed_web = "NotRun"
+if arguments.browser_python:
+    web = work / "web"
+    web.mkdir()
+    policy = web / "policy.json"
+    policy.write_text(json.dumps(dict(dataDirectory=str(web / "state"), fileRoots=[str(web)],
+        networkOrigins=[], pluginRoots=[], credentialFiles={})))
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    url = "http://127.0.0.1:" + str(port)
+    management = sdk / "bin/universaldata/management"
+    with (work / "installed-management.log").open("w") as output:
+        service = subprocess.Popen([arguments.dotnet, str(management / "UniversalData.Management.dll"),
+            "--policy", str(policy), "--worker", str(sdk / "bin/universaldata/worker/ud_worker.dll"),
+            "--urls", url], cwd=management, env=environment, stdout=output, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 30
+            while True:
+                if service.poll() is not None:
+                    raise RuntimeError("Installed management service exited; see installed-management.log")
+                try:
+                    with urllib.request.urlopen(url + "/api/components", timeout=1) as response:
+                        assert response.status == 200
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("Installed management service did not become available")
+                    time.sleep(.1)
+            browser = [arguments.browser_python, ROOT / "tests/web_product.py", "--url", url,
+                       "--root", web, "--evidence", work / "browser"]
+            if arguments.browser_executable:
+                browser += ["--browser-executable", arguments.browser_executable]
+            run("installed-web-worker-browser", browser)
+            installed_web = "Passed"
+        finally:
+            service.terminate()
+            try:
+                service.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                service.kill()
+                service.wait(timeout=5)
 record = {"exitCode": 0, "sdkVersion": version, "abiVersion": manifest["abiVersion"], "configuration": "Release",
           "sourceFingerprint": fingerprint, "archive": str(bundle), "archiveSha256": digest(bundle),
           "verifiedFiles": len(listed), "unpackedDirectory": str(unpacked), "logs": str(work),
@@ -226,6 +277,7 @@ record = {"exitCode": 0, "sdkVersion": version, "abiVersion": manifest["abiVersi
                 "installedHostPipeline": True, "dynamicSQLite": manifest["capabilities"]["sqlite"]},
           "languageParity": "10003 rows / 20006 input and output / 8 tasks; Package/Project/child and scalar/nested/wire equality",
           "nativeQueryParity": "C/.NET/Java SQLite discovery/refresh, three compatibility policies and row identity from identified Wire",
+          "installedWebWorkerBrowser": installed_web,
           "commands": commands}
 arguments.evidence.parent.mkdir(parents=True, exist_ok=True)
 arguments.evidence.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")

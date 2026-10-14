@@ -20,6 +20,11 @@ struct ud_memory_domain {
     atomic_uint_fast64_t used, peak;
 };
 static _Thread_local ud_memory_domain *allocation_domain;
+struct ud_memory_reservation {
+    ud_context *ctx;
+    ud_memory_domain *domain;
+    uint64_t bytes;
+};
 typedef union allocation {
     long double alignment;
     struct {
@@ -44,8 +49,8 @@ const char *ud_status_name(ud_status s) {
         "ok",          "end",      "invalid",   "io",        "resource",       "schema",
         "parse",       "overflow", "cancelled", "corrupt",   "incompatible",   "busy",
         "unsupported", "auth",     "quality",   "transient", "commit_unknown", "fenced",
-        "timeout",     "more"};
-    return s >= 0 && s < 20 ? names[s] : "unknown";
+        "timeout",     "more",     "truncated"};
+    return s >= 0 && s < 21 ? names[s] : "unknown";
 }
 const char *ud_error(const ud_context *ctx) {
     return !ctx ? "no context" : diagnostic_context == ctx ? diagnostic_text : "";
@@ -59,6 +64,13 @@ ud_status ud_fail(ud_context *ctx, ud_status code, const char *format, ...) {
         va_end(args);
     }
     return code;
+}
+ud_status ud_context_report(ud_context *ctx, ud_status code, ud_string message) {
+    if (!ctx || code <= UD_END || code > UD_TRUNCATED || code == UD_MORE || !message.data ||
+        !message.length || message.length > 16384 || memchr(message.data, 0, message.length) ||
+        !ud_utf8_valid(message.data, message.length))
+        return UD_INVALID;
+    return ud_fail(ctx, code, "%.*s", (int)message.length, message.data);
 }
 ud_status ud_context_create(const ud_context_options *options, ud_context **out) {
     if (!out)
@@ -100,12 +112,82 @@ ud_status ud_context_destroy(ud_context *c) {
 uint64_t ud_memory_used(const ud_context *c) {
     return c ? atomic_load(&c->used) : 0;
 }
+ud_status ud_base64_encode(ud_bytes *output, const uint8_t *bytes, uint32_t length,
+                           uint32_t line_width) {
+    static const char alphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    if (!output || (length && !bytes) || (line_width && (line_width < 4 || line_width % 4)))
+        return UD_INVALID;
+    uint32_t column = 0;
+    for (uint32_t at = 0; at < length;) {
+        uint32_t left = length - at, value = (uint32_t)bytes[at++] << 16;
+        if (left > 1)
+            value |= (uint32_t)bytes[at++] << 8;
+        if (left > 2)
+            value |= bytes[at++];
+        char encoded[4] = {alphabet[value >> 18], alphabet[(value >> 12) & 63],
+                           left > 1 ? alphabet[(value >> 6) & 63] : '=',
+                           left > 2 ? alphabet[value & 63] : '='};
+        UD_TRY(ud_bytes_put(output, encoded, 4));
+        column += 4;
+        if (line_width && column == line_width) {
+            UD_TRY(ud_bytes_put(output, "\r\n", 2));
+            column = 0;
+        }
+    }
+    return line_width && column ? ud_bytes_put(output, "\r\n", 2) : UD_OK;
+}
+ud_status ud_memory_reserve(ud_context *ctx, uint64_t bytes, ud_memory_reservation **out) {
+    if (!ctx || !out)
+        return UD_INVALID;
+    *out = NULL;
+    ud_memory_reservation *reservation = ud_alloc(ctx, sizeof(*reservation));
+    if (!reservation)
+        return UD_RESOURCE;
+    ud_memory_domain *domain =
+        allocation_domain && allocation_domain->ctx == ctx ? allocation_domain : NULL;
+    if (domain) {
+        uint64_t used = atomic_load(&domain->used);
+        do {
+            if (used > domain->limit || bytes > domain->limit - used) {
+                ud_free(reservation);
+                return ud_fail(ctx, UD_RESOURCE, "external codec domain quota exceeded");
+            }
+        } while (!atomic_compare_exchange_weak(&domain->used, &used, used + bytes));
+        uint64_t peak = atomic_load(&domain->peak);
+        while (peak < used + bytes &&
+               !atomic_compare_exchange_weak(&domain->peak, &peak, used + bytes)) {
+        }
+    }
+    uint64_t used = atomic_load(&ctx->used);
+    do {
+        if (used > ctx->options.memory_limit || bytes > ctx->options.memory_limit - used) {
+            if (domain)
+                atomic_fetch_sub(&domain->used, bytes);
+            ud_free(reservation);
+            return ud_fail(ctx, UD_RESOURCE, "external codec memory quota exceeded");
+        }
+    } while (!atomic_compare_exchange_weak(&ctx->used, &used, used + bytes));
+    reservation->ctx = ctx;
+    reservation->domain = domain;
+    reservation->bytes = bytes;
+    *out = reservation;
+    return UD_OK;
+}
+void ud_memory_release(ud_memory_reservation *reservation) {
+    if (!reservation)
+        return;
+    atomic_fetch_sub(&reservation->ctx->used, reservation->bytes);
+    if (reservation->domain)
+        atomic_fetch_sub(&reservation->domain->used, reservation->bytes);
+    ud_free(reservation);
+}
 void *ud_alloc(ud_context *c, size_t n) {
     if (!c || n > SIZE_MAX - sizeof(allocation))
         return NULL;
     size_t total = n + sizeof(allocation);
-    ud_memory_domain *domain = allocation_domain && allocation_domain->ctx == c
-                                   ? allocation_domain : NULL;
+    ud_memory_domain *domain =
+        allocation_domain && allocation_domain->ctx == c ? allocation_domain : NULL;
     if (domain) {
         uint64_t owned = atomic_load(&domain->used);
         do {
@@ -116,7 +198,8 @@ void *ud_alloc(ud_context *c, size_t n) {
         } while (!atomic_compare_exchange_weak(&domain->used, &owned, owned + total));
         uint64_t peak = atomic_load(&domain->peak);
         while (peak < owned + total &&
-               !atomic_compare_exchange_weak(&domain->peak, &peak, owned + total)) {}
+               !atomic_compare_exchange_weak(&domain->peak, &peak, owned + total)) {
+        }
     }
     uint64_t old = atomic_load(&c->used);
     do {

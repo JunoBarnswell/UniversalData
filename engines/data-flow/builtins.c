@@ -23,8 +23,13 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         s = ud_builtin_clone_schema(c->memory, in[i], b->inputs + i);
     if (!s)
         s = ud_builtin_clone_schema(c->memory, sink_kind(kind) ? in[0] : out[0], &b->schema);
-    if (!s && (kind == CAST || kind == XLSX_SOURCE))
-        s = ud_builtin_clone_schema(c->memory, out[1], &b->errors);
+    if (!s &&
+        (kind == CAST || kind == DERIVE || kind == SPLIT || kind == XLSX_SOURCE ||
+         kind == CSV_SOURCE || kind == JSON_SOURCE || kind == SQL_SOURCE || kind == SQL_COMMAND))
+        s = ud_builtin_clone_schema(c->memory, out[kind == SPLIT ? c->output_count - 1 : 1],
+                                    &b->errors);
+    if (!s && kind == SQL_SINK)
+        s = ud_builtin_clone_schema(c->memory, out[0], &b->errors);
     if (!s && (kind == SQL_SINK || kind == REST_SINK)) {
         ud_string mode = {0};
         s = ud_json_string(ud_member(b->config, "mode"), &mode);
@@ -35,6 +40,17 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                                                 : 0;
         if (!s && !b->mode)
             s = UD_SCHEMA;
+        if (!s && kind == SQL_SINK && ud_member(b->config, "loadMode")) {
+            ud_string load = {0};
+            s = ud_json_string(ud_member(b->config, "loadMode"), &load);
+            b->load_mode = ud_named(load, "auto")         ? UD_LOAD_AUTO
+                           : ud_named(load, "parameters") ? UD_LOAD_PARAMETERS
+                           : ud_named(load, "native")     ? UD_LOAD_NATIVE
+                                                          : -1;
+            if (!s && (b->load_mode < 0 ||
+                       (b->load_mode == UD_LOAD_NATIVE && b->mode != UD_WRITE_APPEND)))
+                s = UD_UNSUPPORTED;
+        }
         ud_string before = {"before", 6};
         if (!s && ud_member(b->config, "beforeField"))
             s = ud_json_string(ud_member(b->config, "beforeField"), &before);
@@ -80,17 +96,29 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         for (uint32_t i = 0; !s && i < b->columns; i++)
             s = ud_batch_field(b->schema, i, b->fields + i);
     }
-    if (!s && (source_kind(kind) || sink_kind(kind))) {
+    if (!s && (source_kind(kind) || sink_kind(kind) || kind == SQL_COMMAND)) {
         ud_string connection = {0};
         s = ud_json_string(ud_member(b->config, "connection"), &connection);
         uint64_t caps = source_kind(kind) ? UD_CONNECT_READ : UD_CONNECT_APPEND;
+        if (kind == SQL_SOURCE)
+            caps |= UD_CONNECT_RECORD_ERRORS;
+        if (kind == SQL_COMMAND)
+            caps = UD_CONNECT_EXECUTE_SQL;
         if (kind == SQL_SINK || kind == REST_SINK)
             caps = b->mode == UD_WRITE_APPEND   ? UD_CONNECT_APPEND
                    : b->mode == UD_WRITE_UPSERT ? UD_CONNECT_UPSERT
                    : b->mode == UD_WRITE_DELETE ? UD_CONNECT_DELETE
                                                 : UD_CONNECT_CHANGESET;
-        if (kind == SQL_SINK)
-            caps |= UD_CONNECT_METADATA | UD_CONNECT_RECEIPTS;
+        if (kind == SQL_SINK) {
+            int32_t delivery = UD_DELIVERY_RECEIPT;
+            if (!s)
+                s = ud_builtin_sink_delivery(kind, b->config, &delivery);
+            caps |= UD_CONNECT_METADATA;
+            if (delivery == UD_DELIVERY_RECEIPT)
+                caps |= UD_CONNECT_RECEIPTS;
+            if (b->load_mode == UD_LOAD_NATIVE)
+                caps |= UD_CONNECT_NATIVE_BULK;
+        }
         if (!s)
             s = kind == REST_SOURCE || kind == REST_SINK
                     ? ud_acquire_http_connection(c->activation, connection, &b->lease)
@@ -135,89 +163,41 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         s = ud_checkpoint_source(c->activation, b->path);
     if (!s && (file_source(kind)))
         s = ud_connection_lease_authorize(b->lease, UD_ACCESS_READ);
-    if (!s && kind == CSV_SOURCE) {
-        ud_string null = {"\\N", 2};
-        if (ud_member(b->config, "nullMarker"))
-            s = ud_json_string(ud_member(b->config, "nullMarker"), &null);
-        ud_csv_options o = {sizeof(o), UD_ABI_VERSION, (uint32_t)batch, null.data, null.length};
-        if (!s)
-            s = ud_csv_open(c->memory, b->path, b->fields, b->columns, &o, &b->csv);
-    }
-    if (!s && kind == XLSX_SOURCE) {
-        char *configuration = NULL;
-        uint32_t length = 0;
-        s = ud_json_serialize(b->config, &configuration, &length);
-        ud_xlsx_options options = {.struct_size = sizeof(options),
-                                   .abi_version = UD_ABI_VERSION,
-                                   .batch_size = (uint32_t)batch,
-                                   .configuration = {configuration, length},
-                                   .buffers = c->execution->buffers,
-                                   .check = ud_builtin_operator_check,
-                                   .user = c->activation};
-        if (!s)
-            s = ud_xlsx_reader_open(c->memory, b->path, b->fields, b->columns, &options, &b->xlsx);
-        ud_free(configuration);
-    }
-#ifdef UD_WITH_ARROW_FILES
-    if (!s && (kind == PARQUET_SOURCE || kind == IPC_SOURCE || kind == IPC_STREAM_SOURCE)) {
-        ud_columnar_file_options options = {.struct_size = sizeof(options),
-                                            .abi_version = UD_ABI_VERSION,
-                                            .batch_rows = (uint32_t)batch,
-                                            .format = kind == PARQUET_SOURCE ? UD_FILE_PARQUET
-                                                      : kind == IPC_SOURCE   ? UD_FILE_ARROW_IPC
-                                                                             : UD_FILE_ARROW_STREAM,
-                                            .buffers = c->execution->buffers,
-                                            .check = ud_builtin_operator_check,
-                                            .user = c->activation};
-        s = ud_columnar_reader_open(c->memory, b->path, b->schema, &options, &b->columnar_reader);
-    }
-#endif
-    if (!s && kind == JSON_SOURCE) {
-        ud_json_options o = {sizeof(o), UD_CONFIG_VERSION, (uint32_t)batch, 1048576,
-                             UD_ROUND_EXACT};
-        s = ud_json_reader_open(c->memory, b->path, b->fields, b->columns, &o, &b->reader);
-    }
     if (!s && (file_sink(kind))) {
-        size_t len = strlen(b->path);
-        char *lock = ud_alloc(c->memory, len + 32);
-        if (!lock)
-            s = UD_RESOURCE;
-        else {
-            snprintf(lock, len + 32, "%s.ud-package.lock", b->path);
-            s = ud_lock(c->memory, lock, &b->lock);
-            ud_free(lock);
-        }
-        int replaying = 0;
-        if (!s) {
-            b->temporary = ud_alloc(c->memory, len + 32);
-            if (!b->temporary)
-                s = UD_RESOURCE;
-            else
-                snprintf(b->temporary, len + 32, "%s.ud-package.part", b->path);
-        }
+        ud_string mode = {"create", 6};
+        if (ud_member(b->config, "fileMode"))
+            s = ud_json_string(ud_member(b->config, "fileMode"), &mode);
+        int file_mode = ud_named(mode, "create")      ? UD_FILE_CREATE
+                        : ud_named(mode, "overwrite") ? UD_FILE_OVERWRITE
+                        : ud_named(mode, "append")    ? UD_FILE_APPEND
+                                                      : -1;
+        if (!s && file_mode < 0)
+            s = UD_SCHEMA;
         if (!s)
-            s = ud_checkpoint_stage(c->activation, b->path, b->temporary, &replaying);
-        struct stat info;
-        if (!s) {
-            b->existing = !stat(b->path, &info);
-            if (b->existing && !replaying)
-                s = UD_BUSY;
-            else if (!b->existing && errno != ENOENT)
-                s = UD_IO;
-        }
-        if (!s && replaying)
-            s = ud_remove_file(c->memory, b->temporary);
-        if (!s) {
-            s = ud_reserve_file(c->memory, b->temporary);
+            s = ud_file_generation_open(c->activation, b->lease, c->component_id, b->path,
+                                        file_mode, &b->generation);
+        if (!s)
+            b->temporary = b->generation->temporary;
+        if (!s && kind == CSV_SINK && !b->generation->prepared) {
+            char *format = NULL;
+            uint32_t length = 0;
+            if (ud_member(b->config, "fileFormat"))
+                s = ud_json_serialize(ud_member(b->config, "fileFormat"), &format, &length);
+            ud_csv_options options = {.struct_size = sizeof(options),
+                                      .abi_version = UD_ABI_VERSION,
+                                      .max_record_bytes = 16777216,
+                                      .format = {format, length}};
             if (!s)
-                b->temporary_owned = 1;
+                s = ud_csv_writer_open(c->memory, b->temporary, b->fields, b->columns, &options,
+                                       &b->csv_writer);
+            ud_free(format);
         }
-        if (!s && (kind == CSV_SINK || kind == JSON_SINK))
-            s = kind == CSV_SINK ? ud_csv_writer_open(c->memory, b->temporary, b->fields,
-                                                      b->columns, "\\N", &b->csv_writer)
-                                 : ud_json_writer_open(c->memory, b->temporary, b->fields,
-                                                       b->columns, 1048576, &b->writer);
-        if (!s && kind == XLSX_SINK) {
+        if (!s && kind == JSON_SINK && !b->generation->prepared)
+            s = ud_json_writer_open(c->memory, b->temporary, b->fields, b->columns, 1048576,
+                                    &b->writer);
+        if (!s && kind == XLSX_SINK && !b->generation->prepared) {
+            if (b->generation->mode == UD_FILE_APPEND && b->generation->base_exists)
+                s = ud_file_generation_check_original(b->generation);
             char *configuration = NULL;
             uint32_t length = 0;
             s = ud_json_serialize(b->config, &configuration, &length);
@@ -228,7 +208,11 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                                        .buffers = c->execution->buffers,
                                        .check = ud_builtin_operator_check,
                                        .user = c->activation,
-                                       .stage_bytes = &b->stage_bytes};
+                                       .stage_bytes = &b->stage_bytes,
+                                       .original_path = b->generation->mode == UD_FILE_APPEND &&
+                                                                b->generation->base_exists
+                                                            ? b->generation->original
+                                                            : NULL};
             if (!s)
                 s = ud_xlsx_writer_open(c->memory, b->temporary, b->fields, b->columns, &options,
                                         &b->xlsx_writer);
@@ -236,7 +220,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         }
     }
 #ifdef UD_WITH_ARROW_FILES
-    if (!s && (kind == PARQUET_SINK || kind == IPC_SINK || kind == IPC_STREAM_SINK)) {
+    if (!s && (kind == PARQUET_SINK || kind == IPC_SINK || kind == IPC_STREAM_SINK) &&
+        !b->generation->prepared) {
         ud_columnar_file_options options = {.struct_size = sizeof(options),
                                             .abi_version = UD_ABI_VERSION,
                                             .batch_rows = c->max_batch_rows,
@@ -251,6 +236,9 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                                     &b->columnar_writer);
     }
 #endif
+    if (!s && file_sink(kind) && kind != XLSX_SINK && b->generation->mode == UD_FILE_APPEND &&
+        b->generation->base_exists && !b->generation->prepared)
+        s = ud_builtin_sink_append_original(b);
     if (!s && kind == SQL_SINK && ud_member(b->config, "provisionReceipts")) {
         const char *flag = NULL;
         uint32_t n = 0;
@@ -303,6 +291,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                          c->task_id.data, (int)c->component_id.length, c->component_id.data);
         }
     }
+    if (!s && kind == SQL_COMMAND)
+        s = ud_builtin_sql_command_prepare(b);
     if (!s && (kind == DERIVE || kind == SPLIT)) {
         const ud_json *columns = ud_member(b->config, "columns");
         const ud_json *branches = ud_member(b->config, "branches");
@@ -347,16 +337,23 @@ static ud_status step(void *ptr, const ud_component_event *event) {
                 s = ud_batch_create(b->context.memory, b->errors->schema->fields,
                                     b->errors->columns, batch->rows, &errors);
                 for (uint32_t row = 0; !s && row < batch->rows; row++)
-                    s = ud_error_append(&b->context.errors, errors, batch, row,
-                                        (ud_string){"xlsx.cell", 9}, 1, (ud_id){0}, UD_PARSE,
-                                        UD_ERROR_REDIRECT);
+                    s = ud_error_append(&b->context.errors, errors,
+                                        &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                                                           .abi_version = UD_ABI_VERSION,
+                                                           .input = batch,
+                                                           .row = row,
+                                                           .rule = (ud_string){"xlsx.cell", 9},
+                                                           .rule_version = 1,
+                                                           .column = (ud_id){0},
+                                                           .code = UD_PARSE,
+                                                           .policy = UD_ERROR_REDIRECT});
                 if (!s)
                     s = ud_batch_seal(errors);
                 if (!s)
                     s = b->context.emit(b->context.emit_user, 1, errors);
                 ud_batch_destroy(errors);
             } else if (!s && batch->rows)
-                s = b->context.emit(b->context.emit_user, 0, batch);
+                s = b->context.emit(b->context.emit_user, b->output_port, batch);
             else if (!s)
                 s = UD_MORE;
         }
@@ -378,15 +375,17 @@ static ud_status step(void *ptr, const ud_component_event *event) {
                    : UD_END;
     if (file_sink(kind)) {
         UD_TRY(ud_connection_lease_authorize(b->lease, UD_ACCESS_WRITE));
-        ud_status status;
+        ud_status status = UD_OK;
+        if (!b->generation->prepared) {
 #ifdef UD_WITH_ARROW_FILES
-        if (b->columnar_writer)
-            status = ud_columnar_writer_append(b->columnar_writer, event->batch);
-        else
+            if (b->columnar_writer)
+                status = ud_columnar_writer_append(b->columnar_writer, event->batch);
+            else
 #endif
-            status = kind == CSV_SINK    ? ud_csv_writer_append(b->csv_writer, event->batch)
-                     : kind == XLSX_SINK ? ud_xlsx_writer_append(b->xlsx_writer, event->batch)
-                                         : ud_json_writer_append(b->writer, event->batch);
+                status = kind == CSV_SINK    ? ud_csv_writer_append(b->csv_writer, event->batch)
+                         : kind == XLSX_SINK ? ud_xlsx_writer_append(b->xlsx_writer, event->batch)
+                                             : ud_json_writer_append(b->writer, event->batch);
+        }
         if (!status)
             status = ud_rule_stage(b->context.activation, event->batch, &b->delivery);
         if (!status) {
@@ -395,7 +394,11 @@ static ud_status step(void *ptr, const ud_component_event *event) {
         }
         return status;
     }
+    if (kind == SQL_COMMAND)
+        return ud_builtin_sql_command(b, event->batch);
     if (kind == SQL_SINK || kind == REST_SINK) {
+        if (kind == SQL_SINK)
+            return ud_builtin_sink_records(b, event->batch);
         ud_batch *mapped = NULL, *before = NULL;
         ud_status status = ud_builtin_sink_batch(b, event->batch, &mapped, &before);
         if (!status)
@@ -444,26 +447,45 @@ static const char *configuration_schema(int kind) {
                "\"string\"},\"timeoutMs\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":86400000}"
                ",\"maxResponseBytes\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":67108864},"
                "\"maxAttempts\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":8},"
-               "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000}},"
-               "\"required\":[\"connection\",\"receiptUrl\"],\"additionalProperties\":false}";
+               "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000},"
+               "\"delivery\":{\"type\":\"string\",\"enum\":[\"response\",\"idempotent\","
+               "\"receipt\"],"
+               "\"default\":\"response\"},\"keyedReplace\":{\"type\":\"boolean\",\"default\":false}"
+               "},"
+               "\"required\":[\"connection\"],\"additionalProperties\":false}";
     case PARQUET_SOURCE:
     case IPC_SOURCE:
     case IPC_STREAM_SOURCE:
-    case CSV_SOURCE:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
                "\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},"
                "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
                "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
                "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
-               "\"table\":{\"type\":\"string\"},\"nullMarker\":{\"type\":\"string\"}},\"required\":"
+               "\"table\":{\"type\":\"string\"},"
+               "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
+               "\"required\":"
                "[\"connection\",\"schema\"],\"additionalProperties\":false}";
+    case CSV_SOURCE:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"schema\":{\"type\":\"object\"},"
+               "\"fileFormat\":" UD_CSV_FORMAT_SCHEMA
+               ",\"batchSize\":{\"type\":\"integer\"},\"partitionCount\":{\"type\":\"integer\"},"
+               "\"partitionId\":{\"type\":\"integer\"},\"partitionBegin\":{\"type\":\"integer\"},"
+               "\"partitionEnd\":{\"type\":\"integer\"},"
+               "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
+               "\"table\":{\"type\":\"string\"},"
+               "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
+               "\"required\":[\"connection\",\"schema\"],\"additionalProperties\":false}";
     case JSON_SOURCE:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
                "\"schema\":{\"type\":\"object\"},\"batchSize\":{\"type\":\"integer\"},"
                "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
                "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
                "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
-               "\"table\":{\"type\":\"string\"}},\"required\":[\"connection\",\"schema\"],"
+               "\"table\":{\"type\":\"string\"},\"errorPolicy\":{\"type\":\"string\"},"
+               "\"includeInput\":{\"type\":\"boolean\"},\"framing\":{\"type\":\"string\","
+               "\"enum\":[\"lines\",\"array\"],\"default\":\"lines\"}},\"required\":["
+               "\"connection\",\"schema\"],"
                "\"additionalProperties\":false}";
     case SQL_SOURCE:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\","
@@ -474,36 +496,67 @@ static const char *configuration_schema(int kind) {
                "\"partitionEnd\":{\"type\":\"integer\",\"minimum\":0},\"incremental\":{\"type\":"
                "\"object\"},\"schemaPolicy\":{\"type\":\"object\"},\"table\":{\"type\":\"string\","
                "\"minLength\":1},\"sql\":{\"type\":\"string\",\"minLength\":1},\"parameters\":{"
-               "\"type\":\"object\"},\"ordering\":{\"type\":\"object\"},\"where\":{}},\"required\":"
+               "\"type\":\"object\"},\"ordering\":{\"type\":\"object\"},\"where\":{},"
+               "\"errorPolicy\":{\"enum\":[\"fail\",\"redirect\",\"ignore\"]},\"includeInput\":{"
+               "\"type\":\"boolean\"}},\"required\":"
                "[\"connection\",\"schema\"],\"anyOf\":[{\"required\":[\"sql\"]},{\"required\":["
                "\"table\"]}],\"additionalProperties\":false}";
     case PARQUET_SINK:
     case IPC_SINK:
     case IPC_STREAM_SINK:
-    case CSV_SINK:
-        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},"
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"fileMode\":{\"type\":\"string\",\"enum\":[\"create\",\"overwrite\",\"append\"],"
+               "\"default\":\"create\"}},"
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
+    case CSV_SINK:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"fileMode\":{\"type\":\"string\",\"enum\":[\"create\",\"overwrite\",\"append\"],"
+               "\"default\":\"create\"},"
+               "\"fileFormat\":" UD_CSV_FORMAT_SCHEMA
+               "},\"required\":[\"connection\"],\"additionalProperties\":false}";
     case JSON_SINK:
-        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"}},"
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"fileMode\":{\"type\":\"string\",\"enum\":[\"create\",\"overwrite\",\"append\"],"
+               "\"default\":\"create\"}},"
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
     case SQL_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"delivery\":{\"type\":\"string\",\"enum\":[\"response\",\"receipt\"],"
+               "\"default\":\"receipt\"},"
                "\"table\":{\"type\":\"string\"},\"mode\":{\"type\":\"string\",\"enum\":[\"append\","
-               "\"upsert\",\"delete\",\"changeset\"]},\"beforeField\":{\"type\":\"string\"},"
+               "\"upsert\",\"delete\",\"changeset\"]},\"loadMode\":{\"type\":\"string\","
+               "\"enum\":[\"auto\",\"native\",\"parameters\"]},\"beforeField\":{\"type\":"
+               "\"string\"},"
                "\"keys\":{\"type\":"
                "\"array\"},\"schemaPolicy\":{\"type\":\"object\"},\"provisionReceipts\":{\"type\":"
-               "\"boolean\"}},\"required\":[\"connection\","
+               "\"boolean\"},\"errorPolicy\":{\"type\":\"string\",\"enum\":[\"fail\",\"redirect\","
+               "\"ignore\"]},"
+               "\"includeInput\":{\"type\":\"boolean\",\"default\":false},\"allowTruncate\":{"
+               "\"type\":\"boolean\",\"default\":false}},\"required\":["
+               "\"connection\","
                "\"table\",\"mode\"],\"additionalProperties\":false}";
+    case SQL_COMMAND:
+        return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"statement\":{\"type\":\"string\",\"minLength\":1},\"parameters\":{\"type\":"
+               "\"array\","
+               "\"items\":{\"type\":\"integer\",\"minimum\":0}},\"errorPolicy\":{\"type\":"
+               "\"string\","
+               "\"enum\":[\"fail\",\"redirect\",\"ignore\"]},\"includeInput\":{\"type\":"
+               "\"boolean\"}},"
+               "\"required\":[\"connection\",\"statement\",\"parameters\"],"
+               "\"additionalProperties\":false}";
     case CAST:
         return "{\"type\":\"object\",\"properties\":{\"schema\":{\"type\":\"object\"},\"rounding\":"
                "{\"type\":\"integer\"},\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{"
                "\"type\":\"boolean\"}},\"required\":[\"schema\"],\"additionalProperties\":false}";
     case DERIVE:
-        return "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"}},"
+        return "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"},"
+               "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
                "\"required\":[\"columns\"],\"additionalProperties\":false}";
     case SPLIT:
         return "{\"type\":\"object\",\"properties\":{\"condition\":{\"type\":\"object\"},"
-               "\"branches\":{\"type\":\"array\"},\"default\":{\"type\":\"string\"}},"
+               "\"branches\":{\"type\":\"array\"},\"default\":{\"type\":\"string\"},"
+               "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
                "\"additionalProperties\":false}";
     case SORT:
     case JOIN:
@@ -517,6 +570,7 @@ static const char *configuration_schema(int kind) {
         return ud_operator_configuration_schema(k, &schema) ? NULL : schema.data;
     }
     case MULTICAST:
+    case BALANCED:
         return "{\"type\":\"object\",\"properties\":{\"outputs\":{\"type\":\"array\"}},"
                "\"additionalProperties\":false}";
     case UNION_ALL:
@@ -535,7 +589,10 @@ static const char *configuration_schema(int kind) {
                "false}";
     case XLSX_SINK:
         return "{\"type\":\"object\",\"required\":[\"connection\"],\"properties\":{\"connection\":{"
-               "\"type\":\"string\"},\"sheet\":{\"type\":\"string\"},\"header\":{\"type\":"
+               "\"type\":\"string\"},\"fileMode\":{\"type\":\"string\",\"enum\":[\"create\","
+               "\"overwrite\",\"append\"],\"default\":\"create\"},\"sheet\":{\"type\":\"string\"},"
+               "\"header\":{"
+               "\"type\":"
                "\"boolean\"},\"datePolicy\":{\"type\":\"string\"},\"maxCompressedBytes\":{\"type\":"
                "\"integer\"}},\"additionalProperties\":false}";
     default:
@@ -548,41 +605,44 @@ ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_cdc_register(registry));
     UD_TRY(ud_advanced_register(registry));
     static const struct {
-        const char *id;
+        const char *id, *name;
         int kind;
         uint32_t inputs, outputs;
         int sync, error;
-    } entries[] = {{"file.csv.source", CSV_SOURCE, 0, 1, -1, -1},
-                   {"file.ndjson.source", JSON_SOURCE, 0, 1, -1, -1},
-                   {"sql.source", SQL_SOURCE, 0, 1, -1, -1},
-                   {"file.csv.destination", CSV_SINK, 1, 0, -1, -1},
-                   {"file.ndjson.destination", JSON_SINK, 1, 0, -1, -1},
-                   {"sql.destination", SQL_SINK, 1, 0, -1, -1},
-                   {"pass", PASS, 1, 1, 0, -1},
-                   {"cast", CAST, 1, 2, -1, 1},
-                   {"derive", DERIVE, 1, 1, -1, -1},
-                   {"split", SPLIT, 1, 2, -1, -1},
-                   {"multicast", MULTICAST, 1, 2, 0, -1},
-                   {"unionAll", UNION_ALL, 2, 1, -1, -1},
-                   {"sort", SORT, 1, 1, -1, -1},
-                   {"join", JOIN, 2, 1, -1, -1},
-                   {"aggregate", AGGREGATE, 1, 1, -1, -1},
-                   {"window", WINDOW, 1, 1, -1, -1},
-                   {"file.xlsx.source", XLSX_SOURCE, 0, 2, -1, 1},
-                   {"file.xlsx.destination", XLSX_SINK, 1, 0, -1, -1}
+    } entries[] = {
+        {"file.csv.source", "CSV Source", CSV_SOURCE, 0, 2, -1, 1},
+        {"file.ndjson.source", "JSON Source", JSON_SOURCE, 0, 2, -1, 1},
+        {"sql.source", "SQL Source", SQL_SOURCE, 0, 2, -1, 1},
+        {"file.csv.destination", "CSV Destination", CSV_SINK, 1, 0, -1, -1},
+        {"file.ndjson.destination", "JSON Destination", JSON_SINK, 1, 0, -1, -1},
+        {"sql.destination", "SQL Destination", SQL_SINK, 1, 1, -1, 0},
+        {"sql.command", "SQL Command", SQL_COMMAND, 1, 2, -1, 1},
+        {"pass", "Pass Through", PASS, 1, 1, 0, -1},
+        {"cast", "Data Conversion", CAST, 1, 2, -1, 1},
+        {"derive", "Derived Column", DERIVE, 1, 2, -1, 1},
+        {"split", "Conditional Split", SPLIT, 1, 2, -1, -1},
+        {"multicast", "Multicast", MULTICAST, 1, 2, 0, -1},
+        {"balanced", "Balanced Distributor", BALANCED, 1, 2, 0, -1},
+        {"unionAll", "Union All", UNION_ALL, 2, 1, -1, -1},
+        {"sort", "Sort", SORT, 1, 1, -1, -1},
+        {"join", "Hash Join", JOIN, 2, 1, -1, -1},
+        {"aggregate", "Aggregate", AGGREGATE, 1, 1, -1, -1},
+        {"window", "Window", WINDOW, 1, 1, -1, -1},
+        {"file.xlsx.source", "Excel Source", XLSX_SOURCE, 0, 2, -1, 1},
+        {"file.xlsx.destination", "Excel Destination", XLSX_SINK, 1, 0, -1, -1}
 #ifdef UD_WITH_HTTP
-                   ,
-                   {"rest.source", REST_SOURCE, 0, 1, -1, -1},
-                   {"rest.destination", REST_SINK, 1, 0, -1, -1}
+        ,
+        {"rest.source", "REST Source", REST_SOURCE, 0, 1, -1, -1},
+        {"rest.destination", "REST Destination", REST_SINK, 1, 0, -1, -1}
 #endif
 #ifdef UD_WITH_ARROW_FILES
-                   ,
-                   {"file.parquet.source", PARQUET_SOURCE, 0, 1, -1, -1},
-                   {"file.parquet.destination", PARQUET_SINK, 1, 0, -1, -1},
-                   {"file.arrowIpc.source", IPC_SOURCE, 0, 1, -1, -1},
-                   {"file.arrowIpc.destination", IPC_SINK, 1, 0, -1, -1},
-                   {"file.arrowStream.source", IPC_STREAM_SOURCE, 0, 1, -1, -1},
-                   {"file.arrowStream.destination", IPC_STREAM_SINK, 1, 0, -1, -1}
+        ,
+        {"file.parquet.source", "Parquet Source", PARQUET_SOURCE, 0, 1, -1, -1},
+        {"file.parquet.destination", "Parquet Destination", PARQUET_SINK, 1, 0, -1, -1},
+        {"file.arrowIpc.source", "Arrow IPC Source", IPC_SOURCE, 0, 1, -1, -1},
+        {"file.arrowIpc.destination", "Arrow IPC Destination", IPC_SINK, 1, 0, -1, -1},
+        {"file.arrowStream.source", "Arrow Stream Source", IPC_STREAM_SOURCE, 0, 1, -1, -1},
+        {"file.arrowStream.destination", "Arrow Stream Destination", IPC_STREAM_SINK, 1, 0, -1, -1}
 #endif
     };
     for (uint32_t i = 0; i < sizeof(entries) / sizeof(*entries); i++) {
@@ -594,7 +654,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .struct_size = sizeof(d),
             .abi_version = UD_ABI_VERSION,
             .id = {entries[i].id, (uint32_t)strlen(entries[i].id)},
-            .name = {entries[i].id, (uint32_t)strlen(entries[i].id)},
+            .name = {entries[i].name, (uint32_t)strlen(entries[i].name)},
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = {configuration_schema(kind),
                                      (uint32_t)strlen(configuration_schema(kind))},
@@ -604,7 +664,12 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .outputs = entries[i].outputs,
             .synchronous_input = entries[i].sync,
             .error_output = entries[i].error,
-            .optional_outputs = kind == CAST || kind == XLSX_SOURCE ? UINT64_C(2) : 0,
+            .optional_outputs = kind == CAST || kind == DERIVE || kind == XLSX_SOURCE ||
+                                        kind == CSV_SOURCE || kind == JSON_SOURCE ||
+                                        kind == SQL_SOURCE || kind == SQL_COMMAND
+                                    ? UINT64_C(2)
+                                : kind == SQL_SINK ? UINT64_C(1)
+                                                   : 0,
             .user = (void *)(intptr_t)kind,
             .configure = ud_builtin_configure,
             .prepare = prepare,
@@ -615,7 +680,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .dispose = ud_builtin_dispose};
         if (kind == JOIN)
             d.input_demand = ud_builtin_builtin_demand;
-        if (kind == SPLIT || kind == MULTICAST || kind == UNION_ALL)
+        if (kind == SPLIT || kind == MULTICAST || kind == BALANCED || kind == UNION_ALL)
             d.bind_ports = ud_builtin_builtin_ports;
         if (source_kind(kind))
             d.describe_plan = ud_builtin_describe_source;
@@ -627,8 +692,18 @@ ud_status ud_builtin_register(ud_registry *registry) {
         if (kind == SORT || kind == JOIN || kind == AGGREGATE || kind == WINDOW)
             d.describe_plan = ud_builtin_describe_operator;
         if (kind == SQL_SINK || kind == REST_SINK) {
-            d.effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_TRANSACTIONAL | UD_EFFECT_RECEIPTED |
-                        UD_EFFECT_COMMIT_UNKNOWN;
+            d.effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_COMMIT_UNKNOWN;
+            if (kind == SQL_SINK)
+                d.effects |= UD_EFFECT_TRANSACTIONAL;
+            d.describe_plan = ud_builtin_describe_sink;
+            d.state_version = 1;
+            d.checkpoint = ud_builtin_checkpoint_state;
+            d.restore = ud_builtin_restore_state;
+            d.capabilities |= UD_COMPONENT_STATEFUL;
+        } else if (kind == SQL_COMMAND || kind == BALANCED) {
+            if (kind == SQL_COMMAND)
+                d.effects =
+                    UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_TRANSACTIONAL | UD_EFFECT_COMMIT_UNKNOWN;
             d.state_version = 1;
             d.checkpoint = ud_builtin_checkpoint_state;
             d.restore = ud_builtin_restore_state;
@@ -672,5 +747,14 @@ ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_filesystem_register(registry));
     UD_TRY(ud_process_register(registry));
     UD_TRY(ud_http_register(registry));
+    UD_TRY(ud_network_tasks_register(registry));
+    UD_TRY(ud_column_files_register(registry));
+    UD_TRY(ud_avro_register(registry));
+    UD_TRY(ud_wmi_register(registry));
+    UD_TRY(ud_sqlserver_tasks_register(registry));
+#ifdef UD_WITH_XML
+    UD_TRY(ud_xml_source_register(registry));
+    UD_TRY(ud_xml_tasks_register(registry));
+#endif
     return ud_profile_register(registry);
 }

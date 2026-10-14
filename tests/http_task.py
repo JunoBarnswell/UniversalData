@@ -88,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
         if https:
             connections.append({"id": "ca", "driver": "file", "resource": str(ca)})
             cfg["caConnection"] = "ca"
-        doc = {"version": 9, "id": "http", "variables": {"status": {"type": "int64", "default": -1}},
+        doc = {"version": 10, "id": "http", "variables": {"status": {"type": "int64", "default": -1}},
                "connections": connections,
                "controlFlow": {"tasks": [{"id": "request", "kind": "http.request", "config": cfg}], "constraints": []},
                "dataFlows": []}
@@ -157,7 +157,7 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
     run(folder, doc, status=3, code=500)
     assert counts[folder.name] == 2
     folder, doc = fixture("post-no-retry", "failure", {"method": "POST"})
-    run(folder, doc, status=3, code=500)
+    run(folder, doc, status=16, code=500)
     assert counts[folder.name] == 1
     folder, doc = fixture("invalid-post-retry", config={"method": "POST", "maxAttempts": 2})
     run(folder, doc, status=5, code=-1)

@@ -1,5 +1,6 @@
 package org.universaldata;
 import java.util.Objects;
+import java.math.BigInteger;
 
 /** Owned typed batch; schema and nested JSON use the native SDK contract. */
 public final class Batch implements AutoCloseable {
@@ -14,6 +15,16 @@ public final class Batch implements AutoCloseable {
     public static Batch fromWire(byte[] wire, long memoryLimit) { return new Batch(nativeFromWire(Objects.requireNonNull(wire), memoryLimit)); }
     public synchronized long rows() { ensureOpen(); return nativeCount(handle, false); }
     public synchronized long columns() { ensureOpen(); return nativeCount(handle, true); }
+    public synchronized boolean hasAbsentFields() { ensureOpen(); return nativeHasAbsent(handle); }
+    public synchronized boolean isFieldPresent(int row, int column) { ensureOpen(); return nativePresent(handle, row, column); }
+    public synchronized BigInteger getUInt64(int row, int column) { ensureOpen(); return new BigInteger(nativeUInt64(handle, row, column)); }
+    public synchronized Duration getDuration(int row, int column) { ensureOpen(); return new Duration(nativeDuration(handle, row, column)); }
+    public synchronized Interval getInterval(int row, int column) { ensureOpen(); long[] parts = nativeInterval(handle, row, column); return new Interval(Math.toIntExact(parts[0]), Math.toIntExact(parts[1]), parts[2]); }
+    private static native String nativeUInt64(long handle, int row, int column);
+    private static native long nativeDuration(long handle, int row, int column);
+    private static native long[] nativeInterval(long handle, int row, int column);
+    private static native boolean nativeHasAbsent(long handle);
+    private static native boolean nativePresent(long handle, int row, int column);
     public synchronized String toJson() { ensureOpen(); return nativeJson(handle, false); }
     public synchronized String schemaJson() { ensureOpen(); return nativeJson(handle, true); }
     public synchronized String rowInfoJson(int row) { ensureOpen(); return nativeRowInfo(handle,row); }
