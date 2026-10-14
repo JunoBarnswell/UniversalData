@@ -29,7 +29,8 @@ enum {
     UD_CONNECT_PROVISION = 262144,
     UD_CONNECT_NATIVE_BULK = 524288, /* Genuine native append transport; not parameter batching. */
     UD_CONNECT_TRANSACTION_PARTICIPANT = 1048576,
-    UD_CONNECT_PARAMETER_ARRAY = 2097152
+    UD_CONNECT_PARAMETER_ARRAY = 2097152,
+    UD_CONNECT_RECORD_ERRORS = 4194304 /* Complete SQL record notifications and isolation. */
 };
 enum { UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE };
 enum {
@@ -100,11 +101,19 @@ typedef struct ud_connection_options {
     ud_credential_resolver_fn resolve;
     ud_status (*check)(void *authorize_user); /* Factory deadline/cancellation control. */
 } ud_connection_options;
+/* Called once for each completely fetched SQL record. On OK, batch already
+ * contains its last row. On a row conversion failure, raw_cells are complete
+ * nullable BINARY representations in provider result order; boundaries are known.
+ * A callback may isolate conversion/constraint failures, never execution failures. */
+typedef ud_status (*ud_read_record_fn)(void *, ud_batch *, ud_status, uint32_t column,
+                                       const ud_field *, const ud_value *raw_cells, uint32_t count);
 typedef struct ud_read_options {
     uint32_t struct_size, abi_version, batch_size;
     ud_string sql;              /* Prepared SQL text; no value interpolation. */
     const ud_batch *parameters; /* Borrowed sealed typed parameter batch. */
     uint32_t parameter_row;     /* Read selects one row; execute applies all supplied rows. */
+    void *record_user;
+    ud_read_record_fn record;
 } ud_read_options;
 typedef struct ud_write_options {
     uint32_t struct_size, abi_version;

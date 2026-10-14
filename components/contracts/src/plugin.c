@@ -709,7 +709,8 @@ ud_status ud_connection_read_open(ud_connection *c, const ud_read_options *optio
     if (!schema || !valid_string(options->sql, 1) || !options->batch_size ||
         options->batch_size > INT32_MAX || c->cursor)
         return UD_INVALID;
-    if (!(c->capabilities & UD_CONNECT_READ))
+    if (!(c->capabilities & UD_CONNECT_READ) ||
+        (options->record && !(c->capabilities & UD_CONNECT_RECORD_ERRORS)))
         return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c, UD_ACCESS_READ));
     ud_status s = c->api->read_open(c->instance->state, options, schema);

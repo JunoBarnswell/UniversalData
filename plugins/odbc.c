@@ -583,6 +583,7 @@ static ud_status get_cell(odbc_state *p, SQLHSTMT stmt, uint32_t column, int bin
 
 ud_status ud_odbc_read_close(void *state) {
     odbc_state *p = state;
+    memset(&p->record_options, 0, sizeof(p->record_options));
     if (p->cursor)
         statement_release(p, p->cursor);
     p->cursor = SQL_NULL_HSTMT;
@@ -630,6 +631,7 @@ ud_status ud_odbc_read_open(void *state, const ud_read_options *o, const ud_batc
         s = p->host.batch_create(p->host.context, fields, (uint32_t)columns, 0, &p->schema);
     p->host.deallocate(fields);
     p->batch_size = o->batch_size;
+    p->record_options = *o;
     if (s)
         ud_odbc_read_close(p);
     return s;
@@ -646,9 +648,11 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
         s = p->host.batch_create(p->host.context, fields, columns, p->batch_size, out);
     ud_value *values = p->host.allocate(p->host.context, columns * sizeof(*values));
     char **owned = p->host.allocate(p->host.context, columns * sizeof(*owned));
-    if (!values || !owned)
+    ud_value *raw = p->host.allocate(p->host.context, columns * sizeof(*raw));
+    uint32_t fetched = 0, bad = UINT32_MAX;
+    if (!values || !owned || !raw)
         s = UD_RESOURCE;
-    while (!s && p->host.rows(*out) < p->batch_size) {
+    while (!s && fetched < p->batch_size) {
         s = ud_odbc_control(p);
         if (s)
             break;
@@ -659,11 +663,16 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
             s = failure(p, SQL_HANDLE_STMT, p->cursor);
             break;
         }
+        fetched++;
+        ud_status conversion = UD_OK;
+        memset(raw, 0, columns * sizeof(*raw));
         for (uint32_t i = 0; !s && i < columns; i++) {
             uint32_t n = 0;
             int null = 0;
             s = get_cell(p, p->cursor, i, fields[i].type == UD_BINARY, owned + i, &n, &null);
             values[i] = (ud_value){.type = fields[i].type, .is_null = null};
+            raw[i] =
+                (ud_value){.type = UD_BINARY, .is_null = null, .text = owned[i], .text_length = n};
             if (s || null)
                 continue;
             if (fields[i].type == UD_BINARY) {
@@ -702,9 +711,17 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
             } else
                 s = p->host.parse_field(p->host.context, fields + i, owned[i], n, UD_ROUND_EXACT,
                                         values + i);
+            if (plugin_record_conversion(s)) {
+                if (!conversion) {
+                    conversion = s;
+                    bad = i;
+                }
+                s = UD_OK;
+            }
         }
         if (!s)
-            s = p->host.append(*out, values, columns);
+            s = plugin_record_finish(&p->host, &p->record_options, *out, fields, values, raw,
+                                     columns, conversion, bad);
         for (uint32_t i = 0; i < columns; i++) {
             p->host.deallocate(owned[i]);
             owned[i] = NULL;
@@ -712,8 +729,9 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
     }
     p->host.deallocate(fields);
     p->host.deallocate(values);
+    p->host.deallocate(raw);
     p->host.deallocate(owned);
-    if (s || !p->host.rows(*out)) {
+    if (s || (!p->host.rows(*out) && !fetched)) {
         p->host.batch_destroy(*out);
         *out = NULL;
         return s ? s : UD_END;
@@ -1479,8 +1497,8 @@ static ud_status initialize(const ud_host_api *h, const char *configuration, uin
         SQLGetInfo(p->connection, SQL_PARAM_ARRAY_ROW_COUNTS, &arrays, sizeof(arrays), &size);
         SQLGetFunctions(p->connection, SQL_API_SQLBINDPARAMETER, &prepare_function);
         p->array_parameters = prepare_function == SQL_TRUE && arrays == SQL_PARC_BATCH;
-        p->capabilities =
-            UD_CONNECT_READ | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_METADATA | UD_CONNECT_PREPARED;
+        p->capabilities = UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_EXECUTE_SQL |
+                          UD_CONNECT_METADATA | UD_CONNECT_PREPARED;
         if (transactions != SQL_TC_NONE && p->dialect != DIALECT_GENERIC) {
             p->capabilities |= UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
                                UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS | UD_CONNECT_PROVISION |
@@ -1535,12 +1553,12 @@ static int32_t session_dialect(void *state) {
 static const ud_connector_api connector = {
     .struct_size = sizeof(ud_connector_api),
     .abi_version = UD_ABI_VERSION,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-                    UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS |
-                    UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_PREPARED |
-                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION | UD_CONNECT_CHANGESET |
-                    UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT |
-                    UD_CONNECT_NATIVE_BULK | UD_CONNECT_PARAMETER_ARRAY,
+    .capabilities =
+        UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
+        UD_CONNECT_DELETE | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS |
+        UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
+        UD_CONNECT_PROVISION | UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC |
+        UD_CONNECT_SNAPSHOT | UD_CONNECT_NATIVE_BULK | UD_CONNECT_PARAMETER_ARRAY,
     .test = test,
     .discover = ud_odbc_discover,
     .read_open = ud_odbc_read_open,

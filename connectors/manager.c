@@ -1,4 +1,5 @@
 #include "ud/connection_manager.h"
+#include "ud/avro.h"
 #include "../components/contracts/connection_internal.h"
 #include "../engines/package/internal.h"
 #include "rest.h"
@@ -754,6 +755,8 @@ ud_status ud_connection_lease_schema(ud_connection_lease *lease, ud_string table
             format = (ud_string){"csv", 3};
         else if (extension && !strcmp(extension, ".ndjson"))
             format = (ud_string){"ndjson", 6};
+        else if (extension && !strcmp(extension, ".avro"))
+            format = (ud_string){"avro", 4};
         else if (extension && !strcmp(extension, ".json"))
             format = (ud_string){"jsonArray", 9};
     }
@@ -772,6 +775,8 @@ ud_status ud_connection_lease_schema(ud_connection_lease *lease, ud_string table
                                                   ? UD_JSON_FRAMING_ARRAY
                                                   : UD_JSON_FRAMING_LINES};
         status = ud_json_discover(ctx, path, scope, &options, 256, out);
+    } else if (!status && ud_named(format, "avro")) {
+        status = ud_avro_discover(ctx, path, scope, out);
     } else if (!status)
         status = UD_UNSUPPORTED;
     ud_free(path);

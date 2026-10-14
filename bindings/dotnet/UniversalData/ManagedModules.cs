@@ -20,6 +20,8 @@ public sealed partial class Registry
         protected override Assembly? Load(AssemblyName name) => name.Name == typeof(Registry).Assembly.GetName().Name ? typeof(Registry).Assembly : null;
     }
     private readonly Dictionary<string, (ModuleContext Context, IManagedModule[] Modules)> modules = new();
+    private bool failedModule;
+    private readonly List<ModuleContext> failedLoads = new();
     /// <summary>Same fixed-assembly loading entry for SDK, CLI and product Worker.</summary>
     public void LoadPackageExtensions(string packageJson, string tenant, PackageAuthorizer authorize)
     {
@@ -54,12 +56,25 @@ public sealed partial class Registry
                     if (registrations.Length == 0) throw new ArgumentException("Assembly exports no Native Registry registrations");
                     foreach (var registration in registrations) registration.Register(this);
                     modules.Add(digest, (load, registrations));
-                } catch { load.Unload(); throw; }
+                } catch {
+                    // Native registrations already installed by a failing module
+                    // remain owned until registry destruction. Fence further use.
+                    failedModule = true; failedLoads.Add(load); throw;
+                }
             }
         }
     }
     private void ReleaseModules()
-    { foreach (var module in modules.Values) { foreach (var registration in module.Modules) if (registration is IDisposable owned) owned.Dispose(); module.Context.Unload(); } modules.Clear(); }
+    {
+        foreach (var module in modules.Values) {
+            foreach (var registration in module.Modules) if (registration is IDisposable owned) {
+                try { owned.Dispose(); } catch { /* Native teardown already completed. */ }
+            }
+            module.Context.Unload();
+        }
+        foreach (var load in failedLoads) load.Unload();
+        modules.Clear(); failedLoads.Clear();
+    }
 }
 
 public static class CSharpDeployment

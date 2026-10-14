@@ -78,7 +78,10 @@ public sealed partial class Registry : IDisposable
             finally { registration.ReleaseTemporary(); }
         }
     }
-    private void Open() => ObjectDisposedException.ThrowIf(registry == IntPtr.Zero, this);
+    private void Open() {
+        ObjectDisposedException.ThrowIf(registry == IntPtr.Zero, this);
+        if (failedModule) throw new UniversalDataException((int)StatusCode.Fenced, "Module registration failed; create a new Registry");
+    }
     public void Dispose()
     {
         lock (sync)

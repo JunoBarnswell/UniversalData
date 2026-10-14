@@ -19,6 +19,7 @@ typedef struct {
     ud_mutex ownership;
     ud_batch *schema;
     uint32_t batch_size;
+    ud_read_options record_options;
     int reading, finished;
     atomic_int cancelled;
     void *control_user;
@@ -362,6 +363,7 @@ static ud_status discover(void *state, ud_string table, ud_batch **out) {
 }
 static ud_status close_read(void *state) {
     postgres_state *p = state;
+    memset(&p->record_options, 0, sizeof(p->record_options));
     p->cleaning = 1;
     ud_status s = p->reading && !p->transaction && !p->broken ? command(p, "ROLLBACK") : UD_OK;
     p->cleaning = 0;
@@ -556,6 +558,7 @@ static ud_status open_read(void *state, const ud_read_options *options, const ud
         return s;
     }
     p->batch_size = options->batch_size;
+    p->record_options = *options;
     p->finished = 0;
     return UD_OK;
 }
@@ -563,14 +566,26 @@ static ud_status parse_row(postgres_state *p, const PGresult *r, ud_batch *batch
     ud_host_api *h = &p->host;
     uint32_t columns = h->columns(p->schema);
     ud_value *values = h->allocate(h->context, columns * sizeof(*values));
+    ud_value *raw = h->allocate(h->context, columns * sizeof(*raw));
+    uint32_t bad = UINT32_MAX;
+    ud_field *fields = NULL;
     void **binary = h->allocate(h->context, columns * sizeof(*binary));
-    if (!values || !binary) {
+    if (!values || !binary || !raw) {
         h->deallocate(values);
         h->deallocate(binary);
+        h->deallocate(raw);
         return UD_RESOURCE;
     }
     ud_status s = PQnfields(r) != (int)columns ? UD_SCHEMA : UD_OK;
+    if (!s)
+        s = plugin_fields(h, p->schema, &fields);
+    for (uint32_t j = 0; !s && j < columns; j++)
+        raw[j] = (ud_value){.type = UD_BINARY,
+                            .is_null = PQgetisnull(r, 0, (int)j),
+                            .text = PQgetvalue(r, 0, (int)j),
+                            .text_length = (uint32_t)PQgetlength(r, 0, (int)j)};
     for (uint32_t j = 0; !s && j < columns; j++) {
+        bad = j;
         ud_field field;
         h->field(p->schema, j, &field);
         if (strcmp(field.name, PQfname(r, (int)j)) ||
@@ -617,13 +632,16 @@ static ud_status parse_row(postgres_state *p, const PGresult *r, ud_batch *batch
         } else
             s = h->parse_field(h->context, &field, text, length, UD_ROUND_EXACT, v);
     }
-    if (!s)
-        s = h->append(batch, values, columns);
+    if (!s || plugin_record_conversion(s))
+        s = plugin_record_finish(h, &p->record_options, batch, fields, values, raw, columns, s,
+                                 bad);
     for (uint32_t j = 0; j < columns; j++)
         if (binary[j])
             PQfreemem(binary[j]);
     h->deallocate(values);
     h->deallocate(binary);
+    h->deallocate(raw);
+    h->deallocate(fields);
     return s;
 }
 static ud_status next_read(void *state, ud_batch **out) {
@@ -651,6 +669,7 @@ static ud_status next_read(void *state, ud_batch **out) {
     else if (!PQsetSingleRowMode(p->db))
         s = UD_INCOMPATIBLE;
     PGresult *r;
+    uint32_t fetched = 0;
     while (!s) {
         if (!wait_result(p)) {
             s = pg_failure(p, NULL);
@@ -660,9 +679,10 @@ static ud_status next_read(void *state, ud_batch **out) {
         if (!r)
             break;
         ExecStatusType result = PQresultStatus(r);
-        if (!s && result == PGRES_SINGLE_TUPLE)
+        if (!s && result == PGRES_SINGLE_TUPLE) {
+            fetched++;
             s = parse_row(p, r, *out);
-        else if (!s && result != PGRES_TUPLES_OK)
+        } else if (!s && result != PGRES_TUPLES_OK)
             s = pg_failure(p, r);
         PQclear(r);
     }
@@ -672,9 +692,9 @@ static ud_status next_read(void *state, ud_batch **out) {
     if (s)
         return s;
     uint32_t rows = h->rows(*out);
-    if (rows < p->batch_size)
+    if (fetched < p->batch_size)
         p->finished = 1;
-    if (!rows) {
+    if (!rows && !fetched) {
         h->batch_destroy(*out);
         *out = NULL;
         return UD_END;
@@ -1412,12 +1432,12 @@ static ud_status cdc_close(void *state) {
 static const ud_connector_api connector = {
     .struct_size = sizeof(connector),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-                    UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
-                    UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL |
-                    UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC |
-                    UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION |
-                    UD_CONNECT_NATIVE_BULK | UD_CONNECT_TRANSACTION_PARTICIPANT,
+    .capabilities =
+        UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
+        UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
+        UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
+        UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
+        UD_CONNECT_PROVISION | UD_CONNECT_NATIVE_BULK | UD_CONNECT_TRANSACTION_PARTICIPANT,
     .test = test_connection,
     .discover = discover,
     .read_open = open_read,

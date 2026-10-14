@@ -30,6 +30,7 @@ typedef struct oracle {
     ud_batch *schema;
     cell *columns;
     uint32_t count, batch, write_count;
+    ud_read_options record_options;
     ub2 *write_types;
     int utc, transaction, broken;
     int cleanup, participant_enabled, branch_state;

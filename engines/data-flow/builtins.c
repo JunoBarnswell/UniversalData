@@ -23,8 +23,9 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         s = ud_builtin_clone_schema(c->memory, in[i], b->inputs + i);
     if (!s)
         s = ud_builtin_clone_schema(c->memory, sink_kind(kind) ? in[0] : out[0], &b->schema);
-    if (!s && (kind == CAST || kind == DERIVE || kind == SPLIT || kind == XLSX_SOURCE ||
-               kind == CSV_SOURCE || kind == JSON_SOURCE || kind == SQL_COMMAND))
+    if (!s &&
+        (kind == CAST || kind == DERIVE || kind == SPLIT || kind == XLSX_SOURCE ||
+         kind == CSV_SOURCE || kind == JSON_SOURCE || kind == SQL_SOURCE || kind == SQL_COMMAND))
         s = ud_builtin_clone_schema(c->memory, out[kind == SPLIT ? c->output_count - 1 : 1],
                                     &b->errors);
     if (!s && kind == SQL_SINK)
@@ -99,6 +100,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         ud_string connection = {0};
         s = ud_json_string(ud_member(b->config, "connection"), &connection);
         uint64_t caps = source_kind(kind) ? UD_CONNECT_READ : UD_CONNECT_APPEND;
+        if (kind == SQL_SOURCE)
+            caps |= UD_CONNECT_RECORD_ERRORS;
         if (kind == SQL_COMMAND)
             caps = UD_CONNECT_EXECUTE_SQL;
         if (kind == SQL_SINK || kind == REST_SINK)
@@ -484,7 +487,9 @@ static const char *configuration_schema(int kind) {
                "\"partitionEnd\":{\"type\":\"integer\",\"minimum\":0},\"incremental\":{\"type\":"
                "\"object\"},\"schemaPolicy\":{\"type\":\"object\"},\"table\":{\"type\":\"string\","
                "\"minLength\":1},\"sql\":{\"type\":\"string\",\"minLength\":1},\"parameters\":{"
-               "\"type\":\"object\"},\"ordering\":{\"type\":\"object\"},\"where\":{}},\"required\":"
+               "\"type\":\"object\"},\"ordering\":{\"type\":\"object\"},\"where\":{},"
+               "\"errorPolicy\":{\"enum\":[\"fail\",\"redirect\",\"ignore\"]},\"includeInput\":{"
+               "\"type\":\"boolean\"}},\"required\":"
                "[\"connection\",\"schema\"],\"anyOf\":[{\"required\":[\"sql\"]},{\"required\":["
                "\"table\"]}],\"additionalProperties\":false}";
     case PARQUET_SINK:
@@ -594,7 +599,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
         int sync, error;
     } entries[] = {{"file.csv.source", CSV_SOURCE, 0, 2, -1, 1},
                    {"file.ndjson.source", JSON_SOURCE, 0, 2, -1, 1},
-                   {"sql.source", SQL_SOURCE, 0, 1, -1, -1},
+                   {"sql.source", SQL_SOURCE, 0, 2, -1, 1},
                    {"file.csv.destination", CSV_SINK, 1, 0, -1, -1},
                    {"file.ndjson.destination", JSON_SINK, 1, 0, -1, -1},
                    {"sql.destination", SQL_SINK, 1, 1, -1, 0},
@@ -648,7 +653,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .error_output = entries[i].error,
             .optional_outputs = kind == CAST || kind == DERIVE || kind == XLSX_SOURCE ||
                                         kind == CSV_SOURCE || kind == JSON_SOURCE ||
-                                        kind == SQL_COMMAND
+                                        kind == SQL_SOURCE || kind == SQL_COMMAND
                                     ? UINT64_C(2)
                                 : kind == SQL_SINK ? UINT64_C(1)
                                                    : 0,
@@ -731,6 +736,9 @@ ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_http_register(registry));
     UD_TRY(ud_network_tasks_register(registry));
     UD_TRY(ud_column_files_register(registry));
+    UD_TRY(ud_avro_register(registry));
+    UD_TRY(ud_wmi_register(registry));
+    UD_TRY(ud_sqlserver_tasks_register(registry));
 #ifdef UD_WITH_XML
     UD_TRY(ud_xml_source_register(registry));
     UD_TRY(ud_xml_tasks_register(registry));

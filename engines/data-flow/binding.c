@@ -346,7 +346,7 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
             s = UD_SCHEMA;
         ud_batch_destroy(params);
     }
-    if (!s && (kind == CSV_SOURCE || kind == JSON_SOURCE))
+    if (!s && (kind == CSV_SOURCE || kind == JSON_SOURCE || kind == SQL_SOURCE))
         s = error_schema(c, config, out[0], 1, out + 1);
     if (!s && kind == SQL_SOURCE && ud_member(config, "where")) {
         ud_expression *predicate = NULL;

@@ -43,6 +43,7 @@ typedef struct mysql_state {
     MYSQL_STMT *cursor;
     ud_batch *schema;
     uint32_t batch_size;
+    ud_read_options record_options;
     char *host_name, *user, *password, *database, *ca, *cert, *key;
     uint32_t port, timeout;
     int utc, transaction, broken, bulk_allowed;
@@ -268,6 +269,7 @@ static ud_status session_policy(mysql_state *p) {
 }
 static ud_status read_close(void *state) {
     mysql_state *p = state;
+    memset(&p->record_options, 0, sizeof(p->record_options));
     if (p->cursor)
         mysql_stmt_close(p->cursor);
     p->cursor = NULL;
@@ -327,6 +329,7 @@ static ud_status read_open(void *state, const ud_read_options *o, const ud_batch
     }
     p->cursor = stmt;
     p->batch_size = o->batch_size;
+    p->record_options = *o;
     return UD_OK;
 }
 static ud_status read_next(void *state, ud_batch **out) {
@@ -357,7 +360,11 @@ static ud_status read_next(void *state, ud_batch **out) {
     if (!s)
         s = p->host.batch_create(p->host.context, fields, n, p->batch_size, out);
     int ended = 0;
-    while (!s && p->host.rows(*out) < p->batch_size) {
+    uint32_t fetched = 0, bad = UINT32_MAX;
+    ud_value *raw = p->host.allocate(p->host.context, n * sizeof(*raw));
+    if (!raw)
+        s = UD_RESOURCE;
+    while (!s && fetched < p->batch_size) {
         s = check(p);
         if (s)
             break;
@@ -370,12 +377,16 @@ static ud_status read_next(void *state, ud_batch **out) {
             s = failure(p, p->cursor);
             break;
         }
+        fetched++;
+        ud_status conversion = UD_OK;
+        memset(raw, 0, n * sizeof(*raw));
         for (uint32_t i = 0; !s && i < n; i++) {
             ud_value *v = b.values + i;
             *v = (ud_value){.type = fields[i].type,
                             .precision = fields[i].precision,
                             .scale = fields[i].scale,
                             .is_null = !!b.nulls[i]};
+            raw[i] = (ud_value){.type = UD_BINARY, .is_null = v->is_null};
             if (v->is_null)
                 continue;
             if (b.length[i] > UD_MYSQL_CELL_LIMIT) {
@@ -397,38 +408,50 @@ static ud_status read_next(void *state, ud_batch **out) {
                     break;
                 }
             }
+            raw[i].text = b.owned[i];
+            raw[i].text_length = (uint32_t)b.length[i];
             if (v->type == UD_BINARY) {
                 v->text = b.owned[i];
                 v->text_length = (uint32_t)b.length[i];
             } else if (v->type == UD_TIMESTAMP) {
                 if (b.length[i] < 19 || b.length[i] > 40 || !memcmp(b.owned[i], "0000-00-00", 10)) {
                     s = UD_PARSE;
-                    break;
                 }
                 char time[48];
-                memcpy(time, b.owned[i], b.length[i]);
-                time[10] = 'T';
-                time[b.length[i]] = 'Z';
-                s = p->host.parse_field(p->host.context, fields + i, time,
-                                        (uint32_t)b.length[i] + 1, UD_ROUND_EXACT, v);
+                if (!s) {
+                    memcpy(time, b.owned[i], b.length[i]);
+                    time[10] = 'T';
+                    time[b.length[i]] = 'Z';
+                    s = p->host.parse_field(p->host.context, fields + i, time,
+                                            (uint32_t)b.length[i] + 1, UD_ROUND_EXACT, v);
+                }
             } else if (v->type == UD_BOOL) {
                 if (b.length[i] != 1 || (b.owned[i][0] != '0' && b.owned[i][0] != '1'))
-                    s = UD_SCHEMA;
+                    s = UD_PARSE;
                 else
                     v->integer = b.owned[i][0] - '0';
             } else
                 s = p->host.parse_field(p->host.context, fields + i, b.owned[i],
                                         (uint32_t)b.length[i], UD_ROUND_EXACT, v);
+            if (plugin_record_conversion(s)) {
+                if (!conversion) {
+                    conversion = s;
+                    bad = i;
+                }
+                s = UD_OK;
+            }
         }
         if (!s)
-            s = p->host.append(*out, b.values, n);
+            s = plugin_record_finish(&p->host, &p->record_options, *out, fields, b.values, raw, n,
+                                     conversion, bad);
         /* Bind pointers are refreshed after a truncated column grows. */
         if (!s && mysql_stmt_bind_result(p->cursor, b.bind))
             s = failure(p, p->cursor);
     }
+    p->host.deallocate(raw);
     p->host.deallocate(fields);
     bindings_free(&b);
-    if (s || (ended && !p->host.rows(*out))) {
+    if (s || (ended && !p->host.rows(*out) && !fetched)) {
         p->host.batch_destroy(*out);
         *out = NULL;
         read_close(p);
@@ -1822,12 +1845,12 @@ ud_status ud_mysql_initialize(const ud_host_api *h, const char *configuration, u
 const ud_connector_api ud_mysql_connector = {
     .struct_size = sizeof(ud_connector_api),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-                    UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
-                    UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_CDC |
-                    UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
-                    UD_CONNECT_PROVISION | UD_CONNECT_NATIVE_BULK |
-                    UD_CONNECT_TRANSACTION_PARTICIPANT,
+    .capabilities =
+        UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
+        UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
+        UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_CDC |
+        UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
+        UD_CONNECT_PROVISION | UD_CONNECT_NATIVE_BULK | UD_CONNECT_TRANSACTION_PARTICIPANT,
     .test = test,
     .discover = discover,
     .read_open = read_open,

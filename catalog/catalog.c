@@ -243,6 +243,11 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
                 "timestamp_ms INTEGER NOT NULL CHECK(timestamp_ms>=0),PRIMARY "
                 "KEY(tenant,kind,id,revision)) WITHOUT ROWID;"
                 "CREATE INDEX document_time ON documents(tenant,kind,timestamp_ms,id,revision);"
+                "CREATE INDEX event_task ON "
+                "documents(tenant,kind,json_extract(document,'$.taskId'),timestamp_ms,id,revision);"
+                "CREATE INDEX event_component ON "
+                "documents(tenant,kind,json_extract(document,'$.componentId'),timestamp_ms,id,"
+                "revision);"
                 "PRAGMA application_id=1430537025;PRAGMA user_version=" UD_PROTOCOL_VERSION_TEXT);
     }
     if (!status)
@@ -442,9 +447,10 @@ ud_status ud_catalog_query(ud_catalog *c, ud_string input, char **json, uint32_t
     UD_TRY(grant(c, UD_ACCESS_READ));
     ud_json *query = NULL;
     ud_status status = ud_json_parse(c->ctx, input.data, input.length, &query, NULL);
-    const char *keys[] = {"kind", "id", "afterId", "afterRevision", "sinceMs", "untilMs", "limit"};
+    const char *keys[] = {"kind",  "id",     "afterId",    "afterRevision", "sinceMs", "untilMs",
+                          "limit", "taskId", "pipelineId", "componentId",   "result",  "eventKind"};
     if (!status)
-        status = ud_json_keys(query, keys, 7);
+        status = ud_json_keys(query, keys, 12);
     uint64_t kind = 0, revision = 0, since = 0, until = INT64_MAX, limit = 100;
     ud_string id = {0}, after = {0};
     if (!status)
@@ -470,16 +476,43 @@ ud_status ud_catalog_query(ud_catalog *c, ud_string input, char **json, uint32_t
         status = UD_SCHEMA;
     if (!after.length && revision)
         after = id;
+    ud_string task = {0}, pipeline = {0}, component = {0};
+    uint64_t result_filter = UINT64_MAX, event_filter = UINT64_MAX;
+    const char *names[] = {"taskId", "pipelineId", "componentId"};
+    ud_string *values[] = {&task, &pipeline, &component};
+    for (uint32_t at = 0; !status && at < 3; at++)
+        if (ud_member(query, names[at]))
+            status = ud_json_string(ud_member(query, names[at]), values[at]);
+    if (!status && ud_member(query, "result"))
+        status = ud_json_uint(ud_member(query, "result"), &result_filter);
+    if (!status && ud_member(query, "eventKind"))
+        status = ud_json_uint(ud_member(query, "eventKind"), &event_filter);
+    if (!status &&
+        ((result_filter != UINT64_MAX && result_filter > UD_TRUNCATED) ||
+         (event_filter != UINT64_MAX && (!event_filter || event_filter > UD_EXEC_EVENT_ERROR)) ||
+         (kind != UD_CATALOG_EVENT && (task.length || pipeline.length || component.length ||
+                                       result_filter != UINT64_MAX || event_filter != UINT64_MAX))))
+        status = UD_SCHEMA;
     sqlite3_stmt *s = NULL;
     if (!status)
         status = prepare(
             c,
             id.length ? "SELECT id,revision,document,digest,timestamp_ms FROM documents WHERE "
                         "tenant=?1 AND kind=?2 AND id=?3 AND (id,revision)>(?4,?5) AND "
-                        "timestamp_ms>=?6 AND timestamp_ms<=?7 ORDER BY id,revision LIMIT ?8"
+                        "timestamp_ms>=?6 AND timestamp_ms<=?7 AND (?9='' OR "
+                        "json_extract(document,'$.taskId')=?9) AND "
+                        "(?10='' OR json_extract(document,'$.pipelineId')=?10) AND (?11='' OR "
+                        "json_extract(document,'$.componentId')=?11) AND "
+                        "(?12=-1 OR json_extract(document,'$.result')=?12) AND (?13=-1 OR "
+                        "json_extract(document,'$.kind')=?13) ORDER BY id,revision LIMIT ?8"
                       : "SELECT id,revision,document,digest,timestamp_ms FROM documents WHERE "
                         "tenant=?1 AND kind=?2 AND ?3='' AND (id,revision)>(?4,?5) AND "
-                        "timestamp_ms>=?6 AND timestamp_ms<=?7 ORDER BY id,revision LIMIT ?8",
+                        "timestamp_ms>=?6 AND timestamp_ms<=?7 AND (?9='' OR "
+                        "json_extract(document,'$.taskId')=?9) AND "
+                        "(?10='' OR json_extract(document,'$.pipelineId')=?10) AND (?11='' OR "
+                        "json_extract(document,'$.componentId')=?11) AND "
+                        "(?12=-1 OR json_extract(document,'$.result')=?12) AND (?13=-1 OR "
+                        "json_extract(document,'$.kind')=?13) ORDER BY id,revision LIMIT ?8",
             &s);
     char number[21];
     revision_text(revision, number);
@@ -499,6 +532,18 @@ ud_status ud_catalog_query(ud_catalog *c, ud_string input, char **json, uint32_t
         status = sql_status(sqlite3_bind_int64(s, 7, (sqlite3_int64)until));
     if (!status)
         status = sql_status(sqlite3_bind_int(s, 8, (int)limit));
+    if (!status)
+        status = bind_text(s, 9, task);
+    if (!status)
+        status = bind_text(s, 10, pipeline);
+    if (!status)
+        status = bind_text(s, 11, component);
+    if (!status)
+        status = sql_status(sqlite3_bind_int64(
+            s, 12, result_filter == UINT64_MAX ? -1 : (sqlite3_int64)result_filter));
+    if (!status)
+        status = sql_status(sqlite3_bind_int64(
+            s, 13, event_filter == UINT64_MAX ? -1 : (sqlite3_int64)event_filter));
     if (!status)
         status = collect(c, (int)kind, s, 1, json, length);
     sqlite3_finalize(s);
@@ -541,6 +586,21 @@ ud_status ud_catalog_record_event(ud_catalog *c, const ud_execution_event *event
                      event->result, (unsigned long long)event->timestamp_ms, event->kind);
     if (!s)
         s = ud_bytes_put(&json, numbers, (size_t)n);
+    if (!s && event->error_chain.length) {
+        ud_json *chain = NULL;
+        s = ud_json_parse(c->ctx, event->error_chain.data, event->error_chain.length, &chain, NULL);
+        if (!s && (ud_json_kind(chain) != UD_JSON_ARRAY || ud_json_size(chain) > 32))
+            s = UD_INVALID;
+        ud_json_destroy(chain);
+        if (!s) {
+            json.size--;
+            s = ud_bytes_put(&json, ",\"errorChain\":", 14);
+        }
+        if (!s)
+            s = ud_bytes_put(&json, event->error_chain.data, event->error_chain.length);
+        if (!s)
+            s = ud_bytes_put(&json, "}", 1);
+    }
     ud_catalog_key key = {sizeof(key), UD_ABI_VERSION, UD_CATALOG_EVENT, event->execution_id,
                           sequence};
     if (!s && json.size > UINT32_MAX)
@@ -588,7 +648,8 @@ ud_status ud_catalog_latest_revision(ud_catalog *catalog, int32_t kind, ud_strin
     }
     sqlite3_finalize(statement);
     if (!status) {
-        char *document = NULL; uint32_t length = 0;
+        char *document = NULL;
+        uint32_t length = 0;
         ud_catalog_key key = {sizeof(key), UD_ABI_VERSION, kind, id, *revision};
         status = get_document(catalog, &key, &document, &length);
         ud_free(document);
@@ -603,4 +664,38 @@ void ud_catalog_close(ud_catalog *c) {
         ud_free(c->tenant);
         ud_free(c);
     }
+}
+ud_status ud_catalog_prune_events(ud_catalog *catalog, uint64_t before_ms, uint32_t limit,
+                                  uint64_t *removed) {
+    if (!catalog || !removed || before_ms > INT64_MAX || !limit || limit > 10000)
+        return UD_INVALID;
+    *removed = 0;
+    UD_TRY(grant(catalog, UD_ACCESS_DELETE));
+    UD_TRY(sql(catalog, "BEGIN IMMEDIATE"));
+    sqlite3_stmt *statement = NULL;
+    ud_status status = prepare(catalog,
+                               "DELETE FROM documents WHERE (tenant,kind,id,revision) IN ("
+                               "SELECT d.tenant,d.kind,d.id,d.revision FROM documents d WHERE "
+                               "d.tenant=?1 AND d.kind=6 AND d.timestamp_ms<?2 "
+                               "AND d.revision<(SELECT max(e.revision) FROM documents e WHERE "
+                               "e.tenant=d.tenant AND e.kind=d.kind AND e.id=d.id) "
+                               "ORDER BY d.timestamp_ms,d.id,d.revision LIMIT ?3)",
+                               &statement);
+    if (!status)
+        status = bind_text(statement, 1, catalog->options.tenant);
+    if (!status)
+        status = sql_status(sqlite3_bind_int64(statement, 2, (sqlite3_int64)before_ms));
+    if (!status)
+        status = sql_status(sqlite3_bind_int(statement, 3, (int)limit));
+    if (!status)
+        status = sql_status(sqlite3_step(statement));
+    uint64_t changed = !status ? (uint64_t)sqlite3_changes64(catalog->database) : 0;
+    sqlite3_finalize(statement);
+    if (!status)
+        status = sql(catalog, "COMMIT");
+    if (status)
+        (void)sql(catalog, "ROLLBACK");
+    else
+        *removed = changed;
+    return status;
 }

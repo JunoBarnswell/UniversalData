@@ -4,7 +4,9 @@
     "name": "UniversalData",
     "sdkVersion": "2.0.0",
     "abiVersion": 10,
-    "protocolVersion": 10
+    "protocolVersion": 10,
+    "state": "2.0 coherent bulk implementation remains in progress. Native remote loading, transactions, types/schema, row errors, file generations and advanced IO/tasks are connected in source; managed hosts, registry, logs, queue/jobs and designer need final contract closure before concentrated acceptance.",
+    "acceptanceResources": "User confirmed on 2026-10-14 that Windows and independent SQL Server/SSAS, FTP/SFTP, object storage and SMTP acceptance resources are unavailable. Their live acceptance must be recorded Blocked; implementation continues and Linux-owned gates remain required."
   },
   "scope": {
     "name": "UniversalData 2.0 SSIS current capabilities and complete ETL product",
@@ -99,9 +101,13 @@
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "components/data/src/csv.c",
-        "components/data/src/json.c",
-        "engines/data-flow/source.c"
+        "engines/data-flow/source.c",
+        "plugins/common.h",
+        "plugins/sqlite.c",
+        "plugins/postgresql.c",
+        "plugins/mysql_family.c",
+        "plugins/odbc.c",
+        "plugins/oracle_oci.c"
       ],
       "trigger": "A recoverable CSV/NDJSON/SQL record contains invalid field content.",
       "baselineFinding": "Data cursors return field parse errors and SQL source has no unified per-record error channel.",
@@ -109,7 +115,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "CSV/NDJSON isolate bounded record errors through the shared native error schema and existing output ports. Normal/error Snapshot batches retain their output port and physical record identity. SQL source record isolation and commit/recovery closure remain pending."
+      "progress": "CSV, NDJSON and SQL share the Native error schema, source row/field identity and snapshot port path. SQL drivers notify complete result records, isolate conversion/nullability failures and bound batches by fetched records; execution failures remain fatal. Explicit raw SQL retention uses the complete nullable result-cell Wire image, rejecting unavailable original values. Mixed-record and crash acceptance remain NotRun."
     },
     {
       "id": "ETL-005",
@@ -470,8 +476,10 @@
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "catalog/history.c",
-        "engines/package/runtime.c"
+        "catalog/catalog.c",
+        "engines/package/runtime.c",
+        "bindings/dotnet/UniversalData/Catalog.cs",
+        "products/UniversalData.Management/Program.cs"
       ],
       "trigger": "An execution produces task/component/error events or logs are paginated.",
       "baselineFinding": "Native observer events are versioned/sequenced but persistent indexed query/retention is absent.",
@@ -479,7 +487,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Native Catalog event records have an indexed latest-revision query, and Execution supports a host-restored event sequence start. Worker event persistence uses the Native Catalog. Error-chain detail, filters, retention and recovery acceptance remain pending."
+      "progress": "Native event records now retain bounded identifier/status error frames and execution sequences. SQLite query filters include task/pipeline/component/result/event kind and time bounds. Bounded authorized event retention preserves the last sequence per execution and all Journal/deployment/job facts. Log persistence/query/retention acceptance remains NotRun."
     },
     {
       "id": "ETL-023",
@@ -622,11 +630,11 @@
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "bindings/dotnet/UniversalData",
-        "include/ud/component.h",
         "bindings/dotnet/UniversalData/Registry.cs",
         "bindings/dotnet/UniversalData/ManagedDataFlow.cs",
-        "bindings/dotnet/UniversalData/Execution.cs"
+        "bindings/dotnet/UniversalData/ManagedModules.cs",
+        "bindings/java/src/main/java/org/universaldata/Registry.java",
+        "bindings/java/native/bridge.c"
       ],
       "trigger": "A managed component/task is registered and an exception escapes its callback.",
       "baselineFinding": ".NET ExecutionOptions carries registry/observer pointers internally but public APIs do not expose them.",
@@ -634,7 +642,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Public managed Registry now projects Native Task and Data Flow configure/open/step/finish/cancel/dispose/checkpoint/restore lifetimes. Native Batch allocations use the activation quota; borrowed batches/context expire at callback return, owned batches are explicit, exception status enters the native error chain. ABI/layout, lifetime and installed-consumer acceptance are pending."
+      "progress": "Managed C# components/tasks and Java tasks register into the same leased Native Registry; callbacks have explicit Native/managed ownership and failures report to Native. A failed C# module registration fences the registry and retains assembly owners until Native teardown. Java Observer, error frames and debug project Native contracts. Installed SDK lifecycle acceptance remains NotRun."
     },
     {
       "id": "ETL-030",
@@ -764,18 +772,19 @@
       "phase": 7,
       "name": "Windows WMI tasks",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "engines/control-flow"
+        "engines/control-flow/wmi.c"
       ],
       "trigger": "A Windows host invokes a WMI query/event task.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "A Windows host invokes a WMI query/event task. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native WMI query and bounded event tasks use Windows COM, the common resource grant and cancellation/deadline checks. Scalar results retain signed/unsigned integer lexemes in a UTF8 JSON variable; unsupported arrays reject explicitly. Local namespaces use the Windows process identity; non-Windows binding rejects. Real Windows acceptance remains NotRun."
     },
     {
       "id": "ETL-037",
@@ -803,19 +812,21 @@
       "phase": 7,
       "name": "Avro IO",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "connectors",
-        "components/data"
+        "connectors/avro.c",
+        "engines/data-flow/avro.c",
+        "connectors/manager.c"
       ],
       "trigger": "An Avro schema and records are imported/exported without lossy type coercion.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "An Avro schema and records are imported/exported without lossy type coercion. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native Avro OCF null/deflate framing, scalar and nested Data encoding, standard logical types plus explicit lossless UINT64/Duration/Interval extensions, file discovery, row-error ports and the common Journal-backed append/overwrite publisher are implemented. Unsupported named references and ambiguous unions are rejected; foreign interoperability and recovery acceptance remain NotRun."
     },
     {
       "id": "ETL-039",
@@ -860,19 +871,19 @@
       "phase": 7,
       "name": "SQL Server maintenance Agent and SSAS XMLA",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "engines/control-flow",
-        "connectors/manager.c"
+        "engines/control-flow/sqlserver.c"
       ],
       "trigger": "A specialized database/Agent/XMLA task is deployed.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "A specialized database/Agent/XMLA task is deployed. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native SQL Server backup/check/index maintenance and Agent start/stop use the common SQL lease and parameter binding, with explicit server-file grants for backup. SSAS XMLA uses bounded XML preflight and the sole Native HTTP transport; interrupted or unparseable responses preserve CommitUnknown. These effects do not declare safe replay or transaction participation. SQL Server/SSAS integration remains NotRun."
     },
     {
       "id": "ETL-042",

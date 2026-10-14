@@ -96,6 +96,8 @@ public sealed class Catalog : IDisposable
     }
     public void Record(Execution execution, ulong revision)
     { lock (sync) { Open(); execution.RecordCatalog(catalog, revision); } }
+    public ulong PruneEvents(ulong beforeMilliseconds, uint limit = 1000)
+    { lock (sync) { Open(); DataOwnership.Check(context, Native.ud_catalog_prune_events(catalog, beforeMilliseconds, limit, out var removed)); return removed; } }
     private static Native.CatalogKey Key(CatalogKind kind, Native.StringValue id, ulong revision) =>
         new() { Size = (uint)Marshal.SizeOf<Native.CatalogKey>(), Abi = ProductVersion.Abi, Kind = (int)kind, Id = id, Revision = revision };
     private void Open() => ObjectDisposedException.ThrowIf(catalog == IntPtr.Zero, this);
@@ -124,5 +126,6 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_query(IntPtr catalog, StringValue query, out IntPtr json, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_record_event(IntPtr catalog, ref ExecutionEventValue executionEvent, ulong sequence);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_latest_revision(IntPtr catalog, int kind, StringValue id, out ulong revision);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_prune_events(IntPtr catalog, ulong beforeMilliseconds, uint limit, out ulong removed);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void ud_catalog_close(IntPtr catalog);
 }

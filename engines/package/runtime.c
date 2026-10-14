@@ -35,8 +35,46 @@ void ud_activation_notify_kind(ud_activation *e, int32_t kind, ud_execution_stat
                                 kind,
                                 ++e->execution->event_sequence,
                                 e};
+    ud_bytes chain = {.ctx = e->execution->ctx, .limit = 65536};
+    if (result != UD_OK && result != UD_BUSY && result != UD_MORE && result != UD_END) {
+        ud_status encoded = ud_bytes_put(&chain, "[", 1);
+        uint32_t depth = 0;
+        for (const ud_activation *frame = e; !encoded && frame && depth < 32;
+             frame = frame->parent, depth++) {
+            if (depth)
+                encoded = ud_bytes_put(&chain, ",", 1);
+            if (!encoded)
+                encoded = ud_bytes_put(&chain, "{\"taskId\":", 10);
+            if (!encoded)
+                encoded = ud_json_quote(&chain, frame->task_id.data ? frame->task_id.data : "",
+                                        frame->task_id.length);
+            if (!encoded)
+                encoded = ud_bytes_put(&chain, ",\"pipelineId\":", 14);
+            if (!encoded)
+                encoded =
+                    ud_json_quote(&chain, frame->pipeline_id.data ? frame->pipeline_id.data : "",
+                                  frame->pipeline_id.length);
+            if (!encoded)
+                encoded = ud_bytes_put(&chain, ",\"componentId\":", 15);
+            if (!encoded)
+                encoded =
+                    ud_json_quote(&chain, frame->component_id.data ? frame->component_id.data : "",
+                                  frame->component_id.length);
+            char code[32];
+            int length = snprintf(code, sizeof(code), ",\"result\":%d}", result);
+            if (!encoded)
+                encoded = ud_bytes_put(&chain, code, (size_t)length);
+        }
+        if (!encoded)
+            encoded = ud_bytes_put(&chain, "]", 1);
+        if (!encoded)
+            event.error_chain = (ud_string){(const char *)chain.data, (uint32_t)chain.size};
+        else
+            atomic_store(&e->execution->observer_fault, encoded);
+    }
     event.kind = kind;
     e->execution->options.observe(e->execution->options.observe_user, &event);
+    ud_bytes_clear(&chain);
     ud_mutex_unlock(&e->execution->events_lock);
 }
 void ud_activation_notify(ud_activation *e, ud_execution_state state, ud_status result) {

@@ -1,5 +1,61 @@
 #include "builtins_internal.h"
 #include "ud/sql.h"
+static ud_status sql_record(void *user, ud_batch *batch, ud_status code, uint32_t column,
+                            const ud_field *fields, const ud_value *cells, uint32_t count) {
+    builtin *source = user;
+    ud_row_info identity;
+    if (source->sql_record_ordinal == UINT64_MAX)
+        return UD_RESOURCE;
+    UD_TRY(ud_row_info_source(source->source_scope, source->sql_record_ordinal++, &identity));
+    if (!code)
+        return ud_batch_set_row_info(batch, ud_batch_rows(batch) - 1, &identity);
+    if (!ud_record_error_recoverable(code) || source->records.policy == UD_ERROR_FAIL)
+        return code;
+    if (source->records.policy == UD_ERROR_IGNORE)
+        return UD_OK;
+    if (!source->source_errors)
+        UD_TRY(ud_error_schema(&source->context.errors, NULL, source->records.include_input,
+                               &source->source_errors));
+    ud_bytes raw = {.ctx = source->context.memory, .limit = 16777216};
+    ud_status status = UD_OK;
+    if (source->records.include_input) {
+        ud_field *binary_fields = ud_alloc(source->context.memory, count * sizeof(*binary_fields));
+        if (!binary_fields)
+            return UD_RESOURCE;
+        for (uint32_t at = 0; at < count; at++)
+            binary_fields[at] = (ud_field){.name = fields[at].name,
+                                           .name_length = fields[at].name_length,
+                                           .type = UD_BINARY,
+                                           .nullable = 1,
+                                           .identity = fields[at].identity};
+        ud_batch *record = NULL;
+        status = ud_batch_create(source->context.memory, binary_fields, count, 1, &record);
+        if (!status)
+            status = ud_batch_append(record, cells, count);
+        if (!status)
+            status = ud_batch_seal(record);
+        if (!status)
+            status = ud_encode_batch(&raw, record);
+        ud_batch_destroy(record);
+        ud_free(binary_fields);
+    }
+    if (!status)
+        status = ud_error_append(
+            &source->context.errors, source->source_errors,
+            &(ud_record_error){.struct_size = sizeof(ud_record_error),
+                               .abi_version = UD_ABI_VERSION,
+                               .source = identity,
+                               .rule = {"sql.convert", 11},
+                               .rule_version = 1,
+                               .column = column < count ? fields[column].identity : (ud_id){0},
+                               .code = code,
+                               .policy = source->records.policy,
+                               .input_format = {"SQLRawCells/Wire10", 18},
+                               .raw = raw.data,
+                               .raw_length = (uint32_t)raw.size});
+    ud_bytes_clear(&raw);
+    return status;
+}
 static ud_status open_file_reader(builtin *b, uint32_t batch) {
     const ud_component_context *c = &b->context;
     int kind = b->kind;
@@ -206,6 +262,10 @@ ud_status ud_builtin_source_raw(builtin *b, ud_batch **out) {
 
 ud_status ud_builtin_source_identity(builtin *b, ud_batch *input, ud_batch **out) {
     ud_status status = ud_batch_seal(input);
+    if (!status && b->kind == SQL_SOURCE && (!b->cursor || !b->cursor->count)) {
+        *out = input;
+        return UD_OK;
+    }
     if (!status)
         status = b->cursor && b->cursor->count
                      ? ud_batch_identify_keys(b->context.memory, input, b->source_scope,
@@ -280,25 +340,6 @@ ud_status ud_builtin_source_sealed(builtin *b, const uint8_t digest[32]) {
     memcpy(b->snapshot_fingerprint, digest, 32);
     if (b->source_partitions > 1)
         UD_TRY(ud_source_version(b->context.activation, b->source_scope, digest));
-    if (b->kind == SQL_SOURCE && (!b->cursor || !b->cursor->count)) {
-        ud_bytes bytes = {.ctx = b->context.memory};
-        ud_status status = ud_put_u64(&bytes, b->source_scope.high);
-        if (!status)
-            status = ud_put_u64(&bytes, b->source_scope.low);
-        if (!status)
-            status = ud_bytes_put(&bytes, digest, 32);
-        if (!status) {
-            uint8_t hash[32];
-            ud_hash(bytes.data, bytes.size, hash);
-            b->source_scope = (ud_id){0};
-            for (uint32_t i = 0; i < 8; i++) {
-                b->source_scope.high = (b->source_scope.high << 8) | hash[i];
-                b->source_scope.low = (b->source_scope.low << 8) | hash[i + 8];
-            }
-        }
-        ud_bytes_clear(&bytes);
-        UD_TRY(status);
-    }
     if (b->kind == SQL_SOURCE) {
         ud_connection_lease *grant = NULL;
         UD_TRY(ud_connection_lease_snapshot_grant(b->lease, b->context.activation, &grant));
@@ -440,7 +481,7 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         }
     }
     ud_bytes_clear(&identity);
-    if (!status && (b->kind == CSV_SOURCE || b->kind == JSON_SOURCE)) {
+    if (!status && (b->kind == CSV_SOURCE || b->kind == JSON_SOURCE || b->kind == SQL_SOURCE)) {
         b->records = (ud_record_options){.struct_size = sizeof(ud_record_options),
                                          .abi_version = UD_ABI_VERSION,
                                          .errors = c->errors,
@@ -534,7 +575,7 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
     if (!status && b->kind == SQL_SOURCE) {
         ud_string sql = b->read_sql;
         ud_read_options options = {
-            sizeof(options), UD_ABI_VERSION, batch_rows, sql, b->parameters, 0};
+            sizeof(options), UD_ABI_VERSION, batch_rows, sql, b->parameters, 0, b, sql_record};
         if (!status)
             status = ud_connection_lease_read_open(b->lease, &options,
                                                    b->actual_schema ? b->actual_schema : b->schema);

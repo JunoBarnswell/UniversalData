@@ -68,6 +68,11 @@ UD_API ud_status ud_catalog_bind_package(ud_catalog *, const ud_catalog_binding 
  * match. Persists identifiers/fingerprints/metrics, never parameter/config/
  * row/credential values. Errors belong to the host logging policy. */
 UD_API ud_status ud_catalog_record_execution(ud_catalog *, const ud_execution *, uint64_t revision);
+/* Bounded explicit log retention. The last sequence for every execution is
+ * retained so resume cannot reuse event identities. Journal/recovery facts and
+ * package/deployment/job documents are never pruned by log retention. */
+UD_API ud_status ud_catalog_prune_events(ud_catalog *, uint64_t before_ms, uint32_t limit,
+                                         uint64_t *removed);
 UD_API void ud_catalog_close(ud_catalog *);
 #ifdef __cplusplus
 }

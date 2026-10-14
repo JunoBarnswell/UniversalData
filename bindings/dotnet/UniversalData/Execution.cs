@@ -15,7 +15,7 @@ public delegate string PackageCredentialResolver(string tenant, string resource,
 public enum ExecutionEventKind
 { State = 1, BeforeCheckpoint, AfterCheckpoint, TargetCommitted, TaskExecuted, TaskConfirmed, TaskUncertain, Warning, Error }
 public sealed record ExecutionEvent(string PackageId, string ExecutionId, string TaskId, string PipelineId,
-    string ComponentId, ExecutionState State, StatusCode Result, ulong TimestampMilliseconds, ExecutionEventKind Kind, ulong Sequence);
+    string ComponentId, ExecutionState State, StatusCode Result, ulong TimestampMilliseconds, ExecutionEventKind Kind, ulong Sequence, string ErrorChain = "[]");
 
 public sealed record ExecutionMetrics(ExecutionState State, StatusCode Result, ulong InputRows, ulong OutputRows, ulong RejectedRows, ulong Batches, ulong QueuedBatches, ulong QueueHighWater, ulong MemoryUsed, ulong ExecutedTasks, ulong DurableTasks, ulong RecoveryTasks, ulong ResumedTasks, ulong SpillBytes, ulong PipelineTrees, ulong TreeHighWater, ulong WorkerHighWater, ulong CommittedRows, ulong AcknowledgedRows, ulong ErrorCount, ulong ErrorRows, ulong CommittedErrorRows, ulong AcknowledgedErrorRows);
 
@@ -60,7 +60,7 @@ public sealed class Execution : IDisposable
             callbackDepth++;
             try { observe(new(Text(value.PackageId), Text(value.ExecutionId), Text(value.TaskId), Text(value.PipelineId),
                 Text(value.ComponentId), (ExecutionState)value.State, (StatusCode)value.Result, value.Timestamp,
-                (ExecutionEventKind)value.Kind, value.Sequence)); }
+                (ExecutionEventKind)value.Kind, value.Sequence, value.ErrorChain.Length == 0 ? "[]" : Text(value.ErrorChain))); }
             catch (Exception error)
             {
                 using var strings = new NativeStrings();
@@ -230,7 +230,7 @@ internal static partial class Native
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void Observer(IntPtr user, IntPtr executionEvent);
     [StructLayout(LayoutKind.Sequential)] internal struct ExecutionEventValue
     { internal uint Size, Abi; internal StringValue PackageId, ExecutionId, TaskId, PipelineId, ComponentId;
-      internal int State, Result; internal ulong Timestamp; internal int Kind; internal ulong Sequence; internal IntPtr Activation; }
+      internal int State, Result; internal ulong Timestamp; internal int Kind; internal ulong Sequence; internal IntPtr Activation; internal StringValue ErrorChain; }
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_activation_report_fault(IntPtr activation, int status, StringValue message);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int Authorizer(IntPtr user, StringValue tenant, StringValue resource, int action);
 

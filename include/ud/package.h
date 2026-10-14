@@ -29,6 +29,7 @@ typedef struct ud_execution_event {
     int32_t kind;      /* State changes or durability boundary; no data/secret values. */
     uint64_t sequence; /* Serialized within the root Execution. */
     const ud_activation *activation; /* Borrowed during observer only. */
+    ud_string error_chain; /* Bounded Native JSON frames, no SQL/raw data; callback lifetime. */
 } ud_execution_event;
 typedef void (*ud_execution_observer)(void *, const ud_execution_event *);
 /* Observer failure latches a real execution fault without recursively invoking

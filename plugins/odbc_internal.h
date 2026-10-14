@@ -18,6 +18,7 @@ typedef struct odbc_state {
     SQLHSTMT handles[16];
     ud_batch *schema;
     uint32_t batch_size;
+    ud_read_options record_options;
     uint64_t capabilities;
     int dialect, ansi, utc, transaction, broken, array_parameters, bulk_session;
     atomic_int cancelled;

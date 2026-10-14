@@ -205,6 +205,9 @@ ud_status ud_process_register(ud_registry *);
 ud_status ud_http_register(ud_registry *);
 #ifdef UD_WITH_XML
 ud_status ud_xml_source_register(ud_registry *);
+ud_status ud_avro_register(ud_registry *);
+ud_status ud_wmi_register(ud_registry *);
+ud_status ud_sqlserver_tasks_register(ud_registry *);
 ud_status ud_xml_tasks_register(ud_registry *);
 #endif
 ud_status ud_profile_register(ud_registry *);

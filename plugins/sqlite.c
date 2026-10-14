@@ -9,6 +9,7 @@ typedef struct {
     sqlite3_stmt *read;
     ud_batch *cursor_schema;
     uint32_t cursor_batch_size;
+    ud_read_options record_options;
     int cursor_finished;
     atomic_int cancelled;
     void *control_user;
@@ -116,9 +117,11 @@ static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char 
     if (!s)
         s = h->batch_create(h->context, fields, columns, p->cursor_batch_size, out);
     ud_value *v = h->allocate(h->context, columns * sizeof(*v));
-    if (!v && !s)
+    ud_value *raw = h->allocate(h->context, columns * sizeof(*raw));
+    uint32_t fetched = 0, bad = UINT32_MAX;
+    if ((!v || !raw) && !s)
         s = UD_RESOURCE;
-    while (!s && h->rows(*out) < p->cursor_batch_size) {
+    while (!s && fetched < p->cursor_batch_size) {
         if (h->cancelled(h->context) || atomic_load(&p->cancelled)) {
             s = UD_CANCELLED;
             break;
@@ -133,7 +136,18 @@ static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char 
             s = failure(p, rc);
             break;
         }
+        fetched++;
+        ud_status conversion = UD_OK;
         memset(v, 0, columns * sizeof(*v));
+        for (uint32_t at = 0; at < columns; at++) {
+            int type = sqlite3_column_type(p->read, (int)at);
+            raw[at] = (ud_value){.type = UD_BINARY,
+                                 .is_null = type == SQLITE_NULL,
+                                 .text = type == SQLITE_BLOB
+                                             ? (const char *)sqlite3_column_blob(p->read, (int)at)
+                                             : (const char *)sqlite3_column_text(p->read, (int)at),
+                                 .text_length = (uint32_t)sqlite3_column_bytes(p->read, (int)at)};
+        }
         for (uint32_t i = 0; i < columns; i++) {
             ud_value *x = v + i;
             int type = sqlite3_column_type(p->read, (int)i);
@@ -163,21 +177,31 @@ static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char 
             else if (x->type == UD_FLOAT64 && type == SQLITE_FLOAT)
                 x->real = sqlite3_column_double(p->read, (int)i);
             else {
-                s = h->report(h->context, UD_SCHEMA,
+                s = h->report(h->context, UD_PARSE,
                               "SQLite value type differs from explicit schema");
-                break;
             }
+            if (plugin_record_conversion(s)) {
+                if (!conversion) {
+                    conversion = s;
+                    bad = i;
+                }
+                s = UD_OK;
+            }
+            if (s)
+                break;
         }
         if (!s)
-            s = h->append(*out, v, columns);
+            s = plugin_record_finish(h, &p->record_options, *out, fields, v, raw, columns,
+                                     conversion, bad);
     }
     h->deallocate(fields);
     h->deallocate(v);
+    h->deallocate(raw);
     if (s && p->read) {
         sqlite3_finalize(p->read);
         p->read = NULL;
     }
-    if (!s && !h->rows(*out)) {
+    if (!s && !h->rows(*out) && !fetched) {
         h->batch_destroy(*out);
         *out = NULL;
         return UD_END;
@@ -250,6 +274,7 @@ static ud_status connector_discover(void *state, ud_string table, ud_batch **out
 }
 static ud_status connector_read_close(void *state) {
     sqlite_state *p = state;
+    memset(&p->record_options, 0, sizeof(p->record_options));
     int rc = sqlite3_finalize(p->read);
     p->read = NULL;
     p->host.batch_destroy(p->cursor_schema);
@@ -314,6 +339,7 @@ static ud_status connector_read_open(void *state, const ud_read_options *options
     }
     p->cursor_finished = 0;
     p->cursor_batch_size = options->batch_size;
+    p->record_options = *options;
     return UD_OK;
 }
 static ud_status connector_read_next(void *state, ud_batch **out) {
@@ -794,10 +820,11 @@ static ud_status provision(void *state) {
 static const ud_connector_api connector = {
     .struct_size = sizeof(connector),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-                    UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
-                    UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
-                    UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
+    .capabilities = UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND |
+                    UD_CONNECT_UPSERT | UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS |
+                    UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA |
+                    UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_PREPARED |
+                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
     .test = connector_test,
     .discover = connector_discover,
     .read_open = connector_read_open,

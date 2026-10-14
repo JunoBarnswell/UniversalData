@@ -247,6 +247,7 @@ static ud_status literal(oracle *p, const char *sql) {
 }
 ud_status ud_oci_read_close(void *state) {
     oracle *p = state;
+    memset(&p->record_options, 0, sizeof(p->record_options));
     release(p, p->cursor);
     p->cursor = NULL;
     cells_clear(p, p->columns, p->count);
@@ -280,6 +281,7 @@ ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch
     if (!s && count != p->host.columns(schema))
         s = UD_SCHEMA;
     p->batch = o->batch_size;
+    p->record_options = *o;
     p->count = count;
     if (!s) {
         p->host.batch_destroy(p->schema);
@@ -396,13 +398,15 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
     ud_status s = plugin_fields(&p->host, p->schema, &f);
     if (!s)
         s = p->host.batch_create(p->host.context, f, p->count, p->batch, out);
-    p->host.deallocate(f);
     ud_value *v = p->host.allocate(p->host.context, p->count * sizeof(*v));
     void **owned = p->host.allocate(p->host.context, p->count * sizeof(*owned));
-    if (!v || !owned)
+    ud_value *raw = p->host.allocate(p->host.context, p->count * sizeof(*raw));
+    char *formatted = p->host.allocate(p->host.context, (size_t)p->count * 256);
+    uint32_t fetched = 0, bad = UINT32_MAX;
+    if (!v || !owned || !raw || !formatted)
         s = UD_RESOURCE;
     int end = 0;
-    while (!s && p->host.rows(*out) < p->batch) {
+    while (!s && fetched < p->batch) {
         s = ud_oci_control(p);
         if (s)
             break;
@@ -414,17 +418,26 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
         s = failure(p, rc);
         if (s)
             break;
+        fetched++;
+        ud_status conversion = UD_OK;
+        memset(raw, 0, p->count * sizeof(*raw));
         for (uint32_t i = 0; !s && i < p->count; i++) {
             cell *c = p->columns + i;
             v[i] = (ud_value){.type = c->field.type,
                               .precision = c->field.precision,
                               .scale = c->field.scale,
                               .is_null = c->indicator == -1};
+            raw[i] = (ud_value){.type = UD_BINARY, .is_null = v[i].is_null};
             if (v[i].is_null)
                 continue;
             if (c->indicator == -2 || c->code) {
-                s = UD_SCHEMA;
-                break;
+                if (!conversion) {
+                    conversion = UD_TRUNCATED;
+                    bad = i;
+                }
+                raw[i].is_absent = 1;
+                raw[i].is_null = 1;
+                continue;
             }
             if (v[i].type == UD_INT64 || v[i].type == UD_UINT64 || v[i].type == UD_BOOL) {
                 v[i].integer = c->integer;
@@ -458,6 +471,10 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
                         length = lob ? (uint32_t)bytes : 0;
                     }
                 }
+                if (!s) {
+                    raw[i].text = text;
+                    raw[i].text_length = length;
+                }
                 if (!s && v[i].type == UD_BINARY) {
                     v[i].text = text;
                     v[i].text_length = length;
@@ -465,17 +482,36 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
                     s = p->host.parse_field(p->host.context, &c->field, text, length,
                                             UD_ROUND_EXACT, v + i);
             }
+            if (!s && !raw[i].text && !raw[i].is_null) {
+                uint32_t required = 0;
+                s = p->host.format_value(v + i, formatted + (size_t)i * 256, 256, &required);
+                if (!s) {
+                    raw[i].text = formatted + (size_t)i * 256;
+                    raw[i].text_length = required - 1;
+                }
+            }
+            if (plugin_record_conversion(s)) {
+                if (!conversion) {
+                    conversion = s;
+                    bad = i;
+                }
+                s = UD_OK;
+            }
         }
         if (!s)
-            s = p->host.append(*out, v, p->count);
+            s = plugin_record_finish(&p->host, &p->record_options, *out, f, v, raw, p->count,
+                                     conversion, bad);
         for (uint32_t i = 0; i < p->count; i++) {
             p->host.deallocate(owned[i]);
             owned[i] = NULL;
         }
     }
     p->host.deallocate(v);
+    p->host.deallocate(raw);
+    p->host.deallocate(formatted);
+    p->host.deallocate(f);
     p->host.deallocate(owned);
-    if (s || (!p->host.rows(*out) && end)) {
+    if (s || (!p->host.rows(*out) && end && !fetched)) {
         p->host.batch_destroy(*out);
         *out = NULL;
     }
@@ -1366,11 +1402,12 @@ ud_status ud_oci_initialize(const ud_host_api *h, const char *text, uint32_t len
 static const ud_connector_api api = {
     .struct_size = sizeof(api),
     .abi_version = UD_ABI_VERSION,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-                    UD_CONNECT_CHANGESET | UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL |
-                    UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_PREPARED |
-                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION | UD_CONNECT_POOL |
-                    UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT |
+    .capabilities = UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND |
+                    UD_CONNECT_UPSERT | UD_CONNECT_DELETE | UD_CONNECT_CHANGESET |
+                    UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
+                    UD_CONNECT_METADATA | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
+                    UD_CONNECT_PROVISION | UD_CONNECT_POOL | UD_CONNECT_CDC |
+                    UD_CONNECT_NATIVE_CDC | UD_CONNECT_SNAPSHOT |
                     UD_CONNECT_TRANSACTION_PARTICIPANT | UD_CONNECT_NATIVE_BULK,
     .test = test,
     .discover = discover,

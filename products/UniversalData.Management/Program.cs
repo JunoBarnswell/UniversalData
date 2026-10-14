@@ -70,9 +70,22 @@ app.MapPost("/api/executions/{ticket}/debug", async (string ticket, JsonElement 
 app.MapGet("/api/jobs", (RunDispatcher dispatcher) => dispatcher.Jobs());
 app.MapPut("/api/jobs/{id}", (string id, JobState job, RunDispatcher dispatcher) =>
     id != job.Id ? Results.BadRequest() : Results.Ok(dispatcher.SaveJob(job)));
-app.MapGet("/api/logs", (string executionId, string? afterRevision, HostPolicy host) => {
+app.MapGet("/api/logs", (string executionId, string? afterRevision, string? taskId, string? pipelineId, string? componentId,
+    ulong? sinceMs, ulong? untilMs, int? result, int? eventKind, HostPolicy host) => {
     using var catalog = host.OpenCatalog();
-    return Results.Content(catalog.Query(Query(CatalogKind.Event, executionId, afterRevision: afterRevision)), "application/json");
+    var query = new Dictionary<string, object> { ["kind"] = (int)CatalogKind.Event, ["id"] = executionId, ["limit"] = 100 };
+    if (afterRevision is not null) query["afterRevision"] = ulong.Parse(afterRevision);
+    if (taskId is not null) query["taskId"] = taskId;
+    if (pipelineId is not null) query["pipelineId"] = pipelineId;
+    if (componentId is not null) query["componentId"] = componentId;
+    if (sinceMs is not null) query["sinceMs"] = sinceMs;
+    if (untilMs is not null) query["untilMs"] = untilMs;
+    if (result is not null) query["result"] = result;
+    if (eventKind is not null) query["eventKind"] = eventKind;
+    return Results.Content(catalog.Query(JsonSerializer.Serialize(query)), "application/json");
+});
+app.MapPost("/api/logs/retention", (RetentionRequest request, HostPolicy host) => {
+    using var catalog = host.OpenCatalog(); return Results.Ok(new { removed = catalog.PruneEvents(request.BeforeMs, request.Limit) });
 });
 app.MapGet("/api/resources", (HostPolicy host) => new {
     fileRoots = host.FileRoots, networkOrigins = host.NetworkOrigins,
@@ -93,3 +106,5 @@ static string Query(CatalogKind kind, string? id = null, string? afterId = null,
 sealed record DiscoveryRequest(JsonElement Package, string Connection, string? Table);
 
 sealed record ScriptRequest(string Source);
+
+sealed record RetentionRequest(ulong BeforeMs, uint Limit = 1000);

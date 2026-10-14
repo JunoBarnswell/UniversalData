@@ -72,6 +72,7 @@ typedef struct builtin {
     uint32_t output_at;
     uint32_t output_port;
     ud_record_options records;
+    uint64_t sql_record_ordinal;
     ud_expression *predicate;
     ud_string read_sql;
     int predicate_pushed;
