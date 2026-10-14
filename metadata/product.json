@@ -8994,7 +8994,7 @@
             "tests/management_cluster.py"
           ],
           "verification": "Two actual Management processes dispatched eight independent Native Workers over one server-local Catalog with a shared concurrency ceiling of two. Killing the owning manager after a real POST led to RecoveryRequired; manual resume kept the Native ID, replayed durable Native history, published a Native terminal result 16, and did not resend POST. Native lease process-death/fencing/pool/tenant tests plus C# and Java lease projections passed.",
-          "remaining": "Cross-machine Worker agents, Cron/timezones/calendars/triggers, resource priorities, SLA/dependencies and the wider enterprise scheduler remain code gaps. SQLite is server-local; a shared network filesystem is not claimed as distributed Catalog support."
+          "remaining": "Cross-machine Worker agents with independent lease watchdog/resource fencing, Cron/timezones/calendars/triggers, resource priorities, SLA/dependencies and the wider enterprise scheduler remain code gaps. SQLite is server-local; a shared network filesystem is not claimed as distributed Catalog support."
         },
         {
           "id": "EXT-08",
@@ -9672,7 +9672,7 @@
           }
         },
         "continuation": {
-          "sourceCommit": "",
+          "sourceCommit": "801f3a2fc57b3739138e42b8fa1b834cbb2e4461",
           "sourceFingerprint": "e0105b834d3569ddf0b2c5aaaf8cbf95fd8607c1b75bd057a193616cc16046f8",
           "core": {
             "passed": 72,
