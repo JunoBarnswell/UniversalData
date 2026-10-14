@@ -2,9 +2,9 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 2.0.0 / ABI 10；PR #7 implementation in progress. No current build, test, recovery, browser or installation result has been claimed.。
+SDK 2.0.0 / ABI 10；PR #7 foundation code is pushed. Linux PRODUCT build, 67 core tests, source/Designer checks and real browser/Worker recovery passed; full task implementation and release gates remain incomplete.。
 
-门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
+门禁通过 2/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
 | 整改 | 当前状态 |
 |---|---|

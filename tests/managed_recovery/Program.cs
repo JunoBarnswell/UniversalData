@@ -6,17 +6,9 @@ NativeLibrary.SetDllImportResolver(typeof(Execution).Assembly,(name,_,_) => name
 string root = Path.GetFullPath(args[1]); bool resume = args[2] == "resume";
 Directory.CreateDirectory(root);
 using var registry = new Registry();
-registry.RegisterComponent(new("managed.source","Durable managed Source",ComponentCategory.Source,0,1,"{}",
-    (_,_) => [Source.Schema],() => new Source(root),ThreadSafe:true,Stateful:true,StateVersion:1,ReplaySafe:true,ConfirmsSourcePosition:true));
-registry.RegisterComponent(new("managed.pass","Managed control-aware transform",ComponentCategory.Transform,1,1,"{}",
-    (_,input) => [input[0]],() => new Pass(),SynchronousInput:0,ThreadSafe:true,ReplaySafe:true,
-    BindPorts:_ => new([new("input")],[new("rows")]),
-    DescribePlan:(_,_,_) => new(EstimatedRows:12,RowWidth:8,EstimatedCost:96)));
-registry.RegisterComponent(new("managed.destination","Idempotent managed Destination",ComponentCategory.Destination,1,0,"{}",
-    (_,_) => [],() => new Destination(root),ThreadSafe:true,Stateful:true,StateVersion:1,ReplaySafe:true,
-    Effects:ComponentEffects.ExternalWrite | ComponentEffects.Idempotent));
+new RecoveryModule().Register(registry);
 var package = JsonSerializer.Serialize(new { version = 10,id = "managed-durable",controlFlow = new { tasks = new[] { new { id = "flow",kind = "dataFlow",config = new { pipeline = "rows" } } },constraints = Array.Empty<object>() },
-    dataFlows = new[] { new { id = "rows",components = new[] { new { id = "source",component = "managed.source",config = new { } },new { id = "transform",component = "managed.pass",config = new { } },new { id = "target",component = "managed.destination",config = new { } } },
+    dataFlows = new[] { new { id = "rows",components = new[] { new { id = "source",component = "managed.source",config = new { root } },new { id = "transform",component = "managed.pass",config = new { root } },new { id = "target",component = "managed.destination",config = new { root } } },
         paths = new[] { new { from = "source",output = 0,to = "transform",input = 0 },new { from = "transform",output = 0,to = "target",input = 0 } } } } });
 string idFile = Path.Combine(root,"identity"); string id = resume ? File.ReadAllText(idFile) : "";
 using var execution = new Execution(package,"test",(_,_,_) => true,executionId:id,stateDirectory:Path.Combine(root,"journal"),resume:resume,maxConcurrency:4,maxBatchRows:2,registry:registry);
@@ -37,6 +29,7 @@ sealed class Source(string root) : IManagedComponent
     private const string State = "{\"version\":10,\"fields\":[{\"name\":\"position\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"epoch\",\"type\":\"int64\",\"nullable\":false}]}";
     private string schema = ""; private long index; private ulong epoch; private bool barrier;
     public void Open(ManagedComponentContext context,string config,string[] inputs,string[] outputs) {
+        using var definition = JsonDocument.Parse(config); root = definition.RootElement.GetProperty("root").GetString()!;
         schema = outputs[0]; epoch = context.RecoveryEpoch;
         if (context.RecoveryPosition.Length != 0) index = long.Parse(context.RecoveryPosition);
     }
@@ -72,6 +65,9 @@ sealed class Destination(string root) : IManagedComponent
 {
     private const string State = "{\"version\":10,\"fields\":[{\"name\":\"count\",\"type\":\"int64\",\"nullable\":false}]}";
     private long count;
+    public void Open(ManagedComponentContext context,string config,string[] inputs,string[] outputs) {
+        using var definition = JsonDocument.Parse(config); root = definition.RootElement.GetProperty("root").GetString()!;
+    }
     public StatusCode Step(ManagedComponentContext context,ManagedComponentEvent input) {
         if (input.Kind == ComponentEventKind.Data) {
             var path = Path.Combine(root,"rows.json");

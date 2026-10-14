@@ -19,17 +19,18 @@
   },
   "candidate": {
     "branch": "codex/etl-architecture-advanced-extensions",
-    "state": "PR #7 implementation in progress. No current build, test, recovery, browser or installation result has been claimed.",
+    "state": "PR #7 foundation code is pushed. Linux PRODUCT build, 67 core tests, source/Designer checks and real browser/Worker recovery passed; full task implementation and release gates remain incomplete.",
     "sourceCommit": "",
     "sourceFingerprint": "",
     "mergeEvidence": null,
     "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/7"
   },
   "remoteCI": {
-    "sourceCommit": "203c9c9fcf80b3e27ac10a66c8093873a25c732f",
-    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38508297853",
+    "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
+    "runId": 38556015263,
     "status": "Verification Blocked",
-    "reason": "GitHub check annotation: job was not started because recent account payments failed or spending limit needs increase. No compilation/test steps ran. Complete product job skipped because acceptance variable is disabled."
+    "reason": "GitHub account billing/spending limit prevented jobs from starting; no build steps executed",
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38556015263"
   },
   "artifacts": {
     "status": "No current-source release artifact; prior PR #6 artifact is archived in history.product2FirstDelivery",

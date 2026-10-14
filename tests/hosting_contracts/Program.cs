@@ -2,6 +2,7 @@ using System.Text.Json;
 using UniversalData;
 using UniversalData.Hosting;
 
+if (args.Length == 2) { await WorkerManagedRecovery.Run(args[0],args[1]); return; }
 if (args.Length != 0) { await WorkerHandshake(args[0]); return; }
 static void Require(bool value,string message) { if (!value) throw new Exception(message); }
 static void Denied(Action action) { try { action(); } catch(UniversalDataException error) when(error.Code == StatusCode.Auth) { return; } throw new Exception("Unauthorized operation succeeded"); }

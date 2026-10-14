@@ -4,6 +4,7 @@ namespace UniversalData;
 
 public enum ComponentCategory { Source = 2, Transform = 3, Destination = 4 }
 public enum ComponentEventKind { Data = 1, InputEnd = 2, Poll = 3, Watermark = 4, Barrier = 5, SchemaChange = 6 }
+[Flags] public enum SourceAcknowledgement { None = 0, Final = 1, Epoch = 2 }
 [Flags] public enum ComponentEffects { None = 0, ExternalRead = 1, ExternalWrite = 2, Transactional = 4, Receipted = 8, CommitUnknown = 16, Idempotent = 32, KeyedReplace = 64 }
 public sealed record ManagedComponentDefinition(string Id, string Name, ComponentCategory Category,
     uint Inputs, uint Outputs, string ConfigurationSchema,
@@ -11,7 +12,7 @@ public sealed record ManagedComponentDefinition(string Id, string Name, Componen
     int SynchronousInput = -1, int ErrorOutput = -1, ulong OptionalInputs = 0, ulong OptionalOutputs = 0,
     bool ThreadSafe = false, bool Stateful = false, bool Blocking = false, uint StateVersion = 0,
     ComponentEffects Effects = ComponentEffects.None, string? Version = null,
-    bool ReplaySafe = false, bool ConfirmsSourcePosition = false, bool HandlesControlEvents = true,
+    bool ReplaySafe = false, SourceAcknowledgement Acknowledgement = SourceAcknowledgement.None, bool HandlesControlEvents = true,
     Func<string, ManagedPortBinding>? BindPorts = null,
     Func<ManagedComponentContext, string, string[], ManagedPhysicalPlan>? DescribePlan = null);
 public interface IManagedComponent : IDisposable
@@ -20,7 +21,7 @@ public interface IManagedComponent : IDisposable
     StatusCode Step(ManagedComponentContext context, ManagedComponentEvent input);
     void Finish() { }
     void Cancel() { }
-    void Confirm() { }
+    void Confirm() => throw new UniversalDataException((int)StatusCode.Unsupported, "Source has no final acknowledgement");
     void ConfirmEpoch(ulong epoch, string sourcePosition) => throw new UniversalDataException((int)StatusCode.Unsupported, "Source has no position acknowledgement");
     ManagedBatch Checkpoint(ManagedComponentContext context) => throw new UniversalDataException((int)StatusCode.Unsupported, "Component has no checkpoint");
     void Restore(ManagedComponentContext context, ManagedBatch snapshot) => throw new UniversalDataException((int)StatusCode.Unsupported, "Component has no restore");
@@ -151,7 +152,8 @@ public sealed partial class Registry
             Open();
             if (definition.HandlesControlEvents && (Features & RegistryFeatures.ControlEvents) == 0)
                 throw new UniversalDataException((int)StatusCode.Incompatible,"Native control-event contract is unavailable");
-            if (definition.Stateful != (definition.StateVersion != 0) || definition.ConfirmsSourcePosition && definition.Category != ComponentCategory.Source)
+            if (definition.Stateful != (definition.StateVersion != 0) || (definition.Acknowledgement & ~(SourceAcknowledgement.Final | SourceAcknowledgement.Epoch)) != 0 ||
+                definition.Acknowledgement != SourceAcknowledgement.None && definition.Category != ComponentCategory.Source)
                 throw new ArgumentException("State versions and source confirmation must match the declared component contract");
             var registration = new DataFlowRegistration(definition); using var strings = new NativeStrings();
             var descriptor = new Native.ComponentDescriptor { Size = (uint)Marshal.SizeOf<Native.ComponentDescriptor>(), Abi = ProductVersion.Abi,
@@ -165,8 +167,8 @@ public sealed partial class Registry
                 Dispose = Marshal.GetFunctionPointerForDelegate(registration.Dispose), Cancel = Marshal.GetFunctionPointerForDelegate(registration.Cancel),
                 Checkpoint = definition.Stateful ? Marshal.GetFunctionPointerForDelegate(registration.Checkpoint) : IntPtr.Zero,
                 Restore = definition.Stateful ? Marshal.GetFunctionPointerForDelegate(registration.Restore) : IntPtr.Zero,
-                Confirm = definition.ConfirmsSourcePosition ? Marshal.GetFunctionPointerForDelegate(registration.Confirm) : IntPtr.Zero,
-                ConfirmEpoch = definition.ConfirmsSourcePosition ? Marshal.GetFunctionPointerForDelegate(registration.ConfirmEpoch) : IntPtr.Zero,
+                Confirm = (definition.Acknowledgement & SourceAcknowledgement.Final) != 0 ? Marshal.GetFunctionPointerForDelegate(registration.Confirm) : IntPtr.Zero,
+                ConfirmEpoch = (definition.Acknowledgement & SourceAcknowledgement.Epoch) != 0 ? Marshal.GetFunctionPointerForDelegate(registration.ConfirmEpoch) : IntPtr.Zero,
                 BindPorts = definition.BindPorts is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(registration.BindPorts),
                 DescribePlan = definition.DescribePlan is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(registration.DescribePlan) };
             try { DataOwnership.Check(context, Native.ud_registry_register_owned(registry, ref descriptor, 1, registration.Pointer, registration.Retain, registration.Release)); }

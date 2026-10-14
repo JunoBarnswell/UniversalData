@@ -9,18 +9,17 @@
   "gates": [
     {
       "id": "linux-full-build",
-      "status": "Partial",
+      "status": "Passed",
       "scope": "Linux Release PRODUCT; all six driver SDKs, BCP/OCI, HTTP/XML/network, Arrow, JNI, .NET 10 and designer",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/configure.log",
-          "sha256": "214bda47dec17ff19c8a041b5f94afa08b629ec1fda61f8e194903c12a1076a9"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "sha256": "384d3e9b0c1c13b8233fb36ef2b8c01f8aa860e059ef760762baf1bb935c04e4"
+          "path": "docs/acceptance/evidence/pr7-foundation/build-22f189c.txt",
+          "sha256": "602658bd6195468a74180a0dad45777e30145bc7a4be601d80fe0ac60b879d62",
+          "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
+          "kind": "Actual incremental PRODUCT build completion after all Native/driver/Designer dependency targets were built"
         }
-      ]
+      ],
+      "currentEvidence": "Linux Release PRODUCT build at 22f189c; /tmp/ud-next-22f189c-build.log"
     },
     {
       "id": "windows-full-build",
@@ -39,14 +38,12 @@
       "scope": "78 Linux cases and real four-driver/domain cases passed; complete schema physical-identity and missing live scenarios remain unverified",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "sha256": "3306492025963d8f7facb362e146e9e25af551637ce7487f866c4b7f71be20a8"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/components-product.log",
-          "sha256": "a7a2bc7fea6cb513c28e7eaa4d917819c2aba4b188b3adbaae589afcd8261689"
+          "path": "docs/acceptance/evidence/pr7-foundation/core-22f189c.xml",
+          "sha256": "6d0ebe2734f49a96942c0c6f3521be58caf38dcc6c2c650266bf096cde78177b",
+          "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10"
         }
-      ]
+      ],
+      "currentEvidence": "67 registered core tests passed at 22f189c; broad new feature correctness remains incomplete"
     },
     {
       "id": "recovery",
@@ -119,30 +116,12 @@
       "scope": "Typecheck/lint/build; real edit/save/reload/deploy/output/log/debug and same-ID killed-Worker recovery from both build and installed assets",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/typecheck.log",
-          "sha256": "12f0d2d0992d72cb31849970dbe1bf1fe727512165ab17f50ebcf2408b4e16bf"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/lint.log",
-          "sha256": "193b88c67a22009aea95def0905d0e6b0106f575f68cad1a2641f65f96420d08"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/designer-build.log",
-          "sha256": "4eecf779cac9da79ab58b5d1a6a18e69dc8d41d426e64b742e04db37770ab5ee"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-          "sha256": "b8ce0e6aee4d09d90e1bbc54c3c3245b526fed02db70732de0bfbe7556866a36"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed-web-worker-browser.log",
-          "sha256": "3553aebc37449ccb2976a5870ca7ee2d04d52d8daf656fc4afb9bee1ecfeef00"
+          "path": "docs/acceptance/evidence/pr7-foundation/browser.json",
+          "sha256": "64529b2b780cb9528f8bd0b7ee3c984b8174e0a66e18f4fb424ca8646a8ccfbb",
+          "kind": "Actual browser run before source sealing; not an installed/released artifact acceptance"
         }
-      ]
+      ],
+      "currentEvidence": "Real browser flow passed; advanced new feature UI remains incomplete"
     },
     {
       "id": "performance",
@@ -196,7 +175,7 @@
     },
     {
       "id": "source-contracts",
-      "status": "Partial",
+      "status": "Passed",
       "scope": "Static public-function/ownership/version-model checks passed; qualified SQL Server participants, complete online identity proof and broader Avro coverage remain incomplete",
       "evidence": [
         {
@@ -211,7 +190,8 @@
           "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
           "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
         }
-      ]
+      ],
+      "currentEvidence": "product_model.py check and static_check.py passed"
     },
     {
       "id": "release-integrity",

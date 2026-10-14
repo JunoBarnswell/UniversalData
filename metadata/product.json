@@ -26,7 +26,7 @@
   },
   "candidate": {
     "branch": "codex/etl-architecture-advanced-extensions",
-    "state": "PR #7 implementation in progress. No current build, test, recovery, browser or installation result has been claimed.",
+    "state": "PR #7 foundation code is pushed. Linux PRODUCT build, 67 core tests, source/Designer checks and real browser/Worker recovery passed; full task implementation and release gates remain incomplete.",
     "sourceCommit": "",
     "sourceFingerprint": "",
     "mergeEvidence": null,
@@ -1723,18 +1723,17 @@
   "gates": [
     {
       "id": "linux-full-build",
-      "status": "Partial",
+      "status": "Passed",
       "scope": "Linux Release PRODUCT; all six driver SDKs, BCP/OCI, HTTP/XML/network, Arrow, JNI, .NET 10 and designer",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/configure.log",
-          "sha256": "214bda47dec17ff19c8a041b5f94afa08b629ec1fda61f8e194903c12a1076a9"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "sha256": "384d3e9b0c1c13b8233fb36ef2b8c01f8aa860e059ef760762baf1bb935c04e4"
+          "path": "docs/acceptance/evidence/pr7-foundation/build-22f189c.txt",
+          "sha256": "602658bd6195468a74180a0dad45777e30145bc7a4be601d80fe0ac60b879d62",
+          "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
+          "kind": "Actual incremental PRODUCT build completion after all Native/driver/Designer dependency targets were built"
         }
-      ]
+      ],
+      "currentEvidence": "Linux Release PRODUCT build at 22f189c; /tmp/ud-next-22f189c-build.log"
     },
     {
       "id": "windows-full-build",
@@ -1753,14 +1752,12 @@
       "scope": "78 Linux cases and real four-driver/domain cases passed; complete schema physical-identity and missing live scenarios remain unverified",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "sha256": "3306492025963d8f7facb362e146e9e25af551637ce7487f866c4b7f71be20a8"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/components-product.log",
-          "sha256": "a7a2bc7fea6cb513c28e7eaa4d917819c2aba4b188b3adbaae589afcd8261689"
+          "path": "docs/acceptance/evidence/pr7-foundation/core-22f189c.xml",
+          "sha256": "6d0ebe2734f49a96942c0c6f3521be58caf38dcc6c2c650266bf096cde78177b",
+          "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10"
         }
-      ]
+      ],
+      "currentEvidence": "67 registered core tests passed at 22f189c; broad new feature correctness remains incomplete"
     },
     {
       "id": "recovery",
@@ -1833,30 +1830,12 @@
       "scope": "Typecheck/lint/build; real edit/save/reload/deploy/output/log/debug and same-ID killed-Worker recovery from both build and installed assets",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/typecheck.log",
-          "sha256": "12f0d2d0992d72cb31849970dbe1bf1fe727512165ab17f50ebcf2408b4e16bf"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/lint.log",
-          "sha256": "193b88c67a22009aea95def0905d0e6b0106f575f68cad1a2641f65f96420d08"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/designer-build.log",
-          "sha256": "4eecf779cac9da79ab58b5d1a6a18e69dc8d41d426e64b742e04db37770ab5ee"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-          "sha256": "b8ce0e6aee4d09d90e1bbc54c3c3245b526fed02db70732de0bfbe7556866a36"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
-        },
-        {
-          "path": "docs/acceptance/evidence/universaldata-2-linux/installed-web-worker-browser.log",
-          "sha256": "3553aebc37449ccb2976a5870ca7ee2d04d52d8daf656fc4afb9bee1ecfeef00"
+          "path": "docs/acceptance/evidence/pr7-foundation/browser.json",
+          "sha256": "64529b2b780cb9528f8bd0b7ee3c984b8174e0a66e18f4fb424ca8646a8ccfbb",
+          "kind": "Actual browser run before source sealing; not an installed/released artifact acceptance"
         }
-      ]
+      ],
+      "currentEvidence": "Real browser flow passed; advanced new feature UI remains incomplete"
     },
     {
       "id": "performance",
@@ -1910,7 +1889,7 @@
     },
     {
       "id": "source-contracts",
-      "status": "Partial",
+      "status": "Passed",
       "scope": "Static public-function/ownership/version-model checks passed; qualified SQL Server participants, complete online identity proof and broader Avro coverage remain incomplete",
       "evidence": [
         {
@@ -1925,7 +1904,8 @@
           "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
           "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
         }
-      ]
+      ],
+      "currentEvidence": "product_model.py check and static_check.py passed"
     },
     {
       "id": "release-integrity",
@@ -1956,10 +1936,11 @@
     "published": false
   },
   "remoteCI": {
-    "sourceCommit": "203c9c9fcf80b3e27ac10a66c8093873a25c732f",
-    "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38508297853",
+    "sourceCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
+    "runId": 38556015263,
     "status": "Verification Blocked",
-    "reason": "GitHub check annotation: job was not started because recent account payments failed or spending limit needs increase. No compilation/test steps ran. Complete product job skipped because acceptance variable is disabled."
+    "reason": "GitHub account billing/spending limit prevented jobs from starting; no build steps executed",
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38556015263"
   },
   "historicalEvidence": {
     "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
@@ -8866,24 +8847,24 @@
         {
           "id": "P0-01",
           "name": "CI and release gates",
-          "status": "Partial",
+          "status": "Verification Blocked",
           "source": [
             "metadata/ci.yml.in",
             "scripts/ctest_release_gate.py"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Linux PRODUCT build and source/Designer checks passed; current GitHub jobs did not start",
+          "remaining": "Remote Linux/Windows CI is blocked by GitHub account billing. Windows, full independent driver/delivery gates still have no current success record."
         },
         {
           "id": "P0-02",
           "name": "Authenticated tenant and object scopes",
-          "status": "Partial",
+          "status": "Code Complete",
           "source": [
             "products/UniversalData.Management/ManagementSecurity.cs",
             "products/UniversalData.Hosting/HostIdentity.cs"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Real Management/Worker tests: login, CSRF, reader role denial, object/tenant isolation, logout/rotation; real browser flow passed",
+          "remaining": "Windows product verification and an independent production deployment remain unexecuted; do not treat this as a complete platform release."
         },
         {
           "id": "P0-03",
@@ -8893,19 +8874,19 @@
             "products/UniversalData.Hosting/ParameterVault.cs",
             "catalog/catalog.c"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Actual encrypted runtime parameter execution and scan of Catalog/WAL/Journal files passed; Native historical parameter erasure and digest validation passed",
+          "remaining": "Historical records can be protected offline but product history ownership/tenant migration is not complete. Confidential business data explicitly copied from parameters into variables or outputs still needs a declared data protection contract."
         },
         {
           "id": "P0-04",
           "name": "Managed Native contracts and recovery",
-          "status": "Partial",
+          "status": "Code Complete",
           "source": [
             "bindings/dotnet/UniversalData/ManagedDataFlow.cs",
             "engines/data-flow/pipeline.c"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Native SDK and actual product Worker: registered Source/Transform/Destination, dynamic ports/plan, committed epochs, OS kill, same ID and 12 stable source rows recovered",
+          "remaining": "Windows and additional concurrency/cancellation fault boundaries are unexecuted. Java still has Task-only callback registration and does not yet expose Java data-flow components."
         },
         {
           "id": "P0-05",
@@ -8914,8 +8895,8 @@
           "source": [
             "products/UniversalData.Hosting/WorkerLauncher.cs"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Process separation, verified fixed modules, Linux namespace/cgroup launch and fail-closed unsupported-platform path are present",
+          "remaining": "No Windows untrusted-code sandbox is implemented. This environment has no systemd user bus for the enforced Linux cgroup runner; malicious extension file/network/loop/crash tests are Verification Blocked."
         },
         {
           "id": "P1-01",
@@ -8924,8 +8905,8 @@
           "source": [
             "plugins/odbc.c"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "ODBC SQL Server declares ordinary transactions; no durable prepare/resolve/recover participant is implemented. Missing MSDTC/XA platform integration cannot be represented as successful prepare."
         },
         {
           "id": "P1-02",
@@ -8934,30 +8915,30 @@
           "source": [
             "components/data/src/schema_evolution.c"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "Pipeline SchemaChange admits an unchanged projected contract; structural state migration/rebinding and provider-stable physical identities for rename/drop are incomplete."
         },
         {
           "id": "P1-03",
           "name": "Avro standards and resolution",
-          "status": "Partial",
+          "status": "Code Complete",
           "source": [
             "connectors/avro.c",
             "connectors/avro_resolution.h"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Independent Apache Avro OCF interoperation and Native Package roundtrip/resolution passed",
+          "remaining": "Native finite shapes reject unbounded recursive schemas; nonstandard Apache Python 1.12.0 Deflate trailers reject. Windows and wider external producer corpus remain unexecuted."
         },
         {
           "id": "P1-04",
           "name": "Native profiling product projection",
-          "status": "Partial",
+          "status": "Code Complete",
           "source": [
             "engines/control-flow/profile.c",
             "components/compute/src/profile.c"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Package profiling and Native kernel tests passed: exact Distinct plus TopK, histogram, lengths, HLL error metadata, anomalies and report",
+          "remaining": "Windows and full performance/large-cardinality workload verification remain unexecuted."
         },
         {
           "id": "P1-05",
@@ -8966,8 +8947,8 @@
           "source": [
             "engines/data-flow/sql_task.c"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "sql.command redirects/ignores only inside an existing transaction. Standalone row transaction ownership and durable known-rejection outcomes are missing; parameter mappings also reject repeated input columns."
         },
         {
           "id": "P1-06",
@@ -8976,8 +8957,8 @@
           "source": [
             "engines/data-flow/cdc.c"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "CDC protocol/replica identity/filter/partition/DDL compatibility still requires current-source review and live fault acceptance."
         },
         {
           "id": "P1-07",
@@ -8986,8 +8967,8 @@
           "source": [
             "engines/data-flow/source.c"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "Source filter pushdown is conservative; aggregate/sort/limit/projection/partition pruning and full semantic capability proofs are incomplete."
         },
         {
           "id": "P1-08",
@@ -8996,88 +8977,88 @@
           "source": [
             "components/data/src/schema_evolution.c"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "The central SQL discovery type mapping still rejects common UUID, complex/range/variant domains; full lossless provider roundtrips are not implemented."
         },
         {
           "id": "EXT-01",
           "name": "Kafka/Event Hubs",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "No Native Kafka/Event Hubs connector or partition/rebalance/offset/Schema Registry integration exists."
         },
         {
           "id": "EXT-02",
           "name": "Iceberg/Delta Lake",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "No Iceberg snapshot/manifest or Delta transaction-log table connector exists."
         },
         {
           "id": "EXT-03",
           "name": "Object-storage data flow",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "Cloud transports are file tasks; Native Batch Source/Destination streaming, multipart resume and atomic object commits are missing."
         },
         {
           "id": "EXT-04",
           "name": "Physical optimizer",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "Physical plans and metrics exist, but unified estimates, cost choices and feedback across sources/operators/targets are incomplete."
         },
         {
           "id": "EXT-05",
           "name": "Lineage and impact",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "Field identity/lineage primitives exist; Catalog-wide field/task lineage and impact query are missing."
         },
         {
           "id": "EXT-06",
           "name": "Quality/data contracts",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "Native quality rules and error ports exist; versioned data contracts, distribution/cardinality and cross-batch comparisons are incomplete."
         },
         {
           "id": "EXT-07",
           "name": "Enterprise scheduling/distributed workers",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "RunDispatcher is a single manager with interval scheduling. Cron/timezone/calendars/triggers and multi-node atomic leases/heartbeats/takeover are missing."
         },
         {
           "id": "EXT-08",
           "name": "Observability",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "Native metrics/diagnostics exist; network/SQL/wait attribution and unified Web bottleneck presentation are incomplete."
         },
         {
           "id": "EXT-09",
           "name": "Connector ecosystem",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "Dedicated ClickHouse, Snowflake, BigQuery, Redshift and MongoDB connectors/capability acceptance are missing."
         },
         {
           "id": "EXT-10",
           "name": "Templates/versioned reuse",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No new acceptance claimed for this task in the current iteration",
+          "remaining": "Native child Package/Catalog primitives exist; templates, signed/versioned extension dependency closure and upgrade/impact controls are incomplete."
         },
         {
           "id": "UI-01",
@@ -9086,8 +9067,8 @@
           "source": [
             "products/designer/src"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Typecheck/lint/build and actual browser field mapping passed; recursive structured object/list/Schema/expression editing is implemented",
+          "remaining": "Dedicated guided business forms for every advanced component, including not-yet-implemented cloud/Kafka components, remain incomplete."
         },
         {
           "id": "UI-02",
@@ -9096,8 +9077,8 @@
           "source": [
             "products/designer/src"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Real Native breakpoint pause, Worker kill and same-ID recovery in browser passed",
+          "remaining": "Arbitrary-node/port previews, variables/type/schema-difference inspection and richer physical plan/resource views remain incomplete."
         },
         {
           "id": "UI-03",
@@ -9106,90 +9087,486 @@
           "source": [
             "products/designer/src"
           ],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "Real deployment, execution, Native logs, debugging and recovery passed",
+          "remaining": "Lineage, quality result views, resource bottleneck presentation and performance comparisons remain incomplete."
         },
         {
           "id": "P2-01",
           "name": "WMI",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         },
         {
           "id": "P2-02",
           "name": "SMTP",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         },
         {
           "id": "P2-03",
           "name": "FTP/SFTP",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         },
         {
           "id": "P2-04",
           "name": "SQL Server Agent",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         },
         {
           "id": "P2-05",
           "name": "SQL Server maintenance",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         },
         {
           "id": "P2-06",
           "name": "SSAS XMLA",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         },
         {
           "id": "P2-07",
           "name": "OCI Direct Path",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         },
         {
           "id": "P2-08",
           "name": "MySQL/MariaDB Local Infile",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         },
         {
           "id": "P2-09",
           "name": "Azure Blob/ADLS",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         },
         {
           "id": "P2-10",
           "name": "S3/MinIO",
           "status": "Partial",
           "source": [],
-          "verification": "Not run for current source",
-          "remaining": "Implementation and current-source acceptance are still in progress."
+          "verification": "No current-iteration independent specialty acceptance",
+          "remaining": "Existing specialty source must still be reviewed for the requested protocol/auth/cancellation/recovery scope; independent live resource/platform acceptance is unavailable."
         }
-      ]
+      ],
+      "validation": {
+        "nativeCommit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
+        "nativeSourceFingerprint": "f430d25e46eeb1471a46b8d2b38f35304ae2ee4418a904766675121cbeff3cdf",
+        "build": "Linux Release PRODUCT: all configured drivers, Native facade, JNI, .NET 10 CLI/Worker/Management and Designer typecheck/lint/build passed",
+        "testRuns": [
+          {
+            "report": "commit-22f189c.xml",
+            "tests": [
+              {
+                "name": "native_checkpoint_contract_revision",
+                "result": "Passed",
+                "seconds": "0.0578264"
+              },
+              {
+                "name": "native_catalog_secret_migration",
+                "result": "Passed",
+                "seconds": "0.0402024"
+              },
+              {
+                "name": "transaction_fact_publication",
+                "result": "Passed",
+                "seconds": "0.0362632"
+              },
+              {
+                "name": "execution_identity",
+                "result": "Passed",
+                "seconds": "0.0253904"
+              },
+              {
+                "name": "foundation",
+                "result": "Passed",
+                "seconds": "0.000980407"
+              },
+              {
+                "name": "json_document",
+                "result": "Passed",
+                "seconds": "0.00114358"
+              },
+              {
+                "name": "unified_file_schema_discovery",
+                "result": "Passed",
+                "seconds": "0.00188826"
+              },
+              {
+                "name": "native_type_domains_2",
+                "result": "Passed",
+                "seconds": "0.00147851"
+              },
+              {
+                "name": "source_record_errors",
+                "result": "Passed",
+                "seconds": "0.00616232"
+              },
+              {
+                "name": "sql_bulk_streaming",
+                "result": "Passed",
+                "seconds": "0.0015967"
+              },
+              {
+                "name": "columnar",
+                "result": "Passed",
+                "seconds": "0.00163753"
+              },
+              {
+                "name": "extended_scalar_types",
+                "result": "Passed",
+                "seconds": "0.00264722"
+              },
+              {
+                "name": "json_nested_format",
+                "result": "Passed",
+                "seconds": "0.00188191"
+              },
+              {
+                "name": "compute_plan",
+                "result": "Passed",
+                "seconds": "0.00364956"
+              },
+              {
+                "name": "nested_columnar_arrow",
+                "result": "Passed",
+                "seconds": "0.00205171"
+              },
+              {
+                "name": "regex_pcre2",
+                "result": "Passed",
+                "seconds": "0.00134316"
+              },
+              {
+                "name": "field_mapping",
+                "result": "Passed",
+                "seconds": "0.00185792"
+              },
+              {
+                "name": "quality_classification",
+                "result": "Passed",
+                "seconds": "0.00424152"
+              },
+              {
+                "name": "sqlite_receipts_upsert",
+                "result": "Passed",
+                "seconds": "0.0927203"
+              },
+              {
+                "name": "postgresql_cursor_cancellation",
+                "result": "Passed",
+                "seconds": "1.16905"
+              },
+              {
+                "name": "architecture_foundation",
+                "result": "Passed",
+                "seconds": "0.00275894"
+              },
+              {
+                "name": "shared_value_semantics",
+                "result": "Passed",
+                "seconds": "0.0440225"
+              },
+              {
+                "name": "four_engine_scheduling_operators",
+                "result": "Passed",
+                "seconds": "0.0266738"
+              },
+              {
+                "name": "block_store_ownership",
+                "result": "Passed",
+                "seconds": "0.0205211"
+              },
+              {
+                "name": "pipeline_tree_parallelism",
+                "result": "Passed",
+                "seconds": "0.0269722"
+              },
+              {
+                "name": "indexed_segment_journal",
+                "result": "Passed",
+                "seconds": "0.469578"
+              },
+              {
+                "name": "logical_durable_task_facts",
+                "result": "Passed",
+                "seconds": "0.0590843"
+              },
+              {
+                "name": "core_runtime_resources",
+                "result": "Passed",
+                "seconds": "1.05423"
+              },
+              {
+                "name": "core_pipeline_components",
+                "result": "Passed",
+                "seconds": "0.227142"
+              },
+              {
+                "name": "package_execution",
+                "result": "Passed",
+                "seconds": "0.0640921"
+              },
+              {
+                "name": "value_semantics_pipeline",
+                "result": "Passed",
+                "seconds": "2.70489"
+              },
+              {
+                "name": "package_failure_boundaries",
+                "result": "Passed",
+                "seconds": "0.185994"
+              },
+              {
+                "name": "four_engine_connections_enumerators",
+                "result": "Passed",
+                "seconds": "0.291248"
+              },
+              {
+                "name": "package_sql_integration",
+                "result": "Passed",
+                "seconds": "0.0735636"
+              },
+              {
+                "name": "package_durable_recovery",
+                "result": "Passed",
+                "seconds": "0.592705"
+              },
+              {
+                "name": "catalog_immutable_store",
+                "result": "Passed",
+                "seconds": "5.11271"
+              },
+              {
+                "name": "project_environment_deployment",
+                "result": "Passed",
+                "seconds": "0.0857443"
+              },
+              {
+                "name": "child_package_execution",
+                "result": "Passed",
+                "seconds": "0.328539"
+              },
+              {
+                "name": "catalog_execution_history",
+                "result": "Passed",
+                "seconds": "0.0680545"
+              },
+              {
+                "name": "filesystem_task_execution",
+                "result": "Passed",
+                "seconds": "0.513419"
+              },
+              {
+                "name": "process_task_execution",
+                "result": "Passed",
+                "seconds": "3.47772"
+              },
+              {
+                "name": "http_task_execution",
+                "result": "Passed",
+                "seconds": "3.50738"
+              },
+              {
+                "name": "profile_statistics_kernel",
+                "result": "Passed",
+                "seconds": "0.00225318"
+              },
+              {
+                "name": "profile_task_execution",
+                "result": "Passed",
+                "seconds": "0.726248"
+              },
+              {
+                "name": "native_custom_task",
+                "result": "Passed",
+                "seconds": "0.421418"
+              },
+              {
+                "name": "next_phase_native_contracts",
+                "result": "Passed",
+                "seconds": "0.0107781"
+              },
+              {
+                "name": "next_phase_pipeline_recovery",
+                "result": "Passed",
+                "seconds": "6.79475"
+              },
+              {
+                "name": "ssis_native_features",
+                "result": "Passed",
+                "seconds": "2.22673"
+              },
+              {
+                "name": "pr5_foundation",
+                "result": "Passed",
+                "seconds": "0.33271"
+              },
+              {
+                "name": "advanced_native_semantics",
+                "result": "Passed",
+                "seconds": "0.0079142"
+              },
+              {
+                "name": "advanced_formats_tls_rest",
+                "result": "Passed",
+                "seconds": "0.836919"
+              },
+              {
+                "name": "advanced_catalog_ten_table_template",
+                "result": "Passed",
+                "seconds": "0.172336"
+              },
+              {
+                "name": "management_authenticated_native_worker",
+                "result": "Passed",
+                "seconds": "2.45177"
+              },
+              {
+                "name": "hosting_identity_secret_resource_contracts",
+                "result": "Passed",
+                "seconds": "1.13284"
+              },
+              {
+                "name": "worker_protocol",
+                "result": "Passed",
+                "seconds": "0.867763"
+              },
+              {
+                "name": "managed_native_epoch_process_recovery",
+                "result": "Passed",
+                "seconds": "0.374139"
+              },
+              {
+                "name": "managed_registry_scripts_debug_lifecycle",
+                "result": "Passed",
+                "seconds": "1.40643"
+              },
+              {
+                "name": "java_registry_observer_catalog_lifecycle",
+                "result": "Passed",
+                "seconds": "0.142384"
+              },
+              {
+                "name": "native_enterprise_file_layout",
+                "result": "Passed",
+                "seconds": "0.0403519"
+              },
+              {
+                "name": "file_generation_process_recovery",
+                "result": "Passed",
+                "seconds": "0.112939"
+              },
+              {
+                "name": "native_component_product_semantics",
+                "result": "Passed",
+                "seconds": "0.145303"
+              },
+              {
+                "name": "native_sql_source_record_errors",
+                "result": "Passed",
+                "seconds": "0.0598619"
+              },
+              {
+                "name": "native_xlsx_preserving_append",
+                "result": "Passed",
+                "seconds": "0.0840809"
+              },
+              {
+                "name": "native_avro_interoperability",
+                "result": "Passed",
+                "seconds": "0.0811962"
+              },
+              {
+                "name": "apache_avro_native_pipeline_resolution",
+                "result": "Passed",
+                "seconds": "0.18748"
+              },
+              {
+                "name": "native_xml_source_xpath_xslt_xsd",
+                "result": "Passed",
+                "seconds": "0.21572"
+              },
+              {
+                "name": "native_object_transfer_sequence",
+                "result": "Passed",
+                "seconds": "0.688503"
+              }
+            ]
+          },
+          {
+            "report": "managed-explicit-ack.xml",
+            "tests": [
+              {
+                "name": "managed_native_epoch_process_recovery",
+                "result": "Passed",
+                "seconds": "0.385453"
+              },
+              {
+                "name": "managed_product_worker_process_recovery",
+                "result": "Passed",
+                "seconds": "0.743965"
+              },
+              {
+                "name": "managed_registry_scripts_debug_lifecycle",
+                "result": "Passed",
+                "seconds": "1.33708"
+              }
+            ]
+          }
+        ],
+        "browser": {
+          "status": "Passed",
+          "packageId": "browser-2300041e2552484ba5641a8bae369d61",
+          "edit": true,
+          "dragUndoRedo": true,
+          "saveReload": true,
+          "deployment": true,
+          "nativeOutput": true,
+          "logs": true,
+          "actualWorkerTermination": true,
+          "resumeSameNativeId": true,
+          "debugPause": true,
+          "browserErrors": []
+        },
+        "notRun": [
+          "Windows",
+          "current-iteration full live driver matrix",
+          "performance workloads",
+          "installed release consumers",
+          "malicious-extension OS sandbox scenarios"
+        ],
+        "sandboxEnvironment": "bubblewrap namespace creation succeeds; systemd user bus is unavailable, so enforced user cgroup launch cannot be accepted",
+        "ci": {
+          "commit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
+          "runId": 38556015263,
+          "jobsHaveSteps": false,
+          "annotation": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the Billing & plans section in your settings"
+        },
+        "evidenceDirectory": "docs/acceptance/evidence/pr7-foundation"
+      }
     }
   }
 }

@@ -306,6 +306,10 @@ if(UD_BUILD_HOSTS)
   add_test(NAME managed_native_epoch_process_recovery COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/managed_recovery.py ${UD_DOTNET} ${CMAKE_CURRENT_BINARY_DIR}/managed-recovery/ManagedRecovery.dll $<TARGET_FILE:ud_data>)
   set_tests_properties(managed_native_epoch_process_recovery PROPERTIES TIMEOUT 90)
+  add_test(NAME managed_product_worker_process_recovery COMMAND ${UD_DOTNET}
+    ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts/HostingContracts.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll
+    ${CMAKE_CURRENT_BINARY_DIR}/managed-recovery/ManagedRecovery.dll)
+  set_tests_properties(managed_product_worker_process_recovery PROPERTIES TIMEOUT 60)
   add_custom_target(ud_managed_product_test ALL
     COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_product/ManagedProduct.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/managed-product
     VERBATIM)
