@@ -53,6 +53,11 @@ struct ud_connection_lease {
     int cancelled, shared, read_only, cleanup;
     struct ud_connection_lease *next;
 };
+static int network_driver(ud_string driver) {
+    return ud_named(driver, "http") || ud_named(driver, "ftp") || ud_named(driver, "sftp") ||
+           ud_named(driver, "smtp") || ud_named(driver, "azureBlob") ||
+           ud_named(driver, "adlsGen2") || ud_named(driver, "s3");
+}
 static ud_status check_lease(void *user) {
     ud_connection_lease *l = user;
     return l && !l->cleanup ? ud_activation_check(l->activation) : UD_OK;
@@ -369,8 +374,75 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
         chosen->unhealthy = 1;
     return status;
 }
-static ud_status acquire(ud_activation *a, ud_string id, uint64_t caps, int kind,
-                         ud_connection_lease **out) {
+static ud_status relative_file_definition(ud_context *memory, ud_json **definition,
+                                          ud_string relative) {
+    if (!relative.length || relative.length > 32768 || memchr(relative.data, 0, relative.length) ||
+        relative.data[0] == '/' || relative.data[0] == '\\' ||
+        memchr(relative.data, ':', relative.length))
+        return UD_SCHEMA;
+    uint32_t begin = 0;
+    for (uint32_t at = 0; at <= relative.length; at++) {
+        if (at < relative.length && (uint8_t)relative.data[at] < 32)
+            return UD_SCHEMA;
+        if (at == relative.length || relative.data[at] == '/' || relative.data[at] == '\\') {
+            uint32_t count = at - begin;
+            if (!count || (count == 1 && relative.data[begin] == '.') ||
+                (count == 2 && relative.data[begin] == '.' && relative.data[begin + 1] == '.'))
+                return UD_SCHEMA;
+            begin = at + 1;
+        }
+    }
+    ud_string driver, base;
+    UD_TRY(ud_json_string(ud_member(*definition, "driver"), &driver));
+    UD_TRY(ud_json_string(ud_member(*definition, "resource"), &base));
+    if (!ud_named(driver, "file"))
+        return UD_UNSUPPORTED;
+    ud_bytes path = {.ctx = memory, .limit = 65536}, json = {.ctx = memory, .limit = 1048576};
+    ud_status status = ud_bytes_put(&path, base.data, base.length);
+    if (!status && base.length && base.data[base.length - 1] != '/' &&
+        base.data[base.length - 1] != '\\')
+        status = ud_bytes_put(&path, "/", 1);
+    for (uint32_t at = 0; !status && at < relative.length; at++) {
+        char byte = relative.data[at] == '\\' ? '/' : relative.data[at];
+        status = ud_bytes_put(&path, &byte, 1);
+    }
+    if (!status)
+        status = ud_bytes_put(&json, "{", 1);
+    for (uint32_t at = 0; !status && at < ud_json_size(*definition); at++) {
+        ud_string key;
+        status = ud_json_key(*definition, at, &key.data, &key.length);
+        if (!status && at)
+            status = ud_bytes_put(&json, ",", 1);
+        if (!status)
+            status = ud_json_quote(&json, key.data, key.length);
+        if (!status)
+            status = ud_bytes_put(&json, ":", 1);
+        if (!status && ud_named(key, "resource"))
+            status = ud_json_quote(&json, (const char *)path.data, (uint32_t)path.size);
+        else if (!status) {
+            char *value = NULL;
+            uint32_t length = 0;
+            status = ud_json_serialize(ud_json_at(*definition, at), &value, &length);
+            if (!status)
+                status = ud_bytes_put(&json, value, length);
+            ud_free(value);
+        }
+    }
+    if (!status)
+        status = ud_bytes_put(&json, "}", 1);
+    ud_json *bound = NULL;
+    if (!status)
+        status = ud_json_parse(memory, (const char *)json.data, (uint32_t)json.size, &bound, NULL);
+    if (!status) {
+        ud_json_destroy(*definition);
+        *definition = bound;
+    }
+    ud_bytes_clear(&path);
+    ud_bytes_clear(&json);
+    return status;
+}
+static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps, int kind,
+                                  ud_string relative, ud_connection_lease **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
@@ -394,6 +466,8 @@ static ud_status acquire(ud_activation *a, ud_string id, uint64_t caps, int kind
                              .parallel = a->parallel};
     atomic_init(&binding.cancelled, 0);
     ud_status status = ud_bound_config(&binding, def, &l->definition);
+    if (!status && relative.length)
+        status = relative_file_definition(a->execution->ctx, &l->definition, relative);
     if (!status)
         status = ud_json_string(ud_member(l->definition, "driver"), &l->driver);
     if (!status)
@@ -468,6 +542,17 @@ static ud_status acquire(ud_activation *a, ud_string id, uint64_t caps, int kind
     *out = l;
     return UD_OK;
 }
+static ud_status acquire(ud_activation *activation, ud_string id, uint64_t capabilities, int kind,
+                         ud_connection_lease **out) {
+    return acquire_resource(activation, id, capabilities, kind, (ud_string){0}, out);
+}
+ud_status ud_activation_acquire_file_resource(ud_activation *activation, ud_string connection,
+                                              ud_string relative, uint64_t capabilities,
+                                              ud_connection_lease **out) {
+    if (!relative.length)
+        return UD_SCHEMA;
+    return acquire_resource(activation, connection, capabilities, 1, relative, out);
+}
 ud_status ud_activation_acquire_connection(ud_activation *a, ud_string id, uint64_t caps,
                                            ud_connection_lease **out) {
     return acquire(a, id, caps, 0, out);
@@ -513,7 +598,7 @@ ud_status ud_http_connection_credentials(ud_connection_lease *l, ud_string *out)
     if (!l || !out)
         return UD_INVALID;
     *out = (ud_string){0};
-    if (!ud_named(l->driver, "http"))
+    if (!network_driver(l->driver))
         return UD_UNSUPPORTED;
     UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_NETWORK));
     const ud_json *ref = ud_member(l->definition, "credentialReference");
@@ -531,6 +616,14 @@ ud_status ud_http_connection_credentials(ud_connection_lease *l, ud_string *out)
         *out = (ud_string){0};
         return status ? status : UD_SCHEMA;
     }
+    return UD_OK;
+}
+ud_status ud_network_connection_resource(ud_connection_lease *lease, ud_string *out) {
+    if (!lease || !out)
+        return UD_INVALID;
+    if (!network_driver(lease->driver))
+        return UD_UNSUPPORTED;
+    *out = lease->resource;
     return UD_OK;
 }
 ud_status ud_connection_lease_bind_rest(ud_connection_lease *l, const ud_component_context *c,
@@ -1103,7 +1196,7 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
         UD_TRY(ud_connection_definition(activation, id, &definition, &project));
         ud_string driver;
         UD_TRY(ud_json_string(ud_member(definition, "driver"), &driver));
-        if (ud_named(driver, "file") || ud_named(driver, "excel") || ud_named(driver, "http") ||
+        if (ud_named(driver, "file") || ud_named(driver, "excel") || network_driver(driver) ||
             ud_named(driver, "process"))
             return UD_UNSUPPORTED;
         if (activation->transaction) {

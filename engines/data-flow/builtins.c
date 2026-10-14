@@ -729,5 +729,11 @@ ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_filesystem_register(registry));
     UD_TRY(ud_process_register(registry));
     UD_TRY(ud_http_register(registry));
+    UD_TRY(ud_network_tasks_register(registry));
+    UD_TRY(ud_column_files_register(registry));
+#ifdef UD_WITH_XML
+    UD_TRY(ud_xml_source_register(registry));
+    UD_TRY(ud_xml_tasks_register(registry));
+#endif
     return ud_profile_register(registry);
 }

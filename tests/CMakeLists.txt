@@ -329,3 +329,18 @@ if(TARGET ud_package)
   target_link_libraries(test_file_generation PRIVATE ud_package)
   add_test(NAME file_generation_process_recovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/file_generation.py $<TARGET_FILE:test_file_generation>)
 endif()
+
+if(TARGET ud_package AND (UD_WITH_XML OR UD_WITH_NETWORK))
+  add_executable(test_product_native product_native.c)
+  target_link_libraries(test_product_native PRIVATE ud_package)
+  if(UD_WITH_XML)
+    add_test(NAME native_xml_source_xpath_xslt_xsd COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/xml_product.py $<TARGET_FILE:test_product_native>)
+    set_tests_properties(native_xml_source_xpath_xslt_xsd PROPERTIES TIMEOUT 180)
+  endif()
+  if(UD_WITH_NETWORK)
+    add_test(NAME native_object_transfer_sequence COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/network_product.py $<TARGET_FILE:test_product_native>)
+    set_tests_properties(native_object_transfer_sequence PROPERTIES TIMEOUT 180)
+  endif()
+endif()

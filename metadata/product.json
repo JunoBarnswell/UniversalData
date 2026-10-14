@@ -683,76 +683,81 @@
       "phase": 5,
       "name": "Import and Export Column",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "engines/data-flow",
-        "connectors/manager.c"
+        "engines/data-flow/column_file.c",
+        "connectors/manager.c",
+        "engines/package/file_generation.c"
       ],
       "trigger": "A row reads/writes an authorized external column resource.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "A row reads/writes an authorized external column resource. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Import/Export Column are native transforms with common input/output/error batches, field identities, bounded Binary/UTF8 values and retained row provenance. Per-row relative file resolution is part of the existing Connection Manager binding and authorization owner; export uses Journal-backed generations keyed by source row ID and import freezes source digests. Codec/error/recovery and language consumption acceptance remains NotRun."
     },
     {
       "id": "ETL-033",
       "phase": 5,
       "name": "XML Source",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "connectors",
-        "components/data"
+        "connectors/xml.c",
+        "engines/data-flow/xml.c"
       ],
       "trigger": "XML records are parsed into the canonical Data Schema.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "XML records are parsed into the canonical Data Schema. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native Expat streaming record framing feeds bounded XPath extraction into canonical Data Schema and the shared error ports. Original raw records are retained only when configured; inherited namespaces are preserved. Native parser allocations are quota-owned. UTF-8 input, general Schema discovery and DOM reservation accuracy still require acceptance."
     },
     {
       "id": "ETL-034",
       "phase": 5,
       "name": "XPath XSLT and XSD tasks",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "engines/control-flow",
-        "connectors/manager.c"
+        "engines/control-flow/xml.c",
+        "connectors/xml.c"
       ],
       "trigger": "An XML task applies a query, stylesheet or schema validation.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "An XML task applies a query, stylesheet or schema validation. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native Registry tasks implement XPath, XSLT and XSD through libxml2/libxslt, bounded input/output, Native file leases and the shared Journal-backed generation publisher. DTD, implicit schema/stylesheet modules and external loads are rejected. Actual behavior/resource/cancellation acceptance remains NotRun."
     },
     {
       "id": "ETL-035",
       "phase": 7,
       "name": "SMTP task",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "engines/control-flow",
-        "connectors/manager.c"
+        "engines/control-flow/network.c",
+        "connectors/http.c"
       ],
       "trigger": "An authorized mail connection sends a message with cancellation handling.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "An authorized mail connection sends a message with cancellation handling. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "smtp.send uses the sole Native curl owner, scoped credentials, RFC 2047 UTF-8 subject words, MIME base64 body and Native cancellation/deadlines. An interrupted send is not automatically replayed. Real SMTP integration remains pending."
     },
     {
       "id": "ETL-036",
@@ -777,11 +782,12 @@
       "phase": 5,
       "name": "FTP and SFTP resources",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "connectors",
+        "engines/control-flow/network.c",
+        "connectors/http.c",
         "connectors/manager.c"
       ],
       "trigger": "An authorized remote file transfer participates in cancellation/publication.",
@@ -789,7 +795,8 @@
       "acceptance": "An authorized remote file transfer participates in cancellation/publication. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native FTP/SFTP upload/download tasks share Connection Manager grants, credential file references, curl progress/cancellation and local generation publication. SFTP requires a granted known-hosts file. Uploads explicitly declare replacement and do not claim transaction participation or safe replay. Real independent FTP/SFTP acceptance remains pending."
     },
     {
       "id": "ETL-038",
@@ -934,38 +941,40 @@
       "phase": 5,
       "name": "Azure Blob and ADLS Gen2",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "connectors",
-        "connectors/manager.c"
+        "engines/control-flow/network.c",
+        "connectors/http.c"
       ],
       "trigger": "An authorized Azure object resource is read/published/recovered.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "An authorized Azure object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Azure Blob native streaming PUT and ADLS Gen2 create/append/flush sequences use host credential references and the common curl owner. Native generation download, explicit remote replacement and unknown-commit fencing are implemented; actual Azure acceptance remains pending."
     },
     {
       "id": "ETL-046",
       "phase": 5,
       "name": "S3 and MinIO",
       "priority": "P1",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "connectors",
-        "connectors/manager.c"
+        "engines/control-flow/network.c",
+        "connectors/http.c"
       ],
       "trigger": "An authorized S3 object resource is read/published/recovered.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "An authorized S3 object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "S3/MinIO streaming GET/PUT uses curl SigV4 credentials from the host resolver and the common Native transfer/authorization lifecycle. Exclusive-create conditions and explicit replacement are declared. Real S3/MinIO signing and service acceptance remain pending."
     },
     {
       "id": "ETL-047",

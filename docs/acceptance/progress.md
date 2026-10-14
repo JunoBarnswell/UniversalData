@@ -39,12 +39,12 @@ SDK 2.0.0 / ABI 10；2.0 bulk implementation in progress: Native correctness and
 | ETL-029 Public managed Registry and native callback ownership | Partial / NotRun |
 | ETL-030 Deployment-compiled C# scripts | Partial / NotRun |
 | ETL-031 Balanced batch dispatch | Partial / NotRun |
-| ETL-032 Import and Export Column | Planned / NotRun |
-| ETL-033 XML Source | Planned / NotRun |
-| ETL-034 XPath XSLT and XSD tasks | Planned / NotRun |
-| ETL-035 SMTP task | Planned / NotRun |
+| ETL-032 Import and Export Column | Partial / NotRun |
+| ETL-033 XML Source | Partial / NotRun |
+| ETL-034 XPath XSLT and XSD tasks | Partial / NotRun |
+| ETL-035 SMTP task | Partial / NotRun |
 | ETL-036 Windows WMI tasks | Planned / NotRun |
-| ETL-037 FTP and SFTP resources | Planned / NotRun |
+| ETL-037 FTP and SFTP resources | Partial / NotRun |
 | ETL-038 Avro IO | Planned / NotRun |
 | ETL-039 DQS removed by Microsoft | NotApplicable / NotApplicable |
 | ETL-040 SSAS Data Mining no longer supported | NotApplicable / NotApplicable |
@@ -52,8 +52,8 @@ SDK 2.0.0 / ABI 10；2.0 bulk implementation in progress: Native correctness and
 | ETL-042 Exact Distinct profiling with shared Compute budget | Implemented / NotRun |
 | ETL-043 Durable job queue and schedules | Partial / NotRun |
 | ETL-044 Proven filter pushdown and streaming JSON array | Partial / NotRun |
-| ETL-045 Azure Blob and ADLS Gen2 | Planned / NotRun |
-| ETL-046 S3 and MinIO | Planned / NotRun |
+| ETL-045 Azure Blob and ADLS Gen2 | Partial / NotRun |
+| ETL-046 S3 and MinIO | Partial / NotRun |
 | ETL-047 ASP.NET Core 10 management and isolated workers | Partial / NotRun |
 | ETL-048 React Flow package designer | Partial / NotRun |
 | ETL-049 Safe native runtime debugging | Partial / NotRun |

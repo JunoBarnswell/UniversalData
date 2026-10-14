@@ -203,10 +203,17 @@ ud_status ud_acquire_file_connection(ud_activation *, ud_string, uint64_t capabi
 ud_status ud_filesystem_register(ud_registry *);
 ud_status ud_process_register(ud_registry *);
 ud_status ud_http_register(ud_registry *);
+#ifdef UD_WITH_XML
+ud_status ud_xml_source_register(ud_registry *);
+ud_status ud_xml_tasks_register(ud_registry *);
+#endif
 ud_status ud_profile_register(ud_registry *);
 ud_status ud_acquire_http_connection(ud_activation *, ud_string, ud_connection_lease **);
 ud_status ud_http_connection_resource(ud_connection_lease *, ud_string *);
 ud_status ud_http_connection_credentials(ud_connection_lease *, ud_string *);
+ud_status ud_network_connection_resource(ud_connection_lease *, ud_string *);
+ud_status ud_network_tasks_register(ud_registry *);
+ud_status ud_column_files_register(ud_registry *);
 ud_status ud_acquire_process_connection(ud_activation *, ud_string, ud_connection_lease **);
 ud_status ud_process_connection_path(ud_connection_lease *, ud_string *);
 ud_status ud_checkpoint_open(ud_execution *);

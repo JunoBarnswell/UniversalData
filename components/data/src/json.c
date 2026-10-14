@@ -201,18 +201,7 @@ static ud_status emit_value(ud_bytes *bytes, const ud_field *field, const ud_val
         return ud_json_quote(bytes, value->text, value->text_length);
     if (field->type == UD_BINARY) {
         UD_TRY(ud_bytes_put(bytes, "\"", 1));
-        for (uint32_t i = 0; i < value->text_length;) {
-            uint32_t left = value->text_length - i;
-            uint32_t x = (uint32_t)(unsigned char)value->text[i++] << 16;
-            if (left > 1)
-                x |= (uint32_t)(unsigned char)value->text[i++] << 8;
-            if (left > 2)
-                x |= (unsigned char)value->text[i++];
-            char b[4] = {alphabet[x >> 18], alphabet[(x >> 12) & 63],
-                         left > 1 ? alphabet[(x >> 6) & 63] : '=',
-                         left > 2 ? alphabet[x & 63] : '='};
-            UD_TRY(ud_bytes_put(bytes, b, 4));
-        }
+        UD_TRY(ud_base64_encode(bytes, (const uint8_t *)value->text, value->text_length, 0));
         return ud_bytes_put(bytes, "\"", 1);
     }
     uint32_t required = 0;
