@@ -38,6 +38,7 @@ struct ud_transaction {
     char identity[65];
     uint64_t attempt, fact_order;
     int completed;
+    char scope_identity[65];
     uint64_t pending_rows, pending_errors;
     uint64_t pending_tasks;
     struct ud_rule_delivery *delivery;
@@ -908,8 +909,15 @@ ud_status ud_connections_release_activation(ud_activation *a) {
     for (;;) {
         ud_mutex_lock(&m->mutex);
         ud_connection_lease *l = m->leases;
-        while (l && l->activation != a)
+        while (l) {
+            int retained = 0;
+            if (a->transaction)
+                for (uint32_t at = 0; at < a->transaction->count; at++)
+                    retained |= a->transaction->participants[at].lease == l;
+            if (l->activation == a && !retained)
+                break;
             l = l->next;
+        }
         ud_mutex_unlock(&m->mutex);
         if (!l)
             break;
@@ -983,10 +991,26 @@ ud_status ud_transaction_fact_position(ud_activation *activation, ud_string *ide
     return UD_OK;
 }
 int ud_transaction_task_done(ud_activation *activation) {
-    if (!ud_transaction_active(activation))
+    /* The owner records its own durable fact after leave. Children remain
+     * tentative until the enclosing transaction publishes their facts. */
+    if (!ud_transaction_active(activation) || activation->transaction->owner == activation)
         return 0;
     activation->transaction->pending_tasks++;
     return 1;
+}
+int ud_transaction_recovered(const ud_activation *activation) {
+    return activation && activation->transaction &&
+           activation->transaction->owner == activation && activation->transaction->completed;
+}
+int ud_transaction_owned(const ud_activation *activation) {
+    return ud_transaction_active(activation) && activation->transaction->owner == activation;
+}
+void ud_transaction_pending(const ud_activation *activation, uint64_t *rows, uint64_t *errors) {
+    *rows = *errors = 0;
+    if (ud_transaction_owned(activation)) {
+        *rows = activation->transaction->pending_rows;
+        *errors = activation->transaction->pending_errors;
+    }
 }
 static void transaction_hex(const uint8_t digest[32], char output[65]) {
     static const char alphabet[] = "0123456789abcdef";
@@ -1234,7 +1258,7 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
     transaction->attempt = 1;
     transaction->participants =
         ud_alloc(activation->execution->ctx, (size_t)count * sizeof(*transaction->participants));
-    ud_status status = transaction->participants ? UD_OK : UD_RESOURCE;
+    ud_status status = transaction->participants ? ud_activation_scope_identity(activation, transaction->scope_identity) : UD_RESOURCE;
     for (uint32_t index = 0; !status && index < count; index++) {
         transaction_participant *participant = transaction->participants + index;
         status = ud_json_string(ud_json_at(participants, index), &participant->connection);
@@ -1253,7 +1277,7 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
     uint32_t saved_length = 0;
     ud_status found =
         !status ? ud_checkpoint_transaction_read(activation, UD_TX_JOURNAL_MANIFEST,
-                                                 activation->task_id, &saved, &saved_length)
+                                                 (ud_string){transaction->scope_identity,64}, &saved, &saved_length)
                 : UD_END;
     if (!status && found != UD_END && found)
         status = found;
@@ -1335,7 +1359,7 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
         status = transaction_manifest(transaction, &manifest, &length);
     if (!status)
         status = ud_checkpoint_transaction_record(
-            activation, UD_TX_JOURNAL_MANIFEST, activation->task_id, (ud_string){manifest, length});
+            activation, UD_TX_JOURNAL_MANIFEST, (ud_string){transaction->scope_identity,64}, (ud_string){manifest, length});
     ud_free(manifest);
     for (uint32_t index = 0; !status && index < count; index++) {
         transaction_participant *participant = transaction->participants + index;
@@ -1446,7 +1470,7 @@ ud_status ud_transaction_commit_epoch(ud_activation *activation) {
     uint32_t length = 0;
     status = transaction_manifest(transaction, &manifest, &length);
     if (!status)
-        status = ud_checkpoint_transaction_record(owner, UD_TX_JOURNAL_MANIFEST, owner->task_id,
+        status = ud_checkpoint_transaction_record(owner, UD_TX_JOURNAL_MANIFEST, (ud_string){transaction->scope_identity,64},
                                                   (ud_string){manifest, length});
     ud_free(manifest);
     for (uint32_t index = 0; !status && index < transaction->count; index++) {

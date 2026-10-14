@@ -61,6 +61,7 @@ static void state_field(const ud_plan *p, uint32_t column, ud_field *field) {
     *field = p->output_schema->column[column].field;
     if (column >= p->key_n) {
         field->type = UD_BINARY;
+        field->scalar=(ud_scalar_metadata){0};field->timezone=NULL;field->timezone_length=0;field->children=NULL;field->child_count=0;field->dictionary=NULL;field->dictionary_count=0;field->dictionary_kind=0;
         field->precision = field->scale = 0;
         field->nullable = 0;
     }

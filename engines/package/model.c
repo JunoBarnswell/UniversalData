@@ -547,6 +547,10 @@ void ud_scope_leave(ud_activation *e, ud_scope *scope) {
     scope->values = scope->parameter_values = NULL;
 }
 static ud_variable *find_slot(const ud_activation *e, ud_string name, int parameters_only) {
+    if (name.length > 6 && !memcmp(name.data, "User::", 6)) {
+        name.data += 6;
+        name.length -= 6;
+    }
     for (ud_scope *scope = e->scope; scope; scope = scope->parent) {
         if (!parameters_only)
             for (ud_variable *v = scope->values; v; v = v->next)

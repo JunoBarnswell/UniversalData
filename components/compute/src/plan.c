@@ -215,6 +215,7 @@ static ud_status result_schema(ud_plan *p) {
             if (a->kind == 4 && field.type != UD_FLOAT64 && field.type != UD_DURATION &&
                 field.type != UD_INTERVAL) {
                 field.type = UD_DECIMAL128;
+                field.scalar=(ud_scalar_metadata){.kind=field.scalar.kind?UD_DT_NUMERIC:0};
                 field.precision = 38;
                 field.scale =
                     p->fields[a->column].type == UD_DECIMAL128 ? p->fields[a->column].scale : 0;

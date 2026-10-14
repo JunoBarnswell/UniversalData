@@ -13,9 +13,10 @@ public enum DataType {
     UINT64(10),
     DURATION(11),
     INTERVAL(12),
-    STRUCT(13),
-    LIST(14),
-    MAP(15);
+    DATETIME(13),
+    STRUCT(14),
+    LIST(15),
+    MAP(16);
     public final int nativeCode;
     DataType(int code) { nativeCode = code; }
 }

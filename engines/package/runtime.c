@@ -132,6 +132,29 @@ uint32_t ud_execution_concurrency(const ud_activation *activation) {
     }
     return concurrency;
 }
+ud_status ud_activation_scope_identity(const ud_activation *activation, char output[65]) {
+    if (!activation || !output)
+        return UD_INVALID;
+    ud_bytes bytes = {.ctx = activation->execution->ctx};
+    static const char domain[] = "UD.Activation." UD_PROTOCOL_VERSION_TEXT;
+    ud_status status = ud_bytes_put(&bytes, domain, sizeof(domain) - 1);
+    if (!status)
+        status = ud_bytes_put(&bytes, activation->package->fingerprint, 32);
+    if (!status)
+        status = ud_put_string(&bytes, activation->task_id.data, activation->task_id.length);
+    if (!status) {
+        uint8_t digest[32];
+        static const char hex[] = "0123456789abcdef";
+        ud_hash(bytes.data, bytes.size, digest);
+        for (uint32_t at = 0; at < 32; at++) {
+            output[at * 2] = hex[digest[at] >> 4];
+            output[at * 2 + 1] = hex[digest[at] & 15];
+        }
+        output[64] = 0;
+    }
+    ud_bytes_clear(&bytes);
+    return status;
+}
 ud_status ud_activation_check(const ud_activation *e) {
     if (!e)
         return UD_INVALID;
@@ -377,6 +400,7 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     if (s) {
         atomic_store(&e->state, UD_EXEC_FAILED);
         atomic_store(&e->result, s);
+        if(e->package)ud_activation_notify(&e->root,UD_EXEC_FAILED,s);
         ud_status closed = ud_execution_destroy(e);
         return closed ? closed : s;
     }
@@ -403,12 +427,22 @@ ud_status ud_execution_id(const ud_execution *e, ud_string *out) {
     return UD_OK;
 }
 ud_status ud_activation_run_definition(ud_activation *e) {
+    int completed = 0;
+    UD_TRY(ud_checkpoint_package_resume(e, &completed));
+    if (completed)
+        return UD_OK;
     const ud_json *handlers = ud_member(e->package->document, "eventHandlers");
     e->event_handlers = handlers;
     ud_status s = ud_activation_check(e);
     if (!s)
         s = ud_transaction_enter(
             e, ud_member(ud_member(e->package->document, "policy"), "transaction"), 0);
+    if (!s && ud_transaction_recovered(e)) {
+        s = ud_checkpoint_package_resume(e, &completed);
+        if (!s && !completed)
+            s = UD_CORRUPT;
+        return ud_transaction_leave(e, s);
+    }
     if (!s)
         s = ud_control_handler(e, ud_member(handlers, "before"), "before");
     if (!s)
@@ -420,6 +454,8 @@ ud_status ud_activation_run_definition(ud_activation *e) {
         if (secondary == UD_COMMIT_UNKNOWN)
             s = secondary;
     }
+    if (!s && ud_transaction_owned(e))
+        s = ud_checkpoint_package_done(e);
     s = ud_transaction_leave(e, s);
     return s == UD_BUSY ? UD_TRANSIENT : s;
 }
@@ -965,4 +1001,84 @@ ud_status ud_component_schema_namespace(const ud_component_context *context, cha
         return UD_RESOURCE;
     *length = 32;
     return UD_OK;
+}
+
+ud_status ud_execution_compile_expression(ud_execution *e, ud_string schema_json, ud_string source,
+                                          char **out, uint32_t *length) {
+    if (!e || !out || !length)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    if (atomic_load(&e->state) != UD_EXEC_READY)
+        return UD_BUSY;
+    ud_batch *schema = NULL;
+    ud_status status = UD_OK;
+    if (schema_json.length)
+        status = ud_schema_from_json(e->ctx, schema_json.data, schema_json.length, (ud_string){0},
+                                     &schema);
+    ud_expression *expression = NULL;
+    ud_expression_diagnostic diagnostic = {0};
+    ud_expression_options options = {
+        sizeof(options), UD_ABI_VERSION,   schema,      ud_resolve_value,
+        &e->root,        ud_resolve_field, e->registry, 0};
+    if (!status)
+        status = ud_expression_compile(e->ctx, source, &options, &diagnostic, &expression);
+    ud_bytes json = {.ctx = e->ctx};
+    char head[160];
+    int n = snprintf(head, sizeof(head),
+                     "{\"result\":%d,\"start\":%u,\"length\":%u,\"message\":", status,
+                     diagnostic.start, diagnostic.length);
+    ud_status result = ud_bytes_put(&json, head, (size_t)n);
+    if (!result)
+        result = ud_json_quote(&json, diagnostic.message, (uint32_t)strlen(diagnostic.message));
+    if (!result && expression) {
+        char *text = NULL;
+        uint32_t bytes = 0;
+        result = ud_expression_describe(expression, &text, &bytes);
+        if (!result)
+            result = ud_bytes_put(&json, ",\"schema\":", 10);
+        if (!result)
+            result = ud_bytes_put(&json, text, bytes);
+        ud_free(text);
+    }
+    if (!result)
+        result = ud_bytes_put(&json, "}", 1);
+    if (!result) {
+        *length = (uint32_t)json.size;
+        result = ud_bytes_put(&json, "", 1);
+    }
+    if (!result) {
+        *out = (char *)json.data;
+        json.data = NULL;
+    }
+    ud_bytes_clear(&json);
+    ud_expression_destroy(expression);
+    ud_batch_destroy(schema);
+    return result;
+}
+
+ud_status ud_component_source_identity(const ud_component_context *c, ud_batch *batch, uint32_t row,
+                                       uint64_t position, ud_string source) {
+    if (!c || !batch || c->memory != batch->ctx)
+        return UD_INVALID;
+    char scope[33];
+    ud_id_format(c->errors.field_scope, scope);
+    ud_bytes symbol = {.ctx = c->memory};
+    ud_status status = ud_bytes_put(&symbol, scope, 32);
+    if (!status)
+        status = ud_bytes_put(&symbol, "/", 1);
+    if (!status)
+        status = ud_bytes_put(&symbol, source.data, source.length);
+    ud_id identity;
+    ud_row_info info;
+    if (!status)
+        status =
+            ud_id_make(c->memory, c->errors.execution_id,
+                       (ud_string){(const char *)symbol.data, (uint32_t)symbol.size}, &identity);
+    if (!status)
+        status = ud_row_info_source(identity, position, &info);
+    if (!status)
+        status = ud_batch_set_row_info(batch, row, &info);
+    ud_bytes_clear(&symbol);
+    return status;
 }

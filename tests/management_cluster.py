@@ -97,7 +97,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-cluster-') as directory:
             assert time.monotonic() < deadline, state
             time.sleep(.15)
     def enqueue(index, name):
-        package = {'version': 10, 'id': name, 'connections': [{'id': 'http', 'driver': 'http', 'resource': origin + '/effects'}],
+        package = {'version': 11, 'id': name, 'connections': [{'id': 'http', 'driver': 'http', 'resource': origin + '/effects'}],
             'controlFlow': {'tasks': [{'id': 'post', 'kind': 'http.request', 'config': {'connection': 'http', 'method': 'POST',
                 'body': name, 'timeoutMs': 30000}}], 'constraints': []}, 'dataFlows': []}
         assert request(index, '/packages/' + name + '/versions/1', 'PUT', package)[0] == 200

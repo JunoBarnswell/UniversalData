@@ -77,17 +77,19 @@ static ud_status sql_record(void *user, ud_batch *batch, ud_status code, uint32_
     if (!status)
         status = ud_error_append(
             &source->context.errors, source->source_errors,
-            &(ud_record_error){.struct_size = sizeof(ud_record_error),
-                               .abi_version = UD_ABI_VERSION,
-                               .source = identity,
-                               .rule = {"sql.convert", 11},
-                               .rule_version = 1,
-                               .column = column < count ? fields[column].identity : (ud_id){0},
-                               .code = code,
-                               .policy = source->records.policy,
-                               .input_format = {"SQLRawCells/Wire10", 18},
-                               .raw = raw.data,
-                               .raw_length = (uint32_t)raw.size});
+            &(ud_record_error){
+                .struct_size = sizeof(ud_record_error),
+                .abi_version = UD_ABI_VERSION,
+                .source = identity,
+                .rule = {"sql.convert", 11},
+                .rule_version = 1,
+                .column = column < count ? fields[column].identity : (ud_id){0},
+                .code = code,
+                .policy = source->records.policy,
+                .input_format = {"SQLRawCells/Wire" UD_PROTOCOL_VERSION_TEXT,
+                                 sizeof("SQLRawCells/Wire" UD_PROTOCOL_VERSION_TEXT) - 1},
+                .raw = raw.data,
+                .raw_length = (uint32_t)raw.size});
     ud_bytes_clear(&raw);
     return status;
 }
@@ -264,6 +266,43 @@ ud_status ud_builtin_source_raw(builtin *b, ud_batch **out) {
                  : b->kind == JSON_SOURCE ? ud_json_reader_next(b->reader, &raw, &b->source_errors)
                  : b->kind == XLSX_SOURCE ? ud_xlsx_reader_next(b->xlsx, &raw, &b->xlsx_rejected)
                                           : ud_connection_lease_read_next(b->lease, &raw);
+    if (!status && b->kind == XLSX_SOURCE && b->xlsx_rejected) {
+        ud_batch *record = NULL;
+        ud_status code = UD_PARSE;
+        ud_id column = {0};
+        status = ud_xlsx_reader_rejected_record(b->xlsx, &code, &column, &record);
+        int include = 0;
+        const ud_json *flag = ud_member(b->config, "includeInput");
+        if (flag) {
+            const char *text = NULL;
+            uint32_t n = 0;
+            if (!ud_json_text(flag, &text, &n))
+                include = n == 4 && !memcmp(text, "true", 4);
+        }
+        if (!status)
+            status = ud_error_batch(&b->context.errors, include, raw->rows, &b->source_errors);
+        if (!status)
+            status = ud_error_append(
+                &b->context.errors, b->source_errors,
+                &(ud_record_error){
+                    .struct_size = sizeof(ud_record_error),
+                    .abi_version = UD_ABI_VERSION,
+                    .input = record,
+                    .rule = {"xlsx.cell", 9},
+                    .rule_version = 2,
+                    .column = column,
+                    .code = code,
+                    .policy = UD_ERROR_REDIRECT,
+                    .input_format = {"XLSXRawCells/Wire" UD_PROTOCOL_VERSION_TEXT,
+                                     sizeof("XLSXRawCells/Wire" UD_PROTOCOL_VERSION_TEXT) - 1}});
+        ud_batch_destroy(record);
+        ud_batch_destroy(raw);
+        raw = NULL;
+        b->xlsx_rejected = 0;
+        if (!status)
+            status = ud_batch_create(b->context.memory, b->schema->schema->fields,
+                                     b->schema->columns, 0, &raw);
+    }
     if (!status && b->actual_schema) {
         status = ud_schema_map(b->context.memory, raw, b->schema, b->schema_policy, out);
         ud_batch_destroy(raw);

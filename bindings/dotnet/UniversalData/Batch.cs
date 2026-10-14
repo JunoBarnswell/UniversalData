@@ -4,6 +4,8 @@ using System.Text;
 
 namespace UniversalData;
 
+public readonly record struct TemporalValue(long Ticks100Nanoseconds,int? OffsetMinutes);
+
 public enum Rounding
 { Exact = 0, TowardZero = 1, HalfEven = 2, HalfAway = 3, Floor = 4, Ceiling = 5 }
 
@@ -59,6 +61,8 @@ public sealed class Batch : IDisposable
     { lock (execution) { return Scalar(row, column, DataType.UInt64).Unsigned; } }
     public Duration GetDuration(uint row, uint column)
     { lock (execution) { return new(unchecked((long)Scalar(row, column, DataType.Duration).Unsigned)); } }
+    public TemporalValue GetDateTime(uint row,uint column)
+    { lock(execution) {var value=Scalar(row,column,DataType.DateTime).DateTime;return new(value.Ticks,value.HasOffset!=0?value.OffsetMinutes:null);} }
     public Interval GetInterval(uint row, uint column)
     { lock (execution) { var value = Scalar(row, column, DataType.Interval).Interval; return new(value.Months, value.Days, value.Microseconds); } }
     public bool IsFieldPresent(uint row, uint column)
@@ -193,6 +197,8 @@ internal static partial class Native
     [StructLayout(LayoutKind.Sequential)]
     internal struct IntervalValue { internal int Months, Days; internal long Microseconds; }
     [StructLayout(LayoutKind.Sequential)]
+    internal struct DateTimeValue { internal long Ticks; internal int OffsetMinutes, HasOffset; }
+    [StructLayout(LayoutKind.Sequential)]
     internal struct ScalarValue
     {
         internal int Type, IsNull;
@@ -206,6 +212,7 @@ internal static partial class Native
         internal uint ChildCount;
         internal IntervalValue Interval;
         internal int IsAbsent;
+        internal DateTimeValue DateTime;
     }
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_get(BatchHandle batch, uint row, uint column, out ScalarValue value);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_batch_has_absent(BatchHandle batch);

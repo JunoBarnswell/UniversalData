@@ -1,6 +1,6 @@
 {
   "generatedFrom": "metadata/product.json",
-  "goalVersion": 10,
+  "goalVersion": 11,
   "completionRule": "All 50 applicable items require current source and behavior evidence; ETL-039/040 are NotApplicable. Missing environments are Blocked.",
   "automaticMergeOrReleaseAuthorized": false,
   "items": [

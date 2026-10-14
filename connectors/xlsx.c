@@ -91,7 +91,9 @@ struct ud_xlsx_reader {
     uint32_t first_col, last_col, first_row, last_row, row_number, cell_column, cell_style,
         row_last_column, styles[4096], style_count, current_style;
     uint64_t rows, cells, formulas, missing_formula, rejected, max_cells, max_string, max_xml;
-    ud_value *values;
+    ud_value *values, *raw_values;
+    ud_status record_error;
+    uint32_t error_column;
     ud_bytes content, cell, formula_text;
     int row_open, cell_open, done, error_policy, result_rejected, deferred, range_finished;
     char cell_type[16];
@@ -646,8 +648,8 @@ static ud_status cell_value(ud_xlsx_reader *r, const char *type, uint32_t target
             else
                 ud_free(binary);
         }
-    } else if (!s && (f->type == UD_TIMESTAMP || f->type == UD_DATE32) && !string &&
-               (!type || strcmp(type, "d"))) {
+    } else if (!s && (f->type == UD_TIMESTAMP || f->type == UD_DATE32 || f->type == UD_DATETIME) &&
+               !string && (!type || strcmp(type, "d"))) {
         ud_decimal128 d;
         s = ud_decimal_parse(raw.text, raw.text_length, 38, 15, UD_ROUND_HALF_EVEN, &d);
         ud_decimal128 days = {0};
@@ -684,6 +686,14 @@ static ud_status cell_value(ud_xlsx_reader *r, const char *type, uint32_t target
                                   .integer = f->type == UD_DATE32
                                                  ? day - offset + (!r->date1904 && day < 60 ? 1 : 0)
                                                  : micro};
+                if (f->type == UD_DATETIME) {
+                    ud_field from = {.type = UD_TIMESTAMP};
+                    ud_value value = {.type = UD_TIMESTAMP, .integer = micro};
+                    ud_datetime datetime;
+                    s = ud_datetime_from_value(&from, &value, &datetime);
+                    if (!s)
+                        s = ud_datetime_to_value(f, datetime, out);
+                }
             }
         }
     } else if (!s && f->type == UD_BOOL && type && !strcmp(type, "b")) {
@@ -772,9 +782,12 @@ static void XMLCALL start(void *user, const char *qualified, const char **atts) 
             r->row_number = row;
             r->row_open = 1;
             r->row_error = 0;
+            r->record_error = UD_OK;
+            r->error_column = UINT32_MAX;
             r->row_last_column = 0;
             for (uint32_t i = 0; i < r->schema->columns; i++) {
                 ud_clear_value(r->values + i);
+                ud_clear_value(r->raw_values + i);
                 r->values[i] = (ud_value){.type = r->schema->column[i].field.type, .is_null = 1};
             }
         } else if (!strcmp(name, "c")) {
@@ -872,12 +885,24 @@ static void XMLCALL end(void *user, const char *qualified) {
                 r->cell_column >= r->first_col && r->cell_column <= r->last_col &&
                 !(r->header && r->row_number == r->first_row)) {
                 uint32_t column = r->cell_column - r->first_col;
-                ud_status s = cell_value(r, r->cell_type, column, r->values + column);
+                ud_value raw_cell = {0};
+                ud_status s = cell_text(r, r->cell_type, &raw_cell);
+                if (!s) {
+                    raw_cell.type = UD_BINARY;
+                    s = ud_copy_value(r->ctx, &raw_cell, r->raw_values + column, 0);
+                }
+                if (!s)
+                    s = cell_value(r, r->cell_type, column, r->values + column);
                 if (s) {
                     snprintf(r->location, sizeof(r->location), "row:%u/column:%u", r->row_number,
                              r->cell_column);
-                    if ((r->formula_policy == 1 && r->formula && !r->cell.size) ||
-                        r->error_policy == 1) {
+                    if (ud_record_error_recoverable(s) &&
+                        ((r->formula_policy == 1 && r->formula && !r->cell.size) ||
+                         r->error_policy == 1)) {
+                        if (!r->record_error) {
+                            r->record_error = s;
+                            r->error_column = column;
+                        }
                         r->row_error = 1;
                         ud_clear_value(r->values + column);
                         r->values[column] =
@@ -911,13 +936,10 @@ static void XMLCALL end(void *user, const char *qualified) {
                     if (!s)
                         s = ud_batch_append(r->result, r->values, r->schema->columns);
                     if (!s) {
-                        char symbol[32];
-                        snprintf(symbol, sizeof(symbol), "%u", r->row_number);
                         ud_row_info info = {0};
-                        char scope[33];
-                        ud_id_format(r->scope, scope);
-                        s = ud_id_make(r->ctx, (ud_string){scope, 32},
-                                       (ud_string){symbol, (uint32_t)strlen(symbol)}, &info.id);
+                        s = ud_row_info_source(
+                            r->scope,
+                            (uint64_t)r->row_number - r->first_row - (r->header ? 1u : 0u), &info);
                         if (!s)
                             s = ud_batch_set_row_info(r->result, r->result->rows - 1, &info);
                     }
@@ -1071,7 +1093,8 @@ ud_status ud_xlsx_reader_open(ud_context *ctx, const char *path, const ud_field 
         s = flush_strings(r);
     if (!s) {
         r->values = ud_alloc(ctx, columns * sizeof(*r->values));
-        if (!r->values)
+        r->raw_values = ud_alloc(ctx, columns * sizeof(*r->raw_values));
+        if (!r->values || !r->raw_values)
             s = UD_RESOURCE;
     }
     if (!s) {
@@ -1147,12 +1170,9 @@ ud_status ud_xlsx_reader_next(ud_xlsx_reader *r, ud_batch **out, int32_t *reject
         if (!s)
             s = ud_batch_append(r->result, r->values, r->schema->columns);
         if (!s) {
-            char scope[33], row[32];
-            ud_id_format(r->scope, scope);
-            snprintf(row, sizeof(row), "%u", r->row_number);
             ud_row_info info = {0};
-            s = ud_id_make(r->ctx, (ud_string){scope, 32}, (ud_string){row, (uint32_t)strlen(row)},
-                           &info.id);
+            s = ud_row_info_source(
+                r->scope, (uint64_t)r->row_number - r->first_row - (r->header ? 1u : 0u), &info);
             if (!s)
                 s = ud_batch_set_row_info(r->result, 0, &info);
         }
@@ -1229,6 +1249,11 @@ void ud_xlsx_reader_close(ud_xlsx_reader *r) {
     if (r->values)
         for (uint32_t i = 0; i < r->columns; i++)
             ud_clear_value(r->values + i);
+    if (r->raw_values) {
+        for (uint32_t j = 0; j < r->columns; j++)
+            ud_clear_value(r->raw_values + j);
+        ud_free(r->raw_values);
+    }
     ud_free(r->values);
     ud_free(r->sheet);
     ud_free(r->relation);
@@ -1858,4 +1883,47 @@ ud_status ud_xlsx_writer_close(ud_xlsx_writer *w) {
     ud_bytes_clear(&w->tail);
     ud_free(w);
     return s;
+}
+
+ud_status ud_xlsx_reader_rejected_record(const ud_xlsx_reader *r, ud_status *code, ud_id *column,
+                                         ud_batch **out) {
+    if (!r || !code || !column || !out || !r->result_rejected)
+        return UD_INVALID;
+    *out = NULL;
+    *code = r->record_error ? r->record_error : UD_PARSE;
+    *column = r->error_column < r->schema->columns
+                  ? r->schema->column[r->error_column].field.identity
+                  : (ud_id){0};
+    ud_field *fields = ud_alloc(r->ctx, r->columns * sizeof(*fields));
+    ud_value *values = ud_alloc(r->ctx, r->columns * sizeof(*values));
+    ud_status status = fields && values ? UD_OK : UD_RESOURCE;
+    for (uint32_t j = 0; !status && j < r->columns; j++) {
+        const ud_field *f = r->schema->schema->fields + j;
+        fields[j] = (ud_field){.name = f->name,
+                               .name_length = f->name_length,
+                               .type = UD_BINARY,
+                               .nullable = 1,
+                               .identity = f->identity};
+        values[j] = r->raw_values[j];
+        values[j].type = UD_BINARY;
+        if (!values[j].text)
+            values[j].is_null = 1;
+    }
+    if (!status)
+        status = ud_batch_create(r->ctx, fields, r->columns, 1, out);
+    if (!status)
+        status = ud_batch_append(*out, values, r->columns);
+    ud_row_info info;
+    if (!status)
+        status = ud_row_info_source(
+            r->scope, (uint64_t)r->row_number - r->first_row - (r->header ? 1u : 0u), &info);
+    if (!status)
+        status = ud_batch_set_row_info(*out, 0, &info);
+    ud_free(values);
+    ud_free(fields);
+    if (status) {
+        ud_batch_destroy(*out);
+        *out = NULL;
+    }
+    return status;
 }

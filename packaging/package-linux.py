@@ -128,7 +128,7 @@ files = [dict(path=p.relative_to(output).as_posix(), bytes=p.stat().st_size, sha
 features = {key: ('UD_WITH_' + key.upper() + ':BOOL=ON') in cache for key in ('sqlite', 'postgresql', 'odbc', 'mysql', 'mariadb', 'oracle_oci', 'arrow_files', 'http', 'xml', 'network')}
 if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache:
     assert all(features.values()), 'Complete product dependencies cannot silently downgrade'
-manifest = dict(schemaVersion=10,protocolVersion=product['protocolVersion'], buildProfile='PRODUCT' if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache else 'CORE', sdkVersion=version, abiVersion=product['abiVersion'],
+manifest = dict(schemaVersion=product['protocolVersion'],protocolVersion=product['protocolVersion'], buildProfile='PRODUCT' if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache else 'CORE', sdkVersion=version, abiVersion=product['abiVersion'],
                 configuration='Release', runtimeIdentifier='linux-x64', sourceFingerprint=fingerprint,
                 capabilities=features, managedRuntime='Microsoft.AspNetCore.App 10', hosts=['cli','worker','management','designer'],
                 nativeRuntimes=runtimes, nugetDependencies=nuget_dependencies, systemDependencies=sorted(external), optionalConnectors=plugins, files=files)

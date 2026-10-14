@@ -457,8 +457,6 @@ static ud_status perform_task(ud_activation *e, const ud_json *task) {
     if (!s)
         s = ud_debug_boundary(e, UD_DEBUG_TASK);
     if (!s)
-        s = ud_transaction_enter(e, ud_member(task, "transaction"), 0);
-    if (!s)
         s = ud_control_handler(e, ud_member(handlers, "before"), "before");
     if (!s && ud_named(kind, "sequence"))
         s = ud_control_execute(e, ud_member(task, "children"));
@@ -569,10 +567,6 @@ static ud_status perform_task(ud_activation *e, const ud_json *task) {
         if (secondary == UD_COMMIT_UNKNOWN)
             s = secondary;
     }
-    s = ud_transaction_leave(e, s);
-    ud_status leaked = ud_connections_release_activation(e);
-    if (!s && leaked)
-        s = leaked;
     if (entered)
         e->depth--;
     ud_scope_leave(e, &scope);
@@ -600,7 +594,37 @@ static ud_status task_result(task_run *run) {
                 ud_json_uint(ud_member(retry, "backoffMs"), &backoff);
         }
         for (uint64_t attempt = 0; attempt < attempts; attempt++) {
-            s = perform_task(a, run->definition);
+            s = ud_transaction_enter(a, ud_member(run->definition, "transaction"), 0);
+            /* Resolving an interrupted commit can publish the task's completion
+             * snapshot. Restore it before any handler or component is invoked. */
+            if (!s && ud_transaction_recovered(a)) {
+                s = ud_checkpoint_task_begin(a, kind, &completed);
+                if (!s && !completed)
+                    s = UD_CORRUPT;
+            }
+            if (!s && !completed)
+                s = perform_task(a, run->definition);
+            /* Component leases must be closed before a success snapshot or
+             * prepare. The manager retains only coordinator-owned leases. */
+            ud_status leaked = ud_connections_release_activation(a);
+            if (!s && leaked)
+                s = leaked;
+            int pending = 0;
+            if (!s && !completed) {
+                ud_task_fact(a, UD_TASK_EXECUTED);
+                /* This snapshot joins the transaction's existing Journal facts
+                 * before prepare, so its publication and business commit have
+                 * the same recovery decision. Local scopes have been unwound. */
+                s = ud_checkpoint_task_done(a);
+                if (!s)
+                    pending = ud_transaction_task_done(a);
+            }
+            s = ud_transaction_leave(a, s);
+            leaked = ud_connections_release_activation(a);
+            if (!s && leaked)
+                s = leaked;
+            if (!s && !completed && a->execution->journal && !pending)
+                ud_task_fact(a, UD_TASK_DURABLE);
             if (s != UD_TRANSIENT || attempt + 1 == attempts)
                 break;
             ud_status waiting = ud_wait(a->execution->ctx, (uint32_t)backoff);
@@ -610,12 +634,6 @@ static ud_status task_result(task_run *run) {
                 s = waiting;
                 break;
             }
-        }
-        if (!s) {
-            ud_task_fact(a, UD_TASK_EXECUTED);
-            s = ud_checkpoint_task_done(a);
-            if (!s && a->execution->journal && !ud_transaction_task_done(a))
-                ud_task_fact(a, UD_TASK_DURABLE);
         }
     }
     if (completed)

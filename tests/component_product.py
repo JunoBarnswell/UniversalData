@@ -23,10 +23,10 @@ with tempfile.TemporaryDirectory(prefix="ud-component-product-") as folder:
         connections = [dict(id="source", driver="file", resource=str(source)), *extra]
         for output in ("left", "right", "errors"):
             connections.append(dict(id=output, driver="file", resource=str(root / (name + "-" + output))))
-        document = dict(version=10, id=name, connections=connections,
+        document = dict(version=11, id=name, connections=connections,
             controlFlow=dict(tasks=[dict(id="flow", kind="dataFlow", config=dict(pipeline="flow"))], constraints=[]),
             dataFlows=[dict(id="flow", components=[node("source", "file.ndjson.source", connection="source",
-                schema=dict(version=10, fields=fields), batchSize=7), *components], paths=paths)])
+                schema=dict(version=11, fields=fields), batchSize=7), *components], paths=paths)])
         package = root / (name + ".json")
         package.write_text(json.dumps(document))
         result = subprocess.run([sys.argv[1], str(package), "0"], capture_output=True, text=True, timeout=40)

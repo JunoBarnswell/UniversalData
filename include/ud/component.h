@@ -95,6 +95,7 @@ typedef struct ud_component_context {
  * schema boundaries. These callbacks cannot emit or schedule MORE/END; Native
  * owns control propagation and checkpoints the resulting component state. */
 #define UD_COMPONENT_CONTROL_EVENTS UINT64_C(0x0004000000000000)
+#define UD_FUNCTION_CONTEXTUAL UINT64_C(0x0002000000000000)
 #define UD_FUNCTION_PURE UINT64_C(0x2000000000000000)
 #define UD_FUNCTION_DETERMINISTIC UINT64_C(0x1000000000000000)
 struct ud_component_plan {
@@ -140,11 +141,12 @@ typedef struct ud_component_descriptor {
     void (*dispose)(void *, ud_status outcome);
     ud_status (*invoke)(void *, const ud_component_context *, ud_string config); /* Task only. */
     uint32_t min_arguments, max_arguments; /* FUNCTION only, <= 16. */
-    /* Pure binding borrows argument metadata; evaluator returns owned pointer
+    /* Pure binding borrows argument metadata and returns one owned, empty,
+     * single-field Batch. Native consumes it on every outcome. Evaluator returns owned pointer
      * payloads allocated in memory. Expression releases them with ud_free. */
-    ud_status (*function_bind)(void *, const ud_field *, uint32_t, ud_field *);
-    ud_status (*function_evaluate)(void *, ud_context *, const ud_value *, uint32_t,
-                                   const ud_field *, ud_value *);
+    ud_status (*function_bind)(void *, ud_context *, const ud_field *, uint32_t, ud_batch **);
+    ud_status (*function_evaluate)(void *, ud_context *, const ud_field *, const ud_value *,
+                                   uint32_t, const ud_field *, ud_value *);
     /* Optional task lifecycle: prepare returns invoke's instance, finish commits,
      * cancel is safe concurrently, and dispose consumes exactly once. */
     void (*cancel)(void *);

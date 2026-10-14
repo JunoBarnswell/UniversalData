@@ -4,7 +4,7 @@ using UniversalData;
 using UniversalData.Hosting;
 using UniversalData.Management;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args=args,ContentRootPath=AppContext.BaseDirectory });
 builder.Services.ConfigureHttpJsonOptions(options => {
     options.SerializerOptions.RespectNullableAnnotations = true;
     options.SerializerOptions.RespectRequiredConstructorParameters = true;
@@ -48,10 +48,18 @@ async Task<IResult> Inspect(HttpContext context,string mode,JsonElement package,
     var request = new WorkerRequest(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),mode,scoped,identity,text,Payload:payload,Isolated:scoped.RequiresIsolation(text));
     return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,request,context.RequestAborted));
 }
-const string empty = "{\"version\":10,\"id\":\"component-catalog\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
+const string empty = "{\"version\":11,\"id\":\"component-catalog\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
 api.MapGet("/components",async (HttpContext context) => {
     Identity(context).Require("component.read","*"); using var document = JsonDocument.Parse(empty); var scoped = Scope(context);
     return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"components",scoped,Identity(context),empty),context.RequestAborted));
+});
+api.MapGet("/expression-language",async (HttpContext context) => {
+    Identity(context).Require("component.read","*");using var document=JsonDocument.Parse(empty);var scoped=Scope(context);
+    return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"expressionLanguage",scoped,Identity(context),empty),context.RequestAborted));
+});
+api.MapPost("/expression",async (ExpressionRequest request,HttpContext context) => {
+    var document=JsonNode.Parse(request.Package.GetRawText())!.AsObject();document["controlFlow"]=JsonNode.Parse("{\"tasks\":[],\"constraints\":[]}");document["dataFlows"]=new JsonArray();document.Remove("layout");using var package=JsonDocument.Parse(document.ToJsonString());
+    return await Inspect(context,"expression",package.RootElement,JsonSerializer.SerializeToElement(new {request.Schema,request.Source},HostPolicy.JsonOptions));
 });
 api.MapPost("/ports",async (PortRequest request,HttpContext context) => {
     var document = JsonNode.Parse(request.Package.GetRawText())!.AsObject();
@@ -134,3 +142,5 @@ sealed record DiscoveryRequest(JsonElement Package,string Connection,string? Tab
 sealed record ScriptRequest(string Source);
 sealed record RetentionRequest(ulong BeforeMs,uint Limit = 1000);
 sealed record PortRequest(JsonElement Package,string PipelineId,string ComponentId,string Kind,JsonElement Configuration);
+
+record ExpressionRequest(JsonElement Package,JsonElement Schema,string Source);

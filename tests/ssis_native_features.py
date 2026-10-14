@@ -2,7 +2,7 @@
 import argparse, collections, copy, hashlib, json, pathlib, sqlite3, subprocess, tempfile, time, zipfile
 P=argparse.ArgumentParser();P.add_argument('runner');P.add_argument('sqlite');P.add_argument('--evidence');P.add_argument('--million',action='store_true');A=P.parse_args();results=[]
 def field(name,type='int64',nullable=False,**extra):return dict(name=name,type=type,nullable=nullable,**extra)
-def schema(*fields):return dict(version=10,fields=list(fields))
+def schema(*fields):return dict(version=11,fields=list(fields))
 def node(id,component,**config):return dict(id=id,component=component,config=config)
 def edge(a,b,output=0,input=0):return dict(**{'from':a,'to':b,'output':output,'input':input})
 def rows(path):return [json.loads(l) for l in path.read_text().splitlines()]
@@ -12,7 +12,7 @@ def source(root,name,records,s,batch=37,ordering=None):
  return n,dict(id=name,driver='file',resource=str(p))
 def package(root,nodes,paths,connections):
  (root/'spill').mkdir(exist_ok=True);(root/'state').mkdir(exist_ok=True)
- return dict(version=10,id='ssis-native',policy=dict(maxConcurrency=8,buffers=dict(connection='spill',residentBytes=8192,workingBytes=4194304,spillBytes=1000000000,maxBlocks=20000)),connections=connections+[dict(id='spill',driver='file',resource=str(root/'spill'))],controlFlow=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='flow'))],constraints=[]),dataFlows=[dict(id='flow',components=nodes,paths=paths)])
+ return dict(version=11,id='ssis-native',policy=dict(maxConcurrency=8,buffers=dict(connection='spill',residentBytes=8192,workingBytes=4194304,spillBytes=1000000000,maxBlocks=20000)),connections=connections+[dict(id='spill',driver='file',resource=str(root/'spill'))],controlFlow=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='flow'))],constraints=[]),dataFlows=[dict(id='flow',components=nodes,paths=paths)])
 def sink(root,id):return node(id,'file.ndjson.destination',connection=id),dict(id=id,driver='file',resource=str(root/(id+'.ndjson')))
 def run(root,p,name,expected=0,workers=4,resume=False,kill=0,after=1,component='',memory=67108864):
  path=root/'package.json';path.write_text(json.dumps(p));start=time.monotonic();command=[A.runner,str(path),str(root/'state'),str(int(resume)),str(workers),str(kill),str(after),component,str(memory)]
@@ -81,13 +81,13 @@ with tempfile.TemporaryDirectory(prefix='ud-ssis-native-') as folder:
  records=[dict(bk=1,name='old-name',history='old-history',fixed='fixed',time='2026-02-01T00:00:00Z'),dict(bk=1,name='new-name',history='old-history',fixed='fixed',time='2026-03-01T00:00:00Z'),dict(bk=1,name='latest-name',history='new-history',fixed='fixed',time='2026-04-01T00:00:00Z'),dict(bk=1,name='latest-name',history='new-history',fixed='violation',time='2026-05-01T00:00:00Z'),dict(bk=2,name='two',history='new',fixed='fixed',time='2026-04-01T00:00:00Z')]
  d=root/'scd';p=scd_fixture(d,records);run(d,p,'scd-type1-type2-new-fixed')
  with sqlite3.connect(d/'dimension.db') as db:
-  actual=db.execute('SELECT bk,t1,t2,current,valid_from,valid_to,version FROM dim ORDER BY bk,version').fetchall();assert len(actual)==3 and actual[0][1]=='new-name' and actual[0][3]==0 and actual[0][5]==1775001600000000 and actual[1][1:4]==('latest-name','new-history',1) and actual[1][-1]==2,actual;receipts=db.execute('SELECT count(*) FROM ud_sdk_receipts_v10').fetchone()[0]
+  actual=db.execute('SELECT bk,t1,t2,current,valid_from,valid_to,version FROM dim ORDER BY bk,version').fetchall();assert len(actual)==3 and actual[0][1]=='new-name' and actual[0][3]==0 and actual[0][5]==1775001600000000 and actual[1][1:4]==('latest-name','new-history',1) and actual[1][-1]==2,actual;receipts=db.execute('SELECT count(*) FROM ud_sdk_receipts_v11').fetchone()[0]
  assert len(rows(d/'unchanged.ndjson'))==1 and len(rows(d/'bad.ndjson'))==1
  run(d,p,'scd-receipt-resume',resume=True)
- with sqlite3.connect(d/'dimension.db') as db:assert db.execute('SELECT count(*) FROM dim').fetchone()[0]==3 and db.execute('SELECT count(*) FROM ud_sdk_receipts_v10').fetchone()[0]==receipts
+ with sqlite3.connect(d/'dimension.db') as db:assert db.execute('SELECT count(*) FROM dim').fetchone()[0]==3 and db.execute('SELECT count(*) FROM ud_sdk_receipts_v11').fetchone()[0]==receipts
  d=root/'scd-crash';p=scd_fixture(d,records);run(d,p,'scd-kill-after-commit',kill=4,after=1,component='target');run(d,p,'scd-crash-resume',resume=True)
  with sqlite3.connect(d/'dimension.db') as db:assert db.execute('SELECT count(*) FROM dim').fetchone()[0]==3
  if A.million:
   d=root/'million-merge';d.mkdir();s=schema(field('lk'),field('lv'));left=[dict(lk=7,lv=i) for i in range(1000000)];l,lc=source(d,'left',left,s,251,dict(keys=[0],stable=True));del left;r,rc=source(d,'right',[dict(rk=7,rv=1)],schema(field('rk'),field('rv')),1,dict(keys=[0],stable=True));out,oc=sink(d,'out');p=package(d,[l,r,node('join','mergeJoin',leftKeys=['lk'],rightKeys=['rk']),out],[edge('left','join'),edge('right','join',input=1),edge('join','out')],[lc,rc,oc]);facts=run(d,p,'million-duplicate-group-low-budget',workers=8,memory=16777216);assert sum(1 for _ in (d/'out.ndjson').open())==1000000
-if A.evidence:pathlib.Path(A.evidence).write_text(json.dumps(dict(abi=10,platform='Linux',cases=results),ensure_ascii=False,indent=2)+'\n')
+if A.evidence:pathlib.Path(A.evidence).write_text(json.dumps(dict(abi=11,platform='Linux',cases=results),ensure_ascii=False,indent=2)+'\n')
 print('Native N1–N5 acceptance passed:',len(results),'cases',flush=True)

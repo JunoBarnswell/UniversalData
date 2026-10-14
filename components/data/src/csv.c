@@ -96,7 +96,7 @@ static ud_status layout_open(ud_context *context, const ud_csv_options *options,
     if (!status)
         status = ud_json_text(ud_json_find(doc, "nullMarker", 10), &out->marker.data,
                               &out->marker.length);
-    if (!status && (!out->marker.length || !ud_utf8_valid(out->marker.data, out->marker.length)))
+    if (!status && !ud_utf8_valid(out->marker.data, out->marker.length))
         status = UD_SCHEMA;
     out->header = csv_bool(ud_json_find(doc, "header", 6), 1);
     out->trim = csv_bool(ud_json_find(doc, "trimFixedPadding", 16), 1);

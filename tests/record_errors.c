@@ -12,7 +12,7 @@ static int write_fixture(const char *path, const char *text) {
 static int records(ud_batch *good, ud_batch *errors, uint32_t good_rows, uint32_t bad_rows,
                    int raw) {
     CHECK(ud_batch_rows(good) == good_rows && ud_batch_rows(errors) == bad_rows);
-    CHECK(ud_batch_columns(errors) == (raw ? 14u : 13u));
+    CHECK(ud_batch_columns(errors) == (raw ? 16u : 15u));
     for (uint32_t row = 0; row < bad_rows; row++) {
         ud_row_info info;
         OK(ud_batch_row_info(errors, row, &info));
@@ -21,7 +21,7 @@ static int records(ud_batch *good, ud_batch *errors, uint32_t good_rows, uint32_
         OK(ud_batch_get(errors, row, 10, &value));
         CHECK(value.text_length);
         if (raw) {
-            OK(ud_batch_get(errors, row, 13, &value));
+            OK(ud_batch_get(errors, row, 15, &value));
             CHECK(value.text_length);
         }
     }

@@ -23,7 +23,8 @@ enum {
     RECORD_TRANSACTION_FACT,
     RECORD_SCHEMA_EVENT,
     RECORD_FILE_BASE,
-    RECORD_FILE_PREPARED
+    RECORD_FILE_PREPARED,
+    RECORD_PACKAGE_DONE
 };
 typedef struct checkpoint_journal {
     ud_execution *execution;
@@ -60,7 +61,7 @@ static ud_status append(checkpoint_journal *j, ud_activation *e, uint64_t kind, 
     ud_journal_record records[2] = {{kind, key, owner, payload}, {0, {0}, e->task_id, {0}}};
     int tentative = kind == RECORD_TASK_BEGIN || kind == RECORD_TASK_DONE ||
                     kind == RECORD_BATCH_DONE || kind == RECORD_ENUMERATOR ||
-                    kind == RECORD_CURSOR || kind == RECORD_EPOCH;
+                    kind == RECORD_CURSOR || kind == RECORD_EPOCH || kind == RECORD_PACKAGE_DONE;
     ud_string transaction = {0};
     uint64_t order = 0;
     ud_status positioned =
@@ -199,6 +200,19 @@ static ud_status snapshot(ud_activation *e, ud_bytes *bytes) {
         }
         UD_TRY(ud_bytes_put(bytes, "]", 1));
     }
+    /* The success snapshot is tentative until the coordinator publishes it.
+     * Account for the owner's pending effects without mutating live counters
+     * before commit. Children never include the enclosing owner's effects. */
+    uint64_t pending = 0, pending_errors = 0;
+    ud_transaction_pending(e, &pending, &pending_errors);
+    uint64_t committed = atomic_load(&e->committed_rows),
+             acknowledged = atomic_load(&e->acknowledged_rows),
+             committed_errors = atomic_load(&e->committed_error_rows),
+             acknowledged_errors = atomic_load(&e->acknowledged_error_rows);
+    if (pending > UINT64_MAX - committed || pending > UINT64_MAX - acknowledged ||
+        pending_errors > UINT64_MAX - committed_errors ||
+        pending_errors > UINT64_MAX - acknowledged_errors)
+        return UD_OVERFLOW;
     char metrics[512];
     int n =
         snprintf(metrics, sizeof(metrics),
@@ -208,11 +222,11 @@ static ud_status snapshot(ud_activation *e, ud_bytes *bytes) {
                  (unsigned long long)e->invocation, (unsigned long long)atomic_load(&e->input_rows),
                  (unsigned long long)atomic_load(&e->output_rows),
                  (unsigned long long)atomic_load(&e->rejected_rows),
-                 (unsigned long long)atomic_load(&e->committed_rows),
-                 (unsigned long long)atomic_load(&e->acknowledged_rows),
+                 (unsigned long long)(committed + pending),
+                 (unsigned long long)(acknowledged + pending),
                  (unsigned long long)atomic_load(&e->error_rows),
-                 (unsigned long long)atomic_load(&e->committed_error_rows),
-                 (unsigned long long)atomic_load(&e->acknowledged_error_rows));
+                 (unsigned long long)(committed_errors + pending_errors),
+                 (unsigned long long)(acknowledged_errors + pending_errors));
     UD_TRY(ud_bytes_put(bytes, metrics, (size_t)n - 1));
     UD_TRY(ud_bytes_put(bytes, ",\"rules\":", 9));
     UD_TRY(ud_rule_facts_json(e->rule_facts, bytes));
@@ -298,7 +312,7 @@ static ud_status file_record(checkpoint_journal *j, ud_activation *a, uint64_t k
 static ud_status restore_fact(void *user, uint64_t kind, ud_string key, const ud_json *payload) {
     checkpoint_journal *j = user;
     ud_execution *e = j->execution;
-    if (kind < RECORD_HEADER || kind > RECORD_FILE_PREPARED)
+    if (kind < RECORD_HEADER || kind > RECORD_PACKAGE_DONE)
         return UD_CORRUPT;
     if (kind == RECORD_SOURCE || kind == RECORD_FILE_DONE) {
         char *path = ud_strdup_n(e->ctx, key.data, key.length);
@@ -312,7 +326,7 @@ static ud_status restore_fact(void *user, uint64_t kind, ud_string key, const ud
     }
     if (kind == RECORD_TASK_BEGIN)
         atomic_fetch_add(&e->recovery_tasks, 1);
-    if (kind == RECORD_TASK_DONE) {
+    if (kind == RECORD_TASK_DONE || kind == RECORD_PACKAGE_DONE) {
         uint64_t input = 0, output = 0, rejected = 0;
         UD_TRY(ud_json_uint(ud_member(payload, "input"), &input));
         UD_TRY(ud_json_uint(ud_member(payload, "output"), &output));
@@ -333,8 +347,10 @@ static ud_status restore_fact(void *user, uint64_t kind, ud_string key, const ud
         atomic_fetch_add(&e->committed_error_rows, committed_errors);
         atomic_fetch_add(&e->acknowledged_error_rows, acknowledged_errors);
         UD_TRY(ud_rule_facts_restore(e, ud_member(payload, "rules"), 0));
-        atomic_fetch_add(&e->executed_tasks, 1);
-        atomic_fetch_add(&e->durable_tasks, 1);
+        if (kind == RECORD_TASK_DONE) {
+            atomic_fetch_add(&e->executed_tasks, 1);
+            atomic_fetch_add(&e->durable_tasks, 1);
+        }
     }
     return UD_OK;
 }
@@ -548,6 +564,39 @@ ud_status ud_checkpoint_task_done(ud_activation *e) {
     ud_mutex_unlock(&e->execution->journal_lock);
     checkpoint_after(e, result);
     return result;
+}
+ud_status ud_checkpoint_package_resume(ud_activation *activation, int *completed) {
+    *completed = 0;
+    checkpoint_journal *journal = activation->execution->journal;
+    if (!journal || !activation->execution->options.resume)
+        return UD_OK;
+    char identity[65];
+    UD_TRY(ud_activation_scope_identity(activation, identity));
+    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_CHECKPOINT_READ));
+    ud_mutex_lock(&activation->execution->journal_lock);
+    const ud_json *done = find(journal, RECORD_PACKAGE_DONE, (ud_string){identity,64});
+    ud_status status = done ? restore(activation, done) : UD_OK;
+    *completed = done != NULL;
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    return status;
+}
+ud_status ud_checkpoint_package_done(ud_activation *activation) {
+    checkpoint_journal *journal = activation->execution->journal;
+    if (!journal)
+        return UD_UNSUPPORTED;
+    char identity[65];
+    UD_TRY(ud_activation_scope_identity(activation, identity));
+    UD_TRY(checkpoint_before(activation, NULL));
+    ud_mutex_lock(&activation->execution->journal_lock);
+    ud_bytes payload = {.ctx = activation->execution->ctx};
+    ud_status status = snapshot(activation, &payload);
+    if (!status)
+        status = append(journal, activation, RECORD_PACKAGE_DONE, (ud_string){identity,64},
+                        (ud_string){(const char *)payload.data, (uint32_t)payload.size});
+    ud_bytes_clear(&payload);
+    ud_mutex_unlock(&activation->execution->journal_lock);
+    checkpoint_after(activation, status);
+    return status;
 }
 
 ud_status ud_checkpoint_source(ud_activation *e, const char *path) {

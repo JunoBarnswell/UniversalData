@@ -51,42 +51,16 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                        (b->load_mode == UD_LOAD_NATIVE && b->mode != UD_WRITE_APPEND)))
                 s = UD_UNSUPPORTED;
         }
-        ud_string before = {"before", 6};
-        if (!s && ud_member(b->config, "beforeField"))
-            s = ud_json_string(ud_member(b->config, "beforeField"), &before);
-        uint32_t n = in[0]->columns;
-        b->write_indices = ud_alloc(c->memory, n * sizeof(*b->write_indices));
-        ud_field *fields = ud_alloc(c->memory, n * sizeof(*fields));
-        if (!b->write_indices || !fields)
-            s = UD_RESOURCE;
-        uint32_t count = 0;
-        for (uint32_t i = 0; !s && i < n; i++) {
-            ud_field f = in[0]->column[i].field;
-            if (b->mode == UD_WRITE_CHANGESET && f.name_length == before.length &&
-                !memcmp(f.name, before.data, before.length)) {
-                if (f.type != UD_STRUCT)
-                    s = UD_SCHEMA;
-                else
-                    b->before_column = i;
-            } else {
-                b->write_indices[count] = i;
-                fields[count++] = f;
-            }
-        }
-        if (!s && b->before_column != UINT32_MAX) {
-            const ud_field *f = &in[0]->column[b->before_column].field;
-            if (f->child_count != count)
-                s = UD_SCHEMA;
-            for (uint32_t i = 0; !s && i < count; i++)
-                if (!ud_field_matches(f->children + i, fields + i, UD_FIELD_LAYOUT))
-                    s = UD_SCHEMA;
-        }
         if (!s) {
-            ud_batch_destroy(b->schema);
-            b->schema = NULL;
-            s = ud_batch_create(c->memory, fields, count, 0, &b->schema);
+            ud_batch *projection = NULL;
+            s = ud_builtin_sink_projection(c, b->config, in[0], b->mode, &projection,
+                                           &b->write_indices, &b->before_column);
+            if (!s) {
+                ud_batch_destroy(b->schema);
+                b->schema = projection;
+            } else
+                ud_batch_destroy(projection);
         }
-        ud_free(fields);
     }
     if (!s) {
         b->columns = b->schema->columns;
@@ -293,7 +267,12 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     }
     if (!s && kind == SQL_COMMAND)
         s = ud_builtin_sql_command_prepare(b);
-    if (!s && (kind == DERIVE || kind == SPLIT)) {
+    if (!s && kind == DERIVE) {
+        ud_batch *bound = NULL;
+        s = ud_derive_bind(c, b->config, in[0], &b->derive, &bound);
+        ud_batch_destroy(bound);
+    }
+    if (!s && kind == SPLIT) {
         const ud_json *columns = ud_member(b->config, "columns");
         const ud_json *branches = ud_member(b->config, "branches");
         b->expression_count =
@@ -332,27 +311,7 @@ static ud_status step(void *ptr, const ud_component_event *event) {
         ud_batch *batch = NULL;
         ud_status s = ud_builtin_source_next(b, &batch);
         if (!s) {
-            if (!s && kind == XLSX_SOURCE && b->xlsx_rejected) {
-                ud_batch *errors = NULL;
-                s = ud_batch_create(b->context.memory, b->errors->schema->fields,
-                                    b->errors->columns, batch->rows, &errors);
-                for (uint32_t row = 0; !s && row < batch->rows; row++)
-                    s = ud_error_append(&b->context.errors, errors,
-                                        &(ud_record_error){.struct_size = sizeof(ud_record_error),
-                                                           .abi_version = UD_ABI_VERSION,
-                                                           .input = batch,
-                                                           .row = row,
-                                                           .rule = (ud_string){"xlsx.cell", 9},
-                                                           .rule_version = 1,
-                                                           .column = (ud_id){0},
-                                                           .code = UD_PARSE,
-                                                           .policy = UD_ERROR_REDIRECT});
-                if (!s)
-                    s = ud_batch_seal(errors);
-                if (!s)
-                    s = b->context.emit(b->context.emit_user, 1, errors);
-                ud_batch_destroy(errors);
-            } else if (!s && batch->rows)
+            if (!s && batch->rows)
                 s = b->context.emit(b->context.emit_user, b->output_port, batch);
             else if (!s)
                 s = UD_MORE;
@@ -523,7 +482,10 @@ static const char *configuration_schema(int kind) {
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
                "\"delivery\":{\"type\":\"string\",\"enum\":[\"response\",\"receipt\"],"
                "\"default\":\"receipt\"},"
-               "\"table\":{\"type\":\"string\"},\"mode\":{\"type\":\"string\",\"enum\":[\"append\","
+               "\"mapping\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
+               "\"source\":{\"type\":\"string\"},\"target\":{\"type\":\"string\"}},\"required\":["
+               "\"source\",\"target\"],\"additionalProperties\":false}},\"table\":{\"type\":"
+               "\"string\"},\"mode\":{\"type\":\"string\",\"enum\":[\"append\","
                "\"upsert\",\"delete\",\"changeset\"]},\"loadMode\":{\"type\":\"string\","
                "\"enum\":[\"auto\",\"native\",\"parameters\"]},\"beforeField\":{\"type\":"
                "\"string\"},"
@@ -546,7 +508,9 @@ static const char *configuration_schema(int kind) {
                "\"required\":[\"connection\",\"statement\",\"parameters\"],"
                "\"additionalProperties\":false}";
     case CAST:
-        return "{\"type\":\"object\",\"properties\":{\"schema\":{\"type\":\"object\"},\"rounding\":"
+        return "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"},"
+               "\"truncationPolicy\":{\"type\":\"string\"},\"schema\":{\"type\":\"object\"},"
+               "\"rounding\":"
                "{\"type\":\"integer\"},\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{"
                "\"type\":\"boolean\"}},\"required\":[\"schema\"],\"additionalProperties\":false}";
     case DERIVE:
@@ -554,7 +518,8 @@ static const char *configuration_schema(int kind) {
                "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
                "\"required\":[\"columns\"],\"additionalProperties\":false}";
     case SPLIT:
-        return "{\"type\":\"object\",\"properties\":{\"condition\":{\"type\":\"object\"},"
+        return "{\"type\":\"object\",\"properties\":{\"condition\":{\"oneOf\":[{\"type\":"
+               "\"object\"},{\"type\":\"string\"}]},"
                "\"branches\":{\"type\":\"array\"},\"default\":{\"type\":\"string\"},"
                "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
                "\"additionalProperties\":false}";

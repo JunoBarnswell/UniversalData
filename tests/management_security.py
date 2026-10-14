@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
             status, result = request(name, '/auth/login', 'POST', {'subject': name, 'password': 'password-for-' + name})
             assert status == 200, (status, result)
             clients[name] = (clients[name][0], result['csrf'])
-        package = {'version': 10, 'id': 'protected-package', 'parameters': {'password': {'type': 'utf8'}},
+        package = {'version': 11, 'id': 'protected-package', 'parameters': {'password': {'type': 'utf8'}},
             'variables': {'counter': {'type': 'int64', 'default': 0}},
             'controlFlow': {'tasks': [{'id': 'set', 'kind': 'set', 'config': {'name': 'counter', 'value': {'literal': 1, 'type': 'int64'}}}], 'constraints': []}, 'dataFlows': []}
         assert request('reader-a', '/packages/protected-package/versions/1', 'PUT', package)[0] == 403

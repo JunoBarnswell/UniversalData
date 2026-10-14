@@ -9,7 +9,8 @@ int main(void) {
     ud_field schema[] = {{.name = "key", .name_length = 3, .type = UD_UTF8, .nullable = 1},
                          {.name = "amount", .name_length = 6, .type = UD_INT64, .nullable = 1}};
     const char *definition =
-        "{\"version\":10,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":0,"
+        "{\"version\":11,\"filter\":{\"op\":\"ge\",\"args\":[{\"column\":\"amount\"},{\"literal\":"
+        "0,"
         "\"type\":\"int64\"}]},\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\","
         "\"column\":\"amount\",\"name\":\"total\"},{\"function\":\"count\",\"column\":\"*\","
         "\"name\":\"rows\"},{\"function\":\"min\",\"column\":\"amount\",\"name\":\"smallest\"},{"

@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix="ud-catalog-") as temporary:
     run(root, "oldVersion")
     database = root / "catalog.sqlite3"
     with sqlite3.connect(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == (10 << 16) | 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == (11 << 16) | 1
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         original = connection.execute("SELECT digest FROM documents WHERE tenant='tenant-a' AND kind=2 AND id='test' AND revision='00000000000000000001'").fetchone()[0]
         connection.execute("UPDATE documents SET digest=zeroblob(32) WHERE tenant='tenant-a' AND kind=2 AND id='test' AND revision='00000000000000000001'")

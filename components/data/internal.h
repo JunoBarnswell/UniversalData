@@ -66,8 +66,16 @@ ud_status ud_encode_batch(ud_bytes *, const ud_batch *);
 ud_status ud_decode_batch(ud_bytes *, ud_batch **);
 ud_status ud_copy_value(ud_context *, const ud_value *, ud_value *, uint32_t depth);
 void ud_clear_value(ud_value *);
-ud_status ud_cast_value(ud_context *, const ud_field *, const ud_value *, const ud_field *,
-                        int32_t rounding, ud_value *, uint32_t depth);
+ud_status ud_cast_value_base(ud_context *, const ud_field *, const ud_value *, const ud_field *,
+                             int32_t rounding, ud_value *, uint32_t depth);
+ud_status ud_cast_value(ud_context *, const ud_field *, const ud_value *, const ud_field *, int32_t,
+                        ud_value *, uint32_t);
+ud_status ud_parse_field_base(ud_context *, const ud_field *, const char *, uint32_t, int32_t,
+                              ud_value *);
+ud_status ud_scalar_field_validate(const ud_field *);
+ud_status ud_scalar_text_bytes(ud_context *,const ud_field *,ud_string,uint32_t *);
+ud_status ud_scalar_text(ud_context *, const ud_field *, ud_string, int truncate, char **,
+                         uint32_t *);
 ud_status ud_value_canonical(const ud_value *, ud_status (*)(void *, const void *, size_t), void *,
                              uint32_t);
 ud_status ud_batch_hash_rows(const ud_batch *, ud_sha256 *);

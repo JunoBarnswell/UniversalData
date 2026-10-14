@@ -7,7 +7,7 @@ string root = Path.GetFullPath(args[1]); bool resume = args[2] == "resume";
 Directory.CreateDirectory(root);
 using var registry = new Registry();
 new RecoveryModule().Register(registry);
-var package = JsonSerializer.Serialize(new { version = 10,id = "managed-durable",controlFlow = new { tasks = new[] { new { id = "flow",kind = "dataFlow",config = new { pipeline = "rows" } } },constraints = Array.Empty<object>() },
+var package = JsonSerializer.Serialize(new { version=11,id = "managed-durable",controlFlow = new { tasks = new[] { new { id = "flow",kind = "dataFlow",config = new { pipeline = "rows" } } },constraints = Array.Empty<object>() },
     dataFlows = new[] { new { id = "rows",components = new[] { new { id = "source",component = "managed.source",config = new { root } },new { id = "transform",component = "managed.pass",config = new { root } },new { id = "target",component = "managed.destination",config = new { root } } },
         paths = new[] { new { from = "source",output = 0,to = "transform",input = 0 },new { from = "transform",output = 0,to = "target",input = 0 } } } } });
 string idFile = Path.Combine(root,"identity"); string id = resume ? File.ReadAllText(idFile) : "";
@@ -25,8 +25,8 @@ Console.WriteLine(execution.Id); return 0;
 
 sealed class Source(string root) : IManagedComponent
 {
-    public const string Schema = "{\"version\":10,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}";
-    private const string State = "{\"version\":10,\"fields\":[{\"name\":\"position\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"epoch\",\"type\":\"int64\",\"nullable\":false}]}";
+    public const string Schema = "{\"version\":11,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}";
+    private const string State = "{\"version\":11,\"fields\":[{\"name\":\"position\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"epoch\",\"type\":\"int64\",\"nullable\":false}]}";
     private string schema = ""; private long index; private ulong epoch; private bool barrier;
     public void Open(ManagedComponentContext context,string config,string[] inputs,string[] outputs) {
         using var definition = JsonDocument.Parse(config); root = definition.RootElement.GetProperty("root").GetString()!;
@@ -63,7 +63,7 @@ sealed class Pass : IManagedComponent
 }
 sealed class Destination(string root) : IManagedComponent
 {
-    private const string State = "{\"version\":10,\"fields\":[{\"name\":\"count\",\"type\":\"int64\",\"nullable\":false}]}";
+    private const string State = "{\"version\":11,\"fields\":[{\"name\":\"count\",\"type\":\"int64\",\"nullable\":false}]}";
     private long count;
     public void Open(ManagedComponentContext context,string config,string[] inputs,string[] outputs) {
         using var definition = JsonDocument.Parse(config); root = definition.RootElement.GetProperty("root").GetString()!;

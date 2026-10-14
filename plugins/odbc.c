@@ -1015,7 +1015,7 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
     if (!s)
         s = p->host.append(parameters, values, 3);
     SQLHSTMT stmt = SQL_NULL_HSTMT;
-    const char *sql = "SELECT digest,source_position FROM ud_sdk_receipts_v10 WHERE tenant=? AND "
+    const char *sql = "SELECT digest,source_position FROM ud_sdk_receipts_v11 WHERE tenant=? AND "
                       "job=? AND batch_id=?";
     if (!s)
         s = prepare(p, (ud_string){sql, (uint32_t)strlen(sql)}, &stmt);
@@ -1071,12 +1071,12 @@ ud_status ud_odbc_tx_receipt(odbc_state *p, const ud_transaction_branch *branch,
         status = p->host.append(parameters, values, insert ? 2 : 1);
     if (!status && insert) {
         uint64_t affected = 0;
-        const char *text = "INSERT INTO dbo.ud_sdk_tx_receipts_v10(branch_id,digest) VALUES(?,?)";
+        const char *text = "INSERT INTO dbo.ud_sdk_tx_receipts_v11(branch_id,digest) VALUES(?,?)";
         status = command(p, (ud_string){text, (uint32_t)strlen(text)}, parameters, &affected);
         if (!status && affected != 1)
             status = UD_FENCED;
     } else if (!status) {
-        const char *text = "SELECT digest FROM dbo.ud_sdk_tx_receipts_v10 "
+        const char *text = "SELECT digest FROM dbo.ud_sdk_tx_receipts_v11 "
                            "WITH(READCOMMITTEDLOCK) WHERE branch_id=?";
         SQLHSTMT statement = SQL_NULL_HSTMT;
         status = prepare(p, (ud_string){text, (uint32_t)strlen(text)}, &statement);
@@ -1117,37 +1117,37 @@ static ud_status provision(void *state) {
         return UD_UNSUPPORTED;
     const char *sql =
         p->dialect == DIALECT_MSSQL
-            ? "IF OBJECT_ID(N'ud_sdk_receipts_v10',N'U') IS NULL CREATE TABLE "
-              "ud_sdk_receipts_v10(tenant NVARCHAR(128) NOT NULL,job NVARCHAR(256) NOT "
+            ? "IF OBJECT_ID(N'ud_sdk_receipts_v11',N'U') IS NULL CREATE TABLE "
+              "ud_sdk_receipts_v11(tenant NVARCHAR(128) NOT NULL,job NVARCHAR(256) NOT "
               "NULL,batch_id NVARCHAR(128) NOT NULL,digest BINARY(32) NOT NULL,source_position "
               "NVARCHAR(1024) NOT NULL,PRIMARY KEY(tenant,job,batch_id))"
         : p->dialect == DIALECT_MYSQL
-            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v10(tenant VARCHAR(128) CHARACTER SET "
+            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v11(tenant VARCHAR(128) CHARACTER SET "
               "utf8mb4 COLLATE utf8mb4_bin NOT NULL,job VARCHAR(256) CHARACTER SET utf8mb4 COLLATE "
               "utf8mb4_bin NOT NULL,batch_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE "
               "utf8mb4_bin NOT NULL,digest BINARY(32) NOT NULL,source_position TEXT CHARACTER SET "
               "utf8mb4 NOT NULL,PRIMARY KEY(tenant,job,batch_id)) ENGINE=InnoDB"
         : p->dialect == DIALECT_POSTGRES
-            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v10(tenant TEXT NOT NULL,job TEXT NOT "
+            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v11(tenant TEXT NOT NULL,job TEXT NOT "
               "NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL,source_position TEXT NOT "
               "NULL,PRIMARY KEY(tenant,job,batch_id))"
         : p->dialect == DIALECT_ORACLE
-            ? "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_receipts_v10(tenant "
+            ? "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE ud_sdk_receipts_v11(tenant "
               "VARCHAR2(128 BYTE) NOT NULL,job VARCHAR2(256 BYTE) NOT NULL,batch_id "
               "VARCHAR2(128 BYTE) NOT NULL,digest RAW(32) NOT NULL,source_position "
               "CLOB,PRIMARY KEY(tenant,job,batch_id))'; "
               "EXCEPTION WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;"
         : p->dialect == DIALECT_SQLITE || p->dialect == DIALECT_DUCKDB
-            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v10(tenant TEXT NOT NULL,job TEXT NOT "
+            ? "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v11(tenant TEXT NOT NULL,job TEXT NOT "
               "NULL,batch_id TEXT NOT NULL,digest BLOB NOT NULL,source_position TEXT NOT "
               "NULL,PRIMARY KEY(tenant,job,batch_id))"
             : NULL;
     ud_status status = sql ? ud_odbc_command(p, sql) : UD_UNSUPPORTED;
     if (!status && p->dialect == DIALECT_MSSQL)
-        status = ud_odbc_command(p,
-            "IF OBJECT_ID(N'dbo.ud_sdk_tx_receipts_v10',N'U') IS NULL CREATE TABLE "
-            "dbo.ud_sdk_tx_receipts_v10(branch_id CHAR(64) COLLATE Latin1_General_100_BIN2 "
-            "NOT NULL PRIMARY KEY,digest BINARY(32) NOT NULL)");
+        status = ud_odbc_command(
+            p, "IF OBJECT_ID(N'dbo.ud_sdk_tx_receipts_v11',N'U') IS NULL CREATE TABLE "
+               "dbo.ud_sdk_tx_receipts_v11(branch_id CHAR(64) COLLATE Latin1_General_100_BIN2 "
+               "NOT NULL PRIMARY KEY,digest BINARY(32) NOT NULL)");
     if (!status && p->dialect == DIALECT_MSSQL && (p->capabilities & UD_CONNECT_NATIVE_CDC))
         status = ud_mssql_cdc_provision(p);
     return status;
@@ -1258,7 +1258,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s)
             s = p->host.append(b, v, 5);
         const char *insert =
-            "INSERT INTO ud_sdk_receipts_v10(tenant,job,batch_id,digest,source_position) "
+            "INSERT INTO ud_sdk_receipts_v11(tenant,job,batch_id,digest,source_position) "
             "VALUES(?,?,?,?,?)";
         if (!s)
             s = command(p, (ud_string){insert, (uint32_t)strlen(insert)}, b, NULL);

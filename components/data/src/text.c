@@ -1,5 +1,5 @@
 #include "ud/text.h"
-#include "../../data/internal.h"
+#include "../internal.h"
 #include <unicode/ustring.h>
 #include <unicode/unorm2.h>
 #include <unicode/uchar.h>

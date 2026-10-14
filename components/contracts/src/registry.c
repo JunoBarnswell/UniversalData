@@ -82,17 +82,18 @@ static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor 
         return UD_SCHEMA;
     if (!function &&
         (d->function_bind || d->function_evaluate || d->min_arguments || d->max_arguments ||
-         (d->capabilities & (UD_FUNCTION_PURE | UD_FUNCTION_DETERMINISTIC))))
+         (d->capabilities &
+          (UD_FUNCTION_PURE | UD_FUNCTION_DETERMINISTIC | UD_FUNCTION_CONTEXTUAL))))
         return UD_SCHEMA;
     if (task && (!d->invoke || d->inputs || d->outputs || d->synchronous_input != -1 ||
                  d->error_output != -1 || d->step || (!!d->prepare != !!d->dispose) ||
                  d->enumerate_next || d->enumerate_position))
         return UD_SCHEMA;
     if (function &&
-        (!(d->capabilities & UD_FUNCTION_PURE) || !d->function_bind || !d->function_evaluate ||
-         d->min_arguments > d->max_arguments || d->max_arguments > 16 || d->inputs || d->outputs ||
-         d->synchronous_input != -1 || d->error_output != -1 || d->invoke || d->configure ||
-         d->prepare || d->step || d->finish || d->dispose))
+        (!(d->capabilities & (UD_FUNCTION_PURE | UD_FUNCTION_CONTEXTUAL)) || !d->function_bind ||
+         !d->function_evaluate || d->min_arguments > d->max_arguments || d->max_arguments > 16 ||
+         d->inputs || d->outputs || d->synchronous_input != -1 || d->error_output != -1 ||
+         d->invoke || d->configure || d->prepare || d->step || d->finish || d->dispose))
         return UD_SCHEMA;
     if (enumerator &&
         (!d->configure || !d->prepare || !d->dispose || !d->enumerate_next || d->inputs ||
@@ -309,17 +310,18 @@ static ud_status describe_entry(ud_bytes *bytes, const ud_component_descriptor *
     UD_TRY(ud_bytes_put(bytes, ",\"configurationSchema\":", 23));
     UD_TRY(ud_bytes_put(bytes, d->configuration_schema.data, d->configuration_schema.length));
     char info[768];
-    int n =
-        snprintf(info, sizeof(info),
-                 ",\"category\":%d,\"inputs\":%u,\"outputs\":%u,\"dynamicPorts\":%s,"
-                 "\"errorOutput\":%d,\"synchronousInput\":%d,\"capabilities\":%llu,"
-                 "\"optionalInputs\":%llu,\"optionalOutputs\":%llu,\"stateVersion\":%u,"
-                 "\"effects\":%u,\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s}",
-                 d->category, d->inputs, d->outputs, d->bind_ports ? "true" : "false",
-                 d->error_output, d->synchronous_input, (unsigned long long)d->capabilities,
-                 (unsigned long long)d->optional_inputs, (unsigned long long)d->optional_outputs,
-                 d->state_version, d->effects, d->checkpoint ? "true" : "false",
-                 d->restore ? "true" : "false", d->describe_plan ? "true" : "false");
+    int n = snprintf(info, sizeof(info),
+                     ",\"category\":%d,\"inputs\":%u,\"outputs\":%u,\"dynamicPorts\":%s,"
+                     "\"errorOutput\":%d,\"synchronousInput\":%d,\"capabilities\":%llu,"
+                     "\"optionalInputs\":%llu,\"optionalOutputs\":%llu,\"stateVersion\":%u,"
+                     "\"effects\":%u,\"minimumArguments\":%u,\"maximumArguments\":%u,"
+                     "\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s}",
+                     d->category, d->inputs, d->outputs, d->bind_ports ? "true" : "false",
+                     d->error_output, d->synchronous_input, (unsigned long long)d->capabilities,
+                     (unsigned long long)d->optional_inputs,
+                     (unsigned long long)d->optional_outputs, d->state_version, d->effects,
+                     d->min_arguments, d->max_arguments, d->checkpoint ? "true" : "false",
+                     d->restore ? "true" : "false", d->describe_plan ? "true" : "false");
     return n < 0 || (size_t)n >= sizeof(info) ? UD_RESOURCE : ud_bytes_put(bytes, info, (size_t)n);
 }
 ud_status ud_registry_describe(const ud_registry *r, char **out, uint32_t *length) {

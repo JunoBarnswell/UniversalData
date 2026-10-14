@@ -15,6 +15,11 @@ static ud_status put_field(ud_bytes *b, const ud_field *f, uint32_t depth) {
     UD_TRY(ud_put_u64(b, f->identity.low));
     UD_TRY(ud_put_u64(b,f->physical_identity.high));
     UD_TRY(ud_put_u64(b,f->physical_identity.low));
+    const uint32_t scalar[] = {
+        f->scalar.kind,      f->scalar.length,           f->scalar.code_page,
+        f->scalar.locale_id, f->scalar.comparison_flags, f->scalar.fractional_digits};
+    for (uint32_t j = 0; j < 6; j++)
+        UD_TRY(ud_put_u64(b, scalar[j]));
     UD_TRY(ud_put_u64(b, f->key_order));
     UD_TRY(ud_put_u64(b, f->lineage_count));
     for (uint32_t i = 0; i < f->lineage_count; i++) {
@@ -73,6 +78,17 @@ static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
     UD_TRY(ud_get_u64(b,&f->physical_identity.low));
     if (!f->identity.high && !f->identity.low)
         return UD_CORRUPT;
+    uint32_t *scalar[] = {
+        &f->scalar.kind,      &f->scalar.length,           &f->scalar.code_page,
+        &f->scalar.locale_id, &f->scalar.comparison_flags, &f->scalar.fractional_digits};
+    for (uint32_t j = 0; j < 6; j++) {
+        uint64_t n;
+        UD_TRY(ud_get_u64(b, &n));
+        if (n > UINT32_MAX)
+            return UD_CORRUPT;
+        *scalar[j] = (uint32_t)n;
+    }
+    UD_TRY(ud_scalar_field_validate(f));
     uint64_t lineage, key_order;
     UD_TRY(ud_get_u64(b, &key_order));
     if (key_order > 65536)
@@ -147,6 +163,11 @@ static ud_status put_value(ud_bytes *b, const ud_value *v, uint32_t depth) {
         UD_TRY(ud_put_u64(b, v->decimal.low));
         return ud_put_u64(b, (uint64_t)v->decimal.high);
     }
+    if (v->type == UD_DATETIME) {
+        UD_TRY(ud_put_u64(b, (uint64_t)v->datetime.ticks));
+        UD_TRY(ud_put_u64(b, (uint64_t)(int64_t)v->datetime.offset_minutes));
+        return ud_put_u64(b, (uint64_t)v->datetime.has_offset);
+    }
     if (v->type == UD_INTERVAL) {
         UD_TRY(ud_put_u64(b, (uint64_t)(int64_t)v->interval.months));
         UD_TRY(ud_put_u64(b, (uint64_t)(int64_t)v->interval.days));
@@ -199,6 +220,18 @@ static ud_status get_value(ud_bytes *b, const ud_field *f, ud_value *v, uint32_t
         UD_TRY(ud_get_u64(b, &v->decimal.low));
         UD_TRY(ud_get_u64(b, &hi));
         memcpy(&v->decimal.high, &hi, 8);
+    } else if (f->type == UD_DATETIME) {
+        uint64_t ticks, offset, present;
+        UD_TRY(ud_get_u64(b, &ticks));
+        UD_TRY(ud_get_u64(b, &offset));
+        UD_TRY(ud_get_u64(b, &present));
+        int64_t signed_offset;
+        memcpy(&signed_offset, &offset, 8);
+        if (signed_offset < -840 || signed_offset > 840 || present > 1)
+            return UD_CORRUPT;
+        memcpy(&v->datetime.ticks, &ticks, 8);
+        v->datetime.offset_minutes = (int32_t)signed_offset;
+        v->datetime.has_offset = (int32_t)present;
     } else if (f->type == UD_INTERVAL) {
         uint64_t months, days, micros;
         UD_TRY(ud_get_u64(b, &months));

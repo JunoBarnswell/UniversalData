@@ -741,7 +741,7 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
     const char *args[] = {owned[0], owned[1], owned[2]};
     PGresult *r =
         !s ? query(p,
-                   "SELECT encode(digest,'hex'),source_position FROM public.ud_sdk_receipts_v10 "
+                   "SELECT encode(digest,'hex'),source_position FROM public.ud_sdk_receipts_v11 "
                    "WHERE tenant=$1 AND job=$2 AND batch_id=$3",
                    3, NULL, args, NULL, NULL, 0)
            : NULL;
@@ -959,7 +959,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     PGresult *result =
         !s ? query(p,
                    "INSERT INTO "
-                   "public.ud_sdk_receipts_v10(tenant,job,batch_id,digest,source_position) "
+                   "public.ud_sdk_receipts_v11(tenant,job,batch_id,digest,source_position) "
                    "VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING batch_id",
                    5, reserve_types, reserve, reserve_lengths, reserve_formats, 0)
            : NULL;
@@ -1268,13 +1268,13 @@ static ud_status provision(void *state) {
     if (p->transaction || p->reading || p->branch_id[0])
         return UD_BUSY;
     ud_status status = command(
-        state, "CREATE TABLE IF NOT EXISTS public.ud_sdk_receipts_v10(tenant TEXT NOT NULL,job "
+        state, "CREATE TABLE IF NOT EXISTS public.ud_sdk_receipts_v11(tenant TEXT NOT NULL,job "
                "TEXT NOT NULL,batch_id TEXT NOT NULL,digest BYTEA NOT NULL "
                "CHECK(octet_length(digest)=32),source_position TEXT NOT NULL,PRIMARY "
                "KEY(tenant,job,batch_id))");
     if (!status)
         status =
-            command(state, "CREATE TABLE IF NOT EXISTS public.ud_sdk_tx_receipts_v10("
+            command(state, "CREATE TABLE IF NOT EXISTS public.ud_sdk_tx_receipts_v11("
                            "branch_id TEXT COLLATE \"C\" PRIMARY KEY CHECK(length(branch_id)=64),"
                            "digest BYTEA NOT NULL CHECK(octet_length(digest)=32))");
     return status;
@@ -1316,7 +1316,7 @@ static ud_status transaction_recover_state(void *state, const ud_transaction_bra
     if (status || *result == UD_TX_PREPARED)
         return status;
     query_result = query(p,
-                         "SELECT encode(digest,'hex') FROM public.ud_sdk_tx_receipts_v10 "
+                         "SELECT encode(digest,'hex') FROM public.ud_sdk_tx_receipts_v11 "
                          "WHERE branch_id=$1",
                          1, NULL, values, NULL, NULL, 0);
     status = query_result && PQresultStatus(query_result) == PGRES_TUPLES_OK
@@ -1364,7 +1364,7 @@ static ud_status transaction_begin(void *state, const ud_transaction_branch *bra
     int lengths[] = {64, 32}, formats[] = {0, 1};
     PGresult *result = !status
                            ? query(p,
-                                   "INSERT INTO public.ud_sdk_tx_receipts_v10(branch_id,digest) "
+                                   "INSERT INTO public.ud_sdk_tx_receipts_v11(branch_id,digest) "
                                    "VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING branch_id",
                                    2, types, values, lengths, formats, 0)
                            : NULL;

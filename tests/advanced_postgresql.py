@@ -61,14 +61,14 @@ with tempfile.TemporaryDirectory(prefix='ud-advanced-pg-') as tmp:
                 db.execute('CREATE TABLE output(id INTEGER NOT NULL PRIMARY KEY,name TEXT,rev INTEGER NOT NULL)')
             state, spill = root / 'state', root / 'spill'; state.mkdir(); spill.mkdir()
             fields = [dict(name='id',type='int64',nullable=False),dict(name='name',type='utf8',nullable=True),dict(name='rev',type='int64',nullable=False)]
-            package = dict(version=10,id='actual-cdc-epoch',
+            package = dict(version=11,id='actual-cdc-epoch',
                 connections=[dict(id='source',driver=str(build / 'plugins/ud_connector_postgresql.so'),resource='pg-fixture',credentialReference='file:'+str(config)),
                              dict(id='target',driver=str(build / 'plugins/ud_connector_sqlite.so'),resource=str(target),credentialReference='fixture'),
                              dict(id='spill',driver='file',resource=str(spill))],
                 policy=dict(buffers=dict(connection='spill',residentBytes=1,workingBytes=8388608,spillBytes=10000000,maxBlocks=4096)),
                 controlFlow=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='p'))],constraints=[]),
                 dataFlows=[dict(id='p',components=[
-                    dict(id='source',component='postgresql.cdc.source',config=dict(connection='source',table='ud_advanced_cdc',schema=dict(version=10,fields=fields),slot='ud_advanced_pipeline',publication='ud_advanced_publication',maxTransactions=1)),
+                    dict(id='source',component='postgresql.cdc.source',config=dict(connection='source',table='ud_advanced_cdc',schema=dict(version=11,fields=fields),slot='ud_advanced_pipeline',publication='ud_advanced_publication',maxTransactions=1)),
                     dict(id='destination',component='sql.destination',config=dict(connection='target',table='output',mode='changeset',beforeField='before',keys=[0],provisionReceipts=True))],
                     paths=[{'from':'source','output':0,'to':'destination','input':0}])])
             document = root / 'pipeline.json'; document.write_text(json.dumps(package))

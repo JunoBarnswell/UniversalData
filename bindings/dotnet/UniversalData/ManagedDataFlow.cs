@@ -100,10 +100,8 @@ public sealed class ManagedComponentContext
     }
     public void SetSourceIdentity(ManagedBatch batch,uint row,ulong physicalPosition,string source = "") {
         callback.Open(); if (batch.Memory != value.Memory) throw new ArgumentException("Batch belongs to another execution");
-        string symbol = value.Errors.FieldScope.High.ToString("x16") + value.Errors.FieldScope.Low.ToString("x16") + "/" + source;
-        using var strings = new NativeStrings(Native.Text(value.Errors.ExecutionId),symbol);
-        Check(Native.ud_id_make_raw(value.Memory,strings[0],strings[1],out var scope));
-        Check(Native.ud_row_info_source_raw(scope,physicalPosition,out var info)); Check(Native.ud_batch_set_row_info_raw(batch.Pointer,row,ref info));
+        using var strings=new NativeStrings(source);var context=value;
+        Check(Native.ud_component_source_identity(ref context,batch.Pointer,row,physicalPosition,strings[0]));
     }
     public ManagedBatch CreateErrorBatch(uint capacity, bool includeInput = false) {
         callback.Open(); var errors = value.Errors; Check(Native.ud_error_batch(ref errors, includeInput ? 1 : 0, capacity, out var batch));
@@ -318,6 +316,7 @@ internal static partial class Native
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int EmitCallback(IntPtr user, uint port, IntPtr batch);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int CheckpointCallback(IntPtr instance, out IntPtr batch);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int RestoreCallback(IntPtr instance, IntPtr batch);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_component_source_identity(ref DataFlowContext context,IntPtr batch,uint row,ulong position,StringValue source);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_component_schema_namespace(IntPtr context, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_batch_rows")] internal static extern uint ud_batch_rows_raw(IntPtr batch);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_batch_columns")] internal static extern uint ud_batch_columns_raw(IntPtr batch);

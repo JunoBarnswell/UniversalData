@@ -2,9 +2,9 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 2.0.0 / ABI 10；Draft PR #7 continuation: Linux identity/projection and multi-process ownership/history contracts passed current scoped acceptance. SQL Server XA compiles but its actual recovery resource remains Blocked. Complete Schema state migration, Kafka/Lakehouse and cross-machine agents are still incomplete; production release is not certified.。
+SDK 2.1.0 / ABI 11；Native contract implementation committed for concentrated Linux acceptance; complete SSIS parity remains Partial.。
 
-门禁通过 2/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
+门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
 | 整改 | 当前状态 |
 |---|---|

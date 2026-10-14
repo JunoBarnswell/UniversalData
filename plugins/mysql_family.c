@@ -74,21 +74,14 @@ static ud_status check(mysql_state *p) {
         return UD_CANCELLED;
     return p->check ? p->check(p->check_user) : UD_OK;
 }
-static ud_status failure(mysql_state *p, MYSQL_STMT *stmt) {
-    unsigned int code = stmt ? mysql_stmt_errno(stmt) : mysql_errno(p->db);
-    p->record_code = code;
-    const char *state = stmt ? mysql_stmt_sqlstate(stmt) : mysql_sqlstate(p->db);
-    char safe[96];
-    snprintf(safe, sizeof(safe), "SQL provider operation failed (code %u, state %.5s)", code,
-             state ? state : "");
-    p->host.report(p->host.context, UD_IO, safe);
+static ud_status classify_failure(mysql_state *p, unsigned int code, const char *state) {
     if (!p->cleanup && atomic_load(&p->cancelled))
         return UD_CANCELLED;
-    if (code == 2006 || code == 2013 || code == 2055) {
+    if (code == 2002 || code == 2003 || code == 2005 || code == 2006 || code == 2013 || code == 2055) {
         p->broken = 1;
         return UD_TRANSIENT;
     }
-    if (code == 1045 || (state && !strncmp(state, "28", 2)))
+    if (code == 1045 || code == 2026 || (state && !strncmp(state, "28", 2)))
         return UD_AUTH;
     if (code == 1205)
         return UD_TIMEOUT;
@@ -105,6 +98,19 @@ static ud_status failure(mysql_state *p, MYSQL_STMT *stmt) {
     if (state && !strncmp(state, "42", 2))
         return UD_SCHEMA;
     return UD_IO;
+}
+static ud_status report_failure(mysql_state *p, unsigned int code, const char *state) {
+    p->record_code = code;
+    ud_status status = classify_failure(p, code, state);
+    char safe[96];
+    snprintf(safe, sizeof(safe), "SQL provider operation failed (code %u, state %.5s)", code,
+             state ? state : "");
+    p->host.report(p->host.context, status, safe);
+    return status;
+}
+static ud_status failure(mysql_state *p, MYSQL_STMT *stmt) {
+    return report_failure(p, stmt ? mysql_stmt_errno(stmt) : mysql_errno(p->db),
+                          stmt ? mysql_stmt_sqlstate(stmt) : mysql_sqlstate(p->db));
 }
 static ud_status record_diagnostic(void *state, ud_string *out) {
     mysql_state *p = state;
@@ -520,64 +526,89 @@ static ud_status table_parts(mysql_state *p, ud_string table, ud_string values[2
     }
     return values[0].length && values[1].length ? UD_OK : UD_SCHEMA;
 }
-static ud_status record_validate(void *state,const ud_read_options *options) {
-    mysql_state *p=state;
-    ud_string schema={0},table={0},identifier={0};
-    ud_status status=p->host.record_target(p->host.context,options->sql,&schema,&table);
-    ud_string args[]={schema.length ? schema : (ud_string){p->database,(uint32_t)strlen(p->database)},table};
-    char *qualified=NULL,*locking=NULL;
-    ud_batch *proof=NULL;
+static ud_status record_validate(void *state, const ud_read_options *options) {
+    mysql_state *p = state;
+    ud_string schema = {0}, table = {0}, identifier = {0};
+    ud_status status = p->host.record_target(p->host.context, options->sql, &schema, &table);
+    ud_string args[] = {
+        schema.length ? schema : (ud_string){p->database, (uint32_t)strlen(p->database)}, table};
+    char *qualified = NULL, *locking = NULL;
+    ud_batch *proof = NULL;
     /* Hold the provider's metadata lock until the Native row transaction ends.
      * Otherwise ALTER ENGINE/CREATE TRIGGER could invalidate an earlier proof. */
     if (!status) {
-        size_t length=(size_t)args[0].length+args[1].length+1;
-        qualified=p->host.allocate(p->host.context,length+1);
-        if (!qualified) status=UD_RESOURCE;
+        size_t length = (size_t)args[0].length + args[1].length + 1;
+        qualified = p->host.allocate(p->host.context, length + 1);
+        if (!qualified)
+            status = UD_RESOURCE;
         else {
-            memcpy(qualified,args[0].data,args[0].length); qualified[args[0].length]='.';
-            memcpy(qualified+args[0].length+1,args[1].data,args[1].length);
-            status=p->host.table_identifier(p->host.context,UD_SQL_MYSQL,(ud_string){qualified,(uint32_t)length},&identifier);
+            memcpy(qualified, args[0].data, args[0].length);
+            qualified[args[0].length] = '.';
+            memcpy(qualified + args[0].length + 1, args[1].data, args[1].length);
+            status =
+                p->host.table_identifier(p->host.context, UD_SQL_MYSQL,
+                                         (ud_string){qualified, (uint32_t)length}, &identifier);
         }
     }
     if (!status) {
-        locking=p->host.allocate(p->host.context,(size_t)identifier.length+64);
-        if (!locking) status=UD_RESOURCE;
+        locking = p->host.allocate(p->host.context, (size_t)identifier.length + 64);
+        if (!locking)
+            status = UD_RESOURCE;
         else {
-            snprintf(locking,(size_t)identifier.length+64,"SELECT 1 AS ud_lock FROM %.*s LIMIT 0",(int)identifier.length,identifier.data);
-            ud_field field={.name="ud_lock",.name_length=7,.type=UD_INT64};
-            status=query(p,locking,NULL,0,&field,1,&proof);
+            snprintf(locking, (size_t)identifier.length + 64,
+                     "SELECT 1 AS ud_lock FROM %.*s LIMIT 0", (int)identifier.length,
+                     identifier.data);
+            ud_field field = {.name = "ud_lock", .name_length = 7, .type = UD_INT64};
+            status = query(p, locking, NULL, 0, &field, 1, &proof);
         }
     }
-    p->host.batch_destroy(proof); proof=NULL;
-    ud_field fields[]={{.name="engine",.name_length=6,.type=UD_UTF8},
-        {.name="triggers",.name_length=8,.type=UD_INT64},
-        {.name="trigger_visibility",.name_length=18,.type=UD_INT64}};
+    p->host.batch_destroy(proof);
+    proof = NULL;
+    ud_field fields[] = {{.name = "engine", .name_length = 6, .type = UD_UTF8},
+                         {.name = "triggers", .name_length = 8, .type = UD_INT64},
+                         {.name = "trigger_visibility", .name_length = 18, .type = UD_INT64}};
     /* TRIGGERS is privilege-filtered. Require a visible TRIGGER grant before
      * interpreting an empty result as absence. Role-only grants fail closed. */
-    static const char sql[]=
+    static const char sql[] =
         "SELECT t.ENGINE AS engine,(SELECT COUNT(*) FROM information_schema.TRIGGERS r "
         "WHERE r.TRIGGER_SCHEMA=t.TABLE_SCHEMA AND r.EVENT_OBJECT_TABLE=t.TABLE_NAME) AS triggers,"
         "(SELECT COUNT(*) FROM ("
-        "SELECT GRANTEE,PRIVILEGE_TYPE,NULL AS scope_schema,NULL AS scope_table FROM information_schema.USER_PRIVILEGES "
-        "UNION ALL SELECT GRANTEE,PRIVILEGE_TYPE,TABLE_SCHEMA,NULL FROM information_schema.SCHEMA_PRIVILEGES "
-        "UNION ALL SELECT GRANTEE,PRIVILEGE_TYPE,TABLE_SCHEMA,TABLE_NAME FROM information_schema.TABLE_PRIVILEGES) ud_grants "
+        "SELECT GRANTEE,PRIVILEGE_TYPE,NULL AS scope_schema,NULL AS scope_table FROM "
+        "information_schema.USER_PRIVILEGES "
+        "UNION ALL SELECT GRANTEE,PRIVILEGE_TYPE,TABLE_SCHEMA,NULL FROM "
+        "information_schema.SCHEMA_PRIVILEGES "
+        "UNION ALL SELECT GRANTEE,PRIVILEGE_TYPE,TABLE_SCHEMA,TABLE_NAME FROM "
+        "information_schema.TABLE_PRIVILEGES) ud_grants "
         "WHERE ud_grants.PRIVILEGE_TYPE='TRIGGER' AND ud_grants.GRANTEE=CONCAT("
-        "QUOTE(LEFT(CURRENT_USER(),LENGTH(CURRENT_USER())-LENGTH(SUBSTRING_INDEX(CURRENT_USER(),'@',-1))-1)),"
+        "QUOTE(LEFT(CURRENT_USER(),LENGTH(CURRENT_USER())-LENGTH(SUBSTRING_INDEX(CURRENT_USER(),'@'"
+        ",-1))-1)),"
         "'@',QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',-1))) "
         "AND (ud_grants.scope_schema IS NULL OR ud_grants.scope_schema=t.TABLE_SCHEMA) "
-        "AND (ud_grants.scope_table IS NULL OR ud_grants.scope_table=t.TABLE_NAME)) AS trigger_visibility "
+        "AND (ud_grants.scope_table IS NULL OR ud_grants.scope_table=t.TABLE_NAME)) AS "
+        "trigger_visibility "
         "FROM information_schema.TABLES t WHERE t.TABLE_SCHEMA=? AND t.TABLE_NAME=?";
-    if (!status) status=query(p,sql,args,2,fields,3,&proof);
-    if (!status && p->host.rows(proof)!=1) status=UD_SCHEMA;
-    ud_value engine={0},triggers={0},visible={0};
-    if (!status) status=p->host.get(proof,0,0,&engine);
-    if (!status) status=p->host.get(proof,0,1,&triggers);
-    if (!status) status=p->host.get(proof,0,2,&visible);
-    if (!status && (visible.is_null || visible.integer<=0)) status=UD_AUTH;
-    if (!status && (engine.is_null || engine.text_length!=6 || memcmp(engine.text,"InnoDB",6) ||
-                    triggers.is_null || triggers.integer)) status=UD_UNSUPPORTED;
-    p->host.batch_destroy(proof); p->host.deallocate((void *)schema.data); p->host.deallocate((void *)table.data);
-    p->host.deallocate((void *)identifier.data); p->host.deallocate(qualified); p->host.deallocate(locking);
+    if (!status)
+        status = query(p, sql, args, 2, fields, 3, &proof);
+    if (!status && p->host.rows(proof) != 1)
+        status = UD_SCHEMA;
+    ud_value engine = {0}, triggers = {0}, visible = {0};
+    if (!status)
+        status = p->host.get(proof, 0, 0, &engine);
+    if (!status)
+        status = p->host.get(proof, 0, 1, &triggers);
+    if (!status)
+        status = p->host.get(proof, 0, 2, &visible);
+    if (!status && (visible.is_null || visible.integer <= 0))
+        status = UD_AUTH;
+    if (!status && (engine.is_null || engine.text_length != 6 || memcmp(engine.text, "InnoDB", 6) ||
+                    triggers.is_null || triggers.integer))
+        status = UD_UNSUPPORTED;
+    p->host.batch_destroy(proof);
+    p->host.deallocate((void *)schema.data);
+    p->host.deallocate((void *)table.data);
+    p->host.deallocate((void *)identifier.data);
+    p->host.deallocate(qualified);
+    p->host.deallocate(locking);
     return status;
 }
 static ud_status discover(void *state, ud_string table, ud_batch **out) {
@@ -726,12 +757,16 @@ static void set_control(void *state, void *user, ud_status (*fn)(void *)) {
     if (!fn)
         atomic_store(&p->cancelled, 0);
 }
-static ud_status savepoint(void *state,ud_string statement) {
-    mysql_state *p=state;
-    if (!p->transaction) return UD_UNSUPPORTED;
-    char *sql=plugin_string(&p->host,statement.data,statement.length);
-    if (!sql) return UD_RESOURCE;
-    ud_status status=command(p,sql); p->host.deallocate(sql); return status;
+static ud_status savepoint(void *state, ud_string statement) {
+    mysql_state *p = state;
+    if (!p->transaction)
+        return UD_UNSUPPORTED;
+    char *sql = plugin_string(&p->host, statement.data, statement.length);
+    if (!sql)
+        return UD_RESOURCE;
+    ud_status status = command(p, sql);
+    p->host.deallocate(sql);
+    return status;
 }
 static ud_status execute(void *state, const ud_read_options *o, uint64_t *processed) {
     mysql_state *p = state;
@@ -741,27 +776,41 @@ static ud_status execute(void *state, const ud_read_options *o, uint64_t *proces
      * CREATE TRIGGER). Unparameterized SQL uses its text command protocol;
      * typed row parameters always use the binary prepared protocol below. */
     if (!o->parameters) {
-        if (processed) *processed=0;
-        ud_status status=check(p);
-        if (!status && mysql_real_query(p->db,o->sql.data,o->sql.length)) status=failure(p,NULL);
-        uint64_t affected=0; int result_set=0;
+        if (processed)
+            *processed = 0;
+        ud_status status = check(p);
+        if (!status && mysql_real_query(p->db, o->sql.data, o->sql.length))
+            status = failure(p, NULL);
+        uint64_t affected = 0;
+        int result_set = 0;
         for (; !status;) {
             if (mysql_field_count(p->db)) {
-                MYSQL_RES *result=mysql_store_result(p->db);
-                if (!result) status=failure(p,NULL);
-                mysql_free_result(result); result_set=1;
+                MYSQL_RES *result = mysql_store_result(p->db);
+                if (!result)
+                    status = failure(p, NULL);
+                mysql_free_result(result);
+                result_set = 1;
             } else {
-                uint64_t rows=(uint64_t)mysql_affected_rows(p->db);
-                if (rows>UINT64_MAX-affected) status=UD_OVERFLOW;
-                else affected+=rows;
+                uint64_t rows = (uint64_t)mysql_affected_rows(p->db);
+                if (rows > UINT64_MAX - affected)
+                    status = UD_OVERFLOW;
+                else
+                    affected += rows;
             }
-            if (status) break;
-            int more=mysql_next_result(p->db);
-            if (more<0) break;
-            if (more) { status=failure(p,NULL); break; }
+            if (status)
+                break;
+            int more = mysql_next_result(p->db);
+            if (more < 0)
+                break;
+            if (more) {
+                status = failure(p, NULL);
+                break;
+            }
         }
-        if (!status && result_set) status=UD_SCHEMA;
-        if (!status && processed) *processed=affected;
+        if (!status && result_set)
+            status = UD_SCHEMA;
+        if (!status && processed)
+            *processed = affected;
         return status ? status : check(p);
     }
     MYSQL_STMT *stmt = NULL;
@@ -801,9 +850,9 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
     ud_field f[] = {{.name = "digest", .name_length = 6, .type = UD_BINARY},
                     {.name = "source_position", .name_length = 15, .type = UD_UTF8}};
     ud_batch *rows = NULL;
-    const char *sql = p->transaction ? "SELECT digest,source_position FROM ud_sdk_receipts_v10 "
+    const char *sql = p->transaction ? "SELECT digest,source_position FROM ud_sdk_receipts_v11 "
                                        "WHERE tenant=? AND job=? AND batch_id=? FOR UPDATE"
-                                     : "SELECT digest,source_position FROM ud_sdk_receipts_v10 "
+                                     : "SELECT digest,source_position FROM ud_sdk_receipts_v11 "
                                        "WHERE tenant=? AND job=? AND batch_id=?";
     ud_status s = query(p, sql, args, 3, f, 2, &rows);
     if (!s && p->host.rows(rows) > 1)
@@ -834,13 +883,13 @@ static ud_status provision(void *state) {
     if (p->transaction || p->cursor)
         return UD_BUSY;
     ud_status status =
-        command(p, "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v10(tenant VARBINARY(256) NOT "
+        command(p, "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v11(tenant VARBINARY(256) NOT "
                    "NULL,job VARBINARY(256) NOT NULL,batch_id VARBINARY(256) NOT NULL,digest "
                    "BINARY(32) NOT NULL,source_position LONGTEXT CHARACTER SET utf8mb4 NOT "
                    "NULL,PRIMARY KEY(tenant,job,batch_id)) ENGINE=InnoDB");
     if (!status)
         status = command(
-            p, "CREATE TABLE IF NOT EXISTS ud_sdk_tx_receipts_v10("
+            p, "CREATE TABLE IF NOT EXISTS ud_sdk_tx_receipts_v11("
                "branch_id BINARY(64) PRIMARY KEY,digest BINARY(32) NOT NULL) ENGINE=InnoDB");
     return status;
 }
@@ -881,7 +930,7 @@ static ud_status transaction_recover(void *state, const ud_transaction_branch *b
     if (!status && *result != UD_TX_PREPARED) {
         char statement[160];
         snprintf(statement, sizeof(statement),
-                 "SELECT digest FROM ud_sdk_tx_receipts_v10 WHERE branch_id='%.*s'", 64,
+                 "SELECT digest FROM ud_sdk_tx_receipts_v11 WHERE branch_id='%.*s'", 64,
                  branch->id.data);
         status = command(p, statement);
         MYSQL_RES *receipt_result = !status ? mysql_store_result(p->db) : NULL;
@@ -932,7 +981,7 @@ static ud_status transaction_begin(void *state, const ud_transaction_branch *bra
     digest[64] = 0;
     char statement[320];
     snprintf(statement, sizeof(statement),
-             "INSERT INTO ud_sdk_tx_receipts_v10(branch_id,digest) VALUES('%.*s',X'%s')", 64,
+             "INSERT INTO ud_sdk_tx_receipts_v11(branch_id,digest) VALUES('%.*s',X'%s')", 64,
              branch->id.data, digest);
     if (!status)
         status = command(p, statement);
@@ -1008,7 +1057,8 @@ static ud_status prove_target(mysql_state *p, const ud_write_options *o, const u
         s = discover(p, o->table, &meta);
     ud_batch *actual_schema = NULL;
     if (!s)
-        s = p->host.schema_from_metadata(p->host.context, meta, o->table, p->host.resource_namespace, UD_MYSQL_DIALECT,
+        s = p->host.schema_from_metadata(p->host.context, meta, o->table,
+                                         p->host.resource_namespace, UD_MYSQL_DIALECT,
                                          &actual_schema);
     uint32_t columns = p->host.columns(batch);
     for (uint32_t i = 0; !s && i < columns; i++) {
@@ -1042,7 +1092,7 @@ static ud_status prove_target(mysql_state *p, const ud_write_options *o, const u
 }
 static ud_status receipt_insert(mysql_state *p, ud_string tenant, const ud_write_options *o,
                                 const uint8_t digest[32]) {
-    const char *sql = "INSERT INTO ud_sdk_receipts_v10(tenant,job,batch_id,digest,source_position) "
+    const char *sql = "INSERT INTO ud_sdk_receipts_v11(tenant,job,batch_id,digest,source_position) "
                       "VALUES(?,?,?,?,?)";
     MYSQL_STMT *stmt = NULL;
     ud_status s = statement(p, (ud_string){sql, (uint32_t)strlen(sql)}, &stmt);
@@ -1181,14 +1231,24 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         s = prove_target(p, o, batch);
     if (!s && own)
         s = begin(p, UD_ISOLATION_SERIALIZABLE);
+    /* Claim the unique receipt key before business effects, in the same
+     * transaction. An absent SELECT FOR UPDATE takes InnoDB gap locks and
+     * deadlocks independent Serializable XA branches sharing this ledger.
+     * INSERT only waits for an actual duplicate identity; failed effects roll
+     * back the receipt with the business rows. */
     ud_commit_receipt existing = {0};
-    if (!s)
-        s = receipt(p, tenant, o->job, o->batch_id, &existing);
-    if (!s && existing.committed &&
-        (memcmp(existing.digest, digest, 32) ||
-         existing.source_position.length != o->source_position.length ||
-         memcmp(existing.source_position.data, o->source_position.data, o->source_position.length)))
-        s = UD_CORRUPT;
+    if (!s) {
+        s = receipt_insert(p, tenant, o, digest);
+        if (s == UD_QUALITY && p->record_code == 1062) {
+            p->record_code = 0;
+            s = receipt(p, tenant, o->job, o->batch_id, &existing);
+            if (!s && (!existing.committed || memcmp(existing.digest, digest, 32) ||
+                       existing.source_position.length != o->source_position.length ||
+                       memcmp(existing.source_position.data, o->source_position.data,
+                              o->source_position.length)))
+                s = UD_CORRUPT;
+        }
+    }
     if (!s && !existing.committed) {
         uint32_t rows = p->host.rows(batch),
                  width = o->mode == UD_WRITE_DELETE ? o->key_count : p->host.columns(batch);
@@ -1211,8 +1271,6 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
                 row += take;
             }
         }
-        if (!s)
-            s = receipt_insert(p, tenant, o, digest);
     }
     p->host.deallocate((void *)existing.source_position.data);
     p->host.bulk_close(p->bulk);
@@ -1228,10 +1286,12 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     }
     return s;
 }
-static MYSQL *connect_session(mysql_state *p) {
+static MYSQL *connect_session(mysql_state *p, ud_status *status) {
+    *status = UD_RESOURCE;
     MYSQL *db = mysql_init(NULL);
     if (!db)
         return NULL;
+    *status = UD_UNSUPPORTED;
     unsigned int local = 1, timeout = p->timeout;
     unsigned int protocol = MYSQL_PROTOCOL_TCP;
     mysql_options(db, MYSQL_OPT_PROTOCOL, &protocol);
@@ -1266,17 +1326,16 @@ static MYSQL *connect_session(mysql_state *p) {
     }
     if (!mysql_real_connect(db, p->host_name, p->user, p->password, p->database, p->port, NULL,
                             CLIENT_FOUND_ROWS)) {
-        char safe[96];
-        snprintf(safe, sizeof(safe), "verified TLS connection failed (client code %u)",
-                 mysql_errno(db));
-        p->host.report(p->host.context, UD_AUTH, safe);
+        *status = report_failure(p, mysql_errno(db), mysql_sqlstate(db));
         mysql_close(db);
         return NULL;
     }
     if (!mysql_get_ssl_cipher(db)) {
+        *status = UD_AUTH;
         mysql_close(db);
         return NULL;
     }
+    *status = UD_OK;
     return db;
 }
 static ud_status cdc_close(void *state);
@@ -1430,8 +1489,8 @@ static ud_status cdc_open(void *state, const ud_cdc_options *options) {
         return UD_RESOURCE;
     p->cdc = c;
     c->rows = options->server_id;
-    c->stream = connect_session(p);
-    ud_status status = c->stream ? UD_OK : UD_AUTH;
+    ud_status status;
+    c->stream = connect_session(p, &status);
     c->table = plugin_string(&p->host, options->table.data, options->table.length);
     if (!c->table)
         status = UD_RESOURCE;
@@ -1539,7 +1598,8 @@ static ud_status cdc_schema_event(mysql_state *p, ud_cdc_event *out) {
     if (!status)
         status = p->host.schema_from_metadata(
             p->host.context, metadata,
-            (ud_string){c->incarnation, (uint32_t)strlen(c->incarnation)},p->host.resource_namespace,
+            (ud_string){c->incarnation, (uint32_t)strlen(c->incarnation)},
+            p->host.resource_namespace,
 #if defined(UD_MYSQL_CLIENT)
             UD_SQL_MYSQL,
 #else
@@ -1801,8 +1861,10 @@ static void cancel(void *state) {
     atomic_store(&p->cancelled, 1);
     p->broken = 1;
     ud_mutex_lock(&p->cancellation);
-    if (!p->cancel_db)
-        p->cancel_db = connect_session(p);
+    if (!p->cancel_db) {
+        ud_status ignored;
+        p->cancel_db = connect_session(p, &ignored);
+    }
     if (p->cancel_db && p->db)
         mysql_kill(p->cancel_db, mysql_thread_id(p->db));
     if (p->cancel_db && p->cdc && p->cdc->stream)
@@ -1914,9 +1976,7 @@ ud_status ud_mysql_initialize(const ud_host_api *h, const char *configuration, u
             p->utc = 1;
     }
     if (!s) {
-        p->db = connect_session(p);
-        if (!p->db)
-            s = UD_AUTH;
+        p->db = connect_session(p, &s);
     }
     if (!s)
         s = session_policy(p);
@@ -1941,12 +2001,13 @@ ud_status ud_mysql_initialize(const ud_host_api *h, const char *configuration, u
 const ud_connector_api ud_mysql_connector = {
     .struct_size = sizeof(ud_connector_api),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities = UD_CONNECT_TRANSACTIONAL_DML |
-        UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
-        UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
-        UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_CDC |
-        UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
-        UD_CONNECT_PROVISION | UD_CONNECT_NATIVE_BULK | UD_CONNECT_TRANSACTION_PARTICIPANT,
+    .capabilities = UD_CONNECT_TRANSACTIONAL_DML | UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS |
+                    UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
+                    UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
+                    UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_CDC |
+                    UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
+                    UD_CONNECT_PROVISION | UD_CONNECT_NATIVE_BULK |
+                    UD_CONNECT_TRANSACTION_PARTICIPANT,
     .test = test,
     .discover = discover,
     .read_open = read_open,

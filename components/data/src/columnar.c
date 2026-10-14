@@ -4,7 +4,9 @@ static int variable(ud_type t) {
     return t == UD_UTF8 || t == UD_BINARY;
 }
 static size_t width(ud_type t) {
-    return t == UD_DATE32 ? 4 : (t == UD_DECIMAL128 || t == UD_INTERVAL) ? 16 : 8;
+    return t == UD_DATE32                                                 ? 4
+           : (t == UD_DECIMAL128 || t == UD_INTERVAL || t == UD_DATETIME) ? 16
+                                                                          : 8;
 }
 static ud_status create_depth(ud_context *ctx, ud_schema_owner *schema, const ud_field *fields,
                               uint32_t columns, uint32_t capacity, ud_batch **out, uint32_t depth) {
@@ -242,6 +244,9 @@ ud_status ud_batch_get(const ud_batch *b, uint32_t row, uint32_t col, ud_value *
     case UD_UINT64:
         out->unsigned_integer = ((uint64_t *)v->values)[row];
         break;
+    case UD_DATETIME:
+        out->datetime = ((ud_datetime *)v->values)[row];
+        break;
     case UD_INTERVAL:
         out->interval = ((ud_interval *)v->values)[row];
         break;
@@ -355,7 +360,8 @@ static ud_status grow_nested(ud_column *c, uint32_t need) {
     c->nested = replacement;
     return UD_OK;
 }
-static ud_status validate_value(const ud_field *f, const ud_value *v, uint32_t depth, int masked) {
+static ud_status validate_value(ud_context *ctx, const ud_field *f, const ud_value *v,
+                                uint32_t depth, int masked) {
     if (depth > 32 || f->type != v->type || v->is_null < 0 || v->is_null > 1 || v->is_absent < 0 ||
         v->is_absent > 1 || (v->is_absent && !v->is_null) ||
         (v->is_null && !f->nullable && !masked && !v->is_absent) ||
@@ -363,6 +369,7 @@ static ud_status validate_value(const ud_field *f, const ud_value *v, uint32_t d
         return UD_SCHEMA;
     if (v->is_null)
         return UD_OK;
+    UD_TRY(ud_value_validate_field(ctx, f, v));
     if (f->dictionary_kind)
         UD_TRY(ud_dictionary_validate(f, v));
     if (f->type >= UD_STRUCT) {
@@ -370,8 +377,8 @@ static ud_status validate_value(const ud_field *f, const ud_value *v, uint32_t d
             (f->type == UD_STRUCT && v->child_count != f->child_count))
             return UD_SCHEMA;
         for (uint32_t j = 0; j < v->child_count; j++)
-            UD_TRY(validate_value(f->children + (f->type == UD_STRUCT ? j : 0), v->children + j,
-                                  depth + 1, 0));
+            UD_TRY(validate_value(ctx, f->children + (f->type == UD_STRUCT ? j : 0),
+                                  v->children + j, depth + 1, 0));
     }
     return UD_OK;
 }
@@ -383,7 +390,7 @@ static ud_status append_core(ud_batch *b, const ud_value *v, uint32_t n, int mas
     /* Validate and reserve all columns before mutating row/offset/validity. */
     for (uint32_t i = 0; i < n; i++) {
         ud_column *c = b->column + i;
-        ud_status validated = validate_value(&c->field, v + i, 0, masked);
+        ud_status validated = validate_value(b->ctx, &c->field, v + i, 0, masked);
         if (validated)
             return ud_fail(b->ctx, validated, "column %u type or nullability mismatch", i);
         if (v[i].is_absent && !c->absence) {
@@ -500,6 +507,9 @@ static ud_status append_core(ud_batch *b, const ud_value *v, uint32_t n, int mas
                 break;
             case UD_UINT64:
                 ((uint64_t *)c->values)[r] = v[i].unsigned_integer;
+                break;
+            case UD_DATETIME:
+                ((ud_datetime *)c->values)[r] = v[i].datetime;
                 break;
             case UD_INTERVAL:
                 ((ud_interval *)c->values)[r] = v[i].interval;

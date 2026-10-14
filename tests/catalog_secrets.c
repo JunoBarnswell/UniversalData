@@ -10,7 +10,9 @@ int main(int argc,char **argv) {
     int denied = 0; ud_catalog *catalog = NULL;
     ud_catalog_options options = {sizeof(options),UD_ABI_VERSION,{argv[1],(uint32_t)strlen(argv[1])},{"tenant-a",8},authorize,&denied,1};
     OK(ud_catalog_open(memory,&options,&catalog));
-    const char *document = "{\"version\":10,\"id\":\"run/example\",\"parameters\":\"{\\\"password\\\":\\\"historical-secret-928157\\\"}\",\"state\":\"Failed\",\"timestampMs\":37}";
+    const char *document = "{\"version\":11,\"id\":\"run/"
+                           "example\",\"parameters\":\"{\\\"password\\\":\\\"historical-secret-"
+                           "928157\\\"}\",\"state\":\"Failed\",\"timestampMs\":37}";
     ud_catalog_key key = {sizeof(key),UD_ABI_VERSION,UD_CATALOG_AUDIT,{"run/example",11},1};
     OK(ud_catalog_put(catalog,&key,(ud_string){document,(uint32_t)strlen(document)}));
     denied = 1;

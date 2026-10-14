@@ -48,9 +48,10 @@ static ud_status export_metadata(ud_context *ctx, const ud_field *field, const c
     *out = NULL;
     ud_bytes metadata = {.ctx = ctx}, lineage = {.ctx = ctx};
     char id[33];
-    ud_status s = metadata_integer(&metadata, 2 + (field->type == UD_INTERVAL) +
-                                                  (field->dictionary_kind != 0) +
-                                                  !!(field->physical_identity.high || field->physical_identity.low));
+    ud_status s = metadata_integer(
+        &metadata, 2 + (field->type == UD_INTERVAL || field->type == UD_DATETIME) +
+                       (field->scalar.kind != 0) + (field->dictionary_kind != 0) +
+                       !!(field->physical_identity.high || field->physical_identity.low));
     ud_id_format(field->identity, id);
     if (!s)
         s = metadata_pair(&metadata, "ud.column_id", id, 32);
@@ -68,6 +69,16 @@ static ud_status export_metadata(ud_context *ctx, const ud_field *field, const c
     if (!s)
         s = metadata_pair(&metadata, "ud.lineage", (const char *)lineage.data,
                           (uint32_t)lineage.size);
+    if (!s && field->scalar.kind) {
+        char value[128];
+        int n = snprintf(value, sizeof(value), "%u,%u,%u,%u,%u,%u", field->scalar.kind,
+                         field->scalar.length, field->scalar.code_page, field->scalar.locale_id,
+                         field->scalar.comparison_flags, field->scalar.fractional_digits);
+        s = metadata_pair(&metadata, "ud.scalar", value, (uint32_t)n);
+    }
+    if (!s && field->type == UD_DATETIME)
+        s = metadata_pair(&metadata, "ARROW:extension:name", "universaldata.datetime.100ns",
+                          sizeof("universaldata.datetime.100ns") - 1);
     if (!s && field->type == UD_INTERVAL)
         s = metadata_pair(&metadata, "ARROW:extension:name", "universaldata.interval.microsecond",
                           sizeof("universaldata.interval.microsecond") - 1);
@@ -97,20 +108,20 @@ static ud_status export_column(ud_context *ctx, const ud_column *c, const ud_fie
     a->offset = offset;
     s->flags = field->nullable ? 2 : 0;
     s->name = ud_strdup_n(ctx, field->name, field->name_length);
-    const char *format = field->type == UD_BOOL       ? "b"
-                         : field->type == UD_INT64    ? "l"
-                         : field->type == UD_UINT64   ? "L"
-                         : field->type == UD_DURATION ? "tDu"
-                         : field->type == UD_INTERVAL ? "w:16"
-                         : field->type == UD_FLOAT64  ? "g"
-                         : field->type == UD_UTF8     ? "u"
-                         : field->type == UD_BINARY   ? "z"
-                         : field->type == UD_DATE32   ? "tdD"
-                         : field->type == UD_TIME64   ? "ttu"
-                         : field->type == UD_STRUCT   ? "+s"
-                         : field->type == UD_LIST     ? "+l"
-                         : field->type == UD_MAP      ? "+m"
-                                                      : NULL;
+    const char *format = field->type == UD_BOOL                                       ? "b"
+                         : field->type == UD_INT64                                    ? "l"
+                         : field->type == UD_UINT64                                   ? "L"
+                         : field->type == UD_DURATION                                 ? "tDu"
+                         : (field->type == UD_INTERVAL || field->type == UD_DATETIME) ? "w:16"
+                         : field->type == UD_FLOAT64                                  ? "g"
+                         : field->type == UD_UTF8                                     ? "u"
+                         : field->type == UD_BINARY                                   ? "z"
+                         : field->type == UD_DATE32                                   ? "tdD"
+                         : field->type == UD_TIME64                                   ? "ttu"
+                         : field->type == UD_STRUCT                                   ? "+s"
+                         : field->type == UD_LIST                                     ? "+l"
+                         : field->type == UD_MAP                                      ? "+m"
+                                                                                      : NULL;
     char decimal[32];
     if (field->type == UD_DECIMAL128) {
         snprintf(decimal, sizeof(decimal), "d:%d,%d", field->precision, field->scale);
@@ -136,14 +147,15 @@ static ud_status export_column(ud_context *ctx, const ud_column *c, const ud_fie
     if (!a->buffers)
         return UD_RESOURCE;
     size_t size_rows = (size_t)rows + offset;
-    size_t sizes[3] = {(size_rows + 7) / 8,
-                       c->offsets                 ? (size_rows + 1) * sizeof(int32_t)
-                       : field->type == UD_BOOL   ? (size_rows + 7) / 8
-                       : field->type == UD_DATE32 ? size_rows * 4
-                       : (field->type == UD_DECIMAL128 || field->type == UD_INTERVAL)
-                           ? size_rows * 16
-                           : size_rows * 8,
-                       c->string_bytes};
+    size_t sizes[3] = {
+        (size_rows + 7) / 8,
+        c->offsets                 ? (size_rows + 1) * sizeof(int32_t)
+        : field->type == UD_BOOL   ? (size_rows + 7) / 8
+        : field->type == UD_DATE32 ? size_rows * 4
+        : (field->type == UD_DECIMAL128 || field->type == UD_INTERVAL || field->type == UD_DATETIME)
+            ? size_rows * 16
+            : size_rows * 8,
+        c->string_bytes};
     const void *src[3] = {c->validity, c->offsets ? (const void *)c->offsets : c->values,
                           c->strings};
     for (int j = 0; j < a->n_buffers; j++) {
@@ -311,6 +323,22 @@ static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *fi
             if ((uint32_t)value_length == strlen(name) &&
                 !memcmp(value, name, (size_t)value_length))
                 field->type = UD_INTERVAL;
+            if ((uint32_t)value_length == sizeof("universaldata.datetime.100ns") - 1 &&
+                !memcmp(value, "universaldata.datetime.100ns", (size_t)value_length))
+                field->type = UD_DATETIME;
+        } else if (key_length == 9 && !memcmp(key, "ud.scalar", 9)) {
+            if (field->scalar.kind || value_length >= 128)
+                return UD_SCHEMA;
+            char text[128];
+            memcpy(text, value, (size_t)value_length);
+            text[value_length] = 0;
+            int used = 0;
+            if (sscanf(text, "%u,%u,%u,%u,%u,%u%n", &field->scalar.kind, &field->scalar.length,
+                       &field->scalar.code_page, &field->scalar.locale_id,
+                       &field->scalar.comparison_flags, &field->scalar.fractional_digits,
+                       &used) != 6 ||
+                used != value_length)
+                return UD_SCHEMA;
         } else if (key_length == 13 && !memcmp(key, "ud.dictionary", 13)) {
             if (field->dictionary_kind)
                 return UD_SCHEMA;
@@ -320,7 +348,7 @@ static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *fi
                 status = ud_dictionary_parse(ctx, dictionary, field);
             ud_json_destroy(dictionary);
             UD_TRY(status);
-        } else if (key_length==14 && !memcmp(key,"ud.physical_id",14)) {
+        } else if (key_length == 14 && !memcmp(key, "ud.physical_id", 14)) {
             if (physical_seen++) return UD_SCHEMA;
             UD_TRY(ud_id_parse((ud_string){value,(uint32_t)value_length},&field->physical_identity));
         } else if (key_length == 12 && !memcmp(key, "ud.column_id", 12)) {
@@ -372,6 +400,7 @@ static ud_status import_field(ud_context *ctx, const struct ArrowSchema *s, ud_f
               : (strlen(s->format) == 1 && strchr("cCsSiIl", s->format[0])) ? UD_INT64
               : !strcmp(s->format, "L")                                     ? UD_UINT64
               : !strncmp(s->format, "tD", 2)                                ? UD_DURATION
+              : f->type == UD_DATETIME && !strcmp(s->format, "w:16")        ? UD_DATETIME
               : !strcmp(s->format, "tin") || (f->type == UD_INTERVAL && !strcmp(s->format, "w:16"))
                   ? UD_INTERVAL
               : (!strcmp(s->format, "g") || !strcmp(s->format, "f"))     ? UD_FLOAT64
@@ -506,6 +535,8 @@ static ud_status import_value(ud_context *ctx, const ud_field *f, const struct A
             v->integer = ((const int32_t *)a->buffers[1])[k];
     } else if (f->type == UD_UINT64) {
         v->unsigned_integer = ((const uint64_t *)a->buffers[1])[k];
+    } else if (f->type == UD_DATETIME) {
+        memcpy(&v->datetime, (const char *)a->buffers[1] + k * 16, 16);
     } else if (f->type == UD_INTERVAL) {
         const char *bytes = (const char *)a->buffers[1] + k * 16;
         memcpy(&v->interval, bytes, 16);

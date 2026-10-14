@@ -100,7 +100,8 @@ static ud_status parse_value(ud_context *ctx, const ud_field *field, const ud_js
     if (field->type == UD_FLOAT64 && kind != UD_JSON_NUMBER && kind != UD_JSON_STRING)
         return UD_SCHEMA;
     if ((field->type == UD_UTF8 || field->type == UD_BINARY || field->type == UD_DATE32 ||
-         field->type == UD_TIME64 || field->type == UD_TIMESTAMP || field->type == UD_INTERVAL) &&
+         field->type == UD_TIME64 || field->type == UD_TIMESTAMP || field->type == UD_DATETIME ||
+         field->type == UD_INTERVAL) &&
         kind != UD_JSON_STRING)
         return UD_SCHEMA;
     const char *text = NULL;
@@ -216,6 +217,7 @@ static ud_status emit_value(ud_bytes *bytes, const ud_field *field, const ud_val
         s = field->type == UD_UINT64 || field->type == UD_DURATION || field->type == UD_INTERVAL ||
                     field->type == UD_DECIMAL128 || field->type == UD_DATE32 ||
                     field->type == UD_TIME64 || field->type == UD_TIMESTAMP ||
+                    field->type == UD_DATETIME ||
                     (field->type == UD_FLOAT64 && !isfinite(value->real))
                 ? ud_json_quote(bytes, text, required - 1)
                 : ud_bytes_put(bytes, text, required - 1);

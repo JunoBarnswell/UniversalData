@@ -154,6 +154,10 @@ public sealed class Execution : IDisposable
         }
     }
 
+    public string CompileExpression(string schemaJson,string source)
+    { Control();lock(controller){Open();using var strings=new NativeStrings(schemaJson,source);
+        Check(Native.ud_execution_compile_expression(execution,strings[0],strings[1],out var text,out var length));return DataOwnership.Text(text,length);} }
+
     public string ComponentCatalog()
     {
         Control(); lock (controller)
@@ -272,6 +276,7 @@ internal static partial class Native
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_execution_wait")] internal static extern int ud_execution_wait_raw(IntPtr execution, uint timeout);
 
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_compile_expression(ExecutionHandle execution,StringValue schema,StringValue source,out IntPtr text,out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_component_catalog(ExecutionHandle execution, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_explain(ExecutionHandle execution, out IntPtr text, out uint length);
 

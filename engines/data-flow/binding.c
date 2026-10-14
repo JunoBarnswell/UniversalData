@@ -82,14 +82,16 @@ ud_status ud_builtin_bind_expr(const ud_component_context *c, const ud_json *val
     char *json;
     uint32_t n = 0;
     UD_TRY(ud_json_serialize(value, &json, &n));
-    ud_expression_options o = {sizeof(o),
-                               UD_ABI_VERSION,
-                               schema,
-                               c->resolve,
-                               c->resolve_user,
-                               c->resolve_field,
-                               c->execution->registry,
-                               c->activation->parallel ? UD_COMPONENT_THREAD_SAFE : 0};
+    ud_expression_options o = {
+        sizeof(o),
+        UD_ABI_VERSION,
+        schema,
+        c->resolve,
+        c->resolve_user,
+        c->resolve_field,
+        c->execution->registry,
+        (c->activation->parallel ? UD_COMPONENT_THREAD_SAFE : 0) |
+            (c->execution->options.state_directory.length ? UD_FUNCTION_DETERMINISTIC : 0)};
     ud_status s = ud_expression_create(c->memory, (ud_string){json, n}, &o, out);
     ud_free(json);
     return s;
@@ -126,15 +128,17 @@ ud_status ud_builtin_create_operator(const ud_component_context *c, int kind, co
             orders[1] = c->input_plans[1].sort;
     }
     options.input_order = orders;
-    ud_expression_options bindings = {.struct_size = sizeof(bindings),
-                                      .abi_version = UD_ABI_VERSION,
-                                      .schema = inputs[0],
-                                      .resolve = c->resolve,
-                                      .user = c->resolve_user,
-                                      .resolve_field = c->resolve_field,
-                                      .registry = c->execution->registry,
-                                      .function_capabilities =
-                                          c->activation->parallel ? UD_COMPONENT_THREAD_SAFE : 0};
+    ud_expression_options bindings = {
+        .struct_size = sizeof(bindings),
+        .abi_version = UD_ABI_VERSION,
+        .schema = inputs[0],
+        .resolve = c->resolve,
+        .user = c->resolve_user,
+        .resolve_field = c->resolve_field,
+        .registry = c->execution->registry,
+        .function_capabilities =
+            (c->activation->parallel ? UD_COMPONENT_THREAD_SAFE : 0) |
+            (c->execution->options.state_directory.length ? UD_FUNCTION_DETERMINISTIC : 0)};
     options.expression_bindings = &bindings;
     char *json = NULL;
     uint32_t length = 0;
@@ -253,7 +257,20 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
             s = UD_UNSUPPORTED;
         if (!s)
             s = error_schema(c, config, in[0], 0, out);
-    } else if (!s && (sink_kind(kind))) { /* No output schemas. */
+    } else if (!s && (sink_kind(kind))) {
+        if (kind == SQL_SINK || kind == REST_SINK) {
+            ud_string mode = {0};
+            s = ud_json_string(ud_member(config, "mode"), &mode);
+            int operation = ud_named(mode, "changeset") ? UD_WRITE_CHANGESET : UD_WRITE_APPEND;
+            ud_batch *projection = NULL;
+            uint32_t *indices = NULL, before;
+            if (!s)
+                s = ud_builtin_sink_projection(c, config, in[0], operation, &projection, &indices,
+                                               &before);
+            ud_batch_destroy(projection);
+            ud_free(indices);
+        }
+
     } else if (!s && kind == CAST) {
         char *schema = NULL;
         uint32_t length = 0;
@@ -267,50 +284,13 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
             s = ud_batch_cast_schema(c->memory, in[0], schema, length, (int32_t)rounding, out);
         ud_free(schema);
         if (!s)
+            s = ud_builtin_conversion_schema(c, config, in[0], out);
+        if (!s)
             s = error_schema(c, config, in[0], 1, out + 1);
     } else if (!s && kind == DERIVE) {
-        const ud_json *columns = ud_member(config, "columns");
-        uint32_t count = ud_json_size(columns), original = ud_batch_columns(in[0]);
-        if (ud_json_kind(columns) != UD_JSON_ARRAY || !count || count > 65536 - original)
-            s = UD_SCHEMA;
-        ud_field *fields = !s ? ud_alloc(c->memory, (original + count) * sizeof(*fields)) : NULL;
-        ud_expression **bound = !s ? ud_alloc(c->memory, count * sizeof(*bound)) : NULL;
-        ud_field *derived = !s ? ud_alloc(c->memory, count * sizeof(*derived)) : NULL;
-        if (!s && (!fields || !bound || !derived))
-            s = UD_RESOURCE;
-        char scope[33];
-        if (!s)
-            s = ud_pipeline_field_namespace(c, scope);
-        for (uint32_t i = 0; !s && i < original; i++)
-            s = ud_batch_field(in[0], i, fields + i);
-        for (uint32_t i = 0; !s && i < count; i++) {
-            const ud_json *col = ud_json_at(columns, i);
-            static const char *keys[] = {"name", "expression"};
-            s = ud_json_keys(col, keys, 2);
-            ud_string name = {0};
-            if (!s)
-                s = ud_json_string(ud_member(col, "name"), &name);
-            if (!s)
-                s = ud_builtin_bind_expr(c, ud_member(col, "expression"), in[0], bound + i);
-            if (!s)
-                s = ud_expression_field(bound[i], fields + original + i);
-            if (!s) {
-                s = ud_field_derive(c->memory, fields + original + i, (ud_string){scope, 32}, name,
-                                    derived + i);
-                if (!s)
-                    fields[original + i] = derived[i];
-            }
-        }
-        if (!s)
-            s = ud_batch_create(c->memory, fields, original + count, 0, out);
-        for (uint32_t i = 0; bound && i < count; i++)
-            ud_expression_destroy(bound[i]);
-        ud_free(bound);
-        if (derived)
-            for (uint32_t i = 0; i < count; i++)
-                ud_field_clear(derived + i);
-        ud_free(derived);
-        ud_free(fields);
+        ud_derive_plan *plan = NULL;
+        s = ud_derive_bind(c, config, in[0], &plan, out);
+        ud_derive_destroy(plan);
     } else if (!s && (kind == SORT || kind == JOIN || kind == WINDOW || kind == AGGREGATE)) {
         ud_operator *operator= NULL;
         s = ud_builtin_create_operator(c, kind, config, in, &operator);
@@ -355,7 +335,7 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
             }
         }
         if (!s)
-            s = ud_error_schema(&c->errors, payload, include, out + 1);
+            s = ud_error_schema(&c->errors, NULL, include, out + 1);
         ud_batch_destroy(payload);
         ud_free(nullable);
     }
@@ -367,7 +347,7 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
         ud_batch_destroy(params);
     }
     if (!s && (kind == CSV_SOURCE || kind == JSON_SOURCE || kind == SQL_SOURCE))
-        s = error_schema(c, config, out[0], 1, out + 1);
+        s = error_schema(c, config, NULL, 1, out + 1);
     if (!s && kind == SQL_SOURCE && ud_member(config, "where")) {
         ud_expression *predicate = NULL;
         s = ud_builtin_bind_expr(c, ud_member(config, "where"), out[0], &predicate);

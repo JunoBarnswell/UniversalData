@@ -21,6 +21,8 @@ UD_API ud_status ud_xlsx_reader_open(ud_context *, const char *, const ud_field 
 /* Rejected is an identified one-row original-schema value set with cell location
  * in reader diagnostics. Caller routes it through the regular error output. */
 UD_API ud_status ud_xlsx_reader_next(ud_xlsx_reader *, ud_batch **, int32_t *rejected);
+UD_API ud_status ud_xlsx_reader_rejected_record(const ud_xlsx_reader *, ud_status *, ud_id *,
+                                                ud_batch **);
 UD_API ud_status ud_xlsx_reader_metadata(const ud_xlsx_reader *, char **, uint32_t *);
 UD_API void ud_xlsx_reader_close(ud_xlsx_reader *);
 UD_API ud_status ud_xlsx_writer_open(ud_context *, const char *, const ud_field *, uint32_t,

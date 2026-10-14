@@ -101,7 +101,7 @@ static ud_status sql_type(ud_field *field, ud_string declaration, int32_t dialec
         else if (!strncmp(begin, "interval", 8))
             field->type = UD_INTERVAL;
     } else if (dialect == UD_SQL_MYSQL || dialect == UD_SQL_MARIADB) {
-        if (!strncmp(begin, "bigint", 6) && strstr(begin, "unsigned")) {
+        if (( !strncmp(begin,"tinyint",7)||!strncmp(begin,"smallint",8)||!strncmp(begin,"mediumint",9)||!strncmp(begin,"int",3)||!strncmp(begin,"bigint",6))&&strstr(begin,"unsigned")) {
             field->type = UD_UINT64;
         } else if (!strncmp(begin, "tinyint", 7) || !strncmp(begin, "smallint", 8) ||
                    !strncmp(begin, "mediumint", 9) || !strncmp(begin, "int", 3) ||
@@ -402,7 +402,42 @@ static int field_index(const ud_field *fields,uint32_t count,ud_id id) {
     for (uint32_t at=0;at<count;at++) if (!ud_id_compare(fields[at].identity,id)) return (int)at;
     return -1;
 }
+static unsigned scalar_width(uint32_t kind) {
+    return kind >= UD_DT_I1 && kind <= UD_DT_I8     ? 8u << (kind - UD_DT_I1)
+           : kind >= UD_DT_UI1 && kind <= UD_DT_UI8 ? 8u << (kind - UD_DT_UI1)
+                                                    : 64;
+}
+static int scalar_lossless(const ud_field *a, const ud_field *b) {
+    uint32_t x = a->scalar.kind, y = b->scalar.kind;
+    if (!y)
+        return 1;
+    if (!x)
+        return 0;
+    if (a->scalar.locale_id != b->scalar.locale_id ||
+        a->scalar.comparison_flags != b->scalar.comparison_flags)
+        return 0;
+    if (a->type == UD_INT64 || a->type == UD_UINT64)
+        return scalar_width(x) <= scalar_width(y) &&
+               ((x == UD_DT_FILETIME) == (y == UD_DT_FILETIME));
+    if (a->type == UD_FLOAT64)
+        return (x == y) || (x == UD_DT_R4 && y == UD_DT_R8);
+    if (a->type == UD_UTF8)
+        return a->scalar.code_page == b->scalar.code_page &&
+               (!b->scalar.length || (a->scalar.length && a->scalar.length <= b->scalar.length));
+    if (a->type == UD_BINARY)
+        return (x == UD_DT_GUID) == (y == UD_DT_GUID) &&
+               (!b->scalar.length || (a->scalar.length && a->scalar.length <= b->scalar.length));
+    if (a->type == UD_DATETIME)
+        return (x == UD_DT_DBTIMESTAMPOFFSET) == (y == UD_DT_DBTIMESTAMPOFFSET) &&
+               ((x == UD_DT_DBTIME || x == UD_DT_DBTIME2) ==
+                (y == UD_DT_DBTIME || y == UD_DT_DBTIME2)) &&
+               (y != UD_DT_DBDATE || x == UD_DT_DBDATE) &&
+               a->scalar.fractional_digits <= b->scalar.fractional_digits;
+    return a->type == UD_DECIMAL128 || x == y;
+}
 static int lossless(const ud_field *actual, const ud_field *expected) {
+    if (!scalar_lossless(actual, expected))
+        return 0;
     int widening = expected->type == UD_DECIMAL128 && expected->scale >= 0 &&
                    ((actual->type == UD_UINT64 && expected->precision - expected->scale >= 20) ||
                     (actual->type == UD_INT64 && expected->precision - expected->scale >= 19));

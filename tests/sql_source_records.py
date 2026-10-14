@@ -14,8 +14,8 @@ with tempfile.TemporaryDirectory(prefix="ud-sql-records-") as directory:
         connection.execute("CREATE TABLE source(value TEXT, label TEXT)")
         connection.executemany("INSERT INTO source VALUES(?,?)", [("18446744073709551615", "max"), ("-1", "negative"), ("3", "normal"), ("18446744073709551616", "overflow")])
     good, errors = root / "good.jsonl", root / "errors.jsonl"
-    schema = {"version": 10, "fields": [{"name": "value", "type": "uint64", "nullable": False}, {"name": "label", "type": "utf8", "nullable": False}]}
-    package = {"version": 10, "id": "sql-records", "connections": [
+    schema = {"version": 11, "fields": [{"name": "value", "type": "uint64", "nullable": False}, {"name": "label", "type": "utf8", "nullable": False}]}
+    package = {"version": 11, "id": "sql-records", "connections": [
         {"id": "input", "driver": str(pathlib.Path(sys.argv[2]).resolve()), "resource": str(database), "credentialReference": "fixture"},
         {"id": "good", "driver": "file", "resource": str(good)}, {"id": "errors", "driver": "file", "resource": str(errors)}],
         "controlFlow": {"tasks": [{"id": "copy", "kind": "dataFlow", "config": {"pipeline": "rows"}}], "constraints": []},
@@ -35,5 +35,5 @@ with tempfile.TemporaryDirectory(prefix="ud-sql-records-") as directory:
     assert [int(row["value"]) for row in accepted] == [18446744073709551615, 3]
     assert len(rejected) == 2 and len({row["sourceRowId"] for row in rejected}) == 2
     for row in rejected:
-        assert row["componentId"] == "read" and row["columnId"] and row["inputFormat"] == "SQLRawCells/Wire10"
+        assert row["componentId"] == "read" and row["columnId"] and row["inputFormat"] == "SQLRawCells/Wire11"
         assert base64.b64decode(row["input"])

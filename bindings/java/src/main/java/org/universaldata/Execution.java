@@ -47,6 +47,10 @@ public final class Execution implements AutoCloseable {
     public Metrics metrics() {
         lifetime.readLock().lock();try { open();long[] m=nativeMetrics(handle);return new Metrics(State.values()[(int)m[0]],StatusCode.fromNumber((int)m[1]),m[2],m[3],m[4],m[5],m[6],m[7],m[8],m[9],m[10],m[11],m[12],m[13],m[14],m[15],m[16],m[17],m[18],m[19],m[20],m[21],m[22]); }finally { lifetime.readLock().unlock(); }
     }
+    public String compileExpression(String schema,String source) {
+        control();synchronized(controller) {lifetime.readLock().lock();try{open();return nativeExpression(handle,Utf8.bytes(schema),Utf8.bytes(source));}finally{lifetime.readLock().unlock();}}
+    }
+    private static native String nativeExpression(long handle,byte[] schema,byte[] source);
     public String discoverSchema(String connection,String table) {
         control(); synchronized(controller) { lifetime.readLock().lock();
             try { open(); return nativeDiscover(handle,Utf8.bytes(connection),Utf8.bytes(table)); }

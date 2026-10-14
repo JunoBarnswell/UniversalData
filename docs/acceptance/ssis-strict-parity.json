@@ -1,0 +1,4034 @@
+{
+  "generatedFrom": "metadata/product.json",
+  "sdkVersion": "2.1.0",
+  "abi": 11,
+  "specification": "UniversalData_SSIS_Strict_Parity_Codex.md",
+  "baseline": "867228797e6f2433cedff684f59ca1d28d3b4b29",
+  "referenceVersion": "SSIS 2025 / Microsoft Learn sql-server-ver17",
+  "goldenEnvironment": "VerificationBlocked: user has no independent Windows SSIS runtime",
+  "architecture": [
+    "One direct formula/JSON frontend into the same Native IR and evaluator",
+    "Native Field scalar constraints persist across Batch/Wire/Arrow; DateTime preserves 100ns and explicit offsets",
+    "Derived writes bind to immutable original input; Add and Replace share one plan and row error ownership",
+    "Task completion snapshots join the existing transaction Journal before prepare; package and task transaction scopes use a stable Native activation identity. Tentative row/error counters publish with the same decision.",
+    "MySQL/MariaDB claim a unique receipt inside the business transaction before effects; missing-receipt gap probes are removed. Serializable isolation is preserved.",
+    "Compute internal state pages obey both row and byte limits, independent of business batch contents; logical field domains are removed from opaque aggregate state."
+  ],
+  "implementationInProgress": true,
+  "status": "Partial; Linux Native invariants accepted; GoldenVerified is false for every item",
+  "compatibility": {
+    "sdk": "2.1.0",
+    "protocolFamily": 11,
+    "oldProtocol": "Explicitly rejected; rebuild plugins and regenerate packages; old raw data and artifacts are retained",
+    "datetime": "Signed 100ns wall ticks plus explicit offset; distinct from microsecond Timestamp/Duration"
+  },
+  "designReviews": [
+    {
+      "round": 1,
+      "scope": "Current source and observable triggers",
+      "decisions": [
+        "Existing Native formula JSON AST and direct SSIS text must bind one IR. Append-only Derived could not express replacement or original-input reads. Generic UTF8/Int64 erased SSIS domains.",
+        "File record errors must retain source position and typed original business columns. XLSX raw cells must use the same record-error contract.",
+        "The 50K seven-target real workload exposes transaction receipt lock ordering and aggregate state allocation, which small isolated tests cannot prove."
+      ]
+    },
+    {
+      "round": 2,
+      "scope": "Public contracts, ownership and product behavior",
+      "decisions": [
+        "A scalar metadata POD extends Native Field; all values still use Native Data, Wire, Arrow and Journal. DateTime preserves 100ns and offsets. Protocol family 11 is one clean break.",
+        "Derived binds expressions against immutable original input and executes one row-atomic write plan. Replace retains field position and identity; expression lineage records its actual sources.",
+        "C# and Java functions/components register through Native Registry. Borrowed callback views expire; owned Native results and delegate/global references have explicit releases. The designer uses Worker Native compilation."
+      ]
+    },
+    {
+      "round": 3,
+      "scope": "Crash recovery and delivery boundaries",
+      "decisions": [
+        "Receipt insertion and business effects share one driver transaction; conflicts verify existing receipts, never infer commit from retries.",
+        "A transaction owner stages its completion snapshot before prepare. Journal publication, business effects and confirmation counters use the same coordinator decision; recovery skips committed user code.",
+        "No independent Windows SSIS/Oracle/vendor environment means only that acceptance is blocked. Native code gaps and vendor equivalence gaps remain explicit, and release readiness fails until all mandatory gates pass."
+      ]
+    }
+  ],
+  "matrix": [
+    {
+      "id": "DC-001",
+      "name": "Add as New Column",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-002",
+      "name": "Replace Existing Column",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-003",
+      "name": "同组件多公式",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-004",
+      "name": "原始值依赖",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-005",
+      "name": "新列引用规则",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native rejects same-component new-column references; the precise SSIS binding timing still requires reference cases.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-006",
+      "name": "输出名称",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Full SSIS naming/Unicode/case collision rules are not implemented.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-007",
+      "name": "原列元数据",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Original metadata is retained and enforced by Native casts; exact SSIS replacement legality and lineage restrictions need the full reference matrix.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-008",
+      "name": "新列元数据",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Result widths for some string functions are conservative NTEXT; exact SSIS width/precision inference remains incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-009",
+      "name": "显式 Cast",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "The complete 29x29 cast legality/result matrix and LCID date grammars are incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-010",
+      "name": "隐式类型转换",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Exact mixed-domain Decimal/date/integer implicit-promotion tables remain incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-011",
+      "name": "字符拼接",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-012",
+      "name": "表达式完整输入",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-013",
+      "name": "公式编译时验证",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native lexer/type/constant failures are preflighted, but all SSIS error timing and cast admissibility rules are not complete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-014",
+      "name": "运行时求值",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-015",
+      "name": "公式结果 Nullable",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-016",
+      "name": "ErrorDisposition",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-017",
+      "name": "TruncationDisposition",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-018",
+      "name": "错误端口",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-019",
+      "name": "行归属",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-020",
+      "name": "组件元数据",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c",
+        "products/designer/src/SSISColumnEditor.tsx",
+        "products/UniversalData.Worker/Program.cs"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "real Chromium product workflow"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native has canonical column writes and bound schemas; complete SSIS metadata aliases and all property metadata are incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-021",
+      "name": "列替换类型约束",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "All SSIS static replacement-conversion restrictions are not implemented.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-022",
+      "name": "错误回退",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-023",
+      "name": "多线程一致性",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-024",
+      "name": "Spill/Checkpoint/Resume",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-025",
+      "name": "非确定性函数",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Contextual clocks execute per evaluation and are rejected in durable deterministic plans; SSIS-equivalent clock evaluation timing is not certified.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-026",
+      "name": "代码页",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-027",
+      "name": "地域",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Field LCID drives casing, but Package/DataFlow/Component locale inheritance and collation-aware comparison/sort/hash are incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-028",
+      "name": "数据预览",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c",
+        "products/designer/src/SSISColumnEditor.tsx",
+        "products/UniversalData.Worker/Program.cs"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "real Chromium product workflow"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native compile and bounded debug views are implemented; a complete arbitrary-node source preview workflow is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-029",
+      "name": "错误可诊断性",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c",
+        "products/designer/src/SSISColumnEditor.tsx",
+        "products/UniversalData.Worker/Program.cs"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "real Chromium product workflow"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native spans and error chains are exposed; exact SSIS HRESULT/ErrorColumn translation is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "DC-030",
+      "name": "可扩展函数",
+      "source": [
+        "engines/data-flow/derive.c",
+        "engines/data-flow/row_transform.c",
+        "components/data/src/errors.c",
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c",
+        "bindings/dotnet/UniversalData/ManagedFunctions.cs",
+        "bindings/java/native/bridge.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract",
+        "ssis_row_error_atomicity_recovery",
+        "managed_registry_scripts_debug_lifecycle",
+        "java_registry_observer_catalog_lifecycle"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native callback ownership and language registration are exercised; full Java dynamic physical-plan/variable projection and custom-function kill/recovery coverage are incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-01",
+      "name": "括号",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-02",
+      "name": "显式转换",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "The complete 29x29 conversion admissibility/result matrix and nested DT_STR rules are incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-03",
+      "name": "数值加法",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Exact mixed Decimal/currency precision and scale promotion is incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-04",
+      "name": "字符串连接",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-05",
+      "name": "数值减法",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Exact mixed Decimal/currency precision and scale promotion is incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-06",
+      "name": "一元取负",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-07",
+      "name": "乘法",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Exact mixed Decimal/currency precision and scale promotion is incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-08",
+      "name": "除法",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Exact mixed Decimal/currency precision and scale promotion is incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-09",
+      "name": "取余",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Exact mixed Decimal/currency precision and scale promotion is incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-10",
+      "name": "等于",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "LCID/collation-aware comparison and all provider temporal coercions remain incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-11",
+      "name": "不等于",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "LCID/collation-aware comparison and all provider temporal coercions remain incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-12",
+      "name": "大于",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "LCID/collation-aware comparison and all provider temporal coercions remain incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-13",
+      "name": "小于",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "LCID/collation-aware comparison and all provider temporal coercions remain incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-14",
+      "name": "大于等于",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "LCID/collation-aware comparison and all provider temporal coercions remain incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-15",
+      "name": "小于等于",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "LCID/collation-aware comparison and all provider temporal coercions remain incomplete; Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-16",
+      "name": "逻辑与",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-17",
+      "name": "逻辑或",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-18",
+      "name": "逻辑非",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-19",
+      "name": "按位与",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-20",
+      "name": "按位或",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-21",
+      "name": "按位异或",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-22",
+      "name": "按位非",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "OP-23",
+      "name": "三元",
+      "source": [
+        "components/expression/src/formula.c",
+        "components/expression/src/expression.c",
+        "components/data/src/semantics.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M01",
+      "name": "ABS(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M02",
+      "name": "EXP(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M03",
+      "name": "CEILING(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M04",
+      "name": "FLOOR(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M05",
+      "name": "LN(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M06",
+      "name": "LOG(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M07",
+      "name": "POWER(x,y)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M08",
+      "name": "ROUND(x,n)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M09",
+      "name": "SIGN(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M10",
+      "name": "SQUARE(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-M11",
+      "name": "SQRT(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S01",
+      "name": "CODEPOINT(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "UTF16 code-unit behavior is explicit; vendor supplementary-character edge cases require Golden.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S02",
+      "name": "FINDSTRING(s,needle,n)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S03",
+      "name": "HEX(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S04",
+      "name": "LEN(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "UTF16 code-unit behavior is explicit; vendor supplementary-character edge cases require Golden.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S05",
+      "name": "LEFT(x,n)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S06",
+      "name": "LOWER(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Column LCID reaches ICU casing; complete locale inheritance and vendor globalization-version differences remain incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S07",
+      "name": "LTRIM(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S08",
+      "name": "REPLACE(s,old,new)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S09",
+      "name": "REPLICATE(x,n)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S10",
+      "name": "REVERSE(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "UTF16 code-unit behavior is explicit; vendor supplementary-character edge cases require Golden.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S11",
+      "name": "RIGHT(x,n)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S12",
+      "name": "RTRIM(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S13",
+      "name": "SUBSTRING(s,p,n)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S14",
+      "name": "TRIM(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-S15",
+      "name": "UPPER(x)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Column LCID reaches ICU casing; complete locale inheritance and vendor globalization-version differences remain incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-D01",
+      "name": "DATEADD(datepart,n,date)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-D02",
+      "name": "DATEDIFF(datepart,a,b)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-D03",
+      "name": "DATEPART(datepart,date)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-D04",
+      "name": "DAY(date)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-D05",
+      "name": "GETDATE()",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Contextual clocks execute per evaluation and are rejected in durable deterministic plans; SSIS-equivalent clock evaluation timing is not certified.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-D06",
+      "name": "GETUTCDATE()",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Contextual clocks execute per evaluation and are rejected in durable deterministic plans; SSIS-equivalent clock evaluation timing is not certified.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-D07",
+      "name": "MONTH(date)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-D08",
+      "name": "YEAR(date)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-N01",
+      "name": "ISNULL(expression)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-N02",
+      "name": "NULL(typespec)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-X01",
+      "name": "REPLACENULL(a,b)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Fallback is converted to the first argument domain. Contradictory NULL remarks in Microsoft documentation require real SSIS evidence.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-X02",
+      "name": "TOKEN(text,delimiters,n)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FN-X03",
+      "name": "TOKENCOUNT(text,delimiters)",
+      "source": [
+        "components/expression/src/functions.c",
+        "components/data/src/datetime.c",
+        "components/data/src/scalar.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T01",
+      "name": "Slowly Changing Dimension",
+      "source": [
+        "engines/data-flow/relational.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_features"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native SCD Type1/2 and transactional writer exist; exact SSIS fixed/changing output metadata and ordering need vendor cases.",
+      "entry": "scd / scd.destination",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T02",
+      "name": "Fuzzy Grouping",
+      "source": [
+        "engines/data-flow/advanced.c"
+      ],
+      "nativeChecks": [
+        "advanced_native_semantics"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native similarity/grouping is not the SQL Server SSIS proprietary fuzzy algorithm.",
+      "entry": "fuzzyGrouping",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T03",
+      "name": "Fuzzy Lookup",
+      "source": [
+        "engines/data-flow/advanced.c"
+      ],
+      "nativeChecks": [
+        "advanced_native_semantics"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native candidate similarity/cache behavior does not establish SSIS fuzzy equivalence.",
+      "entry": "fuzzyLookup",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T04",
+      "name": "Term Extraction",
+      "source": [
+        "engines/data-flow/advanced.c"
+      ],
+      "nativeChecks": [
+        "advanced_native_semantics"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native term counting does not implement the complete SSIS linguistic noun/phrase extractor.",
+      "entry": "termExtraction",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T05",
+      "name": "Term Lookup",
+      "source": [
+        "engines/data-flow/advanced.c"
+      ],
+      "nativeChecks": [
+        "advanced_native_semantics"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Complete SSIS locale/dictionary tokenization behavior is not implemented.",
+      "entry": "termLookup",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T06",
+      "name": "Data Mining Query",
+      "source": [
+        "engines/control-flow/sqlserver.c"
+      ],
+      "nativeChecks": [],
+      "states": [
+        "VerificationBlocked"
+      ],
+      "goldenVerified": false,
+      "coverage": "Provider code absent",
+      "remaining": "No SSAS Mining Model connector is implemented. SSAS Data Mining was discontinued; the existing ETL-040 product exclusion is retained. Legacy-vendor equivalence cannot be claimed.",
+      "entry": "No native Data Mining Query transformation",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T07",
+      "name": "DQS Cleansing",
+      "source": [
+        "engines/control-flow/sqlserver.c"
+      ],
+      "nativeChecks": [],
+      "states": [
+        "VerificationBlocked"
+      ],
+      "goldenVerified": false,
+      "coverage": "Provider code absent",
+      "remaining": "No DQS knowledge-base connector is implemented. Microsoft removed DQS; the existing ETL-039 product exclusion is retained. Native quality rules do not emulate DQS.",
+      "entry": "No native DQS provider transformation",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T08",
+      "name": "Character Map",
+      "source": [
+        "engines/data-flow/transforms.c"
+      ],
+      "nativeChecks": [
+        "core_pipeline_components"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Complete column comparison flags/locale inheritance and vendor character-map combinations remain incomplete.",
+      "entry": "characterMap",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T09",
+      "name": "Copy Column",
+      "source": [
+        "engines/data-flow/transforms.c"
+      ],
+      "nativeChecks": [
+        "core_pipeline_components"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "copyColumn",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T10",
+      "name": "Data Conversion",
+      "source": [
+        "engines/data-flow/row_transform.c"
+      ],
+      "nativeChecks": [
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Full 29x29 conversion and SSIS implicit domains remain incomplete.",
+      "entry": "cast",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T11",
+      "name": "Derived Column",
+      "source": [
+        "engines/data-flow/derive.c"
+      ],
+      "nativeChecks": [
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "See DC-001..030 for concrete code gaps.",
+      "entry": "derive",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T12",
+      "name": "Export Column",
+      "source": [
+        "engines/data-flow/column_file.c"
+      ],
+      "nativeChecks": [
+        "native_component_product_semantics"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "column.export",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T13",
+      "name": "Import Column",
+      "source": [
+        "engines/data-flow/column_file.c"
+      ],
+      "nativeChecks": [
+        "native_component_product_semantics"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "column.import",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T14",
+      "name": "Script Component",
+      "source": [
+        "bindings/dotnet/UniversalData/ManagedDataFlow.cs"
+      ],
+      "nativeChecks": [
+        "managed_product_worker_process_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "The full SSIS script variable/async-output surface and Windows sandbox acceptance are incomplete.",
+      "entry": "Native Registry managed callbacks",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T15",
+      "name": "OLE DB Command",
+      "source": [
+        "engines/data-flow/sql_task.c"
+      ],
+      "nativeChecks": [
+        "sql_command_records_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "The live multi-database network loss/timeout/cancel matrix and Windows provider behavior remain unverified.",
+      "entry": "sql.command",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T16",
+      "name": "Aggregate",
+      "source": [
+        "components/compute/src/compute.c"
+      ],
+      "nativeChecks": [
+        "compute_plan"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Per-field collation-aware grouping/distinct semantics and exact SSIS overflow/promotion remain incomplete.",
+      "entry": "aggregate",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T17",
+      "name": "Sort",
+      "source": [
+        "components/compute/src/compute.c"
+      ],
+      "nativeChecks": [
+        "compute_plan"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "LCID/column-flag sort equivalence is incomplete.",
+      "entry": "sort",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T18",
+      "name": "Percentage Sampling",
+      "source": [
+        "engines/data-flow/relational.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_features"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native seeded sampling is implemented; vendor random algorithm/output equivalence is unverified.",
+      "entry": "percentageSampling",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T19",
+      "name": "Row Sampling",
+      "source": [
+        "engines/data-flow/relational.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_features"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Native seeded sampling is implemented; vendor random algorithm/output equivalence is unverified.",
+      "entry": "rowSampling",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T20",
+      "name": "Pivot",
+      "source": [
+        "engines/data-flow/relational.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_features"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "pivot",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T21",
+      "name": "Unpivot",
+      "source": [
+        "engines/data-flow/relational.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_features"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "unpivot",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T22",
+      "name": "Conditional Split",
+      "source": [
+        "engines/data-flow/row_transform.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "split",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T23",
+      "name": "Multicast",
+      "source": [
+        "engines/data-flow/row_transform.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "multicast",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T24",
+      "name": "Union All",
+      "source": [
+        "engines/data-flow/builtins.c"
+      ],
+      "nativeChecks": [
+        "core_pipeline_components"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Full SSIS mapping/conversion edge cases require vendor captures.",
+      "entry": "unionAll",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T25",
+      "name": "Merge",
+      "source": [
+        "engines/data-flow/relational.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_features"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "merge",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T26",
+      "name": "Merge Join",
+      "source": [
+        "engines/data-flow/relational.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_features"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "mergeJoin",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T27",
+      "name": "Lookup",
+      "source": [
+        "engines/data-flow/relational.c"
+      ],
+      "nativeChecks": [
+        "next_phase_pipeline_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Complete SSIS Full/Partial/No Cache and duplicate/NULL option equivalence is incomplete.",
+      "entry": "lookup",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T28",
+      "name": "Cache Transform",
+      "source": [
+        "engines/data-flow/cache.c"
+      ],
+      "nativeChecks": [
+        "next_phase_pipeline_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "cache",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T29",
+      "name": "Balanced Data Distributor",
+      "source": [
+        "engines/data-flow/row_transform.c"
+      ],
+      "nativeChecks": [
+        "core_pipeline_components"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Each Native batch goes to exactly one output. Vendor scheduling/order comparison remains unverified.",
+      "entry": "balanced",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T30",
+      "name": "Audit",
+      "source": [
+        "engines/data-flow/transforms.c"
+      ],
+      "nativeChecks": [
+        "core_pipeline_components"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Full SSIS audit-column inventory and evaluation timing remain incomplete.",
+      "entry": "audit",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "SSIS-T31",
+      "name": "Row Count",
+      "source": [
+        "engines/data-flow/transforms.c"
+      ],
+      "nativeChecks": [
+        "core_pipeline_components"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "entry": "rowCount",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-01",
+      "name": "CSV 50,000 正常执行",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-02",
+      "name": "XLSX 50,000 正常执行",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-03",
+      "name": "CSV Dirty 50,000",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-04",
+      "name": "XLSX Dirty 50,000",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-05",
+      "name": "BatchSize=1/64/1024/4096",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-06",
+      "name": "1/2/4/8 Worker",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-07",
+      "name": "5,000 行附近 Worker Kill",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real process termination near 5,000 Native input rows and seven-XA recovery is exercised; live SSIS reference is absent.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-08",
+      "name": "25,000 行附近 Worker Kill",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real process termination near 25,000 Native input rows and seven-XA recovery is exercised; live SSIS reference is absent.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-09",
+      "name": "49,999 行附近 Worker Kill",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real process termination at the final 50,000-row input boundary and seven-XA recovery is exercised; live SSIS reference is absent.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-10",
+      "name": "某 MySQL 目标无法连接",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native real acceptance",
+      "remaining": "Real unavailable TCP target fails before effects; every fixture table remains empty. Real Windows SSIS 2025 Golden capture unavailable",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-11",
+      "name": "四表中间某表发生唯一键冲突",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native real acceptance",
+      "remaining": "A real duplicate target key rolls back all seven XA branches; only the pre-existing sentinel survives. Exact vendor error/output mapping requires Golden.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-12",
+      "name": "源 CSV 单元格包含换行与引号",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-13",
+      "name": "Amount 为 NULL",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-14",
+      "name": "交换 VIP 与 PAID_OTHER 分支顺序",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native real acceptance",
+      "remaining": "Swapping VIP and PAID_OTHER preserves target port identities and verifies the exact changed first-match RowId sets. Browser save/deploy also preserves connected destinations. Real vendor Golden remains unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-15",
+      "name": "同一个 run_id 进行恢复",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-16",
+      "name": "相同输入但新 run_id",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native real acceptance",
+      "remaining": "Two fresh execution/run IDs append the same dirty input without truncation; both 49,950-row business sets and 100 total error rows remain separately queryable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-17",
+      "name": "同一文件名内容被修改",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native real acceptance",
+      "remaining": "A real 50K CSV is changed after process termination; resume rejects the former fingerprint and no business row is committed.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-18",
+      "name": "控制表达式异常及数据截断",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "ssis_row_error_atomicity_recovery"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native real acceptance",
+      "remaining": "50K Native records exercise row 17,000 division failure, independent ignored cast and truncation, original-input reads, and unchanged same-ID recovery. Exact vendor error codes require Golden.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-19",
+      "name": "Unicode/Emoji/多字节字符串",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Unicode values are independently checked in Native/MySQL. Exact supplementary-character vendor behavior requires SSIS Golden.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "FT-20",
+      "name": "真正的多维度 Multicast → Aggregate",
+      "source": [
+        "tests/ssis_parity/workflow.py",
+        "engines/data-flow/destination.c",
+        "plugins/mysql_family.c"
+      ],
+      "nativeChecks": [
+        "integration_ssis_mysql_50000"
+      ],
+      "states": [
+        "Implemented",
+        "IntegrationPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native invariant subset",
+      "remaining": "Real Windows SSIS 2025 result/type/NULL/error-port Golden comparison is unavailable.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_BOOL",
+      "name": "DT_BOOL",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_I1",
+      "name": "DT_I1",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_I2",
+      "name": "DT_I2",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_I4",
+      "name": "DT_I4",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_I8",
+      "name": "DT_I8",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_UI1",
+      "name": "DT_UI1",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_UI2",
+      "name": "DT_UI2",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_UI4",
+      "name": "DT_UI4",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_UI8",
+      "name": "DT_UI8",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_R4",
+      "name": "DT_R4",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_R8",
+      "name": "DT_R8",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_DECIMAL",
+      "name": "DT_DECIMAL",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_NUMERIC",
+      "name": "DT_NUMERIC",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_CY",
+      "name": "DT_CY",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_DATE",
+      "name": "DT_DATE",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. All SSIS-specific date ranges and locale-dependent date grammars are not yet complete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_DBDATE",
+      "name": "DT_DBDATE",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. All SSIS-specific date ranges and locale-dependent date grammars are not yet complete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_DBTIME",
+      "name": "DT_DBTIME",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. All SSIS-specific date ranges and locale-dependent date grammars are not yet complete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_DBTIME2",
+      "name": "DT_DBTIME2",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. All SSIS-specific date ranges and locale-dependent date grammars are not yet complete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_DBTIMESTAMP",
+      "name": "DT_DBTIMESTAMP",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. All SSIS-specific date ranges and locale-dependent date grammars are not yet complete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_DBTIMESTAMP2",
+      "name": "DT_DBTIMESTAMP2",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. All SSIS-specific date ranges and locale-dependent date grammars are not yet complete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_DBTIMESTAMPOFFSET",
+      "name": "DT_DBTIMESTAMPOFFSET",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. All SSIS-specific date ranges and locale-dependent date grammars are not yet complete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_FILETIME",
+      "name": "DT_FILETIME",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. All SSIS-specific date ranges and locale-dependent date grammars are not yet complete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_STR",
+      "name": "DT_STR",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. Internal DT_STR expression/root restrictions are incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_WSTR",
+      "name": "DT_WSTR",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_TEXT",
+      "name": "DT_TEXT",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete. Internal DT_STR expression/root restrictions are incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_NTEXT",
+      "name": "DT_NTEXT",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_BYTES",
+      "name": "DT_BYTES",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_IMAGE",
+      "name": "DT_IMAGE",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    },
+    {
+      "id": "TYPE-DT_GUID",
+      "name": "DT_GUID",
+      "source": [
+        "include/ud/data.h",
+        "components/data/src/scalar.c",
+        "components/data/src/datetime.c",
+        "components/data/src/wire.c",
+        "components/data/src/arrow.c"
+      ],
+      "nativeChecks": [
+        "ssis_native_expression_contract"
+      ],
+      "states": [
+        "Implemented",
+        "UnitPassed"
+      ],
+      "goldenVerified": false,
+      "coverage": "Native domain constraints and round trips",
+      "remaining": "Domain metadata and typed NULLs round-trip via Wire/JSON/Arrow; the complete 29x29 conversion legality, boundary and vendor reference matrix is incomplete.",
+      "verificationBlocked": [
+        "Real Windows SSIS 2025 Golden capture unavailable"
+      ]
+    }
+  ],
+  "evidenceScope": {
+    "oracle": "Independent Python business arithmetic and OOXML input fixtures are validation tools, never Microsoft SSIS Golden and never production execution code.",
+    "parallelism": "Configured Worker concurrency is recorded alongside actual Native high-water marks; a shared serializable transaction can serialize pipeline work.",
+    "throughput": "Nominal execution and crash/recovery timings are separate. Fast confirmation of already committed data is not bulk throughput.",
+    "codeGapsAreNotEnvironmentBlockers": true
+  }
+}
