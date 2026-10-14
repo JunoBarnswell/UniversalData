@@ -1,6 +1,6 @@
 import { PROTOCOL_VERSION } from './version';
 export type Configuration = Record<string, unknown>;
-export interface PropertySchema { type?: string; title?: string; enum?: unknown[]; default?: unknown; properties?: Record<string, PropertySchema>; required?: string[]; }
+export interface PropertySchema { type?: string | string[]; title?: string; description?: string; enum?: unknown[]; default?: unknown; properties?: Record<string, PropertySchema>; required?: string[]; items?: PropertySchema; additionalProperties?: boolean | PropertySchema; oneOf?: PropertySchema[]; anyOf?: PropertySchema[]; minimum?: number; maximum?: number; minItems?: number; maxItems?: number; }
 export interface Component { id: string; name: string; category: number; inputs: number; outputs: number; dynamicPorts: boolean; structuralControl?: boolean; children?: boolean; errorOutput: number; configurationSchema: PropertySchema; }
 export interface FlowComponent { id: string; component: string; config: Configuration; }
 export interface FlowPath { from: string; output: number; to: string; input: number; }
@@ -18,7 +18,7 @@ export function defaults(schema: PropertySchema): Configuration { return Object.
 export function ports(component: Component) {
   return { inputs: component.inputs, outputs: component.outputs, error: component.errorOutput };
 }
-export interface DataField { name: string; type: string; nullable: boolean; identity?: string; children?: DataField[]; }
+export interface DataField { name: string; type: string; nullable: boolean; identity?: string; children?: DataField[]; precision?: number; scale?: number; timezone?: string; keyOrder?: number; }
 export interface DataSchema { version: number; fields: DataField[]; }
 export interface NativePort { id: string; name: string; direction: number; index: number; flags: number; }
 export interface BoundNode { id: string; inputCount: number; outputCount: number; ports: NativePort[]; inputs: (DataSchema | null)[]; outputs: DataSchema[]; }

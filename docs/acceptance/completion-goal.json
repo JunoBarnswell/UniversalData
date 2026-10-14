@@ -21,12 +21,17 @@
       "acceptance": "A complete product build is requested with a missing dependency. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/configure.log",
-        "docs/acceptance/evidence/universaldata-2-linux/build.log"
-      ],
+      "evidence": [],
       "progress": "Complete Linux PRODUCT build enables all six database drivers, genuine BCP/OCI client SDKs, Arrow/Parquet, HTTP/XML/network, JNI, .NET 10 hosts and the built designer. Missing dependencies fail configuration. Linux closure passed; Windows PRODUCT closure is Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/configure.log",
+          "docs/acceptance/evidence/universaldata-2-linux/build.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-002",
@@ -45,12 +50,17 @@
       "acceptance": "A bulk destination binds a driver or requests a native loading guarantee. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "ODBC row offsets, processed counts and per-row statuses are checked. Native BCP and parameter arrays have distinct capabilities. Generic transactional array append selects response delivery and refuses uncertain replay. Actual SQL Server parameter/BCP integration passed; an independent unknown-DBMS ODBC array resource is unavailable.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-003",
@@ -58,7 +68,7 @@
       "name": "Native execution identity",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/package/runtime.c",
@@ -69,21 +79,26 @@
       "acceptance": "A new execution omits its ID or resume omits the original ID. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "Native generates one UUID when a new execution omits its ID, exposes it to all hosts and requires the original identity for recovery. Native, managed, Java and killed-Worker browser cases passed on Linux.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "execution_identity",
         "managed_registry_scripts_debug_lifecycle",
         "java_registry_observer_catalog_lifecycle"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-004",
@@ -91,7 +106,7 @@
       "name": "Source record error ports",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/source.c",
@@ -107,15 +122,20 @@
       "acceptance": "A recoverable CSV/NDJSON/SQL record contains invalid field content. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "Canonical source error ports preserve field/component/source-row identity, classify conversion/truncation/constraint faults and retain raw contents only when requested. CSV/NDJSON/multiline JSON array and real SQLite mixed-result conversion cases passed; ambiguous record framing remains fatal.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "source_record_errors",
         "native_sql_source_record_errors"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-005",
@@ -123,7 +143,7 @@
       "name": "Expression transform row errors",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/row_transform.c",
@@ -134,15 +154,20 @@
       "acceptance": "A Derived Column or Conditional Split expression fails for one record. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
-      ],
+      "evidence": [],
       "progress": "Derived Column and Conditional Split redirect a real overflow surrounded by valid rows in one batch, retain shared error identity/raw Wire and continue valid records. Derived output field attribution is retained. Fatal execution statuses never become rejected records.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_component_product_semantics"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-006",
@@ -161,15 +186,20 @@
       "acceptance": "Normal and rejected rows share a batch or a SQL statement fails for a record. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "SQL rejected records use the same Native error schema and actual savepoints/parameter binding under declared transactions. Native dual SQL/file destinations and separate-process kills after normal/error commits passed. The complete cross-driver constraint/error-target transaction crash matrix remains unverified.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "next_phase_pipeline_recovery"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-007",
@@ -177,7 +207,7 @@
       "name": "Complete unsigned integer domain",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "include/ud/data.h",
@@ -189,17 +219,22 @@
       "acceptance": "A UINT64 value exceeds INT64_MAX. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "UINT64_MAX and overflow/negative boundaries, compare/hash/arithmetic, Wire/Arrow and enum/set dictionaries passed Native domain tests. Actual MySQL/MariaDB unsigned values and common Data semantics passed; bindings project the sole Native type domain.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_type_domains_2",
         "shared_value_semantics",
         "integration_mysql_type_domains",
         "integration_mariadb_type_domains"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-008",
@@ -207,7 +242,7 @@
       "name": "Duration and calendar Interval",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "include/ud/data.h",
@@ -219,16 +254,21 @@
       "acceptance": "A negative/long SQL TIME or month/day/microsecond interval is read. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "Signed microsecond Duration includes INT64_MIN and negative long TIME; calendar Interval preserves independent signed month/day/microsecond extrema through Wire/Arrow. Actual MySQL/MariaDB -123:45:56.123456 decoded exactly; Native boundary tests passed.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_type_domains_2",
         "integration_mysql_type_domains",
         "integration_mariadb_type_domains"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-009",
@@ -236,7 +276,7 @@
       "name": "JSON and dictionary fidelity",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/mysql.c",
@@ -248,16 +288,21 @@
       "acceptance": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "Actual MySQL/MariaDB JSON keeps the UINT64_MAX lexeme; ENUM numeric/empty labels and SET empty labels/bitmaps retain ordered dictionaries. Native schema/Wire/Arrow dictionary and physical-provider cases passed.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_type_domains_2",
         "integration_mysql_type_domains",
         "integration_mariadb_type_domains"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-010",
@@ -280,17 +325,22 @@
       "acceptance": "A source transaction truncates a captured table. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "PG and MySQL-family TRUNCATE emit the common ChangeSet event. Authorized SQL reset compiles to transactional DELETE without sequence reset. Ordinary SQL/CDC integration passed; a real TRUNCATE kill/confirmation boundary has not been accepted.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "integration_postgresql_cdc",
         "integration_mysql_cdc",
         "integration_mariadb_cdc"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-011",
@@ -309,17 +359,22 @@
       "acceptance": "A required transaction includes multiple connections. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Connection Manager preflights participants before effects; PostgreSQL PREPARE TRANSACTION and MySQL/MariaDB XA survived real process death, rollback, commit and partial commit across two connections. OCI participant code compiles but TCPS attach is Blocked. Capability-qualified SQL Server/MSDTC participation is not implemented; unsupported resources fail before effects.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "integration_postgresql_participant_recovery",
         "integration_mysql_participant_recovery",
         "integration_mariadb_participant_recovery"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-012",
@@ -338,17 +393,22 @@
       "acceptance": "The process stops before/after prepare, decision or participant commit. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Journal durably stages and publishes transaction-owned task/batch/cursor/epoch facts. Real killed-process fact publication and three-provider two-phase recovery passed, together with pipeline source/dual-target and file-publication kills. A single end-to-end live CDC/coordinator kill matrix remains unverified.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "transaction_fact_publication",
         "file_generation_process_recovery",
         "next_phase_pipeline_recovery"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-013",
@@ -356,7 +416,7 @@
       "name": "PostgreSQL COPY loading",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/postgresql.c"
@@ -366,12 +426,17 @@
       "acceptance": "A high-volume PostgreSQL destination is bound. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/postgresql-bulk-performance.jsonl"
-      ],
+      "evidence": [],
       "progress": "Authenticated libpq COPY FROM STDIN shares the business/receipt transaction and checks delivered rows. Genuine remote SQL/native integration and one million rows with Unicode/control bytes, integer checks and every receipt passed; native write time was 2.944x faster than parameter transport.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/postgresql-bulk-performance.jsonl"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-014",
@@ -379,7 +444,7 @@
       "name": "MySQL and MariaDB native loading",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/mysql.c",
@@ -390,13 +455,18 @@
       "acceptance": "A native bulk destination receives controlled input bytes. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/mysql-bulk-performance.jsonl",
-        "docs/acceptance/evidence/universaldata-2-linux/mariadb-bulk-performance.jsonl"
-      ],
+      "evidence": [],
       "progress": "Genuine MySQL/MariaDB LOCAL INFILE reads only the retained Native Batch token; no server-selected path is opened. Session capability follows local_infile, warnings/row mismatches fail. Real SQL/CDC/native integration and one-million-row receipts passed; gains were 1.768x and 1.372x.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/mysql-bulk-performance.jsonl",
+          "docs/acceptance/evidence/universaldata-2-linux/mariadb-bulk-performance.jsonl"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-015",
@@ -414,13 +484,18 @@
       "acceptance": "A SQL Server driver declares the native BCP loading capability. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/mssql-bulk-performance.jsonl",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Actual Microsoft BCP uses the connected application HDBC and controlled temporary staging, then original-connection business/receipt commit. Linux real SQL/CDC/native integration and one million rows passed, with 1.980x speedup. Windows BCP acceptance remains Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/mssql-bulk-performance.jsonl",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-016",
@@ -428,7 +503,7 @@
       "name": "OCI staged Direct Path loading",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Blocked",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/oracle_oci.c"
@@ -438,13 +513,18 @@
       "acceptance": "Direct Path independently commits staging before transactional business writes. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/build.log",
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-oracle.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "OCI Direct Path stages on a dedicated loader; original business apply/receipt remain transactional and cleanup waits for branch resolution. Full client/DP/XA compilation passed. An isolated Oracle schema exists, but OCI TCPS session attach times out ORA-12170; live behavior, kill recovery and performance are Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/build.log",
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-oracle.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-017",
@@ -452,7 +532,7 @@
       "name": "Enterprise file layouts and publication",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/package/file_generation.c",
@@ -464,16 +544,21 @@
       "acceptance": "Encoding/layout settings or append/overwrite requires restart-safe publication. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "Enterprise CSV layouts and Journal-backed create/overwrite/append passed real file-publication process kills. XLSX append preserves other sheet/formula/custom-part bytes and exact integer cells; a mismatched header rejects publication without changing the original file.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_enterprise_file_layout",
         "file_generation_process_recovery",
         "native_xlsx_preserving_append"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-018",
@@ -492,12 +577,17 @@
       "acceptance": "An overlapping incremental source binds to an idempotent/receipted destination. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Incremental overlap uses KEYED_REPLACE effects and declared-key lineage rather than destination names or a fixed SQL-Upsert requirement. Native overlapping/resume and receipt tests passed; an independent HTTP keyed-replace overlap recovery scenario remains unverified.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-019",
@@ -505,7 +595,7 @@
       "name": "Unified file and database discovery",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/source.c",
@@ -517,14 +607,19 @@
       "acceptance": "A designer/SDK discovers a file or database schema. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "File/database discovery returns the same Native Data Schema. Bounded CSV/JSON inference preserves UINT64/Decimal/date/nullability, leading-zero text and stable identities. Native inference and real four-driver schema discovery passed; ambiguous unions are explicitly rejected.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "unified_file_schema_discovery"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-020",
@@ -532,7 +627,7 @@
       "name": "One SDK and protocol family",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "metadata/product.json",
@@ -544,14 +639,19 @@
       "acceptance": "A package/plugin/wire/checkpoint built for the old epoch is consumed. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "One generated source defines SDK 2.0.0 and ABI/Package/Wire/Plugin/Checkpoint/Worker family 10 for C, .NET and Java. Old ABI/packages and Worker requests are rejected; historical raw data and artifacts are preserved. Linux protocol/installed-native checks passed.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-021",
@@ -559,7 +659,7 @@
       "name": "SQLite indexed Native Catalog",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "catalog/catalog.c",
@@ -570,18 +670,23 @@
       "acceptance": "Catalog versions, executions or events are queried with concurrent workers. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "Native SQLite Catalog owns immutable versioned documents, indices, executions/events and jobs under WAL/FULL transactions. Concurrent first-open/read/write and killed writer tests passed; existing readers do not acquire a bootstrap writer lock. No .udc directory scan remains.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "catalog_immutable_store",
         "catalog_execution_history"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-022",
@@ -589,7 +694,7 @@
       "name": "Durable execution logs",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "catalog/catalog.c",
@@ -602,18 +707,23 @@
       "acceptance": "An execution produces task/component/error events or logs are paginated. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "Native event sequence and UTC wall timestamps persist with execution/task/component/error linkage. Managed and Java observers record into the same Catalog; pagination, error retention and sequence-preserving pruning passed. Real browser logs have current UTC dates.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle",
         "java_registry_observer_catalog_lifecycle"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-023",
@@ -621,7 +731,7 @@
       "name": "Deployment and execution management",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "catalog/deployment.c",
@@ -635,16 +745,21 @@
       "acceptance": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "Management uses Native immutable revisions/deployments and independent Workers. Real browser deploy/execute/logs, SIGKILL of a Native-owning Worker, RecoveryRequired and manual same-ID recovery passed with exact output and no automatic replay.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-024",
@@ -652,7 +767,7 @@
       "name": "CLI resource policy",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "connectors/manager.c",
@@ -665,14 +780,19 @@
       "acceptance": "CLI resolves authorized resources and credential references. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "CLI, Worker and management share HostPolicy resource scopes and credential-file references. Actual installed/product CLI pipelines use this shared policy; outside grants and revoked resources fail in Native before effects. No retired C CLI host remains.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-025",
@@ -692,15 +812,20 @@
       "acceptance": "A compatible/incompatible runtime schema event reaches an epoch boundary. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Schema/version/position events are durable before admission; the existing checkpoint barrier rebinds affected components and fences incompatible changes. Native schema guards and MySQL-family schema-change fencing passed. Provider physical field identity across drop/re-add and complete online/restart compatibility proof remain incomplete.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "next_phase_pipeline_recovery"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-026",
@@ -721,18 +846,23 @@
       "acceptance": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Batch/Wire presence distinguishes absent from NULL; MySQL MINIMAL/NOBLOB images retain presence and binary JSON/dictionaries preserve full domains. Real four-provider insert/update/delete/resume tests passed. PostgreSQL default replica-identity partial-image, broader binlog type and online field-identity acceptance are not complete.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_type_domains_2",
         "integration_postgresql_cdc",
         "integration_mysql_cdc",
         "integration_mariadb_cdc"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-027",
@@ -751,12 +881,17 @@
       "acceptance": "A normal HTTP response is lost after the server may have committed. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "REST response/idempotent/receipt modes bind to the one Native write/Journal path. Ordinary writes issue once and unresolved intent returns CommitUnknown; local real TLS/receipt flows and HTTP ambiguous-failure cases passed. External receipt-service process-kill acceptance remains unavailable.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-028",
@@ -775,12 +910,17 @@
       "acceptance": "Each input row invokes a parameterized external SQL command. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "sql.command uses Native per-row parameter binding, common error ports/savepoints and external-write intents. Unknown response cannot replay automatically and accepted facts share the transaction journal. Compilation passed; dedicated row-command constraint/recovery behavior still requires acceptance.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-029",
@@ -788,7 +928,7 @@
       "name": "Public managed Registry and native callback ownership",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "bindings/dotnet/UniversalData/Registry.cs",
@@ -802,18 +942,23 @@
       "acceptance": "A managed component/task is registered and an exception escapes its callback. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "Public C# Registry task/component and Java task registrations use leased Native instances. GC pressure, busy disposal, exactly-once finish/close, expired borrowed access, observer exceptions and actual cancellation passed. Failed module registration retains instances/assembly owners until Native teardown.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle",
         "java_registry_observer_catalog_lifecycle"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-030",
@@ -835,15 +980,20 @@
       "acceptance": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Deployment compiles a deterministic fixed C# assembly with protocol/digest attributes. SDK, CLI and Worker use Registry.LoadPackageExtensions with host execute grants and registry-owned module lifetime. Real managed deployment/assembly load passed; equivalent script execution through every installed host is not yet independently accepted.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-031",
@@ -851,7 +1001,7 @@
       "name": "Balanced batch dispatch",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/transforms.c"
@@ -861,15 +1011,20 @@
       "acceptance": "A batch is distributed to exactly one output while Multicast retains replication. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
-      ],
+      "evidence": [],
       "progress": "Actual 67-row/seven-row-batch pipelines send each whole batch, including the tail, to exactly one balanced output; Multicast delivers a complete copy to each output. The common Native dispatch state remains checkpointed; no alternate executor was added.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_component_product_semantics"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-032",
@@ -877,7 +1032,7 @@
       "name": "Import and Export Column",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/column_file.c",
@@ -889,15 +1044,20 @@
       "acceptance": "A row reads/writes an authorized external column resource. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
-      ],
+      "evidence": [],
       "progress": "Actual Native Import/Export Column pipeline reads and publishes exact UTF8 Unicode/multiline payloads through authorized relative Connection Manager resources. Source identity, bounded Binary/UTF8 and canonical error output use common contracts; export uses Journal-backed file generations.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_component_product_semantics"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-033",
@@ -905,7 +1065,7 @@
       "name": "XML Source",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "connectors/xml.c",
@@ -916,14 +1076,19 @@
       "acceptance": "XML records are parsed into the canonical Data Schema. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "Native bounded Expat record framing and XPath extraction feed canonical Data batches and common error ports; quota-owned buffers and inherited namespaces are preserved. Actual XML Source records, invalid-record handling and XML task pipelines passed on Linux.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_xml_source_xpath_xslt_xsd"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-034",
@@ -931,7 +1096,7 @@
       "name": "XPath XSLT and XSD tasks",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/xml.c",
@@ -942,14 +1107,19 @@
       "acceptance": "An XML task applies a query, stylesheet or schema validation. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "Actual XPath, XSLT and XSD tasks passed through Native file leases and generation publication. DTD, external entity and implicit schema/stylesheet loads are rejected; no independent XML execution or file authorization path exists.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_xml_source_xpath_xslt_xsd"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-035",
@@ -957,7 +1127,7 @@
       "name": "SMTP task",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Blocked",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -970,13 +1140,18 @@
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/build.log",
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "smtp.send uses the sole Native curl owner, credential references, UTF8 subject/MIME encoding and cancellation/deadlines. Interrupted sends retain unknown commit. A genuine independent SMTP acceptance resource is unavailable per user: Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/build.log",
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-036",
@@ -984,7 +1159,7 @@
       "name": "Windows WMI tasks",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Blocked",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/wmi.c"
@@ -996,13 +1171,18 @@
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/build.log",
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Native Windows COM WMI query/event tasks support bounded scalar/array/embedded-object JSON with exact signed/unsigned integer lexemes and common authorization/cancellation. Non-Windows binding rejects. Windows compile/runtime and independent WMI resources are unavailable: Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/build.log",
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-037",
@@ -1010,7 +1190,7 @@
       "name": "FTP and SFTP resources",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Blocked",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -1024,13 +1204,18 @@
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/build.log",
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Native FTP/SFTP transfers share Connection Manager grants, credential references, curl cancellation and local generation publication. SFTP requires explicitly granted known-hosts; remote replacement declares uncertain effects. Genuine independent FTP/SFTP resources are unavailable: Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/build.log",
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-038",
@@ -1050,14 +1235,19 @@
       "acceptance": "An Avro schema and records are imported/exported without lossy type coercion. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "Native Avro OCF null/deflate, signed integer extrema and UTF8 interoperability passed independent framing fixtures; malformed OCF fails. Primitive/nested/logical types and explicit lossless UINT64/Duration/Interval extensions are connected. Named references and ambiguous/general unions remain unsupported and are rejected; their complete product coverage is not claimed.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_avro_interoperability"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-039",
@@ -1103,7 +1293,7 @@
       "name": "SQL Server maintenance Agent and SSAS XMLA",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Blocked",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/sqlserver.c"
@@ -1115,13 +1305,18 @@
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/build.log",
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Native SQL Server maintenance/Agent tasks use common parameterized SQL leases and backup file grants; SSAS XMLA uses common bounded XML/HTTP and unknown-commit semantics. SQL Server SQL/CDC/BCP resources were accepted, but independent maintenance/Agent/SSAS-specific resources were not supplied: Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/build.log",
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-042",
@@ -1129,7 +1324,7 @@
       "name": "Exact Distinct profiling with shared Compute budget",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "components/compute/src/profile.c",
@@ -1140,15 +1335,20 @@
       "acceptance": "Profiling requires exact distinct counts under memory and spill limits. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "Exact Distinct uses the existing Compute value set and resource budgets. Profile kernel, pipeline statistics and shared comparison tests passed; approximation remains explicitly named approxDistinct only.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "profile_statistics_kernel",
         "profile_task_execution"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-043",
@@ -1167,12 +1367,17 @@
       "acceptance": "A timer enqueues work, service restarts or a worker fails with unknown commit. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Native persistent Catalog jobs bind immutable deployment revisions, deduplicate due times and persist queue/concurrency/retry state. Unknown worker outcomes stop automatic retry. Native Catalog/job state and real Worker recovery passed; a timed schedule/service-restart/retry browser scenario remains unverified.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-044",
@@ -1192,16 +1397,21 @@
       "acceptance": "A provider filter needs semantic proof or a large JSON array must stream. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "One bounded JSON Reader handles NDJSON and multiline arrays, shared record errors and checked resume offsets; malformed framing is fatal. Real array/error/resume tests passed. Complete provider-specific filter-pushdown comparison proof remains unverified; unproved predicates retain Native evaluation.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "source_record_errors",
         "unified_file_schema_discovery"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-045",
@@ -1209,7 +1419,7 @@
       "name": "Azure Blob and ADLS Gen2",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Blocked",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -1222,16 +1432,21 @@
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/build.log",
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Native Azure Blob PUT and ADLS create/append/flush share curl, credential scopes and generations. Real local HTTP protocol/byte/publication-sequence tests passed. This is not independent Azure authentication/service acceptance; external resources are unavailable: Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_object_transfer_sequence"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/build.log",
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-046",
@@ -1239,7 +1454,7 @@
       "name": "S3 and MinIO",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Blocked",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -1252,16 +1467,21 @@
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/build.log",
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "S3/MinIO streaming transfer and SigV4 credentials use the common Native transport/grants/cancellation and explicit exclusive-create/replacement guarantees. Local actual HTTP bytes/conditional-header tests passed. Independent signed S3/MinIO service acceptance is unavailable: Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "native_object_transfer_sequence"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/build.log",
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-047",
@@ -1269,7 +1489,7 @@
       "name": "ASP.NET Core 10 management and isolated workers",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "hosts",
@@ -1284,16 +1504,21 @@
       "acceptance": "A management request creates/queries/controls an independent native execution process. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "Actual ASP.NET Core 10 loopback management dispatches separate Worker processes owning Native Execution/Registry/Catalog. Bounded Worker protocol lines and debug queues use one shared host protocol. Build and real browser management, cancellation/debug lifecycle and killed-Worker recovery passed.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-048",
@@ -1301,7 +1526,7 @@
       "name": "React Flow package designer",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "products/designer/src/Editor.tsx",
@@ -1314,16 +1539,21 @@
       "acceptance": "A user edits control/data flow, ports, mappings, connections, metadata or package layout. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "React Flow designer uses Native metadata/bound dynamic ports, stable package IDs/layout, field mapping and configuration validation. Typecheck/lint/build and actual drag/undo/redo, save/reload, deploy/execute and desktop/compact screenshots passed; no fabricated product records or validation evaluator.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-049",
@@ -1331,7 +1561,7 @@
       "name": "Safe native runtime debugging",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "include/ud/package.h",
@@ -1347,19 +1577,24 @@
       "acceptance": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-        "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-      ],
+      "evidence": [],
       "progress": "Native task/batch/safe-epoch boundaries, bounded output preview, pause/continue and single-batch stepping passed managed lifecycle tests. Real browser task pause, Worker termination and same-ID recovery passed. Transactions never park at an unsafe boundary; cancellation stays Native-owned.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-050",
@@ -1367,7 +1602,7 @@
       "name": "Full Linux and Windows driver CI",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Blocked",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         ".github/workflows/ci.yml",
@@ -1379,13 +1614,18 @@
       "acceptance": "CI must compile every declared driver and register SQL/CDC real integrations. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/build.log",
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "CI registers advanced SQL/CDC/native bulk/real participant recovery and explicit Linux/Windows PRODUCT matrices with required dependency/resource preflight. Local Linux complete-driver build and registered tests passed. Windows/self-hosted full-resource CI execution remains unavailable: Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Blocked",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/build.log",
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-051",
@@ -1406,14 +1646,19 @@
       "acceptance": "An independent directory consumes C, .NET, Java, CLI and Web release products. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-        "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-        "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json",
-        "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-      ],
+      "evidence": [],
       "progress": "Relocatable same-source Linux PRODUCT bundle passed 267-file/SHA256/protocol checks, independent public C/CMake, offline NuGet/.NET, Maven/Java/JNI, actual installed CLI, three-language Package/Data/Schema parity and installed management/Worker browser process-kill recovery. The package contains all enabled driver modules, host/designer assets and dependency inventories. Windows release consumption remains Blocked.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion."
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "previousDeliveryVerification": {
+        "status": "Partial",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json",
+          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     },
     {
       "id": "ETL-052",
@@ -1421,7 +1666,7 @@
       "name": "HTTP response variable mappings",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Passed",
+      "verification": "Partial",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/http.c"
@@ -1431,14 +1676,19 @@
       "acceptance": "HTTP status/body/header output is bound to a declared native variable. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": [
-        "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-      ],
+      "evidence": [],
       "progress": "HTTP Task maps actual status/body/header responses into typed Native variables, including rejected statuses and UTF8/BINARY bodies. Real HTTP execution tests passed; ambiguous external writes return CommitUnknown without automatic replay.",
-      "verificationScope": "Current Linux SDK 2.0 / ABI 10 evidence only; Windows is a separate required Blocked gate. Partial and Blocked are not completion.",
+      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
       "acceptanceCases": [
         "http_task_execution"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "Passed",
+        "evidence": [
+          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
+        ],
+        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+      }
     }
   ]
 }

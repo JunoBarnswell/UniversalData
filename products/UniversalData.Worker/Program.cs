@@ -2,45 +2,83 @@ using System.Text.Json;
 using UniversalData;
 using UniversalData.Hosting;
 
-if (args.Length != 1) throw new ArgumentException("Worker requires a host-policy file");
-var policy = HostPolicy.Load(Path.GetFullPath(args[0]));
-var input = await WorkerProtocol.ReadLine(Console.In, 67108864) ?? throw new InvalidDataException("Missing worker request");
-var request = JsonSerializer.Deserialize<WorkerRequest>(input, HostPolicy.JsonOptions)
-              ?? throw new InvalidDataException("Invalid worker request");
-if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket, "N", out _))
-    throw new InvalidDataException("Incompatible worker request");
-Directory.CreateDirectory(policy.ExecutionDirectory(request.Ticket));
-using var catalog = policy.OpenCatalog();
-using var execution = policy.CreateExecution(request.Package, request.Parameters, request.ExecutionId,
-    policy.ExecutionDirectory(request.Ticket), request.Resume, observe: catalog.Record,
-    eventSequenceStart: request.ExecutionId.Length == 0 ? 0 : catalog.LatestRevision(CatalogKind.Event, request.ExecutionId));
+if (args.Length != 0) throw new ArgumentException("Worker uses the private inherited-pipe request protocol");
+var input = await WorkerProtocol.ReadLine(Console.In,67108864) ?? throw new InvalidDataException("Missing Worker request");
+var request = JsonSerializer.Deserialize<WorkerRequest>(input,HostPolicy.JsonOptions) ?? throw new InvalidDataException("Invalid Worker request");
+if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket,"N",out _) || request.Policy is null ||
+    request.Identity is null || request.Identity.Grants is null || !HostIdentity.ValidId(request.Identity.Tenant) ||
+    request.Mode is not ("execute" or "components" or "validate" or "ports" or "schema" or "compile"))
+    throw new InvalidDataException("Incompatible Worker request");
+var policy = request.Policy with { Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated };
+var directory = policy.ExecutionDirectory(request.Ticket); Directory.CreateDirectory(directory);
+var parameters = request.ParametersReference.Length == 0 ? "{}" : new ParameterVault(policy).Resolve(request.ParametersReference);
 var output = new object();
-if (request.Debug is { } debug) execution.ConfigureDebug(debug.GetRawText());
-void Reply(object value) { lock (output) { Console.WriteLine(JsonSerializer.Serialize(value, HostPolicy.JsonOptions)); } }
-catalog.Record(execution, request.Resume ? request.Revision + 1 : 1);
-Reply(new { version = ProductInfo.Protocol, kind = "ready", ticket = request.Ticket, executionId = execution.Id });
-// A worker cannot perform business I/O until the service records its Native ID and authorizes start.
-var start = await WorkerProtocol.ReadLine(Console.In, 64);
-if (start != "start") return 2;
-execution.Start();
+void Reply(object value) { lock (output) { Console.WriteLine(JsonSerializer.Serialize(value,HostPolicy.JsonOptions)); } }
+if (request.Mode != "execute") {
+    var inspectionFilter = new SecretFilter(parameters);
+    int status = 0; object value = new { };
+    try {
+        if (request.Mode == "compile") {
+            request.Identity.Require("script.compile","*");
+            value = CSharpDeployment.Compile(request.Payload!.Value.GetProperty("source").GetString()!,Path.Combine(policy.DataDirectory,"assemblies"),policy.Tenant,
+                (_,resource,access) => access == ConnectionAccess.Write && HostPolicy.Inside(resource,Path.Combine(policy.DataDirectory,"assemblies")));
+        } else {
+            using var execution = policy.CreateExecution(request.Package,parameters);
+            string result = request.Mode switch {
+                "components" => execution.ComponentCatalog(),
+                "validate" => execution.Explain(),
+                "ports" => execution.ComponentPorts(request.Payload!.Value.GetProperty("pipelineId").GetString()!,request.Payload.Value.GetProperty("componentId").GetString()!,
+                    request.Payload.Value.GetProperty("kind").GetString()!,request.Payload.Value.GetProperty("configuration").GetRawText()),
+                "schema" => execution.DiscoverSchema(request.Payload!.Value.GetProperty("connection").GetString()!,request.Payload.Value.GetProperty("table").GetString() ?? ""),
+                _ => throw new ArgumentException("Unknown Worker operation") };
+            using var document = JsonDocument.Parse(inspectionFilter.Json(result)); value = document.RootElement.Clone();
+        }
+    } catch (UniversalDataException error) { status = error.Status; }
+      catch (Exception error) when (error is ArgumentException or JsonException or IOException or InvalidOperationException) { status = (int)StatusCode.Invalid; }
+    Reply(new { version = ProductInfo.Protocol, ticket = request.Ticket, kind = "inspection", result = status, value }); return status == 0 ? 0 : 1;
+}
+// The worker only sees its own Native Catalog. Management imports Native records over the authenticated dispatch pipe.
+var workerPolicy = policy with { DataDirectory = directory };
+using var catalog = workerPolicy.OpenCatalog();
+string packageJson = request.Package;
+if (request.BindingSnapshot is { } snapshot) {
+    foreach(var entry in snapshot.EnumerateArray()) catalog.Put((CatalogKind)entry.GetProperty("kind").GetInt32(),entry.GetProperty("id").GetString()!,
+        entry.GetProperty("revision").GetUInt64(),entry.GetProperty("document").GetRawText());
+    using var original = JsonDocument.Parse(packageJson);
+    var binding = catalog.BindPackage(request.DeploymentId!,request.DeploymentRevision,original.RootElement.GetProperty("id").GetString()!,packageParameters:parameters);
+    packageJson = binding.Package; parameters = binding.Parameters;
+}
+var secretFilter = new SecretFilter(parameters);
+void Observe(ExecutionEvent value) {
+    // Provider messages may contain data. Persist only Native structured error codes/locations at the product boundary.
+    using var errors = JsonDocument.Parse(value.ErrorChain);
+    var chain = errors.RootElement.EnumerateArray().Select(error => new {
+        result = error.GetProperty("result").GetInt32(),taskId = error.GetProperty("taskId").GetString(),
+        pipelineId = error.GetProperty("pipelineId").GetString(),componentId = error.GetProperty("componentId").GetString() });
+    Reply(new { version = ProductInfo.Protocol, ticket = request.Ticket, kind = "event", value = value with { ErrorChain = JsonSerializer.Serialize(chain,HostPolicy.JsonOptions) } });
+}
+using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,directory,request.Resume,observe:Observe,eventSequenceStart:request.EventSequence);
+if (request.Debug is { } debug) executionRun.ConfigureDebug(debug.GetRawText());
+ulong readyRevision = request.Resume ? checked(request.Revision + 1) : 1;
+catalog.Record(executionRun,readyRevision);
+Reply(new { version = ProductInfo.Protocol, kind = "ready", ticket = request.Ticket, executionId = executionRun.Id, revision = readyRevision,
+    record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,readyRevision)!) });
+var start = await WorkerProtocol.ReadLine(Console.In,64); if (start != "start") return 2;
+executionRun.Start();
 using var controls = new CancellationTokenSource();
-var controlServer = WorkerControl.Serve(request.Ticket, execution, controls.Token);
-_ = Task.Run(async () =>
-{
-    while (await WorkerProtocol.ReadLine(Console.In, 64) is { } command)
-        if (command == "cancel") execution.Cancel();
-    execution.Cancel(); /* Service pipe loss requests cancellation; it never authorizes replay. */
+using var controlDocument = JsonDocument.Parse(new ParameterVault(policy).Resolve(request.ControlReference));
+string controlToken = controlDocument.RootElement.GetProperty("token").GetString()!;
+var controlServer = WorkerControl.Serve(policy.ControlDirectory(request.Ticket),request.Ticket,controlToken,executionRun,controls.Token,secretFilter);
+_ = Task.Run(async () => {
+    while (await WorkerProtocol.ReadLine(Console.In,64) is { } command) if (command == "cancel") executionRun.Cancel();
+    executionRun.Cancel();
 });
-int result = 0;
-try { while (!execution.Wait(200)) { } }
-catch (UniversalDataException error) { result = error.Status; }
-controls.Cancel();
-await controlServer;
-var metrics = execution.Metrics;
-catalog.Record(execution, request.Resume ? request.Revision + 2 : 2);
-Reply(new { version = ProductInfo.Protocol, kind = "terminal", ticket = request.Ticket, executionId = execution.Id,
-    state = metrics.State.ToString(), result, metrics, diagnostics = execution.Diagnostics() });
-return result == 0 ? 0 : 1;
-
-sealed record WorkerRequest(int Version, string Ticket, string Package, string Parameters = "{}",
-    string ExecutionId = "", bool Resume = false, ulong Revision = 0, JsonElement? Debug = null);
+int resultCode = 0;
+try { while (!executionRun.Wait(200)) { } } catch (UniversalDataException error) { resultCode = error.Status; }
+controls.Cancel(); await controlServer;
+var metrics = executionRun.Metrics;
+ulong terminalRevision = checked(readyRevision + 1); catalog.Record(executionRun,terminalRevision);
+Reply(new { version = ProductInfo.Protocol, kind = "terminal", ticket = request.Ticket, executionId = executionRun.Id,
+    state = metrics.State.ToString(), result = resultCode, metrics, revision = terminalRevision,
+    record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,terminalRevision)!) });
+return resultCode == 0 ? 0 : 1;

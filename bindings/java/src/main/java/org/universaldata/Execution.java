@@ -2,6 +2,7 @@ package org.universaldata;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 /** Thin JNI projection of the only native Package execution lifecycle. */
 public final class Execution implements AutoCloseable {
+    public static final int ACCESS_CHECKPOINT_OPEN=11,ACCESS_CHECKPOINT_READ=12,ACCESS_CHECKPOINT_WRITE=13;
     static { ProductVersion.requireNative(); }
     private static final ThreadLocal<Integer> CALLBACK=ThreadLocal.withInitial(()->0);
     public enum State { CREATED,VALIDATING,READY,RUNNING,DRAINING,SUCCEEDED,FAILED,CANCELLED,SKIPPED,RECOVERY_REQUIRED }

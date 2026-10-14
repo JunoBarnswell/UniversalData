@@ -6,6 +6,7 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -230,8 +231,15 @@ if arguments.browser_python:
     web = work / "web"
     web.mkdir()
     policy = web / "policy.json"
-    policy.write_text(json.dumps(dict(dataDirectory=str(web / "state"), fileRoots=[str(web)],
-        networkOrigins=[], pluginRoots=[], credentialFiles={})))
+    resources = web / 'resources'
+    resources.mkdir()
+    identities = web / 'identities.json'
+    password = secrets.token_urlsafe(32)
+    subprocess.run([arguments.dotnet, str(sdk / 'bin/universaldata/cli/ud_cli.dll'), 'identity-init', str(identities), 'acceptance', 'local'],
+        input=password + '\n', text=True, env=environment, check=True, timeout=30)
+    policy.write_text(json.dumps(dict(dataDirectory=str(web / "state"), fileRoots=[str(resources)],
+        networkOrigins=[], pluginRoots=[], credentialFiles={}, identityFile=str(identities),
+        tenants={'local': dict(fileRoots=[str(resources)], networkOrigins=[], pluginRoots=[], credentialReferences=[])})))
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
@@ -247,7 +255,7 @@ if arguments.browser_python:
                 if service.poll() is not None:
                     raise RuntimeError("Installed management service exited; see installed-management.log")
                 try:
-                    with urllib.request.urlopen(url + "/api/components", timeout=1) as response:
+                    with urllib.request.urlopen(url, timeout=1) as response:
                         assert response.status == 200
                     break
                 except OSError:
@@ -255,10 +263,10 @@ if arguments.browser_python:
                         raise TimeoutError("Installed management service did not become available")
                     time.sleep(.1)
             browser = [arguments.browser_python, ROOT / "tests/web_product.py", "--url", url,
-                       "--root", web, "--evidence", work / "browser"]
+                       "--root", resources, "--evidence", work / "browser"]
             if arguments.browser_executable:
                 browser += ["--browser-executable", arguments.browser_executable]
-            run("installed-web-worker-browser", browser)
+            run("installed-web-worker-browser", browser, env=dict(environment, UD_BROWSER_PASSWORD=password))
             installed_web = "Passed"
         finally:
             service.terminate()

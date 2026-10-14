@@ -2,6 +2,13 @@ if(TARGET ud_package OR TARGET ud_worker)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
 endif()
 if(TARGET ud_package)
+  add_executable(test_checkpoint_contract checkpoint_contract.c)
+  target_link_libraries(test_checkpoint_contract PRIVATE ud_package)
+  add_test(NAME native_checkpoint_contract_revision COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/checkpoint_contract.py $<TARGET_FILE:test_checkpoint_contract>)
+  add_executable(test_catalog_secrets catalog_secrets.c)
+  target_link_libraries(test_catalog_secrets PRIVATE ud_package)
+  add_test(NAME native_catalog_secret_migration COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/catalog_secrets.py $<TARGET_FILE:test_catalog_secrets>)
   add_executable(test_transaction_facts transaction_facts.c)
   target_link_libraries(test_transaction_facts PRIVATE ud_runtime)
   add_test(NAME transaction_fact_publication COMMAND ${Python3_EXECUTABLE}
@@ -67,9 +74,6 @@ if(TARGET ud_connector_sqlite)
   target_link_libraries(test_connector_sqlite PRIVATE ud_plugins SQLite::SQLite3)
   add_test(NAME sqlite_receipts_upsert COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/connector_sqlite.py $<TARGET_FILE:test_connector_sqlite> $<TARGET_FILE:ud_connector_sqlite>)
   set_tests_properties(sqlite_receipts_upsert PROPERTIES TIMEOUT 130)
-endif()
-if(TARGET ud_worker)
-  add_test(NAME worker_protocol COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/worker.py $<TARGET_FILE:ud_worker>)
 endif()
 if(TARGET ud_connector_postgresql AND TARGET ud_plugins)
   add_executable(test_postgresql_cancel postgresql_cancel.c)
@@ -285,9 +289,31 @@ endif()
 
 # Advanced SQL/CDC are actual registered acceptance entries, not unregistered
 if(UD_BUILD_HOSTS)
+  add_test(NAME management_authenticated_native_worker COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/management_security.py ${UD_DOTNET}
+    ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
+  set_tests_properties(management_authenticated_native_worker PROPERTIES TIMEOUT 150)
+  add_custom_target(ud_hosting_contracts_test ALL
+    COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/hosting_contracts/HostingContracts.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts VERBATIM)
+  add_test(NAME hosting_identity_secret_resource_contracts COMMAND ${UD_DOTNET} ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts/HostingContracts.dll)
+  add_test(NAME worker_protocol COMMAND ${UD_DOTNET} ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts/HostingContracts.dll
+    ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
+  set_tests_properties(worker_protocol PROPERTIES TIMEOUT 60)
+  set_tests_properties(hosting_identity_secret_resource_contracts PROPERTIES TIMEOUT 60)
+  add_custom_target(ud_managed_recovery_test ALL
+    COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_recovery/ManagedRecovery.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/managed-recovery
+    VERBATIM)
+  add_test(NAME managed_native_epoch_process_recovery COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/managed_recovery.py ${UD_DOTNET} ${CMAKE_CURRENT_BINARY_DIR}/managed-recovery/ManagedRecovery.dll $<TARGET_FILE:ud_data>)
+  set_tests_properties(managed_native_epoch_process_recovery PROPERTIES TIMEOUT 90)
   add_custom_target(ud_managed_product_test ALL
     COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_product/ManagedProduct.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/managed-product
     VERBATIM)
+  # These projects share SDK project references. Publish in order so concurrent
+  # MSBuild invocations cannot replace the same obj/assets files.
+  add_dependencies(ud_hosting_contracts_test ud_product_hosts)
+  add_dependencies(ud_managed_recovery_test ud_hosting_contracts_test)
+  add_dependencies(ud_managed_product_test ud_managed_recovery_test)
   add_test(NAME managed_registry_scripts_debug_lifecycle COMMAND ${UD_DOTNET}
     ${CMAKE_CURRENT_BINARY_DIR}/managed-product/ManagedProduct.dll $<TARGET_FILE:ud_data>)
   set_tests_properties(managed_registry_scripts_debug_lifecycle PROPERTIES TIMEOUT 60)
@@ -371,6 +397,9 @@ if(TARGET ud_package)
   endif()
   add_test(NAME native_xlsx_preserving_append COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/xlsx_append_product.py $<TARGET_FILE:test_product_native>)
   add_test(NAME native_avro_interoperability COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/avro_product.py $<TARGET_FILE:test_product_native>)
+  add_test(NAME apache_avro_native_pipeline_resolution COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/avro_apache.py
+    $<TARGET_FILE:test_product_native> $<TARGET_FILE:ud_data>)
+  set_tests_properties(apache_avro_native_pipeline_resolution PROPERTIES TIMEOUT 120)
   if(UD_WITH_XML)
     add_test(NAME native_xml_source_xpath_xslt_xsd COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/xml_product.py $<TARGET_FILE:test_product_native>)

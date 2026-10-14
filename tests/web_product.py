@@ -1,5 +1,6 @@
 """Real browser + product service/Workers. The host policy must grant --root."""
 import argparse
+import http.cookiejar
 import json
 import os
 import pathlib
@@ -14,17 +15,21 @@ parser.add_argument("--url", required=True)
 parser.add_argument("--root", required=True, type=pathlib.Path)
 parser.add_argument("--evidence", required=True, type=pathlib.Path)
 parser.add_argument("--browser-executable", type=pathlib.Path)
+parser.add_argument("--subject", default="acceptance")
 args = parser.parse_args()
+password = os.environ['UD_BROWSER_PASSWORD']
 args.evidence.mkdir(parents=True, exist_ok=True)
 identity = "browser-" + uuid.uuid4().hex
 root = args.root / identity
 root.mkdir()
 (root / "facts.ndjson").write_text('{"id":1,"label":"first"}\n{"id":2,"label":"second"}\n')
 
+client = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+csrf = ''
 def api(method, path, value=None):
     request = urllib.request.Request(args.url + "/api" + path, method=method,
-        data=None if value is None else json.dumps(value).encode(), headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=20) as response:
+        data=None if value is None else json.dumps(value).encode(), headers={"Content-Type": "application/json", "X-UD-CSRF": csrf})
+    with client.open(request, timeout=20) as response:
         data = response.read()
         return json.loads(data) if data else None
 
@@ -49,6 +54,7 @@ document = dict(version=10, id=identity, connections=[dict(id="facts", driver="f
         paths=[{"from":"read", "output":0, "to":"copy", "input":0}, {"from":"copy", "output":0, "to":"write", "input":0}])],
     layout=dict(version=10, nodes=[dict(flow="main", id=key, x=x, y=190) for key,x in [("read",50),("copy",320),("write",590)]], viewports=[dict(flow="main", x=0, y=0, zoom=1)]))
 errors = []
+csrf = api('POST', '/auth/login', {'subject': args.subject, 'password': password})['csrf']
 with sync_playwright() as playwright:
     browser = playwright.chromium.launch(
         executable_path=str(args.browser_executable) if args.browser_executable else None,
@@ -56,6 +62,9 @@ with sync_playwright() as playwright:
     page = browser.new_page(viewport=dict(width=1505, height=1000))
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.goto(args.url)
+    page.get_by_role('textbox', name='账户', exact=True).fill(args.subject)
+    page.get_by_label('密码', exact=True).fill(password)
+    page.get_by_role('button', name='登录', exact=True).click()
     page.get_by_role("button", name="包配置", exact=True).click()
     page.get_by_role("textbox", name="包配置", exact=True).fill(json.dumps(document))
     page.get_by_role("button", name="应用", exact=True).click()

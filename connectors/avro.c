@@ -19,14 +19,23 @@ enum {
     AV_FIXED,
     AV_RECORD,
     AV_ARRAY,
-    AV_MAP
+    AV_MAP, AV_ENUM, AV_UNION, AV_NULL
 };
+typedef struct avro_default {
+    const ud_json *schema, *value;
+    avro_type type;
+    ud_bytes wire;
+    struct avro_default *next;
+} avro_default;
 typedef struct avro_file {
     ud_context *memory;
     FILE *file;
     ud_avro_options options;
     ud_batch *schema;
     avro_type *types;
+    ud_batch *projection;
+    ud_json *writer_schema, *reader_schema;
+    avro_default *defaults;
     uint8_t sync[16];
     int codec, poisoned;
     ud_bytes block;
@@ -248,6 +257,9 @@ static int named(const ud_json *value, const char *name) {
 static const ud_json *member(const ud_json *value, const char *name) {
     return ud_json_find(value, name, (uint32_t)strlen(name));
 }
+static int null_schema(const ud_json *schema) {
+    return named(ud_json_kind(schema) == UD_JSON_OBJECT ? member(schema,"type") : schema,"null");
+}
 static ud_status number(const ud_json *value, int64_t *out) {
     const char *text;
     uint32_t length;
@@ -257,10 +269,164 @@ static ud_status number(const ud_json *value, int64_t *out) {
     *out = parsed.integer;
     return UD_OK;
 }
+
+typedef struct avro_symbol {
+    char *full, *space;
+    const ud_json *definition;
+    int seen;
+} avro_symbol;
+typedef struct avro_symbols {
+    ud_context *memory;
+    avro_symbol *items;
+    uint32_t count, capacity;
+} avro_symbols;
+static int primitive_name(const ud_json *value) {
+    static const char *names[] = {"null","boolean","int","long","float","double","bytes","string"};
+    for (uint32_t at = 0; at < sizeof(names)/sizeof(*names); at++) if (named(value,names[at])) return 1;
+    return 0;
+}
+static ud_status full_name(ud_context *memory, const ud_json *name, const char *space, char **out) {
+    ud_string text;
+    UD_TRY(ud_json_text(name,&text.data,&text.length));
+    if (!text.length || text.length > 65536 || memchr(text.data,0,text.length)) return UD_SCHEMA;
+    ud_bytes bytes = {.ctx = memory,.limit = 131072};
+    ud_status status = UD_OK;
+    if (!memchr(text.data,'.',text.length) && space && *space) {
+        status = json_literal(&bytes,space);
+        if (!status) status = json_literal(&bytes,".");
+    }
+    if (!status) status = ud_bytes_put(&bytes,text.data,text.length);
+    if (!status) status = ud_bytes_put(&bytes,"",1);
+    if (!status) { *out = (char *)bytes.data; bytes.data = NULL; }
+    ud_bytes_clear(&bytes); return status;
+}
+static ud_status collect_names(avro_symbols *symbols,const ud_json *schema,const char *space,uint32_t depth) {
+    if (depth > 32) return UD_RESOURCE;
+    if (ud_json_kind(schema) == UD_JSON_STRING) return UD_OK;
+    if (ud_json_kind(schema) == UD_JSON_ARRAY) {
+        for (uint32_t at = 0; at < ud_json_size(schema); at++) UD_TRY(collect_names(symbols,ud_json_at(schema,at),space,depth+1));
+        return UD_OK;
+    }
+    if (ud_json_kind(schema) != UD_JSON_OBJECT) return UD_SCHEMA;
+    const ud_json *type = member(schema,"type");
+    const char *child_space = space;
+    if (named(type,"record") || named(type,"enum") || named(type,"fixed")) {
+        char *declared_space = NULL,*full = NULL;
+        ud_status status = UD_OK;
+        if (member(schema,"namespace")) {
+            ud_string text; status = ud_json_text(member(schema,"namespace"),&text.data,&text.length);
+            if (!status) { declared_space = ud_strdup_n(symbols->memory,text.data,text.length); if (!declared_space) status = UD_RESOURCE; }
+        }
+        if (!status) status = full_name(symbols->memory,member(schema,"name"),declared_space ? declared_space : space,&full);
+        ud_free(declared_space);
+        if (status) return status;
+        for (uint32_t at = 0; at < symbols->count; at++) if (!strcmp(full,symbols->items[at].full)) { ud_free(full); return UD_SCHEMA; }
+        if (symbols->count == 4096) { ud_free(full); return UD_RESOURCE; }
+        if (symbols->count == symbols->capacity) {
+            uint32_t capacity = symbols->capacity ? symbols->capacity * 2 : 16;
+            avro_symbol *items = ud_alloc(symbols->memory,capacity*sizeof(*items));
+            if (!items) { ud_free(full); return UD_RESOURCE; }
+            if (symbols->count) memcpy(items,symbols->items,symbols->count*sizeof(*items));
+            ud_free(symbols->items); symbols->items = items; symbols->capacity = capacity;
+        }
+        const char *last = strrchr(full,'.');
+        char *owned_space = ud_strdup_n(symbols->memory,full,last ? (size_t)(last-full) : 0);
+        if (!owned_space) { ud_free(full); return UD_RESOURCE; }
+        symbols->items[symbols->count++] = (avro_symbol){full,owned_space,schema,0}; child_space = owned_space;
+    }
+    if (named(type,"record")) {
+        const ud_json *fields = member(schema,"fields");
+        if (ud_json_kind(fields) != UD_JSON_ARRAY) return UD_SCHEMA;
+        for (uint32_t at = 0; at < ud_json_size(fields); at++) UD_TRY(collect_names(symbols,member(ud_json_at(fields,at),"type"),child_space,depth+1));
+    } else if (named(type,"array") || named(type,"map"))
+        return collect_names(symbols,member(schema,named(type,"array") ? "items" : "values"),child_space,depth+1);
+    else if (ud_json_kind(type) == UD_JSON_OBJECT || ud_json_kind(type) == UD_JSON_ARRAY)
+        return collect_names(symbols,type,child_space,depth+1);
+    return UD_OK;
+}
+static ud_status copy_json(ud_bytes *bytes,const ud_json *json) {
+    char *text = NULL; uint32_t length = 0;
+    UD_TRY(ud_json_serialize(json,&text,&length));
+    ud_status status = ud_bytes_put(bytes,text,length); ud_free(text); return status;
+}
+static ud_status expand_schema(avro_symbols *symbols,const ud_json *schema,const char *space,
+                                const ud_json **stack,uint32_t depth,ud_bytes *output) {
+    if (depth >= 32) return UD_UNSUPPORTED; /* An infinite recursive type has no finite Native field shape. */
+    for (uint32_t at = 0; at < depth; at++) if (stack[at] == schema) return UD_UNSUPPORTED;
+    stack[depth] = schema;
+    if (ud_json_kind(schema) == UD_JSON_STRING) {
+        if (primitive_name(schema)) return copy_json(output,schema);
+        char *full = NULL; UD_TRY(full_name(symbols->memory,schema,space,&full));
+        avro_symbol *found = NULL;
+        for (uint32_t at = 0; at < symbols->count; at++) if (!strcmp(full,symbols->items[at].full)) { found = symbols->items+at; break; }
+        ud_free(full);
+        if (!found || !found->seen) return UD_SCHEMA;
+        return expand_schema(symbols,found->definition,found->space,stack,depth+1,output);
+    }
+    if (ud_json_kind(schema) == UD_JSON_ARRAY) {
+        uint32_t count = ud_json_size(schema); if (!count || count > 64) return UD_RESOURCE;
+        UD_TRY(json_literal(output,"["));
+        for (uint32_t at = 0; at < count; at++) {
+            if (at) UD_TRY(json_literal(output,","));
+            if (ud_json_kind(ud_json_at(schema,at)) == UD_JSON_ARRAY) return UD_SCHEMA;
+            UD_TRY(expand_schema(symbols,ud_json_at(schema,at),space,stack,depth+1,output));
+        }
+        return json_literal(output,"]");
+    }
+    if (ud_json_kind(schema) != UD_JSON_OBJECT) return UD_SCHEMA;
+    const ud_json *wrapped_type = member(schema,"type");
+    if (ud_json_kind(wrapped_type) == UD_JSON_STRING && !primitive_name(wrapped_type) &&
+        !named(wrapped_type,"record") && !named(wrapped_type,"enum") && !named(wrapped_type,"fixed") &&
+        !named(wrapped_type,"array") && !named(wrapped_type,"map"))
+        return expand_schema(symbols,wrapped_type,space,stack,depth+1,output);
+    const char *definition_name = NULL;
+    for (uint32_t at = 0; at < symbols->count; at++) if (symbols->items[at].definition == schema) {
+        symbols->items[at].seen = 1; space = symbols->items[at].space; definition_name = symbols->items[at].full; break;
+    }
+    UD_TRY(json_literal(output,"{"));
+    for (uint32_t at = 0; at < ud_json_size(schema); at++) {
+        const char *key; uint32_t length;
+        UD_TRY(ud_json_key(schema,at,&key,&length));
+        if (at) UD_TRY(json_literal(output,","));
+        UD_TRY(ud_json_quote(output,key,length)); UD_TRY(json_literal(output,":"));
+        const ud_json *value = ud_json_at(schema,at);
+        if (definition_name && length == 4 && !memcmp(key,"name",4)) UD_TRY(ud_json_quote(output,definition_name,(uint32_t)strlen(definition_name)));
+        else if ((length == 5 && !memcmp(key,"items",5)) || (length == 6 && !memcmp(key,"values",6)) ||
+            (length == 4 && !memcmp(key,"type",4) && ud_json_kind(value) != UD_JSON_STRING))
+            UD_TRY(expand_schema(symbols,value,space,stack,depth+1,output));
+        else if (length == 6 && !memcmp(key,"fields",6)) {
+            UD_TRY(json_literal(output,"["));
+            for (uint32_t field = 0; field < ud_json_size(value); field++) {
+                if (field) UD_TRY(json_literal(output,","));
+                const ud_json *entry = ud_json_at(value,field); UD_TRY(json_literal(output,"{"));
+                for (uint32_t item = 0; item < ud_json_size(entry); item++) {
+                    const char *name; uint32_t n; UD_TRY(ud_json_key(entry,item,&name,&n));
+                    if (item) UD_TRY(json_literal(output,","));
+                    UD_TRY(ud_json_quote(output,name,n)); UD_TRY(json_literal(output,":"));
+                    if (n == 4 && !memcmp(name,"type",4)) UD_TRY(expand_schema(symbols,ud_json_at(entry,item),space,stack,depth+1,output));
+                    else UD_TRY(copy_json(output,ud_json_at(entry,item)));
+                }
+                UD_TRY(json_literal(output,"}"));
+            }
+            UD_TRY(json_literal(output,"]"));
+        } else UD_TRY(copy_json(output,value));
+    }
+    return json_literal(output,"}");
+}
+static ud_status resolve_names(ud_context *memory,const ud_json *input,ud_json **out) {
+    *out = NULL; avro_symbols symbols = {.memory = memory};
+    ud_status status = collect_names(&symbols,input,"",0);
+    ud_bytes bytes = {.ctx = memory,.limit = 16u*1024u*1024u};
+    const ud_json *stack[32] = {0};
+    if (!status) status = expand_schema(&symbols,input,"",stack,0,&bytes);
+    if (!status) status = ud_json_parse(memory,(const char *)bytes.data,(uint32_t)bytes.size,out,NULL);
+    for (uint32_t at = 0; at < symbols.count; at++) { ud_free(symbols.items[at].full); ud_free(symbols.items[at].space); }
+    ud_free(symbols.items); ud_bytes_clear(&bytes); return status;
+}
 static void type_clear(avro_type *type) {
     if (!type)
         return;
-    for (uint32_t at = 0; at < type->count; at++)
+    for (uint32_t at = 0; type->children && at < type->count; at++)
         type_clear(type->children + at);
     ud_free(type->children);
     memset(type, 0, sizeof(*type));
@@ -271,16 +437,25 @@ static ud_status type_bind(ud_context *memory, const ud_json *json, const ud_fie
         return UD_RESOURCE;
     out->multiplier = 1;
     if (ud_json_kind(json) == UD_JSON_ARRAY) {
-        if (!field->nullable || ud_json_size(json) != 2)
-            return UD_INCOMPATIBLE;
-        int first = named(ud_json_at(json, 0), "null"), second = named(ud_json_at(json, 1), "null");
-        if (first == second)
-            return UD_UNSUPPORTED;
+        uint32_t count = ud_json_size(json);
+        int first = count == 2 && null_schema(ud_json_at(json,0)), second = count == 2 && null_schema(ud_json_at(json,1));
+        if (count != 2 || first == second) {
+            if (!count || count > 64 || field->type != UD_STRUCT || field->child_count != count+1 || field->children[0].type != UD_INT64) return UD_INCOMPATIBLE;
+            out->kind = AV_UNION; out->count = count; out->children = ud_alloc(memory,count*sizeof(*out->children));
+            if (!out->children) return UD_RESOURCE;
+            for (uint32_t at = 0; at < count; at++) {
+                ud_field branch = field->children[at+1];
+                if (null_schema(ud_json_at(json,at))) { out->children[at].kind = AV_NULL; continue; }
+                branch.nullable = 0; UD_TRY(type_bind(memory,ud_json_at(json,at),&branch,out->children+at,depth+1));
+            }
+            return UD_OK;
+        }
+        if (!field->nullable) return UD_INCOMPATIBLE;
         out->nullable = 1;
         out->null_branch = first ? 0 : 1;
         json = ud_json_at(json, first ? 1 : 0);
-    } else if (field->nullable)
-        return UD_INCOMPATIBLE;
+    } else if (null_schema(json) && field->nullable) { out->kind = AV_NULL; return UD_OK; }
+    else if (field->nullable) return UD_INCOMPATIBLE;
     const ud_json *type = ud_json_kind(json) == UD_JSON_STRING ? json : member(json, "type");
     const ud_json *logical = member(json, "logicalType");
     const struct {
@@ -289,7 +464,7 @@ static ud_status type_bind(ud_context *memory, const ud_json *json, const ud_fie
     } names[] = {{"boolean", AV_BOOLEAN}, {"int", AV_INT},       {"long", AV_LONG},
                  {"float", AV_FLOAT},     {"double", AV_DOUBLE}, {"string", AV_STRING},
                  {"bytes", AV_BYTES},     {"fixed", AV_FIXED},   {"record", AV_RECORD},
-                 {"array", AV_ARRAY},     {"map", AV_MAP}};
+                 {"array", AV_ARRAY},     {"map", AV_MAP}, {"enum", AV_ENUM}};
     for (uint32_t at = 0; at < sizeof(names) / sizeof(*names); at++)
         if (named(type, names[at].name))
             out->kind = names[at].kind;
@@ -308,7 +483,7 @@ static ud_status type_bind(ud_context *memory, const ud_json *json, const ud_fie
             ? out->kind == AV_LONG &&
                   (named(logical, "timestamp-micros") || named(logical, "timestamp-millis"))
         : field->type == UD_DURATION ? out->kind == AV_LONG && named(logical, "ud-duration-micros")
-        : field->type == UD_UINT64   ? out->kind == AV_FIXED && named(logical, "ud-uint64")
+        : field->type == UD_UINT64   ? (out->kind == AV_FIXED && named(logical, "ud-uint64")) || (out->kind == AV_ENUM && field->dictionary_kind == UD_DICTIONARY_ENUM)
         : field->type == UD_INTERVAL ? out->kind == AV_FIXED && named(logical, "ud-interval")
         : field->type == UD_DECIMAL128
             ? (out->kind == AV_FIXED || out->kind == AV_BYTES) &&
@@ -319,7 +494,7 @@ static ud_status type_bind(ud_context *memory, const ud_json *json, const ud_fie
                                    : 0;
     if (!match)
         return UD_INCOMPATIBLE;
-    if (field->type == UD_UINT64 || field->type == UD_INTERVAL || field->type == UD_DURATION ||
+    if ((field->type == UD_UINT64 && out->kind != AV_ENUM) || field->type == UD_INTERVAL || field->type == UD_DURATION ||
         named(logical, "ud-decimal128")) {
         int64_t version;
         UD_TRY(number(member(json, "udProtocol"), &version));
@@ -328,6 +503,14 @@ static ud_status type_bind(ud_context *memory, const ud_json *json, const ud_fie
     }
     if (named(logical, "time-millis") || named(logical, "timestamp-millis"))
         out->multiplier = 1000;
+    if (out->kind == AV_ENUM) {
+        const ud_json *symbols = member(json,"symbols"); out->count = ud_json_size(symbols);
+        if (!out->count || out->count != field->dictionary_count) return UD_INCOMPATIBLE;
+        for (uint32_t at = 0; at < out->count; at++) {
+            ud_string symbol; UD_TRY(ud_json_text(ud_json_at(symbols,at),&symbol.data,&symbol.length));
+            if (symbol.length != field->dictionary[at].length || memcmp(symbol.data,field->dictionary[at].data,symbol.length)) return UD_INCOMPATIBLE;
+        }
+    }
     if (out->kind == AV_FIXED) {
         int64_t width;
         UD_TRY(number(member(json, "size"), &width));
@@ -413,23 +596,37 @@ static ud_status encode_value(ud_bytes *bytes, const ud_field *field, const avro
                               const ud_value *value, uint32_t depth) {
     if (depth > 32 || value->is_absent)
         return UD_INCOMPATIBLE;
+    if (type->kind == AV_NULL) return value->is_null ? UD_OK : UD_QUALITY;
     if (type->nullable)
         UD_TRY(put_long(bytes, value->is_null ? type->null_branch : 1 - type->null_branch));
     if (value->is_null)
         return type->nullable ? UD_OK : UD_QUALITY;
     switch (type->kind) {
+    case AV_ENUM:
+        if (!value->unsigned_integer || value->unsigned_integer > type->count) return UD_QUALITY;
+        return put_long(bytes,(int64_t)value->unsigned_integer-1);
+    case AV_UNION: {
+        if (value->child_count != type->count+1 || value->children[0].is_null || value->children[0].type != UD_INT64) return UD_SCHEMA;
+        int64_t branch = value->children[0].integer;
+        if (branch < 0 || (uint64_t)branch >= type->count) return UD_QUALITY;
+        for (uint32_t at = 0; at < type->count; at++) if (at != (uint32_t)branch && !value->children[at+1].is_null) return UD_QUALITY;
+        UD_TRY(put_long(bytes,branch));
+        return encode_value(bytes,field->children+branch+1,type->children+branch,value->children+branch+1,depth+1);
+    }
     case AV_BOOLEAN: {
         uint8_t flag = value->integer != 0;
         return ud_bytes_put(bytes, &flag, 1);
     }
     case AV_INT:
-        if (value->integer < INT32_MIN || value->integer > INT32_MAX)
+        if (value->integer / type->multiplier < INT32_MIN || value->integer / type->multiplier > INT32_MAX)
             return UD_OVERFLOW;
         /* fall through */
     case AV_LONG:
-        return put_long(bytes, value->integer);
+        if (type->multiplier != 1 && value->integer % type->multiplier) return UD_TRUNCATED;
+        return put_long(bytes, value->integer / type->multiplier);
     case AV_FLOAT: {
         float real = (float)value->real;
+        if ((double)real != value->real) return UD_TRUNCATED;
         uint32_t bits;
         memcpy(&bits, &real, 4);
         return little_put(bytes, bits, 4);
@@ -470,6 +667,11 @@ static ud_status encode_value(ud_bytes *bytes, const ud_field *field, const avro
                 return UD_TRUNCATED;
             return ud_bytes_put(bytes, value->text, value->text_length);
         }
+        if (field->type == UD_DECIMAL128 && type->kind == AV_FIXED && type->width < 16) {
+            uint32_t skip = 16-(uint32_t)type->width; uint8_t sign = data[skip] & 128 ? 255 : 0;
+            for (uint32_t at = 0; at < skip; at++) if (data[at] != sign) return UD_OVERFLOW;
+            return ud_bytes_put(bytes,data+skip,(size_t)type->width);
+        }
         return ud_bytes_put(bytes, data, field->type == UD_UINT64 ? 8 : 16);
     }
     case AV_RECORD:
@@ -504,6 +706,7 @@ static ud_status decode_value(avro_file *file, ud_bytes *bytes, const ud_field *
                               const avro_type *type, ud_value *value, uint32_t depth) {
     if (depth > 32)
         return UD_RESOURCE;
+    value->is_null = 0; value->is_absent = 0;
     value->type = field->type;
     value->precision = field->precision;
     value->scale = field->scale;
@@ -522,6 +725,21 @@ static ud_status decode_value(avro_file *file, ud_bytes *bytes, const ud_field *
     const uint8_t *data = NULL;
     uint32_t width = 0;
     switch (type->kind) {
+    case AV_NULL: value->is_null = 1; return UD_OK;
+    case AV_ENUM:
+        UD_TRY(get_long(bytes,&integer));
+        if (integer < 0 || (uint64_t)integer >= type->count) return UD_CORRUPT;
+        value->unsigned_integer = (uint64_t)integer+1; break;
+    case AV_UNION: {
+        UD_TRY(get_long(bytes,&integer));
+        if (integer < 0 || (uint64_t)integer >= type->count) return UD_CORRUPT;
+        ud_value *children = ud_alloc(file->memory,(type->count+1)*sizeof(*children));
+        if (!children) return UD_RESOURCE;
+        value->children = children; value->child_count = type->count+1;
+        for (uint32_t at = 0; at <= type->count; at++) children[at] = (ud_value){.type = field->children[at].type,.precision = field->children[at].precision,.scale = field->children[at].scale,.is_null = 1};
+        children[0] = (ud_value){.type = UD_INT64,.integer = integer};
+        return decode_value(file,bytes,field->children+integer+1,type->children+integer,children+integer+1,depth+1);
+    }
     case AV_BOOLEAN: {
         uint8_t flag;
         UD_TRY(ud_bytes_get(bytes, &flag, 1));
@@ -680,6 +898,8 @@ static void close_file(avro_file *file) {
         for (uint32_t at = 0; at < ud_batch_columns(file->schema); at++)
             type_clear(file->types + at);
     ud_free(file->types);
+    while (file->defaults) { avro_default *next = file->defaults->next; type_clear(&file->defaults->type); ud_bytes_clear(&file->defaults->wire); ud_free(file->defaults); file->defaults = next; }
+    ud_json_destroy(file->writer_schema); ud_json_destroy(file->reader_schema); ud_batch_destroy(file->projection);
     ud_batch_destroy(file->schema);
     ud_bytes_clear(&file->block);
 }
@@ -705,25 +925,44 @@ static ud_status schema_bind(avro_file *file, const ud_json *json) {
     return UD_OK;
 }
 /* Foreign schemas are projected into canonical Data, then bound by the same
- * physical decoder. Named references and multi-value unions are rejected rather
- * than flattened into strings. */
+ * physical decoder. Named references are resolved before binding; multi-member
+ * unions preserve their branch in a typed tagged Struct. */
 static ud_status infer_field(ud_context *memory, const ud_json *json, ud_field *field,
                              uint32_t depth) {
     if (depth > 32)
         return UD_RESOURCE;
     if (ud_json_kind(json) == UD_JSON_ARRAY) {
-        if (ud_json_size(json) != 2)
-            return UD_UNSUPPORTED;
-        int first = named(ud_json_at(json, 0), "null"), second = named(ud_json_at(json, 1), "null");
-        if (first == second)
-            return UD_UNSUPPORTED;
-        field->nullable = 1;
-        json = ud_json_at(json, first ? 1 : 0);
+        uint32_t count = ud_json_size(json);
+        int first = count == 2 && null_schema(ud_json_at(json,0)), second = count == 2 && null_schema(ud_json_at(json,1));
+        if (count != 2 || first == second) {
+            static const char *names[] = {"variant0", "variant1", "variant2", "variant3", "variant4", "variant5", "variant6", "variant7", "variant8", "variant9", "variant10", "variant11", "variant12", "variant13", "variant14", "variant15", "variant16", "variant17", "variant18", "variant19", "variant20", "variant21", "variant22", "variant23", "variant24", "variant25", "variant26", "variant27", "variant28", "variant29", "variant30", "variant31", "variant32", "variant33", "variant34", "variant35", "variant36", "variant37", "variant38", "variant39", "variant40", "variant41", "variant42", "variant43", "variant44", "variant45", "variant46", "variant47", "variant48", "variant49", "variant50", "variant51", "variant52", "variant53", "variant54", "variant55", "variant56", "variant57", "variant58", "variant59", "variant60", "variant61", "variant62", "variant63"};
+            if (!count || count > 64) return UD_RESOURCE;
+            ud_field *children = ud_alloc(memory,(count+1)*sizeof(*children)); if (!children) return UD_RESOURCE;
+            field->type = UD_STRUCT; field->children = children; field->child_count = count+1;
+            children[0] = (ud_field){.name = "branch",.name_length = 6,.type = UD_INT64};
+            for (uint32_t at = 0; at < count; at++) {
+                children[at+1].name = names[at]; children[at+1].name_length = (uint32_t)strlen(names[at]);
+                UD_TRY(infer_field(memory,ud_json_at(json,at),children+at+1,depth+1)); children[at+1].nullable = 1;
+            }
+            return UD_OK;
+        }
+        field->nullable = 1; json = ud_json_at(json,first ? 1 : 0);
     }
     const ud_json *type = ud_json_kind(json) == UD_JSON_STRING ? json : member(json, "type");
     const ud_json *logical = member(json, "logicalType");
-    if (named(type, "boolean"))
-        field->type = UD_BOOL;
+    if (named(type,"null")) { field->type = UD_BOOL; field->nullable = 1; }
+    else if (named(type,"enum")) {
+        ud_bytes bytes = {.ctx = memory};
+        ud_status status = json_literal(&bytes,"{\"kind\":\"enum\",\"values\":");
+        if (!status) status = copy_json(&bytes,member(json,"symbols"));
+        if (!status) status = json_literal(&bytes,"}");
+        ud_json *dictionary = NULL;
+        if (!status) status = ud_json_parse(memory,(const char *)bytes.data,(uint32_t)bytes.size,&dictionary,NULL);
+        field->type = UD_UINT64;
+        if (!status) status = ud_dictionary_parse(memory,dictionary,field);
+        ud_json_destroy(dictionary); ud_bytes_clear(&bytes); return status;
+    }
+    else if (named(type, "boolean")) field->type = UD_BOOL;
     else if (named(type, "int") || named(type, "long"))
         field->type = UD_INT64;
     else if (named(type, "float") || named(type, "double"))
@@ -809,11 +1048,14 @@ static ud_status infer_field(ud_context *memory, const ud_json *json, ud_field *
     return UD_OK;
 }
 static void infer_clear(ud_field *field) {
+    ud_dictionary_clear(field);
     for (uint32_t at = 0; at < field->child_count; at++)
         infer_clear((ud_field *)field->children + at);
     ud_free((void *)field->children);
 }
-static ud_status header_read(avro_file *file, const ud_batch *expected, ud_string scope) {
+#include "avro_resolution.h"
+
+static ud_status header_read(avro_file *file, const ud_batch *expected, ud_string scope, ud_string reader_schema) {
     uint8_t magic[4];
     if (fread(magic, 1, 4, file->file) != 4 || memcmp(magic, "Obj\1", 4))
         return UD_CORRUPT;
@@ -877,7 +1119,11 @@ static ud_status header_read(avro_file *file, const ud_batch *expected, ud_strin
     }
     if (!status && (!got_schema || fread(file->sync, 1, 16, file->file) != 16))
         status = UD_CORRUPT;
-    if (!status && expected) {
+    if (!status) {
+        ud_json *resolved = NULL; status = resolve_names(file->memory,schema,&resolved);
+        if (!status) { ud_json_destroy(schema); schema = resolved; }
+    }
+    if (!status && expected && !reader_schema.length) {
         if (embedded && ud_batch_columns(expected) != ud_batch_columns(embedded))
             status = UD_INCOMPATIBLE;
         for (uint32_t at = 0; !status && embedded && at < ud_batch_columns(expected); at++) {
@@ -904,20 +1150,21 @@ static ud_status header_read(avro_file *file, const ud_batch *expected, ud_strin
                                            &file->schema);
         infer_clear(&root);
     }
-    if (!status)
-        status = schema_bind(file, schema);
+    if (!status) status = schema_bind(file,schema);
+    if (!status && reader_schema.length) status = bind_resolution(file,schema,reader_schema,expected,scope);
+    if (!status && reader_schema.length) { file->writer_schema = schema; schema = NULL; }
     ud_batch_destroy(embedded);
     ud_json_destroy(schema);
     ud_bytes_clear(&key);
     ud_bytes_clear(&value);
     return status;
 }
-ud_status ud_avro_reader_open(ud_context *memory, const char *path, const ud_batch *expected,
-                              const ud_avro_options *options, ud_avro_reader **out) {
+ud_status ud_avro_reader_open_schema(ud_context *memory, const char *path, const ud_batch *expected,
+                              ud_string reader_schema, const ud_avro_options *options, ud_avro_reader **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
-    if (!memory || !path || !expected)
+    if (!memory || !path || (!expected && !reader_schema.length))
         return UD_INVALID;
     ud_avro_reader *reader = ud_alloc(memory, sizeof(*reader));
     if (!reader)
@@ -946,7 +1193,7 @@ ud_status ud_avro_reader_open(ud_context *memory, const char *path, const ud_bat
     if (!status)
         status = ud_open_regular(memory, path, &reader->state.file);
     if (!status)
-        status = header_read(&reader->state, expected, (ud_string){"avro", 4});
+        status = header_read(&reader->state, expected, (ud_string){"avro", 4}, reader_schema);
     if (status) {
         close_file(&reader->state);
         ud_free(reader);
@@ -1024,8 +1271,9 @@ ud_status ud_avro_reader_next(ud_avro_reader *reader, ud_batch **accepted, ud_ba
     if (file->poisoned)
         return UD_CORRUPT;
     uint32_t columns = file->schema->columns;
+    const ud_batch *output_schema = file->projection ? file->projection : file->schema;
     ud_batch *rows = NULL, *bad = NULL;
-    ud_status status = ud_batch_create(file->memory, file->schema->schema->fields, columns,
+    ud_status status = ud_batch_create(file->memory, output_schema->schema->fields, output_schema->columns,
                                        file->options.batch_rows, &rows);
     if (!status)
         status = ud_error_batch(&file->records.errors, file->records.include_input,
@@ -1034,6 +1282,7 @@ ud_status ud_avro_reader_next(ud_avro_reader *reader, ud_batch **accepted, ud_ba
     if (!values)
         status = UD_RESOURCE;
     int end = 0;
+    uint32_t failed_column = UINT32_MAX;
     for (uint32_t at = 0; !status && at < file->options.batch_rows; at++) {
         status = check(file);
         if (!status && !file->remaining) {
@@ -1053,7 +1302,7 @@ ud_status ud_avro_reader_next(ud_avro_reader *reader, ud_batch **accepted, ud_ba
             /* Decoder errors can lose record boundaries. Only validations after
              * successful physical decoding are eligible for redirection. */
             if (decoded) {
-                status = decoded;
+                status = decoded; failed_column = c;
                 break;
             }
         }
@@ -1073,10 +1322,16 @@ ud_status ud_avro_reader_next(ud_avro_reader *reader, ud_batch **accepted, ud_ba
         ud_row_info identity = {0};
         if (!status)
             status = ud_row_info_source(file->records.source_scope, file->ordinal, &identity);
+        ud_value resolved = {0};
+        if (!status && !conversion && file->projection) {
+            ud_field writer = {.type = UD_STRUCT,.children = file->schema->schema->fields,.child_count = columns};
+            ud_field reader_field = {.type = UD_STRUCT,.children = output_schema->schema->fields,.child_count = output_schema->columns};
+            ud_value input = {.type = UD_STRUCT,.children = values,.child_count = columns};
+            conversion = resolve_value(file,file->writer_schema,file->reader_schema,&writer,&reader_field,&input,&resolved,0);
+        }
         if (!status && !conversion) {
-            status = ud_batch_append(rows, values, columns);
-            if (!status)
-                status = ud_batch_set_row_info(rows, ud_batch_rows(rows) - 1, &identity);
+            status = ud_batch_append(rows,file->projection ? resolved.children : values,output_schema->columns);
+            if (!status) status = ud_batch_set_row_info(rows,ud_batch_rows(rows)-1,&identity);
         } else if (!status && (file->records.policy == UD_ERROR_FAIL ||
                                !ud_record_error_recoverable(conversion)))
             status = conversion;
@@ -1096,6 +1351,7 @@ ud_status ud_avro_reader_next(ud_avro_reader *reader, ud_batch **accepted, ud_ba
                                    .input_format = {"Avro", 4},
                                    .raw = file->block.data + begin,
                                    .raw_length = (uint32_t)(file->block.pos - begin)});
+        value_release(&resolved);
         ud_batch_destroy(single);
         for (uint32_t c = 0; values && c < columns; c++) {
             value_release(values + c);
@@ -1114,6 +1370,10 @@ ud_status ud_avro_reader_next(ud_avro_reader *reader, ud_batch **accepted, ud_ba
     if (!status && ud_batch_rows(bad))
         status = ud_batch_seal(bad);
     if (status) {
+        (void)ud_fail(file->memory,status,
+            "Avro record boundary failed: row=%llu field=%u byte=%llu blockBytes=%llu remaining=%llu",
+            (unsigned long long)file->ordinal,failed_column,(unsigned long long)file->block.pos,
+            (unsigned long long)file->block.size,(unsigned long long)file->remaining);
         file->poisoned = 1;
         ud_batch_destroy(rows);
         ud_batch_destroy(bad);
@@ -1144,7 +1404,7 @@ ud_status ud_avro_discover(ud_context *memory, const char *path, ud_string scope
     if (!status)
         status = ud_open_regular(memory, path, &file.file);
     if (!status)
-        status = header_read(&file, NULL, scope);
+        status = header_read(&file, NULL, scope, (ud_string){0});
     if (!status) {
         *out = file.schema;
         file.schema = NULL;
@@ -1158,8 +1418,8 @@ ud_status ud_avro_discover(ud_context *memory, const char *path, ud_string scope
     close_file(&file);
     return status;
 }
-ud_status ud_avro_writer_open(ud_context *memory, const char *path, const ud_batch *schema,
-                              const ud_avro_options *options, ud_avro_writer **out) {
+ud_status ud_avro_writer_open_schema(ud_context *memory, const char *path, const ud_batch *schema,
+                              ud_string writer_schema, const ud_avro_options *options, ud_avro_writer **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
@@ -1181,13 +1441,16 @@ ud_status ud_avro_writer_open(ud_context *memory, const char *path, const ud_bat
     ud_json *document = NULL;
     if (!status)
         status = ud_batch_create(memory, schema->schema->fields, schema->columns, 0, &file->schema);
-    if (!status)
-        status = schema_record(&avro, schema->schema->fields, schema->columns, 0, &serial);
+    if (!status) status = writer_schema.length ? ud_bytes_put(&avro,writer_schema.data,writer_schema.length)
+        : schema_record(&avro,schema->schema->fields,schema->columns,0,&serial);
     if (!status)
         status =
             ud_json_parse(memory, (const char *)avro.data, (uint32_t)avro.size, &document, NULL);
-    if (!status)
-        status = schema_bind(file, document);
+    if (!status) {
+        ud_json *resolved = NULL; status = resolve_names(memory,document,&resolved);
+        if (!status) status = schema_bind(file,resolved);
+        ud_json_destroy(resolved);
+    }
     if (!status)
         status = ud_schema_to_json(schema, &native, &native_size);
     if (!status)
@@ -1326,4 +1589,11 @@ ud_status ud_avro_writer_close(ud_avro_writer *writer) {
     close_file(file);
     ud_free(writer);
     return status;
+}
+
+ud_status ud_avro_reader_open(ud_context *memory,const char *path,const ud_batch *schema,const ud_avro_options *options,ud_avro_reader **out) {
+    return ud_avro_reader_open_schema(memory,path,schema,(ud_string){0},options,out);
+}
+ud_status ud_avro_writer_open(ud_context *memory,const char *path,const ud_batch *schema,const ud_avro_options *options,ud_avro_writer **out) {
+    return ud_avro_writer_open_schema(memory,path,schema,(ud_string){0},options,out);
 }

@@ -63,6 +63,15 @@ typedef struct ud_catalog_binding {
  * the existing Execution API. No latest-version races or implicit activation. */
 UD_API ud_status ud_catalog_bind_package(ud_catalog *, const ud_catalog_binding *, ud_package **,
                                          char **parameters, uint32_t *length);
+/* Immutable document transport for an isolated Worker. No runtime parameter
+ * values are resolved here. Import in the returned order, then use the existing
+ * Native binder. The host must authorize every exported object in its scope. */
+UD_API ud_status ud_catalog_binding_snapshot(ud_catalog *, const ud_catalog_binding *, char **, uint32_t *);
+/* Explicit historical secret migration. Only removes legacy audit Parameters;
+ * installs an opaque credential reference and rebuilds the integrity digest.
+ * Requires DELETE and WRITE authorization, and a subsequent secure compaction. */
+UD_API ud_status ud_catalog_protect_parameters(ud_catalog *, const ud_catalog_key *, ud_string reference);
+UD_API ud_status ud_catalog_secure_compact(ud_catalog *);
 /* Host records immutable Ready/terminal snapshots at explicit revisions.
  * Running/Draining return BUSY. Serialize with start/destroy; tenant must
  * match. Persists identifiers/fingerprints/metrics, never parameter/config/

@@ -67,6 +67,8 @@ mvn -f bindings/java/pom.xml package
 
 CLI：`ud_cli execute host-policy.json package.json '{}'`。SDK 未提供的新执行 ID 由 Native 生成；CLI 将原状态目录保存在 Native Catalog，恢复时使用 `ud_cli execute host-policy.json package.json '{}' ORIGINAL_ID resume`。CLI、Worker 与管理服务共用宿主资源范围、凭据引用及固定 C# 程序集加载入口。产品宿主使用 .NET 10，默认管理地址为 `127.0.0.1:5080`。Java JAR 使用同一发布物内的 JNI 和原生库；数据库连接器由宿主显式加载。
 
+管理服务要求登录和显式租户策略。首次部署使用 `ud_cli identity-init IDENTITY_FILE SUBJECT TENANT` 初始化宿主身份目录；参考 [宿主身份与隔离契约](docs/product/hosting-security.md) 和 [策略示例](products/host-policy.example.json)。作业和执行记录只保存受保护参数引用；不可信扩展必须由可用的操作系统沙箱运行。
+
 ## Linux 产物交付
 
 完成 Release/JNI 构建后，打包脚本直接安装已构建的二进制，生成 native NuGet、JAR/POM、SHA256 清单及 ZIP：

@@ -82,7 +82,12 @@ enum {
     UD_ACCESS_RECEIPT = 5,
     UD_ACCESS_DELETE = 8, /* 6/7 are reserved. */
     UD_ACCESS_EXECUTE = 9,
-    UD_ACCESS_NETWORK = 10
+    UD_ACCESS_NETWORK = 10,
+    /* Engine-owned recovery storage has a separate purpose. Package file
+     * leases never request these grants, even for the same physical path. */
+    UD_ACCESS_CHECKPOINT_OPEN = 11,
+    UD_ACCESS_CHECKPOINT_READ = 12,
+    UD_ACCESS_CHECKPOINT_WRITE = 13
 };
 /* Only UD_OK is an authorization grant. Missing callback is a denial. The host
  * controls the credential scope; this callback never implements an identity provider. */

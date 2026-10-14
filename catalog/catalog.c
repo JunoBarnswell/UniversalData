@@ -709,3 +709,73 @@ ud_status ud_catalog_prune_events(ud_catalog *catalog, uint64_t before_ms, uint3
         *removed = changed;
     return status;
 }
+
+ud_status ud_catalog_protect_parameters(ud_catalog *catalog, const ud_catalog_key *key,
+                                        ud_string reference) {
+    if (!catalog || !key || key->kind != UD_CATALOG_AUDIT || !string_valid(reference, 1) ||
+        reference.length > 255) return UD_INVALID;
+    UD_TRY(key_check(key));
+    if (key->id.length < 5 || (memcmp(key->id.data,"run/",4) && memcmp(key->id.data,"job/",4))) return UD_INVALID;
+    UD_TRY(grant(catalog, UD_ACCESS_DELETE));
+    UD_TRY(grant(catalog, UD_ACCESS_WRITE));
+    UD_TRY(sql(catalog, "PRAGMA secure_delete=ON"));
+    UD_TRY(sql(catalog, "BEGIN IMMEDIATE"));
+    char *original = NULL;
+    uint32_t original_length = 0;
+    ud_status status = get_document(catalog, key, &original, &original_length);
+    ud_json *document = NULL;
+    if (!status) status = ud_json_parse(catalog->ctx, original, original_length, &document, NULL);
+    const ud_json *parameters = ud_member(document, "parameters");
+    if (!status && !parameters) {
+        ud_string existing;
+        status = ud_json_string(ud_member(document, "parametersReference"), &existing);
+        if (!status && !ud_same(existing, reference)) status = UD_CORRUPT;
+    }
+    ud_bytes bytes = {.ctx = catalog->ctx};
+    if (!status && parameters) status = ud_bytes_put(&bytes, "{", 1);
+    uint32_t copied = 0;
+    for (uint32_t at = 0; !status && parameters && at < ud_json_size(document); at++) {
+        const char *name; uint32_t size;
+        status = ud_json_key(document, at, &name, &size);
+        if (!status && ((size == 10 && !memcmp(name,"parameters",10)) ||
+                        (size == 19 && !memcmp(name,"parametersReference",19)))) continue;
+        if (!status && copied++) status = ud_bytes_put(&bytes, ",", 1);
+        if (!status) status = ud_json_quote(&bytes, name, size);
+        if (!status) status = ud_bytes_put(&bytes, ":", 1);
+        char *value = NULL; uint32_t length = 0;
+        if (!status) status = ud_json_serialize(ud_json_at(document,at), &value, &length);
+        if (!status) status = ud_bytes_put(&bytes, value, length);
+        ud_free(value);
+    }
+    if (!status && parameters) status = ud_bytes_put(&bytes, copied ? ",\"parametersReference\":" : "\"parametersReference\":", copied ? 23 : 22);
+    if (!status && parameters) status = ud_json_quote(&bytes, reference.data, reference.length);
+    if (!status && parameters) status = ud_bytes_put(&bytes, "}", 1);
+    uint64_t timestamp = 0;
+    if (!status && ud_member(document,"timestampMs")) status = ud_json_uint(ud_member(document,"timestampMs"), &timestamp);
+    uint8_t digest[32];
+    if (!status && parameters) status = digest_document(catalog,key,(ud_string){(char *)bytes.data,(uint32_t)bytes.size},timestamp,digest);
+    sqlite3_stmt *statement = NULL;
+    if (!status && parameters) status = prepare(catalog,
+        "UPDATE documents SET document=?5,digest=?6 WHERE tenant=?1 AND kind=?2 AND id=?3 AND revision=?4", &statement);
+    if (!status && parameters) status = bind_key(catalog,statement,key);
+    if (!status && parameters) status = bind_text(statement,5,(ud_string){(char *)bytes.data,(uint32_t)bytes.size});
+    if (!status && parameters) status = sql_status(sqlite3_bind_blob(statement,6,digest,32,SQLITE_TRANSIENT));
+    if (!status && parameters) status = sql_status(sqlite3_step(statement));
+    sqlite3_finalize(statement);
+    if (!status) status = sql(catalog,"COMMIT");
+    if (status) (void)sql(catalog,"ROLLBACK");
+    ud_free(original); ud_json_destroy(document); ud_bytes_clear(&bytes);
+    return status;
+}
+ud_status ud_catalog_secure_compact(ud_catalog *catalog) {
+    if (!catalog) return UD_INVALID;
+    UD_TRY(grant(catalog,UD_ACCESS_DELETE)); UD_TRY(grant(catalog,UD_ACCESS_WRITE));
+    /* Exclusive maintenance is a host operation. A busy WAL reader blocks the
+     * proof; it cannot silently leave a plaintext historical WAL behind. */
+    int log = 0, checkpointed = 0;
+    UD_TRY(sql_status(sqlite3_wal_checkpoint_v2(catalog->database,NULL,SQLITE_CHECKPOINT_TRUNCATE,&log,&checkpointed)));
+    if (log != checkpointed) return UD_BUSY;
+    UD_TRY(sql(catalog,"PRAGMA secure_delete=ON;VACUUM"));
+    UD_TRY(sql_status(sqlite3_wal_checkpoint_v2(catalog->database,NULL,SQLITE_CHECKPOINT_TRUNCATE,&log,&checkpointed)));
+    return log == checkpointed ? UD_OK : UD_BUSY;
+}

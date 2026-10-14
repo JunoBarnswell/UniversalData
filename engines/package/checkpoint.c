@@ -132,7 +132,7 @@ ud_status ud_checkpoint_transaction_read(ud_activation *activation, int32_t phas
     checkpoint_journal *journal = activation->execution->journal;
     if (!journal)
         return UD_END;
-    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_READ));
+    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_CHECKPOINT_READ));
     ud_mutex_lock(&activation->execution->journal_lock);
     const ud_json *value = find(journal, transaction_kind(phase), identity);
     ud_status status = value ? ud_json_serialize(value, out, length) : UD_END;
@@ -146,7 +146,7 @@ ud_status ud_checkpoint_transaction_record(ud_activation *activation, int32_t ph
     checkpoint_journal *journal = activation->execution->journal;
     if (!journal)
         return UD_UNSUPPORTED;
-    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_WRITE));
+    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_CHECKPOINT_WRITE));
     ud_journal_record record = {
         .kind = transaction_kind(phase), .key = identity, .payload = payload};
     ud_mutex_lock(&activation->execution->journal_lock);
@@ -161,7 +161,7 @@ ud_status ud_checkpoint_transaction_facts(ud_activation *activation, ud_string i
     checkpoint_journal *journal = activation->execution->journal;
     if (!journal)
         return UD_UNSUPPORTED;
-    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_WRITE));
+    UD_TRY(grant(activation->execution, journal->directory, UD_ACCESS_CHECKPOINT_WRITE));
     ud_mutex_lock(&activation->execution->journal_lock);
     ud_status status =
         commit ? ud_journal_publish_owner(journal->store, RECORD_TRANSACTION_FACT, identity)
@@ -360,10 +360,10 @@ ud_status ud_checkpoint_open(ud_execution *e) {
     j->directory = ud_strdup_n(e->ctx, directory.data, directory.length);
     if (!j->directory)
         return UD_RESOURCE;
-    UD_TRY(grant(e, j->directory, UD_ACCESS_OPEN));
-    UD_TRY(grant(e, j->directory, UD_ACCESS_WRITE));
+    UD_TRY(grant(e, j->directory, UD_ACCESS_CHECKPOINT_OPEN));
+    UD_TRY(grant(e, j->directory, UD_ACCESS_CHECKPOINT_WRITE));
     if (e->options.resume)
-        UD_TRY(grant(e, j->directory, UD_ACCESS_READ));
+        UD_TRY(grant(e, j->directory, UD_ACCESS_CHECKPOINT_READ));
     UD_TRY(ud_journal_open(e->ctx, directory, e->options.resume, &j->store));
     ud_bytes identity = {.ctx = e->ctx};
     ud_status s = ud_bytes_put(&identity, e->package->fingerprint, 32);
@@ -385,23 +385,28 @@ ud_status ud_checkpoint_open(ud_execution *e) {
     if (!s)
         s = ud_put_u64(&identity, e->options.max_concurrency);
     uint8_t digest[32];
-    char encoded[65], payload[68];
+    char encoded[65], payload[160]; int payload_length = 0;
     if (!s) {
         ud_hash(identity.data, identity.size, digest);
         hex(digest, encoded);
-        snprintf(payload, sizeof(payload), "\"%s\"", encoded);
+        payload_length = snprintf(payload,sizeof(payload),"{\"version\":%u,\"revision\":%u,\"identity\":\"%s\"}",
+                                  UD_CHECKPOINT_VERSION,UD_CHECKPOINT_FORMAT_REVISION,encoded);
+        if (payload_length < 0 || (size_t)payload_length >= sizeof(payload)) s = UD_OVERFLOW;
     }
     ud_bytes_clear(&identity);
     if (s)
         return s;
     if (e->options.resume) {
         const ud_json *header = find(j, RECORD_HEADER, e->options.execution_id);
-        ud_string hash;
-        if (!header || ud_json_string(header, &hash) || !ud_named(hash, encoded))
+        ud_string hash; uint64_t version = 0,revision = 0;
+        if (!header || ud_json_kind(header) != UD_JSON_OBJECT ||
+            ud_json_uint(ud_member(header,"version"),&version) || version != UD_CHECKPOINT_VERSION ||
+            ud_json_uint(ud_member(header,"revision"),&revision) || revision != UD_CHECKPOINT_FORMAT_REVISION ||
+            ud_json_string(ud_member(header,"identity"), &hash) || !ud_named(hash, encoded))
             return UD_INCOMPATIBLE;
         return ud_journal_visit(j->store, restore_fact, j);
     }
-    return append(j, &e->root, RECORD_HEADER, e->options.execution_id, (ud_string){payload, 66});
+    return append(j, &e->root, RECORD_HEADER, e->options.execution_id, (ud_string){payload,(uint32_t)payload_length});
 }
 static ud_status ud_checkpoint_task_begin_record(ud_activation *e, ud_string kind, int *completed) {
     *completed = 0;
@@ -491,11 +496,11 @@ static ud_status checkpoint_before(ud_activation *a, const char *path) {
     checkpoint_journal *j = a->execution->journal;
     if (!j)
         return UD_OK;
-    UD_TRY(grant(a->execution, j->directory, UD_ACCESS_WRITE));
+    UD_TRY(grant(a->execution, j->directory, UD_ACCESS_CHECKPOINT_WRITE));
     if (path)
         UD_TRY(grant(a->execution, path, UD_ACCESS_READ));
     ud_activation_notify_kind(a, UD_EXEC_EVENT_BEFORE_CHECKPOINT, UD_EXEC_RUNNING, UD_OK);
-    return grant(a->execution, j->directory, UD_ACCESS_WRITE);
+    return grant(a->execution, j->directory, UD_ACCESS_CHECKPOINT_WRITE);
 }
 static void checkpoint_after(ud_activation *a, ud_status status) {
     if (!status && a->execution->journal)

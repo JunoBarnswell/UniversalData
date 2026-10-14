@@ -26,6 +26,16 @@ public final class Catalog implements AutoCloseable {
     public synchronized Binding bindPackage(String deployment,long revision,String packageId,String projectParameters,String packageParameters) {
         open();String[] result=nativeBind(handle,Utf8.bytes(deployment),revision,Utf8.bytes(packageId),Utf8.bytes(projectParameters),Utf8.bytes(packageParameters));return new Binding(result[0],result[1]);
     }
+    public synchronized String bindingSnapshot(String deployment,long revision,String packageId) {
+        open();return nativeBindingSnapshot(handle,Utf8.bytes(deployment),revision,Utf8.bytes(packageId));
+    }
+    public synchronized void protectLegacyParameters(String id,long revision,String reference) {
+        open();nativeProtectParameters(handle,Utf8.bytes(id),revision,Utf8.bytes(reference));
+    }
+    public synchronized void secureCompact() { open();nativeSecureCompact(handle); }
+    private static native String nativeBindingSnapshot(long handle,byte[] deployment,long revision,byte[] packageId);
+    private static native void nativeProtectParameters(long handle,byte[] id,long revision,byte[] reference);
+    private static native void nativeSecureCompact(long handle);
     private void open() { if(grants.get()!=0)throw new IllegalStateException("Catalog authorization cannot reenter Catalog");if(handle==0)throw new IllegalStateException("Catalog is closed"); }
     @Override public synchronized void close() { if(grants.get()!=0)throw new IllegalStateException("Catalog authorization cannot close Catalog");if(handle!=0) { nativeClose(handle);handle=0; } }
     private static native long nativeOpen(byte[] directory,byte[] tenant,Execution.Authorizer authorizer,long memoryLimit);

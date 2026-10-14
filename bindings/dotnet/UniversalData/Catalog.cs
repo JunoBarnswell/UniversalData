@@ -81,6 +81,17 @@ public sealed class Catalog : IDisposable
             } finally { Native.ud_free(parameters); Native.ud_package_destroy(package); }
         }
     }
+    public string BindingSnapshot(string deploymentId,ulong deploymentRevision,string packageId) {
+        lock (sync) { Open(); using var strings = new NativeStrings(deploymentId,packageId);
+            var binding = new Native.CatalogBinding { Size = (uint)Marshal.SizeOf<Native.CatalogBinding>(), Abi = ProductVersion.Abi,
+                DeploymentId = strings[0], DeploymentRevision = deploymentRevision, PackageId = strings[1] };
+            DataOwnership.Check(context,Native.ud_catalog_binding_snapshot(catalog,ref binding,out var text,out var length)); return DataOwnership.Text(text,length); }
+    }
+    public void ProtectLegacyParameters(string id,ulong revision,string reference) {
+        lock (sync) { Open(); using var strings = new NativeStrings(id,reference); var key = Key(CatalogKind.Audit,strings[0],revision);
+            DataOwnership.Check(context,Native.ud_catalog_protect_parameters(catalog,ref key,strings[1])); }
+    }
+    public void SecureCompact() { lock (sync) { Open(); DataOwnership.Check(context,Native.ud_catalog_secure_compact(catalog)); } }
     public void Record(ExecutionEvent executionEvent)
     {
         lock (sync)
@@ -114,6 +125,9 @@ internal static partial class Native
     [StructLayout(LayoutKind.Sequential)] internal struct CatalogBinding
     { internal uint Size, Abi; internal StringValue DeploymentId; internal ulong DeploymentRevision;
       internal StringValue PackageId, ProjectParameters, PackageParameters; }
+    [DllImport(Library,CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_binding_snapshot(IntPtr catalog,ref CatalogBinding binding,out IntPtr text,out uint length);
+    [DllImport(Library,CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_protect_parameters(IntPtr catalog,ref CatalogKey key,StringValue reference);
+    [DllImport(Library,CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_secure_compact(IntPtr catalog);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_bind_package(IntPtr catalog, ref CatalogBinding binding, out IntPtr package, out IntPtr parameters, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_package_serialize(IntPtr package, out IntPtr text, out uint length);
     [StructLayout(LayoutKind.Sequential)] internal struct CatalogOptions

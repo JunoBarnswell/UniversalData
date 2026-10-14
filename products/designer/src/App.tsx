@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Box, Play, List, CalendarDays, Upload } from 'lucide-react';
-import { api, post, encode } from './api';
+import { api, post, encode, type Session } from './api';
+import { Authentication, SessionControls } from './Authentication';
 import { Editor } from './Editor';
 import { Executions } from './Executions';
 import { Jobs } from './Jobs';
 import type { Component, PackageDocument } from './model';
 type Page = 'designer' | 'runs' | 'logs' | 'jobs';
-export default function App() {
+export default function App() { return <Authentication>{session => <AuthenticatedApp key={`${session.tenant}/${session.subject}`} session={session}/>}</Authentication>; }
+function AuthenticatedApp({ session }: { session: Session }) {
   const [page, setPage] = useState<Page>('designer');
   const [components, setComponents] = useState<Component[]>([]);
   const [error, setError] = useState('');
@@ -20,7 +22,7 @@ export default function App() {
     } catch (error) { setError(String(error)); }
   }
   const items: { key: Page; label: string; icon: typeof Box }[] = [{ key: 'designer', label: '设计器', icon: Box }, { key: 'runs', label: '执行', icon: Play }, { key: 'logs', label: '日志', icon: List }, { key: 'jobs', label: '作业', icon: CalendarDays }];
-  return <div className="application"><header className="main-header"><a className="brand" href="#" onClick={() => setPage('designer')}><Box size={28} fill="#087f8c" color="#087f8c"/><strong>UniversalData</strong></a><nav aria-label="主导航">{items.map(({ key, label, icon: Icon }) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><Icon size={16}/>{label}</button>)}</nav><button className="primary deploy" disabled={!saved} onClick={() => void deploy()}><Upload size={16}/>部署</button></header>
+  return <div className="application"><header className="main-header"><a className="brand" href="#" onClick={() => setPage('designer')}><Box size={28} fill="#087f8c" color="#087f8c"/><strong>UniversalData</strong></a><nav aria-label="主导航">{items.map(({ key, label, icon: Icon }) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><Icon size={16}/>{label}</button>)}</nav><button className="primary deploy" disabled={!saved} onClick={() => void deploy()}><Upload size={16}/>部署</button><SessionControls session={session}/></header>
     {error ? <div role="alert" className="banner">{error}<button aria-label="关闭提示" onClick={() => setError('')}>×</button></div> : null}
     <div className="designer-page" hidden={page !== 'designer'}><Editor components={components} saved={setSaved} deploy={deploy}/></div>{page === 'runs' || page === 'logs' ? <Executions logsOnly={page === 'logs'}/> : page === 'jobs' ? <Jobs/> : null}
   </div>;

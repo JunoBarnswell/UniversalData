@@ -17,6 +17,13 @@ typedef struct ud_avro_options {
 /* Actual Avro Object Container Files. The Native Data Schema is preserved in
  * the ud.schema header; signed calendar extensions never narrow to standard
  * unsigned millisecond duration. The file lease/publication belongs to Package. */
+/* Explicit standard Reader/Writer schemas. Named references resolve once;
+ * multi-member unions use a Native Struct {branch,variant0,...}, with exactly
+ * one active branch. Recursive schemas without a finite Native shape reject. */
+UD_API ud_status ud_avro_reader_open_schema(ud_context *, const char *, const ud_batch *, ud_string reader_schema,
+                                            const ud_avro_options *, ud_avro_reader **);
+UD_API ud_status ud_avro_writer_open_schema(ud_context *, const char *, const ud_batch *, ud_string writer_schema,
+                                            const ud_avro_options *, ud_avro_writer **);
 UD_API ud_status ud_avro_reader_open(ud_context *, const char *, const ud_batch *,
                                      const ud_avro_options *, ud_avro_reader **);
 UD_API ud_status ud_avro_reader_next(ud_avro_reader *, ud_batch **, ud_batch **);

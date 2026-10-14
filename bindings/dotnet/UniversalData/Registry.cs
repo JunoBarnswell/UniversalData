@@ -2,6 +2,9 @@ using System.Runtime.InteropServices;
 
 namespace UniversalData;
 
+[Flags]
+public enum RegistryFeatures : ulong { ScopedJournal = 1, ControlEvents = 0x0004000000000000UL }
+
 public interface IManagedTask : IDisposable
 {
     void Execute(ManagedTaskContext context, string configurationJson);
@@ -34,6 +37,12 @@ public sealed class ManagedTaskContext
 /// <summary>Registrations and callback owners belong to the sole Native Registry.</summary>
 public sealed partial class Registry : IDisposable
 {
+    public static RegistryFeatures Features {
+        get {
+            try { return (RegistryFeatures)Native.ud_registry_features(); }
+            catch(EntryPointNotFoundException) { throw new UniversalDataException((int)StatusCode.Incompatible,"Native Registry feature contract is unavailable"); }
+        }
+    }
     private readonly ContextHandle context;
     private readonly object sync = new();
     private IntPtr registry;

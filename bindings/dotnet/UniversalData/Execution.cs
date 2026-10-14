@@ -7,7 +7,8 @@ public enum ExecutionState
 { Created, Validating, Ready, Running, Draining, Succeeded, Failed, Cancelled, Skipped, RecoveryRequired }
 
 public enum ConnectionAccess
-{ Open = 1, Discover, Read, Write, Receipt, Delete = 8, Execute = 9, Network = 10 }
+{ Open = 1, Discover, Read, Write, Receipt, Delete = 8, Execute = 9, Network = 10,
+  CheckpointOpen = 11, CheckpointRead = 12, CheckpointWrite = 13 }
 
 public delegate bool PackageAuthorizer(string tenant, string resource, ConnectionAccess access);
 

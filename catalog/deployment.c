@@ -268,3 +268,61 @@ ud_status ud_catalog_bind_package(ud_catalog *c, const ud_catalog_binding *o, ud
     ud_free(package_text);
     return s;
 }
+/* Export immutable documents, without binding runtime parameters in the management
+ * process. The receiving Worker imports these into its private Native Catalog and
+ * uses ud_catalog_bind_package. There is only one project/parameter binder. */
+static ud_status snapshot_document(ud_catalog *catalog, const ud_catalog_key *key,
+                                   ud_bytes *bytes, uint32_t *count) {
+    char *document = NULL;
+    uint32_t length = 0;
+    UD_TRY(ud_catalog_get(catalog, key, &document, &length));
+    ud_status status = *count ? ud_bytes_put(bytes, ",", 1) : UD_OK;
+    char numbers[96];
+    int size = snprintf(numbers, sizeof(numbers), "{\"kind\":%d,\"revision\":%llu,\"id\":",
+                        key->kind, (unsigned long long)key->revision);
+    if (!status) status = ud_bytes_put(bytes, numbers, (size_t)size);
+    if (!status) status = ud_json_quote(bytes, key->id.data, key->id.length);
+    if (!status) status = ud_bytes_put(bytes, ",\"document\":", 12);
+    if (!status) status = ud_bytes_put(bytes, document, length);
+    if (!status) status = ud_bytes_put(bytes, "}", 1);
+    ud_free(document);
+    if (!status) (*count)++;
+    return status;
+}
+ud_status ud_catalog_binding_snapshot(ud_catalog *catalog, const ud_catalog_binding *binding,
+                                       char **out, uint32_t *length) {
+    if (!catalog || !binding || !out || !length) return UD_INVALID;
+    *out = NULL; *length = 0;
+    if (binding->struct_size != sizeof(*binding) || binding->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    ud_catalog_key deployment_key = {sizeof(deployment_key), UD_ABI_VERSION, UD_CATALOG_DEPLOYMENT,
+                                     binding->deployment_id, binding->deployment_revision};
+    ud_json *deployment = NULL, *project = NULL, *environment = NULL;
+    ud_status status = get_document(catalog, &deployment_key, &deployment);
+    if (!status) status = deployment_documents(catalog, deployment, &project, &environment);
+    if (!status) status = validate_references(catalog, project, environment);
+    ud_bytes bytes = {.ctx = catalog->ctx, .limit = 64u * 1024u * 1024u};
+    uint32_t count = 0;
+    if (!status) status = ud_bytes_put(&bytes, "[", 1);
+    const ud_json *packages = ud_member(project, "packages");
+    for (uint32_t at = 0; !status && at < ud_json_size(packages); at++) {
+        ud_catalog_key key;
+        status = key_from_ref(ud_json_at(packages, at), UD_CATALOG_PACKAGE, &key);
+        if (!status) status = snapshot_document(catalog, &key, &bytes, &count);
+    }
+    const char *names[] = {"project", "environment"};
+    const int kinds[] = {UD_CATALOG_PROJECT, UD_CATALOG_ENVIRONMENT};
+    for (uint32_t at = 0; !status && at < 2; at++) {
+        const ud_json *reference = ud_member(deployment, names[at]);
+        if (!reference) continue;
+        ud_catalog_key key;
+        status = key_from_ref(reference, kinds[at], &key);
+        if (!status) status = snapshot_document(catalog, &key, &bytes, &count);
+    }
+    if (!status) status = snapshot_document(catalog, &deployment_key, &bytes, &count);
+    if (!status) status = ud_bytes_put(&bytes, "]", 1);
+    if (!status) status = ud_bytes_put(&bytes, "", 1);
+    if (!status) { *out = (char *)bytes.data; *length = (uint32_t)bytes.size - 1; bytes.data = NULL; }
+    ud_bytes_clear(&bytes); ud_json_destroy(deployment); ud_json_destroy(project); ud_json_destroy(environment);
+    return status;
+}

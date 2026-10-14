@@ -136,6 +136,14 @@ int main(int argc, char **argv) {
                 CHECK(actual.is_null);
                 continue;
             }
+            if (ud_json_kind(json) == UD_JSON_OBJECT) {
+                CHECK(actual.type == UD_UTF8 && !actual.is_null);
+                ud_json *report = NULL;
+                OK(ud_json_parse(ctx,actual.text,actual.text_length,&report,NULL));
+                ud_json_destroy(report);
+                printf("%.*s\t%.*s\n",(int)name.length,name.data,(int)actual.text_length,actual.text);
+                continue;
+            }
             const char *value;
             uint32_t length;
             OK(ud_json_text(json, &value, &length));

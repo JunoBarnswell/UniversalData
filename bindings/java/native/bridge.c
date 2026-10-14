@@ -1398,3 +1398,40 @@ JNIEXPORT jobjectArray JNICALL Java_org_universaldata_Catalog_nativeBind(
         fail(env, status, ud_status_name(status));
     return result;
 }
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Catalog_nativeBindingSnapshot(
+    JNIEnv *env,jclass type,jlong handle,jbyteArray deployment,jlong revision,jbyteArray package_id) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    uint32_t sizes[2] = {0};
+    char *a = copy_data(env,catalog->callbacks.ctx,deployment,sizes);
+    char *b = copy_data(env,catalog->callbacks.ctx,package_id,sizes + 1);
+    char *json = NULL; uint32_t length = 0;
+    ud_catalog_binding binding = {.struct_size = sizeof(binding),.abi_version = UD_ABI_VERSION,
+        .deployment_id = {a,sizes[0]},.deployment_revision = (uint64_t)revision,.package_id = {b,sizes[1]}};
+    ud_status status = a && b ? ud_catalog_binding_snapshot(catalog->catalog,&binding,&json,&length) : UD_RESOURCE;
+    jstring result = !status ? utf8_length(env,json,length) : NULL;
+    ud_free(a); ud_free(b); ud_free(json);
+    if (status) fail(env,status,ud_status_name(status));
+    return result;
+}
+JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeProtectParameters(
+    JNIEnv *env,jclass type,jlong handle,jbyteArray id,jlong revision,jbyteArray reference) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    uint32_t sizes[2] = {0};
+    char *a = copy_data(env,catalog->callbacks.ctx,id,sizes);
+    char *b = copy_data(env,catalog->callbacks.ctx,reference,sizes + 1);
+    ud_catalog_key key = {sizeof(key),UD_ABI_VERSION,UD_CATALOG_AUDIT,{a,sizes[0]},(uint64_t)revision};
+    ud_status status = a && b ? ud_catalog_protect_parameters(catalog->catalog,&key,(ud_string){b,sizes[1]}) : UD_RESOURCE;
+    ud_free(a); ud_free(b);
+    if (status) fail(env,status,ud_status_name(status));
+}
+JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeSecureCompact(JNIEnv *env,jclass type,jlong handle) {
+    (void)type; java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    ud_status status = ud_catalog_secure_compact(catalog->catalog);
+    if (status) fail(env,status,ud_status_name(status));
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_Registry_nativeFeatures(JNIEnv *env,jclass type) {
+    (void)env; (void)type; return (jlong)ud_registry_features();
+}

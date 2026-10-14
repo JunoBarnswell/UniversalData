@@ -3,13 +3,13 @@
   "version": 10,
   "sdkVersion": "2.0.0",
   "abi": 10,
-  "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
+  "sourceFingerprint": "",
   "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
   "windows": "Required — complete driver build, native/language/install and platform acceptance",
   "gates": [
     {
       "id": "linux-full-build",
-      "status": "Passed",
+      "status": "Partial",
       "scope": "Linux Release PRODUCT; all six driver SDKs, BCP/OCI, HTTP/XML/network, Arrow, JNI, .NET 10 and designer",
       "evidence": [
         {
@@ -88,7 +88,7 @@
     },
     {
       "id": "language-parity",
-      "status": "Passed",
+      "status": "Partial",
       "scope": "Independent public C, offline NuGet/.NET, Maven/Java/JNI and Native Registry/Observer/Catalog lifecycle on Linux",
       "evidence": [
         {
@@ -115,7 +115,7 @@
     },
     {
       "id": "web",
-      "status": "Passed",
+      "status": "Partial",
       "scope": "Typecheck/lint/build; real edit/save/reload/deploy/output/log/debug and same-ID killed-Worker recovery from both build and installed assets",
       "evidence": [
         {
@@ -146,7 +146,7 @@
     },
     {
       "id": "performance",
-      "status": "Passed",
+      "status": "Partial",
       "scope": "Linux six requested 1M/100k workloads at 1/2/4 workers and genuine remote native/parameter comparisons for four available databases; Oracle comparison Blocked",
       "evidence": [
         {
@@ -238,15 +238,7 @@
     }
   ],
   "delivery": {
-    "status": "Linux candidate accepted; complete release blocked by required gates",
-    "archive": "artifacts/universaldata-2-linux/UniversalData-2.0.0-linux-x64.zip",
-    "manifest": "artifacts/universaldata-2-linux/bundle/manifest.json",
-    "sha256": "145ad32ecf5939cc531d5df3ed1aba4ad3d17ef47e994969dd7d5022a3ecb49c",
-    "runtimeIdentifier": "linux-x64",
-    "sdkVersion": "2.0.0",
-    "abiVersion": 10,
-    "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
-    "published": false,
-    "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+    "status": "No current-source release artifact; prior PR #6 artifact is archived in history.product2FirstDelivery",
+    "published": false
   }
 }

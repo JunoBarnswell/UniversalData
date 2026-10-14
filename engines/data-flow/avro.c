@@ -12,6 +12,7 @@ typedef struct avro_component {
     ud_record_options records;
     ud_avro_options options;
     int sink;
+    char *format_schema; uint32_t format_schema_length;
 } avro_component;
 static int flag(const ud_json *json) {
     const char *text;
@@ -22,13 +23,13 @@ static ud_status parse(const ud_component_context *context, int sink, ud_string 
                        const ud_batch *input, ud_json **config, ud_batch **schema) {
     UD_TRY(ud_builtin_parse(context, text, config));
     static const char *keys[] = {"connection", "schema",   "codec",       "maxBlockBytes",
-                                 "batchSize",  "fileMode", "errorPolicy", "includeInput"};
-    UD_TRY(ud_json_keys(*config, keys, 8));
+                                 "batchSize",  "fileMode", "errorPolicy", "includeInput", "readerSchema", "writerSchema"};
+    UD_TRY(ud_json_keys(*config, keys, 10));
     ud_string connection;
     UD_TRY(ud_json_string(ud_member(*config, "connection"), &connection));
     UD_TRY(ud_builtin_connection_defined(context, connection));
     if (sink) {
-        if (ud_member(*config, "schema") || ud_member(*config, "errorPolicy") ||
+        if (ud_member(*config, "readerSchema") || ud_member(*config, "schema") || ud_member(*config, "errorPolicy") ||
             ud_member(*config, "includeInput"))
             return UD_SCHEMA;
         return ud_builtin_clone_schema(context->memory, input, schema);
@@ -37,7 +38,7 @@ static ud_status parse(const ud_component_context *context, int sink, ud_string 
     UD_TRY(ud_error_policy(*config, "errorPolicy", UD_ERROR_FAIL, &policy));
     if (policy == UD_ERROR_REDIRECT && !(context->connected_outputs & 2))
         return UD_SCHEMA;
-    if (ud_member(*config, "fileMode"))
+    if (ud_member(*config, "writerSchema") || ud_member(*config, "fileMode"))
         return UD_SCHEMA;
     return ud_builtin_schema_config(context, *config, schema);
 }
@@ -73,6 +74,7 @@ static void dispose(void *instance, ud_status result) {
     (void)ud_connection_lease_release(component->lease);
     ud_batch_destroy(component->schema);
     ud_json_destroy(component->config);
+    ud_free(component->format_schema);
     ud_free(component);
 }
 static ud_status copy_original(avro_component *component) {
@@ -117,6 +119,11 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
     component->sink = sink;
     ud_status status =
         parse(context, sink, text, sink ? inputs[0] : NULL, &component->config, &component->schema);
+    const ud_json *format_schema = ud_member(component->config,sink ? "writerSchema" : "readerSchema");
+    if (!status && format_schema) {
+        if (ud_json_kind(format_schema) != UD_JSON_OBJECT) status = UD_SCHEMA;
+        else status = ud_json_serialize(format_schema,&component->format_schema,&component->format_schema_length);
+    }
     uint64_t batch = context->max_batch_rows, maximum = 16777216;
     if (!status && ud_member(component->config, "batchSize"))
         status = ud_json_uint(ud_member(component->config, "batchSize"), &batch);
@@ -167,8 +174,8 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
                                              &component->generation);
         if (!status && !component->generation->prepared)
             status =
-                ud_avro_writer_open(context->memory, component->generation->temporary,
-                                    component->schema, &component->options, &component->writer);
+                ud_avro_writer_open_schema(context->memory, component->generation->temporary,
+                    component->schema,(ud_string){component->format_schema,component->format_schema_length},&component->options,&component->writer);
         if (!status && !component->generation->prepared && selected == UD_FILE_APPEND &&
             component->generation->base_exists)
             status = copy_original(component);
@@ -197,8 +204,8 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
         }
         component->options.records = &component->records;
         if (!status)
-            status = ud_avro_reader_open(context->memory, name, component->schema,
-                                         &component->options, &component->reader);
+            status = ud_avro_reader_open_schema(context->memory,name,component->schema,
+                    (ud_string){component->format_schema,component->format_schema_length},&component->options,&component->reader);
     }
     ud_free(name);
     if (status)
@@ -223,8 +230,6 @@ static ud_status step(void *instance, const ud_component_event *event) {
     }
     ud_batch *batch = NULL, *errors = NULL;
     ud_status status = ud_avro_reader_next(component->reader, &batch, &errors);
-    if (status && status != UD_END)
-        (void)ud_fail(component->context.memory, status, "Avro record decoding failed");
     if (!status && batch)
         status = component->context.emit(component->context.emit_user, 0, batch);
     if (!status && errors)
@@ -255,7 +260,7 @@ ud_status ud_avro_register(ud_registry *registry) {
         "\"batchSize\":{\"type\":\"integer\",\"minimum\":1},\"maxBlockBytes\":{\"type\":"
         "\"integer\",\"minimum\":1,\"maximum\":67108864},"
         "\"errorPolicy\":{\"enum\":[\"fail\",\"redirect\",\"ignore\"]},\"includeInput\":{\"type\":"
-        "\"boolean\"},\"codec\":{\"enum\":[\"null\",\"deflate\"]}}}";
+        "\"boolean\"},\"readerSchema\":{\"type\":\"object\"},\"codec\":{\"enum\":[\"null\",\"deflate\"]}}}";
     static const char sink_schema[] =
         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"connection\"],"
         "\"properties\":{"
@@ -263,7 +268,7 @@ ud_status ud_avro_register(ud_registry *registry) {
         "\"enum\":[\"create\",\"overwrite\",\"append\"]},"
         "\"batchSize\":{\"type\":\"integer\",\"minimum\":1},\"maxBlockBytes\":{\"type\":"
         "\"integer\",\"minimum\":1,\"maximum\":67108864},"
-        "\"codec\":{\"enum\":[\"null\",\"deflate\"]}}}";
+        "\"writerSchema\":{\"type\":\"object\"},\"codec\":{\"enum\":[\"null\",\"deflate\"]}}}";
     for (int sink = 0; sink < 2; sink++) {
         const char *id = sink ? "file.avro.sink" : "file.avro.source",
                    *name = sink ? "Avro Destination" : "Avro Source",

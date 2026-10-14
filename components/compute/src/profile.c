@@ -9,6 +9,7 @@ typedef struct top_entry {
 typedef struct column_profile {
     uint64_t nulls, count, lengths[32], histogram[132], length_sum, length_min, length_max;
     ud_value_set distinct;
+    uint8_t cardinality[UD_HLL_REGISTERS];
     ud_value minimum, maximum;
     top_entry top[32];
     uint32_t top_count;
@@ -80,7 +81,7 @@ ud_status ud_profile_create(ud_context *ctx, const ud_batch *schema,
         const ud_profile_statistic *stat = statistics + i;
         if (stat->struct_size != sizeof(*stat) || stat->abi_version != UD_ABI_VERSION)
             s = UD_INCOMPATIBLE;
-        else if (stat->kind < UD_PROFILE_ROWS || stat->kind > UD_PROFILE_DISTINCT ||
+        else if (stat->kind < UD_PROFILE_ROWS || stat->kind > UD_PROFILE_REPORT ||
                  (stat->kind != UD_PROFILE_ROWS && stat->column >= columns))
             s = UD_SCHEMA;
         if (s)
@@ -96,6 +97,7 @@ ud_status ud_profile_create(ud_context *ctx, const ud_batch *schema,
             p->values[i].type = type;
             p->values[i].is_null = 1;
         }
+        if (stat->kind >= UD_PROFILE_TOPK) p->values[i].type = UD_UTF8;
         p->count++;
     }
     ud_free(fields);
@@ -124,6 +126,7 @@ static ud_status profile_value(ud_profile *p, const ud_batch *batch, uint32_t ro
         return UD_OK;
     }
     c->count++;
+    ud_hll_add(c->cardinality,&v);
     c->distinct.ctx = p->ctx;
     c->distinct.maximum = p->maximum > UINT32_MAX ? UINT32_MAX : (uint32_t)p->maximum;
     int added;
@@ -247,6 +250,8 @@ ud_status ud_profile_add(ud_profile *p, const ud_batch *batch) {
         return UD_INVALID;
     if (ud_batch_has_absent(batch))
         return UD_INCOMPATIBLE;
+    for (uint32_t at = 0; at < p->count; at++)
+        if (p->statistics[at].kind >= UD_PROFILE_TOPK) { ud_clear_value(p->values + at); p->values[at].type = UD_UTF8; }
     ud_status s = UD_OK;
     uint32_t columns = ud_batch_columns(batch), rows = ud_batch_rows(batch);
     if (columns != ud_batch_columns(p->schema))
@@ -275,6 +280,7 @@ ud_status ud_profile_add(ud_profile *p, const ud_batch *batch) {
                 result->integer++;
                 continue;
             }
+            if (stat->kind >= UD_PROFILE_TOPK) continue;
             s = ud_batch_get(batch, row, stat->column, &value);
             if (s)
                 break;
@@ -306,11 +312,28 @@ ud_status ud_profile_add(ud_profile *p, const ud_batch *batch) {
         p->rows += rows;
     return s;
 }
-ud_status ud_profile_get(const ud_profile *p, uint32_t statistic, ud_value *out) {
-    if (!p || !out || p->failed || statistic >= p->count)
-        return UD_INVALID;
-    *out = p->values[statistic];
-    return UD_OK;
+ud_status ud_profile_get(ud_profile *p, uint32_t statistic, ud_value *out) {
+    if (!p || !out || p->failed || statistic >= p->count) return UD_INVALID;
+    if (ud_is_cancelled(p->ctx)) return UD_CANCELLED;
+    if (p->check) UD_TRY(p->check(p->user));
+    const ud_profile_statistic *stat = p->statistics + statistic;
+    ud_value *value = p->values + statistic;
+    if (stat->kind >= UD_PROFILE_TOPK && !value->text) {
+        char *json = NULL; uint32_t length = 0;
+        UD_TRY(ud_profile_report(p,stat->column,&json,&length));
+        if (stat->kind != UD_PROFILE_REPORT) {
+            const char *key = stat->kind == UD_PROFILE_TOPK ? "topK" : stat->kind == UD_PROFILE_HISTOGRAM ? "histogram" :
+                stat->kind == UD_PROFILE_LENGTH_DISTRIBUTION ? "lengths" : stat->kind == UD_PROFILE_APPROXIMATE_CARDINALITY ? "approximateCardinality" : "anomalies";
+            ud_json *document = NULL;
+            ud_status status = ud_json_parse(p->ctx,json,length,&document,NULL);
+            ud_free(json); json = NULL;
+            if (!status) status = ud_json_serialize(ud_json_find(document,key,(uint32_t)strlen(key)),&json,&length);
+            ud_json_destroy(document);
+            if (status) { ud_free(json); return status; }
+        }
+        *value = (ud_value){.type = UD_UTF8,.text = json,.text_length = length};
+    }
+    *out = *value; return UD_OK;
 }
 static ud_status json_number(ud_bytes *b, uint64_t n) {
     char text[32];
@@ -336,12 +359,16 @@ ud_status ud_profile_report(const ud_profile *p, uint32_t column, char **out, ui
                      (unsigned long long)p->rows, (unsigned long long)c->nulls,
                      (unsigned long long)c->distinct.count);
     ud_status s = ud_bytes_put(&b, header, (size_t)n);
-    if (!s)
-        s = report_value(&b, f, &c->minimum, !c->count);
+    if (!s) s = report_value(&b, f, &c->minimum, !c->count);
     if (!s)
         s = ud_bytes_put(&b, ",\"maximum\":", 11);
     if (!s)
         s = report_value(&b, f, &c->maximum, !c->count);
+    char approximation[192];
+    int approximation_size = snprintf(approximation,sizeof(approximation),
+        ",\"approximateCardinality\":{\"count\":%llu,\"method\":\"HLL1024\",\"relativeStandardError\":0.0325}",
+        (unsigned long long)ud_hll_count(c->cardinality));
+    if (!s) s = ud_bytes_put(&b,approximation,(size_t)approximation_size);
     const char *h = ",\"histogram\":{\"method\":\"signedLog2Approximate\",\"buckets\":[";
     if (!s)
         s = ud_bytes_put(&b, h, strlen(h));
