@@ -29,6 +29,13 @@ app.MapGet("/api/components", (HostPolicy host) => {
     using var execution = host.CreateExecution("{\"version\":10,\"id\":\"component-catalog\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}");
     return Results.Content(execution.ComponentCatalog(), "application/json");
 });
+app.MapPost("/api/ports", (PortRequest request, HostPolicy host) => {
+    var document = System.Text.Json.Nodes.JsonNode.Parse(request.Package.GetRawText())!.AsObject();
+    document["controlFlow"] = System.Text.Json.Nodes.JsonNode.Parse("{\"tasks\":[],\"constraints\":[]}");
+    document["dataFlows"] = new System.Text.Json.Nodes.JsonArray(); document.Remove("layout");
+    using var execution = host.CreateExecution(document.ToJsonString());
+    return Results.Content(execution.ComponentPorts(request.PipelineId, request.ComponentId, request.Kind, request.Configuration.GetRawText()), "application/json");
+});
 app.MapPost("/api/validate", (JsonElement document, HostPolicy host) => {
     using var execution = host.CreateExecution(document.GetRawText());
     return Results.Content(execution.Explain(), "application/json");
@@ -59,8 +66,8 @@ app.MapPut("/api/packages/{id}/versions/{revision}", (string id, string revision
 app.MapGet("/api/executions", (RunDispatcher dispatcher) => dispatcher.List());
 app.MapGet("/api/deployments", (RunDispatcher dispatcher) => dispatcher.Deployments());
 app.MapPost("/api/deployments", (DeploymentRequest request, RunDispatcher dispatcher) => Results.Ok(dispatcher.Deploy(request)));
-app.MapPost("/api/deployments/{id}/start", (string id, RunDispatcher dispatcher) => Results.Ok(dispatcher.ActivateDeployment(id, true)));
-app.MapPost("/api/deployments/{id}/stop", (string id, RunDispatcher dispatcher) => Results.Ok(dispatcher.ActivateDeployment(id, false)));
+app.MapPost("/api/deployments/{id}/start", async (string id, RunDispatcher dispatcher) => Results.Ok(await dispatcher.ActivateDeployment(id, true)));
+app.MapPost("/api/deployments/{id}/stop", async (string id, RunDispatcher dispatcher) => Results.Ok(await dispatcher.ActivateDeployment(id, false)));
 app.MapPost("/api/executions", (RunRequest request, RunDispatcher dispatcher) => Results.Accepted(value: dispatcher.Enqueue(request)));
 app.MapGet("/api/executions/{ticket}", (string ticket, RunDispatcher dispatcher) => dispatcher.Get(ticket) is { } run ? Results.Ok(run) : Results.NotFound());
 app.MapPost("/api/executions/{ticket}/cancel", async (string ticket, RunDispatcher dispatcher) => { await dispatcher.Cancel(ticket); return Results.Accepted(); });
@@ -108,3 +115,5 @@ sealed record DiscoveryRequest(JsonElement Package, string Connection, string? T
 sealed record ScriptRequest(string Source);
 
 sealed record RetentionRequest(ulong BeforeMs, uint Limit = 1000);
+
+sealed record PortRequest(JsonElement Package, string PipelineId, string ComponentId, string Kind, JsonElement Configuration);

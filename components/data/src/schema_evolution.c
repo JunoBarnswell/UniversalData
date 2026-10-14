@@ -471,7 +471,8 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
     ud_string mode = {0};
     if (!status)
         status = json_text(ud_json_find(options, "policy", 6), &mode);
-    int strict = word(mode, "strict"), explicit_mapping = word(mode, "explicitMapping");
+    int strict = word(mode, "strict"), evolution = word(mode, "evolutionMapping"),
+        explicit_mapping = word(mode, "explicitMapping") || evolution;
     if (!status && !strict && !explicit_mapping && !word(mode, "compatible"))
         status = UD_SCHEMA;
     const ud_json *map = ud_json_find(options, "mapping", 7);
@@ -533,7 +534,7 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
             status = change(changes, &first, "NullabilityChanged", field, (int)j, at);
         if (!status && field->key_order != now->key_order) {
             status = change(changes, &first, "KeyChanged", field, (int)j, at);
-            if (!explicit_mapping)
+            if (!explicit_mapping || evolution)
                 *compatible = 0;
         }
         if (!status && (field->precision != now->precision || field->scale != now->scale))
@@ -543,7 +544,7 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
         if (!status && (field->child_count || now->child_count))
             status = nested_changes(changes, &first, field, now, 0);
         if (strict ? !ud_field_matches(field, now, UD_FIELD_PORT)
-                   : !explicit_mapping && !lossless(now, field))
+                   : (!explicit_mapping || evolution) && !lossless(now, field))
             *compatible = 0;
     }
     for (uint32_t j = 0; !status && j < actual->columns; j++)

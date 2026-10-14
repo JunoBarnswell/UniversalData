@@ -317,7 +317,6 @@ ud_status ud_file_generation_publish(ud_file_generation *generation) {
     if (exists) {
         UD_TRY(ud_file_hash(ctx, generation->target, hash));
         if (!memcmp(hash, generation->output_hash, 32)) {
-            generation->published = 1;
             return UD_OK;
         }
     }
@@ -336,7 +335,6 @@ ud_status ud_file_generation_publish(ud_file_generation *generation) {
                               : ud_publish(ctx, generation->temporary, generation->target);
     if (status)
         return UD_COMMIT_UNKNOWN;
-    generation->published = 1;
     return UD_OK;
 }
 void ud_file_generation_destroy(ud_file_generation *generation) {

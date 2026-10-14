@@ -344,6 +344,35 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         if (!s->schema_policy)
             result = UD_RESOURCE;
     }
+    if (!result) {
+        ud_json *policy = NULL;
+        result = ud_json_parse(c->memory, s->schema_policy, s->schema_policy_length, &policy, NULL);
+        ud_string mode = {0};
+        if (!result)
+            result = ud_json_string(ud_member(policy, "policy"), &mode);
+        if (!result && ud_named(mode, "explicitMapping")) {
+            char *mapping = NULL;
+            uint32_t size = 0;
+            result = ud_json_serialize(ud_member(policy, "mapping"), &mapping, &size);
+            ud_bytes safe = {.ctx = c->memory};
+            const char *prefix = "{\"policy\":\"evolutionMapping\",\"mapping\":";
+            if (!result)
+                result = ud_bytes_put(&safe, prefix, strlen(prefix));
+            if (!result)
+                result = ud_bytes_put(&safe, mapping, size);
+            if (!result)
+                result = ud_bytes_put(&safe, "}", 1);
+            if (!result) {
+                ud_free(s->schema_policy);
+                s->schema_policy = (char *)safe.data;
+                s->schema_policy_length = (uint32_t)safe.size;
+                safe.data = NULL;
+            }
+            ud_free(mapping);
+            ud_bytes_clear(&safe);
+        }
+        ud_json_destroy(policy);
+    }
     options.schema_policy = (ud_string){s->schema_policy, s->schema_policy_length};
     if (!result && !c->recovery_terminal)
         result = ud_connection_lease_cdc_open(s->lease, &options);

@@ -106,7 +106,8 @@ typedef struct ud_connection_options {
  * nullable BINARY representations in provider result order; boundaries are known.
  * A callback may isolate conversion/constraint failures, never execution failures. */
 typedef ud_status (*ud_read_record_fn)(void *, ud_batch *, ud_status, uint32_t column,
-                                       const ud_field *, const ud_value *raw_cells, uint32_t count);
+                                       const ud_field *, const ud_value *decoded,
+                                       const ud_value *raw_cells, uint32_t count);
 typedef struct ud_read_options {
     uint32_t struct_size, abi_version, batch_size;
     ud_string sql;              /* Prepared SQL text; no value interpolation. */

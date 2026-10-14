@@ -13,7 +13,7 @@ public sealed record DeploymentState(int Version, string Id, string PackageId, s
     string DeploymentRevision, bool Enabled, long TimestampMs, ulong Revision = 1);
 public sealed record JobState(int Version, string Id, string PackageId, string PackageRevision, string Parameters,
     bool Enabled, uint EverySeconds, long NextDueMs, uint MaxConcurrency = 1, uint MaxAttempts = 1,
-    uint RetryDelaySeconds = 30, long TimestampMs = 0, ulong Revision = 1);
+    uint RetryDelaySeconds = 30, long TimestampMs = 0, ulong Revision = 1, string? DeploymentId = null, string? DeploymentRevision = null);
 public sealed record RunState(int Version, string Id, string PackageId, string PackageRevision, string Parameters,
     string State, string ExecutionId = "", bool Resume = false, ulong ExecutionRevision = 0,
     int Result = 0, int? ProcessId = null, string? Owner = null, long TimestampMs = 0, ulong Revision = 1,
@@ -65,16 +65,25 @@ public sealed class RunDispatcher(HostPolicy policy, ProductConfiguration config
             JsonSerializer.Serialize(state with { Id = DeploymentPrefix + state.Id }, HostPolicy.JsonOptions));
         deployments[state.Id] = state;
     }
-    public DeploymentState ActivateDeployment(string id, bool enabled)
+    public async Task<DeploymentState> ActivateDeployment(string id, bool enabled)
     {
+        DeploymentState state; string[] running;
         lock (stateLock) {
-            var state = deployments.GetValueOrDefault(id) ?? throw new ArgumentException("Deployment does not exist");
-            state = state with { Enabled = enabled, TimestampMs = Now, Revision = state.Revision + 1 };
-            SaveDeployment(state);
+            state = deployments.GetValueOrDefault(id) ?? throw new ArgumentException("Deployment does not exist");
+            state = state with { Enabled = enabled, TimestampMs = Now, Revision = checked(state.Revision + 1) }; SaveDeployment(state);
+            running = enabled ? [] : states.Values.Where(run => run.DeploymentId == id && run.State == "Running").Select(run => run.Id).ToArray();
             if (!enabled) foreach (var run in states.Values.Where(run => run.DeploymentId == id && run.State is "Queued" or "Claimed").ToArray())
-                Save(run with { State = "Cancelled", Revision = run.Revision + 1, TimestampMs = Now });
-            return state;
+                Save(run with { State = "Cancelled", Revision = checked(run.Revision + 1), TimestampMs = Now });
         }
+        foreach (var ticket in running) await Cancel(ticket);
+        return state;
+    }
+    private void CheckDeployment(string? id, string? revision, string packageId, string packageRevision)
+    {
+        if ((id is null) != (revision is null)) throw new ArgumentException("Deployment identity and version must be provided together");
+        if (id is not null && (!deployments.TryGetValue(id, out var deployment) || !deployment.Enabled ||
+            deployment.DeploymentRevision != revision || deployment.PackageId != packageId || deployment.PackageRevision != packageRevision))
+            throw new ArgumentException("Deployment binding is inactive or stale");
     }
     public JobState SaveJob(JobState job)
     {
@@ -84,7 +93,14 @@ public sealed class RunDispatcher(HostPolicy policy, ProductConfiguration config
         using var catalog = policy.OpenCatalog();
         if (catalog.Get(CatalogKind.Package, job.PackageId, ulong.Parse(job.PackageRevision)) is null)
             throw new ArgumentException("Package version does not exist");
+        using var parameters = JsonDocument.Parse(job.Parameters);
+        if (parameters.RootElement.ValueKind != JsonValueKind.Object) throw new ArgumentException("Job parameters must be an object");
         lock (stateLock) {
+            CheckDeployment(job.DeploymentId,job.DeploymentRevision,job.PackageId,job.PackageRevision);
+            var package = catalog.Get(CatalogKind.Package,job.PackageId,ulong.Parse(job.PackageRevision))!;
+            var parameterJson = job.Parameters;
+            if (job.DeploymentId is not null) { var bound=catalog.BindPackage(job.DeploymentId,ulong.Parse(job.DeploymentRevision!),job.PackageId,packageParameters:job.Parameters); package=bound.Package;parameterJson=bound.Parameters; }
+            using var validation = policy.CreateExecution(package,parameterJson);
             job = job with { Revision = jobs.GetValueOrDefault(job.Id)?.Revision + 1 ?? 1,
                 TimestampMs = Now, NextDueMs = job.NextDueMs == 0 ? Now : job.NextDueMs };
             SaveJobRecord(job); return job;
@@ -112,10 +128,7 @@ public sealed class RunDispatcher(HostPolicy policy, ProductConfiguration config
         using var parameters = JsonDocument.Parse(request.Parameters);
         if (parameters.RootElement.ValueKind != JsonValueKind.Object) throw new ArgumentException("Parameters must be an object");
         lock (stateLock) {
-            if (request.DeploymentId is { } deploymentId &&
-                (!deployments.TryGetValue(deploymentId, out var deployment) || !deployment.Enabled ||
-                 deployment.DeploymentRevision != request.DeploymentRevision || deployment.PackageId != request.PackageId ||
-                 deployment.PackageRevision != request.PackageRevision)) throw new ArgumentException("Deployment binding is inactive or stale");
+            CheckDeployment(request.DeploymentId,request.DeploymentRevision,request.PackageId,request.PackageRevision);
             var state = new RunState(ProductInfo.Protocol, Guid.NewGuid().ToString("N"), request.PackageId, request.PackageRevision,
                 request.Parameters, "Queued", TimestampMs: Now, Debug: request.Debug?.Clone(),
                 DeploymentId: request.DeploymentId, DeploymentRevision: request.DeploymentRevision);
@@ -216,11 +229,12 @@ public sealed class RunDispatcher(HostPolicy policy, ProductConfiguration config
     {
         lock (stateLock) {
             foreach (var job in jobs.Values.Where(job => job.Enabled && job.NextDueMs <= Now).ToArray()) {
+                if (job.DeploymentId is not null && (!deployments.TryGetValue(job.DeploymentId,out var deployment) || !deployment.Enabled || deployment.DeploymentRevision != job.DeploymentRevision)) continue;
                 if (states.Values.Count(run => run.JobId == job.Id && run.State is "Queued" or "Claimed" or "Running") >= job.MaxConcurrency) continue;
                 var identity = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{job.Id}/{job.Revision}/{job.NextDueMs}"));
                 var id = Convert.ToHexString(identity.AsSpan(0, 16)).ToLowerInvariant();
                 if (!states.ContainsKey(id)) Save(new RunState(ProductInfo.Protocol, id, job.PackageId, job.PackageRevision,
-                    job.Parameters, "Queued", TimestampMs: job.NextDueMs, JobId: job.Id));
+                    job.Parameters, "Queued", TimestampMs: job.NextDueMs, JobId: job.Id, DeploymentId: job.DeploymentId, DeploymentRevision: job.DeploymentRevision));
                 SaveJobRecord(job with { NextDueMs = checked(Now + job.EverySeconds * 1000L), TimestampMs = Now, Revision = job.Revision + 1 });
             }
         }
@@ -248,6 +262,9 @@ public sealed class RunDispatcher(HostPolicy policy, ProductConfiguration config
         RunState state;
         lock (stateLock) {
             state = states[id]; if (state.State != "Queued") return;
+            if (state.DeploymentId is not null && (!deployments.TryGetValue(state.DeploymentId,out var deployed) || !deployed.Enabled || deployed.DeploymentRevision!=state.DeploymentRevision)) {
+                Save(state with { State="Cancelled",Revision=checked(state.Revision+1),TimestampMs=Now });return;
+            }
             state = state with { State = "Claimed", Owner = owner, Revision = state.Revision + 1, TimestampMs = Now }; Save(state);
         }
         Process? process = null; bool startSent = false;
@@ -278,6 +295,7 @@ public sealed class RunDispatcher(HostPolicy policy, ProductConfiguration config
             var nativeId = message.RootElement.GetProperty("executionId").GetString()!;
             lock (stateLock) {
                 if (states[id].State != "Claimed" || states[id].Owner != owner) return;
+                CheckDeployment(states[id].DeploymentId,states[id].DeploymentRevision,states[id].PackageId,states[id].PackageRevision);
                 state = states[id] with { State = "Running", ExecutionId = nativeId, ProcessId = process.Id,
                     ProcessStartedAtMs = new DateTimeOffset(process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds(),
                     Revision = states[id].Revision + 1, TimestampMs = Now }; Save(state);

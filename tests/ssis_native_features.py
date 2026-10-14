@@ -81,10 +81,10 @@ with tempfile.TemporaryDirectory(prefix='ud-ssis-native-') as folder:
  records=[dict(bk=1,name='old-name',history='old-history',fixed='fixed',time='2026-02-01T00:00:00Z'),dict(bk=1,name='new-name',history='old-history',fixed='fixed',time='2026-03-01T00:00:00Z'),dict(bk=1,name='latest-name',history='new-history',fixed='fixed',time='2026-04-01T00:00:00Z'),dict(bk=1,name='latest-name',history='new-history',fixed='violation',time='2026-05-01T00:00:00Z'),dict(bk=2,name='two',history='new',fixed='fixed',time='2026-04-01T00:00:00Z')]
  d=root/'scd';p=scd_fixture(d,records);run(d,p,'scd-type1-type2-new-fixed')
  with sqlite3.connect(d/'dimension.db') as db:
-  actual=db.execute('SELECT bk,t1,t2,current,valid_from,valid_to,version FROM dim ORDER BY bk,version').fetchall();assert len(actual)==3 and actual[0][1]=='new-name' and actual[0][3]==0 and actual[0][5]==1775001600000000 and actual[1][1:4]==('latest-name','new-history',1) and actual[1][-1]==2,actual;receipts=db.execute('SELECT count(*) FROM ud_sdk_receipts_v2').fetchone()[0]
+  actual=db.execute('SELECT bk,t1,t2,current,valid_from,valid_to,version FROM dim ORDER BY bk,version').fetchall();assert len(actual)==3 and actual[0][1]=='new-name' and actual[0][3]==0 and actual[0][5]==1775001600000000 and actual[1][1:4]==('latest-name','new-history',1) and actual[1][-1]==2,actual;receipts=db.execute('SELECT count(*) FROM ud_sdk_receipts_v10').fetchone()[0]
  assert len(rows(d/'unchanged.ndjson'))==1 and len(rows(d/'bad.ndjson'))==1
  run(d,p,'scd-receipt-resume',resume=True)
- with sqlite3.connect(d/'dimension.db') as db:assert db.execute('SELECT count(*) FROM dim').fetchone()[0]==3 and db.execute('SELECT count(*) FROM ud_sdk_receipts_v2').fetchone()[0]==receipts
+ with sqlite3.connect(d/'dimension.db') as db:assert db.execute('SELECT count(*) FROM dim').fetchone()[0]==3 and db.execute('SELECT count(*) FROM ud_sdk_receipts_v10').fetchone()[0]==receipts
  d=root/'scd-crash';p=scd_fixture(d,records);run(d,p,'scd-kill-after-commit',kill=4,after=1,component='target');run(d,p,'scd-crash-resume',resume=True)
  with sqlite3.connect(d/'dimension.db') as db:assert db.execute('SELECT count(*) FROM dim').fetchone()[0]==3
  if A.million:

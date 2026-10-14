@@ -1128,3 +1128,245 @@ JNIEXPORT void JNICALL Java_org_universaldata_Registry_nativeRegister(
     if (status)
         fail(env, status, ud_status_name(status));
 }
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativePorts(
+    JNIEnv *env, jclass type, jlong handle, jbyteArray pipeline, jbyteArray component,
+    jbyteArray kind, jbyteArray configuration) {
+    (void)type;
+    java_execution *execution = (java_execution *)(intptr_t)handle;
+    jbyteArray arrays[4] = {pipeline, component, kind, configuration};
+    uint32_t sizes[4] = {0};
+    char *texts[4] = {0};
+    ud_status status = UD_OK;
+    for (uint32_t at = 0; at < 4; at++) {
+        texts[at] = copy_data(env, execution->ctx, arrays[at], sizes + at);
+        if (!texts[at])
+            status = UD_RESOURCE;
+    }
+    char *output = NULL;
+    uint32_t length = 0;
+    if (!status)
+        status = ud_execution_component_ports(
+            execution->execution, (ud_string){texts[0], sizes[0]}, (ud_string){texts[1], sizes[1]},
+            (ud_string){texts[2], sizes[2]}, (ud_string){texts[3], sizes[3]}, &output, &length);
+    jstring result = !status ? utf8_length(env, output, length) : NULL;
+    for (uint32_t at = 0; at < 4; at++)
+        ud_free(texts[at]);
+    ud_free(output);
+    if (status)
+        fail(env, status, ud_status_name(status));
+    return result;
+}
+#include "ud/catalog.h"
+typedef struct java_catalog {
+    java_execution callbacks;
+    ud_catalog *catalog;
+} java_catalog;
+JNIEXPORT jlong JNICALL Java_org_universaldata_Catalog_nativeOpen(JNIEnv *env, jclass type,
+                                                                  jbyteArray directory,
+                                                                  jbyteArray tenant,
+                                                                  jobject authorizer, jlong limit) {
+    (void)type;
+    if (limit < 0) {
+        fail(env, UD_INVALID, "Invalid Catalog quota");
+        return 0;
+    }
+    ud_context *memory = NULL;
+    ud_context_options options = {.struct_size = sizeof(options),
+                                  .abi_version = UD_ABI_VERSION,
+                                  .memory_limit = (uint64_t)limit};
+    ud_status status = ud_context_create(&options, &memory);
+    java_catalog *catalog = !status ? ud_alloc(memory, sizeof(*catalog)) : NULL;
+    if (!status && !catalog)
+        status = UD_RESOURCE;
+    uint32_t sizes[2] = {0};
+    char *path = NULL, *scope = NULL;
+    if (!status) {
+        catalog->callbacks.ctx = memory;
+        if ((*env)->GetJavaVM(env, &catalog->callbacks.vm) != JNI_OK)
+            status = UD_RESOURCE;
+        catalog->callbacks.authorizer = (*env)->NewGlobalRef(env, authorizer);
+        jclass grant = (*env)->GetObjectClass(env, authorizer);
+        catalog->callbacks.allow =
+            grant ? (*env)->GetMethodID(env, grant, "allow",
+                                        "(Ljava/lang/String;Ljava/lang/String;I)Z")
+                  : NULL;
+        if (!catalog->callbacks.authorizer || !catalog->callbacks.allow)
+            status = UD_RESOURCE;
+    }
+    if (!status) {
+        path = copy_data(env, memory, directory, sizes);
+        scope = copy_data(env, memory, tenant, sizes + 1);
+        if (!path || !scope)
+            status = UD_RESOURCE;
+    }
+    if (!status)
+        status = ud_catalog_open(memory,
+                                 &(ud_catalog_options){.struct_size = sizeof(ud_catalog_options),
+                                                       .abi_version = UD_ABI_VERSION,
+                                                       .directory = {path, sizes[0]},
+                                                       .tenant = {scope, sizes[1]},
+                                                       .authorize = authorize,
+                                                       .authorize_user = &catalog->callbacks,
+                                                       .create_directory = 1},
+                                 &catalog->catalog);
+    ud_free(path);
+    ud_free(scope);
+    if (status) {
+        if (catalog)
+            execution_destroy(env, &catalog->callbacks);
+        else if (memory)
+            ud_context_destroy(memory);
+        fail(env, status, ud_status_name(status));
+        return 0;
+    }
+    return (jlong)(intptr_t)catalog;
+}
+JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeClose(JNIEnv *env, jclass type,
+                                                                  jlong handle) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    ud_catalog_close(catalog->catalog);
+    ud_status status = execution_destroy(env, &catalog->callbacks);
+    if (status)
+        fail(env, status, ud_status_name(status));
+}
+JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativePut(JNIEnv *env, jclass type,
+                                                                jlong handle, jint kind,
+                                                                jbyteArray id, jlong revision,
+                                                                jbyteArray document) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    uint32_t sizes[2] = {0};
+    char *name = copy_data(env, catalog->callbacks.ctx, id, sizes),
+         *json = copy_data(env, catalog->callbacks.ctx, document, sizes + 1);
+    ud_status status = name && json ? ud_catalog_put(catalog->catalog,
+                                                     &(ud_catalog_key){sizeof(ud_catalog_key),
+                                                                       UD_ABI_VERSION,
+                                                                       kind,
+                                                                       {name, sizes[0]},
+                                                                       (uint64_t)revision},
+                                                     (ud_string){json, sizes[1]})
+                                    : UD_RESOURCE;
+    ud_free(name);
+    ud_free(json);
+    if (status)
+        fail(env, status, ud_status_name(status));
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_Catalog_nativeGet(JNIEnv *env, jclass type,
+                                                                   jlong handle, jint kind,
+                                                                   jbyteArray id, jlong revision) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    uint32_t length = 0, size = 0;
+    char *name = copy_data(env, catalog->callbacks.ctx, id, &size), *json = NULL;
+    ud_status status = name ? ud_catalog_get(catalog->catalog,
+                                             &(ud_catalog_key){sizeof(ud_catalog_key),
+                                                               UD_ABI_VERSION,
+                                                               kind,
+                                                               {name, size},
+                                                               (uint64_t)revision},
+                                             &json, &length)
+                            : UD_RESOURCE;
+    jstring result = !status ? utf8_length(env, json, length) : NULL;
+    ud_free(name);
+    ud_free(json);
+    if (status && status != UD_END)
+        fail(env, status, ud_status_name(status));
+    return result;
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_Catalog_nativeQuery(JNIEnv *env, jclass type,
+                                                                     jlong handle,
+                                                                     jbyteArray query) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    uint32_t length = 0, size = 0;
+    char *input = copy_data(env, catalog->callbacks.ctx, query, &size), *json = NULL;
+    ud_status status =
+        input ? ud_catalog_query(catalog->catalog, (ud_string){input, size}, &json, &length)
+              : UD_RESOURCE;
+    jstring result = !status ? utf8_length(env, json, length) : NULL;
+    ud_free(input);
+    ud_free(json);
+    if (status)
+        fail(env, status, ud_status_name(status));
+    return result;
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_Catalog_nativeLatest(JNIEnv *env, jclass type,
+                                                                    jlong handle, jint kind,
+                                                                    jbyteArray id) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    uint32_t size = 0;
+    char *input = copy_data(env, catalog->callbacks.ctx, id, &size);
+    uint64_t revision = 0;
+    ud_status status = input ? ud_catalog_latest_revision(catalog->catalog, kind,
+                                                          (ud_string){input, size}, &revision)
+                             : UD_RESOURCE;
+    ud_free(input);
+    if (status && status != UD_END)
+        fail(env, status, ud_status_name(status));
+    return (jlong)revision;
+}
+JNIEXPORT jlong JNICALL Java_org_universaldata_Catalog_nativePrune(JNIEnv *env, jclass type,
+                                                                   jlong handle, jlong before,
+                                                                   jint limit) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    uint64_t removed = 0;
+    ud_status status =
+        ud_catalog_prune_events(catalog->catalog, (uint64_t)before, (uint32_t)limit, &removed);
+    if (status)
+        fail(env, status, ud_status_name(status));
+    return (jlong)removed;
+}
+JNIEXPORT jobjectArray JNICALL Java_org_universaldata_Catalog_nativeBind(
+    JNIEnv *env, jclass type, jlong handle, jbyteArray deployment, jlong revision,
+    jbyteArray package_id, jbyteArray project_parameters, jbyteArray package_parameters) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    jbyteArray arrays[4] = {deployment, package_id, project_parameters, package_parameters};
+    char *texts[4] = {0};
+    uint32_t sizes[4] = {0};
+    ud_status status = UD_OK;
+    for (uint32_t at = 0; at < 4; at++) {
+        texts[at] = copy_data(env, catalog->callbacks.ctx, arrays[at], sizes + at);
+        if (!texts[at])
+            status = UD_RESOURCE;
+    }
+    ud_package *package = NULL;
+    char *parameters = NULL, *json = NULL;
+    uint32_t parameter_size = 0, json_size = 0;
+    if (!status)
+        status = ud_catalog_bind_package(
+            catalog->catalog,
+            &(ud_catalog_binding){.struct_size = sizeof(ud_catalog_binding),
+                                  .abi_version = UD_ABI_VERSION,
+                                  .deployment_id = {texts[0], sizes[0]},
+                                  .deployment_revision = (uint64_t)revision,
+                                  .package_id = {texts[1], sizes[1]},
+                                  .project_parameters = {texts[2], sizes[2]},
+                                  .package_parameters = {texts[3], sizes[3]}},
+            &package, &parameters, &parameter_size);
+    if (!status)
+        status = ud_package_serialize(package, &json, &json_size);
+    jclass string = !status ? (*env)->FindClass(env, "java/lang/String") : NULL;
+    jobjectArray result = string ? (*env)->NewObjectArray(env, 2, string, NULL) : NULL;
+    if (!status && !result)
+        status = UD_RESOURCE;
+    if (!status) {
+        jstring a = utf8_length(env, json, json_size),
+                b = utf8_length(env, parameters, parameter_size);
+        if (a && b) {
+            (*env)->SetObjectArrayElement(env, result, 0, a);
+            (*env)->SetObjectArrayElement(env, result, 1, b);
+        }
+    }
+    for (uint32_t at = 0; at < 4; at++)
+        ud_free(texts[at]);
+    ud_package_destroy(package);
+    ud_free(parameters);
+    ud_free(json);
+    if (status)
+        fail(env, status, ud_status_name(status));
+    return result;
+}

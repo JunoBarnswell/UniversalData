@@ -13,11 +13,11 @@ def source_hash():
         "CMakeLists.txt", "CMakePresets.json", "VERSION", ".github/workflows/ci.yml",
         "Directory.Build.props", "Directory.Build.targets", "UniversalData.sln")]
     for folder in ("include", "components", "engines", "connectors", "catalog", "plugins",
-                   "hosts", "bindings", "cmake", "tests", "examples", "scripts", "packaging", "metadata", "benchmarks"):
+                   "hosts", "products", "bindings", "cmake", "tests", "examples", "scripts", "packaging", "metadata", "benchmarks"):
         files.extend(p for p in (ROOT / folder).rglob("*") if p.is_file()
-            and not set(p.relative_to(ROOT).parts) & {"bin", "obj", "target", "build", "__pycache__"}
+            and not set(p.relative_to(ROOT).parts) & {"bin", "obj", "target", "build", "__pycache__", "node_modules", "wwwroot"}
             and p.suffix in {".c", ".h", ".cpp", ".cs", ".java", ".py", ".ps1", ".cmake", ".json",
-                             ".xml", ".csproj", ".vcxproj", ".filters", ".txt", ".props", ".in"}
+                             ".xml", ".csproj", ".vcxproj", ".filters", ".txt", ".props", ".in", ".tsx", ".ts", ".css", ".html", ".js"}
             and p != ROOT / "metadata/product.json")
     digest = hashlib.sha256()
     # Candidate/gate evidence cannot hash itself. Contract product fields are

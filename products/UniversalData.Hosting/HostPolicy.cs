@@ -15,7 +15,11 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
             throw new InvalidDataException("Invalid host resource policy");
         return policy;
     }
-    public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    public static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    private static JsonSerializerOptions CreateJsonOptions() {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()); return options;
+    }
     public string CatalogDirectory => Path.Combine(DataDirectory, "catalog");
     public string ExecutionDirectory(string ticket) => Path.Combine(DataDirectory, "executions", ticket);
     private static bool Inside(string resource, string root)

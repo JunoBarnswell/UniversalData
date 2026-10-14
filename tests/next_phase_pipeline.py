@@ -90,7 +90,7 @@ if __name__=="__main__":
              run(root,kill=kill,after=after,component=kill_component)
              with sqlite3.connect(root/'target.db') as db:
                  if name=='snapshot':assert db.execute('SELECT count(*) FROM output').fetchone()[0]==0
-                 else:assert db.execute('SELECT count(*) FROM ud_sdk_receipts_v2').fetchone()[0]>0
+                 else:assert db.execute('SELECT count(*) FROM ud_sdk_receipts_v10').fetchone()[0]>0
          facts=run(root,resume=bool(kill));verify(root,normal,errors,facts)
          again=run(root,resume=True)
          with sqlite3.connect(root/'target.db') as db:assert db.execute('SELECT count(*) FROM output').fetchone()[0]==len(normal)

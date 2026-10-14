@@ -42,6 +42,6 @@ with tempfile.TemporaryDirectory(prefix='ud-actual-cdc-epoch-') as folder:
     with sqlite3.connect(target) as db:
         rows = db.execute('SELECT * FROM output ORDER BY id').fetchall()
         assert rows == [(1,'updated',2,None) if a.added_column else (1,'updated',2)],rows
-        assert db.execute('SELECT COUNT(*) FROM ud_sdk_receipts_v2').fetchone()[0] > 0
+        assert db.execute('SELECT COUNT(*) FROM ud_sdk_receipts_v10').fetchone()[0] > 0
     assert not list(spill.glob('*.udw'))
 print(json.dumps(dict(component=a.component,actualSource=True,nativeEpoch=True,targetCommitCrash=True,typedReceiptResume=True,bufferSpillCleanup=True)))

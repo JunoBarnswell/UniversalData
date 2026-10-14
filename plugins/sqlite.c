@@ -181,6 +181,8 @@ static ud_status read_batch(sqlite_state *p, const ud_batch *schema, const char 
                               "SQLite value type differs from explicit schema");
             }
             if (plugin_record_conversion(s)) {
+                v[i].is_absent = 1;
+                v[i].is_null = 1;
                 if (!conversion) {
                     conversion = s;
                     bad = i;
@@ -365,7 +367,7 @@ static ud_status connector_receipt(void *state, ud_string tenant, ud_string job,
     memset(out, 0, sizeof(*out));
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(p->db,
-                                "SELECT digest,source_position FROM ud_sdk_receipts_v2 WHERE "
+                                "SELECT digest,source_position FROM ud_sdk_receipts_v10 WHERE "
                                 "tenant=?1 AND job=?2 AND batch_id=?3",
                                 -1, &stmt, NULL);
     if (rc != SQLITE_OK)
@@ -567,7 +569,7 @@ static ud_status connector_write(void *state, ud_string tenant, const ud_write_o
     if (!s && !existing) {
         rc = sqlite3_prepare_v2(
             p->db,
-            "INSERT INTO ud_sdk_receipts_v2(tenant,job,batch_id,digest,source_position) "
+            "INSERT INTO ud_sdk_receipts_v10(tenant,job,batch_id,digest,source_position) "
             "VALUES(?1,?2,?3,?4,?5)",
             -1, &stmt, NULL);
         if (rc != SQLITE_OK)
@@ -811,7 +813,7 @@ static ud_status provision(void *state) {
         return status;
     int rc = sqlite3_exec(
         p->db,
-        "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v2(tenant TEXT NOT NULL,job TEXT NOT "
+        "CREATE TABLE IF NOT EXISTS ud_sdk_receipts_v10(tenant TEXT NOT NULL,job TEXT NOT "
         "NULL,batch_id TEXT NOT NULL,digest BLOB NOT NULL CHECK(length(digest)=32),source_position "
         "TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))",
         NULL, NULL, NULL);

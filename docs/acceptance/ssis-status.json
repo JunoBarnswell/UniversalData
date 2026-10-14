@@ -374,13 +374,9 @@
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "components/data/src/csv.c",
-        "engines/data-flow/destination.c",
-        "engines/package/checkpoint.c",
-        "components/data/src/text_stream.c",
-        "tests/file_layout.c",
         "engines/package/file_generation.c",
-        "tests/file_generation.c"
+        "components/data/src/csv.c",
+        "connectors/xlsx.c"
       ],
       "trigger": "Encoding/layout settings or append/overwrite requires restart-safe publication.",
       "baselineFinding": "Publication facts and file checksums exist but enterprise format/append generation rules are incomplete.",
@@ -388,7 +384,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "CSV discovery/read/write share one Native fileFormat for UTF-8/UTF-16LE/UTF-16BE/ISO-8859-1, Unicode delimiter/qualifier, fixed Unicode widths, header/preamble/skip lines, positions, null marker and row delimiter. File Sinks now use Native Journal-backed generation publication: preserve/check original bytes, persist prepared output digest before atomic publish, and prove a recovered published generation. CSV/NDJSON/Arrow/Parquet append streams original records through the same codecs. XLSX append preservation remains unsupported; process-kill/codec acceptance is registered but not run."
+      "progress": "Native generations own create/overwrite/append publication and preserve original artifacts. XLSX append now retains all original workbook parts, formulas and unrelated worksheets while appending to the validated sheet; enterprise CSV/JSON/Arrow/Parquet use their shared native codecs. Exact integer/calendar values are not narrowed to Excel floating point. File crash recovery and independent format acceptance remain NotRun."
     },
     {
       "id": "ETL-018",
@@ -549,12 +545,9 @@
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "engines/data-flow/pipeline.c",
         "components/data/src/schema_evolution.c",
         "engines/data-flow/cdc.c",
-        "engines/package/checkpoint.c",
-        "plugins/postgresql_metadata.c",
-        "plugins/mysql_family.c"
+        "engines/data-flow/pipeline.c"
       ],
       "trigger": "A compatible/incompatible runtime schema event reaches an epoch boundary.",
       "baselineFinding": "Pipeline routes SCHEMA_CHANGE but returns incompatible instead of rebinding at a barrier.",
@@ -562,7 +555,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "CDC accepts only schema mappings that preserve the bound component contract. Driver decoders rebind, downstream pure configure runs again, source version and actual decoder schema persist in the epoch/snapshot. Schema observations include the source position before admission, and incompatibility stops confirmation. Wider output-contract evolution, provider-origin identity proof and real recovery acceptance remain pending."
+      "progress": "CDC schema events persist their schema/version/position before admission and rebind affected components at the existing barrier. Evolution mapping proves lossless values and unchanged keys even when explicit field mapping is configured. Incompatible changes fence source acknowledgement. Online/restart acceptance remains NotRun."
     },
     {
       "id": "ETL-026",
@@ -758,7 +751,7 @@
       "name": "SMTP task",
       "priority": "P1",
       "code": "Partial",
-      "verification": "NotRun",
+      "verification": "Blocked",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -768,7 +761,9 @@
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "An authorized mail connection sends a message with cancellation handling. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
-      "externalPrerequisites": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
       "evidence": [],
       "progress": "smtp.send uses the sole Native curl owner, scoped credentials, RFC 2047 UTF-8 subject words, MIME base64 body and Native cancellation/deadlines. An interrupted send is not automatically replayed. Real SMTP integration remains pending."
     },
@@ -778,7 +773,7 @@
       "name": "Windows WMI tasks",
       "priority": "P1",
       "code": "Partial",
-      "verification": "NotRun",
+      "verification": "Blocked",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/wmi.c"
@@ -787,7 +782,9 @@
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "A Windows host invokes a WMI query/event task. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
-      "externalPrerequisites": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
       "evidence": [],
       "progress": "Native WMI query and bounded event tasks use Windows COM, the common resource grant and cancellation/deadline checks. Scalar results retain signed/unsigned integer lexemes in a UTF8 JSON variable; unsupported arrays reject explicitly. Local namespaces use the Windows process identity; non-Windows binding rejects. Real Windows acceptance remains NotRun."
     },
@@ -797,7 +794,7 @@
       "name": "FTP and SFTP resources",
       "priority": "P1",
       "code": "Partial",
-      "verification": "NotRun",
+      "verification": "Blocked",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -808,7 +805,9 @@
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "An authorized remote file transfer participates in cancellation/publication. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
-      "externalPrerequisites": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
       "evidence": [],
       "progress": "Native FTP/SFTP upload/download tasks share Connection Manager grants, credential file references, curl progress/cancellation and local generation publication. SFTP requires a granted known-hosts file. Uploads explicitly declare replacement and do not claim transaction participation or safe replay. Real independent FTP/SFTP acceptance remains pending."
     },
@@ -877,7 +876,7 @@
       "name": "SQL Server maintenance Agent and SSAS XMLA",
       "priority": "P1",
       "code": "Partial",
-      "verification": "NotRun",
+      "verification": "Blocked",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/sqlserver.c"
@@ -886,7 +885,9 @@
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "A specialized database/Agent/XMLA task is deployed. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
-      "externalPrerequisites": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
       "evidence": [],
       "progress": "Native SQL Server backup/check/index maintenance and Agent start/stop use the common SQL lease and parameter binding, with explicit server-file grants for backup. SSAS XMLA uses bounded XML preflight and the sole Native HTTP transport; interrupted or unparseable responses preserve CommitUnknown. These effects do not declare safe replay or transaction participation. SQL Server/SSAS integration remains NotRun."
     },
@@ -919,9 +920,8 @@
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "catalog",
-        "hosts",
-        "products/UniversalData.Management/RunDispatcher.cs"
+        "products/UniversalData.Management/RunDispatcher.cs",
+        "catalog/catalog.c"
       ],
       "trigger": "A timer enqueues work, service restarts or a worker fails with unknown commit.",
       "baselineFinding": "No durable scheduler/queue exists in the Catalog.",
@@ -929,7 +929,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Interval jobs, persisted queue/due times, job and host concurrency bounds, delayed bounded retries and restart restoration use Native SQLite Catalog. Retries retain the original execution ID and require Native Journal recovery; unknown outcomes stop automatic retries. Real scheduling/crash acceptance is pending."
+      "progress": "Persistent jobs bind immutable package/deployment revisions, deduplicate due occurrences, enforce concurrency and retry known failures with the original execution identity. Disabled/stale deployments stop queue admission; unknown commits are not automatically retried. Restart/real process acceptance remains NotRun."
     },
     {
       "id": "ETL-044",
@@ -958,7 +958,7 @@
       "name": "Azure Blob and ADLS Gen2",
       "priority": "P1",
       "code": "Partial",
-      "verification": "NotRun",
+      "verification": "Blocked",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -968,7 +968,9 @@
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "An authorized Azure object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
-      "externalPrerequisites": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
       "evidence": [],
       "progress": "Azure Blob native streaming PUT and ADLS Gen2 create/append/flush sequences use host credential references and the common curl owner. Native generation download, explicit remote replacement and unknown-commit fencing are implemented; actual Azure acceptance remains pending."
     },
@@ -978,7 +980,7 @@
       "name": "S3 and MinIO",
       "priority": "P1",
       "code": "Partial",
-      "verification": "NotRun",
+      "verification": "Blocked",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -988,7 +990,9 @@
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
       "acceptance": "An authorized S3 object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
-      "externalPrerequisites": [],
+      "externalPrerequisites": [
+        "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
+      ],
       "evidence": [],
       "progress": "S3/MinIO streaming GET/PUT uses curl SigV4 credentials from the host resolver and the common Native transfer/authorization lifecycle. Exclusive-create conditions and explicit replacement are declared. Real S3/MinIO signing and service acceptance remain pending."
     },
@@ -1025,11 +1029,10 @@
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "hosts",
         "products/designer/src/Editor.tsx",
-        "products/designer/src/PropertyForm.tsx",
-        "products/designer/src/Executions.tsx",
-        "products/designer/src/api.ts"
+        "products/designer/src/FieldMapping.tsx",
+        "engines/data-flow/pipeline.c",
+        "engines/package/model.c"
       ],
       "trigger": "A user edits control/data flow, ports, mappings, connections, metadata or package layout.",
       "baselineFinding": "No React/TypeScript/React Flow package designer exists.",
@@ -1037,7 +1040,7 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "React/TypeScript/React Flow designer sources implement control/data flow editing, dynamic handles, metadata forms, Native validation, connection editing, bounded undo/redo and versioned layouts. Deployment is bound to the saved immutable version; transport preserves integers beyond JS safe range. Field mapping, browser fidelity and complete workflow acceptance remain pending."
+      "progress": "Designer edits control/data flows including nested control scopes, stable node/edge identities, Native-bound dynamic ports, Native input/output schemas, field-copy mappings, connections, undo/redo, package versions/layout, deployment and execution. Partial graph editing is separate from Native deployment validation. Typecheck/lint/build/browser acceptance remains NotRun."
     },
     {
       "id": "ETL-049",
@@ -1073,8 +1076,9 @@
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "metadata/ci.yml.in",
-        "tests/CMakeLists.txt"
+        ".github/workflows/ci.yml",
+        "tests/CMakeLists.txt",
+        "tests/require_integration_resources.py"
       ],
       "trigger": "CI must compile every declared driver and register SQL/CDC real integrations.",
       "baselineFinding": "Current CI is Linux-centric; Windows exemptions and advanced integration registration need removal.",
@@ -1082,26 +1086,29 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "Built-in drivers now use the existing Foundation mutex owner for Linux/Windows rather than direct pthread-only declarations. Full dependency matrix, real CI and Windows driver acceptance remain pending."
+      "progress": "CI defines Linux/Windows Native/JNI/.NET 10/designer contract builds and an explicit complete-driver PRODUCT matrix with independent resources. Advanced SQL/CDC/native bulk/participant recovery are registered CTest entries. Missing complete-product resources block that gate; CORE results never imply complete-product acceptance."
     },
     {
       "id": "ETL-051",
       "phase": 6,
       "name": "Independent release consumers and capability manifests",
       "priority": "P0",
-      "code": "Planned",
+      "code": "Partial",
       "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
-        "packaging",
-        "tests/installed_sdk.py"
+        "packaging/package-linux.py",
+        "packaging/package.ps1",
+        "hosts/CMakeLists.txt",
+        "scripts/release_guard.py"
       ],
       "trigger": "An independent directory consumes C, .NET, Java, CLI and Web release products.",
       "baselineFinding": "1.5 artifacts are historical and must remain preserved; no ABI 10 consumer validation exists.",
       "acceptance": "An independent directory consumes C, .NET, Java, CLI and Web release products. Current ABI 10 source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
-      "evidence": []
+      "evidence": [],
+      "progress": "Native/managed/Web packaging now shares SDK/protocol 2.0/10, full build feature inventory, host/designer presence checks and same-source checksums. Native facade names and managed-host relocation use the installed product layout. Independent C/.NET/Java/CLI/Web consumption remains NotRun."
     },
     {
       "id": "ETL-052",

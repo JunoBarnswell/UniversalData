@@ -39,6 +39,15 @@ struct ud_avro_reader {
 struct ud_avro_writer {
     avro_file state;
 };
+static voidpf avro_z_allocate(voidpf context, uInt count, uInt width) {
+    if (width && count > SIZE_MAX / width)
+        return NULL;
+    return ud_alloc(context, (size_t)count * width);
+}
+static void avro_z_free(voidpf context, voidpf allocation) {
+    (void)context;
+    ud_free(allocation);
+}
 static ud_status check(avro_file *file) {
     if (ud_is_cancelled(file->memory))
         return UD_CANCELLED;
@@ -928,9 +937,14 @@ ud_status ud_avro_reader_open(ud_context *memory, const char *path, const ud_bat
                                            .memory = memory,
                                            .component_id = {"avro", 4},
                                            .field_scope = {1, 1}}};
+    if (!status && !reader->state.records.source_scope.high &&
+        !reader->state.records.source_scope.low)
+        status = ud_id_make(memory, (ud_string){"avro-file", 9},
+                            (ud_string){path, (uint32_t)strlen(path)},
+                            &reader->state.records.source_scope);
     reader->state.block = (ud_bytes){.ctx = memory, .limit = reader->state.options.max_block_bytes};
     if (!status)
-        status = ud_fopen_no_symlinks(memory, path, "rb", &reader->state.file);
+        status = ud_open_regular(memory, path, &reader->state.file);
     if (!status)
         status = header_read(&reader->state, expected, (ud_string){"avro", 4});
     if (status) {
@@ -970,7 +984,7 @@ static ud_status block_read(avro_file *file) {
     if (!status && file->codec == UD_AVRO_NULL)
         status = ud_bytes_put(&file->block, packed.data, packed.size);
     else if (!status) {
-        z_stream stream = {0};
+        z_stream stream = {.zalloc = avro_z_allocate, .zfree = avro_z_free, .opaque = file->memory};
         if (inflateInit2(&stream, -15) != Z_OK)
             status = UD_RESOURCE;
         else {
@@ -1127,7 +1141,7 @@ ud_status ud_avro_discover(ud_context *memory, const char *path, ud_string scope
     avro_file file = {.memory = memory};
     ud_status status = options_read(NULL, &file.options);
     if (!status)
-        status = ud_fopen_no_symlinks(memory, path, "rb", &file.file);
+        status = ud_open_regular(memory, path, &file.file);
     if (!status)
         status = header_read(&file, NULL, scope);
     if (!status) {
@@ -1198,7 +1212,12 @@ ud_status ud_avro_writer_open(ud_context *memory, const char *path, const ud_bat
     if (!status)
         status = ud_bytes_put(&header, file->sync, 16);
     if (!status)
-        status = ud_fopen_no_symlinks(memory, path, "wb", &file->file);
+        status = ud_path_no_symlinks(memory, path);
+    if (!status) {
+        file->file = ud_fopen(path, "wb");
+        if (!file->file)
+            status = UD_IO;
+    }
     if (!status && fwrite(header.data, 1, header.size, file->file) != header.size)
         status = UD_IO;
     ud_json_destroy(document);
@@ -1212,36 +1231,14 @@ ud_status ud_avro_writer_open(ud_context *memory, const char *path, const ud_bat
         *out = writer;
     return status;
 }
-ud_status ud_avro_writer_append(ud_avro_writer *writer, const ud_batch *batch) {
-    if (!writer || !batch)
-        return UD_INVALID;
-    avro_file *file = &writer->state;
-    if (file->poisoned)
-        return UD_IO;
-    if (batch->columns != file->schema->columns)
-        return UD_INCOMPATIBLE;
-    for (uint32_t at = 0; at < batch->columns; at++)
-        if (!ud_field_matches(&batch->column[at].field, &file->schema->column[at].field,
-                              UD_FIELD_PORT))
-            return UD_INCOMPATIBLE;
-    file->block.size = file->block.pos = 0;
+static ud_status write_block(avro_file *file, uint32_t rows) {
     ud_status status = check(file);
-    for (uint32_t row = 0; !status && row < batch->rows; row++)
-        for (uint32_t column = 0; !status && column < batch->columns; column++) {
-            ud_value value;
-            status = ud_batch_get(batch, row, column, &value);
-            if (!status)
-                status = encode_value(&file->block, &file->schema->column[column].field,
-                                      file->types + column, &value, 0);
-        }
-    if (!batch->rows)
-        return status;
     ud_bytes packed = {.ctx = file->memory, .limit = file->options.max_block_bytes},
              frame = {.ctx = file->memory};
     if (!status && file->codec == UD_AVRO_NULL)
         status = ud_bytes_put(&packed, file->block.data, file->block.size);
     else if (!status) {
-        z_stream stream = {0};
+        z_stream stream = {.zalloc = avro_z_allocate, .zfree = avro_z_free, .opaque = file->memory};
         if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) !=
             Z_OK)
             status = UD_RESOURCE;
@@ -1266,7 +1263,7 @@ ud_status ud_avro_writer_append(ud_avro_writer *writer, const ud_batch *batch) {
         }
     }
     if (!status)
-        status = put_long(&frame, batch->rows);
+        status = put_long(&frame, rows);
     if (!status)
         status = put_long(&frame, (int64_t)packed.size);
     if (!status && (fwrite(frame.data, 1, frame.size, file->file) != frame.size ||
@@ -1275,6 +1272,47 @@ ud_status ud_avro_writer_append(ud_avro_writer *writer, const ud_batch *batch) {
         status = UD_IO;
     ud_bytes_clear(&packed);
     ud_bytes_clear(&frame);
+    return status;
+}
+
+ud_status ud_avro_writer_append(ud_avro_writer *writer, const ud_batch *batch) {
+    if (!writer || !batch)
+        return UD_INVALID;
+    avro_file *file = &writer->state;
+    if (file->poisoned)
+        return UD_IO;
+    if (batch->columns != file->schema->columns)
+        return UD_INCOMPATIBLE;
+    for (uint32_t at = 0; at < batch->columns; at++)
+        if (!ud_field_matches(&batch->column[at].field, &file->schema->column[at].field,
+                              UD_FIELD_PORT))
+            return UD_INCOMPATIBLE;
+    ud_bytes record = {.ctx = file->memory, .limit = file->options.max_block_bytes};
+    file->block.size = file->block.pos = 0;
+    ud_status status = check(file);
+    uint32_t count = 0;
+    for (uint32_t row = 0; !status && row < batch->rows; row++) {
+        record.size = record.pos = 0;
+        for (uint32_t column = 0; !status && column < batch->columns; column++) {
+            ud_value value;
+            status = ud_batch_get(batch, row, column, &value);
+            if (!status)
+                status = encode_value(&record, &file->schema->column[column].field,
+                                      file->types + column, &value, 0);
+        }
+        if (!status && count && record.size > file->options.max_block_bytes - file->block.size) {
+            status = write_block(file, count);
+            file->block.size = file->block.pos = 0;
+            count = 0;
+        }
+        if (!status)
+            status = ud_bytes_put(&file->block, record.data, record.size);
+        if (!status)
+            count++;
+    }
+    if (!status && count)
+        status = write_block(file, count);
+    ud_bytes_clear(&record);
     if (status)
         file->poisoned = 1;
     return status;

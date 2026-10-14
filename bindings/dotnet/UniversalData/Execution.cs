@@ -162,6 +162,10 @@ public sealed class Execution : IDisposable
         }
     }
 
+    public string ComponentPorts(string pipelineId, string componentId, string kind, string configuration)
+    { Control(); lock (controller) { Open(); using var strings = new NativeStrings(pipelineId,componentId,kind,configuration);
+        Check(Native.ud_execution_component_ports(execution, strings[0], strings[1], strings[2], strings[3], out var text, out var length));
+        return DataOwnership.Text(text,length); } }
     public string Explain() => Inspect(false);
 
     public void ConfigureDebug(string configuration)
@@ -171,14 +175,16 @@ public sealed class Execution : IDisposable
     }
     public void DebugControl(string command)
     {
-        Control(); lock (controller) { Open(); using var strings = new NativeStrings(command);
-            Check(Native.ud_execution_debug_control(execution, strings[0])); }
+        Control(); Open(); using var strings = new NativeStrings(command);
+        Check(Native.ud_execution_debug_control(execution, strings[0]));
     }
     public string DebugSnapshot()
     {
-        Control(); lock (controller) { Open();
+        Control(); Open(); bool retained = false;
+        try { execution.DangerousAddRef(ref retained);
             Check(Native.ud_execution_debug_snapshot(execution, out var text, out var length));
-            return DataOwnership.Text(text, length); }
+            return DataOwnership.Text(text, length);
+        } finally { if (retained) execution.DangerousRelease(); }
     }
 
     public string Diagnostics() => Inspect(true);
@@ -223,6 +229,7 @@ internal sealed class ExecutionHandle : SafeHandleZeroOrMinusOneIsInvalid
 
 internal static partial class Native
 {
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_component_ports(ExecutionHandle execution, StringValue pipelineId, StringValue componentId, StringValue kind, StringValue configuration, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_configure(ExecutionHandle execution, StringValue configuration);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_control(ExecutionHandle execution, StringValue command);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_snapshot(ExecutionHandle execution, out IntPtr text, out uint length);

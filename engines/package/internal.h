@@ -132,6 +132,7 @@ ud_status ud_checkpoint_enumerator(ud_activation *, const uint8_t digest[32]);
 ud_status ud_control_execute(ud_activation *, const ud_json *);
 ud_status ud_pipeline_validate(ud_activation *, const ud_json *);
 ud_status ud_pipeline_bind_validate(ud_activation *, const ud_json *);
+ud_status ud_control_catalog(ud_bytes *);
 ud_status ud_control_explain(ud_activation *, const ud_json *, ud_bytes *);
 ud_status ud_pipeline_execute(ud_activation *, const ud_json *);
 enum { UD_DEBUG_TASK = 1, UD_DEBUG_BATCH = 2, UD_DEBUG_EPOCH = 3 };

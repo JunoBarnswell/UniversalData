@@ -110,8 +110,10 @@ struct ud_xlsx_writer {
     ud_json *config;
     FILE *file;
     ud_batch *schema;
-    written_entry entries[8];
-    uint32_t count;
+    written_entry *entries;
+    uint32_t count, capacity;
+    zip original;
+    ud_bytes tail;
     z_stream compressor;
     int compressed, header, date1904;
     uint64_t row, bytes, reserved;
@@ -327,6 +329,44 @@ static void xml_close(xml_stream *x) {
         XML_ParserFree(x->parser);
     memset(x, 0, sizeof(*x));
 }
+static ud_status zip_chunk(xml_stream *x, uint32_t *count) {
+    UD_TRY(control(&x->zip->options));
+    uint32_t n = 0;
+    if (x->deflated) {
+        if (!x->inflater.avail_in && x->remaining) {
+            uint32_t count = x->remaining > sizeof(x->input) ? sizeof(x->input) : x->remaining;
+            if (fread(x->input, 1, count, x->zip->file) != count)
+                return UD_CORRUPT;
+            x->remaining -= count;
+            x->inflater.next_in = x->input;
+            x->inflater.avail_in = count;
+        }
+        x->inflater.next_out = x->output;
+        x->inflater.avail_out = sizeof(x->output);
+        int s = inflate(&x->inflater, Z_NO_FLUSH);
+        n = sizeof(x->output) - x->inflater.avail_out;
+        if (s == Z_STREAM_END) {
+            if (x->remaining || x->inflater.avail_in)
+                return UD_CORRUPT;
+            x->finished = 1;
+        } else if (s != Z_OK || (!n && !x->remaining && !x->inflater.avail_in))
+            return UD_CORRUPT;
+    } else {
+        n = x->remaining > sizeof(x->output) ? sizeof(x->output) : x->remaining;
+        if (n && fread(x->output, 1, n, x->zip->file) != n)
+            return UD_CORRUPT;
+        x->remaining -= n;
+        x->finished = !x->remaining;
+    }
+    if (n > x->entry->size - x->produced)
+        return UD_RESOURCE;
+    x->produced += n;
+    x->crc = (uint32_t)crc32(x->crc, x->output, n);
+    if (x->finished && (x->produced != x->entry->size || x->crc != x->entry->crc))
+        return UD_CORRUPT;
+    *count = n;
+    return UD_OK;
+}
 static ud_status xml_pump(xml_stream *x) {
     xml_context = x->zip->ctx;
     if (x->status)
@@ -342,38 +382,8 @@ static ud_status xml_pump(xml_stream *x) {
             return x->status ? x->status : UD_PARSE;
     }
     while (!x->finished && !x->suspended) {
-        UD_TRY(control(&x->zip->options));
         uint32_t n = 0;
-        if (x->deflated) {
-            if (!x->inflater.avail_in && x->remaining) {
-                uint32_t count = x->remaining > sizeof(x->input) ? sizeof(x->input) : x->remaining;
-                if (fread(x->input, 1, count, x->zip->file) != count)
-                    return UD_CORRUPT;
-                x->remaining -= count;
-                x->inflater.next_in = x->input;
-                x->inflater.avail_in = count;
-            }
-            x->inflater.next_out = x->output;
-            x->inflater.avail_out = sizeof(x->output);
-            int s = inflate(&x->inflater, Z_NO_FLUSH);
-            n = sizeof(x->output) - x->inflater.avail_out;
-            if (s == Z_STREAM_END) {
-                if (x->remaining || x->inflater.avail_in)
-                    return UD_CORRUPT;
-                x->finished = 1;
-            } else if (s != Z_OK || (!n && !x->remaining && !x->inflater.avail_in))
-                return UD_CORRUPT;
-        } else {
-            n = x->remaining > sizeof(x->output) ? sizeof(x->output) : x->remaining;
-            if (n && fread(x->output, 1, n, x->zip->file) != n)
-                return UD_CORRUPT;
-            x->remaining -= n;
-            x->finished = !x->remaining;
-        }
-        if (n > x->entry->size - x->produced)
-            return UD_RESOURCE;
-        x->produced += n;
-        x->crc = (uint32_t)crc32(x->crc, x->output, n);
+        UD_TRY(zip_chunk(x, &n));
         enum XML_Status status = XML_Parse(x->parser, (char *)x->output, (int)n, x->finished);
         if (status == XML_STATUS_SUSPENDED)
             x->suspended = 1;
@@ -1226,7 +1236,8 @@ static ud_status deflate_data(ud_xlsx_writer *w, const void *data, uint32_t n, i
     if ((uint64_t)e->size + n > UINT32_MAX)
         return UD_RESOURCE;
     e->size += n;
-    if(n)e->crc = (uint32_t)crc32(e->crc, data, n);
+    if (n)
+        e->crc = (uint32_t)crc32(e->crc, data, n);
     w->compressor.next_in = (Bytef *)data;
     w->compressor.avail_in = n;
     int done = 0;
@@ -1247,7 +1258,7 @@ static ud_status deflate_data(ud_xlsx_writer *w, const void *data, uint32_t n, i
     return UD_OK;
 }
 static ud_status entry_begin(ud_xlsx_writer *w, const char *name) {
-    if (w->count >= 8)
+    if (w->count >= w->capacity)
         return UD_RESOURCE;
     written_entry *e = w->entries + w->count;
     *e = (written_entry){
@@ -1335,7 +1346,8 @@ static ud_status write_cell(ud_xlsx_writer *w, uint32_t column, const ud_value *
         return UD_OK;
     char c[8], tag[128];
     column_name(column + 1, c);
-    int string = v->type == UD_UTF8 || v->type == UD_BINARY || v->type == UD_DECIMAL128;
+    int string = v->type == UD_UTF8 || v->type == UD_BINARY || v->type == UD_DECIMAL128 ||
+                 v->type == UD_UINT64 || v->type == UD_DURATION || v->type == UD_INTERVAL;
     snprintf(tag, sizeof(tag), "<c r=\"%s%llu\"%s>", c, (unsigned long long)w->row,
              string                                            ? " t=\"inlineStr\""
              : v->type == UD_BOOL                              ? " t=\"b\""
@@ -1386,6 +1398,222 @@ static ud_status write_cell(ud_xlsx_writer *w, uint32_t column, const ud_value *
     UD_TRY(write_text(w, string ? "</t></is></c>" : "</v></c>"));
     return UD_OK;
 }
+
+typedef struct append_xml {
+    XML_Parser parser;
+    ud_status status;
+    uint32_t depth, maximum_row;
+    size_t data_start, data_end, data_open_length, dimension_start, dimension_end;
+    int found, closed, empty;
+    ud_bytes close_name;
+} append_xml;
+static void XMLCALL append_start(void *user, const char *name, const char **attributes) {
+    append_xml *state = user;
+    if (++state->depth > 64) {
+        state->status = UD_RESOURCE;
+        XML_StopParser(state->parser, XML_FALSE);
+        return;
+    }
+    const char *tag = local(name);
+    if (!strcmp(tag, "sheetData")) {
+        if (state->found++) {
+            state->status = UD_SCHEMA;
+            XML_StopParser(state->parser, XML_FALSE);
+            return;
+        }
+        state->data_start = (size_t)XML_GetCurrentByteIndex(state->parser);
+        state->data_open_length = (size_t)XML_GetCurrentByteCount(state->parser);
+    } else if (!strcmp(tag, "row")) {
+        uint32_t row = decimal(attribute(attributes, "r"));
+        if (!row || row > 1048576) {
+            state->status = UD_SCHEMA;
+            XML_StopParser(state->parser, XML_FALSE);
+            return;
+        }
+        if (row > state->maximum_row)
+            state->maximum_row = row;
+    } else if (!strcmp(tag, "dimension"))
+        state->dimension_start = (size_t)XML_GetCurrentByteIndex(state->parser);
+}
+static void XMLCALL append_end(void *user, const char *name) {
+    append_xml *state = user;
+    const char *tag = local(name);
+    size_t at = (size_t)XML_GetCurrentByteIndex(state->parser),
+           count = (size_t)XML_GetCurrentByteCount(state->parser);
+    if (!strcmp(tag, "sheetData")) {
+        state->data_end = at;
+        state->closed = 1;
+        state->empty = count == 0;
+    } else if (!strcmp(tag, "dimension"))
+        state->dimension_end = at + count;
+    if (state->depth)
+        state->depth--;
+}
+static void XMLCALL append_doctype(void *user, const char *name, const char *system,
+                                   const char *public_id, int subset) {
+    (void)name;
+    (void)system;
+    (void)public_id;
+    (void)subset;
+    append_xml *state = user;
+    state->status = UD_UNSUPPORTED;
+    XML_StopParser(state->parser, XML_FALSE);
+}
+static ud_status read_part(ud_xlsx_writer *writer, zip_entry *entry, ud_bytes *bytes) {
+    xml_stream stream = {0};
+    ud_status status = xml_open(&stream, &writer->original, entry);
+    while (!status && !stream.finished) {
+        uint32_t size = 0;
+        status = zip_chunk(&stream, &size);
+        if (!status)
+            status = ud_bytes_put(bytes, stream.output, size);
+    }
+    xml_close(&stream);
+    return status;
+}
+static ud_status copy_part(ud_xlsx_writer *writer, zip_entry *part) {
+    UD_TRY(entry_begin(writer, part->name));
+    xml_stream stream = {0};
+    ud_status status = xml_open(&stream, &writer->original, part);
+    while (!status && !stream.finished) {
+        uint32_t size = 0;
+        status = zip_chunk(&stream, &size);
+        if (!status)
+            status = deflate_data(writer, stream.output, size, 0);
+    }
+    xml_close(&stream);
+    if (!status)
+        status = entry_end(writer);
+    return status;
+}
+static ud_status append_workbook(ud_xlsx_writer *writer, const ud_field *fields, uint32_t count) {
+    if (member(writer->config, "range"))
+        return UD_UNSUPPORTED;
+    ud_xlsx_options options = writer->options;
+    options.original_path = NULL;
+    options.stage_bytes = NULL;
+    ud_bytes configuration = {.ctx = writer->ctx};
+    char *text = NULL;
+    uint32_t text_size = 0;
+    ud_status configured = ud_json_serialize(writer->config, &text, &text_size);
+    if (!configured && !member(writer->config, "header")) {
+        configured = ud_bytes_put(&configuration, text, text_size - 1);
+        if (!configured)
+            configured = ud_bytes_put(&configuration, ",\"header\":true}", 15);
+    } else if (!configured)
+        configured = ud_bytes_put(&configuration, text, text_size);
+    ud_free(text);
+    if (configured) {
+        ud_bytes_clear(&configuration);
+        return configured;
+    }
+    options.configuration =
+        (ud_string){(const char *)configuration.data, (uint32_t)configuration.size};
+    ud_xlsx_reader *reader = NULL;
+    ud_status status = ud_xlsx_reader_open(writer->ctx, writer->options.original_path, fields,
+                                           count, &options, &reader);
+    char *sheet = NULL;
+    if (!status) {
+        sheet = ud_strdup_n(writer->ctx, reader->sheet_path, strlen(reader->sheet_path));
+        if (!sheet)
+            status = UD_RESOURCE;
+    }
+    while (!status) {
+        ud_batch *batch = NULL;
+        int32_t rejected = 0;
+        status = ud_xlsx_reader_next(reader, &batch, &rejected);
+        ud_batch_destroy(batch);
+        if (status == UD_END) {
+            status = UD_OK;
+            break;
+        }
+        if (!status && rejected)
+            status = UD_QUALITY;
+    }
+    ud_xlsx_reader_close(reader);
+    options.configuration = writer->options.configuration;
+    ud_bytes_clear(&configuration);
+    if (!status)
+        status = zip_open(writer->ctx, writer->options.original_path, &options, writer->config,
+                          &writer->original);
+    if (!status) {
+        writer->capacity = writer->original.count;
+        writer->entries = ud_alloc(writer->ctx, writer->capacity * sizeof(*writer->entries));
+        if (!writer->entries)
+            status = UD_RESOURCE;
+    }
+    ud_bytes xml = {.ctx = writer->ctx, .limit = 134217728};
+    if (!status)
+        status = read_part(writer, entry(&writer->original, sheet), &xml);
+    if (!status &&
+        (!ud_utf8_valid((const char *)xml.data, xml.size) || memchr(xml.data, 0, xml.size)))
+        status = UD_UNSUPPORTED;
+    append_xml state = {0};
+    if (!status) {
+        xml_context = writer->ctx;
+        XML_Memory_Handling_Suite memory = {xml_allocate, xml_resize, xml_deallocate};
+        state.parser = XML_ParserCreate_MM(NULL, &memory, "|");
+        if (!state.parser)
+            status = UD_RESOURCE;
+    }
+    if (!status) {
+        XML_SetUserData(state.parser, &state);
+        XML_SetElementHandler(state.parser, append_start, append_end);
+        XML_SetStartDoctypeDeclHandler(state.parser, append_doctype);
+        XML_SetParamEntityParsing(state.parser, XML_PARAM_ENTITY_PARSING_NEVER);
+        for (size_t at = 0; !status && at < xml.size;) {
+            size_t size = xml.size - at > 16384 ? 16384 : xml.size - at;
+            status = control(&options);
+            if (!status && XML_Parse(state.parser, (const char *)xml.data + at, (int)size,
+                                     at + size == xml.size) != XML_STATUS_OK)
+                status = state.status ? state.status : UD_PARSE;
+            at += size;
+        }
+        if (!status && (!state.found || !state.closed || state.data_end > xml.size ||
+                        state.data_start + state.data_open_length > xml.size))
+            status = UD_SCHEMA;
+    }
+    if (!status)
+        for (uint32_t at = 0; !status && at < writer->original.count; at++)
+            if (strcmp(writer->original.entries[at].name, sheet))
+                status = copy_part(writer, writer->original.entries + at);
+    if (!status)
+        status = entry_begin(writer, entry(&writer->original, sheet)->name);
+    size_t prefix = state.empty ? state.data_start + state.data_open_length - 2 : state.data_end;
+    if (!status && state.dimension_end && state.dimension_start < state.dimension_end &&
+        state.dimension_end <= prefix) {
+        status = deflate_data(writer, xml.data, (uint32_t)state.dimension_start, 0);
+        if (!status)
+            status = deflate_data(writer, xml.data + state.dimension_end,
+                                  (uint32_t)(prefix - state.dimension_end), 0);
+    } else if (!status)
+        status = deflate_data(writer, xml.data, (uint32_t)prefix, 0);
+    writer->tail = (ud_bytes){.ctx = writer->ctx, .limit = 134217728};
+    if (!status && state.empty) {
+        status = write_text(writer, ">");
+        size_t name_start = state.data_start + 1, name_end = name_start;
+        while (name_end < xml.size && xml.data[name_end] != ' ' && xml.data[name_end] != '\t' &&
+               xml.data[name_end] != '/' && xml.data[name_end] != '>')
+            name_end++;
+        if (!status)
+            status = ud_bytes_put(&writer->tail, "</", 2);
+        if (!status)
+            status = ud_bytes_put(&writer->tail, xml.data + name_start, name_end - name_start);
+        if (!status)
+            status = ud_bytes_put(&writer->tail, ">", 1);
+        if (!status)
+            status =
+                ud_bytes_put(&writer->tail, xml.data + state.data_start + state.data_open_length,
+                             xml.size - state.data_start - state.data_open_length);
+    } else if (!status)
+        status = ud_bytes_put(&writer->tail, xml.data + state.data_end, xml.size - state.data_end);
+    writer->row = state.maximum_row;
+    if (state.parser)
+        XML_ParserFree(state.parser);
+    ud_free(sheet);
+    ud_bytes_clear(&xml);
+    return status;
+}
 ud_status ud_xlsx_writer_open(ud_context *ctx, const char *path, const ud_field *fields,
                               uint32_t columns, const ud_xlsx_options *o, ud_xlsx_writer **out) {
     if (!out)
@@ -1426,6 +1654,22 @@ ud_status ud_xlsx_writer_open(ud_context *ctx, const char *path, const ud_field 
         w->file = ud_fopen(path, "wb");
         if (!w->file)
             s = UD_IO;
+    }
+    if (!s && o->original_path) {
+        s = append_workbook(w, fields, columns);
+        if (s) {
+            w->status = s;
+            ud_xlsx_writer_close(w);
+            return s;
+        }
+        *out = w;
+        return UD_OK;
+    }
+    if (!s) {
+        w->capacity = 8;
+        w->entries = ud_alloc(ctx, w->capacity * sizeof(*w->entries));
+        if (!w->entries)
+            s = UD_RESOURCE;
     }
     if (!s)
         s = write_part(w, "[Content_Types].xml",
@@ -1513,8 +1757,11 @@ ud_status ud_xlsx_writer_append(ud_xlsx_writer *w, const ud_batch *b) {
             break;
         }
         w->row++;
-        char tag[64];
-        snprintf(tag, sizeof(tag), "<row r=\"%llu\">", (unsigned long long)w->row);
+        char tag[160];
+        snprintf(
+            tag, sizeof(tag),
+            "<row xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"%llu\">",
+            (unsigned long long)w->row);
         s = write_text(w, tag);
         for (uint32_t c = 0; !s && c < b->columns; c++) {
             ud_value v;
@@ -1533,7 +1780,8 @@ ud_status ud_xlsx_writer_close(ud_xlsx_writer *w) {
         return UD_OK;
     ud_status s = w->status;
     if (!s)
-        s = write_text(w, "</sheetData></worksheet>");
+        s = w->options.original_path ? deflate_data(w, w->tail.data, (uint32_t)w->tail.size, 0)
+                                     : write_text(w, "</sheetData></worksheet>");
     if (!s)
         s = entry_end(w);
     uint32_t central = (uint32_t)w->bytes;
@@ -1574,6 +1822,9 @@ ud_status ud_xlsx_writer_close(ud_xlsx_writer *w) {
     ud_batch_destroy(w->schema);
     ud_json_destroy(w->config);
     ud_free(w->sheet);
+    ud_free(w->entries);
+    zip_close(&w->original);
+    ud_bytes_clear(&w->tail);
     ud_free(w);
     return s;
 }

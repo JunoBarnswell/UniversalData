@@ -267,6 +267,80 @@ static ud_status bind_ports(node *n, ud_activation *e, const ud_json *definition
     n->context.output_count = ports->output_count;
     return UD_OK;
 }
+ud_status ud_execution_component_ports(ud_execution *execution, ud_string pipeline_id,
+                                       ud_string component_id, ud_string kind, ud_string config,
+                                       char **out, uint32_t *length) {
+    if (!execution || !out || !length || !pipeline_id.length || !component_id.length ||
+        !kind.length)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    int state = atomic_load(&execution->state);
+    if (state == UD_EXEC_RUNNING || state == UD_EXEC_DRAINING)
+        return UD_BUSY;
+    node bound = {.id = component_id};
+    ud_json *definition = NULL;
+    ud_bytes input = {.ctx = execution->ctx}, result = {.ctx = execution->ctx};
+    ud_status status = ud_component_lookup(&execution->root, kind, &bound.descriptor);
+    if (!status)
+        status = ud_bytes_put(&input, "{\"config\":", 10);
+    if (!status)
+        status = ud_bytes_put(&input, config.data, config.length);
+    if (!status)
+        status = ud_bytes_put(&input, "}", 1);
+    if (!status)
+        status = ud_json_parse(execution->ctx, (const char *)input.data, (uint32_t)input.size,
+                               &definition, NULL);
+    if (!status)
+        status = bind_ports(&bound, &execution->root, definition, pipeline_id);
+    if (!status)
+        status = ud_bytes_put(&result, "[", 1);
+    for (uint32_t direction = 0, emitted = 0; !status && direction < 2; direction++) {
+        uint32_t count = direction ? bound.ports.output_count : bound.ports.input_count;
+        const ud_component_port *ports = direction ? bound.ports.outputs : bound.ports.inputs;
+        for (uint32_t at = 0; !status && at < count; at++) {
+            if (emitted++)
+                status = ud_bytes_put(&result, ",", 1);
+            char id[33], numbers[96];
+            ud_id_format(ports[at].id, id);
+            if (!status)
+                status = ud_bytes_put(&result, "{\"id\":", 6);
+            if (!status)
+                status = ud_json_quote(&result, id, 32);
+            if (!status)
+                status = ud_bytes_put(&result, ",\"name\":", 8);
+            if (!status)
+                status = ud_json_quote(&result, ports[at].name.data, ports[at].name.length);
+            int size =
+                snprintf(numbers, sizeof(numbers), ",\"direction\":%u,\"index\":%u,\"flags\":%u}",
+                         ports[at].direction, ports[at].index, ports[at].flags);
+            if (!status)
+                status = ud_bytes_put(&result, numbers, (size_t)size);
+        }
+    }
+    if (!status)
+        status = ud_bytes_put(&result, "]", 1);
+    if (!status)
+        status = ud_bytes_put(&result, "", 1);
+    if (!status) {
+        *out = (char *)result.data;
+        *length = (uint32_t)result.size - 1;
+        result.data = NULL;
+    }
+    for (uint32_t at = 0; at < bound.ports.input_count; at++)
+        ud_free((void *)bound.ports.inputs[at].name.data);
+    for (uint32_t at = 0; at < bound.ports.output_count; at++)
+        ud_free((void *)bound.ports.outputs[at].name.data);
+    ud_free(bound.ports.inputs);
+    ud_free(bound.ports.outputs);
+    ud_free(bound.json);
+    ud_json_destroy(bound.configuration);
+    ud_json_destroy(definition);
+    ud_bytes_clear(&input);
+    ud_bytes_clear(&result);
+    return status;
+}
+
 static ud_status port_index(const node *n, int output, const ud_json *json, uint64_t *index) {
     if (ud_json_kind(json) == UD_JSON_NUMBER)
         return ud_json_uint(json, index);
@@ -1733,6 +1807,25 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
                 if (k)
                     UD_TRY(ud_bytes_put(b, ",", 1));
                 UD_TRY(ud_json_quote(b, id, 32));
+            }
+            UD_TRY(ud_bytes_put(b, "]", 1));
+            UD_TRY(ud_bytes_put(b, ",\"inputs\":[", sizeof(",\"inputs\":[") - 1));
+            for (uint32_t at = 0; at < n->ports.input_count; at++) {
+                if (at)
+                    UD_TRY(ud_bytes_put(b, ",", 1));
+                const ud_batch *schema = n->ports.inputs[at].schema;
+                if (!schema) {
+                    UD_TRY(ud_bytes_put(b, "null", 4));
+                    continue;
+                }
+                char *text = NULL;
+                uint32_t size = 0;
+                ud_status status = ud_schema_to_json(schema, &text, &size);
+                if (!status)
+                    status = ud_bytes_put(b, text, size);
+                ud_free(text);
+                if (status)
+                    return status;
             }
             UD_TRY(ud_bytes_put(b, "]", 1));
             UD_TRY(ud_bytes_put(b, ",\"outputs\":[", sizeof(",\"outputs\":[") - 1));

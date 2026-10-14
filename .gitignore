@@ -85,3 +85,7 @@ ipch/
 *.gcda
 *.gcno
 *.py[cod]
+
+# Product frontend generated assets and dependencies
+**/node_modules/
+products/UniversalData.Management/wwwroot/

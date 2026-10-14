@@ -53,6 +53,13 @@ public final class Execution implements AutoCloseable {
         }
     }
     private static native String nativeDiscover(long handle,byte[] connection,byte[] table);
+    public String componentPorts(String pipelineId,String componentId,String kind,String configuration) {
+        control();synchronized(controller) { lifetime.readLock().lock();
+            try { open();return nativePorts(handle,Utf8.bytes(pipelineId),Utf8.bytes(componentId),Utf8.bytes(kind),Utf8.bytes(configuration)); }
+            finally { lifetime.readLock().unlock(); }
+        }
+    }
+    private static native String nativePorts(long handle,byte[] pipelineId,byte[] componentId,byte[] kind,byte[] configuration);
     public String componentCatalog() {
         control(); synchronized(controller) { lifetime.readLock().lock();
             try { open(); return nativeCatalog(handle); }

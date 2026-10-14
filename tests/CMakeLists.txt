@@ -298,7 +298,7 @@ if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
           SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;${driver}"
           RESOURCE_LOCK ud_integration_${driver})
       endforeach()
-      if(driver MATCHES "^(postgresql|mysql|mariadb)$")
+      if(driver MATCHES "^(postgresql|mysql|mariadb|odbc|oracle_oci)$")
         add_test(NAME integration_${driver}_native_bulk COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
           $<TARGET_FILE:test_advanced_sql> $<TARGET_FILE:ud_connector_${driver}> native)
@@ -336,6 +336,7 @@ if(TARGET ud_package)
   if(UD_WITH_SQLITE)
     add_test(NAME native_sql_source_record_errors COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/sql_source_records.py $<TARGET_FILE:test_product_native> $<TARGET_FILE:ud_connector_sqlite>)
   endif()
+  add_test(NAME native_xlsx_preserving_append COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/xlsx_append_product.py $<TARGET_FILE:test_product_native>)
   add_test(NAME native_avro_interoperability COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/avro_product.py $<TARGET_FILE:test_product_native>)
   if(UD_WITH_XML)
     add_test(NAME native_xml_source_xpath_xslt_xsd COMMAND ${Python3_EXECUTABLE}

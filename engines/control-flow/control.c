@@ -935,3 +935,44 @@ ud_status ud_control_explain(ud_activation *a, const ud_json *definition, ud_byt
     ud_scope_leave(a, &scope);
     return status;
 }
+ud_status ud_control_catalog(ud_bytes *bytes) {
+    /* Structural control tasks are executed by Control Flow itself. Metadata
+     * belongs to the same owner; it never registers a second execution callback. */
+    static const struct {
+        const char *id, *name, *schema;
+        int children;
+    } kinds[] = {
+        {"dataFlow", "Data Flow",
+         "{\"type\":\"object\",\"required\":[\"pipeline\"],\"additionalProperties\":false,"
+         "\"properties\":{\"pipeline\":{\"type\":\"string\"}}}",
+         0},
+        {"sequence", "Sequence",
+         "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{}}", 1},
+        {"for", "For Loop",
+         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"initialize\","
+         "\"condition\",\"increment\",\"maxIterations\"],\"properties\":{\"initialize\":{\"type\":"
+         "\"object\"},\"condition\":{\"type\":\"object\"},\"increment\":{\"type\":\"object\"},"
+         "\"maxIterations\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":1000000}}}",
+         1}};
+    for (uint32_t at = 0; at < sizeof(kinds) / sizeof(*kinds); at++) {
+        UD_TRY(ud_bytes_put(bytes, ",{\"id\":", 7));
+        UD_TRY(ud_json_quote(bytes, kinds[at].id, (uint32_t)strlen(kinds[at].id)));
+        UD_TRY(ud_bytes_put(bytes, ",\"name\":", 8));
+        UD_TRY(ud_json_quote(bytes, kinds[at].name, (uint32_t)strlen(kinds[at].name)));
+        UD_TRY(ud_bytes_put(
+            bytes,
+            ",\"version\":\"" UD_SDK_VERSION
+            "\",\"category\":1,\"inputs\":0,\"outputs\":0,\"dynamicPorts\":false,\"errorOutput\":-"
+            "1,\"structuralControl\":true,\"children\":",
+            sizeof(",\"version\":\"" UD_SDK_VERSION
+                   "\",\"category\":1,\"inputs\":0,\"outputs\":0,\"dynamicPorts\":false,"
+                   "\"errorOutput\":-1,\"structuralControl\":true,\"children\":") -
+                1));
+        UD_TRY(
+            ud_bytes_put(bytes, kinds[at].children ? "true" : "false", kinds[at].children ? 4 : 5));
+        UD_TRY(ud_bytes_put(bytes, ",\"configurationSchema\":", 23));
+        UD_TRY(ud_bytes_put(bytes, kinds[at].schema, strlen(kinds[at].schema)));
+        UD_TRY(ud_bytes_put(bytes, "}", 1));
+    }
+    return UD_OK;
+}

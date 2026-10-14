@@ -11,7 +11,7 @@ public interface IManagedTask : IDisposable
 
 public sealed record ManagedTaskDefinition(string Id, string Name, string ConfigurationSchema,
     Func<IManagedTask> Factory, bool ReplaySafe = false, bool ThreadSafe = false,
-    string? Version = null);
+    string? Version = null, ComponentEffects Effects = ComponentEffects.None);
 
 /// <summary>Borrowed native activation, valid only during the current callback.</summary>
 public sealed class ManagedTaskContext
@@ -63,7 +63,7 @@ public sealed partial class Registry : IDisposable
                 Id = pins.Pin(definition.Id), Name = pins.Pin(definition.Name), Version = pins.Pin(definition.Version ?? ProductVersion.Sdk),
                 Configuration = pins.Pin(definition.ConfigurationSchema), Category = 1, SynchronousInput = -1, ErrorOutput = -1,
                 Capabilities = (definition.ReplaySafe ? 0x8000000000000000UL : 0) | (definition.ThreadSafe ? 0x4000000000000000UL : 0),
-                User = registration.Pointer,
+                User = registration.Pointer, Effects = (uint)definition.Effects,
                 Prepare = Marshal.GetFunctionPointerForDelegate(registration.Prepare),
                 Invoke = Marshal.GetFunctionPointerForDelegate(registration.Invoke),
                 Finish = Marshal.GetFunctionPointerForDelegate(registration.Finish),

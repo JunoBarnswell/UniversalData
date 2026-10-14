@@ -107,6 +107,8 @@ static ud_status validate_references(ud_catalog *c, const ud_json *project, cons
 }
 ud_status ud_catalog_definition_check(ud_catalog *c, const ud_catalog_key *key,
                                       const ud_json *doc) {
+    if (key->kind == UD_CATALOG_AUDIT || key->kind == UD_CATALOG_EXECUTION)
+        return document_header(doc,key);
     if (key->kind != UD_CATALOG_PROJECT && key->kind != UD_CATALOG_ENVIRONMENT &&
         key->kind != UD_CATALOG_DEPLOYMENT)
         return UD_OK;

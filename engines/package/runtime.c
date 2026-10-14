@@ -923,7 +923,32 @@ ud_status ud_schema_report(ud_activation *a, ud_string diff, ud_status result) {
 ud_status ud_execution_component_catalog(ud_execution *e, char **out, uint32_t *length) {
     if (!e)
         return UD_INVALID;
-    return ud_registry_describe(e->registry, out, length);
+    if (!out || !length)
+        return UD_INVALID;
+    *out = NULL;
+    *length = 0;
+    char *registered = NULL;
+    uint32_t size = 0;
+    ud_status status = ud_registry_describe(e->registry, &registered, &size);
+    ud_bytes catalog = {.ctx = e->ctx};
+    if (!status && (!size || registered[size - 1] != ']'))
+        status = UD_CORRUPT;
+    if (!status)
+        status = ud_bytes_put(&catalog, registered, size - 1);
+    if (!status)
+        status = ud_control_catalog(&catalog);
+    if (!status)
+        status = ud_bytes_put(&catalog, "]", 1);
+    if (!status)
+        status = ud_bytes_put(&catalog, "", 1);
+    if (!status) {
+        *out = (char *)catalog.data;
+        *length = (uint32_t)catalog.size - 1;
+        catalog.data = NULL;
+    }
+    ud_free(registered);
+    ud_bytes_clear(&catalog);
+    return status;
 }
 
 ud_status ud_component_schema_namespace(const ud_component_context *context, char **out,

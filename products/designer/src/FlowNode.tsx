@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import { Database, FileText, ShieldCheck, GitBranch } from 'lucide-react';
-type FlowNodeValue = Node<{ label: string; componentId: string; inputs: number; outputs: number; error: number }, 'component'>;
+export type FlowNodeValue = Node<{ label: string; componentId: string; inputs: number; outputs: number; error: number }, 'component'>;
 export const FlowNode = memo(function FlowNode({ data, selected }: NodeProps<FlowNodeValue>) {
   const Icon = data.componentId === 'quality' ? ShieldCheck : data.componentId.includes('sql') ? Database : data.componentId.includes('file') ? FileText : GitBranch;
   return <div className={`flow-node ${selected ? 'selected' : ''}`}>

@@ -96,7 +96,14 @@ shutil.copyfile(ROOT / 'bindings/java/pom.xml', packages / f'universal-data-{ver
 
 # Prove the runtime contains no checkout paths. Proprietary database clients
 # remain deployment prerequisites of their optional connector modules.
-roots = [native / 'libud_data.so', native / 'libud_java.so', sdk / 'bin/ud_cli', sdk / 'bin/ud_worker']
+roots = [native / 'libud_data.so', native / 'libud_java.so']
+for host in ('cli', 'worker', 'management'):
+    host_native = sdk / 'bin/universaldata' / host / 'libud_data.so'
+    assert host_native.is_file(), 'Product Native facade missing'
+    subprocess.run([a.patchelf, '--set-rpath', '$ORIGIN:$ORIGIN/../../../lib', str(host_native)], check=True)
+    root = sdk / 'bin/universaldata' / host
+    assert (root / ('ud_cli.dll' if host == 'cli' else 'ud_worker.dll' if host == 'worker' else 'UniversalData.Management.dll')).is_file(), 'Product host missing'
+assert (sdk / 'bin/universaldata/management/wwwroot/index.html').is_file(), 'Designer assets missing'
 external = set()
 for path in roots:
     dependencies, _ = elf(path)
@@ -114,9 +121,12 @@ for path in sorted((native / 'UniversalData/plugins').glob('*.so')):
 fingerprint = subprocess.check_output([sys.executable, str(ROOT / 'scripts/release_guard.py'), '--fingerprint'], text=True).strip()
 files = [dict(path=p.relative_to(output).as_posix(), bytes=p.stat().st_size, sha256=digest(p))
          for p in sorted(output.rglob('*')) if p.is_file()]
-manifest = dict(schemaVersion=1, sdkVersion=version, abiVersion=product['abiVersion'],
+features = {key: ('UD_WITH_' + key.upper() + ':BOOL=ON') in cache for key in ('sqlite', 'postgresql', 'odbc', 'mysql', 'mariadb', 'oracle_oci', 'arrow_files', 'http', 'xml', 'network')}
+if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache:
+    assert all(features.values()), 'Complete product dependencies cannot silently downgrade'
+manifest = dict(schemaVersion=10,protocolVersion=product['protocolVersion'], buildProfile='PRODUCT' if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache else 'CORE', sdkVersion=version, abiVersion=product['abiVersion'],
                 configuration='Release', runtimeIdentifier='linux-x64', sourceFingerprint=fingerprint,
-                capabilities=dict(sqlite=(native / 'UniversalData/plugins/ud_connector_sqlite.so').exists()),
+                capabilities=features, managedRuntime='Microsoft.AspNetCore.App 10', hosts=['cli','worker','management','designer'],
                 nativeRuntimes=runtimes, systemDependencies=sorted(external), optionalConnectors=plugins, files=files)
 (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 archive = output.parent / f'UniversalData-{version}-linux-x64.zip'

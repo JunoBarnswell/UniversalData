@@ -152,7 +152,8 @@ enum {
  * explicit provider UTC annotation, never the machine's local timezone. */
 UD_API ud_status ud_field_from_sql(ud_string declaration, int32_t dialect, ud_field *);
 /* Owned canonical schema/diff results. Native policy JSON accepts strict,
- * compatible, or explicitMapping with complete expected/actual ID/name pairs. */
+ * compatible, explicitMapping, or evolutionMapping with complete expected/actual
+ * ID/name pairs. evolutionMapping also proves lossless values and unchanged keys. */
 UD_API ud_status ud_schema_fingerprint(const ud_batch *, uint8_t out[32]);
 UD_API ud_status ud_schema_from_metadata(ud_context *, const ud_batch *, ud_string, int32_t,
                                          ud_batch **);

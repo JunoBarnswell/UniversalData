@@ -168,8 +168,6 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                                                       : -1;
         if (!s && file_mode < 0)
             s = UD_SCHEMA;
-        if (!s && file_mode == UD_FILE_APPEND && kind == XLSX_SINK)
-            s = UD_UNSUPPORTED; /* Workbook preservation contract is separate from row append. */
         if (!s)
             s = ud_file_generation_open(c->activation, b->lease, c->component_id, b->path,
                                         file_mode, &b->generation);
@@ -193,6 +191,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
             s = ud_json_writer_open(c->memory, b->temporary, b->fields, b->columns, 1048576,
                                     &b->writer);
         if (!s && kind == XLSX_SINK && !b->generation->prepared) {
+            if (b->generation->mode == UD_FILE_APPEND && b->generation->base_exists)
+                s = ud_file_generation_check_original(b->generation);
             char *configuration = NULL;
             uint32_t length = 0;
             s = ud_json_serialize(b->config, &configuration, &length);
@@ -203,7 +203,11 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                                        .buffers = c->execution->buffers,
                                        .check = ud_builtin_operator_check,
                                        .user = c->activation,
-                                       .stage_bytes = &b->stage_bytes};
+                                       .stage_bytes = &b->stage_bytes,
+                                       .original_path = b->generation->mode == UD_FILE_APPEND &&
+                                                                b->generation->base_exists
+                                                            ? b->generation->original
+                                                            : NULL};
             if (!s)
                 s = ud_xlsx_writer_open(c->memory, b->temporary, b->fields, b->columns, &options,
                                         &b->xlsx_writer);
@@ -213,21 +217,25 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
 #ifdef UD_WITH_ARROW_FILES
     if (!s && (kind == PARQUET_SINK || kind == IPC_SINK || kind == IPC_STREAM_SINK) &&
         !b->generation->prepared) {
-        ud_columnar_file_options options = {.struct_size = sizeof(options),
-                                            .abi_version = UD_ABI_VERSION,
-                                            .batch_rows = c->max_batch_rows,
-                                            .format = kind == PARQUET_SINK ? UD_FILE_PARQUET
-                                                      : kind == IPC_SINK   ? UD_FILE_ARROW_IPC
-                                                                           : UD_FILE_ARROW_STREAM,
-                                            .buffers = c->execution->buffers,
-                                            .check = ud_builtin_operator_check,
-                                            .user = c->activation,
-                                            .stage_bytes = &b->stage_bytes};
+        ud_columnar_file_options options = {
+            .struct_size = sizeof(options),
+            .abi_version = UD_ABI_VERSION,
+            .batch_rows = c->max_batch_rows,
+            .format = kind == PARQUET_SINK ? UD_FILE_PARQUET
+                      : kind == IPC_SINK   ? UD_FILE_ARROW_IPC
+                                           : UD_FILE_ARROW_STREAM,
+            .buffers = c->execution->buffers,
+            .check = ud_builtin_operator_check,
+            .user = c->activation,
+            .stage_bytes = &b->stage_bytes,
+            .original_path = b->generation->mode == UD_FILE_APPEND && b->generation->base_exists
+                                 ? b->generation->original
+                                 : NULL};
         s = ud_columnar_writer_open(c->memory, b->temporary, b->schema, &options,
                                     &b->columnar_writer);
     }
 #endif
-    if (!s && file_sink(kind) && b->generation->mode == UD_FILE_APPEND &&
+    if (!s && file_sink(kind) && kind != XLSX_SINK && b->generation->mode == UD_FILE_APPEND &&
         b->generation->base_exists && !b->generation->prepared)
         s = ud_builtin_sink_append_original(b);
     if (!s && kind == SQL_SINK && ud_member(b->config, "provisionReceipts")) {
@@ -452,7 +460,7 @@ static const char *configuration_schema(int kind) {
                "\"partitionCount\":{\"type\":\"integer\"},\"partitionId\":{\"type\":\"integer\"},"
                "\"partitionBegin\":{\"type\":\"integer\"},\"partitionEnd\":{\"type\":\"integer\"},"
                "\"incremental\":{\"type\":\"object\"},\"schemaPolicy\":{\"type\":\"object\"},"
-               "\"table\":{\"type\":\"string\"},\"nullMarker\":{\"type\":\"string\"},"
+               "\"table\":{\"type\":\"string\"},"
                "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
                "\"required\":"
                "[\"connection\",\"schema\"],\"additionalProperties\":false}";
@@ -579,7 +587,8 @@ static const char *configuration_schema(int kind) {
     case XLSX_SINK:
         return "{\"type\":\"object\",\"required\":[\"connection\"],\"properties\":{\"connection\":{"
                "\"type\":\"string\"},\"fileMode\":{\"type\":\"string\",\"enum\":[\"create\","
-               "\"overwrite\"],\"default\":\"create\"},\"sheet\":{\"type\":\"string\"},\"header\":{"
+               "\"overwrite\",\"append\"],\"default\":\"create\"},\"sheet\":{\"type\":\"string\"},"
+               "\"header\":{"
                "\"type\":"
                "\"boolean\"},\"datePolicy\":{\"type\":\"string\"},\"maxCompressedBytes\":{\"type\":"
                "\"integer\"}},\"additionalProperties\":false}";

@@ -13,7 +13,8 @@ typedef struct ud_xlsx_options {
     ud_buffer_manager *buffers;
     ud_status (*check)(void *);
     void *user;
-    uint64_t *stage_bytes; /* Writer reserves existing Buffer spill quota until publication. */
+    uint64_t *stage_bytes;     /* Writer reserves existing Buffer spill quota until publication. */
+    const char *original_path; /* Writer-only frozen workbook generation for preserving append. */
 } ud_xlsx_options;
 UD_API ud_status ud_xlsx_reader_open(ud_context *, const char *, const ud_field *, uint32_t,
                                      const ud_xlsx_options *, ud_xlsx_reader **);

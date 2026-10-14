@@ -11,7 +11,7 @@ function Property({ name, schema, value, required, change }: { name: string; sch
   if (schema.type === 'boolean') return <label className="checkbox" htmlFor={id}><input id={id} type="checkbox" checked={value === true} onChange={event => change(event.target.checked)}/>{label}</label>;
   if (schema.enum) return <label htmlFor={id}>{label}<select id={id} value={String(value ?? '')} onChange={event => change(event.target.value)}><option value="">请选择</option>{schema.enum.map(option => <option key={String(option)} value={String(option)}>{String(option)}</option>)}</select></label>;
   if (schema.type === 'object' || schema.type === 'array') return <JsonProperty key={encode(value)} label={label} id={id} value={value} change={change}/>;
-  return <label htmlFor={id}>{label}<input id={id} type={schema.type === 'integer' || schema.type === 'number' ? 'number' : 'text'} value={typeof value === 'string' || typeof value === 'number' ? value : ''} onChange={event => change(schema.type === 'integer' || schema.type === 'number' ? Number(event.target.value) : event.target.value)}/></label>;
+  return <label htmlFor={id}>{label}<input id={id} type={schema.type === 'integer' || schema.type === 'number' ? 'number' : 'text'} value={typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint' ? String(value) : ''} onChange={event => change(schema.type === 'integer' || schema.type === 'number' ? event.target.value ? decode(event.target.value) : undefined : event.target.value)}/></label>;
 }
 function JsonProperty({ label, id, value, change }: { label: string; id: string; value: unknown; change: (value: unknown) => void }) {
   const [draft, setDraft] = useState(() => value === undefined ? '' : encode(value, 2));

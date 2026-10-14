@@ -22,6 +22,6 @@ export default function App() {
   const items: { key: Page; label: string; icon: typeof Box }[] = [{ key: 'designer', label: '设计器', icon: Box }, { key: 'runs', label: '执行', icon: Play }, { key: 'logs', label: '日志', icon: List }, { key: 'jobs', label: '作业', icon: CalendarDays }];
   return <div className="application"><header className="main-header"><a className="brand" href="#" onClick={() => setPage('designer')}><Box size={28} fill="#087f8c" color="#087f8c"/><strong>UniversalData</strong></a><nav aria-label="主导航">{items.map(({ key, label, icon: Icon }) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><Icon size={16}/>{label}</button>)}</nav><button className="primary deploy" disabled={!saved} onClick={() => void deploy()}><Upload size={16}/>部署</button></header>
     {error ? <div role="alert" className="banner">{error}<button aria-label="关闭提示" onClick={() => setError('')}>×</button></div> : null}
-    {page === 'designer' ? <Editor components={components} saved={setSaved} deploy={deploy}/> : page === 'runs' || page === 'logs' ? <Executions logsOnly={page === 'logs'}/> : <Jobs/>}
+    <div className="designer-page" hidden={page !== 'designer'}><Editor components={components} saved={setSaved} deploy={deploy}/></div>{page === 'runs' || page === 'logs' ? <Executions logsOnly={page === 'logs'}/> : page === 'jobs' ? <Jobs/> : null}
   </div>;
 }

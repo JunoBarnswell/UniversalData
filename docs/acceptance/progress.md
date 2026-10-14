@@ -42,23 +42,23 @@ SDK 2.0.0 / ABI 10；2.0 bulk implementation in progress: Native correctness and
 | ETL-032 Import and Export Column | Partial / NotRun |
 | ETL-033 XML Source | Partial / NotRun |
 | ETL-034 XPath XSLT and XSD tasks | Partial / NotRun |
-| ETL-035 SMTP task | Partial / NotRun |
-| ETL-036 Windows WMI tasks | Partial / NotRun |
-| ETL-037 FTP and SFTP resources | Partial / NotRun |
+| ETL-035 SMTP task | Partial / Blocked |
+| ETL-036 Windows WMI tasks | Partial / Blocked |
+| ETL-037 FTP and SFTP resources | Partial / Blocked |
 | ETL-038 Avro IO | Partial / NotRun |
 | ETL-039 DQS removed by Microsoft | NotApplicable / NotApplicable |
 | ETL-040 SSAS Data Mining no longer supported | NotApplicable / NotApplicable |
-| ETL-041 SQL Server maintenance Agent and SSAS XMLA | Partial / NotRun |
+| ETL-041 SQL Server maintenance Agent and SSAS XMLA | Partial / Blocked |
 | ETL-042 Exact Distinct profiling with shared Compute budget | Implemented / NotRun |
 | ETL-043 Durable job queue and schedules | Partial / NotRun |
 | ETL-044 Proven filter pushdown and streaming JSON array | Partial / NotRun |
-| ETL-045 Azure Blob and ADLS Gen2 | Partial / NotRun |
-| ETL-046 S3 and MinIO | Partial / NotRun |
+| ETL-045 Azure Blob and ADLS Gen2 | Partial / Blocked |
+| ETL-046 S3 and MinIO | Partial / Blocked |
 | ETL-047 ASP.NET Core 10 management and isolated workers | Partial / NotRun |
 | ETL-048 React Flow package designer | Partial / NotRun |
 | ETL-049 Safe native runtime debugging | Partial / NotRun |
 | ETL-050 Full Linux and Windows driver CI | Partial / NotRun |
-| ETL-051 Independent release consumers and capability manifests | Planned / NotRun |
+| ETL-051 Independent release consumers and capability manifests | Partial / NotRun |
 | ETL-052 HTTP response variable mappings | Partial / NotRun |
 
 三轮有界设计复核：

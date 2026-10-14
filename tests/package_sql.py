@@ -18,6 +18,6 @@ with tempfile.TemporaryDirectory(prefix='ud-package-sql-') as folder:
  'paths':[{'from':a,'output':port,'to':b,'input':0} for a,port,b in [('source',0,'derive'),('derive',0,'split'),('split',0,'target'),('split',1,'reject')]]}]}
  p=r/'package.json';p.write_text(json.dumps(package));subprocess.run([sys.argv[1],str(p),str(source),str(target)],check=True)
  c=sqlite3.connect(target);assert c.execute('SELECT x,twice FROM dest ORDER BY x').fetchall()==[(i,i*2) for i in range(20)]
- assert c.execute('SELECT count(*) FROM ud_sdk_receipts_v2').fetchone()[0]>=2;c.close()
+ assert c.execute('SELECT count(*) FROM ud_sdk_receipts_v10').fetchone()[0]>=2;c.close()
  rows=[json.loads(line) for line in (r/'rejected.ndjson').read_text().splitlines()];assert rows==[{'x':i,'twice':i*2} for i in range(20,31)]
  print('Package: SQL task/source share Connection Manager, bounded SQL cursor, derive/split, transaction receipts and file error path passed')

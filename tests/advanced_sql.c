@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
     OK(ud_connection_provision(c));
     if (!resume)
         OK(command(
-            c, "DELETE FROM ud_sdk_receipts_v2 WHERE tenant='advanced' AND job='advanced-sql'"));
+            c, "DELETE FROM ud_sdk_receipts_v10 WHERE tenant='advanced' AND job='advanced-sql'"));
     ud_batch *metadata = NULL, *actual_schema = NULL;
     OK(ud_connection_discover(c, str("ud_advanced_rows"), &metadata));
     CHECK(ud_batch_rows(metadata) == 6);

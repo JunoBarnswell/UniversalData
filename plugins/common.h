@@ -49,7 +49,8 @@ static inline ud_status plugin_record_finish(const ud_host_api *host,
     if (!conversion)
         conversion = host->append(batch, values, columns);
     if (options->record && (!conversion || plugin_record_conversion(conversion)))
-        return options->record(options->record_user, batch, conversion, bad, fields, raw, columns);
+        return options->record(options->record_user, batch, conversion, bad, fields, values, raw,
+                               columns);
     return conversion;
 }
 static inline void plugin_shutdown(void) {}

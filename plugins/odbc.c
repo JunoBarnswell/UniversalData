@@ -712,6 +712,8 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
                 s = p->host.parse_field(p->host.context, fields + i, owned[i], n, UD_ROUND_EXACT,
                                         values + i);
             if (plugin_record_conversion(s)) {
+                values[i].is_absent = 1;
+                values[i].is_null = 1;
                 if (!conversion) {
                     conversion = s;
                     bad = i;

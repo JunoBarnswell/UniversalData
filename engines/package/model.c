@@ -77,6 +77,33 @@ ud_status ud_connection_definitions_check(const ud_json *defs) {
     }
     return UD_OK;
 }
+static ud_status layout_control(const ud_package *package, ud_string flow, const ud_json **out) {
+    *out = ud_member(package->document, "controlFlow");
+    if (ud_named(flow, "control"))
+        return UD_OK;
+    ud_json *path = NULL;
+    ud_status status = ud_json_parse(package->ctx, flow.data + 8, flow.length - 8, &path, NULL);
+    if (!status &&
+        (ud_json_kind(path) != UD_JSON_ARRAY || !ud_json_size(path) || ud_json_size(path) > 32))
+        status = UD_SCHEMA;
+    for (uint32_t depth = 0; !status && depth < ud_json_size(path); depth++) {
+        ud_string id;
+        status = ud_json_string(ud_json_at(path, depth), &id);
+        const ud_json *found = NULL;
+        const ud_json *tasks = ud_member(*out, "tasks");
+        for (uint32_t at = 0; !status && at < ud_json_size(tasks); at++) {
+            ud_string task_id;
+            status = ud_json_string(ud_member(ud_json_at(tasks, at), "id"), &task_id);
+            if (!status && ud_same(id, task_id))
+                found = ud_member(ud_json_at(tasks, at), "children");
+        }
+        if (!status && (!found || ud_json_kind(found) != UD_JSON_OBJECT))
+            status = UD_SCHEMA;
+        *out = found;
+    }
+    ud_json_destroy(path);
+    return status;
+}
 ud_status ud_package_check(const ud_package *p) {
     static const char *keys[] = {"version",       "id",          "parameters", "variables",
                                  "connections",   "controlFlow", "dataFlows",  "policy",
@@ -233,8 +260,10 @@ ud_status ud_package_check(const ud_package *p) {
                 ud_string flow;
                 UD_TRY(ud_json_string(ud_member(entry, "flow"), &flow));
                 const ud_json *graph = NULL;
-                if (ud_named(flow, "control"))
-                    graph = ud_member(p->document, "controlFlow");
+                int control = ud_named(flow, "control") ||
+                              (flow.length > 8 && !memcmp(flow.data, "control:", 8));
+                if (control)
+                    UD_TRY(layout_control(p, flow, &graph));
                 for (uint32_t at = 0; !graph && at < ud_json_size(flows); at++) {
                     ud_string id;
                     UD_TRY(ud_json_string(ud_member(ud_json_at(flows, at), "id"), &id));
@@ -246,8 +275,7 @@ ud_status ud_package_check(const ud_package *p) {
                 ud_string node = {0};
                 if (!collection) {
                     UD_TRY(ud_json_string(ud_member(entry, "id"), &node));
-                    const ud_json *items =
-                        ud_member(graph, ud_named(flow, "control") ? "tasks" : "components");
+                    const ud_json *items = ud_member(graph, control ? "tasks" : "components");
                     int found = 0;
                     for (uint32_t at = 0; at < ud_json_size(items); at++) {
                         ud_string id;

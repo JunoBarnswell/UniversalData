@@ -434,6 +434,8 @@ static ud_status read_next(void *state, ud_batch **out) {
                 s = p->host.parse_field(p->host.context, fields + i, b.owned[i],
                                         (uint32_t)b.length[i], UD_ROUND_EXACT, v);
             if (plugin_record_conversion(s)) {
+                v->is_absent = 1;
+                v->is_null = 1;
                 if (!conversion) {
                     conversion = s;
                     bad = i;

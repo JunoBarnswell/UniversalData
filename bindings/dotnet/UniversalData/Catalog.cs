@@ -86,11 +86,11 @@ public sealed class Catalog : IDisposable
         lock (sync)
         {
             Open(); using var strings = new NativeStrings(executionEvent.PackageId, executionEvent.ExecutionId,
-                executionEvent.TaskId, executionEvent.PipelineId, executionEvent.ComponentId);
+                executionEvent.TaskId, executionEvent.PipelineId, executionEvent.ComponentId, executionEvent.ErrorChain);
             var value = new Native.ExecutionEventValue { Size = (uint)Marshal.SizeOf<Native.ExecutionEventValue>(), Abi = ProductVersion.Abi,
                 PackageId = strings[0], ExecutionId = strings[1], TaskId = strings[2], PipelineId = strings[3], ComponentId = strings[4],
                 State = (int)executionEvent.State, Result = (int)executionEvent.Result, Timestamp = executionEvent.TimestampMilliseconds,
-                Kind = (int)executionEvent.Kind, Sequence = executionEvent.Sequence };
+                Kind = (int)executionEvent.Kind, Sequence = executionEvent.Sequence, ErrorChain = strings[5] };
             DataOwnership.Check(context, Native.ud_catalog_record_event(catalog, ref value, executionEvent.Sequence));
         }
     }

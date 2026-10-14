@@ -1,7 +1,8 @@
 #include "builtins_internal.h"
 #include "ud/sql.h"
 static ud_status sql_record(void *user, ud_batch *batch, ud_status code, uint32_t column,
-                            const ud_field *fields, const ud_value *cells, uint32_t count) {
+                            const ud_field *fields, const ud_value *decoded, const ud_value *cells,
+                            uint32_t count) {
     builtin *source = user;
     ud_row_info identity;
     if (source->sql_record_ordinal == UINT64_MAX)
@@ -11,6 +12,39 @@ static ud_status sql_record(void *user, ud_batch *batch, ud_status code, uint32_
         return ud_batch_set_row_info(batch, ud_batch_rows(batch) - 1, &identity);
     if (!ud_record_error_recoverable(code) || source->records.policy == UD_ERROR_FAIL)
         return code;
+    if (source->cursor && source->cursor->count) {
+        /* An unparseable cursor key cannot be silently skipped. Other failed
+         * fields are explicit absence while the common schema mapper binds keys. */
+        ud_batch *record = NULL, *mapped = NULL, *identified = NULL;
+        ud_status keys = ud_batch_create(source->context.memory, fields, count, 1, &record);
+        if (!keys)
+            keys = ud_batch_append(record, decoded, count);
+        if (!keys)
+            keys = ud_batch_seal(record);
+        if (!keys)
+            keys = ud_schema_map(source->context.memory, record, source->schema,
+                                 source->schema_policy, &mapped);
+        for (uint32_t at = 0; !keys && at < source->cursor->count; at++) {
+            ud_value value;
+            keys = ud_batch_get(mapped, 0, source->cursor->keys[at], &value);
+            if (!keys && (value.is_null || value.is_absent))
+                keys = UD_QUALITY;
+        }
+        if (!keys)
+            keys = ud_batch_identify_keys(source->context.memory, mapped, source->source_scope,
+                                          source->cursor->keys, source->cursor->count, &identified);
+        if (!keys) {
+            ud_row_info keyed;
+            keys = ud_batch_row_info(identified, 0, &keyed);
+            identity.id = keyed.id;
+            identity.origins = keyed.origins;
+        }
+        ud_batch_destroy(record);
+        ud_batch_destroy(mapped);
+        ud_batch_destroy(identified);
+        if (keys)
+            return keys;
+    }
     if (source->records.policy == UD_ERROR_IGNORE)
         return UD_OK;
     if (!source->source_errors)

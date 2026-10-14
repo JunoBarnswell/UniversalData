@@ -68,13 +68,17 @@ try {
         if (!(Test-Path -LiteralPath (Join-Path $nativeDirectory $file) -PathType Leaf)) { throw "Missing installed library: $file" }
     }
     foreach ($hostName in @('ud_cli','ud_worker')) {
+        $folder = if ($hostName -eq 'ud_cli') { 'cli' } else { 'worker' }
         $hostFile = if ($IsWindows) { "$hostName.exe" } else { $hostName }
-        if (!(Test-Path -LiteralPath (Join-Path $sdk "bin/$hostFile") -PathType Leaf)) { throw "Missing installed host: $hostFile" }
+        if (!(Test-Path -LiteralPath (Join-Path $sdk "bin/universaldata/$folder/$hostFile") -PathType Leaf)) { throw "Missing installed host: $hostFile" }
     }
+    if (!(Test-Path -LiteralPath (Join-Path $sdk 'bin/universaldata/management/wwwroot/index.html'))) { throw 'Management/designer product assets are missing.' }
     $header = Get-Content -LiteralPath (Join-Path $sdk 'include/ud/version.h') -Raw
     if ($header -notmatch "#define UD_ABI_VERSION $($abi)u") { throw 'The installed SDK ABI differs from the product model.' }
-    $capabilities = [ordered]@{ sqlite = ($cache['UD_WITH_SQLITE'] -eq 'ON'); postgresql = ($cache['UD_WITH_POSTGRESQL'] -eq 'ON'); httpTask = ($cache['UD_WITH_HTTP'] -eq 'ON') }
-    foreach ($driver in @('sqlite','postgresql')) {
+    $capabilities = [ordered]@{}
+    foreach ($feature in @('sqlite','postgresql','odbc','mysql','mariadb','oracle_oci','arrow_files','http','xml','network')) { $capabilities[$feature] = ($cache['UD_WITH_' + $feature.ToUpperInvariant()] -eq 'ON') }
+    if ($cache['UD_BUILD_PROFILE'] -eq 'PRODUCT' -and $capabilities.Values -contains $false) { throw 'Complete product dependencies cannot silently downgrade.' }
+    foreach ($driver in @('sqlite','postgresql','odbc','mysql','mariadb','oracle_oci')) {
         if ($capabilities[$driver]) {
             $plugin = "ud_connector_$driver" + $(if ($IsWindows) { '.dll' } else { '.so' })
             if (!(Test-Path -LiteralPath (Join-Path $sdk "lib/UniversalData/plugins/$plugin") -PathType Leaf)) { throw "Missing enabled connector: $plugin" }
@@ -94,7 +98,7 @@ try {
         [ordered]@{ path = [IO.Path]::GetRelativePath($stage,$_.FullName).Replace('\','/'); bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     })
     $manifest = [ordered]@{
-        schemaVersion = 1; sdkVersion = $version; abiVersion = $abi; runtimeIdentifier = $RuntimeIdentifier
+        schemaVersion = 10; protocolVersion = $product.protocolVersion; buildProfile = $cache['UD_BUILD_PROFILE']; sdkVersion = $version; abiVersion = $abi; runtimeIdentifier = $RuntimeIdentifier
         configuration = $Configuration; sourceFingerprint = $fingerprint; capabilities = $capabilities
         files = $files
     }

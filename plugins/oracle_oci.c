@@ -393,7 +393,7 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
     oracle *p = state;
     *out = NULL;
     if (!p->cursor)
-        return UD_INVALID;
+        return UD_END;
     ud_field *f = NULL;
     ud_status s = plugin_fields(&p->host, p->schema, &f);
     if (!s)
@@ -491,6 +491,8 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
                 }
             }
             if (plugin_record_conversion(s)) {
+                v[i].is_absent = 1;
+                v[i].is_null = 1;
                 if (!conversion) {
                     conversion = s;
                     bad = i;

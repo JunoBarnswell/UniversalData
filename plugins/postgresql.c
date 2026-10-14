@@ -584,8 +584,8 @@ static ud_status parse_row(postgres_state *p, const PGresult *r, ud_batch *batch
                             .is_null = PQgetisnull(r, 0, (int)j),
                             .text = PQgetvalue(r, 0, (int)j),
                             .text_length = (uint32_t)PQgetlength(r, 0, (int)j)};
+    ud_status conversion = UD_OK;
     for (uint32_t j = 0; !s && j < columns; j++) {
-        bad = j;
         ud_field field;
         h->field(p->schema, j, &field);
         if (strcmp(field.name, PQfname(r, (int)j)) ||
@@ -631,10 +631,19 @@ static ud_status parse_row(postgres_state *p, const PGresult *r, ud_batch *batch
             }
         } else
             s = h->parse_field(h->context, &field, text, length, UD_ROUND_EXACT, v);
+        if (plugin_record_conversion(s)) {
+            if (!conversion) {
+                conversion = s;
+                bad = j;
+            }
+            s = UD_OK;
+            v->is_absent = 1;
+            v->is_null = 1;
+        }
     }
-    if (!s || plugin_record_conversion(s))
-        s = plugin_record_finish(h, &p->record_options, batch, fields, values, raw, columns, s,
-                                 bad);
+    if (!s)
+        s = plugin_record_finish(h, &p->record_options, batch, fields, values, raw, columns,
+                                 conversion, bad);
     for (uint32_t j = 0; j < columns; j++)
         if (binary[j])
             PQfreemem(binary[j]);
