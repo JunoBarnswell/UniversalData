@@ -508,7 +508,7 @@ static ud_status decode(ud_pg_cdc *p, packet *input, ud_cdc_event *out) {
             status = p->host.schema_from_metadata(
                 p->host.context, metadata,
                 (ud_string){p->field_namespace, (uint32_t)strlen(p->field_namespace)},
-                UD_SQL_POSTGRESQL, &actual);
+                p->host.resource_namespace,UD_SQL_POSTGRESQL, &actual);
         if (!status)
             status = p->host.schema_bind_identity(p->host.context, p->schema, actual, &aligned);
         p->host.batch_destroy(metadata);

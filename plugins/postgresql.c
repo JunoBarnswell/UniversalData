@@ -1085,6 +1085,13 @@ static int transaction_statement(const char *sql) {
            !strcmp(token, "ROLLBACK") || !strcmp(token, "SAVEPOINT") || !strcmp(token, "RELEASE") ||
            !strcmp(token, "END") || !strcmp(token, "PREPARE");
 }
+static ud_status savepoint(void *state,ud_string statement) {
+    postgres_state *p=state;
+    if (!p->transaction) return UD_UNSUPPORTED;
+    char *sql=plugin_string(&p->host,statement.data,statement.length);
+    if (!sql) return UD_RESOURCE;
+    ud_status status=command(p,sql); p->host.deallocate(sql); return status;
+}
 static ud_status execute_command(void *state, const ud_read_options *options, uint64_t *processed) {
     postgres_state *p = state;
     if (processed)
@@ -1448,7 +1455,7 @@ static ud_status cdc_close(void *state) {
 static const ud_connector_api connector = {
     .struct_size = sizeof(connector),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities =
+    .capabilities = UD_CONNECT_TRANSACTIONAL_DML |
         UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
         UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
         UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
@@ -1471,6 +1478,7 @@ static const ud_connector_api connector = {
     .reset_session = reset_session,
     .session_capabilities = session_capabilities,
     .record_diagnostic = record_diagnostic,
+    .savepoint = savepoint,
     .provision = provision,
     .metadata_dialect = UD_SQL_POSTGRESQL,
     .parameter_style = UD_SQL_PARAMETER_NUMBERED,
@@ -1496,6 +1504,6 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
                            destroy,
                            plugin_shutdown,
                            &connector,
-                           NULL};
+                           NULL,sizeof(ud_field),sizeof(ud_value)};
     return UD_OK;
 }

@@ -1,20 +1,69 @@
-import { encode, decode } from './api';
-import { useState } from 'react';
-import type { Configuration, PropertySchema } from './model';
-export function PropertyForm({ schema, value, change }: { schema: PropertySchema; value: Configuration; change: (value: Configuration) => void }) {
-  return <div className="property-form">{Object.entries(schema.properties ?? {}).map(([name, definition]) => <Property key={name} name={name} schema={definition} value={value[name]} required={schema.required?.includes(name) ?? false} change={next => change({ ...value, [name]: next })}/>)}</div>;
+import { useId, useState } from 'react';
+import { decode, encode } from './api';
+import { DataSchemaEditor } from './DataSchemaEditor';
+import type { Configuration, DataField, PropertySchema } from './model';
+
+type Context = { fields: DataField[]; inputs: DataField[][] };
+const empty: DataField[] = [];
+const captions: Record<string, string> = { connection: '连接', schema: '数据结构', errorPolicy: '异常行处理', includeInput: '保留原始输入', keys: '键字段', columns: '输出字段', table: '表', batchSize: '批次行数',
+  leftKeys: '左侧连接键', rightKeys: '右侧连接键', joinType: '连接类型', groups: '分组字段', aggregates: '聚合计算', groupBy: '分组字段', expression: '表达式', condition: '条件', branches: '分流规则',
+  businessKeys: '业务键', valueColumn: '值字段', referenceKeys: '引用字段', inputKeys: '输入字段', noMatch: '未命中处理', statement: 'SQL 命令', parameters: '参数映射', rules: '质量规则',
+  url: '地址', method: '请求方法', headers: '请求头', body: '请求内容', pagination: '分页', fields: '字段', nullable: '允许为空', name: '名称', type: '类型', source: '源字段', target: '目标字段',
+  function: '函数', column: '字段', precision: '精度', scale: '小数位数', readerSchema: '读取结构', maxRows: '最大行数', partitions: '分区数', topic: '主题', offset: '开始位置', format: '文件格式' };
+export function PropertyForm({ schema, value, change, fields = empty, inputs = [] }: { schema: PropertySchema; value: Configuration; change: (value: Configuration) => void; fields?: DataField[]; inputs?: DataField[][] }) {
+  return <ObjectProperties schema={schema} value={value} change={change} context={{ fields, inputs }} path=""/>;
 }
-function Property({ name, schema, value, required, change }: { name: string; schema: PropertySchema; value: unknown; required: boolean; change: (value: unknown) => void }) {
-  const id = `property-${name}`;
-  const captions: Record<string, string> = { connection: '连接', schema: '数据 Schema', errorPolicy: '错误策略', includeInput: '保留原始输入', keys: '键字段', columns: '字段映射', table: '目标表', batchSize: '批次行数' };
+function typeOf(value: unknown): string {
+  return Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value === 'object' ? 'object' : typeof value === 'number' || typeof value === 'bigint' ? 'number' : typeof value === 'boolean' ? 'boolean' : 'string';
+}
+function initial(schema: PropertySchema): unknown {
+  if (schema.default !== undefined) return structuredClone(schema.default);
+  if (schema.enum?.length) return schema.enum[0];
+  const type = Array.isArray(schema.type) ? schema.type.find(type => type !== 'null') : schema.type;
+  return type === 'object' ? {} : type === 'array' ? [] : type === 'null' ? null : type === 'boolean' ? false : type === 'integer' || type === 'number' ? 0 : '';
+}
+function ObjectProperties({ schema, value, change, context, path }: { schema: PropertySchema; value: Configuration; change: (value: Configuration) => void; context: Context; path: string }) {
+  const [newName, setName] = useState(''), [newType, setType] = useState('string');
+  const names = [...new Set([...Object.keys(schema.properties ?? {}), ...Object.keys(value)])];
+  const dynamic = schema.additionalProperties !== false;
+  return <div className="property-form">{names.map(name => {
+    const definition = schema.properties?.[name] ?? (typeof schema.additionalProperties === 'object' ? schema.additionalProperties : { type: typeOf(value[name]) });
+    return <div className="property-entry" key={name}><Property name={name} path={`${path}/${name}`} schema={definition} value={value[name]} required={schema.required?.includes(name) ?? false} context={context} change={next => { const result = { ...value }; if (next === undefined) delete result[name]; else result[name] = next; change(result); }}/>
+      {!schema.properties?.[name] || !(schema.required ?? []).includes(name) && value[name] !== undefined ? <button type="button" className="text-button" onClick={() => { const next = { ...value }; delete next[name]; change(next); }}>移除 {captions[name] ?? name}</button> : null}</div>;
+  })}{dynamic ? <div className="property-entry"><label>添加属性<input value={newName} onChange={event => setName(event.target.value)} placeholder="属性名称"/></label><label>值类型<select value={newType} onChange={event => setType(event.target.value)}><option value="string">文本</option><option value="number">数值</option><option value="boolean">开关</option><option value="object">对象</option><option value="array">列表</option></select></label><button type="button" disabled={!newName || Object.hasOwn(value, newName)} onClick={() => { change({ ...value, [newName]: initial({ type: newType }) }); setName(''); }}>添加属性</button></div> : null}</div>;
+}
+function Property({ name, path, schema, value, required, change, context }: { name: string; path: string; schema: PropertySchema; value: unknown; required: boolean; change: (value: unknown) => void; context: Context }) {
+  const id = useId();
   const label = `${captions[name] ?? schema.title ?? name}${required ? ' *' : ''}`;
-  if (schema.type === 'boolean') return <label className="checkbox" htmlFor={id}><input id={id} type="checkbox" checked={value === true} onChange={event => change(event.target.checked)}/>{label}</label>;
-  if (schema.enum) return <label htmlFor={id}>{label}<select id={id} value={String(value ?? '')} onChange={event => change(event.target.value)}><option value="">请选择</option>{schema.enum.map(option => <option key={String(option)} value={String(option)}>{String(option)}</option>)}</select></label>;
-  if (schema.type === 'object' || schema.type === 'array') return <JsonProperty key={encode(value)} label={label} id={id} value={value} change={change}/>;
-  return <label htmlFor={id}>{label}<input id={id} type={schema.type === 'integer' || schema.type === 'number' ? 'number' : 'text'} value={typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint' ? String(value) : ''} onChange={event => change(schema.type === 'integer' || schema.type === 'number' ? event.target.value ? decode(event.target.value) : undefined : event.target.value)}/></label>;
+  const type = Array.isArray(schema.type) ? schema.type.find(type => type !== 'null') : schema.type ?? typeOf(value);
+  const variants = schema.oneOf ?? schema.anyOf;
+  if (variants?.length) return <fieldset className="property-group"><legend>{label}</legend><Variant name={name} path={path} choices={variants} value={value} change={change} context={context}/></fieldset>;
+  if (schema.enum) return <label htmlFor={id}>{label}<select id={id} value={value === undefined ? '' : encode(value)} onChange={event => change(event.target.value ? decode(event.target.value) : undefined)}><option value="">请选择</option>{schema.enum.map(option => <option key={encode(option)} value={encode(option)}>{String(option)}</option>)}</select></label>;
+  if (type === 'boolean') return <label className="checkbox" htmlFor={id}><input id={id} type="checkbox" checked={value === true} onChange={event => change(event.target.checked)}/>{label}</label>;
+  if (['expression', 'condition', 'predicate'].includes(name) || value && typeof value === 'object' && !Array.isArray(value) && ['op', 'literal', 'ref', 'column', 'function'].some(key => Object.hasOwn(value, key)))
+    return <fieldset className="property-group"><legend>{label}</legend><Expression value={value as Configuration | undefined} change={change} context={context}/></fieldset>;
+  if (name === 'schema' && type === 'object') return <fieldset className="property-group"><legend>{label}</legend><DataSchemaEditor value={value} change={change}/></fieldset>;
+  if (schema.type === undefined && schema.properties === undefined) return <fieldset className="property-group"><legend>{label}</legend><label>值类型<select value={typeOf(value)} onChange={event => change(initial({ type: event.target.value }))}>{['string', 'number', 'boolean', 'object', 'array', 'null'].map(kind => <option key={kind} value={kind}>{({ string: '文本', number: '数值', boolean: '开关', object: '对象', array: '列表', null: '空值' })[kind]}</option>)}</select></label>{value === null ? null : <Property name={name} path={path} schema={{ ...schema, type: typeOf(value) }} value={value} required={required} context={context} change={change}/>}</fieldset>;
+  if (type === 'object') return <fieldset className="property-group"><legend>{label}</legend><ObjectProperties schema={schema} value={value && typeof value === 'object' && !Array.isArray(value) ? value as Configuration : {}} change={change} context={context} path={path}/></fieldset>;
+  if (type === 'array') {
+    const entries = Array.isArray(value) ? value : [], itemSchema = schema.items ?? {};
+    return <fieldset className="property-group"><legend>{label}</legend><div className="property-list">{entries.map((entry, index) => <div className="property-entry" key={index}><header><strong>{index + 1}</strong><div><button type="button" disabled={index === 0} onClick={() => { const next = [...entries]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; change(next); }}>上移</button><button type="button" onClick={() => change(entries.filter((_, at) => at !== index))}>移除</button></div></header><Property name={name} path={`${path}/${index}`} schema={itemSchema} value={entry} required context={context} change={next => change(entries.map((entry, at) => at === index ? next : entry))}/></div>)}</div><button type="button" disabled={schema.maxItems !== undefined && entries.length >= schema.maxItems} onClick={() => change([...entries, initial(itemSchema)])}>添加{captions[name] ?? name}</button></fieldset>;
+  }
+  const available = /right|reference/i.test(path) ? context.inputs[1] ?? context.fields : context.fields;
+  if ((type === 'integer' || type === 'number') && /column|keys|groups|parameters|partition/i.test(path) && available.length)
+    return <label htmlFor={id}>{label}<select id={id} value={value === undefined ? '' : String(value)} onChange={event => change(event.target.value ? Number(event.target.value) : undefined)}><option value="">选择字段</option>{available.map((field, index) => <option key={field.identity ?? `${field.name}/${index}`} value={index}>{field.name} · {field.type}</option>)}</select></label>;
+  if (name === 'statement' || name === 'sql' || name === 'xpath' || name === 'xslt' || name === 'xsd') return <label htmlFor={id}>{label}<textarea id={id} value={typeof value === 'string' ? value : ''} onChange={event => change(event.target.value)} spellCheck={false}/></label>;
+  return <label htmlFor={id}>{label}<input id={id} required={required} type={type === 'integer' || type === 'number' ? 'number' : 'text'} min={schema.minimum} max={schema.maximum} step={type === 'integer' ? 1 : 'any'} value={typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint' ? String(value) : ''} onChange={event => change(type === 'integer' || type === 'number' ? event.target.value ? decode(event.target.value) : undefined : event.target.value)}/>{schema.description ? <small className="property-help">{schema.description}</small> : null}</label>;
 }
-function JsonProperty({ label, id, value, change }: { label: string; id: string; value: unknown; change: (value: unknown) => void }) {
-  const [draft, setDraft] = useState(() => value === undefined ? '' : encode(value, 2));
-  const [error, setError] = useState('');
-  return <label htmlFor={id}>{label}<textarea id={id} value={draft} aria-invalid={Boolean(error)} onChange={event => setDraft(event.target.value)} onBlur={() => { try { change(draft ? decode(draft) : undefined); setError(''); } catch { setError('请输入有效 JSON'); } }}/>{error ? <small role="alert">{error}</small> : null}</label>;
+function Variant({ name, path, choices, value, change, context }: { name: string; path: string; choices: PropertySchema[]; value: unknown; change: (value: unknown) => void; context: Context }) {
+  const [selected, setSelected] = useState(() => Math.max(0, choices.findIndex(schema => schema.type === typeOf(value))));
+  return <><label>配置方式<select value={selected} onChange={event => { const index = Number(event.target.value); setSelected(index); change(initial(choices[index])); }}>{choices.map((choice, index) => <option key={index} value={index}>{choice.title ?? choice.type ?? `选项 ${index + 1}`}</option>)}</select></label><Property name={name} path={path} schema={choices[selected]} value={value} change={change} context={context} required/></>;
+}
+const operators = ['eq', 'ne', 'lt', 'le', 'gt', 'ge', 'and', 'or', 'not', 'isnull', 'add', 'sub', 'mul', 'div'];
+function Expression({ value = {}, change, context, depth = 0 }: { value?: Configuration; change: (value: unknown) => void; context: Context; depth?: number }) {
+  const kind = Object.hasOwn(value, 'column') ? 'column' : Object.hasOwn(value, 'ref') ? 'ref' : Object.hasOwn(value, 'op') ? 'op' : Object.hasOwn(value, 'function') ? 'function' : 'literal';
+  const args = Array.isArray(value.args) ? value.args : [];
+  return <div className="expression-node"><label>表达式类型<select value={kind} onChange={event => change(event.target.value === 'literal' ? { literal: '', type: 'utf8' } : event.target.value === 'op' ? { op: 'eq', args: [{ column: context.fields[0]?.name ?? '' }, { literal: '', type: 'utf8' }] } : event.target.value === 'function' ? { function: '', args: [] } : { [event.target.value]: '' })}><option value="column">字段</option><option value="ref">参数或变量</option><option value="literal">固定值</option><option value="op">运算</option><option value="function">注册函数</option></select></label>
+    {kind === 'column' ? <label>字段<select value={String(value.column ?? '')} onChange={event => change({ column: event.target.value })}><option value="">请选择字段</option>{context.fields.map(field => <option key={field.identity ?? field.name} value={field.name}>{field.name} · {field.type}</option>)}</select></label> : kind === 'ref' ? <label>参数或变量名<input value={String(value.ref ?? '')} onChange={event => change({ ref: event.target.value })}/></label> : kind === 'literal' ? <><label>数据类型<select value={String(value.type ?? 'utf8')} onChange={event => change({ type: event.target.value, literal: event.target.value === 'utf8' ? '' : event.target.value === 'bool' ? false : 0 })}>{['utf8', 'bool', 'int64', 'uint64', 'float64', 'decimal128', 'date32', 'time64', 'timestamp', 'duration', 'binary'].map(type => <option key={type}>{type}</option>)}</select></label><Property name="literal" path="literal" schema={{ type: value.type === 'bool' ? 'boolean' : value.type === 'int64' || value.type === 'uint64' || value.type === 'float64' ? 'number' : 'string' }} value={value.literal} change={literal => change({ ...value, literal })} required context={context}/>{value.type === 'decimal128' ? <><label>精度<input type="number" min={1} max={38} value={Number(value.precision ?? 38)} onChange={event => change({ ...value, precision: Number(event.target.value) })}/></label><label>小数位数<input type="number" min={-38} max={38} value={Number(value.scale ?? 0)} onChange={event => change({ ...value, scale: Number(event.target.value) })}/></label></> : null}</> : <><label>{kind === 'op' ? '运算符' : '函数 ID'}{kind === 'op' ? <select value={String(value.op)} onChange={event => change({ ...value, op: event.target.value })}>{[...new Set([...operators, String(value.op)])].map(op => <option key={op}>{op}</option>)}</select> : <input value={String(value.function ?? '')} onChange={event => change({ ...value, function: event.target.value })}/>}</label>{depth < 16 ? args.map((argument, index) => <div className="property-entry" key={index}><header>参数 {index + 1}<button type="button" onClick={() => change({ ...value, args: args.filter((_, at) => at !== index) })}>移除</button></header><Expression value={argument as Configuration} context={context} depth={depth + 1} change={next => change({ ...value, args: args.map((argument, at) => at === index ? next : argument) })}/></div>) : <p className="property-help">表达式层级已达到编辑上限。</p>}<button type="button" disabled={args.length >= 16 || depth >= 16} onClick={() => change({ ...value, args: [...args, { literal: '', type: 'utf8' }] })}>添加参数</button></>}
+  </div>;
 }

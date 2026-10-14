@@ -1,0 +1,14 @@
+{
+  "status": "Passed",
+  "packageId": "browser-2300041e2552484ba5641a8bae369d61",
+  "edit": true,
+  "dragUndoRedo": true,
+  "saveReload": true,
+  "deployment": true,
+  "nativeOutput": true,
+  "logs": true,
+  "actualWorkerTermination": true,
+  "resumeSameNativeId": true,
+  "debugPause": true,
+  "browserErrors": []
+}

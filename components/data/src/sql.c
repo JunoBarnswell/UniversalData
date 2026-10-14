@@ -1,4 +1,5 @@
 #include "../internal.h"
+#include <ctype.h>
 #include "ud/sql.h"
 typedef struct writer {
     ud_context *ctx;
@@ -13,6 +14,157 @@ typedef struct writer {
     int filter_absent;
     uint32_t presence_row;
 } writer;
+static int command_word(const char *word,uint32_t length,const char *name) {
+    if (length != strlen(name)) return 0;
+    for (uint32_t at = 0; at < length; at++) {
+        unsigned char c = (unsigned char)word[at]; if (c >= 'a' && c <= 'z') c -= 'a'-'A';
+        if (c != (unsigned char)name[at]) return 0;
+    }
+    return 1;
+}
+enum { COMMAND_WORD=256, COMMAND_IDENTIFIER, COMMAND_LITERAL, COMMAND_PARAMETER };
+typedef struct command_token { int kind; const char *text; uint32_t length; } command_token;
+static int token_word(command_token token,const char *word) {
+    return token.kind == COMMAND_WORD && command_word(token.text,token.length,word);
+}
+static ud_status command_next(ud_string sql,uint32_t *position,command_token *out) {
+    uint32_t at=*position; *out=(command_token){0};
+    while (at < sql.length) {
+        unsigned char c=(unsigned char)sql.data[at];
+        if (isspace(c)) { at++; continue; }
+        if (at+1 < sql.length && c=='-' && sql.data[at+1]=='-') {
+            if (at+2 < sql.length && !isspace((unsigned char)sql.data[at+2])) return UD_UNSUPPORTED;
+            while (at < sql.length && sql.data[at]!='\n') at++;
+            continue;
+        }
+        if (at+1 < sql.length && c=='/' && sql.data[at+1]=='*') {
+            at+=2;
+            if (at < sql.length && (sql.data[at]=='!' ||
+                (at+1 < sql.length && (sql.data[at]=='M' || sql.data[at]=='m') && sql.data[at+1]=='!'))) return UD_UNSUPPORTED;
+            int closed=0;
+            while (at+1 < sql.length) {
+                if (sql.data[at]=='/' && sql.data[at+1]=='*') return UD_UNSUPPORTED;
+                if (sql.data[at]=='*' && sql.data[at+1]=='/') { at+=2; closed=1; break; }
+                at++;
+            }
+            if (!closed) return UD_SCHEMA;
+            continue;
+        }
+        uint32_t start=at++;
+        int kind=c;
+        if (c=='#') return UD_UNSUPPORTED;
+        if (c=='\'' || c=='"' || c=='`' || c=='[') {
+            char end=c=='[' ? ']' : (char)c; int closed=0;
+            kind=c=='\'' ? COMMAND_LITERAL : COMMAND_IDENTIFIER;
+            while (at < sql.length) {
+                if (sql.data[at]=='\\') return UD_UNSUPPORTED; /* Do not guess a session's escape mode. */
+                if (sql.data[at++]==end) {
+                    if (at < sql.length && sql.data[at]==end) { at++; continue; }
+                    closed=1; break;
+                }
+            }
+            if (!closed) return UD_SCHEMA;
+        } else if ((c==':' || c=='@' || c=='$') && at < sql.length &&
+                   (isalnum((unsigned char)sql.data[at]) || sql.data[at]=='_')) {
+            kind=COMMAND_PARAMETER;
+            while (at < sql.length && (isalnum((unsigned char)sql.data[at]) || sql.data[at]=='_')) at++;
+            if (at < sql.length && sql.data[at]=='$') return UD_UNSUPPORTED;
+        } else if (c=='$') return UD_UNSUPPORTED;
+        else if (isalpha(c) || c=='_' || c>=128) {
+            kind=COMMAND_WORD;
+            while (at < sql.length && (isalnum((unsigned char)sql.data[at]) || sql.data[at]=='_' ||
+                                       (unsigned char)sql.data[at]>=128)) at++;
+        }
+        *out=(command_token){kind,sql.data+start,at-start}; *position=at; return UD_OK;
+    }
+    *position=at; return UD_OK;
+}
+ud_status ud_sql_validate_record_command(ud_string sql) {
+    if (!sql.data || !sql.length || sql.length > 16777216 || memchr(sql.data,0,sql.length) ||
+        !ud_utf8_valid(sql.data,sql.length)) return UD_INVALID;
+    uint32_t depth=0,at=0; int first=1,with=0,dml=0,closed_cte=0,terminated=0;
+    static const char *forbidden[]={"BEGIN","COMMIT","ROLLBACK","SAVEPOINT","RELEASE",
+        "CALL","EXEC","EXECUTE","DECLARE","CREATE","ALTER","DROP","TRUNCATE","GRANT","REVOKE","LOCK","UNLOCK","OUTFILE","DUMPFILE"};
+    for (;;) {
+        command_token token; UD_TRY(command_next(sql,&at,&token));
+        if (!token.kind) break;
+        if (terminated) return UD_UNSUPPORTED;
+        if (token.kind==';') { if (depth) return UD_UNSUPPORTED; terminated=1; continue; }
+        if (token.kind=='(') { if (++depth > 128) return UD_RESOURCE; }
+        else if (token.kind==')') { if (!depth) return UD_SCHEMA; if (!--depth) closed_cte=1; }
+        if (token.kind==COMMAND_WORD) {
+            for (uint32_t index=0; index<sizeof(forbidden)/sizeof(*forbidden); index++)
+                if (token_word(token,forbidden[index])) return UD_UNSUPPORTED;
+            int write=token_word(token,"INSERT") || token_word(token,"UPDATE") || token_word(token,"DELETE") || token_word(token,"MERGE");
+            if (first) {
+                with=token_word(token,"WITH"); dml=write; first=0;
+                if (!with && !dml) return UD_UNSUPPORTED;
+            } else if (with && !depth && closed_cte && write) dml=1;
+        } else if (first) return UD_SCHEMA;
+    }
+    return dml && !depth ? UD_OK : UD_UNSUPPORTED;
+}
+static ud_status command_identifier(ud_context *ctx,command_token token,ud_string *out) {
+    /* MySQL's double-quote interpretation depends on SQL_MODE. Backticks are
+     * unambiguous and decoded here, without parsing identifiers in the driver. */
+    if (token.kind!=COMMAND_WORD && (token.kind!=COMMAND_IDENTIFIER || token.text[0]!='`')) return UD_UNSUPPORTED;
+    uint32_t first=token.kind==COMMAND_IDENTIFIER,limit=token.length-first;
+    char *text=ud_alloc(ctx,(size_t)token.length+1); if (!text) return UD_RESOURCE;
+    uint32_t count=0;
+    for (uint32_t at=first; at<limit; at++) {
+        text[count++]=token.text[at];
+        if (first && token.text[at]=='`') at++;
+    }
+    if (!count || memchr(text,'.',count)) { ud_free(text); return UD_UNSUPPORTED; }
+    *out=(ud_string){text,count}; return UD_OK;
+}
+ud_status ud_sql_record_target(ud_context *ctx,ud_string sql,ud_string *schema,ud_string *table) {
+    if (!ctx || !schema || !table) return UD_INVALID;
+    *schema=(ud_string){0}; *table=(ud_string){0};
+    UD_TRY(ud_sql_validate_record_command(sql));
+    uint32_t at=0; command_token token;
+    UD_TRY(command_next(sql,&at,&token));
+    int insert=token_word(token,"INSERT"),update=token_word(token,"UPDATE"),remove=token_word(token,"DELETE");
+    if (!insert && !update && !remove) return UD_UNSUPPORTED;
+    UD_TRY(command_next(sql,&at,&token));
+    if (insert || remove) {
+        if (!token_word(token,insert ? "INTO" : "FROM")) return UD_UNSUPPORTED;
+        UD_TRY(command_next(sql,&at,&token));
+    }
+    UD_TRY(command_identifier(ctx,token,table));
+    ud_status status=command_next(sql,&at,&token);
+    if (!status && token.kind=='.') {
+        *schema=*table; *table=(ud_string){0};
+        status=command_next(sql,&at,&token);
+        if (!status) status=command_identifier(ctx,token,table);
+        if (!status) status=command_next(sql,&at,&token);
+    }
+    if (!status && ((update && !token_word(token,"SET")) ||
+        (remove && token.kind && token.kind!=';' && !token_word(token,"WHERE") && !token_word(token,"ORDER") && !token_word(token,"LIMIT")) ||
+        (insert && token.kind!='(' && !token_word(token,"VALUES") && !token_word(token,"VALUE") && !token_word(token,"SET") && !token_word(token,"SELECT")))) status=UD_UNSUPPORTED;
+    /* Reject procedural calls in this conservative, provably single-target
+     * subset. These tokens are grammar or standard pure scalar functions. */
+    static const char *pure[]={"VALUES","VALUE","IN","EXISTS","SELECT","WHERE","AND","OR","NOT","AS",
+        "CAST","CONVERT","COALESCE","IFNULL","NULLIF","ABS","CEIL","CEILING","FLOOR","ROUND","TRUNCATE",
+        "LOWER","UPPER","TRIM","LTRIM","RTRIM","CONCAT","CONCAT_WS","LENGTH","CHAR_LENGTH","SUBSTRING","REPLACE"};
+    command_token previous={0},before_previous={0}; uint32_t depth=0;
+    for (; !status && token.kind; ) {
+        if (token.kind=='(') {
+            if (previous.kind==COMMAND_WORD) {
+                int safe=0;
+                if (before_previous.kind=='.') status=UD_UNSUPPORTED;
+                for (uint32_t index=0; index<sizeof(pure)/sizeof(*pure); index++) safe|=token_word(previous,pure[index]);
+                if (!safe) status=UD_UNSUPPORTED;
+            }
+            depth++;
+        } else if (token.kind==')' && depth) depth--;
+        if (token_word(token,"SELECT") && insert && !depth) status=UD_UNSUPPORTED;
+        before_previous=previous; previous=token;
+        if (!status) status=command_next(sql,&at,&token);
+    }
+    if (status) { ud_free((void *)schema->data); ud_free((void *)table->data); *schema=*table=(ud_string){0}; }
+    return status;
+}
 static int included(const writer *w, uint32_t column) {
     if (!w->filter_absent)
         return 1;

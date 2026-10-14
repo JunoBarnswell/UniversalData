@@ -31,6 +31,13 @@ UD_API ud_status ud_sql_compile_bulk_release(ud_context *, int32_t, const ud_bat
 UD_API ud_status ud_sql_table_identifier(ud_context *, int32_t dialect, ud_string, ud_string *);
 enum { UD_SQL_STAGE_CREATE = 1, UD_SQL_STAGE_APPLY = 2, UD_SQL_STAGE_DROP = 3 };
 enum { UD_SAVEPOINT_BEGIN = 1, UD_SAVEPOINT_ROLLBACK = 2, UD_SAVEPOINT_RELEASE = 3 };
+/* One transactional DML command. Control/DDL/procedural batches are not row
+ * commands; the explicit SQL Task owns those separate declared effects. */
+UD_API ud_status ud_sql_validate_record_command(ud_string);
+/* Conservative single-target DML analysis for provider transaction proofs.
+ * Returned schema/table are separately owned allocations; empty schema uses
+ * the provider default. Unproved syntax is rejected before mutation. */
+UD_API ud_status ud_sql_record_target(ud_context *,ud_string,ud_string *schema,ud_string *table);
 UD_API ud_status ud_sql_compile_savepoint(ud_context *, int32_t, ud_string, int32_t, ud_string *);
 /* Native load staging has no business commit authority. APPLY participates in
  * the leased business transaction, together with its receipt. */

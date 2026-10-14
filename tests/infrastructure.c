@@ -268,7 +268,7 @@ static int journal(const char *directory,int mode) {
 typedef struct fact_fixture { int writes, reject;ud_execution *execution; } fact_fixture;
 static ud_status authorize(void *u,ud_string t,ud_string r,int32_t action) {
     fact_fixture *fixture=u;(void)t;(void)r;
-    return fixture->reject && action==UD_ACCESS_WRITE?UD_AUTH:UD_OK;
+    return fixture->reject && (action==UD_ACCESS_WRITE || action==UD_ACCESS_CHECKPOINT_WRITE)?UD_AUTH:UD_OK;
 }
 static ud_status fact_task(void *u,const ud_component_context *c,ud_string config) {
     fact_fixture *fixture=u;(void)config;

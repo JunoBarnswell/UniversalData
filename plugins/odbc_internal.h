@@ -27,6 +27,10 @@ typedef struct odbc_state {
     char dbms[128], version[128], client[128], quote;
     SQLINTEGER native_error;
     char sqlstate[6];
+    /* A prepared XA branch outlives this transport; close cannot decide it. */
+    char branch_id[65];
+    uint8_t branch_digest[32];
+    int xa_phase, resolving;
 } odbc_state;
 enum {
     DIALECT_GENERIC = 0,
@@ -65,4 +69,12 @@ ud_status ud_mssql_cdc_next(void *, ud_cdc_event *);
 ud_status ud_mssql_cdc_confirm(void *, ud_string);
 ud_status ud_mssql_cdc_close(void *);
 void ud_mssql_cdc_cancel(odbc_state *);
+ud_status ud_mssql_xa_probe(odbc_state *);
+ud_status ud_mssql_xa_begin(void *, const ud_transaction_branch *);
+ud_status ud_mssql_xa_prepare(void *, const ud_transaction_branch *);
+ud_status ud_mssql_xa_resolve(void *, const ud_transaction_branch *, int32_t);
+ud_status ud_mssql_xa_recover(void *, const ud_transaction_branch *, int32_t *);
+void ud_mssql_xa_close(odbc_state *);
+void ud_odbc_bulk_close(odbc_state *);
+ud_status ud_odbc_tx_receipt(odbc_state *, const ud_transaction_branch *, int insert, int *found);
 #endif

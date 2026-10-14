@@ -7,6 +7,7 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t requested, ud_plugin_api *
         return status;
     *out = (ud_plugin_api){.struct_size = sizeof(*out),
                            .abi_version = UD_PLUGIN_ABI,
+                           .field_size=sizeof(ud_field),.value_size=sizeof(ud_value),
                            .id = UD_MYSQL_ID,
                            .version = UD_SDK_VERSION,
                            .roles = UD_PLUGIN_CONNECTOR,

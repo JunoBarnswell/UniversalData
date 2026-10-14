@@ -1,0 +1,39 @@
+[0/2] Re-checking globbed directories...
+[1/5] cd /tmp/ud-next-build/hosts && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.CommandLine/UniversalData.CommandLine.csproj -c Release -o /tmp/ud-next-build/hosts/product/cli && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.Worker/UniversalData.Worker.csproj -c Release -o /tmp/ud-next-build/hosts/product/worker && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.Management/UniversalData.Management.csproj -c Release -o /tmp/ud-next-build/hosts/product/management -p:DesignerAssets=/tmp/ud-next-build/hosts/designer && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.0.0 /tmp/ud-next-build/hosts/product/cli/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.0.0 /tmp/ud-next-build/hosts/product/worker/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.0.0 /tmp/ud-next-build/hosts/product/management/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy_directory /tmp/ud-next-build/hosts/product/worker /tmp/ud-next-build/hosts/product/management/worker
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.CommandLine -> /tmp/UniversalData-Next/products/UniversalData.CommandLine/bin/Release/net10.0/ud_cli.dll
+  UniversalData.CommandLine -> /tmp/ud-next-build/hosts/product/cli/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Worker -> /tmp/UniversalData-Next/products/UniversalData.Worker/bin/Release/net10.0/ud_worker.dll
+  UniversalData.Worker -> /tmp/ud-next-build/hosts/product/worker/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Management -> /tmp/UniversalData-Next/products/UniversalData.Management/bin/Release/net10.0/UniversalData.Management.dll
+  UniversalData.Management -> /tmp/ud-next-build/hosts/product/management/
+[2/5] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/hosting_contracts/HostingContracts.csproj -c Release -o /tmp/ud-next-build/tests/hosting-contracts
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  HostingContracts -> /tmp/UniversalData-Next/tests/hosting_contracts/bin/Release/net10.0/HostingContracts.dll
+  HostingContracts -> /tmp/ud-next-build/tests/hosting-contracts/
+[3/5] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/managed_recovery/ManagedRecovery.csproj -c Release -o /tmp/ud-next-build/tests/managed-recovery
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedRecovery -> /tmp/UniversalData-Next/tests/managed_recovery/bin/Release/net10.0/ManagedRecovery.dll
+  ManagedRecovery -> /tmp/ud-next-build/tests/managed-recovery/
+[4/5] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/managed_product/ManagedProduct.csproj -c Release -o /tmp/ud-next-build/tests/managed-product
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedProduct -> /tmp/UniversalData-Next/tests/managed_product/bin/Release/net10.0/ManagedProduct.dll
+  ManagedProduct -> /tmp/ud-next-build/tests/managed-product/

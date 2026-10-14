@@ -20,12 +20,23 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
         variables = {name: {"type": "int64", "default": -1} for name in ("rows", "nulls", "min", "max", "failures")}
         variables.update({"textMin": {"type": "utf8", "default": None}, "textMax": {"type": "utf8", "default": None}, "passed": {"type": "bool", "default": False}, "handled": {"type": "bool", "default": False}})
         statistics = [{"kind": "rows", "variable": "rows"}, {"kind": "nulls", "column": 0, "variable": "nulls"}, {"kind": "min", "column": 0, "variable": "min"}, {"kind": "max", "column": 0, "variable": "max"}, {"kind": "min", "column": 1, "variable": "textMin"}, {"kind": "max", "column": 1, "variable": "textMax"}]
+        variables["distinct"] = {"type": "int64", "default": -1}
+        statistics.append({"kind": "distinct", "column": 0, "variable": "distinct"})
+        for kind in ["topK", "histogram", "lengthDistribution", "approximateCardinality", "anomalies", "report"]:
+            variables[kind] = {"type": "utf8", "default": ""}
+            statistics.append({"kind": kind, "column": 1, "variable": kind})
         checks = [{"id": "rows", "expression": expr("eq", ref("rows"), lit(len(records)))}, {"id": "range", "expression": expr("ge", ref("min"), lit(-1))}]
         doc = {"version": 10, "id": "profile", "variables": variables,
                "connections": [{"id": "input", "driver": "file", "resource": str(source)}],
                "controlFlow": {"tasks": [{"id": "profile", "kind": "data.profile", "config": {"pipeline": "p", "checks": checks, "passedVariable": "passed", "failedChecksVariable": "failures"}}], "constraints": []},
                "dataFlows": [{"id": "p", "components": [{"id": "source", "component": "file.ndjson.source", "config": {"connection": "input", "schema": {"version": 10, "fields": [{"name": "x", "type": "int64", "nullable": True}, {"name": "t", "type": "utf8", "nullable": True}]}, "batchSize": 3}}, {"id": "stats", "component": "profile.statistics", "config": {"statistics": statistics}}], "paths": [{"from": "source", "output": 0, "to": "stats", "input": 0}]}]}
         expected = {"rows": len(records), "nulls": sum(row["x"] is None for row in records), "min": min((r["x"] for r in records if r["x"] is not None), default=None), "max": max((r["x"] for r in records if r["x"] is not None), default=None), "textMin": min((r["t"] for r in records if r["t"] is not None), default=None), "textMax": max((r["t"] for r in records if r["t"] is not None), default=None), "passed": True, "failures": 0}
+        expected.update(distinct=len({row['x'] for row in records if row['x'] is not None}),
+            topK={"method": "SpaceSaving32"}, histogram={"method": "signedLog2Approximate"},
+            lengthDistribution={"sum": sum(len(row['t']) for row in records if row['t'] is not None)},
+            approximateCardinality={"method": "HLL1024", "relativeStandardError": 0.0325},
+            anomalies={}, report={"rows": len(records), "nulls": sum(row['t'] is None for row in records),
+                "distinct": {"count": len({row['t'] for row in records if row['t'] is not None}), "method": "ExactNativeValueSet"}})
         return folder, doc, expected
     def run(folder, doc, expected, status=0, mode=0, checkpoint=False, resume=0, exit=0):
         package = folder / "package.json"
@@ -34,6 +45,18 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
         outcomes.write_text(json.dumps(expected, ensure_ascii=False))
         result = subprocess.run([sys.argv[1], str(package), str(mode), str(status), str(outcomes), str(folder / "state") if checkpoint else "", str(resume)], capture_output=True, text=True, timeout=10)
         assert result.returncode == exit, (folder.name, result.returncode, result.stderr)
+        reports = dict(line.split('\t', 1) for line in result.stdout.splitlines() if '\t' in line)
+        def subset(actual, wanted):
+            if isinstance(wanted, dict):
+                assert isinstance(actual, dict), actual
+                for key, value in wanted.items():
+                    assert key in actual, (key, actual)
+                    subset(actual[key], value)
+            else:
+                assert actual == wanted, (actual, wanted)
+        for name, value in expected.items():
+            if isinstance(value, dict):
+                subset(json.loads(reports[name]), value)
     defaults = {"rows": -1, "nulls": -1, "min": -1, "max": -1, "textMin": None, "textMax": None, "passed": False, "failures": -1}
     folder, doc, expected = fixture("cross-batch")
     run(folder, doc, expected)
@@ -76,7 +99,7 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
             doc["parameters"] = {"rows": {"type": "int64", "default": -1}}
         elif change == "duplicate": sink[1]["variable"] = "rows"
         elif change == "column": sink[1]["column"] = 2
-        elif change == "kind": sink[1]["kind"] = "distinct"
+        elif change == "kind": sink[1]["kind"] = "unknown-statistic"
         elif change == "empty": task["checks"] = []
         elif change == "rule": task["checks"][0]["expression"] = lit(5)
         elif change == "duplicate-rule": task["checks"].append(copy.deepcopy(task["checks"][0]))

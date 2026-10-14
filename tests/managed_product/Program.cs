@@ -96,12 +96,29 @@ try {
         execution.Execute(); Require(execution.Metrics.ExecutedTasks == 1, "Fixed script assembly uses Native Registry");
     }
     using (var catalog = new Catalog(Path.Combine(root, "catalog"), "local", Allow)) {
+        var lease=catalog.TryAcquireLease(CatalogKind.Audit,"run/sdk","dotnet-node",30000,"sdk-pool",1)!;
+        Require(lease.Generation==1 && catalog.LeaseActive(CatalogKind.Audit,"run/sdk"),"Native Catalog lease projection");
+        Require(catalog.TryAcquireLease(CatalogKind.Audit,"run/sdk","other-node",30000,"sdk-pool",1) is null,"Exclusive Native claim");
+        catalog.CompareExchange(CatalogKind.Audit,"run/sdk",0,"{\"version\":10,\"id\":\"run/sdk\",\"state\":\"Queued\"}",lease);
+        Throws<UniversalDataException>(()=>catalog.CompareExchange(CatalogKind.Audit,"run/sdk",0,"{\"version\":10,\"id\":\"run/sdk\"}",lease));
+        catalog.RenewLease(lease);catalog.ReleaseLease(lease);
+        Require(!catalog.LeaseActive(CatalogKind.Audit,"run/sdk"),"Native lease release");
+        Throws<UniversalDataException>(()=>catalog.RenewLease(lease));
         using var execution = new Execution(empty, "local", Allow, observe: catalog.Record);
         execution.Execute();
         var latest = catalog.LatestRevision(CatalogKind.Event, execution.Id);
         Require(latest > 2, "Persistent observer events");
         var removed = catalog.PruneEvents(ulong.MaxValue >> 1);
         Require(removed > 0 && catalog.LatestRevision(CatalogKind.Event, execution.Id) == latest, "Retention preserves event sequence watermark");
+    }
+    Catalog? guarded=null;bool reenter=false;
+    using(guarded=new Catalog(Path.Combine(root,"guarded-catalog"),"local",(_,_,_)=> { if(reenter) guarded!.Dispose();return true; })) {
+        reenter=true;
+        try { _=guarded.TryAcquireLease(CatalogKind.Audit,"run/guarded","dotnet-node");throw new Exception("Catalog authorizer disposed its live Native handle"); }
+        catch(UniversalDataException error) when(error.Code==StatusCode.Auth) { }
+        reenter=false;
+        var lease=guarded.TryAcquireLease(CatalogKind.Audit,"run/guarded","dotnet-node")!;
+        guarded.ReleaseLease(lease);
     }
     Console.WriteLine("Managed Registry/task/component ownership, expired borrows, GC, observer fault, cancellation, Native debug/step, deployment compilation and Catalog retention passed");
 } finally { Directory.Delete(root, recursive: true); }

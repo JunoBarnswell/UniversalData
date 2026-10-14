@@ -38,11 +38,17 @@ static ud_status read_statistics(const ud_component_context *c, ud_string text,
                                        .kind = ud_named(kind, "rows")    ? UD_PROFILE_ROWS
                                                : ud_named(kind, "nulls") ? UD_PROFILE_NULLS
                                                : ud_named(kind, "min")   ? UD_PROFILE_MINIMUM
-                                               : ud_named(kind, "max")   ? UD_PROFILE_MAXIMUM
-                                                                         : 0};
+                                                : ud_named(kind, "max") ? UD_PROFILE_MAXIMUM
+                                               : ud_named(kind, "distinct") ? UD_PROFILE_DISTINCT
+                                               : ud_named(kind, "topK") ? UD_PROFILE_TOPK
+                                               : ud_named(kind, "histogram") ? UD_PROFILE_HISTOGRAM
+                                               : ud_named(kind, "lengthDistribution") ? UD_PROFILE_LENGTH_DISTRIBUTION
+                                               : ud_named(kind, "approximateCardinality") ? UD_PROFILE_APPROXIMATE_CARDINALITY
+                                               : ud_named(kind, "anomalies") ? UD_PROFILE_ANOMALIES
+                                               : ud_named(kind, "report") ? UD_PROFILE_REPORT : 0};
         if (!stat->kind)
             return UD_UNSUPPORTED;
-        ud_type type = UD_INT64;
+        ud_type type = stat->kind >= UD_PROFILE_TOPK ? UD_UTF8 : UD_INT64;
         if (stat->kind != UD_PROFILE_ROWS) {
             uint64_t column;
             UD_TRY(ud_json_uint(ud_member(def, "column"), &column));
@@ -51,11 +57,11 @@ static ud_status read_statistics(const ud_component_context *c, ud_string text,
             stat->column = (uint32_t)column;
             ud_field field;
             UD_TRY(ud_batch_field(schema, stat->column, &field));
-            if (stat->kind >= UD_PROFILE_MINIMUM)
+            if (stat->kind == UD_PROFILE_MINIMUM || stat->kind == UD_PROFILE_MAXIMUM)
                 type = field.type;
         } else if (ud_member(def, "column"))
             return UD_SCHEMA;
-        if (type < UD_BOOL || type > UD_UTF8)
+        if (type < UD_BOOL || type > UD_MAP)
             return UD_UNSUPPORTED;
         UD_TRY(ud_json_string(ud_member(def, "variable"), p->names + i));
         for (uint32_t j = 0; j < i; j++)
@@ -296,7 +302,7 @@ ud_status ud_profile_register(ud_registry *registry) {
         "\"properties\":{\"maximumRows\":{\"type\":\"integer\",\"minimum\":1},"
         "\"statistics\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":256,\"items\":{"
         "\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"kind\",\"variable\"],"
-        "\"properties\":{\"kind\":{\"enum\":[\"rows\",\"nulls\",\"min\",\"max\"]},"
+        "\"properties\":{\"kind\":{\"enum\":[\"rows\",\"nulls\",\"min\",\"max\",\"distinct\",\"topK\",\"histogram\",\"lengthDistribution\",\"approximateCardinality\",\"anomalies\",\"report\"]},"
         "\"column\":{\"type\":\"integer\",\"minimum\":0},\"variable\":{\"type\":\"string\"}}}}}}";
     ud_component_descriptor d = {
         .struct_size = sizeof(d),

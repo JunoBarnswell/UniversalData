@@ -505,7 +505,6 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
             l->shared = 1;
             l->connection = owned->connection;
             l->capabilities = owned->capabilities;
-            status = ud_connection_bind_lease(l->connection, l, session_grant, check_lease);
         }
     } else if (!status && ud_named(l->driver, "http")) {
 #ifdef UD_WITH_HTTP
@@ -647,31 +646,41 @@ int32_t ud_connection_lease_delivery(const ud_connection_lease *lease) {
            : (lease->capabilities & UD_CONNECT_RECEIPTS) ? UD_DELIVERY_RECEIPT
                                                          : UD_DELIVERY_RESPONSE;
 }
+static ud_status lease_operation_begin(ud_connection_lease *lease,int32_t action) {
+    UD_TRY(ud_connection_lease_authorize(lease,action));
+    return ud_connection_operation_begin(lease->connection,lease,session_grant,check_lease);
+}
+static ud_status lease_operation_end(ud_connection_lease *lease,ud_status status) {
+    ud_connection_operation_end(lease->connection); return status;
+}
 ud_status ud_connection_lease_savepoint(ud_connection_lease *lease, ud_string name, int32_t phase) {
     if (!lease || !lease->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(lease, UD_ACCESS_WRITE));
-    return ud_connection_savepoint(lease->connection, name, phase);
+    UD_TRY(lease_operation_begin(lease,UD_ACCESS_WRITE));
+    return lease_operation_end(lease,ud_connection_savepoint(lease->connection,name,phase));
 }
 ud_status ud_connection_lease_record_diagnostic(ud_connection_lease *lease, ud_string *out) {
-    return lease && lease->connection ? ud_connection_record_diagnostic(lease->connection, out)
-                                      : UD_UNSUPPORTED;
+    if (!lease || !lease->connection) return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(lease,UD_ACCESS_WRITE));
+    return lease_operation_end(lease,ud_connection_record_diagnostic(lease->connection,out));
 }
 ud_status ud_connection_lease_read_open(ud_connection_lease *l, const ud_read_options *o,
                                         const ud_batch *b) {
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_READ));
-    return ud_connection_read_open(l->connection, o, b);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_READ));
+    return lease_operation_end(l,ud_connection_read_open(l->connection,o,b));
 }
 ud_status ud_connection_lease_read_next(ud_connection_lease *l, ud_batch **out) {
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_READ));
-    return ud_connection_read_next(l->connection, out);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_READ));
+    return lease_operation_end(l,ud_connection_read_next(l->connection,out));
 }
 ud_status ud_connection_lease_read_close(ud_connection_lease *l) {
-    return l && l->connection ? ud_connection_read_close(l->connection) : UD_UNSUPPORTED;
+    if (!l || !l->connection) return UD_UNSUPPORTED;
+    UD_TRY(ud_connection_operation_begin(l->connection,l,session_grant,NULL));
+    return lease_operation_end(l,ud_connection_read_close(l->connection));
 }
 ud_status ud_connection_lease_write(ud_connection_lease *l, const ud_write_options *o,
                                     const ud_batch *b) {
@@ -685,22 +694,30 @@ ud_status ud_connection_lease_write(ud_connection_lease *l, const ud_write_optio
                                digest));
         return ud_rest_target_write(l->rest, o, b, digest);
     }
-    return ud_connection_write(l->connection, o, b);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_WRITE));
+    return lease_operation_end(l,ud_connection_write(l->connection,o,b));
 }
 ud_status ud_connection_lease_receipt(ud_connection_lease *l, ud_string job, ud_string batch,
                                       ud_commit_receipt *out) {
     if (!l || (!l->connection && !l->rest))
         return UD_UNSUPPORTED;
     UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_RECEIPT));
-    return l->rest ? ud_rest_target_receipt(l->rest, job, batch, out)
-                   : ud_connection_receipt(l->connection, job, batch, out);
+    if (l->rest) return ud_rest_target_receipt(l->rest,job,batch,out);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_RECEIPT));
+    return lease_operation_end(l,ud_connection_receipt(l->connection,job,batch,out));
 }
 ud_status ud_connection_lease_execute_command(ud_connection_lease *l,
                                               const ud_read_options *options, uint64_t *processed) {
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_WRITE));
-    return ud_connection_execute_command(l->connection, options, processed);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_WRITE));
+    return lease_operation_end(l,ud_connection_execute_command(l->connection,options,processed));
+}
+ud_status ud_connection_lease_execute_record(ud_connection_lease *lease,const ud_read_options *options,
+                                             ud_command_result *out) {
+    if (!lease || !lease->connection) return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(lease,UD_ACCESS_WRITE));
+    return lease_operation_end(lease,ud_connection_execute_record(lease->connection,options,out));
 }
 ud_status ud_connection_lease_digest(ud_connection_lease *l, const ud_write_options *o,
                                      const ud_batch *b, uint8_t digest[32]) {
@@ -716,16 +733,18 @@ ud_status ud_connection_lease_metadata(ud_connection_lease *l, const ud_metadata
                                        ud_batch **out) {
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_DISCOVER));
-    return ud_connection_metadata(l->connection, o, out);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_DISCOVER));
+    return lease_operation_end(l,ud_connection_metadata(l->connection,o,out));
 }
 ud_status ud_connection_lease_schema(ud_connection_lease *lease, ud_string table, ud_string scope,
                                      ud_batch **out) {
     if (!lease || !out)
         return UD_INVALID;
     UD_TRY(ud_connection_lease_authorize(lease, UD_ACCESS_DISCOVER));
-    if (lease->connection)
-        return ud_connection_schema(lease->connection, table, scope, out);
+    if (lease->connection) {
+        UD_TRY(lease_operation_begin(lease,UD_ACCESS_DISCOVER));
+        return lease_operation_end(lease,ud_connection_schema(lease->connection,table,scope,out));
+    }
     if (!ud_named(lease->driver, "file"))
         return UD_UNSUPPORTED;
     UD_TRY(ud_connection_lease_authorize(lease, UD_ACCESS_READ));
@@ -788,8 +807,8 @@ ud_status ud_connection_lease_schema(ud_connection_lease *lease, ud_string table
 ud_status ud_connection_lease_discover(ud_connection_lease *l, ud_string table, ud_batch **out) {
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_DISCOVER));
-    return ud_connection_discover(l->connection, table, out);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_DISCOVER));
+    return lease_operation_end(l,ud_connection_discover(l->connection,table,out));
 }
 ud_status ud_connection_lease_release(ud_connection_lease *l) {
     if (!l)
@@ -801,20 +820,6 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
     ud_mutex_unlock(&m->mutex);
     session *s = l->session;
     ud_status status = UD_OK;
-    if (l->shared) {
-        status = ud_connection_read_close(l->connection);
-        if (!status && l->activation->transaction) {
-            ud_connection_lease *owner = NULL;
-            for (uint32_t index = 0; index < l->activation->transaction->count; index++)
-                if (l->activation->transaction->participants[index].lease &&
-                    l->activation->transaction->participants[index].lease->connection ==
-                        l->connection)
-                    owner = l->activation->transaction->participants[index].lease;
-            status =
-                owner ? ud_connection_bind_lease(l->connection, owner, session_grant, check_lease)
-                      : UD_CORRUPT;
-        }
-    }
     if (s && s->connection) {
         status = ud_connection_read_close(s->connection);
         if (!status) {
@@ -1506,41 +1511,44 @@ ud_status ud_connection_lease_snapshot_grant(ud_connection_lease *source, ud_act
 ud_status ud_connection_lease_provision(ud_connection_lease *lease) {
     if (!lease || !lease->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(lease, UD_ACCESS_WRITE));
-    return ud_connection_provision(lease->connection);
+    UD_TRY(lease_operation_begin(lease,UD_ACCESS_WRITE));
+    return lease_operation_end(lease,ud_connection_provision(lease->connection));
 }
 
 ud_status ud_connection_lease_cdc_open(ud_connection_lease *l, const ud_cdc_options *o) {
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_READ));
-    return ud_connection_cdc_open(l->connection, o);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_READ));
+    return lease_operation_end(l,ud_connection_cdc_open(l->connection,o));
 }
 ud_status ud_connection_lease_cdc_next(ud_connection_lease *l, ud_cdc_event *e) {
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_READ));
-    return ud_connection_cdc_next(l->connection, e);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_READ));
+    return lease_operation_end(l,ud_connection_cdc_next(l->connection,e));
 }
 ud_status ud_connection_lease_cdc_confirm(ud_connection_lease *l, ud_string p) {
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_connection_lease_authorize(l, UD_ACCESS_READ));
-    return ud_connection_cdc_confirm(l->connection, p);
+    UD_TRY(lease_operation_begin(l,UD_ACCESS_READ));
+    return lease_operation_end(l,ud_connection_cdc_confirm(l->connection,p));
 }
 ud_status ud_connection_lease_cdc_schema(ud_connection_lease *lease, ud_batch **out) {
-    return lease && lease->connection ? ud_connection_cdc_schema(lease->connection, out)
-                                      : UD_UNSUPPORTED;
+    if (!lease || !lease->connection) return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(lease,UD_ACCESS_READ));
+    return lease_operation_end(lease,ud_connection_cdc_schema(lease->connection,out));
 }
 ud_status ud_connection_lease_cdc_rebind(ud_connection_lease *lease, const ud_batch *schema,
                                          uint64_t version) {
     if (!lease || !lease->connection)
         return UD_UNSUPPORTED;
-    UD_TRY(ud_activation_check(lease->activation));
-    return ud_connection_cdc_rebind(lease->connection, schema, version);
+    UD_TRY(lease_operation_begin(lease,UD_ACCESS_READ));
+    return lease_operation_end(lease,ud_connection_cdc_rebind(lease->connection,schema,version));
 }
 ud_status ud_connection_lease_cdc_close(ud_connection_lease *l) {
-    return l && l->connection ? ud_connection_cdc_close(l->connection) : UD_UNSUPPORTED;
+    if (!l || !l->connection) return UD_UNSUPPORTED;
+    UD_TRY(ud_connection_operation_begin(l->connection,l,session_grant,NULL));
+    return lease_operation_end(l,ud_connection_cdc_close(l->connection));
 }
 
 int32_t ud_connection_lease_dialect(const ud_connection_lease *l) {

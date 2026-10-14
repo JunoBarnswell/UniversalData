@@ -4,4 +4,5 @@ public static class ProductInfo
 {
     public const string Sdk = "2.0.0";
     public const int Protocol = 10;
+    public const int WorkerRevision = 2;
 }

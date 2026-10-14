@@ -1,5 +1,6 @@
 #include "common.h"
 #include <sqlite3.h>
+#include <stdio.h>
 #include <ctype.h>
 #include <stdatomic.h>
 #include <math.h>
@@ -14,7 +15,7 @@ typedef struct {
     atomic_int cancelled;
     void *control_user;
     ud_status (*check)(void *);
-    int transaction, cleaning;
+    int transaction, cleaning, record_code;
 } sqlite_state;
 static ud_status control(sqlite_state *p) {
     if (p->cleaning)
@@ -44,6 +45,7 @@ static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     sqlite3_progress_handler(p->db, 1000, progress, p);
 }
 static ud_status failure(sqlite_state *p, int code) {
+    p->record_code = code;
     ud_status interrupted = control(p);
     if (interrupted)
         return interrupted;
@@ -52,7 +54,9 @@ static ud_status failure(sqlite_state *p, int code) {
                           : code == SQLITE_READONLY || code == SQLITE_AUTH || code == SQLITE_PERM
                               ? UD_AUTH
                           : code == SQLITE_INTERRUPT ? UD_CANCELLED
-                                                     : UD_IO,
+                          : (code & 255) == SQLITE_CONSTRAINT ? UD_QUALITY
+                          : code == SQLITE_TOOBIG ? UD_TRUNCATED
+                          : code == SQLITE_MISMATCH ? UD_PARSE : UD_IO,
                           "SQLite operation failed (diagnostic values redacted)");
 }
 static ud_status initialize(const ud_host_api *h, const char *config, uint32_t n, void **out) {
@@ -629,6 +633,22 @@ static int statement_authorize(void *user, int action, const char *a, const char
                ? SQLITE_DENY
                : SQLITE_OK;
 }
+static ud_status savepoint(void *state,ud_string statement) {
+    sqlite_state *p = state;
+    if (!p->transaction) return UD_UNSUPPORTED;
+    char *sql = plugin_string(&p->host,statement.data,statement.length);
+    if (!sql) return UD_RESOURCE;
+    int result = sqlite3_exec(p->db,sql,NULL,NULL,NULL);
+    p->host.deallocate(sql); return result == SQLITE_OK ? UD_OK : failure(p,result);
+}
+static ud_status record_diagnostic(void *state,ud_string *out) {
+    sqlite_state *p = state; *out = (ud_string){0};
+    if (!p->record_code) return UD_OK;
+    char code[32]; int length = snprintf(code,sizeof(code),"SQLITE_%d",p->record_code);
+    char *copy = plugin_string(&p->host,code,(uint32_t)length);
+    if (!copy) return UD_RESOURCE;
+    p->record_code = 0; *out = (ud_string){copy,(uint32_t)length}; return UD_OK;
+}
 static ud_status connector_execute_command(void *state, const ud_read_options *options,
                                            uint64_t *processed) {
     if (processed)
@@ -826,7 +846,7 @@ static const ud_connector_api connector = {
                     UD_CONNECT_UPSERT | UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS |
                     UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA |
                     UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_PREPARED |
-                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION,
+                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION | UD_CONNECT_TRANSACTIONAL_DML,
     .test = connector_test,
     .discover = connector_discover,
     .read_open = connector_read_open,
@@ -844,7 +864,9 @@ static const ud_connector_api connector = {
     .reset_session = reset_session,
     .provision = provision,
     .metadata_dialect = UD_SQL_SQLITE,
-    .parameter_style = UD_SQL_PARAMETER_QUESTION};
+    .parameter_style = UD_SQL_PARAMETER_QUESTION,
+    .savepoint = savepoint,
+    .record_diagnostic = record_diagnostic};
 
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))
@@ -852,13 +874,13 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
     *out = (ud_plugin_api){sizeof(*out),
                            UD_PLUGIN_ABI,
                            "org.universaldata.connector.sqlite",
-                           "1.0.0",
+                           UD_SDK_VERSION,
                            UD_PLUGIN_CONNECTOR,
                            UD_CAP_READ | UD_CAP_WRITE | UD_CAP_TRANSACTION | UD_CAP_THREAD_SAFE,
                            initialize,
                            destroy,
                            plugin_shutdown,
                            &connector,
-                           NULL};
+                           NULL,sizeof(ud_field),sizeof(ud_value)};
     return UD_OK;
 }

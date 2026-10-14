@@ -2,6 +2,13 @@ if(TARGET ud_package OR TARGET ud_worker)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
 endif()
 if(TARGET ud_package)
+  add_executable(test_checkpoint_contract checkpoint_contract.c)
+  target_link_libraries(test_checkpoint_contract PRIVATE ud_package)
+  add_test(NAME native_checkpoint_contract_revision COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/checkpoint_contract.py $<TARGET_FILE:test_checkpoint_contract>)
+  add_executable(test_catalog_secrets catalog_secrets.c)
+  target_link_libraries(test_catalog_secrets PRIVATE ud_package)
+  add_test(NAME native_catalog_secret_migration COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/catalog_secrets.py $<TARGET_FILE:test_catalog_secrets>)
   add_executable(test_transaction_facts transaction_facts.c)
   target_link_libraries(test_transaction_facts PRIVATE ud_runtime)
   add_test(NAME transaction_fact_publication COMMAND ${Python3_EXECUTABLE}
@@ -19,6 +26,9 @@ if(TARGET ud_foundation)
   add_test(NAME json_document COMMAND test_json)
 endif()
 if(TARGET ud_columnar)
+  add_executable(test_schema_identity schema_identity.c)
+  target_link_libraries(test_schema_identity PRIVATE ud_columnar)
+  add_test(NAME schema_physical_identity_and_nested_evolution COMMAND test_schema_identity)
   add_executable(test_schema_discovery schema_discovery.c)
   target_link_libraries(test_schema_discovery PRIVATE ud_columnar)
   add_test(NAME unified_file_schema_discovery COMMAND test_schema_discovery ${CMAKE_CURRENT_BINARY_DIR}/schema-discovery-fixture.txt)
@@ -64,14 +74,19 @@ endif()
 if(TARGET ud_connector_sqlite)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
   add_executable(test_connector_sqlite connector_sqlite.c)
-  target_link_libraries(test_connector_sqlite PRIVATE ud_plugins SQLite::SQLite3)
+  target_link_libraries(test_connector_sqlite PRIVATE ud_plugins SQLite::SQLite3 Threads::Threads)
   add_test(NAME sqlite_receipts_upsert COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/connector_sqlite.py $<TARGET_FILE:test_connector_sqlite> $<TARGET_FILE:ud_connector_sqlite>)
   set_tests_properties(sqlite_receipts_upsert PROPERTIES TIMEOUT 130)
 endif()
-if(TARGET ud_worker)
-  add_test(NAME worker_protocol COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/worker.py $<TARGET_FILE:ud_worker>)
-endif()
 if(TARGET ud_connector_postgresql AND TARGET ud_plugins)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_executable(test_postgresql_schema postgresql_schema.c)
+  target_link_libraries(test_postgresql_schema PRIVATE ud_plugins)
+  add_test(NAME integration_postgresql_physical_schema COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_POSTGRESQL_CONFIG
+    $<TARGET_FILE:test_postgresql_schema> $<TARGET_FILE:ud_connector_postgresql>)
+  set_tests_properties(integration_postgresql_physical_schema PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120
+    LABELS "real-integration;postgresql" RESOURCE_LOCK ud_integration_postgresql)
   add_executable(test_postgresql_cancel postgresql_cancel.c)
   target_link_libraries(test_postgresql_cancel PRIVATE ud_plugins Threads::Threads)
   find_program(UD_TEST_PG_INITDB initdb)
@@ -128,6 +143,11 @@ if(TARGET ud_package)
   add_test(NAME package_failure_boundaries COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/package_failures.py $<TARGET_FILE:test_package_outcome>)
 endif()
 if(TARGET ud_package AND TARGET ud_connector_sqlite)
+  add_executable(test_sql_command_records sql_command_records.c)
+  target_link_libraries(test_sql_command_records PRIVATE ud_package SQLite::SQLite3)
+  add_test(NAME sql_command_records_recovery COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/sql_command_records.py $<TARGET_FILE:test_sql_command_records> $<TARGET_FILE:ud_connector_sqlite>)
+  set_tests_properties(sql_command_records_recovery PROPERTIES TIMEOUT 180)
   add_executable(test_four_engine_connections four_engine_connections.c)
   target_link_libraries(test_four_engine_connections PRIVATE ud_package)
   add_test(NAME four_engine_connections_enumerators COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/four_engine_connections.py $<TARGET_FILE:test_four_engine_connections> $<TARGET_FILE:ud_connector_sqlite>)
@@ -147,6 +167,10 @@ if(TARGET ud_package AND TARGET ud_connector_sqlite)
   set_tests_properties(package_durable_recovery PROPERTIES TIMEOUT 180)
 endif()
 if(TARGET ud_package)
+  add_executable(test_catalog_leases catalog_leases.c)
+  target_link_libraries(test_catalog_leases PRIVATE ud_package)
+  add_test(NAME catalog_leases_process_recovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/catalog_leases.py $<TARGET_FILE:test_catalog_leases>)
+  set_tests_properties(catalog_leases_process_recovery PROPERTIES TIMEOUT 60)
   add_executable(test_catalog catalog.c)
   target_link_libraries(test_catalog PRIVATE ud_package)
   add_test(NAME catalog_immutable_store COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/catalog.py $<TARGET_FILE:test_catalog>)
@@ -285,9 +309,39 @@ endif()
 
 # Advanced SQL/CDC are actual registered acceptance entries, not unregistered
 if(UD_BUILD_HOSTS)
+  add_test(NAME management_multi_process_claim_recovery COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/management_cluster.py ${UD_DOTNET}
+    ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
+  set_tests_properties(management_multi_process_claim_recovery PROPERTIES TIMEOUT 180)
+  add_test(NAME management_authenticated_native_worker COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/management_security.py ${UD_DOTNET}
+    ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
+  set_tests_properties(management_authenticated_native_worker PROPERTIES TIMEOUT 150)
+  add_custom_target(ud_hosting_contracts_test ALL
+    COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/hosting_contracts/HostingContracts.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts VERBATIM)
+  add_test(NAME hosting_identity_secret_resource_contracts COMMAND ${UD_DOTNET} ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts/HostingContracts.dll)
+  add_test(NAME worker_protocol COMMAND ${UD_DOTNET} ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts/HostingContracts.dll
+    ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
+  set_tests_properties(worker_protocol PROPERTIES TIMEOUT 60)
+  set_tests_properties(hosting_identity_secret_resource_contracts PROPERTIES TIMEOUT 60)
+  add_custom_target(ud_managed_recovery_test ALL
+    COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_recovery/ManagedRecovery.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/managed-recovery
+    VERBATIM)
+  add_test(NAME managed_native_epoch_process_recovery COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/managed_recovery.py ${UD_DOTNET} ${CMAKE_CURRENT_BINARY_DIR}/managed-recovery/ManagedRecovery.dll $<TARGET_FILE:ud_data>)
+  set_tests_properties(managed_native_epoch_process_recovery PROPERTIES TIMEOUT 90)
+  add_test(NAME managed_product_worker_process_recovery COMMAND ${UD_DOTNET}
+    ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts/HostingContracts.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll
+    ${CMAKE_CURRENT_BINARY_DIR}/managed-recovery/ManagedRecovery.dll)
+  set_tests_properties(managed_product_worker_process_recovery PROPERTIES TIMEOUT 60)
   add_custom_target(ud_managed_product_test ALL
     COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_product/ManagedProduct.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/managed-product
     VERBATIM)
+  # These projects share SDK project references. Publish in order so concurrent
+  # MSBuild invocations cannot replace the same obj/assets files.
+  add_dependencies(ud_hosting_contracts_test ud_product_hosts)
+  add_dependencies(ud_managed_recovery_test ud_hosting_contracts_test)
+  add_dependencies(ud_managed_product_test ud_managed_recovery_test)
   add_test(NAME managed_registry_scripts_debug_lifecycle COMMAND ${UD_DOTNET}
     ${CMAKE_CURRENT_BINARY_DIR}/managed-product/ManagedProduct.dll $<TARGET_FILE:ud_data>)
   set_tests_properties(managed_registry_scripts_debug_lifecycle PROPERTIES TIMEOUT 60)
@@ -321,6 +375,12 @@ if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
           SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;${driver}"
           RESOURCE_LOCK ud_integration_${driver})
       endforeach()
+      add_test(NAME integration_${driver}_row_command COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
+        $<TARGET_FILE:test_advanced_sql> $<TARGET_FILE:ud_connector_${driver}> row-command)
+      set_tests_properties(integration_${driver}_row_command PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;row-command;${driver}"
+        RESOURCE_LOCK ud_integration_${driver})
       if(driver MATCHES "^(mysql|mariadb)$")
         add_test(NAME integration_${driver}_type_domains COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
@@ -337,7 +397,7 @@ if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
           SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;native-bulk;${driver}"
           RESOURCE_LOCK ud_integration_${driver})
       endif()
-      if(driver MATCHES "^(postgresql|mysql|mariadb|oracle_oci)$")
+      if(driver MATCHES "^(postgresql|mysql|mariadb|odbc|oracle_oci)$")
         add_test(NAME integration_${driver}_participant_recovery COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/transaction_participants.py UD_TEST_${fixture}_CONFIG
           $<TARGET_FILE:test_transaction_participants> $<TARGET_FILE:ud_connector_${driver}>)
@@ -371,6 +431,9 @@ if(TARGET ud_package)
   endif()
   add_test(NAME native_xlsx_preserving_append COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/xlsx_append_product.py $<TARGET_FILE:test_product_native>)
   add_test(NAME native_avro_interoperability COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/avro_product.py $<TARGET_FILE:test_product_native>)
+  add_test(NAME apache_avro_native_pipeline_resolution COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/avro_apache.py
+    $<TARGET_FILE:test_product_native> $<TARGET_FILE:ud_data>)
+  set_tests_properties(apache_avro_native_pipeline_resolution PROPERTIES TIMEOUT 120)
   if(UD_WITH_XML)
     add_test(NAME native_xml_source_xpath_xslt_xsd COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/xml_product.py $<TARGET_FILE:test_product_native>)
@@ -381,4 +444,13 @@ if(TARGET ud_package)
       ${CMAKE_CURRENT_SOURCE_DIR}/network_product.py $<TARGET_FILE:test_product_native>)
     set_tests_properties(native_object_transfer_sequence PROPERTIES TIMEOUT 180)
   endif()
+endif()
+
+if(TARGET ud_connector_odbc AND TARGET ud_connector_postgresql)
+  add_test(NAME integration_mssql_postgresql_participant_recovery COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/transaction_participants.py UD_TEST_ODBC_CONFIG
+    $<TARGET_FILE:test_transaction_participants> $<TARGET_FILE:ud_connector_odbc>
+    UD_TEST_POSTGRESQL_CONFIG $<TARGET_FILE:ud_connector_postgresql>)
+  set_tests_properties(integration_mssql_postgresql_participant_recovery PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
+    LABELS "real-integration;crash-recovery;odbc;postgresql" RESOURCE_LOCK "ud_integration_odbc;ud_integration_postgresql")
 endif()

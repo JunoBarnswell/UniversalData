@@ -49,6 +49,10 @@ int main(void) {
     CHECK(value.text_length == 6 && !memcmp(value.text, "中文", 6));
     OK(ud_profile_get(p, 6, &value));
     CHECK(value.integer == 3 && !value.is_null);
+    char *report = NULL; uint32_t report_size = 0;
+    OK(ud_profile_report(p,0,&report,&report_size));
+    CHECK(strstr(report,"HLL1024") && strstr(report,"relativeStandardError") && strstr(report,"SpaceSaving32") && strstr(report,"ExactNativeValueSet"));
+    ud_free(report);
     ud_profile_destroy(p);
     OK(ud_batch_create(ctx, fields, 2, 4, &batch));
     for (int i = 0; i < 4; i++)
@@ -61,6 +65,13 @@ int main(void) {
     OK(ud_profile_create(ctx, batch, stats, 6, 10, stop, &checks, &p));
     CHECK(ud_profile_add(p, batch) == UD_TRANSIENT && checks == 2);
     CHECK(ud_profile_get(p, 0, &value) == UD_INVALID);
+    ud_profile_destroy(p);
+    ud_profile_statistic reports[6];
+    for (uint32_t at = 0; at < 6; at++) reports[at] = (ud_profile_statistic){sizeof(*reports),UD_ABI_VERSION,(int32_t)(UD_PROFILE_TOPK+at),0};
+    OK(ud_profile_create(ctx,batch,reports,6,100,NULL,NULL,&p));
+    for (uint32_t at = 0; at < 6; at++) { OK(ud_profile_get(p,at,&value)); CHECK(value.type == UD_UTF8 && value.text_length > 0); }
+    OK(ud_profile_add(p,batch));
+    for (uint32_t at = 0; at < 6; at++) { OK(ud_profile_get(p,at,&value)); CHECK(value.type == UD_UTF8 && value.text_length > 0); }
     ud_profile_destroy(p);
     stats[0].abi_version = 2;
     CHECK(ud_profile_create(ctx, batch, stats, 6, 10, NULL, NULL, &p) == UD_INCOMPATIBLE && !p);

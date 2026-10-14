@@ -1,0 +1,2 @@
+# Independent format implementation used by the Native interoperability gate.
+avro==1.12.0

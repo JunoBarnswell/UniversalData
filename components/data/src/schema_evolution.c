@@ -323,7 +323,7 @@ static ud_status sql_dictionary(ud_context *ctx, ud_string declaration, ud_field
     ud_bytes_clear(&label);
     return status;
 }
-ud_status ud_schema_from_metadata(ud_context *ctx, const ud_batch *metadata, ud_string scope,
+ud_status ud_schema_from_metadata(ud_context *ctx, const ud_batch *metadata, ud_string scope, ud_string physical_scope,
                                   int32_t dialect, ud_batch **out) {
     if (!ctx || !metadata || !out || metadata->columns < 4 || !metadata->rows || dialect < 0 ||
         dialect > UD_SQL_DUCKDB)
@@ -333,6 +333,14 @@ ud_status ud_schema_from_metadata(ud_context *ctx, const ud_batch *metadata, ud_
     if (!fields)
         return UD_RESOURCE;
     ud_status status = UD_OK;
+    int physical_column=-1;
+    for (uint32_t at=4;at<metadata->columns;at++) {
+        const ud_field *field=&metadata->column[at].field;
+        if (field->name_length==17 && !memcmp(field->name,"physical_identity",17)) {
+            if (physical_column>=0 || field->type!=UD_UTF8) { ud_free(fields);return UD_SCHEMA; }
+            physical_column=(int)at;
+        }
+    }
     for (uint32_t row = 0; !status && row < metadata->rows; row++) {
         ud_value name, type, nullable, key;
         status = ud_batch_get(metadata, row, 0, &name);
@@ -357,6 +365,12 @@ ud_status ud_schema_from_metadata(ud_context *ctx, const ud_batch *metadata, ud_
                     : UD_END;
             if (status == UD_END)
                 status = sql_type(fields + row, (ud_string){type.text, type.text_length}, dialect);
+        }
+        if (!status && physical_column>=0) {
+            ud_value physical={0};
+            status=ud_batch_get(metadata,row,(uint32_t)physical_column,&physical);
+            if (!status && !physical.is_null)
+                status=ud_id_make(ctx,physical_scope,(ud_string){physical.text,physical.text_length},&fields[row].physical_identity);
         }
     }
     if (!status)
@@ -384,13 +398,18 @@ static int by_id(const ud_batch *schema, ud_id id) {
             return (int)j;
     return -1;
 }
+static int field_index(const ud_field *fields,uint32_t count,ud_id id) {
+    for (uint32_t at=0;at<count;at++) if (!ud_id_compare(fields[at].identity,id)) return (int)at;
+    return -1;
+}
 static int lossless(const ud_field *actual, const ud_field *expected) {
     int widening = expected->type == UD_DECIMAL128 && expected->scale >= 0 &&
                    ((actual->type == UD_UINT64 && expected->precision - expected->scale >= 20) ||
                     (actual->type == UD_INT64 && expected->precision - expected->scale >= 19));
     if ((!widening && actual->type != expected->type) ||
         (actual->nullable && !expected->nullable) || actual->key_order != expected->key_order ||
-        actual->child_count != expected->child_count)
+        ((expected->physical_identity.high || expected->physical_identity.low) &&
+         ud_id_compare(actual->physical_identity,expected->physical_identity)))
         return 0;
     if (actual->dictionary_kind != expected->dictionary_kind ||
         actual->dictionary_count != expected->dictionary_count)
@@ -408,12 +427,10 @@ static int lossless(const ud_field *actual, const ud_field *expected) {
         (actual->timezone_length != expected->timezone_length ||
          memcmp(actual->timezone, expected->timezone, actual->timezone_length)))
         return 0;
-    for (uint32_t j = 0; j < actual->child_count; j++)
-        if (!lossless(actual->children + j, expected->children + j) ||
-            actual->children[j].name_length != expected->children[j].name_length ||
-            memcmp(actual->children[j].name, expected->children[j].name,
-                   actual->children[j].name_length))
-            return 0;
+    for (uint32_t j=0;j<expected->child_count;j++) {
+        int at=expected->type==UD_STRUCT ? field_index(actual->children,actual->child_count,expected->children[j].identity) : (int)j;
+        if (at<0 || (uint32_t)at>=actual->child_count || !lossless(actual->children+at,expected->children+j)) return 0;
+    }
     return 1;
 }
 static ud_status change(ud_bytes *json, int *first, const char *kind, const ud_field *field,
@@ -561,29 +578,50 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
         *mapping = indices;
     return status;
 }
+static void binding_fields_clear(ud_field *fields,uint32_t count) {
+    if (!fields) return;
+    for (uint32_t at=0;at<count;at++) binding_fields_clear((ud_field *)fields[at].children,fields[at].child_count);
+    ud_free(fields);
+}
+static ud_status bind_fields(ud_context *ctx,const ud_field *bound,uint32_t prior_count,
+                              const ud_field *discovered,uint32_t count,ud_field **out,uint32_t depth) {
+    *out=NULL;
+    if (depth>32) return UD_SCHEMA;
+    if (!count) return UD_OK;
+    *out=ud_alloc(ctx,count*sizeof(**out));
+    if (count && !*out) return UD_RESOURCE;
+    for (uint32_t at=0;at<count;at++) {
+        ud_field *field=*out+at;
+        *field=discovered[at];field->children=NULL;field->child_count=0;
+        const ud_field *before=NULL;
+        for (uint32_t prior=0;prior<prior_count;prior++) {
+            int known=bound[prior].physical_identity.high || bound[prior].physical_identity.low;
+            int match=known ? !ud_id_compare(bound[prior].physical_identity,field->physical_identity) :
+                (!ud_id_compare(bound[prior].identity,field->identity) ||
+                 (bound[prior].name_length==field->name_length && !memcmp(bound[prior].name,field->name,field->name_length)));
+            if (match) {
+                if (before) return UD_SCHEMA;
+                before=bound+prior;
+            }
+        }
+        if (before) { field->identity=before->identity;field->lineage=before->lineage;field->lineage_count=before->lineage_count; }
+        ud_field *children=NULL;
+        ud_status status=bind_fields(ctx,before ? before->children : NULL,before ? before->child_count : 0,
+            discovered[at].children,discovered[at].child_count,&children,depth+1);
+        field->children=children;field->child_count=discovered[at].child_count;
+        if (status) return status;
+    }
+    return UD_OK;
+}
 ud_status ud_schema_bind_identity(ud_context *ctx, const ud_batch *bound,
                                   const ud_batch *discovered, ud_batch **out) {
     if (!ctx || !bound || !discovered || !out || bound->ctx != ctx || discovered->ctx != ctx)
         return UD_INVALID;
     *out = NULL;
-    ud_field *fields = ud_alloc(ctx, discovered->columns * sizeof(*fields));
-    if (!fields)
-        return UD_RESOURCE;
-    for (uint32_t at = 0; at < discovered->columns; at++) {
-        fields[at] = discovered->column[at].field;
-        for (uint32_t prior = 0; prior < bound->columns; prior++) {
-            const ud_field *before = &bound->column[prior].field;
-            if (before->name_length == fields[at].name_length &&
-                !memcmp(before->name, fields[at].name, before->name_length)) {
-                fields[at].identity = before->identity;
-                fields[at].lineage = before->lineage;
-                fields[at].lineage_count = before->lineage_count;
-                break;
-            }
-        }
-    }
-    ud_status status = ud_batch_create(ctx, fields, discovered->columns, 0, out);
-    ud_free(fields);
+    ud_field *fields=NULL;
+    ud_status status=bind_fields(ctx,bound->schema->fields,bound->columns,discovered->schema->fields,discovered->columns,&fields,0);
+    if (!status) status=ud_batch_create(ctx,fields,discovered->columns,0,out);
+    binding_fields_clear(fields,fields ? discovered->columns : 0);
     return status;
 }
 ud_status ud_schema_compare(ud_context *ctx, const ud_batch *expected, const ud_batch *actual,
@@ -635,6 +673,48 @@ ud_status ud_schema_compare(ud_context *ctx, const ud_batch *expected, const ud_
     ud_bytes_clear(&result);
     return status;
 }
+typedef struct schema_projection {
+    const ud_field *source,*target;
+    uint32_t index,count;
+    struct schema_projection *children;
+} schema_projection;
+static void projection_clear(schema_projection *plan) {
+    for (uint32_t at=0;at<plan->count;at++) projection_clear(plan->children+at);
+    ud_free(plan->children);
+    plan->children=NULL;plan->count=0;
+}
+static ud_status projection_bind(ud_context *ctx,const ud_field *source,const ud_field *target,
+                                  schema_projection *plan,uint32_t depth) {
+    if (depth>32) return UD_SCHEMA;
+    plan->source=source;plan->target=target;
+    if (source->type!=target->type || target->type<UD_STRUCT) return UD_OK;
+    plan->children=ud_alloc(ctx,target->child_count*sizeof(*plan->children));
+    if (target->child_count && !plan->children) return UD_RESOURCE;
+    plan->count=target->child_count;
+    for (uint32_t at=0;at<target->child_count;at++) {
+        int index=target->type==UD_STRUCT ? field_index(source->children,source->child_count,target->children[at].identity) : (int)at;
+        if (index<0 || (uint32_t)index>=source->child_count) return UD_SCHEMA;
+        plan->children[at].index=(uint32_t)index;
+        UD_TRY(projection_bind(ctx,source->children+index,target->children+at,plan->children+at,depth+1));
+    }
+    return UD_OK;
+}
+static ud_status projection_apply(ud_context *ctx,const schema_projection *plan,const ud_value *value,ud_value *out) {
+    if (!plan->count || value->is_null || value->is_absent)
+        return ud_cast_value(ctx,plan->source,value,plan->target,UD_ROUND_EXACT,out,0);
+    if (value->type!=plan->source->type || (value->child_count && !value->children) ||
+        (value->type==UD_STRUCT && value->child_count!=plan->source->child_count)) return UD_SCHEMA;
+    uint32_t count=value->type==UD_STRUCT ? plan->count : value->child_count;
+    ud_value *children=ud_alloc(ctx,count*sizeof(*children));
+    if (count && !children) return UD_RESOURCE;
+    *out=(ud_value){.type=plan->target->type,.children=children,.child_count=count};
+    for (uint32_t at=0;at<count;at++) {
+        const schema_projection *child=plan->children+(value->type==UD_STRUCT ? at : 0);
+        uint32_t index=value->type==UD_STRUCT ? child->index : at;
+        UD_TRY(projection_apply(ctx,child,value->children+index,children+at));
+    }
+    return UD_OK;
+}
 ud_status ud_schema_map(ud_context *ctx, const ud_batch *actual, const ud_batch *expected,
                         ud_string policy, ud_batch **out) {
     if (!ctx || !actual || !expected || !out)
@@ -648,10 +728,13 @@ ud_status ud_schema_map(ud_context *ctx, const ud_batch *actual, const ud_batch 
         status = UD_SCHEMA;
     ud_field *fields = !status ? ud_alloc(ctx, (size_t)expected->columns * sizeof(*fields)) : NULL;
     ud_value *values = !status ? ud_alloc(ctx, (size_t)expected->columns * sizeof(*values)) : NULL;
-    if (!status && (!fields || !values))
+    schema_projection *plans=!status ? ud_alloc(ctx,expected->columns*sizeof(*plans)) : NULL;
+    if (!status && (!fields || !values || !plans))
         status = UD_RESOURCE;
-    for (uint32_t j = 0; !status && j < expected->columns; j++)
+    for (uint32_t j = 0; !status && j < expected->columns; j++) {
         fields[j] = expected->column[j].field;
+        status=projection_bind(ctx,&actual->column[mapping[j]].field,fields+j,plans+j,0);
+    }
     if (!status)
         status = ud_batch_create(ctx, fields, expected->columns, actual->rows, out);
     for (uint32_t row = 0; !status && row < actual->rows; row++) {
@@ -659,8 +742,7 @@ ud_status ud_schema_map(ud_context *ctx, const ud_batch *actual, const ud_batch 
             ud_value value;
             status = ud_batch_get(actual, row, mapping[j], &value);
             if (!status)
-                status = ud_cast_value(ctx, &actual->column[mapping[j]].field, &value, fields + j,
-                                       UD_ROUND_EXACT, values + j, 0);
+                status = projection_apply(ctx,plans+j,&value,values+j);
         }
         if (!status)
             status = ud_batch_append(*out, values, expected->columns);
@@ -677,6 +759,8 @@ ud_status ud_schema_map(ud_context *ctx, const ud_batch *actual, const ud_batch 
     }
     ud_free(fields);
     ud_free(values);
+    for (uint32_t at=0;plans && at<expected->columns;at++) projection_clear(plans+at);
+    ud_free(plans);
     ud_free(mapping);
     ud_bytes_clear(&changes);
     return status;

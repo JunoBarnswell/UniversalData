@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="21"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="15"
+	timestamp="2026-10-14T12:55:59"
+	>
+	<testcase name="integration_postgresql_sql" classname="integration_postgresql_sql" time="0.10128" status="run">
+		<properties>
+			<property name="cmake_labels" value="postgresql;real-integration"/>
+		</properties>
+		<system-out>NOTICE:  relation "ud_sdk_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v10" already exists, skipping
+{"nativeBulk":false,"dialect":2,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_postgresql_cdc" classname="integration_postgresql_cdc" time="0.18809" status="run">
+		<properties>
+			<property name="cmake_labels" value="postgresql;real-integration"/>
+		</properties>
+		<system-out>opening CDC
+snapshot
+log changes
+opening CDC
+{"dialect":2,"snapshotFence":true,"logInsertUpdateDelete":true,"beforeImages":true,"resume":true,"revoke":true,"schemaChangeFence":null}
+</system-out>
+	</testcase>
+	<testcase name="integration_postgresql_row_command" classname="integration_postgresql_row_command" time="0.0850815" status="run">
+		<properties>
+			<property name="cmake_labels" value="postgresql;real-integration;row-command"/>
+		</properties>
+		<system-out>NOTICE:  relation "ud_sdk_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v10" already exists, skipping
+row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows
+</system-out>
+	</testcase>
+	<testcase name="integration_postgresql_native_bulk" classname="integration_postgresql_native_bulk" time="0.0929248" status="run">
+		<properties>
+			<property name="cmake_labels" value="native-bulk;postgresql;real-integration"/>
+		</properties>
+		<system-out>NOTICE:  relation "ud_sdk_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v10" already exists, skipping
+{"nativeBulk":true,"dialect":2,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_postgresql_participant_recovery" classname="integration_postgresql_participant_recovery" time="0.396368" status="run">
+		<properties>
+			<property name="cmake_labels" value="crash-recovery;postgresql;real-integration"/>
+		</properties>
+		<system-out>NOTICE:  relation "ud_sdk_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_receipts_v10" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v10" already exists, skipping
+Real two-connection prepare/rollback, commit, partial-commit recovery passed
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_sql" classname="integration_mysql_sql" time="0.144485" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":false,"dialect":3,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_cdc" classname="integration_mysql_cdc" time="0.277537" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;real-integration"/>
+		</properties>
+		<system-out>opening CDC
+snapshot
+log changes
+opening CDC
+{"dialect":3,"snapshotFence":true,"logInsertUpdateDelete":true,"beforeImages":true,"resume":true,"revoke":true,"schemaChangeFence":true}
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_row_command" classname="integration_mysql_row_command" time="0.238866" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;real-integration;row-command"/>
+		</properties>
+		<system-out>row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_type_domains" classname="integration_mysql_type_domains" time="0.0697492" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;real-integration"/>
+		</properties>
+		<system-out>Actual unsigned boundary, negative long TIME, JSON numeric range and ENUM/SET dictionaries passed
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_native_bulk" classname="integration_mysql_native_bulk" time="0.141696" status="run">
+		<properties>
+			<property name="cmake_labels" value="mysql;native-bulk;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":true,"dialect":3,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_mysql_participant_recovery" classname="integration_mysql_participant_recovery" time="0.487723" status="run">
+		<properties>
+			<property name="cmake_labels" value="crash-recovery;mysql;real-integration"/>
+		</properties>
+		<system-out>Real two-connection prepare/rollback, commit, partial-commit recovery passed
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_sql" classname="integration_mariadb_sql" time="0.121876" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":false,"dialect":4,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_cdc" classname="integration_mariadb_cdc" time="0.293496" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;real-integration"/>
+		</properties>
+		<system-out>opening CDC
+snapshot
+log changes
+opening CDC
+{"dialect":4,"snapshotFence":true,"logInsertUpdateDelete":true,"beforeImages":true,"resume":true,"revoke":true,"schemaChangeFence":true}
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_row_command" classname="integration_mariadb_row_command" time="0.147004" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;real-integration;row-command"/>
+		</properties>
+		<system-out>row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_type_domains" classname="integration_mariadb_type_domains" time="0.0572195" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;real-integration"/>
+		</properties>
+		<system-out>Actual unsigned boundary, negative long TIME, JSON numeric range and ENUM/SET dictionaries passed
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_native_bulk" classname="integration_mariadb_native_bulk" time="0.134591" status="run">
+		<properties>
+			<property name="cmake_labels" value="mariadb;native-bulk;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":true,"dialect":4,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_mariadb_participant_recovery" classname="integration_mariadb_participant_recovery" time="0.423412" status="run">
+		<properties>
+			<property name="cmake_labels" value="crash-recovery;mariadb;real-integration"/>
+		</properties>
+		<system-out>Real two-connection prepare/rollback, commit, partial-commit recovery passed
+</system-out>
+	</testcase>
+	<testcase name="integration_odbc_sql" classname="integration_odbc_sql" time="0.397996" status="run">
+		<properties>
+			<property name="cmake_labels" value="odbc;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":false,"dialect":5,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+	<testcase name="integration_odbc_cdc" classname="integration_odbc_cdc" time="14.6882" status="run">
+		<properties>
+			<property name="cmake_labels" value="odbc;real-integration"/>
+		</properties>
+		<system-out>opening CDC
+snapshot
+log changes
+opening CDC
+{"dialect":5,"snapshotFence":true,"logInsertUpdateDelete":true,"beforeImages":true,"resume":true,"revoke":true,"schemaChangeFence":null}
+</system-out>
+	</testcase>
+	<testcase name="integration_odbc_row_command" classname="integration_odbc_row_command" time="0.102244" status="run">
+		<properties>
+			<property name="cmake_labels" value="odbc;real-integration;row-command"/>
+		</properties>
+		<system-out>row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows
+</system-out>
+	</testcase>
+	<testcase name="integration_odbc_native_bulk" classname="integration_odbc_native_bulk" time="0.137672" status="run">
+		<properties>
+			<property name="cmake_labels" value="native-bulk;odbc;real-integration"/>
+		</properties>
+		<system-out>{"nativeBulk":true,"dialect":5,"rows":1003,"tls":"verified","prepared":true,"metadata":true,"nullUnicodeDecimalBinaryUTC":true,"receiptReplay":true,"revokedGrant":true,"resume":false}
+</system-out>
+	</testcase>
+</testsuite>

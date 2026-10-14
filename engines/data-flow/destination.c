@@ -178,11 +178,15 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
     snprintf(identity, length, "%.*s/%.*s", (int)o.job.length, o.job.data, (int)o.batch_id.length,
              o.batch_id.data);
     ud_string key = {identity, (uint32_t)strlen(identity)};
-    int replaying = ud_checkpoint_batch_seen(c->activation, key);
-    int completed = ud_checkpoint_batch_completed(c->activation, key);
+    ud_command_result prior = {.struct_size = sizeof(prior),.abi_version = UD_ABI_VERSION};
+    if (!s) s = ud_checkpoint_effect_read(c->activation,key,digest,&prior);
+    int replaying = prior.state != UD_COMMAND_NOT_EXECUTED;
+    int completed = prior.state == UD_COMMAND_APPLIED || prior.state == UD_COMMAND_COMMITTED;
+    if (!s && prior.state == UD_COMMAND_REJECTED) s = UD_CORRUPT;
+    ud_command_result_clear(&prior);
     int32_t guarantee = ud_connection_lease_delivery(lease);
     if (!s)
-        s = ud_checkpoint_batch(c->activation, key, digest, 0);
+        s = ud_checkpoint_effect_intent(c->activation, key, digest);
     if (!s && replaying && !completed && guarantee == UD_DELIVERY_RESPONSE)
         s = UD_COMMIT_UNKNOWN;
     if (!s && replaying && guarantee == UD_DELIVERY_RECEIPT) {
@@ -206,8 +210,11 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
             ud_target_rows(c->activation, input->rows, ud_batch_error_rows(input), 0);
         s = ud_transaction_active(c->activation) ? ud_transaction_delivery(c->activation, input)
                                                  : ud_rule_delivered(c->activation, delivery, 0);
-        if (!s)
-            s = ud_checkpoint_batch(c->activation, key, digest, 1);
+        if (!s) {
+            ud_command_result outcome = {.struct_size = sizeof(outcome),.abi_version = UD_ABI_VERSION,
+                .state = ud_transaction_active(c->activation) ? UD_COMMAND_APPLIED : UD_COMMAND_COMMITTED,.affected_rows = input->rows};
+            s = ud_checkpoint_effect_complete(c->activation,key,digest,&outcome);
+        }
         if (s)
             s = UD_COMMIT_UNKNOWN;
         else if (c->execution->journal && !ud_transaction_active(c->activation)) {

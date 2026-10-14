@@ -204,11 +204,11 @@ ud_status ud_acquire_file_connection(ud_activation *, ud_string, uint64_t capabi
 ud_status ud_filesystem_register(ud_registry *);
 ud_status ud_process_register(ud_registry *);
 ud_status ud_http_register(ud_registry *);
-#ifdef UD_WITH_XML
-ud_status ud_xml_source_register(ud_registry *);
 ud_status ud_avro_register(ud_registry *);
 ud_status ud_wmi_register(ud_registry *);
 ud_status ud_sqlserver_tasks_register(ud_registry *);
+#ifdef UD_WITH_XML
+ud_status ud_xml_source_register(ud_registry *);
 ud_status ud_xml_tasks_register(ud_registry *);
 #endif
 ud_status ud_profile_register(ud_registry *);
@@ -228,10 +228,10 @@ enum { UD_FILE_BASE = 1, UD_FILE_PREPARED = 2 };
 ud_status ud_checkpoint_file_read(ud_activation *, int32_t, ud_string, char **, uint32_t *);
 ud_status ud_checkpoint_file_record(ud_activation *, int32_t, ud_string, ud_string);
 ud_status ud_checkpoint_file_done(ud_activation *, const char *target);
-int ud_checkpoint_batch_seen(ud_activation *, ud_string identity);
-int ud_checkpoint_batch_completed(ud_activation *, ud_string identity);
-ud_status ud_checkpoint_batch(ud_activation *, ud_string identity, const uint8_t digest[32],
-                              int committed);
+ud_status ud_checkpoint_effect_read(ud_activation *,ud_string,const uint8_t digest[32],ud_command_result *);
+ud_status ud_checkpoint_effect_intent(ud_activation *,ud_string,const uint8_t digest[32]);
+ud_status ud_checkpoint_effect_retry(ud_activation *,ud_string,const uint8_t digest[32]);
+ud_status ud_checkpoint_effect_complete(ud_activation *,ud_string,const uint8_t digest[32],const ud_command_result *);
 
 void ud_checkpoint_close(ud_execution *);
 ud_status ud_execution_buffer_options(ud_execution *, ud_buffer_options *);

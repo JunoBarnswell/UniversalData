@@ -4,6 +4,9 @@ on:
     branches: [main, 'codex/**']
   pull_request:
   workflow_dispatch:
+concurrency:
+  group: native-product-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -56,15 +59,20 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r tests/requirements.txt
           $triplet = 'x64-' + '${{ runner.os == 'Windows' && 'windows' || 'linux' }}'
           cmake -S . -B build/core -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=$triplet -DUD_BUILD_PROFILE=CORE -DUD_BUILD_HOSTS=ON -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$PWD/build/deps/sqlite/sqlite-amalgamation-3490100" -DCMAKE_BUILD_TYPE=Release
           cmake --build build/core --config Release --parallel 4
-          ctest --test-dir build/core -C Release --output-on-failure --parallel 4 -LE real-integration
+          ctest --test-dir build/core -C Release --output-on-failure --parallel 4 --no-tests=error --output-junit core-results.xml -LE real-integration
+          python scripts/ctest_release_gate.py build/core/core-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: core-${{ matrix.os }}-evidence
-          path: build/core/Testing
+          path: |
+            build/core/Testing
+            build/core/core-results.xml
+          if-no-files-found: error
   complete-drivers-and-delivery:
     # Configured independent resources are required for complete PRODUCT gates.
     if: vars.UD_PRODUCT_ACCEPTANCE_ENABLED == 'true'
@@ -87,8 +95,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r tests/requirements.txt
           python tests/require_integration_resources.py
-          ctest --test-dir build/product -C Release --output-on-failure --parallel 4
+          ctest --test-dir build/product -C Release --output-on-failure --parallel 4 --no-tests=error --output-junit product-results.xml
+          python scripts/ctest_release_gate.py build/product/product-results.xml
       - name: Workloads, Web and independently installed consumers
         shell: pwsh
         run: |
@@ -102,3 +112,22 @@ jobs:
           path: |
             build/product/Testing
             artifacts
+
+  release-readiness:
+    if: always()
+    needs: [source-and-designer, native-core, complete-drivers-and-delivery]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require actual execution of every product gate
+        env:
+          GATE_RESULTS: ${{ toJSON(needs) }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json, os
+          results = json.loads(os.environ["GATE_RESULTS"])
+          blocked = {name: item["result"] for name,item in results.items() if item["result"] != "success"}
+          print(json.dumps({"sourceSha": os.environ["SOURCE_SHA"], "gates": results, "productionReady": not blocked}))
+          if blocked:
+              raise SystemExit("Release blocked: required gates did not succeed: " + json.dumps(blocked))
+          PY

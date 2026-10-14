@@ -1,7 +1,7 @@
 """Real error-path commits, new transforms, Window, CSV and shared spill."""
 import base64, csv, json, pathlib, subprocess, sys, tempfile
 with tempfile.TemporaryDirectory(prefix="ud-core-pipeline-") as folder:
-    root=pathlib.Path(folder)
+    base=pathlib.Path(folder);root=base/'resources';root.mkdir()
     spill=root/"spill";spill.mkdir()
     source=root/"source.ndjson"
     source.write_text('\n'.join(json.dumps(r) for r in [dict(x=3,t=" a "),dict(x=None,t=" b "),dict(x=1,t=" c "),dict(x=2,t=" d ")])+"\n")
@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix="ud-core-pipeline-") as folder:
             dict(id="bad",component="file.ndjson.destination",config=dict(connection="bad"))],
             "paths":[dict(**{"from":a,"output":port,"to":b,"input":0}) for a,port,b in [("source",0,"quality"),("quality",0,"chars"),("quality",1,"bad"),("chars",0,"copy"),("copy",0,"window"),("window",0,"count"),("count",0,"audit"),("audit",0,"ok")]]}]}
     path=root/"package.json";path.write_text(json.dumps(package))
-    policy=root/"host-policy.json";policy.write_text(json.dumps(dict(dataDirectory=str(root/"native-state"),fileRoots=[str(root)],networkOrigins=[],pluginRoots=[],credentialFiles={})))
+    policy=base/"host-policy.json";policy.write_text(json.dumps(dict(dataDirectory=str(base/"native-state"),fileRoots=[str(root)],networkOrigins=[],pluginRoots=[],credentialFiles={})))
     result=subprocess.run([sys.argv[1],"execute",str(policy),str(path),"{}","core"],capture_output=True,text=True,timeout=60)
     assert result.returncode==0,(result.stdout,result.stderr)
     metrics=json.loads(result.stdout);assert metrics["state"]==5 and metrics["result"]==0 and metrics["spillBytes"]>0

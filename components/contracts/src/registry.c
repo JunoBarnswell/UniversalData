@@ -77,6 +77,7 @@ static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor 
     int function = d->category == UD_COMPONENT_FUNCTION;
     int task = d->category == UD_COMPONENT_TASK;
     int enumerator = d->category == UD_COMPONENT_ENUMERATOR;
+    if ((function || task || enumerator) && (d->capabilities & UD_COMPONENT_CONTROL_EVENTS)) return UD_SCHEMA;
     if ((function && d->cancel) || ((function || task || enumerator) && d->describe_plan))
         return UD_SCHEMA;
     if (!function &&
@@ -373,4 +374,8 @@ ud_status ud_component_plan_copy(ud_context *ctx, const ud_component_plan *sourc
             return UD_RESOURCE;
     }
     return UD_OK;
+}
+
+uint64_t ud_registry_features(void) {
+    return UD_COMPONENT_CONTROL_EVENTS | UD_REGISTRY_SCOPED_JOURNAL;
 }

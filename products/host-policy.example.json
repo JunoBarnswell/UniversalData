@@ -1,0 +1,22 @@
+{
+  "dataDirectory": "/var/lib/universaldata",
+  "fileRoots": ["/srv/etl/team-a"],
+  "networkOrigins": [],
+  "pluginRoots": ["/opt/universaldata/plugins"],
+  "credentialFiles": {},
+  "identityFile": "/etc/universaldata/identities.json",
+  "tenants": {
+    "team-a": {
+      "fileRoots": ["/srv/etl/team-a"],
+      "readOnlyRoots": [],
+      "networkOrigins": [],
+      "pluginRoots": ["/opt/universaldata/plugins"],
+      "credentialReferences": []
+    }
+  },
+  "trustedAssemblyHashes": [],
+  "maxConcurrency": 4,
+  "memoryLimit": 268435456,
+  "executionTimeoutSeconds": 3600,
+  "cancellationGraceSeconds": 10
+}

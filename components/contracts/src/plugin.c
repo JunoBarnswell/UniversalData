@@ -28,7 +28,13 @@ struct ud_plugin_instance {
     ud_plugin *plugin;
     void *state;
     atomic_int busy;
+    /* One physical connection owns one operation at a time. Composite record
+     * commands retain this gate across their complete transaction protocol. */
+    ud_mutex operation_lock;
+    ud_condition operation_changed;
+    atomic_uintptr_t operation_owner;
 };
+static _Thread_local unsigned char operation_thread;
 static ud_status report(ud_context *ctx, ud_status s, const char *message) {
     return ud_fail(ctx, s, "%s", message ? message : "plugin failure");
 }
@@ -107,6 +113,7 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
     int component_only = p->api.roles == UD_PLUGIN_COMPONENTS && p->api.components &&
                          !p->api.initialize && !p->api.destroy;
     if (!s && (p->api.struct_size != sizeof(p->api) || p->api.abi_version != UD_PLUGIN_ABI ||
+               p->api.field_size!=sizeof(ud_field) || p->api.value_size!=sizeof(ud_value) ||
                !p->api.id || !p->api.version || !p->api.roles ||
                (p->api.roles & ~(UD_PLUGIN_CONNECTOR | UD_PLUGIN_COMPONENTS)) ||
                ((p->api.roles & UD_PLUGIN_COMPONENTS) && !p->api.components) ||
@@ -181,7 +188,8 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_random_bytes,
                             ud_schema_compare,
                             ud_schema_map,
-                            ud_schema_bind_identity};
+                            ud_schema_bind_identity,
+                            ud_sql_record_target,{0}};
     *out = p;
     return UD_OK;
 }
@@ -221,7 +229,7 @@ ud_status ud_plugin_register_components(ud_plugin *p, ud_registry *registry) {
 }
 static ud_status connection_instance_create(ud_plugin *p, const char *config, uint32_t n,
                                             ud_plugin_instance **out, void *control_user,
-                                            ud_status (*check)(void *)) {
+                                            ud_status (*check)(void *),ud_string resource_namespace) {
     if (!p || !out || (!config && n))
         return UD_INVALID;
     *out = NULL;
@@ -234,6 +242,7 @@ static ud_status connection_instance_create(ud_plugin *p, const char *config, ui
     ud_host_api host = p->host;
     host.control_user = control_user;
     host.check_io = check;
+    host.resource_namespace=resource_namespace;
     ud_status s = p->api.initialize(&host, config ? config : "", n, &instance->state);
     atomic_fetch_sub(&p->active, 1);
     if (s) {
@@ -243,6 +252,9 @@ static ud_status connection_instance_create(ud_plugin *p, const char *config, ui
         return s;
     }
     atomic_init(&instance->busy, 0);
+    atomic_init(&instance->operation_owner,0);
+    ud_mutex_init(&instance->operation_lock);
+    ud_condition_init(&instance->operation_changed);
     instance->plugin = p;
     atomic_fetch_add(&p->live, 1);
     *out = instance;
@@ -259,6 +271,8 @@ static ud_status connection_instance_destroy(ud_plugin_instance *i) {
     p->api.destroy(i->state);
     atomic_fetch_sub(&p->active, 1);
     atomic_fetch_sub(&p->live, 1);
+    ud_condition_destroy(&i->operation_changed);
+    ud_mutex_destroy(&i->operation_lock);
     ud_free(i);
     return UD_OK;
 }
@@ -294,6 +308,7 @@ struct ud_connection {
     const ud_connector_api *api;
     uint64_t capabilities;
     int cursor, transaction, cdc, cdc_transaction, io_action, cleanup;
+    char resource_namespace[33];
     char transaction_branch[65];
     uint8_t transaction_digest[32];
     uint32_t cdc_batch_rows;
@@ -301,6 +316,11 @@ struct ud_connection {
     ud_batch *cdc_schema;
     ud_context *ctx;
     int32_t dialect;
+    uint32_t operation_depth;
+    int lease_operation;
+    void *saved_control_user;
+    ud_authorize_fn saved_authorize;
+    ud_status (*saved_check)(void *);
 };
 static int valid_string(ud_string s, int required) {
     return (!required || s.length) && (!s.length || (s.data && !memchr(s.data, 0, s.length) &&
@@ -327,25 +347,80 @@ static ud_status connection_check(void *user) {
         UD_TRY(c->options.check(c->options.authorize_user));
     return c->io_action ? authorize_connection(c, c->io_action) : UD_OK;
 }
-static ud_status connection_enter(ud_connection *c, int32_t action) {
-    if (!c)
-        return UD_INVALID;
-    UD_TRY(authorize_connection(c, action));
-    int expected = 0;
-    if (!atomic_compare_exchange_strong(&c->instance->busy, &expected, 1))
-        return UD_BUSY;
-    if (!c->cleanup && ud_is_cancelled(c->instance->plugin->ctx)) {
-        atomic_store(&c->instance->busy, 0);
-        return UD_CANCELLED;
+static ud_status operation_acquire(ud_connection *connection,void *user,ud_status (*check)(void *),int cleanup) {
+    ud_plugin_instance *instance = connection->instance;
+    uintptr_t owner = (uintptr_t)&operation_thread;
+    if (atomic_load(&instance->operation_owner) == owner) return UD_BUSY;
+    ud_mutex_lock(&instance->operation_lock);
+    for (;;) {
+        ud_status status = !cleanup && ud_is_cancelled(instance->plugin->ctx) ? UD_CANCELLED : UD_OK;
+        if (!status && check) {
+            /* Execution observers can run in this check; never call the host
+             * while holding the physical-session mutex. */
+            ud_mutex_unlock(&instance->operation_lock);
+            status = check(user);
+            ud_mutex_lock(&instance->operation_lock);
+        }
+        if (status) { ud_mutex_unlock(&instance->operation_lock); return status; }
+        int expected = 0;
+        if (atomic_compare_exchange_strong(&instance->busy,&expected,1)) break;
+        ud_condition_wait_ms(&instance->operation_changed,&instance->operation_lock,25);
     }
-    c->io_action = action;
-    c->api->set_control(c->instance->state, c, connection_check);
-    atomic_fetch_add(&c->instance->plugin->active, 1);
+    atomic_store(&instance->operation_owner,owner);
+    connection->operation_depth = 1;
+    ud_mutex_unlock(&instance->operation_lock);
     return UD_OK;
 }
-static void connection_leave(ud_connection *c) {
-    atomic_fetch_sub(&c->instance->plugin->active, 1);
-    atomic_store(&c->instance->busy, 0);
+static void operation_release(ud_connection *connection) {
+    if (connection->operation_depth > 1) { connection->operation_depth--; return; }
+    ud_plugin_instance *instance = connection->instance;
+    ud_mutex_lock(&instance->operation_lock);
+    connection->operation_depth = 0;
+    atomic_store(&instance->operation_owner,0); atomic_store(&instance->busy,0);
+    ud_condition_wake(&instance->operation_changed); ud_mutex_unlock(&instance->operation_lock);
+}
+static ud_status connection_enter(ud_connection *connection,int32_t action) {
+    if (!connection) return UD_INVALID;
+    if (atomic_load(&connection->instance->operation_owner) == (uintptr_t)&operation_thread &&
+        connection->lease_operation && connection->operation_depth == 1) connection->operation_depth++;
+    else UD_TRY(operation_acquire(connection,connection->cleanup ? NULL : connection->options.authorize_user,
+                                  connection->cleanup ? NULL : connection->options.check,connection->cleanup));
+    ud_status status = authorize_connection(connection,action);
+    if (status) { operation_release(connection); return status; }
+    connection->io_action = action;
+    connection->api->set_control(connection->instance->state,connection,connection_check);
+    atomic_fetch_add(&connection->instance->plugin->active,1);
+    return UD_OK;
+}
+static void connection_leave(ud_connection *connection) {
+    atomic_fetch_sub(&connection->instance->plugin->active,1);
+    operation_release(connection);
+}
+static ud_status connection_cleanup_enter(ud_connection *connection) {
+    if (atomic_load(&connection->instance->operation_owner) == (uintptr_t)&operation_thread &&
+        connection->lease_operation && connection->operation_depth == 1) connection->operation_depth++;
+    else UD_TRY(operation_acquire(connection,NULL,NULL,1));
+    atomic_fetch_add(&connection->instance->plugin->active,1); return UD_OK;
+}
+ud_status ud_connection_operation_begin(ud_connection *connection,void *user,ud_authorize_fn authorize,
+                                         ud_status (*check)(void *)) {
+    if (!connection || !authorize) return UD_INVALID;
+    UD_TRY(operation_acquire(connection,user,check,check == NULL));
+    connection->saved_control_user = connection->options.authorize_user;
+    connection->saved_authorize = connection->options.authorize;
+    connection->saved_check = connection->options.check;
+    connection->options.authorize_user = user; connection->options.authorize = authorize;
+    connection->options.check = check; connection->lease_operation = 1;
+    atomic_fetch_add(&connection->instance->plugin->active,1);
+    return UD_OK;
+}
+void ud_connection_operation_end(ud_connection *connection) {
+    connection->options.authorize_user = connection->saved_control_user;
+    connection->options.authorize = connection->saved_authorize;
+    connection->options.check = connection->saved_check;
+    connection->lease_operation = 0; connection->io_action = 0;
+    connection->api->set_control(connection->instance->state,connection,connection_check);
+    connection_leave(connection);
 }
 static ud_status validate_driver(ud_plugin *p) {
     const ud_connector_api *api = p->api.connector;
@@ -363,6 +438,8 @@ static ud_status validate_driver(ud_plugin *p) {
     if ((api->capabilities & UD_CONNECT_TRANSACTION) &&
         (!api->begin || !api->commit || !api->rollback))
         return UD_INCOMPATIBLE;
+    if ((api->capabilities & UD_CONNECT_TRANSACTIONAL_DML) &&
+        (!(api->capabilities & UD_CONNECT_TRANSACTION) || !api->savepoint)) return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_TRANSACTION_PARTICIPANT) &&
         (!(api->capabilities & UD_CONNECT_TRANSACTION) || !api->transaction_begin ||
          !api->transaction_prepare || !api->transaction_resolve || !api->transaction_recover))
@@ -407,10 +484,14 @@ ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options 
         ud_strdup_n(p->ctx, options->resource.data, options->resource.length);
     c->options.credential_reference = (ud_string){0};
     c->api = p->api.connector;
-    ud_status status = !c->options.tenant.data || !c->options.resource.data
-                           ? UD_RESOURCE
-                           : connection_instance_create(p, configuration.data, configuration.length,
-                                                        &c->instance, c, connection_check);
+    ud_id physical={0};
+    ud_status status=!c->options.tenant.data || !c->options.resource.data ? UD_RESOURCE :
+        ud_id_make(p->ctx,c->options.tenant,c->options.resource,&physical);
+    if (!status) {
+        ud_id_format(physical,c->resource_namespace);
+        status=connection_instance_create(p,configuration.data,configuration.length,&c->instance,c,connection_check,
+            (ud_string){c->resource_namespace,32});
+    }
     if (status) {
         ud_free((void *)c->options.tenant.data);
         ud_free((void *)c->options.resource.data);
@@ -461,23 +542,22 @@ int ud_connection_reusable(const ud_connection *c) {
 ud_status ud_connection_reset_session(ud_connection *c) {
     if (!ud_connection_reusable(c))
         return UD_UNSUPPORTED;
-    int expected = 0;
-    if (!atomic_compare_exchange_strong(&c->instance->busy, &expected, 1))
-        return UD_BUSY;
-    atomic_fetch_add(&c->instance->plugin->active, 1);
+    UD_TRY(connection_cleanup_enter(c));
     ud_status status = c->api->reset_session(c->instance->state);
     connection_leave(c);
     return status;
 }
 ud_status ud_connection_bind_lease(ud_connection *c, void *user, ud_authorize_fn authorize,
                                    ud_status (*check)(void *)) {
-    if (!c || atomic_load(&c->instance->busy))
-        return UD_BUSY;
+    if (!c) return UD_INVALID;
+    ud_mutex_lock(&c->instance->operation_lock);
+    if (atomic_load(&c->instance->busy)) { ud_mutex_unlock(&c->instance->operation_lock); return UD_BUSY; }
     c->options.authorize_user = user;
     c->options.authorize = authorize;
     c->options.check = check;
     c->io_action = 0;
     c->api->set_control(c->instance->state, c, connection_check);
+    ud_mutex_unlock(&c->instance->operation_lock);
     return UD_OK;
 }
 ud_status ud_connection_begin(ud_connection *c, int32_t isolation) {
@@ -511,10 +591,7 @@ ud_status ud_connection_rollback(ud_connection *c) {
     if (!c || !c->transaction)
         return UD_INVALID;
     UD_TRY(ud_connection_read_close(c));
-    int expected = 0;
-    if (!atomic_compare_exchange_strong(&c->instance->busy, &expected, 1))
-        return UD_BUSY;
-    atomic_fetch_add(&c->instance->plugin->active, 1);
+    UD_TRY(connection_cleanup_enter(c));
     ud_status status = c->api->rollback(c->instance->state);
     if (!status)
         c->transaction = 0;
@@ -696,7 +773,7 @@ ud_status ud_connection_schema(ud_connection *connection, ud_string table, ud_st
     ud_status status = ud_connection_discover(connection, table, &metadata);
     if (!status)
         status = ud_schema_from_metadata(connection->instance->plugin->ctx, metadata, scope,
-                                         connection->dialect, out);
+                                         (ud_string){connection->resource_namespace,32},connection->dialect, out);
     ud_batch_destroy(metadata);
     return status;
 }
@@ -743,10 +820,7 @@ ud_status ud_connection_read_close(ud_connection *c) {
     if (!c->cursor)
         return UD_OK;
     /* Closing resources is allowed after authorization revocation / cancellation. */
-    int expected = 0;
-    if (!atomic_compare_exchange_strong(&c->instance->busy, &expected, 1))
-        return UD_BUSY;
-    atomic_fetch_add(&c->instance->plugin->active, 1);
+    UD_TRY(connection_cleanup_enter(c));
     ud_status s = c->api->read_close(c->instance->state);
     connection_leave(c);
     if (!s)
@@ -847,19 +921,84 @@ ud_status ud_connection_execute_command(ud_connection *c, const ud_read_options 
     connection_leave(c);
     return s;
 }
-ud_status ud_connection_savepoint(ud_connection *connection, ud_string name, int32_t phase) {
-    if (!connection || !connection->transaction)
-        return UD_UNSUPPORTED;
+void ud_command_result_clear(ud_command_result *result) {
+    if (!result || result->struct_size != sizeof(*result) || result->abi_version != UD_ABI_VERSION) return;
+    ud_free((void *)result->provider_code.data);
+    *result = (ud_command_result){.struct_size = sizeof(*result),.abi_version = UD_ABI_VERSION};
+}
+static ud_status record_savepoint(ud_connection *connection,int32_t phase) {
     ud_string sql = {0};
-    ud_status status = ud_sql_compile_savepoint(
-        connection->instance->plugin->ctx, ud_connection_dialect(connection), name, phase, &sql);
+    ud_status status = ud_sql_compile_savepoint(connection->instance->plugin->ctx,
+        ud_connection_dialect(connection),(ud_string){"ud_record_command",17},phase,&sql);
     if (!status && sql.length) {
-        ud_read_options options = {
-            .struct_size = sizeof(options), .abi_version = UD_ABI_VERSION, .sql = sql};
-        status = ud_connection_execute_command(connection, &options, NULL);
+        status = connection->api->savepoint(connection->instance->state,sql);
     }
-    ud_free((void *)sql.data);
-    return status;
+    ud_free((void *)sql.data); return status;
+}
+ud_status ud_connection_execute_record(ud_connection *connection,const ud_read_options *options,
+                                       ud_command_result *out) {
+    if (!out || out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION) return UD_INCOMPATIBLE;
+    if (out->provider_code.data) return UD_INVALID;
+    out->state = UD_COMMAND_NOT_EXECUTED; out->result = UD_OK; out->affected_rows = 0;
+    ud_status status = !connection || !options ? UD_INVALID :
+        options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION ? UD_INCOMPATIBLE :
+        connection->cursor || connection->cdc || options->record ||
+        (options->parameters && (!options->parameters->sealed || options->parameters->rows != 1)) ? UD_INVALID : UD_OK;
+    if (!status && (connection->capabilities & (UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_TRANSACTIONAL_DML)) !=
+                   (UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_TRANSACTIONAL_DML)) status = UD_UNSUPPORTED;
+    if (!status) status = ud_sql_validate_record_command(options->sql);
+    if (!status) status = connection_enter(connection,UD_ACCESS_WRITE);
+    if (status) { out->result = status; return status; }
+    /* Keep the physical operation gate until commit/rollback is resolved. A
+     * sibling command cannot interleave another savepoint in this protocol. */
+    if (connection->cursor || connection->cdc) { out->result = UD_BUSY; connection_leave(connection); return UD_BUSY; }
+    int borrowed = connection->transaction,started = 0;
+    if (!status && connection->api->record_diagnostic) {
+        ud_string previous = {0}; status = connection->api->record_diagnostic(connection->instance->state,&previous);
+        ud_free((void *)previous.data);
+    }
+    if (!status) status = borrowed ? record_savepoint(connection,UD_SAVEPOINT_BEGIN)
+        : connection->api->begin(connection->instance->state,UD_ISOLATION_SERIALIZABLE);
+    if (!status) {
+        started = 1; if (!borrowed) connection->transaction = 1;
+        if (connection->api->record_validate) status = connection->api->record_validate(connection->instance->state,options);
+        if (!status) status = connection->api->execute(connection->instance->state,options,&out->affected_rows);
+        if (status && connection->api->record_diagnostic) {
+            ud_status diagnostic = connection->api->record_diagnostic(connection->instance->state,&out->provider_code);
+            if (diagnostic) { ud_free((void *)out->provider_code.data); out->provider_code = (ud_string){0}; }
+        }
+    }
+    if (!status && borrowed) {
+        status = record_savepoint(connection,UD_SAVEPOINT_RELEASE);
+        if (!status) out->state = UD_COMMAND_APPLIED;
+    } else if (!status) {
+        status = connection->api->commit(connection->instance->state);
+        if (!status) { connection->transaction = 0; out->state = UD_COMMAND_COMMITTED; }
+        else { status = UD_COMMIT_UNKNOWN; out->state = UD_COMMAND_UNKNOWN; }
+    }
+    if (status && started && out->state != UD_COMMAND_UNKNOWN) {
+        int cleaning = connection->cleanup; connection->cleanup = 1;
+        ud_status rolled = borrowed ? record_savepoint(connection,UD_SAVEPOINT_ROLLBACK)
+            : connection->api->rollback(connection->instance->state);
+        if (!rolled && borrowed) rolled = record_savepoint(connection,UD_SAVEPOINT_RELEASE);
+        connection->cleanup = cleaning;
+        if (rolled) { status = UD_COMMIT_UNKNOWN; out->state = UD_COMMAND_UNKNOWN; }
+        else { if (!borrowed) connection->transaction = 0; out->state = UD_COMMAND_REJECTED; }
+    }
+    out->result = status; connection_leave(connection); return status;
+}
+ud_status ud_connection_savepoint(ud_connection *connection, ud_string name, int32_t phase) {
+    if (!connection) return UD_INVALID;
+    ud_string sql = {0};
+    ud_status status = ud_sql_compile_savepoint(connection->ctx,ud_connection_dialect(connection),name,phase,&sql);
+    if (!status) status = connection_enter(connection,UD_ACCESS_WRITE);
+    if (!status) {
+        if (!connection->transaction) status = UD_UNSUPPORTED;
+        else if (!connection->api->savepoint) status = UD_UNSUPPORTED;
+        else if (sql.length) status = connection->api->savepoint(connection->instance->state,sql);
+        connection_leave(connection);
+    }
+    ud_free((void *)sql.data); return status;
 }
 ud_status ud_connection_record_diagnostic(ud_connection *connection, ud_string *out) {
     if (!connection || !out)
@@ -1062,10 +1201,7 @@ ud_status ud_connection_cdc_close(ud_connection *c) {
         return UD_INVALID;
     if (!c->cdc)
         return UD_OK;
-    int expected = 0;
-    if (!atomic_compare_exchange_strong(&c->instance->busy, &expected, 1))
-        return UD_BUSY;
-    atomic_fetch_add(&c->instance->plugin->active, 1);
+    UD_TRY(connection_cleanup_enter(c));
     c->cleanup = 1;
     c->api->set_control(c->instance->state, c, connection_check);
     ud_status status = c->api->cdc_close(c->instance->state);

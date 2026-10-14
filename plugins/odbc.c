@@ -14,6 +14,8 @@
  * SQLGetFunctions establish actual capabilities before a lease is admitted. */
 #include "odbc_internal.h"
 ud_status ud_odbc_control(odbc_state *p) {
+    if (p->resolving)
+        return UD_OK;
     if (atomic_load(&p->cancelled) || p->host.cancelled(p->host.context))
         return UD_CANCELLED;
     return p->check           ? p->check(p->check_user)
@@ -198,6 +200,13 @@ static ud_status prepare(odbc_state *p, ud_string sql, SQLHSTMT *out) {
         return s;
     if (!SQL_SUCCEEDED(statement_allocate(p, out)))
         return UD_RESOURCE;
+    if (p->resolving && !SQL_SUCCEEDED(SQLSetStmtAttr(*out, SQL_ATTR_QUERY_TIMEOUT,
+                                                      (SQLPOINTER)(uintptr_t)15, 0))) {
+        s = failure(p, SQL_HANDLE_STMT, *out);
+        statement_release(p, *out);
+        *out = SQL_NULL_HSTMT;
+        return s;
+    }
     SQLRETURN rc;
     if (p->ansi) {
         for (uint32_t i = 0; i < sql.length; i++)
@@ -745,7 +754,7 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
 }
 ud_status ud_odbc_begin(void *state, int32_t isolation) {
     odbc_state *p = state;
-    if (p->transaction)
+    if (p->transaction || p->branch_id[0])
         return UD_INVALID;
     SQLUINTEGER level = isolation == UD_ISOLATION_SERIALIZABLE      ? SQL_TXN_SERIALIZABLE
                         : isolation == UD_ISOLATION_REPEATABLE_READ ? SQL_TXN_REPEATABLE_READ
@@ -762,6 +771,8 @@ ud_status ud_odbc_begin(void *state, int32_t isolation) {
     return UD_OK;
 }
 static ud_status end_transaction(odbc_state *p, int commit_requested) {
+    if (p->xa_phase || p->branch_id[0])
+        return UD_FENCED;
     if (!p->transaction)
         return UD_INVALID;
     SQLRETURN rc =
@@ -771,11 +782,7 @@ static ud_status end_transaction(odbc_state *p, int commit_requested) {
         return UD_COMMIT_UNKNOWN;
     }
     p->transaction = 0;
-    while (p->bulk_sessions) {
-        odbc_state *bulk = p->bulk_sessions;
-        p->bulk_sessions = bulk->bulk_next;
-        ud_odbc_destroy(bulk);
-    }
+    ud_odbc_bulk_close(p);
     if (!SQL_SUCCEEDED(SQLSetConnectAttr(p->connection, SQL_ATTR_AUTOCOMMIT,
                                          (SQLPOINTER)SQL_AUTOCOMMIT_ON, 0))) {
         p->broken = 1;
@@ -1047,8 +1054,65 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
     p->host.batch_destroy(parameters);
     return s;
 }
+/* Written before business DML in the SAME XA branch. Locking reads prevent
+ * RCSI from mistaking an uncommitted receipt for an absent transaction. */
+ud_status ud_odbc_tx_receipt(odbc_state *p, const ud_transaction_branch *branch, int insert,
+                             int *found) {
+    *found = 0;
+    ud_field fields[] = {{.name = "branch", .name_length = 6, .type = UD_UTF8},
+                         {.name = "digest", .name_length = 6, .type = UD_BINARY}};
+    ud_value values[] = {{.type = UD_UTF8, .text = branch->id.data, .text_length = 64},
+                         {.type = UD_BINARY, .text = (const char *)branch->digest,
+                          .text_length = 32}};
+    ud_batch *parameters = NULL;
+    ud_status status = p->host.batch_create(p->host.context, fields, insert ? 2 : 1, 1,
+                                           &parameters);
+    if (!status)
+        status = p->host.append(parameters, values, insert ? 2 : 1);
+    if (!status && insert) {
+        uint64_t affected = 0;
+        const char *text = "INSERT INTO dbo.ud_sdk_tx_receipts_v10(branch_id,digest) VALUES(?,?)";
+        status = command(p, (ud_string){text, (uint32_t)strlen(text)}, parameters, &affected);
+        if (!status && affected != 1)
+            status = UD_FENCED;
+    } else if (!status) {
+        const char *text = "SELECT digest FROM dbo.ud_sdk_tx_receipts_v10 "
+                           "WITH(READCOMMITTEDLOCK) WHERE branch_id=?";
+        SQLHSTMT statement = SQL_NULL_HSTMT;
+        status = prepare(p, (ud_string){text, (uint32_t)strlen(text)}, &statement);
+        if (!status)
+            status = execute_bound(p, statement, parameters, 0, 1, NULL, 1, NULL, NULL, NULL);
+        if (!status) {
+            SQLRETURN rc = SQLFetch(statement);
+            if (rc != SQL_NO_DATA) {
+                if (!SQL_SUCCEEDED(rc))
+                    status = failure(p, SQL_HANDLE_STMT, statement);
+                else {
+                    char *digest = NULL;
+                    uint32_t length = 0;
+                    int null = 0;
+                    status = get_cell(p, statement, 0, 1, &digest, &length, &null);
+                    if (!status && (null || length != 32))
+                        status = UD_CORRUPT;
+                    if (!status && memcmp(digest, branch->digest, 32))
+                        status = UD_FENCED;
+                    if (!status)
+                        *found = 1;
+                    p->host.deallocate(digest);
+                    if (!status && SQLFetch(statement) != SQL_NO_DATA)
+                        status = UD_CORRUPT;
+                }
+            }
+        }
+        statement_release(p, statement);
+    }
+    p->host.batch_destroy(parameters);
+    return status;
+}
 static ud_status provision(void *state) {
     odbc_state *p = state;
+    if (p->branch_id[0])
+        return UD_BUSY;
     if (p->transaction && (p->dialect == DIALECT_MYSQL || p->dialect == DIALECT_ORACLE))
         return UD_UNSUPPORTED;
     const char *sql =
@@ -1079,6 +1143,11 @@ static ud_status provision(void *state) {
               "NULL,PRIMARY KEY(tenant,job,batch_id))"
             : NULL;
     ud_status status = sql ? ud_odbc_command(p, sql) : UD_UNSUPPORTED;
+    if (!status && p->dialect == DIALECT_MSSQL)
+        status = ud_odbc_command(p,
+            "IF OBJECT_ID(N'dbo.ud_sdk_tx_receipts_v10',N'U') IS NULL CREATE TABLE "
+            "dbo.ud_sdk_tx_receipts_v10(branch_id CHAR(64) COLLATE Latin1_General_100_BIN2 "
+            "NOT NULL PRIMARY KEY,digest BINARY(32) NOT NULL)");
     if (!status && p->dialect == DIALECT_MSSQL && (p->capabilities & UD_CONNECT_NATIVE_CDC))
         status = ud_mssql_cdc_provision(p);
     return status;
@@ -1303,6 +1372,15 @@ static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **
     }
     return s;
 }
+static ud_status savepoint(void *state,ud_string statement) {
+    odbc_state *p=state;
+    /* SQL Server rejects savepoints in distributed transactions. */
+    if (p->xa_phase) return UD_UNSUPPORTED;
+    if (!p->transaction) return UD_UNSUPPORTED;
+    char *sql=plugin_string(&p->host,statement.data,statement.length);
+    if (!sql) return UD_RESOURCE;
+    ud_status status=ud_odbc_command(p,sql); p->host.deallocate(sql); return status;
+}
 ud_status ud_odbc_execute(void *state, const ud_read_options *o, uint64_t *processed) {
     return command(state, o->sql, o->parameters, processed);
 }
@@ -1338,7 +1416,7 @@ static void set_control(void *state, void *user, ud_status (*check)(void *)) {
 }
 static ud_status reset(void *state) {
     odbc_state *p = state;
-    if (p->cursor || p->transaction || p->cdc || p->broken || p->bulk_sessions)
+    if (p->cursor || p->transaction || p->branch_id[0] || p->cdc || p->broken || p->bulk_sessions)
         return UD_CORRUPT;
     atomic_store(&p->cancelled, 0);
     if (p->dialect == DIALECT_POSTGRES)
@@ -1368,13 +1446,10 @@ void ud_odbc_destroy(void *state) {
         return;
     ud_mssql_cdc_close(p);
     ud_odbc_read_close(p);
-    if (p->transaction)
+    ud_mssql_xa_close(p);
+    if (p->transaction && !p->xa_phase)
         SQLEndTran(SQL_HANDLE_DBC, p->connection, SQL_ROLLBACK);
-    while (p->bulk_sessions) {
-        odbc_state *bulk = p->bulk_sessions;
-        p->bulk_sessions = bulk->bulk_next;
-        ud_odbc_destroy(bulk);
-    }
+    ud_odbc_bulk_close(p);
     if (p->connection) {
         SQLDisconnect(p->connection);
         SQLFreeHandle(SQL_HANDLE_DBC, p->connection);
@@ -1384,6 +1459,13 @@ void ud_odbc_destroy(void *state) {
     ud_mutex_destroy(&p->handles_lock);
     p->host.deallocate(p->configuration);
     p->host.deallocate(p);
+}
+void ud_odbc_bulk_close(odbc_state *p) {
+    while (p->bulk_sessions) {
+        odbc_state *bulk = p->bulk_sessions;
+        p->bulk_sessions = bulk->bulk_next;
+        ud_odbc_destroy(bulk);
+    }
 }
 static int contains(const char *text, const char *word) {
     for (; *text; text++) {
@@ -1535,7 +1617,13 @@ static ud_status initialize(const ud_host_api *h, const char *configuration, uin
                 !encrypted || trust)
                 s = UD_AUTH;
         }
+        if ((p->capabilities & UD_CONNECT_TRANSACTION) &&
+            (p->dialect == DIALECT_MSSQL || p->dialect == DIALECT_POSTGRES || p->dialect == DIALECT_ORACLE ||
+             p->dialect == DIALECT_SQLITE || p->dialect == DIALECT_DB2))
+            p->capabilities |= UD_CONNECT_TRANSACTIONAL_DML;
     }
+    if (!s && p->dialect == DIALECT_MSSQL)
+        s = ud_mssql_xa_probe(p);
     if (!s && p->dialect == DIALECT_MSSQL) {
         int enabled = 0;
         s = ud_mssql_cdc_enabled(p, &enabled);
@@ -1564,7 +1652,7 @@ static int32_t session_dialect(void *state) {
 static const ud_connector_api connector = {
     .struct_size = sizeof(ud_connector_api),
     .abi_version = UD_ABI_VERSION,
-    .capabilities =
+    .capabilities = UD_CONNECT_TRANSACTION_PARTICIPANT | UD_CONNECT_TRANSACTIONAL_DML |
         UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
         UD_CONNECT_DELETE | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_RECEIPTS |
         UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
@@ -1587,6 +1675,11 @@ static const ud_connector_api connector = {
     .reset_session = reset,
     .session_capabilities = capabilities,
     .record_diagnostic = record_diagnostic,
+    .savepoint = savepoint,
+    .transaction_begin = ud_mssql_xa_begin,
+    .transaction_prepare = ud_mssql_xa_prepare,
+    .transaction_resolve = ud_mssql_xa_resolve,
+    .transaction_recover = ud_mssql_xa_recover,
     .provision = provision,
     .parameter_style = UD_SQL_PARAMETER_QUESTION,
     .metadata_dialect = UD_SQL_CANONICAL,
@@ -1600,6 +1693,7 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t requested, ud_plugin_api *
         return UD_INCOMPATIBLE;
     *api = (ud_plugin_api){.struct_size = sizeof(*api),
                            .abi_version = UD_PLUGIN_ABI,
+                           .field_size=sizeof(ud_field),.value_size=sizeof(ud_value),
                            .id = "odbc",
                            .version = UD_SDK_VERSION,
                            .roles = UD_PLUGIN_CONNECTOR,

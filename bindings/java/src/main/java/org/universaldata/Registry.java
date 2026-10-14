@@ -3,6 +3,9 @@ import java.util.function.LongFunction;
 /** Native Registry owns registrations and leases them for Execution lifetime. */
 public final class Registry implements AutoCloseable {
     static { ProductVersion.requireNative(); }
+    public static final long FEATURE_SCOPED_JOURNAL=1L,FEATURE_CONTROL_EVENTS=0x0004000000000000L;
+    public static long features() { return nativeFeatures(); }
+    private static native long nativeFeatures();
     private long handle;
     public Registry() { this(268435456L); }
     public Registry(long memoryLimit) { handle=nativeOpen(memoryLimit); }

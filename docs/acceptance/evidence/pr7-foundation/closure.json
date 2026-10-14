@@ -1,0 +1,108 @@
+{
+  "nativeCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+  "nativeSourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+  "productCommit": "f5756bb47e4b7c80d6198a9a807fb9819aca125f",
+  "productSourceFingerprint": "81c4084ace9841d4d54227c0363aa577218c6177515ffb9069f8a1cc4defefb5",
+  "reports": [
+    {
+      "path": "docs/acceptance/evidence/pr7-foundation/core-433f846.xml",
+      "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+      "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+      "tests": 69,
+      "failures": 0,
+      "skipped": 0,
+      "note": "Linux Release PRODUCT, all 69 core tests",
+      "sha256": "52bf1e5bbb462e8262a764a87bc113a65aa976c463d079ed781042472b084796"
+    },
+    {
+      "path": "docs/acceptance/evidence/pr7-foundation/drivers-433f846.xml",
+      "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+      "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+      "tests": 21,
+      "failures": 0,
+      "skipped": 0,
+      "note": "21 live PostgreSQL/MySQL/MariaDB/SQL Server tests, including CDC and participant process recovery",
+      "sha256": "5de1c7e012c693098b48a38fb30b9275fa7dc9e0c39c43a29ffcf447c197644c"
+    },
+    {
+      "path": "docs/acceptance/evidence/pr7-foundation/asan-ubsan-433f846.xml",
+      "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+      "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+      "tests": 55,
+      "failures": 0,
+      "skipped": 0,
+      "note": "Explicit Linux CORE profile: ASan/UBSan, detect_leaks=1; 55 tests",
+      "sha256": "625f6503fbfbe9febfc2f2756412cd739e6f6ff4fcb9c6ed1026e546ba246723"
+    },
+    {
+      "path": "docs/acceptance/evidence/pr7-foundation/asan-apache-433f846.xml",
+      "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+      "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+      "tests": 1,
+      "failures": 0,
+      "skipped": 0,
+      "note": "Apache Python ctypes test preloads ASan, detect_leaks=0 for the Python process; other native tests retain leak checks",
+      "sha256": "6570320ab27d97807c92a279eb48f43a5df82561a9c55ee1f78f52298652c746"
+    },
+    {
+      "path": "docs/acceptance/evidence/pr7-foundation/worker-control-f5756bb.xml",
+      "sourceCommit": "f5756bb47e4b7c80d6198a9a807fb9819aca125f",
+      "sourceFingerprint": "81c4084ace9841d4d54227c0363aa577218c6177515ffb9069f8a1cc4defefb5",
+      "tests": 5,
+      "failures": 0,
+      "skipped": 0,
+      "note": "Five affected product contracts, including authenticated control before Native start",
+      "sha256": "3f80a2c54bb97858ac477b61091ea932ce2f8d10e4461d7f8991286266e532d3"
+    }
+  ],
+  "nativeBulk": {
+    "report": "remote-bulk-433f846.json",
+    "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+    "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+    "rowsPerMode": 1000000,
+    "transport": "Actual TCP services on the same Linux host; not an inter-host network benchmark",
+    "verification": "Every field read back; typed batch SHA-256 transcript compared; all eight outputs match",
+    "timing": "Native write time; generation and verification reported separately",
+    "nativeSpeedup": {
+      "postgresql": 2.703,
+      "mysql": 1.91,
+      "mariadb": 2.281,
+      "sqlserver_bcp": 1.807
+    }
+  },
+  "pipeline": {
+    "report": "pipeline-million-433f846.json",
+    "sourceCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
+    "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+    "rows": 1000000,
+    "referenceKeys": 100000,
+    "errorRows": 100000,
+    "samples": 18,
+    "workers": [
+      1,
+      2,
+      4
+    ],
+    "scope": [
+      "Streaming",
+      "Sort Spill",
+      "Join",
+      "error dual sink",
+      "incremental kill/resume",
+      "cache Lookup"
+    ]
+  },
+  "installed": {
+    "report": "installed-f5756bb.json",
+    "sourceCommit": "f5756bb47e4b7c80d6198a9a807fb9819aca125f",
+    "sourceFingerprint": "81c4084ace9841d4d54227c0363aa577218c6177515ffb9069f8a1cc4defefb5",
+    "archiveSha256": "f9fb20334551011bd48933ac44c413653471bb48a685ae1d07a39f98adb286e8",
+    "scope": "Linux distributable extracted into a new independent directory; C/NuGet/Maven/JNI/CLI and installed browser/Worker kill-resume passed"
+  },
+  "notComplete": [
+    "Windows and remote CI have no successful current run; GitHub jobs are blocked by account billing",
+    "OCI TCPS and independent SMTP/FTP/SFTP/cloud/SSAS/WMI resources are unavailable",
+    "Complete DDL/schema/CDC/connection-fault matrices, distributed Workers, Kafka/Lakehouse/new database ecosystems and dedicated advanced UI remain incomplete",
+    "No full-product release or all-goals completion is asserted"
+  ]
+}

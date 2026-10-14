@@ -520,6 +520,66 @@ static ud_status table_parts(mysql_state *p, ud_string table, ud_string values[2
     }
     return values[0].length && values[1].length ? UD_OK : UD_SCHEMA;
 }
+static ud_status record_validate(void *state,const ud_read_options *options) {
+    mysql_state *p=state;
+    ud_string schema={0},table={0},identifier={0};
+    ud_status status=p->host.record_target(p->host.context,options->sql,&schema,&table);
+    ud_string args[]={schema.length ? schema : (ud_string){p->database,(uint32_t)strlen(p->database)},table};
+    char *qualified=NULL,*locking=NULL;
+    ud_batch *proof=NULL;
+    /* Hold the provider's metadata lock until the Native row transaction ends.
+     * Otherwise ALTER ENGINE/CREATE TRIGGER could invalidate an earlier proof. */
+    if (!status) {
+        size_t length=(size_t)args[0].length+args[1].length+1;
+        qualified=p->host.allocate(p->host.context,length+1);
+        if (!qualified) status=UD_RESOURCE;
+        else {
+            memcpy(qualified,args[0].data,args[0].length); qualified[args[0].length]='.';
+            memcpy(qualified+args[0].length+1,args[1].data,args[1].length);
+            status=p->host.table_identifier(p->host.context,UD_SQL_MYSQL,(ud_string){qualified,(uint32_t)length},&identifier);
+        }
+    }
+    if (!status) {
+        locking=p->host.allocate(p->host.context,(size_t)identifier.length+64);
+        if (!locking) status=UD_RESOURCE;
+        else {
+            snprintf(locking,(size_t)identifier.length+64,"SELECT 1 AS ud_lock FROM %.*s LIMIT 0",(int)identifier.length,identifier.data);
+            ud_field field={.name="ud_lock",.name_length=7,.type=UD_INT64};
+            status=query(p,locking,NULL,0,&field,1,&proof);
+        }
+    }
+    p->host.batch_destroy(proof); proof=NULL;
+    ud_field fields[]={{.name="engine",.name_length=6,.type=UD_UTF8},
+        {.name="triggers",.name_length=8,.type=UD_INT64},
+        {.name="trigger_visibility",.name_length=18,.type=UD_INT64}};
+    /* TRIGGERS is privilege-filtered. Require a visible TRIGGER grant before
+     * interpreting an empty result as absence. Role-only grants fail closed. */
+    static const char sql[]=
+        "SELECT t.ENGINE AS engine,(SELECT COUNT(*) FROM information_schema.TRIGGERS r "
+        "WHERE r.TRIGGER_SCHEMA=t.TABLE_SCHEMA AND r.EVENT_OBJECT_TABLE=t.TABLE_NAME) AS triggers,"
+        "(SELECT COUNT(*) FROM ("
+        "SELECT GRANTEE,PRIVILEGE_TYPE,NULL AS scope_schema,NULL AS scope_table FROM information_schema.USER_PRIVILEGES "
+        "UNION ALL SELECT GRANTEE,PRIVILEGE_TYPE,TABLE_SCHEMA,NULL FROM information_schema.SCHEMA_PRIVILEGES "
+        "UNION ALL SELECT GRANTEE,PRIVILEGE_TYPE,TABLE_SCHEMA,TABLE_NAME FROM information_schema.TABLE_PRIVILEGES) ud_grants "
+        "WHERE ud_grants.PRIVILEGE_TYPE='TRIGGER' AND ud_grants.GRANTEE=CONCAT("
+        "QUOTE(LEFT(CURRENT_USER(),LENGTH(CURRENT_USER())-LENGTH(SUBSTRING_INDEX(CURRENT_USER(),'@',-1))-1)),"
+        "'@',QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',-1))) "
+        "AND (ud_grants.scope_schema IS NULL OR ud_grants.scope_schema=t.TABLE_SCHEMA) "
+        "AND (ud_grants.scope_table IS NULL OR ud_grants.scope_table=t.TABLE_NAME)) AS trigger_visibility "
+        "FROM information_schema.TABLES t WHERE t.TABLE_SCHEMA=? AND t.TABLE_NAME=?";
+    if (!status) status=query(p,sql,args,2,fields,3,&proof);
+    if (!status && p->host.rows(proof)!=1) status=UD_SCHEMA;
+    ud_value engine={0},triggers={0},visible={0};
+    if (!status) status=p->host.get(proof,0,0,&engine);
+    if (!status) status=p->host.get(proof,0,1,&triggers);
+    if (!status) status=p->host.get(proof,0,2,&visible);
+    if (!status && (visible.is_null || visible.integer<=0)) status=UD_AUTH;
+    if (!status && (engine.is_null || engine.text_length!=6 || memcmp(engine.text,"InnoDB",6) ||
+                    triggers.is_null || triggers.integer)) status=UD_UNSUPPORTED;
+    p->host.batch_destroy(proof); p->host.deallocate((void *)schema.data); p->host.deallocate((void *)table.data);
+    p->host.deallocate((void *)identifier.data); p->host.deallocate(qualified); p->host.deallocate(locking);
+    return status;
+}
 static ud_status discover(void *state, ud_string table, ud_batch **out) {
     mysql_state *p = state;
     ud_string args[2];
@@ -666,10 +726,44 @@ static void set_control(void *state, void *user, ud_status (*fn)(void *)) {
     if (!fn)
         atomic_store(&p->cancelled, 0);
 }
+static ud_status savepoint(void *state,ud_string statement) {
+    mysql_state *p=state;
+    if (!p->transaction) return UD_UNSUPPORTED;
+    char *sql=plugin_string(&p->host,statement.data,statement.length);
+    if (!sql) return UD_RESOURCE;
+    ud_status status=command(p,sql); p->host.deallocate(sql); return status;
+}
 static ud_status execute(void *state, const ud_read_options *o, uint64_t *processed) {
     mysql_state *p = state;
     if (p->cursor)
         return UD_BUSY;
+    /* MySQL does not prepare every administrative/DDL statement (notably
+     * CREATE TRIGGER). Unparameterized SQL uses its text command protocol;
+     * typed row parameters always use the binary prepared protocol below. */
+    if (!o->parameters) {
+        if (processed) *processed=0;
+        ud_status status=check(p);
+        if (!status && mysql_real_query(p->db,o->sql.data,o->sql.length)) status=failure(p,NULL);
+        uint64_t affected=0; int result_set=0;
+        for (; !status;) {
+            if (mysql_field_count(p->db)) {
+                MYSQL_RES *result=mysql_store_result(p->db);
+                if (!result) status=failure(p,NULL);
+                mysql_free_result(result); result_set=1;
+            } else {
+                uint64_t rows=(uint64_t)mysql_affected_rows(p->db);
+                if (rows>UINT64_MAX-affected) status=UD_OVERFLOW;
+                else affected+=rows;
+            }
+            if (status) break;
+            int more=mysql_next_result(p->db);
+            if (more<0) break;
+            if (more) { status=failure(p,NULL); break; }
+        }
+        if (!status && result_set) status=UD_SCHEMA;
+        if (!status && processed) *processed=affected;
+        return status ? status : check(p);
+    }
     MYSQL_STMT *stmt = NULL;
     ud_status s = statement(p, o->sql, &stmt);
     uint32_t n = o->parameters ? p->host.columns(o->parameters) : 0,
@@ -914,7 +1008,7 @@ static ud_status prove_target(mysql_state *p, const ud_write_options *o, const u
         s = discover(p, o->table, &meta);
     ud_batch *actual_schema = NULL;
     if (!s)
-        s = p->host.schema_from_metadata(p->host.context, meta, o->table, UD_MYSQL_DIALECT,
+        s = p->host.schema_from_metadata(p->host.context, meta, o->table, p->host.resource_namespace, UD_MYSQL_DIALECT,
                                          &actual_schema);
     uint32_t columns = p->host.columns(batch);
     for (uint32_t i = 0; !s && i < columns; i++) {
@@ -1445,7 +1539,7 @@ static ud_status cdc_schema_event(mysql_state *p, ud_cdc_event *out) {
     if (!status)
         status = p->host.schema_from_metadata(
             p->host.context, metadata,
-            (ud_string){c->incarnation, (uint32_t)strlen(c->incarnation)},
+            (ud_string){c->incarnation, (uint32_t)strlen(c->incarnation)},p->host.resource_namespace,
 #if defined(UD_MYSQL_CLIENT)
             UD_SQL_MYSQL,
 #else
@@ -1847,7 +1941,7 @@ ud_status ud_mysql_initialize(const ud_host_api *h, const char *configuration, u
 const ud_connector_api ud_mysql_connector = {
     .struct_size = sizeof(ud_connector_api),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities =
+    .capabilities = UD_CONNECT_TRANSACTIONAL_DML |
         UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
         UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
         UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_CDC |
@@ -1870,6 +1964,8 @@ const ud_connector_api ud_mysql_connector = {
     .reset_session = reset,
     .session_capabilities = session_capabilities,
     .record_diagnostic = record_diagnostic,
+    .savepoint = savepoint,
+    .record_validate = record_validate,
     .provision = provision,
     .parameter_style = UD_SQL_PARAMETER_QUESTION,
     .metadata_dialect = UD_MYSQL_DIALECT,

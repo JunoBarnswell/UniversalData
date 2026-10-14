@@ -94,11 +94,67 @@ static ud_status values(const ud_field *f, uint32_t i, ud_value *v) {
     }
     return UD_OK;
 }
+static int record_commands(ud_connection *connection,int dialect,const ud_batch *schema) {
+    ud_field fields[2]; OK(ud_batch_field(schema,0,fields)); OK(ud_batch_field(schema,5,fields+1));
+    ud_batch *parameters=NULL; OK(ud_batch_create(ctx,fields,2,1,&parameters));
+    ud_field all[6];
+    for (uint32_t at=0; at<6; at++) OK(ud_batch_field(schema,at,all+at));
+    ud_value row[6]; OK(values(all,2001,row));
+    ud_value selected[]={row[0],row[5]}; OK(ud_batch_append(parameters,selected,2)); OK(ud_batch_seal(parameters));
+    int style=ud_connection_parameter_style(connection);
+    const char *first=style==UD_SQL_PARAMETER_NUMBERED ? "$1" : style==UD_SQL_PARAMETER_NAMED ? ":1" : "?";
+    const char *second=style==UD_SQL_PARAMETER_NUMBERED ? "$2" : style==UD_SQL_PARAMETER_NAMED ? ":2" : "?";
+    char sql[256];
+    snprintf(sql,sizeof(sql),dialect==UD_SQL_ORACLE
+        ? "INSERT INTO \"ud_advanced_rows\"(\"id\",\"flag\") VALUES(%s,%s)"
+        : "INSERT INTO ud_advanced_rows(id,flag) VALUES(%s,%s)",first,second);
+    ud_read_options options={.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,.sql=str(sql),.parameters=parameters};
+    ud_command_result outcome={.struct_size=sizeof(outcome),.abi_version=UD_ABI_VERSION};
+    OK(ud_connection_execute_record(connection,&options,&outcome));
+    CHECK(outcome.state==UD_COMMAND_COMMITTED && outcome.affected_rows==1); ud_command_result_clear(&outcome);
+    CHECK(ud_connection_execute_record(connection,&options,&outcome)==UD_QUALITY);
+    CHECK(outcome.state==UD_COMMAND_REJECTED && outcome.provider_code.length); ud_command_result_clear(&outcome);
+    OK(ud_connection_begin(connection,UD_ISOLATION_SERIALIZABLE));
+    char statement[256];
+    snprintf(statement,sizeof(statement),dialect==UD_SQL_ORACLE
+        ? "UPDATE \"ud_advanced_rows\" SET \"id\"=2002 WHERE \"id\"=2001"
+        : "UPDATE ud_advanced_rows SET id=2002 WHERE id=2001");
+    ud_read_options update={.struct_size=sizeof(update),.abi_version=UD_ABI_VERSION,.sql=str(statement)};
+    OK(ud_connection_execute_record(connection,&update,&outcome));
+    CHECK(outcome.state==UD_COMMAND_APPLIED && outcome.affected_rows==1); ud_command_result_clear(&outcome);
+    /* A rejected row must not roll back the sibling row's preceding update. */
+    OK(ud_connection_execute_record(connection,&options,&outcome));
+    CHECK(outcome.state==UD_COMMAND_APPLIED); ud_command_result_clear(&outcome);
+    CHECK(ud_connection_execute_record(connection,&options,&outcome)==UD_QUALITY);
+    CHECK(outcome.state==UD_COMMAND_REJECTED); ud_command_result_clear(&outcome);
+    OK(ud_connection_rollback(connection));
+    if (dialect==UD_SQL_MYSQL || dialect==UD_SQL_MARIADB) {
+        OK(command(connection,"ALTER TABLE ud_advanced_rows ENGINE=MyISAM"));
+        CHECK(ud_connection_execute_record(connection,&options,&outcome)==UD_UNSUPPORTED);
+        CHECK(outcome.state==UD_COMMAND_REJECTED); ud_command_result_clear(&outcome);
+        OK(command(connection,"ALTER TABLE ud_advanced_rows ENGINE=InnoDB"));
+        OK(command(connection,"CREATE TRIGGER ud_record_trigger BEFORE INSERT ON ud_advanced_rows FOR EACH ROW SET NEW.flag=NEW.flag"));
+        CHECK(ud_connection_execute_record(connection,&options,&outcome)==UD_UNSUPPORTED);
+        CHECK(outcome.state==UD_COMMAND_REJECTED); ud_command_result_clear(&outcome);
+        OK(command(connection,"DROP TRIGGER ud_record_trigger"));
+    }
+    snprintf(statement,sizeof(statement),dialect==UD_SQL_ORACLE ? "SELECT \"id\" FROM \"ud_advanced_rows\"" : "SELECT id FROM ud_advanced_rows");
+    ud_batch *projection=NULL; OK(ud_batch_create(ctx,fields,1,0,&projection));
+    ud_read_options read={.struct_size=sizeof(read),.abi_version=UD_ABI_VERSION,.batch_size=7,.sql=str(statement)};
+    OK(ud_connection_read_open(connection,&read,projection)); ud_batch_destroy(projection);
+    ud_batch *actual=NULL; OK(ud_connection_read_next(connection,&actual)); CHECK(ud_batch_rows(actual)==1);
+    ud_value value; OK(ud_batch_get(actual,0,0,&value)); CHECK(ud_value_compare(&value,row)==0); ud_batch_destroy(actual);
+    CHECK(ud_connection_read_next(connection,&actual)==UD_END); OK(ud_connection_read_close(connection));
+    ud_batch_destroy(parameters);
+    puts("row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows");
+    return 0;
+}
 int main(int argc, char **argv) {
     CHECK(argc >= 3);
     int resume = argc > 3 && !strcmp(argv[3], "resume"),
         kill = argc > 3 && !strcmp(argv[3], "kill"),
-        native = argc > 3 && !strcmp(argv[3], "native"), allowed = 1;
+        native = argc > 3 && !strcmp(argv[3], "native"),
+        records = argc > 3 && !strcmp(argv[3], "row-command"), allowed = 1;
     OK(ud_context_create(NULL, &ctx));
     ud_plugin *p = NULL;
     OK(ud_plugin_load(ctx, argv[1], 0, &p));
@@ -163,6 +219,11 @@ int main(int argc, char **argv) {
     const char *names[] = {"id", "name", "amount", "payload", "stamp", "flag"};
     for (uint32_t j = 0; j < 6; j++)
         CHECK(!strcmp(fields[j].name, names[j]));
+    if (records) {
+        CHECK((ud_connection_capabilities(c)&UD_CONNECT_TRANSACTIONAL_DML)!=0);
+        CHECK(!record_commands(c,dialect,actual_schema)); ud_batch_destroy(actual_schema);
+        OK(ud_connection_close(c)); OK(ud_plugin_unload(p)); CHECK(!ud_memory_used(ctx)); OK(ud_context_destroy(ctx)); return 0;
+    }
     ud_batch *b = NULL;
     OK(ud_batch_create(ctx, fields, 6, 1003, &b));
     for (uint32_t i = 1; i <= 1003; i++) {

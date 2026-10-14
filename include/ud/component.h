@@ -91,6 +91,10 @@ typedef struct ud_component_context {
 #define UD_ENUMERATOR_DETERMINISTIC UINT64_C(0x0020000000000000)
 #define UD_ENUMERATOR_SNAPSHOT UINT64_C(0x0010000000000000)
 #define UD_ENUMERATOR_RESUMABLE UINT64_C(0x0008000000000000)
+/* Opt-in step notifications at aligned barrier, reduced watermark and accepted
+ * schema boundaries. These callbacks cannot emit or schedule MORE/END; Native
+ * owns control propagation and checkpoints the resulting component state. */
+#define UD_COMPONENT_CONTROL_EVENTS UINT64_C(0x0004000000000000)
 #define UD_FUNCTION_PURE UINT64_C(0x2000000000000000)
 #define UD_FUNCTION_DETERMINISTIC UINT64_C(0x1000000000000000)
 struct ud_component_plan {
@@ -167,6 +171,11 @@ typedef struct ud_component_descriptor {
 UD_API ud_status ud_component_plan_copy(ud_context *, const ud_component_plan *,
                                         ud_component_plan *);
 UD_API void ud_component_plan_clear(ud_component_plan *);
+/* Additive descriptor semantics must be negotiated before use with an older
+ * ABI-compatible library. A missing query/export is not implicit support. */
+UD_API uint64_t ud_registry_features(void);
+/* Additional Registry/runtime feature bits; independent of descriptor caps. */
+#define UD_REGISTRY_SCOPED_JOURNAL UINT64_C(1)
 UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
 /* Copies descriptor metadata, retains callback user by contract (host lifetime).
  * Duplicate IDs reject. Built-in IDs cannot be shadowed. Registry mutations and

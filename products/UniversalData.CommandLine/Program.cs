@@ -2,6 +2,29 @@ using System.Text.Json;
 using UniversalData;
 using UniversalData.Hosting;
 
+if (args.Length >= 1 && args[0] == "identity-init") {
+    if (args.Length != 4 || !HostIdentity.ValidId(args[2]) || !HostIdentity.ValidId(args[3])) throw new ArgumentException("usage: identity-init IDENTITY_FILE SUBJECT TENANT; password is read from standard input");
+    string password;
+    if (Console.IsInputRedirected) password = Console.ReadLine() ?? throw new ArgumentException("Missing password on standard input");
+    else {
+        Console.Error.Write("Password: "); var input = new System.Text.StringBuilder();
+        while (true) {
+            var key = Console.ReadKey(intercept:true);
+            if (key.Key == ConsoleKey.Enter) break;
+            if (key.Key == ConsoleKey.Backspace) { if (input.Length != 0) input.Length--; }
+            else if (!char.IsControl(key.KeyChar) && input.Length < 1024) input.Append(key.KeyChar);
+        }
+        Console.Error.WriteLine(); password = input.ToString(); input.Clear();
+    }
+    var document = new IdentityDocument(1,[new(args[2],args[3],IdentityDirectory.HashPassword(password),Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)),["administrator"])],
+        new() { ["administrator"] = [new("*","*")] });
+    HostFiles.WritePrivate(Path.GetFullPath(args[1]),JsonSerializer.SerializeToUtf8Bytes(document,HostPolicy.JsonOptions)); return 0;
+}
+if (args.Length >= 1 && args[0] == "protect-history") {
+    if (args.Length != 4) throw new ArgumentException("usage: protect-history POLICY_FILE CATALOG_DIRECTORY TENANT");
+    var migrationPolicy = HostPolicy.Load(Path.GetFullPath(args[1]));
+    Console.WriteLine(JsonSerializer.Serialize(new { protectedRecords = HistoryProtection.Protect(migrationPolicy,args[2],args[3]) },HostPolicy.JsonOptions)); return 0;
+}
 if (args.Length < 3 || args[0] is not ("execute" or "inspect" or "catalog" or "discover" or "compile")) {
     Console.Error.WriteLine("usage: ud_cli execute|inspect|catalog|discover|compile POLICY_FILE INPUT_FILE [PARAMETERS_JSON] [EXECUTION_ID] [resume] [CONNECTION] [TABLE]"); return 2;
 }

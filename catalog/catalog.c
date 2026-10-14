@@ -3,6 +3,9 @@
 /* Native SQLite is the sole Catalog storage path. Journals remain execution
  * recovery owners; a Catalog document is never a substitute for a commit fact. */
 #define CATALOG_APPLICATION_ID 1430537025
+/* Protocol family 10, storage revision 2. Older binaries reject this version;
+ * Native upgrades existing documents intact under the SQLite writer lock. */
+#define CATALOG_STORAGE_VERSION ((UD_CONFIG_VERSION << 16) | UD_CATALOG_FORMAT_REVISION)
 static int kind_valid(int32_t kind) {
     return kind >= UD_CATALOG_PROJECT && kind <= UD_CATALOG_AUDIT;
 }
@@ -223,7 +226,8 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
     if (!status)
         status = pragma_integer(c, "PRAGMA user_version", &version);
     if (!status && (application || version) &&
-        (application != CATALOG_APPLICATION_ID || version != UD_CONFIG_VERSION))
+        (application != CATALOG_APPLICATION_ID ||
+         (version != UD_CONFIG_VERSION && version != CATALOG_STORAGE_VERSION)))
         status = UD_INCOMPATIBLE;
     if (!status && !application && !version) {
         status = sql(c, "BEGIN IMMEDIATE");
@@ -235,7 +239,8 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
         if (!status)
             status = pragma_integer(c, "PRAGMA user_version", &version);
         if (!status && (application || version) &&
-            (application != CATALOG_APPLICATION_ID || version != UD_CONFIG_VERSION))
+            (application != CATALOG_APPLICATION_ID ||
+             (version != UD_CONFIG_VERSION && version != CATALOG_STORAGE_VERSION)))
             status = UD_INCOMPATIBLE;
         int tables = 0;
         if (!status && !application)
@@ -262,6 +267,31 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
         if (!status)
             status = sql(c, "COMMIT");
         else
+            (void)sql(c, "ROLLBACK");
+    }
+    if (!status && version != CATALOG_STORAGE_VERSION) {
+        status = sql(c, "BEGIN IMMEDIATE");
+        int transaction = !status;
+        if (!status)
+            status = sql(c,
+                "CREATE TABLE IF NOT EXISTS catalog_clock(id INTEGER PRIMARY KEY CHECK(id=1),"
+                "milliseconds INTEGER NOT NULL CHECK(milliseconds>=0));"
+                "INSERT OR IGNORE INTO catalog_clock VALUES(1,0);"
+                "CREATE TABLE IF NOT EXISTS lease_pools(tenant TEXT NOT NULL,pool TEXT NOT NULL,"
+                "capacity INTEGER NOT NULL CHECK(capacity>0),PRIMARY KEY(tenant,pool)) WITHOUT ROWID;"
+                "CREATE TABLE IF NOT EXISTS leases(tenant TEXT NOT NULL,kind INTEGER NOT NULL,"
+                "id TEXT NOT NULL,owner TEXT NOT NULL,pool TEXT NOT NULL,generation INTEGER NOT NULL "
+                "CHECK(generation>0),until_ms INTEGER NOT NULL CHECK(until_ms>=0),"
+                "PRIMARY KEY(tenant,kind,id)) WITHOUT ROWID;"
+                "CREATE INDEX IF NOT EXISTS lease_capacity ON leases(tenant,pool,until_ms)");
+        if (!status) {
+            char version_sql[64];
+            snprintf(version_sql,sizeof(version_sql),"PRAGMA user_version=%u",CATALOG_STORAGE_VERSION);
+            status=sql(c,version_sql);
+        }
+        if (!status)
+            status = sql(c, "COMMIT");
+        if (transaction && status)
             (void)sql(c, "ROLLBACK");
     }
     if (!status)
@@ -320,7 +350,10 @@ ud_status ud_catalog_get(ud_catalog *c, const ud_catalog_key *key, char **json, 
     UD_TRY(grant(c, UD_ACCESS_READ));
     return get_document(c, key, json, length);
 }
-ud_status ud_catalog_put(ud_catalog *c, const ud_catalog_key *key, ud_string input) {
+static ud_status lease_guard(ud_catalog *,const ud_catalog_lease *,int32_t,ud_string);
+static ud_status put_document(ud_catalog *c, const ud_catalog_key *key, ud_string input,
+                               int conditional, uint64_t expected,
+                               const ud_catalog_lease *lease) {
     if (!c)
         return UD_INVALID;
     UD_TRY(key_check(key));
@@ -345,6 +378,16 @@ ud_status ud_catalog_put(ud_catalog *c, const ud_catalog_key *key, ud_string inp
         status = sql(c, "BEGIN IMMEDIATE");
         transaction = !status;
     }
+    if (!status && conditional) {
+        uint64_t latest = 0;
+        ud_status found = ud_catalog_latest_revision(c,key->kind,key->id,&latest);
+        if (found != UD_OK && found != UD_END)
+            status = found;
+        else if (latest != expected)
+            status = UD_FENCED;
+    }
+    if (!status)
+        status = lease_guard(c,lease,key->kind,key->id);
     char *previous = NULL;
     uint32_t previous_length = 0;
     if (!status) {
@@ -374,14 +417,28 @@ ud_status ud_catalog_put(ud_catalog *c, const ud_catalog_key *key, ud_string inp
             status = found;
     }
     if (transaction) {
-        if (!status)
-            status = sql(c, "COMMIT");
-        if (status)
+        /* A rejected fencing check has not appended data. Persist its clock
+         * observation so a later wall-clock correction cannot revive expiry. */
+        if (!status || status == UD_FENCED) {
+            ud_status committed = sql(c,"COMMIT");
+            if (committed) status = committed;
+            else transaction = 0;
+        }
+        if (transaction)
             (void)sql(c, "ROLLBACK");
     }
     ud_free(previous);
     ud_free(json);
     return status;
+}
+ud_status ud_catalog_put(ud_catalog *c, const ud_catalog_key *key, ud_string input) {
+    return put_document(c,key,input,0,0,NULL);
+}
+ud_status ud_catalog_compare_exchange(ud_catalog *c,const ud_catalog_key *key,ud_string input,
+                                       uint64_t expected,const ud_catalog_lease *lease) {
+    if (!key || expected == UINT64_MAX || key->revision != expected + 1)
+        return UD_INVALID;
+    return put_document(c,key,input,1,expected,lease);
 }
 static ud_status collect(ud_catalog *c, int kind, sqlite3_stmt *s, int documents, char **json,
                          uint32_t *length) {
@@ -458,9 +515,16 @@ ud_status ud_catalog_query(ud_catalog *c, ud_string input, char **json, uint32_t
     ud_json *query = NULL;
     ud_status status = ud_json_parse(c->ctx, input.data, input.length, &query, NULL);
     const char *keys[] = {"kind",  "id",     "afterId",    "afterRevision", "sinceMs", "untilMs",
-                          "limit", "taskId", "pipelineId", "componentId",   "result",  "eventKind"};
+                          "limit", "taskId", "pipelineId", "componentId",   "result",  "eventKind", "latestOnly"};
     if (!status)
-        status = ud_json_keys(query, keys, 12);
+        status = ud_json_keys(query, keys, 13);
+    int latest_only=0;
+    const ud_json *latest=ud_member(query,"latestOnly");
+    if (!status && latest) {
+        ud_string value={0};
+        status=ud_json_kind(latest)==UD_JSON_BOOL ? ud_json_text(latest,&value.data,&value.length) : UD_SCHEMA;
+        if (!status) latest_only=ud_named(value,"true");
+    }
     uint64_t kind = 0, revision = 0, since = 0, until = INT64_MAX, limit = 100;
     ud_string id = {0}, after = {0};
     if (!status)
@@ -514,7 +578,9 @@ ud_status ud_catalog_query(ud_catalog *c, ud_string input, char **json, uint32_t
                         "(?10='' OR json_extract(document,'$.pipelineId')=?10) AND (?11='' OR "
                         "json_extract(document,'$.componentId')=?11) AND "
                         "(?12=-1 OR json_extract(document,'$.result')=?12) AND (?13=-1 OR "
-                        "json_extract(document,'$.kind')=?13) ORDER BY id,revision LIMIT ?8"
+                        "json_extract(document,'$.kind')=?13) AND (?14=0 OR NOT EXISTS(SELECT 1 "
+                        "FROM documents newer WHERE newer.tenant=documents.tenant AND newer.kind=documents.kind "
+                        "AND newer.id=documents.id AND newer.revision>documents.revision)) ORDER BY id,revision LIMIT ?8"
                       : "SELECT id,revision,document,digest,timestamp_ms FROM documents WHERE "
                         "tenant=?1 AND kind=?2 AND ?3='' AND (id,revision)>(?4,?5) AND "
                         "timestamp_ms>=?6 AND timestamp_ms<=?7 AND (?9='' OR "
@@ -522,7 +588,9 @@ ud_status ud_catalog_query(ud_catalog *c, ud_string input, char **json, uint32_t
                         "(?10='' OR json_extract(document,'$.pipelineId')=?10) AND (?11='' OR "
                         "json_extract(document,'$.componentId')=?11) AND "
                         "(?12=-1 OR json_extract(document,'$.result')=?12) AND (?13=-1 OR "
-                        "json_extract(document,'$.kind')=?13) ORDER BY id,revision LIMIT ?8",
+                        "json_extract(document,'$.kind')=?13) AND (?14=0 OR NOT EXISTS(SELECT 1 "
+                        "FROM documents newer WHERE newer.tenant=documents.tenant AND newer.kind=documents.kind "
+                        "AND newer.id=documents.id AND newer.revision>documents.revision)) ORDER BY id,revision LIMIT ?8",
             &s);
     char number[21];
     revision_text(revision, number);
@@ -554,6 +622,8 @@ ud_status ud_catalog_query(ud_catalog *c, ud_string input, char **json, uint32_t
     if (!status)
         status = sql_status(sqlite3_bind_int64(
             s, 13, event_filter == UINT64_MAX ? -1 : (sqlite3_int64)event_filter));
+    if (!status)
+        status=sql_status(sqlite3_bind_int(s,14,latest_only));
     if (!status)
         status = collect(c, (int)kind, s, 1, json, length);
     sqlite3_finalize(s);
@@ -707,5 +777,246 @@ ud_status ud_catalog_prune_events(ud_catalog *catalog, uint64_t before_ms, uint3
         (void)sql(catalog, "ROLLBACK");
     else
         *removed = changed;
+    return status;
+}
+
+ud_status ud_catalog_protect_parameters(ud_catalog *catalog, const ud_catalog_key *key,
+                                        ud_string reference) {
+    if (!catalog || !key || key->kind != UD_CATALOG_AUDIT || !string_valid(reference, 1) ||
+        reference.length > 255) return UD_INVALID;
+    UD_TRY(key_check(key));
+    if (key->id.length < 5 || (memcmp(key->id.data,"run/",4) && memcmp(key->id.data,"job/",4))) return UD_INVALID;
+    UD_TRY(grant(catalog, UD_ACCESS_DELETE));
+    UD_TRY(grant(catalog, UD_ACCESS_WRITE));
+    UD_TRY(sql(catalog, "PRAGMA secure_delete=ON"));
+    UD_TRY(sql(catalog, "BEGIN IMMEDIATE"));
+    char *original = NULL;
+    uint32_t original_length = 0;
+    ud_status status = get_document(catalog, key, &original, &original_length);
+    ud_json *document = NULL;
+    if (!status) status = ud_json_parse(catalog->ctx, original, original_length, &document, NULL);
+    const ud_json *parameters = ud_member(document, "parameters");
+    if (!status && !parameters) {
+        ud_string existing;
+        status = ud_json_string(ud_member(document, "parametersReference"), &existing);
+        if (!status && !ud_same(existing, reference)) status = UD_CORRUPT;
+    }
+    ud_bytes bytes = {.ctx = catalog->ctx};
+    if (!status && parameters) status = ud_bytes_put(&bytes, "{", 1);
+    uint32_t copied = 0;
+    for (uint32_t at = 0; !status && parameters && at < ud_json_size(document); at++) {
+        const char *name; uint32_t size;
+        status = ud_json_key(document, at, &name, &size);
+        if (!status && ((size == 10 && !memcmp(name,"parameters",10)) ||
+                        (size == 19 && !memcmp(name,"parametersReference",19)))) continue;
+        if (!status && copied++) status = ud_bytes_put(&bytes, ",", 1);
+        if (!status) status = ud_json_quote(&bytes, name, size);
+        if (!status) status = ud_bytes_put(&bytes, ":", 1);
+        char *value = NULL; uint32_t length = 0;
+        if (!status) status = ud_json_serialize(ud_json_at(document,at), &value, &length);
+        if (!status) status = ud_bytes_put(&bytes, value, length);
+        ud_free(value);
+    }
+    if (!status && parameters) status = ud_bytes_put(&bytes, copied ? ",\"parametersReference\":" : "\"parametersReference\":", copied ? 23 : 22);
+    if (!status && parameters) status = ud_json_quote(&bytes, reference.data, reference.length);
+    if (!status && parameters) status = ud_bytes_put(&bytes, "}", 1);
+    uint64_t timestamp = 0;
+    if (!status && ud_member(document,"timestampMs")) status = ud_json_uint(ud_member(document,"timestampMs"), &timestamp);
+    uint8_t digest[32];
+    if (!status && parameters) status = digest_document(catalog,key,(ud_string){(char *)bytes.data,(uint32_t)bytes.size},timestamp,digest);
+    sqlite3_stmt *statement = NULL;
+    if (!status && parameters) status = prepare(catalog,
+        "UPDATE documents SET document=?5,digest=?6 WHERE tenant=?1 AND kind=?2 AND id=?3 AND revision=?4", &statement);
+    if (!status && parameters) status = bind_key(catalog,statement,key);
+    if (!status && parameters) status = bind_text(statement,5,(ud_string){(char *)bytes.data,(uint32_t)bytes.size});
+    if (!status && parameters) status = sql_status(sqlite3_bind_blob(statement,6,digest,32,SQLITE_TRANSIENT));
+    if (!status && parameters) status = sql_status(sqlite3_step(statement));
+    sqlite3_finalize(statement);
+    if (!status) status = sql(catalog,"COMMIT");
+    if (status) (void)sql(catalog,"ROLLBACK");
+    ud_free(original); ud_json_destroy(document); ud_bytes_clear(&bytes);
+    return status;
+}
+ud_status ud_catalog_secure_compact(ud_catalog *catalog) {
+    if (!catalog) return UD_INVALID;
+    UD_TRY(grant(catalog,UD_ACCESS_DELETE)); UD_TRY(grant(catalog,UD_ACCESS_WRITE));
+    /* Exclusive maintenance is a host operation. A busy WAL reader blocks the
+     * proof; it cannot silently leave a plaintext historical WAL behind. */
+    int log = 0, checkpointed = 0;
+    UD_TRY(sql_status(sqlite3_wal_checkpoint_v2(catalog->database,NULL,SQLITE_CHECKPOINT_TRUNCATE,&log,&checkpointed)));
+    if (log != checkpointed) return UD_BUSY;
+    UD_TRY(sql(catalog,"PRAGMA secure_delete=ON;VACUUM"));
+    UD_TRY(sql_status(sqlite3_wal_checkpoint_v2(catalog->database,NULL,SQLITE_CHECKPOINT_TRUNCATE,&log,&checkpointed)));
+    return log == checkpointed ? UD_OK : UD_BUSY;
+}
+
+/* All lease decisions and conditional document appends execute under the same
+ * Native SQLite writer transaction. There is no host-side lease database. */
+static ud_status lease_clock(ud_catalog *c,uint64_t *now) {
+    uint64_t wall = ud_wall_ms();
+    if (wall > INT64_MAX) return UD_OVERFLOW;
+    sqlite3_stmt *statement = NULL;
+    ud_status status = prepare(c,"UPDATE catalog_clock SET milliseconds=max(milliseconds,?1) WHERE id=1",&statement);
+    if (!status) status = sql_status(sqlite3_bind_int64(statement,1,(sqlite3_int64)wall));
+    if (!status) status = sql_status(sqlite3_step(statement));
+    if (!status && sqlite3_changes(c->database) != 1) status = UD_CORRUPT;
+    sqlite3_finalize(statement); statement = NULL;
+    if (!status) status = prepare(c,"SELECT milliseconds FROM catalog_clock WHERE id=1",&statement);
+    if (!status) {
+        int rc=sqlite3_step(statement);
+        if (rc != SQLITE_ROW || sqlite3_column_int64(statement,0)<0) status=UD_CORRUPT;
+        else *now=(uint64_t)sqlite3_column_int64(statement,0);
+    }
+    sqlite3_finalize(statement); return status;
+}
+static ud_status lease_key(ud_catalog *c,sqlite3_stmt *statement,int32_t kind,ud_string id) {
+    UD_TRY(bind_text(statement,1,c->options.tenant));
+    UD_TRY(sql_status(sqlite3_bind_int(statement,2,kind)));
+    return bind_text(statement,3,id);
+}
+static ud_status lease_check(const ud_catalog_lease *lease) {
+    if (!lease) return UD_INVALID;
+    if (lease->struct_size != sizeof(*lease) || lease->abi_version != UD_ABI_VERSION) return UD_INCOMPATIBLE;
+    return kind_valid(lease->kind) && string_valid(lease->id,1) && lease->id.length<=255 &&
+           string_valid(lease->owner,1) && lease->owner.length<=255 && lease->generation &&
+           lease->generation<=INT64_MAX ? UD_OK : UD_INVALID;
+}
+static ud_status lease_guard(ud_catalog *c,const ud_catalog_lease *lease,int32_t kind,ud_string id) {
+    if (lease) {
+        UD_TRY(lease_check(lease));
+        if (lease->kind!=kind || !ud_same(lease->id,id)) return UD_FENCED;
+    }
+    sqlite3_stmt *statement=NULL;
+    ud_status status=prepare(c,"SELECT owner,generation,until_ms FROM leases WHERE tenant=?1 AND kind=?2 AND id=?3",&statement);
+    if (!status) status=lease_key(c,statement,kind,id);
+    uint64_t now=0;
+    if (!status) status=lease_clock(c,&now);
+    if (!status) {
+        int rc=sqlite3_step(statement);
+        if (rc==SQLITE_ROW) {
+            const char *owner=(const char *)sqlite3_column_text(statement,0);
+            int n=sqlite3_column_bytes(statement,0);
+            if (!lease || !owner || n!=(int)lease->owner.length || memcmp(owner,lease->owner.data,(size_t)n) ||
+                sqlite3_column_int64(statement,1)!=(sqlite3_int64)lease->generation ||
+                sqlite3_column_int64(statement,2)<=(sqlite3_int64)now) status=UD_FENCED;
+        } else if (rc==SQLITE_DONE) status=lease ? UD_FENCED : UD_OK;
+        else status=sql_status(rc);
+    }
+    sqlite3_finalize(statement); return status;
+}
+static ud_status lease_end(ud_catalog *c,ud_status status) {
+    if (!status || status==UD_FENCED || status==UD_BUSY) {
+        ud_status committed=sql(c,"COMMIT");
+        if (!committed) return status;
+        status=committed;
+    }
+    (void)sql(c,"ROLLBACK");
+    return status;
+}
+ud_status ud_catalog_lease_acquire(ud_catalog *c,const ud_catalog_lease_request *request,
+                                   uint64_t *generation,uint64_t *until) {
+    if (!c || !request || !generation || !until) return UD_INVALID;
+    *generation=*until=0;
+    if (request->struct_size!=sizeof(*request) || request->abi_version!=UD_ABI_VERSION) return UD_INCOMPATIBLE;
+    if (!kind_valid(request->kind) || !string_valid(request->id,1) || request->id.length>255 ||
+        !string_valid(request->owner,1) || request->owner.length>255 || !string_valid(request->pool,0) ||
+        request->pool.length>255 || request->duration_ms<100 || request->duration_ms>300000 ||
+        (!!request->pool.length != !!request->capacity) || request->capacity>65536) return UD_INVALID;
+    UD_TRY(grant(c,UD_ACCESS_WRITE));
+    UD_TRY(sql(c,"BEGIN IMMEDIATE"));
+    uint64_t now=0,previous=0;
+    ud_status status=lease_clock(c,&now);
+    sqlite3_stmt *statement=NULL;
+    if (!status) status=prepare(c,"SELECT generation,until_ms FROM leases WHERE tenant=?1 AND kind=?2 AND id=?3",&statement);
+    if (!status) status=lease_key(c,statement,request->kind,request->id);
+    if (!status) {
+        int rc=sqlite3_step(statement);
+        if (rc==SQLITE_ROW) {
+            sqlite3_int64 value=sqlite3_column_int64(statement,0);
+            if (value<=0 || value==INT64_MAX) status=UD_OVERFLOW;
+            else if (sqlite3_column_int64(statement,1)>(sqlite3_int64)now) status=UD_BUSY;
+            else previous=(uint64_t)value;
+        } else if (rc!=SQLITE_DONE) status=sql_status(rc);
+    }
+    sqlite3_finalize(statement); statement=NULL;
+    if (!status && request->pool.length) {
+        status=prepare(c,"INSERT OR IGNORE INTO lease_pools(tenant,pool,capacity) VALUES(?1,?2,?3)",&statement);
+        if (!status) status=bind_text(statement,1,c->options.tenant);
+        if (!status) status=bind_text(statement,2,request->pool);
+        if (!status) status=sql_status(sqlite3_bind_int(statement,3,(int)request->capacity));
+        if (!status) status=sql_status(sqlite3_step(statement));
+        sqlite3_finalize(statement); statement=NULL;
+        if (!status) status=prepare(c,"SELECT capacity,(SELECT count(*) FROM leases WHERE tenant=?1 AND pool=?2 AND until_ms>?3) "
+                                      "FROM lease_pools WHERE tenant=?1 AND pool=?2",&statement);
+        if (!status) status=bind_text(statement,1,c->options.tenant);
+        if (!status) status=bind_text(statement,2,request->pool);
+        if (!status) status=sql_status(sqlite3_bind_int64(statement,3,(sqlite3_int64)now));
+        if (!status) {
+            int rc=sqlite3_step(statement);
+            if (rc!=SQLITE_ROW) status=UD_CORRUPT;
+            else if (sqlite3_column_int(statement,0)!=(int)request->capacity) status=UD_FENCED;
+            else if (sqlite3_column_int64(statement,1)>=(sqlite3_int64)request->capacity) status=UD_BUSY;
+        }
+        sqlite3_finalize(statement); statement=NULL;
+    }
+    uint64_t expiry=now+request->duration_ms;
+    if (!status && expiry>INT64_MAX) status=UD_OVERFLOW;
+    if (!status) status=prepare(c,"INSERT INTO leases(tenant,kind,id,owner,pool,generation,until_ms) VALUES(?1,?2,?3,?4,?5,?6,?7) "
+                                  "ON CONFLICT(tenant,kind,id) DO UPDATE SET owner=excluded.owner,pool=excluded.pool,"
+                                  "generation=excluded.generation,until_ms=excluded.until_ms",&statement);
+    if (!status) status=lease_key(c,statement,request->kind,request->id);
+    if (!status) status=bind_text(statement,4,request->owner);
+    if (!status) status=bind_text(statement,5,request->pool);
+    if (!status) status=sql_status(sqlite3_bind_int64(statement,6,(sqlite3_int64)(previous+1)));
+    if (!status) status=sql_status(sqlite3_bind_int64(statement,7,(sqlite3_int64)expiry));
+    if (!status) status=sql_status(sqlite3_step(statement));
+    sqlite3_finalize(statement);
+    status=lease_end(c,status);
+    if (!status) { *generation=previous+1;*until=expiry; }
+    return status;
+}
+ud_status ud_catalog_lease_renew(ud_catalog *c,const ud_catalog_lease *lease,uint32_t duration,uint64_t *until) {
+    if (!c || !until || duration<100 || duration>300000) return UD_INVALID;
+    *until=0;
+    UD_TRY(lease_check(lease)); UD_TRY(grant(c,UD_ACCESS_WRITE)); UD_TRY(sql(c,"BEGIN IMMEDIATE"));
+    ud_status status=lease_guard(c,lease,lease->kind,lease->id);
+    uint64_t now=0;
+    if (!status) status=lease_clock(c,&now);
+    if (!status && now>(uint64_t)INT64_MAX-duration) status=UD_OVERFLOW;
+    sqlite3_stmt *statement=NULL;
+    if (!status) status=prepare(c,"UPDATE leases SET until_ms=?4 WHERE tenant=?1 AND kind=?2 AND id=?3",&statement);
+    if (!status) status=lease_key(c,statement,lease->kind,lease->id);
+    if (!status) status=sql_status(sqlite3_bind_int64(statement,4,(sqlite3_int64)(now+duration)));
+    if (!status) status=sql_status(sqlite3_step(statement));
+    sqlite3_finalize(statement); status=lease_end(c,status);
+    if (!status) *until=now+duration;
+    return status;
+}
+ud_status ud_catalog_lease_release(ud_catalog *c,const ud_catalog_lease *lease) {
+    if (!c) return UD_INVALID;
+    UD_TRY(lease_check(lease)); UD_TRY(grant(c,UD_ACCESS_WRITE)); UD_TRY(sql(c,"BEGIN IMMEDIATE"));
+    ud_status status=lease_guard(c,lease,lease->kind,lease->id);
+    sqlite3_stmt *statement=NULL;
+    if (!status) status=prepare(c,"UPDATE leases SET owner='',until_ms=0 WHERE tenant=?1 AND kind=?2 AND id=?3",&statement);
+    if (!status) status=lease_key(c,statement,lease->kind,lease->id);
+    if (!status) status=sql_status(sqlite3_step(statement));
+    sqlite3_finalize(statement); return lease_end(c,status);
+}
+ud_status ud_catalog_lease_active(ud_catalog *c,int32_t kind,ud_string id,int32_t *active) {
+    if (!c || !active || !kind_valid(kind) || !string_valid(id,1) || id.length>255) return UD_INVALID;
+    *active=0;
+    UD_TRY(grant(c,UD_ACCESS_READ)); UD_TRY(sql(c,"BEGIN IMMEDIATE"));
+    uint64_t now=0;
+    ud_status status=lease_clock(c,&now);
+    sqlite3_stmt *statement=NULL;
+    if (!status) status=prepare(c,"SELECT until_ms FROM leases WHERE tenant=?1 AND kind=?2 AND id=?3",&statement);
+    if (!status) status=lease_key(c,statement,kind,id);
+    if (!status) {
+        int rc=sqlite3_step(statement);
+        if (rc==SQLITE_ROW) *active=sqlite3_column_int64(statement,0)>(sqlite3_int64)now;
+        else if (rc!=SQLITE_DONE) status=sql_status(rc);
+    }
+    sqlite3_finalize(statement); status=lease_end(c,status);
+    if (status) *active=0;
     return status;
 }

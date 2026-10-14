@@ -202,6 +202,7 @@ static const ud_component_plugin_api components = {sizeof(components), UD_ABI_VE
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t abi, ud_plugin_api *out) {
     if (abi != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out)) return UD_INCOMPATIBLE;
     *out = (ud_plugin_api){.struct_size=sizeof(*out), .abi_version=UD_PLUGIN_ABI,
+                           .field_size=sizeof(ud_field),.value_size=sizeof(ud_value),
         .id="sample.custom", .version="1.0.0", .roles=UD_PLUGIN_COMPONENTS, .components=&components};
     return UD_OK;
 }

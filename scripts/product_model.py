@@ -55,6 +55,10 @@ def projections(model):
     for name in ("CONFIG", "PLAN", "CHECKPOINT", "WORKER", "WIRE", "PLUGIN_ABI", "PACKAGE_VERSION"):
         macro = "UD_" + name if name in ("PLUGIN_ABI", "PACKAGE_VERSION") else "UD_" + name + "_VERSION"
         header += "#define " + macro + " " + str(protocol) + "u\n"
+    header += "#define UD_CHECKPOINT_FORMAT_REVISION " + str(product["checkpointRevision"]) + "u\n"
+    header += "#define UD_DATA_LAYOUT_REVISION " + str(product["dataLayoutRevision"]) + "u\n"
+    header += "#define UD_CATALOG_FORMAT_REVISION " + str(product["catalogRevision"]) + "u\n"
+    header += "#define UD_WORKER_FORMAT_REVISION " + str(product["workerRevision"]) + "u\n"
     header += "#endif\n"
     facts = {"generatedFrom": marker, "sdkVersion": version, "abi": abi,
              "scope": model["scope"], "baseline": model["baseline"], "candidate": model["candidate"],
@@ -100,6 +104,7 @@ def projections(model):
     for item in history["advancedWorkItems"]:
         advanced_trace+="| "+item["id"]+" | "+item["name"]+" | "+item["state"]+" | "+item["verification"]+" |\n"
     return {
+        "products/designer/src/dataTypes.ts": "// Generated from include/ud/data.h. Native owns type semantics.\nexport const DATA_TYPES = " + json.dumps([name.lower() for name, _ in native_types]) + " as const;\n",
         "bindings/dotnet/UniversalData/DataType.cs": cs_types,
         "bindings/java/src/main/java/org/universaldata/DataType.java": java_types,
         "bindings/java/src/main/java/org/universaldata/Duration.java": "package org.universaldata;\n/** Signed native microseconds, without narrowing to nanoseconds. */\npublic record Duration(long microseconds) {}\n",
@@ -120,7 +125,7 @@ def projections(model):
         "bindings/dotnet/UniversalData/ProductInfo.cs":
             "// Generated from metadata/product.json.\nnamespace UniversalData;\n"
             "public static class ProductInfo\n{\n    public const string Sdk = \"" + version +
-            "\";\n    public const int Protocol = " + str(protocol) + ";\n}\n",
+            "\";\n    public const int Protocol = " + str(protocol) + ";\n    public const int WorkerRevision = " + str(product["workerRevision"]) + ";\n}\n",
         "products/designer/src/version.ts":
             "// Generated from metadata/product.json.\nexport const PRODUCT_VERSION = \"" + version +
             "\";\nexport const PROTOCOL_VERSION = " + str(protocol) + ";\n",
@@ -150,8 +155,9 @@ def generate(check=False):
             if not path.is_file() or path.read_bytes() != text.encode("utf-8"):
                 errors.append(name)
         else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8", newline="\n")
+            if not path.is_file() or path.read_bytes() != text.encode("utf-8"):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8", newline="\n")
     return errors
 
 

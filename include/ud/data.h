@@ -69,6 +69,11 @@ typedef struct ud_field {
     int32_t dictionary_kind;
     const ud_string *dictionary;
     uint32_t dictionary_count;
+    /* Provider object/column incarnation, scoped to the discovered resource.
+     * Zero means no physical continuity proof. Logical identity and lineage
+     * remain independent: rename/reorder preserve the former, expressions
+     * carry origins without pretending to be physical provider columns. */
+    ud_id physical_identity;
 } ud_field;
 enum { UD_FIELD_VALUE_TYPE = 0, UD_FIELD_PORT = 1, UD_FIELD_LAYOUT = 2 };
 /* VALUE_TYPE ignores root display name, identity, lineage and nullability;
@@ -155,10 +160,11 @@ UD_API ud_status ud_field_from_sql(ud_string declaration, int32_t dialect, ud_fi
  * compatible, explicitMapping, or evolutionMapping with complete expected/actual
  * ID/name pairs. evolutionMapping also proves lossless values and unchanged keys. */
 UD_API ud_status ud_schema_fingerprint(const ud_batch *, uint8_t out[32]);
-UD_API ud_status ud_schema_from_metadata(ud_context *, const ud_batch *, ud_string, int32_t,
+UD_API ud_status ud_schema_from_metadata(ud_context *, const ud_batch *, ud_string logical_scope, ud_string physical_scope, int32_t,
                                          ud_batch **);
-/* Attach proven existing identities to discovered fields with the same name.
- * Rename/drop/key/type compatibility is still decided by schema_compare/map. */
+/* Bind by proven physical identity; a first discovery may attach a provider
+ * identity to an unbound logical projection by name. Once physical identity is
+ * known it never falls back to display-name matching. Recursive for Structs. */
 UD_API ud_status ud_schema_bind_identity(ud_context *, const ud_batch *bound,
                                          const ud_batch *discovered, ud_batch **);
 UD_API ud_status ud_schema_compare(ud_context *, const ud_batch *, const ud_batch *, ud_string,

@@ -1,0 +1,358 @@
+[0/2] Re-checking globbed directories...
+[1/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/advanced.c.o
+[2/132] Building C object CMakeFiles/ud_data.dir/engines/package/templates.c.o
+[3/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/delivery.c.o
+[4/132] Building C object CMakeFiles/ud_data.dir/connectors/rest.c.o
+[5/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/error.c.o
+[6/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/quality.c.o
+[7/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/relational.c.o
+[8/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/cdc.c.o
+/tmp/UniversalData-Next/engines/data-flow/cdc.c: In function ‘configure’:
+/tmp/UniversalData-Next/engines/data-flow/cdc.c:62:34: warning: unused parameter ‘user’ [-Wunused-parameter]
+   62 | static ud_status configure(void *user, const ud_component_context *c, ud_string text,
+      |                            ~~~~~~^~~~
+[9/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/enumerator.c.o
+/tmp/UniversalData-Next/engines/control-flow/enumerator.c: In function ‘prepare’:
+/tmp/UniversalData-Next/engines/control-flow/enumerator.c:172:9: warning: missing initializer for field ‘parameters’ of ‘ud_read_options’ [-Wmissing-field-initializers]
+  172 |         ud_read_options options = {sizeof(options), UD_ABI_VERSION, c->max_batch_rows, sql};
+      |         ^~~~~~~~~~~~~~~
+In file included from /tmp/UniversalData-Next/include/ud/package.h:4,
+                 from /tmp/UniversalData-Next/engines/control-flow/../package/internal.h:3,
+                 from /tmp/UniversalData-Next/engines/control-flow/enumerator.c:1:
+/tmp/UniversalData-Next/include/ud/connector.h:120:21: note: ‘parameters’ declared here
+  120 |     const ud_batch *parameters; /* Borrowed sealed typed parameter batch. */
+      |                     ^~~~~~~~~~
+[10/132] Building C object CMakeFiles/ud_data.dir/engines/package/child.c.o
+[11/132] Building C object CMakeFiles/ud_data.dir/engines/package/resources.c.o
+[12/132] Building C object CMakeFiles/ud_data.dir/engines/package/assets.c.o
+/tmp/UniversalData-Next/engines/package/assets.c: In function ‘ud_asset_acquire’:
+/tmp/UniversalData-Next/engines/package/assets.c:283:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  283 |         if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_restore(asset->cache,state);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);ud_batch_destroy(state);
+      |         ^~
+/tmp/UniversalData-Next/engines/package/assets.c:283:99: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  283 |         if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_restore(asset->cache,state);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);ud_batch_destroy(state);
+      |                                                                                                   ^~
+/tmp/UniversalData-Next/engines/package/assets.c: In function ‘ud_asset_partial’:
+/tmp/UniversalData-Next/engines/package/assets.c:416:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  416 |     if(!a||!lease||!out)return UD_INVALID;*out=NULL;struct ud_cache_asset*asset=find_asset(a,id);if(!asset||asset->mode!=UD_CACHE_PARTIAL)return UD_SCHEMA;
+      |     ^~
+/tmp/UniversalData-Next/engines/package/assets.c:416:43: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  416 |     if(!a||!lease||!out)return UD_INVALID;*out=NULL;struct ud_cache_asset*asset=find_asset(a,id);if(!asset||asset->mode!=UD_CACHE_PARTIAL)return UD_SCHEMA;
+      |                                           ^
+/tmp/UniversalData-Next/engines/package/assets.c:420:7: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  420 |       if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);
+      |       ^~
+/tmp/UniversalData-Next/engines/package/assets.c:420:97: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  420 |       if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);
+      |                                                                                                 ^~
+/tmp/UniversalData-Next/engines/package/assets.c:423:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  423 |     if(!status)status=ud_cache_retain(asset->cache);if(!status)*out=asset->cache;ud_mutex_unlock(&a->execution->asset_lock);return status;
+      |     ^~
+/tmp/UniversalData-Next/engines/package/assets.c:423:53: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  423 |     if(!status)status=ud_cache_retain(asset->cache);if(!status)*out=asset->cache;ud_mutex_unlock(&a->execution->asset_lock);return status;
+      |                                                     ^~
+[13/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/transforms.c.o
+[14/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/cache.c.o
+[15/132] Building C object CMakeFiles/ud_data.dir/connectors/http.c.o
+[16/132] Building C object CMakeFiles/ud_data.dir/engines/package/project.c.o
+[17/132] Building C object CMakeFiles/ud_data.dir/engines/package/runtime.c.o
+/tmp/UniversalData-Next/engines/package/runtime.c: In function ‘ud_activation_notify_kind’:
+/tmp/UniversalData-Next/engines/package/runtime.c:37:33: warning: missing initializer for field ‘error_chain’ of ‘ud_execution_event’ [-Wmissing-field-initializers]
+   37 |                                 e};
+      |                                 ^
+In file included from /tmp/UniversalData-Next/engines/package/internal.h:3,
+                 from /tmp/UniversalData-Next/engines/package/runtime.c:1:
+/tmp/UniversalData-Next/include/ud/package.h:32:15: note: ‘error_chain’ declared here
+   32 |     ud_string error_chain; /* Bounded Native JSON frames, no SQL/raw data; callback lifetime. */
+      |               ^~~~~~~~~~~
+[18/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/http.c.o
+[19/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/profile.c.o
+[20/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/process.c.o
+[21/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/filesystem.c.o
+[22/132] Building C object CMakeFiles/ud_data.dir/engines/package/checkpoint.c.o
+[23/132] Building C object CMakeFiles/ud_data.dir/engines/package/model.c.o
+[24/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/control.c.o
+[25/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/builtins.c.o
+[26/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/source.c.o
+/tmp/UniversalData-Next/engines/data-flow/source.c: In function ‘open_file_reader’:
+/tmp/UniversalData-Next/engines/data-flow/source.c:144:30: warning: missing initializer for field ‘framing’ of ‘ud_json_options’ [-Wmissing-field-initializers]
+  144 |                              1048576,   UD_ROUND_EXACT,    &b->records};
+      |                              ^~~~~~~
+In file included from /tmp/UniversalData-Next/engines/data-flow/../package/internal.h:7,
+                 from /tmp/UniversalData-Next/engines/data-flow/builtins_internal.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/source.c:1:
+/tmp/UniversalData-Next/include/ud/format.h:45:13: note: ‘framing’ declared here
+   45 |     int32_t framing;
+      |             ^~~~~~~
+[27/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/sql_task.c.o
+[28/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/lifecycle.c.o
+[29/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/destination.c.o
+/tmp/UniversalData-Next/engines/data-flow/destination.c: In function ‘ud_builtin_sink_write’:
+/tmp/UniversalData-Next/engines/data-flow/destination.c:256:27: warning: missing initializer for field ‘operations’ of ‘ud_write_options’ [-Wmissing-field-initializers]
+  256 |                           b->key_count};
+      |                           ^
+In file included from /tmp/UniversalData-Next/include/ud/package.h:4,
+                 from /tmp/UniversalData-Next/engines/data-flow/../package/internal.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/builtins_internal.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/destination.c:1:
+/tmp/UniversalData-Next/include/ud/connector.h:147:20: note: ‘operations’ declared here
+  147 |     const int32_t *operations; /* CHANGESET: one typed action per row, in supplied order. */
+      |                    ^~~~~~~~~~
+[30/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/binding.c.o
+[31/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/row_transform.c.o
+[32/132] Building C object CMakeFiles/ud_data.dir/catalog/history.c.o
+[33/132] Building C object CMakeFiles/ud_data.dir/catalog/catalog.c.o
+[34/132] Building C object CMakeFiles/ud_data.dir/catalog/deployment.c.o
+[35/132] Building C object CMakeFiles/ud_data.dir/engines/package/file_generation.c.o
+[36/132] Building C object CMakeFiles/ud_data.dir/engines/package/debug.c.o
+[37/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/wmi.c.o
+[38/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/network.c.o
+[39/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/sqlserver.c.o
+[40/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/avro.c.o
+[41/132] Building C object CMakeFiles/ud_data.dir/connectors/xml.c.o
+[42/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/column_file.c.o
+[43/132] Building C object CMakeFiles/ud_data.dir/connectors/manager.c.o
+[44/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/xml.c.o
+[45/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/rest.c.o
+[46/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/advanced.c.o
+[47/132] Building C object CMakeFiles/ud_data.dir/engines/control-flow/xml.c.o
+[48/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/cdc.c.o
+/tmp/UniversalData-Next/engines/data-flow/cdc.c: In function ‘configure’:
+/tmp/UniversalData-Next/engines/data-flow/cdc.c:62:34: warning: unused parameter ‘user’ [-Wunused-parameter]
+   62 | static ud_status configure(void *user, const ud_component_context *c, ud_string text,
+      |                            ~~~~~~^~~~
+[49/132] Building C object CMakeFiles/ud_data.dir/engines/data-flow/pipeline.c.o
+/tmp/UniversalData-Next/engines/data-flow/pipeline.c: In function ‘step’:
+/tmp/UniversalData-Next/engines/data-flow/pipeline.c:1552:5: warning: missing initializer for field ‘epoch’ of ‘ud_component_event’ [-Wmissing-field-initializers]
+ 1552 |     ud_component_event event = {sizeof(event), UD_ABI_VERSION, UD_COMPONENT_POLL, 0, NULL};
+      |     ^~~~~~~~~~~~~~~~~~
+In file included from /tmp/UniversalData-Next/include/ud/package.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/../package/internal.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/pipeline.c:1:
+/tmp/UniversalData-Next/include/ud/component.h:35:14: note: ‘epoch’ declared here
+   35 |     uint64_t epoch, schema_version;
+      |              ^~~~~
+[50/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/error.c.o
+[51/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/delivery.c.o
+[52/132] Building C object engines/package/CMakeFiles/ud_package.dir/templates.c.o
+[53/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/relational.c.o
+[54/132] Building C object engines/package/CMakeFiles/ud_package.dir/assets.c.o
+/tmp/UniversalData-Next/engines/package/assets.c: In function ‘ud_asset_acquire’:
+/tmp/UniversalData-Next/engines/package/assets.c:283:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  283 |         if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_restore(asset->cache,state);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);ud_batch_destroy(state);
+      |         ^~
+/tmp/UniversalData-Next/engines/package/assets.c:283:99: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  283 |         if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_restore(asset->cache,state);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);ud_batch_destroy(state);
+      |                                                                                                   ^~
+/tmp/UniversalData-Next/engines/package/assets.c: In function ‘ud_asset_partial’:
+/tmp/UniversalData-Next/engines/package/assets.c:416:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  416 |     if(!a||!lease||!out)return UD_INVALID;*out=NULL;struct ud_cache_asset*asset=find_asset(a,id);if(!asset||asset->mode!=UD_CACHE_PARTIAL)return UD_SCHEMA;
+      |     ^~
+/tmp/UniversalData-Next/engines/package/assets.c:416:43: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  416 |     if(!a||!lease||!out)return UD_INVALID;*out=NULL;struct ud_cache_asset*asset=find_asset(a,id);if(!asset||asset->mode!=UD_CACHE_PARTIAL)return UD_SCHEMA;
+      |                                           ^
+/tmp/UniversalData-Next/engines/package/assets.c:420:7: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  420 |       if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);
+      |       ^~
+/tmp/UniversalData-Next/engines/package/assets.c:420:97: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  420 |       if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);
+      |                                                                                                 ^~
+/tmp/UniversalData-Next/engines/package/assets.c:423:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  423 |     if(!status)status=ud_cache_retain(asset->cache);if(!status)*out=asset->cache;ud_mutex_unlock(&a->execution->asset_lock);return status;
+      |     ^~
+/tmp/UniversalData-Next/engines/package/assets.c:423:53: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  423 |     if(!status)status=ud_cache_retain(asset->cache);if(!status)*out=asset->cache;ud_mutex_unlock(&a->execution->asset_lock);return status;
+      |                                                     ^~
+[55/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/enumerator.c.o
+/tmp/UniversalData-Next/engines/control-flow/enumerator.c: In function ‘prepare’:
+/tmp/UniversalData-Next/engines/control-flow/enumerator.c:172:9: warning: missing initializer for field ‘parameters’ of ‘ud_read_options’ [-Wmissing-field-initializers]
+  172 |         ud_read_options options = {sizeof(options), UD_ABI_VERSION, c->max_batch_rows, sql};
+      |         ^~~~~~~~~~~~~~~
+In file included from /tmp/UniversalData-Next/include/ud/package.h:4,
+                 from /tmp/UniversalData-Next/engines/control-flow/../package/internal.h:3,
+                 from /tmp/UniversalData-Next/engines/control-flow/enumerator.c:1:
+/tmp/UniversalData-Next/include/ud/connector.h:120:21: note: ‘parameters’ declared here
+  120 |     const ud_batch *parameters; /* Borrowed sealed typed parameter batch. */
+      |                     ^~~~~~~~~~
+[56/132] Linking CXX shared library libud_data.so.2.0.0
+[57/132] Creating library symlink libud_data.so.10 libud_data.so
+[58/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/quality.c.o
+[59/132] Building C object engines/package/CMakeFiles/ud_package.dir/resources.c.o
+[60/132] Building C object engines/package/CMakeFiles/ud_package.dir/child.c.o
+[61/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/cache.c.o
+[62/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/transforms.c.o
+[63/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/http.c.o
+[64/132] Building C object engines/package/CMakeFiles/ud_package.dir/project.c.o
+[65/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/profile.c.o
+[66/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/process.c.o
+[67/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/http.c.o
+[68/132] Building C object engines/package/CMakeFiles/ud_package.dir/runtime.c.o
+/tmp/UniversalData-Next/engines/package/runtime.c: In function ‘ud_activation_notify_kind’:
+/tmp/UniversalData-Next/engines/package/runtime.c:37:33: warning: missing initializer for field ‘error_chain’ of ‘ud_execution_event’ [-Wmissing-field-initializers]
+   37 |                                 e};
+      |                                 ^
+In file included from /tmp/UniversalData-Next/engines/package/internal.h:3,
+                 from /tmp/UniversalData-Next/engines/package/runtime.c:1:
+/tmp/UniversalData-Next/include/ud/package.h:32:15: note: ‘error_chain’ declared here
+   32 |     ud_string error_chain; /* Bounded Native JSON frames, no SQL/raw data; callback lifetime. */
+      |               ^~~~~~~~~~~
+[69/132] Building C object engines/package/CMakeFiles/ud_package.dir/model.c.o
+[70/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/filesystem.c.o
+[71/132] Building C object engines/package/CMakeFiles/ud_package.dir/checkpoint.c.o
+[72/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/binding.c.o
+[73/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/control.c.o
+[74/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/source.c.o
+/tmp/UniversalData-Next/engines/data-flow/source.c: In function ‘open_file_reader’:
+/tmp/UniversalData-Next/engines/data-flow/source.c:144:30: warning: missing initializer for field ‘framing’ of ‘ud_json_options’ [-Wmissing-field-initializers]
+  144 |                              1048576,   UD_ROUND_EXACT,    &b->records};
+      |                              ^~~~~~~
+In file included from /tmp/UniversalData-Next/engines/data-flow/../package/internal.h:7,
+                 from /tmp/UniversalData-Next/engines/data-flow/builtins_internal.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/source.c:1:
+/tmp/UniversalData-Next/include/ud/format.h:45:13: note: ‘framing’ declared here
+   45 |     int32_t framing;
+      |             ^~~~~~~
+[75/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/builtins.c.o
+[76/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/sql_task.c.o
+[77/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/lifecycle.c.o
+[78/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/row_transform.c.o
+[79/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/destination.c.o
+/tmp/UniversalData-Next/engines/data-flow/destination.c: In function ‘ud_builtin_sink_write’:
+/tmp/UniversalData-Next/engines/data-flow/destination.c:256:27: warning: missing initializer for field ‘operations’ of ‘ud_write_options’ [-Wmissing-field-initializers]
+  256 |                           b->key_count};
+      |                           ^
+In file included from /tmp/UniversalData-Next/include/ud/package.h:4,
+                 from /tmp/UniversalData-Next/engines/data-flow/../package/internal.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/builtins_internal.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/destination.c:1:
+/tmp/UniversalData-Next/include/ud/connector.h:147:20: note: ‘operations’ declared here
+  147 |     const int32_t *operations; /* CHANGESET: one typed action per row, in supplied order. */
+      |                    ^~~~~~~~~~
+[80/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/history.c.o
+[81/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/deployment.c.o
+[82/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/catalog.c.o
+[83/132] Building C object engines/package/CMakeFiles/ud_package.dir/debug.c.o
+[84/132] Building C object engines/package/CMakeFiles/ud_package.dir/file_generation.c.o
+[85/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/pipeline.c.o
+/tmp/UniversalData-Next/engines/data-flow/pipeline.c: In function ‘step’:
+/tmp/UniversalData-Next/engines/data-flow/pipeline.c:1552:5: warning: missing initializer for field ‘epoch’ of ‘ud_component_event’ [-Wmissing-field-initializers]
+ 1552 |     ud_component_event event = {sizeof(event), UD_ABI_VERSION, UD_COMPONENT_POLL, 0, NULL};
+      |     ^~~~~~~~~~~~~~~~~~
+In file included from /tmp/UniversalData-Next/include/ud/package.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/../package/internal.h:3,
+                 from /tmp/UniversalData-Next/engines/data-flow/pipeline.c:1:
+/tmp/UniversalData-Next/include/ud/component.h:35:14: note: ‘epoch’ declared here
+   35 |     uint64_t epoch, schema_version;
+      |              ^~~~~
+[86/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/wmi.c.o
+[87/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/manager.c.o
+[88/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/network.c.o
+[89/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/column_file.c.o
+[90/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/xml.c.o
+[91/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/sqlserver.c.o
+[92/132] Building C object tests/CMakeFiles/test_file_generation.dir/file_generation.c.o
+[93/132] Building C object tests/CMakeFiles/test_next_phase_execution.dir/next_phase_execution.c.o
+/tmp/UniversalData-Next/tests/next_phase_execution.c: In function ‘observe’:
+/tmp/UniversalData-Next/tests/next_phase_execution.c:95:21: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 6 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+   95 |                     "{\"committed\":%llu,\"memoryUsed\":%llu,\"spillBytes\":%llu,"
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+......
+   98 |                     (unsigned long long)m.spill_bytes, m.worker_high_water);
+      |                                                        ~~~~~~~~~~~~~~~~~~~
+      |                                                         |
+      |                                                         uint64_t {aka long unsigned int}
+/tmp/UniversalData-Next/tests/next_phase_execution.c:96:43: note: format string is defined here
+   96 |                     "\"workerHighWater\":%u",
+      |                                          ~^
+      |                                           |
+      |                                           unsigned int
+      |                                          %lu
+/tmp/UniversalData-Next/tests/next_phase_execution.c: In function ‘main’:
+/tmp/UniversalData-Next/tests/next_phase_execution.c:166:35: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 2 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  166 |     printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,
+      |                                  ~^                                            ~~~~~~~~~~~~~~~~~~~
+      |                                   |                                             |
+      |                                   unsigned int                                  uint64_t {aka long unsigned int}
+      |                                  %lu
+/tmp/UniversalData-Next/tests/next_phase_execution.c:166:56: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 3 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  166 |     printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,
+      |                                                       ~^
+      |                                                        |
+      |                                                        unsigned int
+      |                                                       %lu
+  167 |            m.tree_high_water, (unsigned long long)m.spill_bytes);
+      |            ~~~~~~~~~~~~~~~~~                            
+      |             |
+      |             uint64_t {aka long unsigned int}
+[94/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/avro.c.o
+[95/132] Linking C shared library bindings/java/native/libud_java.so
+[96/132] Linking C shared module tests/sample_custom_task.so
+[97/132] Linking C shared module tests/sample_custom_bad.so
+[98/132] Building C object tests/CMakeFiles/test_product_native.dir/product_native.c.o
+[99/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/xml.c.o
+[100/132] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/xml.c.o
+[101/132] Linking CXX static library engines/package/libud_package.a
+[102/132] Linking C executable tests/test_custom_task
+[103/132] Linking CXX executable tests/test_catalog_secrets
+[104/132] Linking CXX executable tests/test_checkpoint_contract
+[105/132] Linking CXX executable tests/test_execution_identity
+[106/132] Linking CXX executable tests/test_infrastructure
+[107/132] Linking CXX executable tests/test_four_engines
+[108/132] Linking CXX executable tests/test_package_execution
+[109/132] Linking CXX executable tests/test_core_runtime
+[110/132] Linking CXX executable tests/test_next_phase_queries
+[111/132] Linking CXX executable tests/test_package_outcome
+[112/132] Linking CXX executable tests/test_sql_command_records
+[113/132] Linking CXX executable tests/test_catalog
+[114/132] Linking CXX executable tests/test_four_engine_connections
+[115/132] Linking CXX executable tests/test_package_sql
+[116/132] Linking CXX executable tests/test_package_recovery
+[117/132] Linking CXX executable tests/test_child_package
+[118/132] Linking CXX executable tests/test_filesystem_task
+[119/132] Linking CXX executable tests/test_process_task
+[120/132] Linking CXX executable tests/test_http_task
+[121/132] Linking CXX executable tests/test_next_phase
+[122/132] Linking CXX executable tests/test_project
+[123/132] Linking CXX executable tests/test_profile_task
+[124/132] Linking CXX executable tests/test_catalog_history
+[125/132] Linking CXX executable tests/test_next_phase_execution
+[126/132] Linking CXX executable tests/test_product_native
+[127/132] Linking CXX executable tests/test_file_generation
+[128/132] cd /tmp/ud-next-build/hosts && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.CommandLine/UniversalData.CommandLine.csproj -c Release -o /tmp/ud-next-build/hosts/product/cli && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.Worker/UniversalData.Worker.csproj -c Release -o /tmp/ud-next-build/hosts/product/worker && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.Management/UniversalData.Management.csproj -c Release -o /tmp/ud-next-build/hosts/product/management -p:DesignerAssets=/tmp/ud-next-build/hosts/designer && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.0.0 /tmp/ud-next-build/hosts/product/cli/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.0.0 /tmp/ud-next-build/hosts/product/worker/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.0.0 /tmp/ud-next-build/hosts/product/management/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy_directory /tmp/ud-next-build/hosts/product/worker /tmp/ud-next-build/hosts/product/management/worker
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.CommandLine -> /tmp/UniversalData-Next/products/UniversalData.CommandLine/bin/Release/net10.0/ud_cli.dll
+  UniversalData.CommandLine -> /tmp/ud-next-build/hosts/product/cli/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Worker -> /tmp/UniversalData-Next/products/UniversalData.Worker/bin/Release/net10.0/ud_worker.dll
+  UniversalData.Worker -> /tmp/ud-next-build/hosts/product/worker/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Management -> /tmp/UniversalData-Next/products/UniversalData.Management/bin/Release/net10.0/UniversalData.Management.dll
+  UniversalData.Management -> /tmp/ud-next-build/hosts/product/management/
+[129/132] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/hosting_contracts/HostingContracts.csproj -c Release -o /tmp/ud-next-build/tests/hosting-contracts
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  HostingContracts -> /tmp/UniversalData-Next/tests/hosting_contracts/bin/Release/net10.0/HostingContracts.dll
+  HostingContracts -> /tmp/ud-next-build/tests/hosting-contracts/
+[130/132] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/managed_recovery/ManagedRecovery.csproj -c Release -o /tmp/ud-next-build/tests/managed-recovery
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedRecovery -> /tmp/UniversalData-Next/tests/managed_recovery/bin/Release/net10.0/ManagedRecovery.dll
+  ManagedRecovery -> /tmp/ud-next-build/tests/managed-recovery/
+[131/132] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/managed_product/ManagedProduct.csproj -c Release -o /tmp/ud-next-build/tests/managed-product
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedProduct -> /tmp/UniversalData-Next/tests/managed_product/bin/Release/net10.0/ManagedProduct.dll
+  ManagedProduct -> /tmp/ud-next-build/tests/managed-product/

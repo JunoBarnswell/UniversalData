@@ -14,9 +14,10 @@ languages = 3 if len(sys.argv) == 8 else 1
 with tempfile.TemporaryDirectory(prefix='ud-value-pipeline-') as folder:
     root = pathlib.Path(folder)
     policy = root / 'host-policy.json'
-    policy.write_text(json.dumps(dict(dataDirectory=str(root/'native-state'), fileRoots=[str(root)], networkOrigins=[], pluginRoots=[], credentialFiles={})))
+    resources = root / 'resources'; resources.mkdir()
+    policy.write_text(json.dumps(dict(dataDirectory=str(root/'native-state'), fileRoots=[str(resources)], networkOrigins=[], pluginRoots=[], credentialFiles={})))
     for metadata, values in CASES:
-        directory = root / metadata['type']; directory.mkdir()
+        directory = resources / metadata['type']; directory.mkdir()
         source = directory / 'input.ndjson'; right = directory / 'right.ndjson'
         left_rows = [dict(key=key, peer=key, id=i) for i, key in enumerate(values)]
         right_rows = [dict(rkey=key, rid=i) for i, key in enumerate(reversed(values))]

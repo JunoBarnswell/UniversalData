@@ -1,0 +1,178 @@
+{
+  "measuredAt": "2026-10-14T12:44:44.278465+00:00",
+  "sourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
+  "runs": [
+    {
+      "driver": "postgresql",
+      "rows": 1000000,
+      "exitCode": 0,
+      "elapsedSeconds": 11.03964780899696,
+      "measurements": [
+        {
+          "mode": "parameters",
+          "dialect": 2,
+          "rows": 1000000,
+          "batches": 62,
+          "batchRows": 16384,
+          "writeSeconds": 5.083155,
+          "generationSeconds": 0.279219,
+          "cpuSeconds": 1.446345,
+          "peakRssKiB": 11924,
+          "rowsPerSecond": 196728,
+          "verifiedRowsAndReceipts": true,
+          "outputSignature": "03edf2ee11acc5cde4f2ffb7adedd76823c55c04a010e9cd3a383e256261ec87",
+          "verificationSeconds": 1.614736,
+          "table": "ud_bulk_b1c084014bb579e03782c5a74785c5d1_parameters"
+        },
+        {
+          "mode": "native",
+          "dialect": 2,
+          "rows": 1000000,
+          "batches": 62,
+          "batchRows": 16384,
+          "writeSeconds": 1.880667,
+          "generationSeconds": 0.309564,
+          "cpuSeconds": 1.321728,
+          "peakRssKiB": 12116,
+          "rowsPerSecond": 531726,
+          "verifiedRowsAndReceipts": true,
+          "outputSignature": "03edf2ee11acc5cde4f2ffb7adedd76823c55c04a010e9cd3a383e256261ec87",
+          "verificationSeconds": 1.557112,
+          "table": "ud_bulk_b1c084014bb579e03782c5a74785c5d1_native"
+        },
+        {
+          "nativeSpeedup": 2.703
+        }
+      ]
+    },
+    {
+      "driver": "mysql",
+      "rows": 1000000,
+      "exitCode": 0,
+      "elapsedSeconds": 15.44416369200917,
+      "measurements": [
+        {
+          "mode": "parameters",
+          "dialect": 3,
+          "rows": 1000000,
+          "batches": 62,
+          "batchRows": 16384,
+          "writeSeconds": 7.306861,
+          "generationSeconds": 0.244213,
+          "cpuSeconds": 2.173465,
+          "peakRssKiB": 13840,
+          "rowsPerSecond": 136858,
+          "verifiedRowsAndReceipts": true,
+          "outputSignature": "03edf2ee11acc5cde4f2ffb7adedd76823c55c04a010e9cd3a383e256261ec87",
+          "verificationSeconds": 1.694962,
+          "table": "ud_bulk_d7a0b3425577d5c5a6f8c77a45940cdc_parameters"
+        },
+        {
+          "mode": "native",
+          "dialect": 3,
+          "rows": 1000000,
+          "batches": 62,
+          "batchRows": 16384,
+          "writeSeconds": 3.824866,
+          "generationSeconds": 0.243471,
+          "cpuSeconds": 1.045132,
+          "peakRssKiB": 13840,
+          "rowsPerSecond": 261447,
+          "verifiedRowsAndReceipts": true,
+          "outputSignature": "03edf2ee11acc5cde4f2ffb7adedd76823c55c04a010e9cd3a383e256261ec87",
+          "verificationSeconds": 1.677795,
+          "table": "ud_bulk_d7a0b3425577d5c5a6f8c77a45940cdc_native"
+        },
+        {
+          "nativeSpeedup": 1.91
+        }
+      ]
+    },
+    {
+      "driver": "mariadb",
+      "rows": 1000000,
+      "exitCode": 0,
+      "elapsedSeconds": 14.175401513988618,
+      "measurements": [
+        {
+          "mode": "parameters",
+          "dialect": 4,
+          "rows": 1000000,
+          "batches": 62,
+          "batchRows": 16384,
+          "writeSeconds": 6.846473,
+          "generationSeconds": 0.267813,
+          "cpuSeconds": 1.466319,
+          "peakRssKiB": 11452,
+          "rowsPerSecond": 146061,
+          "verifiedRowsAndReceipts": true,
+          "outputSignature": "03edf2ee11acc5cde4f2ffb7adedd76823c55c04a010e9cd3a383e256261ec87",
+          "verificationSeconds": 1.782762,
+          "table": "ud_bulk_975816ac3a528f0dcc52c83b0f1fca2d_parameters"
+        },
+        {
+          "mode": "native",
+          "dialect": 4,
+          "rows": 1000000,
+          "batches": 62,
+          "batchRows": 16384,
+          "writeSeconds": 3.001488,
+          "generationSeconds": 0.251003,
+          "cpuSeconds": 1.224848,
+          "peakRssKiB": 11452,
+          "rowsPerSecond": 333168,
+          "verifiedRowsAndReceipts": true,
+          "outputSignature": "03edf2ee11acc5cde4f2ffb7adedd76823c55c04a010e9cd3a383e256261ec87",
+          "verificationSeconds": 1.561912,
+          "table": "ud_bulk_975816ac3a528f0dcc52c83b0f1fca2d_native"
+        },
+        {
+          "nativeSpeedup": 2.281
+        }
+      ]
+    },
+    {
+      "driver": "odbc",
+      "rows": 1000000,
+      "exitCode": 0,
+      "elapsedSeconds": 23.88866139401216,
+      "measurements": [
+        {
+          "mode": "parameters",
+          "dialect": 5,
+          "rows": 1000000,
+          "batches": 62,
+          "batchRows": 16384,
+          "writeSeconds": 11.750909,
+          "generationSeconds": 0.264652,
+          "cpuSeconds": 1.969473,
+          "peakRssKiB": 15492,
+          "rowsPerSecond": 85100,
+          "verifiedRowsAndReceipts": true,
+          "outputSignature": "03edf2ee11acc5cde4f2ffb7adedd76823c55c04a010e9cd3a383e256261ec87",
+          "verificationSeconds": 2.436346,
+          "table": "ud_bulk_5d28fe179ac7eed3257ad75d14aff43c_parameters"
+        },
+        {
+          "mode": "native",
+          "dialect": 5,
+          "rows": 1000000,
+          "batches": 62,
+          "batchRows": 16384,
+          "writeSeconds": 6.501671,
+          "generationSeconds": 0.270627,
+          "cpuSeconds": 2.117076,
+          "peakRssKiB": 15944,
+          "rowsPerSecond": 153807,
+          "verifiedRowsAndReceipts": true,
+          "outputSignature": "03edf2ee11acc5cde4f2ffb7adedd76823c55c04a010e9cd3a383e256261ec87",
+          "verificationSeconds": 2.379172,
+          "table": "ud_bulk_5d28fe179ac7eed3257ad75d14aff43c_native"
+        },
+        {
+          "nativeSpeedup": 1.807
+        }
+      ]
+    }
+  ]
+}

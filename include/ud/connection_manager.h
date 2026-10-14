@@ -26,6 +26,7 @@ UD_API int32_t ud_connection_lease_parameter_style(const ud_connection_lease *);
 UD_API int32_t ud_connection_lease_delivery(const ud_connection_lease *);
 UD_API ud_status ud_connection_lease_savepoint(ud_connection_lease *, ud_string, int32_t);
 UD_API ud_status ud_connection_lease_record_diagnostic(ud_connection_lease *, ud_string *);
+UD_API ud_status ud_connection_lease_execute_record(ud_connection_lease *, const ud_read_options *, ud_command_result *);
 UD_API ud_status ud_connection_lease_resource(const ud_connection_lease *, ud_string *);
 UD_API ud_status ud_connection_lease_snapshot_grant(ud_connection_lease *, ud_activation *,
                                                     ud_connection_lease **);

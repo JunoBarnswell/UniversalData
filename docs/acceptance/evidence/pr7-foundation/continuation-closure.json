@@ -1,0 +1,78 @@
+{
+  "sourceCommit": "801f3a2fc57b3739138e42b8fa1b834cbb2e4461",
+  "sourceFingerprint": "e0105b834d3569ddf0b2c5aaaf8cbf95fd8607c1b75bd057a193616cc16046f8",
+  "reports": [
+    {
+      "path": "docs/acceptance/evidence/pr7-foundation/continuation-core.xml",
+      "sha256": "77114d76c6d1442f421904ceab91c497f2c6073a3f82ae34b51b40a7b7d7537c",
+      "summary": {
+        "name": "(empty)",
+        "tests": "72",
+        "failures": "0",
+        "disabled": "0",
+        "skipped": "0",
+        "hostname": "",
+        "time": "39",
+        "timestamp": "2026-10-14T14:44:52"
+      }
+    },
+    {
+      "path": "docs/acceptance/evidence/pr7-foundation/continuation-drivers.xml",
+      "sha256": "77a17e67099bd6b6da15a1d245741221a64a3960ba88a346cfaf0960c55126a9",
+      "summary": {
+        "name": "(empty)",
+        "tests": "24",
+        "failures": "0",
+        "disabled": "0",
+        "skipped": "2",
+        "hostname": "",
+        "time": "12",
+        "timestamp": "2026-10-14T15:02:51"
+      }
+    },
+    {
+      "path": "docs/acceptance/evidence/pr7-foundation/continuation-asan.xml",
+      "sha256": "b2c93bb793541c9788a1306ed2fd742da922835490b43c3b87ac052359e2a6ba",
+      "summary": {
+        "name": "(empty)",
+        "tests": "3",
+        "failures": "0",
+        "disabled": "0",
+        "skipped": "0",
+        "hostname": "",
+        "time": "1",
+        "timestamp": "2026-10-14T14:50:35"
+      }
+    }
+  ],
+  "driverCounts": {
+    "passed": 22,
+    "blocked": 2
+  },
+  "corePassed": 72,
+  "affectedSanitizersPassed": 3,
+  "bulkCorrectnessRowsPerMode": 10000,
+  "designer": [
+    "typecheck",
+    "lint",
+    "build"
+  ],
+  "platform": "Linux",
+  "workerProtocolRevision": 2,
+  "dataLayoutRevision": 2,
+  "checkpointRevision": 3,
+  "catalogRevision": 2,
+  "releaseCertified": false,
+  "remainingCode": [
+    "Full structural Schema/state migration",
+    "MySQL/SQL Server physical field histories",
+    "Kafka/Lakehouse",
+    "Cross-machine Worker agents and independent lease watchdog/resource fencing",
+    "Cron/calendars and enterprise scheduling"
+  ],
+  "blockedVerification": [
+    "Actual SQL Server XA recovery probe returns ODBC -3 / XA -3",
+    "Windows and independent specialty resources",
+    "GitHub runner billing"
+  ]
+}

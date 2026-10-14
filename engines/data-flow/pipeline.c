@@ -1196,6 +1196,8 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
                 if (version != n->descriptor.state_version ||
                     (n->descriptor.inputs < 64 && (ended >> n->descriptor.inputs)))
                     return UD_INCOMPATIBLE;
+                UD_TRY(ud_json_uint(ud_member(entry,"producedRows"),&n->produced));
+                UD_TRY(ud_json_uint(ud_member(entry,"processedRows"),&n->processed));
                 if (n->descriptor.restore) {
                     char key[65];
                     UD_TRY(epoch_component_key(p, n, key));
@@ -1342,16 +1344,17 @@ static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
             status = ud_bytes_put(&payload, "{\"id\":", 6);
         if (!status)
             status = ud_json_quote(&payload, component->id.data, component->id.length);
-        char metadata[160];
+        char metadata[320];
         uint64_t ended = 0;
         for (uint32_t port = 0; port < component->descriptor.inputs; port++)
             if (component->inputs[port] == UINT32_MAX || p->edges[component->inputs[port]].ended)
                 ended |= UINT64_C(1) << port;
         int length =
             snprintf(metadata, sizeof(metadata),
-                     ",\"stateVersion\":%u,\"endedInputs\":%llu,\"terminal\":%s}",
+                     ",\"stateVersion\":%u,\"endedInputs\":%llu,\"terminal\":%s,\"producedRows\":%llu,\"processedRows\":%llu}",
                      component->descriptor.state_version, (unsigned long long)ended,
-                     atomic_load(&component->state) == UD_EXEC_SUCCEEDED ? "true" : "false");
+                     atomic_load(&component->state) == UD_EXEC_SUCCEEDED ? "true" : "false",
+                     (unsigned long long)component->produced,(unsigned long long)component->processed);
         if (!status)
             status = ud_bytes_put(&payload, metadata, (size_t)length);
     }
@@ -1392,6 +1395,12 @@ static ud_status forward_control(physical_plan *p, node *n, const ud_component_e
         }
     return UD_OK;
 }
+static ud_status notify_control(node *n, const ud_component_event *event) {
+    if (!(n->descriptor.capabilities & UD_COMPONENT_CONTROL_EVENTS)) return UD_OK;
+    int allowed = n->emit_allowed; n->emit_allowed = 0;
+    ud_status status = n->descriptor.step(n->instance,event); n->emit_allowed = allowed;
+    return status == UD_MORE || status == UD_END ? UD_INVALID : status;
+}
 static ud_status stream_control(physical_plan *p, node *n, const ud_component_event *event) {
     ud_activation *e = p->execution;
     uint64_t bit = UINT64_C(1) << event->input;
@@ -1409,6 +1418,7 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
                 required |= UINT64_C(1) << i;
         if ((n->barrier_mask & required) != required)
             return UD_OK;
+        UD_TRY(notify_control(n,event));
         UD_TRY(stage_epoch(p, n, event->epoch));
         UD_TRY(forward_control(p, n, event));
         return commit_epoch(p, event->epoch);
@@ -1431,6 +1441,7 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
         n->last_watermark = minimum;
         ud_component_event output = *event;
         output.watermark = minimum;
+        UD_TRY(notify_control(n,&output));
         return forward_control(p, n, &output);
     }
     if (event->kind == UD_COMPONENT_SCHEMA_CHANGE) {
@@ -1473,7 +1484,8 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
         ud_free(outputs);
         if (!status) {
             n->schema_version = event->schema_version;
-            status = forward_control(p, n, event);
+            status = notify_control(n,event);
+            if (!status) status = forward_control(p, n, event);
         }
         return status;
     }

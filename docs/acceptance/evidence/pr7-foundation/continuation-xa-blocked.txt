@@ -1,0 +1,44 @@
+Internal ctest changing into directory: /tmp/ud-next-build
+UpdateCTestConfiguration  from :/tmp/ud-next-build/DartConfiguration.tcl
+UpdateCTestConfiguration  from :/tmp/ud-next-build/DartConfiguration.tcl
+Test project /tmp/ud-next-build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 86
+    Start  86: integration_odbc_participant_recovery
+
+86: Test command: /workspace/.universaldata-tools/bin/python3.12 "/tmp/UniversalData-Next/tests/transaction_participants.py" "UD_TEST_ODBC_CONFIG" "/tmp/ud-next-build/tests/test_transaction_participants" "/tmp/ud-next-build/plugins/ud_connector_odbc.so"
+86: Working Directory: /tmp/ud-next-build/tests
+86: Test timeout computed to be: 900
+86: Blocked: resource has no durable participant capability (SQL Server XA request failed (ODBC -3, XA -3))
+1/2 Test  #86: integration_odbc_participant_recovery ...............***Skipped   0.11 sec
+test 101
+    Start 101: integration_mssql_postgresql_participant_recovery
+
+101: Test command: /workspace/.universaldata-tools/bin/python3.12 "/tmp/UniversalData-Next/tests/transaction_participants.py" "UD_TEST_ODBC_CONFIG" "/tmp/ud-next-build/tests/test_transaction_participants" "/tmp/ud-next-build/plugins/ud_connector_odbc.so" "UD_TEST_POSTGRESQL_CONFIG" "/tmp/ud-next-build/plugins/ud_connector_postgresql.so"
+101: Working Directory: /tmp/ud-next-build/tests
+101: Test timeout computed to be: 900
+101: Blocked: resource has no durable participant capability (SQL Server XA request failed (ODBC -3, XA -3))
+2/2 Test #101: integration_mssql_postgresql_participant_recovery ...***Skipped   0.08 sec
+
+The following tests passed:
+	integration_odbc_participant_recovery
+	integration_mssql_postgresql_participant_recovery
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+crash-recovery      =   0.19 sec*proc (2 tests)
+odbc                =   0.19 sec*proc (2 tests)
+postgresql          =   0.08 sec*proc (1 test)
+real-integration    =   0.19 sec*proc (2 tests)
+
+Total Test time (real) =   0.19 sec
+
+The following tests did not run:
+	 86 - integration_odbc_participant_recovery (Skipped)
+	101 - integration_mssql_postgresql_participant_recovery (Skipped)

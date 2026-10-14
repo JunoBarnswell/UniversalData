@@ -18,8 +18,40 @@ static int stream(ud_context *ctx, ud_batch *batch, int dialect, const char *exp
     return 0;
 }
 int main(void) {
+    const char *valid_commands[] = {
+        "INSERT INTO target(a,b) VALUES(?1,?2)",
+        "UPDATE [target] SET [value]=:value WHERE id=:id; -- complete\n",
+        "DELETE FROM target WHERE label='literal; COMMIT'",
+        "WITH rows AS (SELECT 1 AS id) INSERT INTO target SELECT id FROM rows",
+        "/* prepare */ MERGE INTO target USING source ON target.id=source.id WHEN MATCHED THEN UPDATE SET value=source.value"
+    };
+    const char *unsafe_commands[] = {
+        "COMMIT", "CREATE TABLE target(a INT)", "UPDATE target SET a=1; COMMIT",
+        "DELETE FROM target; INSERT INTO target VALUES(1)", "CALL external_side_effect()",
+        "WITH t AS (SELECT 1) SELECT * FROM t", "INSERT INTO target VALUES($body$;COMMIT$body$)",
+        "INSERT INTO target VALUES('back\\slash')", "UPDATE target SET a=1 /*! COMMIT */",
+        "UPDATE target SET a=1 /* unterminated", "UPDATE target SET a=1 # comment", "UPDATE target SET a=(1"
+    };
+    for (uint32_t at=0; at<sizeof(valid_commands)/sizeof(*valid_commands); at++)
+        OK(ud_sql_validate_record_command((ud_string){valid_commands[at],(uint32_t)strlen(valid_commands[at])}));
+    for (uint32_t at=0; at<sizeof(unsafe_commands)/sizeof(*unsafe_commands); at++)
+        CHECK(ud_sql_validate_record_command((ud_string){unsafe_commands[at],(uint32_t)strlen(unsafe_commands[at])}) != UD_OK);
     ud_context *ctx = NULL;
     OK(ud_context_create(NULL, &ctx));
+    const char *target_commands[]={"INSERT INTO `schema`.`ta``ble`(x) VALUES(?)", "UPDATE target SET x=ABS(?) WHERE id=?", "DELETE FROM target WHERE id=?"};
+    for (uint32_t at=0; at<sizeof(target_commands)/sizeof(*target_commands); at++) {
+        ud_string schema={0},table={0};
+        OK(ud_sql_record_target(ctx,(ud_string){target_commands[at],(uint32_t)strlen(target_commands[at])},&schema,&table));
+        const char *expected=at ? "target" : "ta`ble";
+        CHECK(table.length==strlen(expected) && !memcmp(table.data,expected,table.length));
+        CHECK(schema.length==(at ? 0u : 6u)); ud_free((void *)schema.data); ud_free((void *)table.data);
+    }
+    const char *unproved_targets[]={"UPDATE a,b SET a.x=1,b.x=2", "DELETE FROM a USING a,b WHERE a.id=b.id", "INSERT INTO a SELECT x FROM b", "INSERT INTO a VALUES(custom_function(?))", "UPDATE a SET x=other.ABS(?)", "WITH a AS (SELECT 1) INSERT INTO b VALUES(1)", "UPDATE `a.b` SET x=1", "UPDATE a SET x=1 /*M! COMMIT */"};
+    for (uint32_t at=0; at<sizeof(unproved_targets)/sizeof(*unproved_targets); at++) {
+        ud_string schema={0},table={0};
+        CHECK(ud_sql_record_target(ctx,(ud_string){unproved_targets[at],(uint32_t)strlen(unproved_targets[at])},&schema,&table)!=UD_OK);
+        CHECK(!schema.data && !table.data);
+    }
     ud_field fields[] = {{.name = "flag", .name_length = 4, .type = UD_BOOL, .nullable = 1},
                          {.name = "label", .name_length = 5, .type = UD_UTF8, .nullable = 1},
                          {.name = "payload", .name_length = 7, .type = UD_BINARY, .nullable = 1},
