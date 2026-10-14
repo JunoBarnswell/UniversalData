@@ -68,7 +68,7 @@ ud_status ud_builtin_transformed(builtin *b, const ud_batch *in) {
         uint32_t selected = (uint32_t)(b->number % output_count);
         if (b->number == UINT64_MAX)
             return UD_RESOURCE;
-        UD_TRY(b->context.emit(b->context.emit_user, selected, in));
+        UD_TRY(b->context.emit(b->context.emit_user, selected, (ud_batch *)in));
         b->number++;
         return UD_OK;
     }

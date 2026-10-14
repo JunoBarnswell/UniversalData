@@ -233,10 +233,12 @@ static ud_status digest_bytes(void *user, const void *p, size_t n) {
     ud_sha256_update(user, p, n);
     return UD_OK;
 }
-ud_status ud_batch_hash_rows(const ud_batch *batch, ud_sha256 *hash) {
+static ud_status hash_rows(const ud_batch *batch, ud_sha256 *hash, const uint8_t *tag) {
     if (!batch || !hash)
         return UD_INVALID;
     for (uint32_t row = 0; row < batch->rows; row++) {
+        if (tag)
+            ud_sha256_update(hash, tag, 1);
         for (uint32_t col = 0; col < batch->columns; col++) {
             ud_value value;
             UD_TRY(ud_batch_get(batch, row, col, &value));
@@ -255,6 +257,12 @@ ud_status ud_batch_hash_rows(const ud_batch *batch, ud_sha256 *hash) {
         ud_sha256_update(hash, bytes, sizeof(bytes));
     }
     return UD_OK;
+}
+ud_status ud_batch_hash_rows(const ud_batch *batch, ud_sha256 *hash) {
+    return hash_rows(batch, hash, NULL);
+}
+ud_status ud_batch_hash_tagged_rows(const ud_batch *batch, ud_sha256 *hash, uint8_t port) {
+    return hash_rows(batch, hash, &port);
 }
 ud_status ud_batch_fingerprint(const ud_batch *batch, uint8_t out[32]) {
     if (!batch || !out)

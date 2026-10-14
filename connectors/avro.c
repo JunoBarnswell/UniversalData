@@ -1028,7 +1028,8 @@ ud_status ud_avro_reader_next(ud_avro_reader *reader, ud_batch **accepted, ud_ba
     ud_status status = ud_batch_create(file->memory, file->schema->schema->fields, columns,
                                        file->options.batch_rows, &rows);
     if (!status)
-        status = ud_error_schema(&file->records.errors, NULL, file->records.include_input, &bad);
+        status = ud_error_batch(&file->records.errors, file->records.include_input,
+                                 file->options.batch_rows, &bad);
     ud_value *values = ud_alloc(file->memory, columns * sizeof(*values));
     if (!values)
         status = UD_RESOURCE;

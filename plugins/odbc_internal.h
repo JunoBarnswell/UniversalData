@@ -40,6 +40,7 @@ enum {
 };
 
 ud_status ud_odbc_control(odbc_state *);
+ud_status ud_odbc_diagnostic(odbc_state *);
 ud_status ud_odbc_read_open(void *, const ud_read_options *, const ud_batch *);
 ud_status ud_odbc_read_next(void *, ud_batch **);
 ud_status ud_odbc_read_close(void *);

@@ -1,6 +1,6 @@
 """R1–R5 real destinations, native snapshots, receipts, and separate-process kills."""
 import collections, copy, json, pathlib, sqlite3, subprocess, sys, tempfile
-VERSION=9
+VERSION=10
 DRIVER,PLUGIN=sys.argv[1:3]
 def schema(fields): return dict(version=VERSION,fields=fields)
 def field(name,kind='int64',nullable=False,**extra): return dict(name=name,type=kind,nullable=nullable,**extra)
@@ -29,7 +29,7 @@ def package(root,count=10003,duplicates='first'):
         db.executemany('INSERT INTO src VALUES(?,?,?,?,?)',rows)
     with sqlite3.connect(root/'target.db') as db:
         db.execute('CREATE TABLE output(water INTEGER NOT NULL,id INTEGER NOT NULL,tenant TEXT NOT NULL,fk INTEGER,amount INTEGER NOT NULL,doubled INTEGER NOT NULL,ref_tenant TEXT NOT NULL,ref_key INTEGER NOT NULL,label TEXT NOT NULL,PRIMARY KEY(water,id))')
-        db.execute('CREATE TABLE errors(executionId TEXT NOT NULL,taskId TEXT NOT NULL,pipelineId TEXT NOT NULL,componentId TEXT NOT NULL,ruleId TEXT NOT NULL,ruleVersion INTEGER NOT NULL,columnId TEXT NOT NULL,sourceRowId TEXT NOT NULL,errorCode INTEGER NOT NULL,policy TEXT NOT NULL,PRIMARY KEY(sourceRowId,ruleId,componentId))')
+        db.execute('CREATE TABLE errors(executionId TEXT NOT NULL,taskId TEXT NOT NULL,pipelineId TEXT NOT NULL,componentId TEXT NOT NULL,ruleId TEXT NOT NULL,ruleVersion INTEGER NOT NULL,columnId TEXT NOT NULL,sourceRowId TEXT NOT NULL,errorCode INTEGER NOT NULL,policy TEXT NOT NULL,errorKind TEXT NOT NULL,providerCode TEXT NOT NULL,inputFormat TEXT NOT NULL,PRIMARY KEY(sourceRowId,ruleId,componentId))')
     (root/'spill').mkdir();(root/'state').mkdir()
     original=schema([field('water',keyOrder=1),field('id',keyOrder=2),field('tenant','utf8'),field('fk',nullable=True),field('amount','utf8',True)])
     converted=copy.deepcopy(original);converted['fields'][-1]['type']='int64'

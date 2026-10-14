@@ -5,3 +5,21 @@
 .editor-toolbar>select{width:auto;max-width:220px}.inspector h2{display:flex;align-items:center;justify-content:space-between}.inspector h2 button{padding:4px;border:0}.field-mapping{display:flex;flex-direction:column;gap:12px;margin:20px 0}.field-mapping td{padding:8px}.inspector section p{font-size:12px}.inspector h4{margin:12px 0 6px}.editor-toolbar .toolbar-actions{flex-wrap:wrap}
 
 [hidden]{display:none!important}.designer-page{display:flex;flex-direction:column;flex:1;min-height:0}.deployment-panel{margin-top:28px}
+.validation-summary { padding: 12px 20px; overflow: auto; }
+.validation-success { color: #087f8c; font-weight: 600; }
+.validation-summary td { min-width: 140px; max-width: 420px; overflow-wrap: anywhere; font-size: 12px; }
+
+.compact-catalog-button{display:none}
+@media(max-width:1000px){
+ .editor-toolbar{height:auto;min-height:102px;flex-wrap:wrap;justify-content:flex-start}
+ .editor-toolbar .toolbar-actions{margin-left:auto}
+ .compact-catalog-button{display:inline-flex}
+ .editor-body{grid-template-columns:minmax(0,1fr);position:relative}
+ .component-rail{display:none;position:absolute;inset:0 auto 0 0;width:264px;z-index:6;box-shadow:8px 0 30px #0001}
+ .catalog-open .component-rail{display:block}
+ .inspector{position:absolute;inset:0 0 0 auto;width:min(324px,85vw);background:#fff;box-shadow:-8px 0 30px #0001;z-index:5}
+ .inspector:has(>.muted){display:none}
+ .results-panel{height:190px}
+ .panel-tabs button{white-space:nowrap}
+}
+@media(max-width:480px){.brand strong{display:none}.main-header nav button{padding:0 6px}.editor-toolbar>select{max-width:155px}.editor-toolbar input{width:135px}}

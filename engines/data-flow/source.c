@@ -48,7 +48,8 @@ static ud_status sql_record(void *user, ud_batch *batch, ud_status code, uint32_
     if (source->records.policy == UD_ERROR_IGNORE)
         return UD_OK;
     if (!source->source_errors)
-        UD_TRY(ud_error_schema(&source->context.errors, NULL, source->records.include_input,
+        UD_TRY(ud_error_batch(&source->context.errors, source->records.include_input,
+                               source->context.max_batch_rows,
                                &source->source_errors));
     ud_bytes raw = {.ctx = source->context.memory, .limit = 16777216};
     ud_status status = UD_OK;
@@ -348,10 +349,8 @@ ud_status ud_builtin_snapshot_store(builtin *b, ud_batch *batch, uint32_t port) 
         }
     }
     if (!status) {
-        uint8_t tag[8] = {0};
-        tag[0] = (uint8_t)port;
-        ud_sha256_update(&b->snapshot_hash, tag, sizeof(tag));
-        status = ud_batch_hash_rows(batch, &b->snapshot_hash);
+        /* Content identity cannot depend on physical batch boundaries. */
+        status = ud_batch_hash_tagged_rows(batch, &b->snapshot_hash, (uint8_t)port);
     }
     if (!status && context->execution->journal)
         status = ud_checkpoint_snapshot_write(context->activation, context->component_id,
@@ -654,7 +653,9 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
                 continue;
             }
             if (!status && b->source_sort) {
-                status = ud_operator_push(b->source_sort, 0, input);
+                status = ud_batch_seal(input);
+                if (!status)
+                    status = ud_operator_push(b->source_sort, 0, input);
                 ud_batch_destroy(input);
             } else if (!status)
                 status = ud_builtin_snapshot_store(b, input, 0);

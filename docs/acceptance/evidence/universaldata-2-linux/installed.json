@@ -1,0 +1,268 @@
+{
+  "exitCode": 0,
+  "sdkVersion": "2.0.0",
+  "abiVersion": 10,
+  "configuration": "Release",
+  "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
+  "archive": "/tmp/ud2-delivery-sealed/UniversalData-2.0.0-linux-x64.zip",
+  "archiveSha256": "145ad32ecf5939cc531d5df3ed1aba4ad3d17ef47e994969dd7d5022a3ecb49c",
+  "verifiedFiles": 267,
+  "unpackedDirectory": "/tmp/ud2-installed-consumers/bundle",
+  "logs": "/tmp/ud2-installed-consumers",
+  "nativeLibrary": {
+    "path": "/tmp/ud2-installed-consumers/bundle/sdk/lib/libud_data.so",
+    "sha256": "c644c4254622bea4a04ee150a798b4b4cb3eda574d9f984020036fa5cf5965a2"
+  },
+  "nuget": {
+    "path": "/tmp/ud2-installed-consumers/bundle/packages/UniversalData.2.0.0.nupkg",
+    "sha256": "5e321a2a4ef4abb959b4e6a5a35a2d503f6e7c17a314130eed6b7626e0f442f1",
+    "nativeFromPackage": true,
+    "sdkLoaderPath": false
+  },
+  "maven": {
+    "path": "/tmp/ud2-installed-consumers/bundle/packages/universal-data-2.0.0.jar",
+    "sha256": "3af8664e58cd3649ed48b3f5c771b6ec0c51e37cbb3b938aa0f1a997b7a686bf",
+    "nativeFromBundle": true
+  },
+  "c": {
+    "cmakeTarget": "UniversalData::Data",
+    "dynamicPackage": true,
+    "dynamicResources": true,
+    "installedHostPipeline": true,
+    "dynamicSQLite": true
+  },
+  "languageParity": "10003 rows / 20006 input and output / 8 tasks; Package/Project/child and scalar/nested/wire equality",
+  "nativeQueryParity": "C/.NET/Java SQLite discovery/refresh, three compatibility policies and row identity from identified Wire",
+  "installedWebWorkerBrowser": "Passed",
+  "commands": [
+    {
+      "step": "c-configure",
+      "command": [
+        "/workspace/.universaldata-tools/bin/cmake",
+        "-S",
+        "/tmp/ud2-installed-consumers/c-source",
+        "-B",
+        "/tmp/ud2-installed-consumers/c-build",
+        "-DCMAKE_PREFIX_PATH=/tmp/ud2-installed-consumers/bundle/sdk",
+        "-DCMAKE_BUILD_TYPE=Release"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-build",
+      "command": [
+        "/workspace/.universaldata-tools/bin/cmake",
+        "--build",
+        "/tmp/ud2-installed-consumers/c-build",
+        "--config",
+        "Release",
+        "--parallel",
+        "4"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-dynamic-resources",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData-2.0/tests/core_runtime.py",
+        "/tmp/ud2-installed-consumers/c-build/consumer_resources"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "installed-host-pipeline",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData-2.0/tests/core_pipeline.py",
+        "/tmp/ud2-installed-consumers/bundle/sdk/bin/universaldata/cli/ud_cli",
+        "/tmp/ud2-installed-consumers/c-build/consumer_wire_decode"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-dynamic-sqlite",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData-2.0/tests/package_sql.py",
+        "/tmp/ud2-installed-consumers/c-build/consumer_sql",
+        "/tmp/ud2-installed-consumers/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-restore-package",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "restore",
+        "/tmp/ud2-installed-consumers/dotnet-package/Consumer.csproj",
+        "--source",
+        "/tmp/ud2-installed-consumers/bundle/packages",
+        "--packages",
+        "/tmp/ud2-installed-consumers/nuget-cache",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-build-package",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "build",
+        "/tmp/ud2-installed-consumers/dotnet-package/Consumer.csproj",
+        "--configuration",
+        "Release",
+        "--no-restore",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-restore-data",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "restore",
+        "/tmp/ud2-installed-consumers/dotnet-data/DataConsumer.csproj",
+        "--source",
+        "/tmp/ud2-installed-consumers/bundle/packages",
+        "--packages",
+        "/tmp/ud2-installed-consumers/nuget-cache",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-build-data",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "build",
+        "/tmp/ud2-installed-consumers/dotnet-data/DataConsumer.csproj",
+        "--configuration",
+        "Release",
+        "--no-restore",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "maven-install",
+      "command": [
+        "/workspace/.universaldata-tools/maven/bin/mvn",
+        "-B",
+        "-q",
+        "-s",
+        "/workspace/.universaldata-tools/maven-settings.xml",
+        "-f",
+        "/tmp/ud2-installed-consumers/bundle/packages/universal-data-2.0.0.pom",
+        "install:install-file",
+        "-Dfile=/tmp/ud2-installed-consumers/bundle/packages/universal-data-2.0.0.jar",
+        "-DpomFile=/tmp/ud2-installed-consumers/bundle/packages/universal-data-2.0.0.pom",
+        "-DlocalRepositoryPath=/tmp/ud2-installed-consumers/maven-repository"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "maven-consumer",
+      "command": [
+        "/workspace/.universaldata-tools/maven/bin/mvn",
+        "-B",
+        "-q",
+        "-s",
+        "/workspace/.universaldata-tools/maven-settings.xml",
+        "-f",
+        "/tmp/ud2-installed-consumers/java-consumer/pom.xml",
+        "-Dmaven.repo.local=/tmp/ud2-installed-consumers/java-cache",
+        "package"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-language-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData-2.0/tests/package_language_parity.py",
+        "/tmp/ud2-installed-consumers/c-build/consumer_package",
+        "/tmp/ud2-installed-consumers/c-build/consumer_data",
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "/tmp/ud2-installed-consumers/dotnet-package/bin/Release/net8.0/Consumer.dll",
+        "/tmp/ud2-installed-consumers/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "/tmp/ud2-installed-consumers/java-consumer/target/classes",
+        "/tmp/ud2-installed-consumers/maven-repository/org/universaldata/universal-data/2.0.0/universal-data-2.0.0.jar",
+        "/tmp/ud2-installed-consumers/bundle/sdk/lib",
+        "--managed-native-local"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-native-query-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData-2.0/tests/next_phase_queries.py",
+        "--query",
+        "/tmp/ud2-installed-consumers/c-build/consumer_query",
+        "--data",
+        "/tmp/ud2-installed-consumers/c-build/consumer_data",
+        "--dotnet",
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "--data-dll",
+        "/tmp/ud2-installed-consumers/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "--java",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "--classes",
+        "/tmp/ud2-installed-consumers/java-consumer/target/classes",
+        "--jar",
+        "/tmp/ud2-installed-consumers/maven-repository/org/universaldata/universal-data/2.0.0/universal-data-2.0.0.jar",
+        "--native",
+        "/tmp/ud2-installed-consumers/bundle/sdk/lib",
+        "--sqlite",
+        "/tmp/ud2-installed-consumers/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-advanced-metadata-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python",
+        "/workspace/UniversalData-2.0/tests/advanced_metadata.py",
+        "--query",
+        "/tmp/ud2-installed-consumers/c-build/consumer_query",
+        "--sqlite",
+        "/tmp/ud2-installed-consumers/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so",
+        "--dotnet",
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "--data-dll",
+        "/tmp/ud2-installed-consumers/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "--java",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "--classes",
+        "/tmp/ud2-installed-consumers/java-consumer/target/classes",
+        "--jar",
+        "/tmp/ud2-installed-consumers/maven-repository/org/universaldata/universal-data/2.0.0/universal-data-2.0.0.jar",
+        "--native",
+        "/tmp/ud2-installed-consumers/bundle/sdk/lib"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "installed-web-worker-browser",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python",
+        "/workspace/UniversalData-2.0/tests/web_product.py",
+        "--url",
+        "http://127.0.0.1:37967",
+        "--root",
+        "/tmp/ud2-installed-consumers/web",
+        "--evidence",
+        "/tmp/ud2-installed-consumers/browser",
+        "--browser-executable",
+        "/usr/bin/chromium"
+      ],
+      "exitCode": 0
+    }
+  ]
+}

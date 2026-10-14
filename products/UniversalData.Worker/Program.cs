@@ -4,7 +4,7 @@ using UniversalData.Hosting;
 
 if (args.Length != 1) throw new ArgumentException("Worker requires a host-policy file");
 var policy = HostPolicy.Load(Path.GetFullPath(args[0]));
-var input = await Console.In.ReadLineAsync() ?? throw new InvalidDataException("Missing worker request");
+var input = await WorkerProtocol.ReadLine(Console.In, 67108864) ?? throw new InvalidDataException("Missing worker request");
 var request = JsonSerializer.Deserialize<WorkerRequest>(input, HostPolicy.JsonOptions)
               ?? throw new InvalidDataException("Invalid worker request");
 if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket, "N", out _))
@@ -20,14 +20,14 @@ void Reply(object value) { lock (output) { Console.WriteLine(JsonSerializer.Seri
 catalog.Record(execution, request.Resume ? request.Revision + 1 : 1);
 Reply(new { version = ProductInfo.Protocol, kind = "ready", ticket = request.Ticket, executionId = execution.Id });
 // A worker cannot perform business I/O until the service records its Native ID and authorizes start.
-var start = await Console.In.ReadLineAsync();
+var start = await WorkerProtocol.ReadLine(Console.In, 64);
 if (start != "start") return 2;
 execution.Start();
 using var controls = new CancellationTokenSource();
 var controlServer = WorkerControl.Serve(request.Ticket, execution, controls.Token);
 _ = Task.Run(async () =>
 {
-    while (await Console.In.ReadLineAsync() is { } command)
+    while (await WorkerProtocol.ReadLine(Console.In, 64) is { } command)
         if (command == "cancel") execution.Cancel();
     execution.Cancel(); /* Service pipe loss requests cancellation; it never authorizes replay. */
 });

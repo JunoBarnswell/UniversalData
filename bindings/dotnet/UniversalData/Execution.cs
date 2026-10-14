@@ -106,7 +106,7 @@ public sealed class Execution : IDisposable
         finally { foreach (var pin in pins) pin.Free(); GC.KeepAlive(grant); GC.KeepAlive(resolver); GC.KeepAlive(observer); GC.KeepAlive(registry); }
     }
 
-    private static string Text(Native.StringValue text) => Marshal.PtrToStringUTF8(text.Data, checked((int)text.Length)) ?? "";
+    private static string Text(Native.StringValue text) => Native.Text(text);
 
     private static void Check(int status)
     { if (status != 0) throw new UniversalDataException(status, Marshal.PtrToStringUTF8(Native.ud_status_name(status)) ?? "Native error"); }

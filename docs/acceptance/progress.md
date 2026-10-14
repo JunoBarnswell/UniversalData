@@ -2,64 +2,64 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 2.0.0 / ABI 10；2.0 bulk implementation in progress: Native correctness and remote loading, CDC schema/clear events, managed extension/host lifecycle, SQLite deployment/queue/jobs, React designer and Native debug are connected in source. Remaining IO/components, contract closure and concentrated Linux/Windows acceptance are pending.。
+SDK 2.0.0 / ABI 10；Draft PR #6 Linux delivery: complete PRODUCT build, 78 actual CTest passes with 4 Oracle environment skips, real four-driver SQL/CDC/native bulk, six performance workloads, browser and independent installed C/.NET/Java/CLI/Web/Worker acceptance passed. 25 audit items have current scoped behavior passes, 17 remain Partial, 8 are Blocked, and 039/040 are NotApplicable; 4 source items remain Partial. Complete 50-item certification is not claimed.。
 
-门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
+门禁通过 4/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
 | 整改 | 当前状态 |
 |---|---|
-| ETL-001 Complete product dependency closure | Partial / NotRun |
-| ETL-002 SQL parameter arrays and truthful bulk capabilities | Partial / NotRun |
-| ETL-003 Native execution identity | Implemented / NotRun |
-| ETL-004 Source record error ports | Partial / NotRun |
-| ETL-005 Expression transform row errors | Partial / NotRun |
-| ETL-006 Destination isolation and error barrier | Partial / NotRun |
-| ETL-007 Complete unsigned integer domain | Partial / NotRun |
-| ETL-008 Duration and calendar Interval | Partial / NotRun |
-| ETL-009 JSON and dictionary fidelity | Planned / NotRun |
-| ETL-010 CDC TRUNCATE semantics | Partial / NotRun |
-| ETL-011 Recoverable transaction participants | Partial / NotRun |
-| ETL-012 Durable coordinator decisions | Partial / NotRun |
-| ETL-013 PostgreSQL COPY loading | Partial / NotRun |
-| ETL-014 MySQL and MariaDB native loading | Partial / NotRun |
-| ETL-015 SQL Server BCP loading | Partial / NotRun |
-| ETL-016 OCI staged Direct Path loading | Partial / NotRun |
-| ETL-017 Enterprise file layouts and publication | Partial / NotRun |
-| ETL-018 Incremental overlap target capability proof | Partial / NotRun |
-| ETL-019 Unified file and database discovery | Partial / NotRun |
-| ETL-020 One SDK and protocol family | Implemented / NotRun |
-| ETL-021 SQLite indexed Native Catalog | Implemented / NotRun |
-| ETL-022 Durable execution logs | Partial / NotRun |
-| ETL-023 Deployment and execution management | Partial / NotRun |
-| ETL-024 CLI resource policy | Partial / NotRun |
-| ETL-025 Online Schema Change barrier | Partial / NotRun |
-| ETL-026 CDC field presence and key images | Partial / NotRun |
-| ETL-027 Plain REST and receipt guarantees | Partial / NotRun |
-| ETL-028 Row SQL command parameter binding | Partial / NotRun |
-| ETL-029 Public managed Registry and native callback ownership | Partial / NotRun |
-| ETL-030 Deployment-compiled C# scripts | Partial / NotRun |
-| ETL-031 Balanced batch dispatch | Partial / NotRun |
-| ETL-032 Import and Export Column | Partial / NotRun |
-| ETL-033 XML Source | Partial / NotRun |
-| ETL-034 XPath XSLT and XSD tasks | Partial / NotRun |
-| ETL-035 SMTP task | Partial / Blocked |
-| ETL-036 Windows WMI tasks | Partial / Blocked |
-| ETL-037 FTP and SFTP resources | Partial / Blocked |
-| ETL-038 Avro IO | Partial / NotRun |
+| ETL-001 Complete product dependency closure | Implemented / Partial |
+| ETL-002 SQL parameter arrays and truthful bulk capabilities | Implemented / Partial |
+| ETL-003 Native execution identity | Implemented / Passed |
+| ETL-004 Source record error ports | Implemented / Passed |
+| ETL-005 Expression transform row errors | Implemented / Passed |
+| ETL-006 Destination isolation and error barrier | Implemented / Partial |
+| ETL-007 Complete unsigned integer domain | Implemented / Passed |
+| ETL-008 Duration and calendar Interval | Implemented / Passed |
+| ETL-009 JSON and dictionary fidelity | Implemented / Passed |
+| ETL-010 CDC TRUNCATE semantics | Implemented / Partial |
+| ETL-011 Recoverable transaction participants | Partial / Partial |
+| ETL-012 Durable coordinator decisions | Implemented / Partial |
+| ETL-013 PostgreSQL COPY loading | Implemented / Passed |
+| ETL-014 MySQL and MariaDB native loading | Implemented / Passed |
+| ETL-015 SQL Server BCP loading | Implemented / Partial |
+| ETL-016 OCI staged Direct Path loading | Implemented / Blocked |
+| ETL-017 Enterprise file layouts and publication | Implemented / Passed |
+| ETL-018 Incremental overlap target capability proof | Implemented / Partial |
+| ETL-019 Unified file and database discovery | Implemented / Passed |
+| ETL-020 One SDK and protocol family | Implemented / Passed |
+| ETL-021 SQLite indexed Native Catalog | Implemented / Passed |
+| ETL-022 Durable execution logs | Implemented / Passed |
+| ETL-023 Deployment and execution management | Implemented / Passed |
+| ETL-024 CLI resource policy | Implemented / Passed |
+| ETL-025 Online Schema Change barrier | Partial / Partial |
+| ETL-026 CDC field presence and key images | Partial / Partial |
+| ETL-027 Plain REST and receipt guarantees | Implemented / Partial |
+| ETL-028 Row SQL command parameter binding | Implemented / Partial |
+| ETL-029 Public managed Registry and native callback ownership | Implemented / Passed |
+| ETL-030 Deployment-compiled C# scripts | Implemented / Partial |
+| ETL-031 Balanced batch dispatch | Implemented / Passed |
+| ETL-032 Import and Export Column | Implemented / Passed |
+| ETL-033 XML Source | Implemented / Passed |
+| ETL-034 XPath XSLT and XSD tasks | Implemented / Passed |
+| ETL-035 SMTP task | Implemented / Blocked |
+| ETL-036 Windows WMI tasks | Implemented / Blocked |
+| ETL-037 FTP and SFTP resources | Implemented / Blocked |
+| ETL-038 Avro IO | Partial / Partial |
 | ETL-039 DQS removed by Microsoft | NotApplicable / NotApplicable |
 | ETL-040 SSAS Data Mining no longer supported | NotApplicable / NotApplicable |
-| ETL-041 SQL Server maintenance Agent and SSAS XMLA | Partial / Blocked |
-| ETL-042 Exact Distinct profiling with shared Compute budget | Implemented / NotRun |
-| ETL-043 Durable job queue and schedules | Partial / NotRun |
-| ETL-044 Proven filter pushdown and streaming JSON array | Partial / NotRun |
-| ETL-045 Azure Blob and ADLS Gen2 | Partial / Blocked |
-| ETL-046 S3 and MinIO | Partial / Blocked |
-| ETL-047 ASP.NET Core 10 management and isolated workers | Partial / NotRun |
-| ETL-048 React Flow package designer | Partial / NotRun |
-| ETL-049 Safe native runtime debugging | Partial / NotRun |
-| ETL-050 Full Linux and Windows driver CI | Partial / NotRun |
-| ETL-051 Independent release consumers and capability manifests | Partial / NotRun |
-| ETL-052 HTTP response variable mappings | Partial / NotRun |
+| ETL-041 SQL Server maintenance Agent and SSAS XMLA | Implemented / Blocked |
+| ETL-042 Exact Distinct profiling with shared Compute budget | Implemented / Passed |
+| ETL-043 Durable job queue and schedules | Implemented / Partial |
+| ETL-044 Proven filter pushdown and streaming JSON array | Implemented / Partial |
+| ETL-045 Azure Blob and ADLS Gen2 | Implemented / Blocked |
+| ETL-046 S3 and MinIO | Implemented / Blocked |
+| ETL-047 ASP.NET Core 10 management and isolated workers | Implemented / Passed |
+| ETL-048 React Flow package designer | Implemented / Passed |
+| ETL-049 Safe native runtime debugging | Implemented / Passed |
+| ETL-050 Full Linux and Windows driver CI | Implemented / Blocked |
+| ETL-051 Independent release consumers and capability manifests | Implemented / Partial |
+| ETL-052 HTTP response variable mappings | Implemented / Passed |
 
 三轮有界设计复核：
 

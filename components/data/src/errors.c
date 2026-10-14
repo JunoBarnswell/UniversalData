@@ -26,6 +26,10 @@ ud_status ud_record_options_validate(ud_context *ctx, const ud_record_options *o
 ud_status ud_error_schema(const ud_error_context *c, const ud_batch *input, int include,
                           ud_batch **out) {
     (void)input;
+    return ud_error_batch(c, include, 0, out);
+}
+ud_status ud_error_batch(const ud_error_context *c, int include, uint32_t capacity,
+                         ud_batch **out) {
     if (!c || !out || !c->memory || (include != 0 && include != 1))
         return UD_INVALID;
     if (c->struct_size != sizeof(*c) || c->abi_version != UD_ABI_VERSION)
@@ -54,7 +58,7 @@ ud_status ud_error_schema(const ud_error_context *c, const ud_batch *input, int 
                             &fields[13].identity);
     }
     if (!status)
-        status = ud_batch_create(c->memory, fields, n, 0, out);
+        status = ud_batch_create(c->memory, fields, n, capacity, out);
     ud_free(fields);
     return status;
 }

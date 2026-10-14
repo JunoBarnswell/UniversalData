@@ -1,0 +1,8 @@
+{
+  "state": "Blocked",
+  "run": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38496784093",
+  "sourceCommit": "64619b913266f4d0e156e22778f575bc60fa5f7e",
+  "startedSteps": 0,
+  "scope": "Earlier PR head; not an acceptance result for the final local source fingerprint.",
+  "reason": "GitHub check-run: The job was not started because recent account payments have failed or your spending limit needs to be increased. Independent Windows/full-resource runners are also unavailable."
+}

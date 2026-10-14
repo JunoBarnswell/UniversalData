@@ -1,0 +1,186 @@
+Internal ctest changing into directory: /tmp/ud2-build
+Test project /tmp/ud2-build
+      Start 69: integration_odbc_cdc
+      Start 46: next_phase_pipeline_recovery
+ 1/82 Test #46: next_phase_pipeline_recovery ..................   Passed    6.47 sec
+      Start 35: catalog_immutable_store
+ 2/82 Test #35: catalog_immutable_store .......................   Passed    5.08 sec
+      Start 41: http_task_execution
+ 3/82 Test #69: integration_odbc_cdc ..........................   Passed   14.30 sec
+      Start 40: process_task_execution
+ 4/82 Test #41: http_task_execution ...........................   Passed    3.50 sec
+      Start 30: value_semantics_pipeline
+ 5/82 Test #30: value_semantics_pipeline ......................   Passed    2.03 sec
+      Start 47: ssis_native_features
+ 6/82 Test #40: process_task_execution ........................   Passed    3.43 sec
+      Start 52: managed_registry_scripts_debug_lifecycle
+ 7/82 Test #47: ssis_native_features ..........................   Passed    1.87 sec
+      Start 19: postgresql_cursor_cancellation
+ 8/82 Test #52: managed_registry_scripts_debug_lifecycle ......   Passed    1.25 sec
+      Start 27: core_runtime_resources
+ 9/82 Test #19: postgresql_cursor_cancellation ................   Passed    1.12 sec
+      Start 50: advanced_formats_tls_rest
+10/82 Test #27: core_runtime_resources ........................   Passed    1.10 sec
+      Start 82: native_object_transfer_sequence
+11/82 Test #82: native_object_transfer_sequence ...............   Passed    0.70 sec
+      Start 43: profile_task_execution
+12/82 Test #50: advanced_formats_tls_rest .....................   Passed    0.84 sec
+      Start 34: package_durable_recovery
+13/82 Test #43: profile_task_execution ........................   Passed    0.72 sec
+      Start 62: integration_mysql_participant_recovery
+14/82 Test #34: package_durable_recovery ......................   Passed    0.68 sec
+      Start 18: worker_protocol
+15/82 Test #62: integration_mysql_participant_recovery ........   Passed    0.68 sec
+      Start 25: indexed_segment_journal
+16/82 Test #18: worker_protocol ...............................   Passed    0.63 sec
+      Start 39: filesystem_task_execution
+17/82 Test #25: indexed_segment_journal .......................   Passed    0.54 sec
+      Start 44: native_custom_task
+18/82 Test #39: filesystem_task_execution .....................   Passed    0.57 sec
+      Start 48: pr5_foundation
+19/82 Test #44: native_custom_task ............................   Passed    0.47 sec
+      Start 67: integration_mariadb_participant_recovery
+20/82 Test #48: pr5_foundation ................................   Passed    0.44 sec
+      Start 37: child_package_execution
+21/82 Test #67: integration_mariadb_participant_recovery ......   Passed    0.40 sec
+      Start 57: integration_postgresql_participant_recovery
+22/82 Test #37: child_package_execution .......................   Passed    0.37 sec
+      Start 64: integration_mariadb_cdc
+23/82 Test #64: integration_mariadb_cdc .......................   Passed    0.24 sec
+      Start 59: integration_mysql_cdc
+24/82 Test #57: integration_postgresql_participant_recovery ...   Passed    0.38 sec
+      Start 32: four_engine_connections_enumerators
+25/82 Test #59: integration_mysql_cdc .........................   Passed    0.24 sec
+      Start 28: core_pipeline_components
+26/82 Test #32: four_engine_connections_enumerators ...........   Passed    0.25 sec
+      Start 68: integration_odbc_sql
+27/82 Test #28: core_pipeline_components ......................   Passed    0.20 sec
+      Start 55: integration_postgresql_cdc
+28/82 Test #55: integration_postgresql_cdc ....................   Passed    0.13 sec
+      Start 81: native_xml_source_xpath_xslt_xsd
+29/82 Test #68: integration_odbc_sql ..........................   Passed    0.34 sec
+      Start 58: integration_mysql_sql
+30/82 Test #81: native_xml_source_xpath_xslt_xsd ..............   Passed    0.19 sec
+      Start 31: package_failure_boundaries
+31/82 Test #58: integration_mysql_sql .........................   Passed    0.10 sec
+      Start 51: advanced_catalog_ten_table_template
+32/82 Test #31: package_failure_boundaries ....................   Passed    0.19 sec
+      Start 63: integration_mariadb_sql
+33/82 Test #51: advanced_catalog_ten_table_template ...........   Passed    0.17 sec
+      Start 70: integration_odbc_native_bulk
+34/82 Test #63: integration_mariadb_sql .......................   Passed    0.11 sec
+      Start 66: integration_mariadb_native_bulk
+35/82 Test #66: integration_mariadb_native_bulk ...............   Passed    0.09 sec
+      Start 53: java_registry_observer_catalog_lifecycle
+36/82 Test #70: integration_odbc_native_bulk ..................   Passed    0.18 sec
+      Start 61: integration_mysql_native_bulk
+37/82 Test #53: java_registry_observer_catalog_lifecycle ......   Passed    0.12 sec
+      Start 77: native_component_product_semantics
+38/82 Test #61: integration_mysql_native_bulk .................   Passed    0.12 sec
+      Start 76: file_generation_process_recovery
+39/82 Test #77: native_component_product_semantics ............   Passed    0.12 sec
+      Start 17: sqlite_receipts_upsert
+40/82 Test #76: file_generation_process_recovery ..............   Passed    0.11 sec
+      Start 36: project_environment_deployment
+41/82 Test #17: sqlite_receipts_upsert ........................   Passed    0.09 sec
+      Start 80: native_avro_interoperability
+42/82 Test #36: project_environment_deployment ................   Passed    0.08 sec
+      Start 79: native_xlsx_preserving_append
+43/82 Test #80: native_avro_interoperability ..................   Passed    0.10 sec
+      Start 54: integration_postgresql_sql
+44/82 Test #79: native_xlsx_preserving_append .................   Passed    0.08 sec
+      Start 60: integration_mysql_type_domains
+45/82 Test #60: integration_mysql_type_domains ................   Passed    0.07 sec
+      Start 38: catalog_execution_history
+46/82 Test #54: integration_postgresql_sql ....................   Passed    0.08 sec
+      Start 56: integration_postgresql_native_bulk
+47/82 Test #38: catalog_execution_history .....................   Passed    0.06 sec
+      Start 33: package_sql_integration
+48/82 Test #56: integration_postgresql_native_bulk ............   Passed    0.06 sec
+      Start 78: native_sql_source_record_errors
+49/82 Test #33: package_sql_integration .......................   Passed    0.06 sec
+      Start 29: package_execution
+50/82 Test #78: native_sql_source_record_errors ...............   Passed    0.05 sec
+      Start 65: integration_mariadb_type_domains
+51/82 Test #29: package_execution .............................   Passed    0.05 sec
+      Start 26: logical_durable_task_facts
+52/82 Test #65: integration_mariadb_type_domains ..............   Passed    0.05 sec
+      Start 21: shared_value_semantics
+53/82 Test #26: logical_durable_task_facts ....................   Passed    0.04 sec
+      Start  1: transaction_fact_publication
+54/82 Test #21: shared_value_semantics ........................   Passed    0.04 sec
+      Start 75: native_enterprise_file_layout
+55/82 Test #75: native_enterprise_file_layout .................   Passed    0.03 sec
+      Start 22: four_engine_scheduling_operators
+56/82 Test  #1: transaction_fact_publication ..................   Passed    0.04 sec
+      Start 24: pipeline_tree_parallelism
+57/82 Test #22: four_engine_scheduling_operators ..............   Passed    0.03 sec
+58/82 Test #24: pipeline_tree_parallelism .....................   Passed    0.02 sec
+      Start  2: execution_identity
+      Start 23: block_store_ownership
+59/82 Test #23: block_store_ownership .........................   Passed    0.01 sec
+      Start 49: advanced_native_semantics
+60/82 Test  #2: execution_identity ............................   Passed    0.02 sec
+      Start 45: next_phase_native_contracts
+61/82 Test #45: next_phase_native_contracts ...................   Passed    0.00 sec
+      Start 12: compute_plan
+62/82 Test #49: advanced_native_semantics .....................   Passed    0.01 sec
+      Start 13: nested_columnar_arrow
+63/82 Test #12: compute_plan ..................................   Passed    0.00 sec
+      Start 16: quality_classification
+64/82 Test #13: nested_columnar_arrow .........................   Passed    0.00 sec
+      Start 20: architecture_foundation
+65/82 Test #16: quality_classification ........................   Passed    0.00 sec
+      Start  7: source_record_errors
+66/82 Test #20: architecture_foundation .......................   Passed    0.00 sec
+      Start 10: extended_scalar_types
+67/82 Test  #7: source_record_errors ..........................   Passed    0.00 sec
+68/82 Test #10: extended_scalar_types .........................   Passed    0.00 sec
+      Start  9: columnar
+      Start 11: json_nested_format
+69/82 Test  #9: columnar ......................................   Passed    0.00 sec
+      Start 15: field_mapping
+70/82 Test #11: json_nested_format ............................   Passed    0.00 sec
+      Start  6: native_type_domains_2
+71/82 Test #15: field_mapping .................................   Passed    0.00 sec
+      Start  5: unified_file_schema_discovery
+72/82 Test  #6: native_type_domains_2 .........................   Passed    0.00 sec
+      Start 14: regex_pcre2
+73/82 Test  #5: unified_file_schema_discovery .................   Passed    0.00 sec
+      Start  4: json_document
+74/82 Test #14: regex_pcre2 ...................................   Passed    0.00 sec
+      Start  8: sql_bulk_streaming
+75/82 Test  #4: json_document .................................   Passed    0.00 sec
+      Start 42: profile_statistics_kernel
+76/82 Test  #8: sql_bulk_streaming ............................   Passed    0.00 sec
+      Start  3: foundation
+77/82 Test #42: profile_statistics_kernel .....................   Passed    0.00 sec
+      Start 71: integration_oracle_oci_sql
+78/82 Test  #3: foundation ....................................   Passed    0.00 sec
+79/82 Test #71: integration_oracle_oci_sql ....................***Skipped   0.02 sec
+      Start 72: integration_oracle_oci_cdc
+80/82 Test #72: integration_oracle_oci_cdc ....................***Skipped   0.02 sec
+      Start 73: integration_oracle_oci_native_bulk
+81/82 Test #73: integration_oracle_oci_native_bulk ............***Skipped   0.02 sec
+      Start 74: integration_oracle_oci_participant_recovery
+82/82 Test #74: integration_oracle_oci_participant_recovery ...***Skipped   0.02 sec
+
+100% tests passed, 0 tests failed out of 82
+
+Label Time Summary:
+crash-recovery      =   1.49 sec*proc (4 tests)
+mariadb             =   0.89 sec*proc (5 tests)
+mysql               =   1.20 sec*proc (5 tests)
+native-bulk         =   0.47 sec*proc (5 tests)
+odbc                =  14.83 sec*proc (3 tests)
+oracle_oci          =   0.09 sec*proc (4 tests)
+postgresql          =   0.65 sec*proc (4 tests)
+real-integration    =  17.67 sec*proc (21 tests)
+
+Total Test time (real) =  25.91 sec
+
+The following tests did not run:
+	 71 - integration_oracle_oci_sql (Skipped)
+	 72 - integration_oracle_oci_cdc (Skipped)
+	 73 - integration_oracle_oci_native_bulk (Skipped)
+	 74 - integration_oracle_oci_participant_recovery (Skipped)

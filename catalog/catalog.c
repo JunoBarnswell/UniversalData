@@ -217,8 +217,6 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
     ud_free(file);
     if (!status)
         status = sql_status(sqlite3_busy_timeout(c->database, 5000));
-    if (!status)
-        status = sql(c, "BEGIN IMMEDIATE");
     int application = 0, version = 0;
     if (!status)
         status = pragma_integer(c, "PRAGMA application_id", &application);
@@ -228,12 +226,24 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
         (application != CATALOG_APPLICATION_ID || version != UD_CONFIG_VERSION))
         status = UD_INCOMPATIBLE;
     if (!status && !application && !version) {
-        int tables = 0;
-        status = pragma_integer(
-            c, "SELECT count(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'", &tables);
-        if (!status && tables)
-            status = UD_INCOMPATIBLE;
+        status = sql(c, "BEGIN IMMEDIATE");
+        /* A competing first opener may have initialized the file while this
+         * handle waited. Existing catalogs never need a writer transaction
+         * merely to open a read/query handle. */
         if (!status)
+            status = pragma_integer(c, "PRAGMA application_id", &application);
+        if (!status)
+            status = pragma_integer(c, "PRAGMA user_version", &version);
+        if (!status && (application || version) &&
+            (application != CATALOG_APPLICATION_ID || version != UD_CONFIG_VERSION))
+            status = UD_INCOMPATIBLE;
+        int tables = 0;
+        if (!status && !application)
+            status = pragma_integer(
+                c, "SELECT count(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'", &tables);
+        if (!status && !application && tables)
+            status = UD_INCOMPATIBLE;
+        if (!status && !application)
             status = sql(
                 c,
                 "CREATE TABLE documents(tenant TEXT NOT NULL,kind INTEGER NOT NULL,id TEXT NOT "
@@ -249,11 +259,11 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
                 "documents(tenant,kind,json_extract(document,'$.componentId'),timestamp_ms,id,"
                 "revision);"
                 "PRAGMA application_id=1430537025;PRAGMA user_version=" UD_PROTOCOL_VERSION_TEXT);
+        if (!status)
+            status = sql(c, "COMMIT");
+        else
+            (void)sql(c, "ROLLBACK");
     }
-    if (!status)
-        status = sql(c, "COMMIT");
-    else if (c->database)
-        (void)sql(c, "ROLLBACK");
     if (!status)
         status = sql(c, "PRAGMA journal_mode=WAL;PRAGMA synchronous=FULL;PRAGMA "
                         "foreign_keys=ON;PRAGMA trusted_schema=OFF");

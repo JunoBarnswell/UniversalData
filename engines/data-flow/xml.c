@@ -266,7 +266,7 @@ static ud_status step(void *pointer, const ud_component_event *event) {
     ud_status status = ud_batch_create(source->context.memory, source->fields, source->columns,
                                        capacity, &accepted);
     if (!status)
-        status = ud_error_schema(&source->context.errors, NULL, source->include, &errors);
+        status = ud_error_batch(&source->context.errors, source->include, capacity, &errors);
     ud_bytes record = {.ctx = source->context.memory, .limit = source->maximum};
     int end = 0;
     for (uint32_t row = 0; !status && row < capacity; row++) {
@@ -279,6 +279,7 @@ static ud_status step(void *pointer, const ud_component_event *event) {
         if (!status)
             status = convert(source, &record, accepted, errors);
     }
+    int produced = ud_batch_rows(accepted) != 0 || ud_batch_rows(errors) != 0;
     if (!status && ud_batch_rows(accepted)) {
         status = ud_batch_seal(accepted);
         if (!status)
@@ -292,7 +293,11 @@ static ud_status step(void *pointer, const ud_component_event *event) {
     ud_batch_destroy(accepted);
     ud_batch_destroy(errors);
     ud_bytes_clear(&record);
-    return status ? status : end ? UD_END : UD_MORE;
+    return status ? status : end && !produced ? UD_END : UD_MORE;
+}
+static ud_status finish(void *instance) {
+    (void)instance;
+    return UD_OK;
 }
 ud_status ud_xml_source_register(ud_registry *registry) {
     static const char schema[] =
@@ -321,6 +326,7 @@ ud_status ud_xml_source_register(ud_registry *registry) {
                                           .configure = configure,
                                           .prepare = prepare,
                                           .step = step,
+                                          .finish = finish,
                                           .dispose = dispose};
     return ud_registry_register(registry, &descriptor);
 }

@@ -21,13 +21,14 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
     api<CatalogDocument<EventDocument>[]>(`/logs?executionId=${encodeURIComponent(run.executionId)}${after === undefined ? '' : `&afterRevision=${after}`}${componentFilter ? `&componentId=${encodeURIComponent(componentFilter)}` : ''}${errorOnly ? '&eventKind=9' : ''}`, { signal: controller.signal }).then(setEvents).catch(error => { if (!controller.signal.aborted) setError(String(error)); });
     return () => controller.abort();
   }, [run?.executionId, after, run?.state, componentFilter, errorOnly]);
+  const activeDebug = Boolean(run?.debug);
   useEffect(() => {
-    if (!run?.debug || run.state !== 'Running') return;
+    if (!activeDebug || run?.state !== 'Running') return;
     const controller = new AbortController();
     const update = () => api<{ paused: boolean; pauseRequested: boolean; preview: unknown }>(`/executions/${run.id}/debug`, { signal: controller.signal }).then(setDebug).catch(error => { if (!controller.signal.aborted) setError(String(error)); });
     void update(); const timer = window.setInterval(update, 1000);
     return () => { controller.abort(); window.clearInterval(timer); };
-  }, [run?.id, run?.state, Boolean(run?.debug)]);
+  }, [run?.id, run?.state, activeDebug]);
   async function debugControl(action: string) {
     try { await post(`/executions/${selected}/debug`, { action }); } catch (error) { setError(String(error)); }
   }

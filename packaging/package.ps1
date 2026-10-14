@@ -87,6 +87,8 @@ try {
     $packages = Join-Path $stage 'packages'
     New-Item -ItemType Directory -Path $packages | Out-Null
     Invoke-PackageTool $dotnet @('pack','bindings/dotnet/UniversalData/UniversalData.csproj','--configuration','Release','--nologo','--verbosity:minimal',"-p:NativeLibraryDirectory=$nativeDirectory","-p:NativeRuntimeIdentifier=$RuntimeIdentifier",'--output',$packages) 'nuget-pack.log'
+    Invoke-PackageTool $dotnet @('restore','examples/dotnet/Consumer.csproj','--nologo') 'consumer-dependencies.log'
+    Invoke-PackageTool $python @('packaging/nuget_feed.py','--assets','bindings/dotnet/UniversalData/obj/project.assets.json','--assets','examples/dotnet/obj/project.assets.json','--output',$packages) 'nuget-dependencies.log'
     Invoke-PackageTool $maven @('-B','-q','-f','bindings/java/pom.xml','package') 'maven-package.log'
     $jar = Join-Path $repository "bindings/java/target/universal-data-$version.jar"
     if (!(Test-Path -LiteralPath $jar -PathType Leaf)) { throw 'Maven did not produce the current JAR.' }

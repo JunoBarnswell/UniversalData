@@ -1,0 +1,3 @@
+{"mode":"parameters","dialect":3,"rows":1000000,"batches":62,"batchRows":16384,"writeSeconds":7.427233,"generationSeconds":0.245421,"cpuSeconds":2.159756,"peakRssKiB":13652,"rowsPerSecond":134640,"verifiedRowsAndReceipts":true}
+{"mode":"native","dialect":3,"rows":1000000,"batches":62,"batchRows":16384,"writeSeconds":4.200973,"generationSeconds":0.234935,"cpuSeconds":1.047592,"peakRssKiB":13780,"rowsPerSecond":238040,"verifiedRowsAndReceipts":true}
+{"nativeSpeedup":1.768}

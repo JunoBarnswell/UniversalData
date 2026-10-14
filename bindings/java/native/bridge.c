@@ -1291,6 +1291,34 @@ JNIEXPORT jstring JNICALL Java_org_universaldata_Catalog_nativeQuery(JNIEnv *env
         fail(env, status, ud_status_name(status));
     return result;
 }
+JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeRecord(
+    JNIEnv *env, jclass type, jlong handle, jbyteArray package, jbyteArray execution,
+    jbyteArray task, jbyteArray pipeline, jbyteArray component, jint state, jint result,
+    jlong timestamp, jint kind, jlong sequence, jbyteArray chain) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    jbyteArray arrays[6] = {package, execution, task, pipeline, component, chain};
+    char *texts[6] = {0};
+    uint32_t lengths[6] = {0};
+    ud_status status = UD_OK;
+    for (uint32_t at = 0; !status && at < 6; at++) {
+        texts[at] = copy_data(env, catalog->callbacks.ctx, arrays[at], lengths + at);
+        if (!texts[at]) status = UD_RESOURCE;
+    }
+    ud_execution_event event = {.struct_size = sizeof(event), .abi_version = UD_ABI_VERSION,
+                                 .package_id = {texts[0], lengths[0]},
+                                 .execution_id = {texts[1], lengths[1]},
+                                 .task_id = {texts[2], lengths[2]},
+                                 .pipeline_id = {texts[3], lengths[3]},
+                                 .component_id = {texts[4], lengths[4]},
+                                 .state = state, .result = result, .timestamp_ms = (uint64_t)timestamp,
+                                 .kind = kind, .sequence = (uint64_t)sequence,
+                                 .error_chain = {texts[5], lengths[5]}};
+    if (!status)
+        status = ud_catalog_record_event(catalog->catalog, &event, (uint64_t)sequence);
+    for (uint32_t at = 0; at < 6; at++) ud_free(texts[at]);
+    if (status) fail(env, status, ud_status_name(status));
+}
 JNIEXPORT jlong JNICALL Java_org_universaldata_Catalog_nativeLatest(JNIEnv *env, jclass type,
                                                                     jlong handle, jint kind,
                                                                     jbyteArray id) {

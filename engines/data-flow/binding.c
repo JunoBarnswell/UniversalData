@@ -146,6 +146,23 @@ ud_status ud_builtin_create_operator(const ud_component_context *c, int kind, co
     return status;
 }
 
+ud_status ud_builtin_sink_delivery(int kind, const ud_json *config, int32_t *delivery) {
+    if (kind == REST_SINK)
+        return ud_rest_delivery(config, delivery);
+    if (kind != SQL_SINK)
+        return UD_INVALID;
+    ud_string value = {"receipt", 7};
+    if (ud_member(config, "delivery"))
+        UD_TRY(ud_json_string(ud_member(config, "delivery"), &value));
+    if (ud_named(value, "receipt"))
+        *delivery = UD_DELIVERY_RECEIPT;
+    else if (ud_named(value, "response"))
+        *delivery = UD_DELIVERY_RESPONSE;
+    else
+        return UD_SCHEMA;
+    return UD_OK;
+}
+
 ud_status ud_builtin_describe_sink(void *user, const ud_component_context *c, ud_string text,
                                    const ud_batch *const *inputs, ud_component_plan *out) {
     (void)inputs;
@@ -157,8 +174,8 @@ ud_status ud_builtin_describe_sink(void *user, const ud_component_context *c, ud
     if (ud_member(config, "mode"))
         status = ud_json_string(ud_member(config, "mode"), &mode);
     int32_t delivery = UD_DELIVERY_RECEIPT;
-    if (!status && kind == REST_SINK)
-        status = ud_rest_delivery(config, &delivery);
+    if (!status)
+        status = ud_builtin_sink_delivery(kind, config, &delivery);
     out->effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_COMMIT_UNKNOWN;
     if (kind == SQL_SINK)
         out->effects |= UD_EFFECT_TRANSACTIONAL;
@@ -227,8 +244,11 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
     if (!s && (source_kind(kind)))
         s = ud_builtin_schema_config(c, config, out);
     else if (!s && kind == SQL_SINK) {
+        int32_t delivery = UD_DELIVERY_RECEIPT;
         int policy;
-        s = ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy);
+        s = ud_builtin_sink_delivery(kind, config, &delivery);
+        if (!s)
+            s = ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy);
         if (!s && policy != UD_ERROR_FAIL && !c->activation->transaction_serial)
             s = UD_UNSUPPORTED;
         if (!s)

@@ -86,7 +86,8 @@ struct ud_xlsx_reader {
     uint32_t string_page;
     char *sheet, *relation, *sheet_path;
     int date1904, header, formula_policy, parse_kind, inside_text, inside_si, inside_value, formula,
-        cell_error, row_error;
+        cell_error, row_error, validate_header;
+    uint32_t header_fields;
     uint32_t first_col, last_col, first_row, last_row, row_number, cell_column, cell_style,
         row_last_column, styles[4096], style_count, current_style;
     uint64_t rows, cells, formulas, missing_formula, rejected, max_cells, max_string, max_xml;
@@ -565,22 +566,27 @@ static ud_status ooxml_text(ud_context *ctx, const char *p, uint32_t n, ud_bytes
     (void)ctx;
     return UD_OK;
 }
-static ud_status cell_value(ud_xlsx_reader *r, const char *type, uint32_t target, ud_value *out) {
-    const ud_field *f = &r->schema->column[target].field;
-    ud_value raw = {
+static ud_status cell_text(ud_xlsx_reader *r, const char *type, ud_value *raw) {
+    *raw = (ud_value){
         .type = UD_UTF8, .text = (char *)r->cell.data, .text_length = (uint32_t)r->cell.size};
     if (type && !strcmp(type, "s")) {
         uint64_t index = 0;
-        for (uint32_t i = 0; i < raw.text_length; i++) {
-            if (raw.text[i] < '0' || raw.text[i] > '9' ||
-                index > (UINT64_MAX - (uint32_t)(raw.text[i] - '0')) / 10)
+        for (uint32_t i = 0; i < raw->text_length; i++) {
+            if (raw->text[i] < '0' || raw->text[i] > '9' ||
+                index > (UINT64_MAX - (uint32_t)(raw->text[i] - '0')) / 10)
                 return UD_PARSE;
-            index = index * 10 + (uint32_t)(raw.text[i] - '0');
+            index = index * 10 + (uint32_t)(raw->text[i] - '0');
         }
-        UD_TRY(shared_string(r, index, &raw));
+        UD_TRY(shared_string(r, index, raw));
     }
     if (type && !strcmp(type, "e"))
         return UD_QUALITY;
+    return UD_OK;
+}
+static ud_status cell_value(ud_xlsx_reader *r, const char *type, uint32_t target, ud_value *out) {
+    const ud_field *f = &r->schema->column[target].field;
+    ud_value raw;
+    UD_TRY(cell_text(r, type, &raw));
     if (r->formula && !r->cell.size) {
         r->missing_formula++;
         if (r->formula_policy == 2) {
@@ -845,6 +851,23 @@ static void XMLCALL end(void *user, const char *qualified) {
             r->inside_value = 0;
         if (!strcmp(name, "c")) {
             r->cell_open = 0;
+            if (r->validate_header && r->header && r->row_number == r->first_row &&
+                r->cell_column >= r->first_col && r->cell_column <= r->last_col) {
+                const ud_field *field = &r->schema->column[r->cell_column - r->first_col].field;
+                ud_value raw;
+                ud_bytes decoded = {.ctx = r->ctx, .limit = (size_t)r->max_string};
+                ud_status status = r->formula ? UD_INCOMPATIBLE : cell_text(r, r->cell_type, &raw);
+                if (!status)
+                    status = ooxml_text(r->ctx, raw.text, raw.text_length, &decoded);
+                if (!status && (decoded.size != field->name_length ||
+                                 memcmp(decoded.data, field->name, decoded.size)))
+                    status = UD_INCOMPATIBLE;
+                ud_bytes_clear(&decoded);
+                if (status)
+                    abort_xml(r, status);
+                else
+                    r->header_fields++;
+            }
             if (r->row_number >= r->first_row && r->row_number <= r->last_row &&
                 r->cell_column >= r->first_col && r->cell_column <= r->last_col &&
                 !(r->header && r->row_number == r->first_row)) {
@@ -866,6 +889,9 @@ static void XMLCALL end(void *user, const char *qualified) {
         }
         if (!strcmp(name, "row")) {
             r->row_open = 0;
+            if (r->validate_header && r->header && r->row_number == r->first_row &&
+                (r->header_fields != r->columns || r->row_last_column != r->last_col))
+                abort_xml(r, UD_INCOMPATIBLE);
             if (!r->status && r->row_number >= r->first_row && r->row_number <= r->last_row &&
                 !(r->header && r->row_number == r->first_row)) {
                 if (r->result && r->result->rows &&
@@ -1399,6 +1425,16 @@ static ud_status write_cell(ud_xlsx_writer *w, uint32_t column, const ud_value *
     return UD_OK;
 }
 
+static ud_status write_header(ud_xlsx_writer *writer, const ud_field *fields, uint32_t columns) {
+    writer->row = 1;
+    UD_TRY(write_text(writer, "<row r=\"1\">"));
+    for (uint32_t at = 0; at < columns; at++) {
+        ud_value value = {.type = UD_UTF8, .text = fields[at].name,
+                           .text_length = fields[at].name_length};
+        UD_TRY(write_cell(writer, at, &value));
+    }
+    return write_text(writer, "</row>");
+}
 typedef struct append_xml {
     XML_Parser parser;
     ud_status status;
@@ -1512,6 +1548,8 @@ static ud_status append_workbook(ud_xlsx_writer *writer, const ud_field *fields,
     ud_xlsx_reader *reader = NULL;
     ud_status status = ud_xlsx_reader_open(writer->ctx, writer->options.original_path, fields,
                                            count, &options, &reader);
+    if (!status)
+        reader->validate_header = writer->header;
     char *sheet = NULL;
     if (!status) {
         sheet = ud_strdup_n(writer->ctx, reader->sheet_path, strlen(reader->sheet_path));
@@ -1608,6 +1646,8 @@ static ud_status append_workbook(ud_xlsx_writer *writer, const ud_field *fields,
     } else if (!status)
         status = ud_bytes_put(&writer->tail, xml.data + state.data_end, xml.size - state.data_end);
     writer->row = state.maximum_row;
+    if (!status && writer->header && !writer->row)
+        status = write_header(writer, fields, count);
     if (state.parser)
         XML_ParserFree(state.parser);
     ud_free(sheet);
@@ -1721,17 +1761,8 @@ ud_status ud_xlsx_writer_open(ud_context *ctx, const char *path, const ud_field 
         s = write_text(
             w, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet "
                "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>");
-    if (!s && w->header) {
-        w->row = 1;
-        s = write_text(w, "<row r=\"1\">");
-        for (uint32_t i = 0; !s && i < columns; i++) {
-            ud_value v = {
-                .type = UD_UTF8, .text = fields[i].name, .text_length = fields[i].name_length};
-            s = write_cell(w, i, &v);
-        }
-        if (!s)
-            s = write_text(w, "</row>");
-    }
+    if (!s && w->header)
+        s = write_header(w, fields, columns);
     if (s) {
         w->status = s;
         ud_xlsx_writer_close(w);

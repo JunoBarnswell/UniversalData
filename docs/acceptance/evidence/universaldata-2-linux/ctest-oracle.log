@@ -1,0 +1,36 @@
+Internal ctest changing into directory: /tmp/ud2-build
+Test project /tmp/ud2-build
+    Start 68: integration_oracle_oci_sql
+1/4 Test #68: integration_oracle_oci_sql ....................***Failed    5.12 sec
+status=18 line=115: OCI operation failed (Oracle code 12170)
+
+    Start 69: integration_oracle_oci_cdc
+2/4 Test #69: integration_oracle_oci_cdc ....................***Failed    5.10 sec
+status=18 line=71: OCI operation failed (Oracle code 12170)
+
+    Start 70: integration_oracle_oci_native_bulk
+3/4 Test #70: integration_oracle_oci_native_bulk ............***Failed    5.09 sec
+status=18 line=115: OCI operation failed (Oracle code 12170)
+
+    Start 71: integration_oracle_oci_participant_recovery
+4/4 Test #71: integration_oracle_oci_participant_recovery ...***Failed    5.12 sec
+participant status=18 line=113: OCI operation failed (Oracle code 12170)
+setup: expected process status 0, got 1
+
+
+0% tests passed, 4 tests failed out of 4
+
+Label Time Summary:
+crash-recovery      =   5.12 sec*proc (1 test)
+native-bulk         =   5.09 sec*proc (1 test)
+oracle_oci          =  20.43 sec*proc (4 tests)
+real-integration    =  20.43 sec*proc (4 tests)
+
+Total Test time (real) =  20.43 sec
+
+The following tests FAILED:
+	 68 - integration_oracle_oci_sql (Failed)               oracle_oci real-integration
+	 69 - integration_oracle_oci_cdc (Failed)               oracle_oci real-integration
+	 70 - integration_oracle_oci_native_bulk (Failed)       native-bulk oracle_oci real-integration
+	 71 - integration_oracle_oci_participant_recovery (Failed) crash-recovery oracle_oci real-integration
+Errors while running CTest

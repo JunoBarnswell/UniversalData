@@ -21,7 +21,7 @@ public static class WorkerControl
         using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
         using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
         await writer.WriteLineAsync(JsonSerializer.Serialize(new { version = ProductInfo.Protocol, action, command }, HostPolicy.JsonOptions));
-        var text = await reader.ReadLineAsync(deadline.Token) ?? throw new IOException("Worker control response missing");
+        var text = await WorkerProtocol.ReadLine(reader, 8388608, deadline.Token) ?? throw new IOException("Worker control response missing");
         using var result = JsonDocument.Parse(text);
         int status = result.RootElement.GetProperty("result").GetInt32();
         if (status != 0) throw new UniversalDataException(status, "Worker control failed");
@@ -40,7 +40,7 @@ public static class WorkerControl
                 using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
                 object value = new { }; int status = 0;
                 try {
-                    var text = await reader.ReadLineAsync(timeout.Token) ?? throw new ArgumentException("Missing command");
+                    var text = await WorkerProtocol.ReadLine(reader, 65536, timeout.Token) ?? throw new ArgumentException("Missing command");
                     if (text.Length > 65536) throw new ArgumentException("Control request exceeds limit");
                     using var request = JsonDocument.Parse(text);
                     var root = request.RootElement;

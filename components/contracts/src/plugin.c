@@ -1,3 +1,4 @@
+#include "ud/format.h"
 #include "../connection_internal.h"
 #include "../../data/internal.h"
 #include "../../foundation/thread.h"

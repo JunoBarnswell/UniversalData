@@ -16,6 +16,7 @@ ud_status ud_execution_buffer_options(ud_execution *e, ud_buffer_options *out) {
                                  .max_blocks = 16384,
                                  .resident_limit = UINT64_C(67108864),
                                  .working_limit = UINT64_C(67108864),
+                                 .spill_limit = UINT64_C(1073741824),
                                  .check = check_buffers,
                                  .user = e};
     if (e->options.context.memory_limit) {

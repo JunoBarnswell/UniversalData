@@ -284,8 +284,31 @@ if(TARGET test_next_phase_queries AND TARGET ud_connector_sqlite)
 endif()
 
 # Advanced SQL/CDC are actual registered acceptance entries, not unregistered
+if(UD_BUILD_HOSTS)
+  add_custom_target(ud_managed_product_test ALL
+    COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_product/ManagedProduct.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/managed-product
+    VERBATIM)
+  add_test(NAME managed_registry_scripts_debug_lifecycle COMMAND ${UD_DOTNET}
+    ${CMAKE_CURRENT_BINARY_DIR}/managed-product/ManagedProduct.dll $<TARGET_FILE:ud_data>)
+  set_tests_properties(managed_registry_scripts_debug_lifecycle PROPERTIES TIMEOUT 60)
+endif()
+if(TARGET ud_java)
+  find_package(Java REQUIRED COMPONENTS Development Runtime)
+  file(GLOB_RECURSE UD_JAVA_PRODUCT_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/bindings/java/src/main/java/*.java)
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/java-product/JavaProduct.class
+    COMMAND ${Java_JAVAC_EXECUTABLE} -encoding UTF-8 -d ${CMAKE_CURRENT_BINARY_DIR}/java-product
+      ${UD_JAVA_PRODUCT_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/JavaProduct.java
+    DEPENDS ${UD_JAVA_PRODUCT_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/JavaProduct.java VERBATIM)
+  add_custom_target(ud_java_product_test ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/java-product/JavaProduct.class)
+  add_test(NAME java_registry_observer_catalog_lifecycle COMMAND ${Java_JAVA_EXECUTABLE}
+    -Djava.library.path=$<TARGET_FILE_DIR:ud_java> -cp ${CMAKE_CURRENT_BINARY_DIR}/java-product JavaProduct)
+  set_tests_properties(java_registry_observer_catalog_lifecycle PROPERTIES TIMEOUT 60)
+endif()
+# Advanced SQL/CDC are actual registered acceptance entries, not unregistered
 # binaries. No credential is stored in a CMake cache or echoed to CTest output.
 if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
+  add_executable(test_mysql_domains mysql_domains.c)
+  target_link_libraries(test_mysql_domains PRIVATE ud_plugins)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
   foreach(driver postgresql mysql mariadb odbc oracle_oci)
     if(TARGET ud_connector_${driver})
@@ -298,6 +321,14 @@ if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
           SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;${driver}"
           RESOURCE_LOCK ud_integration_${driver})
       endforeach()
+      if(driver MATCHES "^(mysql|mariadb)$")
+        add_test(NAME integration_${driver}_type_domains COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
+          $<TARGET_FILE:test_mysql_domains> $<TARGET_FILE:ud_connector_${driver}>)
+        set_tests_properties(integration_${driver}_type_domains PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 120 LABELS "real-integration;${driver}"
+          RESOURCE_LOCK ud_integration_${driver})
+      endif()
       if(driver MATCHES "^(postgresql|mysql|mariadb|odbc|oracle_oci)$")
         add_test(NAME integration_${driver}_native_bulk COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_${fixture}_CONFIG
@@ -333,6 +364,8 @@ endif()
 if(TARGET ud_package)
   add_executable(test_product_native product_native.c)
   target_link_libraries(test_product_native PRIVATE ud_package)
+  add_test(NAME native_component_product_semantics COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/component_product.py $<TARGET_FILE:test_product_native>)
   if(UD_WITH_SQLITE)
     add_test(NAME native_sql_source_record_errors COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/sql_source_records.py $<TARGET_FILE:test_product_native> $<TARGET_FILE:ud_connector_sqlite>)
   endif()

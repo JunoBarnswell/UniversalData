@@ -74,7 +74,7 @@ static ud_status count_rows(ud_connection *connection, const char *table, uint64
         ud_batch *batch = NULL;
         status = ud_connection_read_next(connection, &batch);
         if (!status)
-            *count += batch->rows;
+            *count += ud_batch_rows(batch);
         ud_batch_destroy(batch);
     }
     if (status == UD_END)

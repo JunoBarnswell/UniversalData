@@ -2,6 +2,7 @@
 #define UD_BUILTINS_INTERNAL_H
 #include "../package/internal.h"
 #include "ud/connection_manager.h"
+#include "ud/sql.h"
 #include "ud/compute.h"
 #include "ud/operator.h"
 #include "ud/format.h"
@@ -150,6 +151,7 @@ ud_status ud_builtin_operator_check(void *user);
 ud_status ud_builtin_parameters(const ud_component_context *c, const ud_json *config,
                                 ud_batch **out);
 ud_status ud_builtin_parse(const ud_component_context *c, ud_string config, ud_json **out);
+ud_status ud_builtin_sink_delivery(int kind, const ud_json *config, int32_t *delivery);
 ud_status ud_builtin_restore_state(void *ptr, const ud_batch *state);
 ud_status ud_builtin_schema_config(const ud_component_context *c, const ud_json *config,
                                    ud_batch **out);

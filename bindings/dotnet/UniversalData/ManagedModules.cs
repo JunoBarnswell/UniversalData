@@ -21,7 +21,7 @@ public sealed partial class Registry
     }
     private readonly Dictionary<string, (ModuleContext Context, IManagedModule[] Modules)> modules = new();
     private bool failedModule;
-    private readonly List<ModuleContext> failedLoads = new();
+    private readonly List<(ModuleContext Context, List<IManagedModule> Modules)> failedLoads = new();
     /// <summary>Same fixed-assembly loading entry for SDK, CLI and product Worker.</summary>
     public void LoadPackageExtensions(string packageJson, string tenant, PackageAuthorizer authorize)
     {
@@ -46,20 +46,21 @@ public sealed partial class Registry
                     throw new UniversalDataException((int)StatusCode.Corrupt, "Assembly digest differs from deployment");
                 if (modules.ContainsKey(digest)) continue;
                 var load = new ModuleContext();
+                var registrations = new List<IManagedModule>();
                 try {
                     using var stream = new MemoryStream(bytes, writable: false); var assembly = load.LoadFromStream(stream);
                     var version = assembly.GetCustomAttribute<UniversalDataModuleAttribute>();
                     if (version?.ProtocolVersion != ProductInfo.Protocol || version.SdkVersion != ProductInfo.Sdk)
                         throw new UniversalDataException((int)StatusCode.Incompatible, "Managed module SDK/protocol differs from product");
-                    var registrations = assembly.GetExportedTypes().Where(type => !type.IsAbstract && typeof(IManagedModule).IsAssignableFrom(type))
-                        .Select(type => (IManagedModule)(Activator.CreateInstance(type) ?? throw new ArgumentException("Module construction failed"))).ToArray();
-                    if (registrations.Length == 0) throw new ArgumentException("Assembly exports no Native Registry registrations");
+                    foreach (var type in assembly.GetExportedTypes().Where(type => !type.IsAbstract && typeof(IManagedModule).IsAssignableFrom(type)))
+                        registrations.Add((IManagedModule)(Activator.CreateInstance(type) ?? throw new ArgumentException("Module construction failed")));
+                    if (registrations.Count == 0) throw new ArgumentException("Assembly exports no Native Registry registrations");
                     foreach (var registration in registrations) registration.Register(this);
-                    modules.Add(digest, (load, registrations));
+                    modules.Add(digest, (load, registrations.ToArray()));
                 } catch {
                     // Native registrations already installed by a failing module
                     // remain owned until registry destruction. Fence further use.
-                    failedModule = true; failedLoads.Add(load); throw;
+                    failedModule = true; failedLoads.Add((load, registrations)); throw;
                 }
             }
         }
@@ -72,7 +73,12 @@ public sealed partial class Registry
             }
             module.Context.Unload();
         }
-        foreach (var load in failedLoads) load.Unload();
+        foreach (var load in failedLoads) {
+            foreach (var registration in load.Modules) if (registration is IDisposable owned) {
+                try { owned.Dispose(); } catch { /* Native teardown already completed. */ }
+            }
+            load.Context.Unload();
+        }
         modules.Clear(); failedLoads.Clear();
     }
 }

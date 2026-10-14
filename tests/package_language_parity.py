@@ -1,5 +1,5 @@
-"""ABI-7 C/.NET/Java Package execution and datatype/wire parity.
-Args: native CLI, C data runner, dotnet, package.dll, data.dll, java, classes, jar, native lib dir.
+"""ABI-10 C/.NET/Java Package execution and datatype/wire parity.
+Args: C package consumer, C data runner, dotnet, package.dll, data.dll, java, classes, jar, native lib dir.
 """
 import argparse,json,os,pathlib,subprocess,sys,tempfile
 parser=argparse.ArgumentParser()
@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix='ud-abi8-language-') as folder:
  definition=r/'package.json';definition.write_text(json.dumps(p));metrics=[]
  for index in range(3):
   params={'a':str(r/f'{index}-a.ndjson'),'b':str(r/f'{index}-b.ndjson'),'working':str(r/f'{index}-source.ndjson')};values=r/f'{index}.params.json';values.write_text(json.dumps(params))
-  if index==0: command=[cli,'execute',str(definition),json.dumps(params),'fixture','same-id',str(r)]
+  if index==0: command=[cli,str(definition),json.dumps(params),'fixture','same-id',str(r)]
   elif index==1: command=[dotnet,package_dll,str(definition),str(values),'same-id',str(r)]
   else: command=[java,'-Djava.library.path='+native,'-cp',classes+os.pathsep+jar,'Consumer',str(definition),str(values),'same-id',str(r)]
   result=subprocess.run(command,env=managed_env if index==1 and arguments.managed_native_local else env,capture_output=True,text=True,check=True,timeout=120);m=json.loads(result.stdout);assert m['state']==5 and m['result']==0 and m['inputRows']==20006 and m['outputRows']==20006 and m['executedTasks']==8;metrics.append(m)
@@ -61,4 +61,4 @@ with tempfile.TemporaryDirectory(prefix='ud-abi8-language-') as folder:
  for suffix in ['data.json','wire']:
   expected=(r/f'0.{suffix}').read_bytes();assert all((r/f'{i}.{suffix}').read_bytes()==expected for i in [1,2])
  actual=json.loads((r/'0.data.json').read_text());assert actual[0]['at']=='2024-02-29T00:00:00.000000Z' and actual[0]['profile']['missing'] is None and actual[0]['floats']==rows[0]['floats']
- print('C/.NET8/Java17 ABI 7: same Package/Project parameters/scopes/File System/Profiling/child/control loops/precedence/10003-row outputs and metrics; Decimal/UTC/UTF8/NUL/nested/NaN/Infinity/zeros/NULL and binary wire parity passed')
+ print('C/.NET/Java ABI 10: same Package/Project parameters/scopes/File System/Profiling/child/control loops/precedence/10003-row outputs and metrics; Decimal/UTC/UTF8/NUL/nested/NaN/Infinity/zeros/NULL and binary wire parity passed')

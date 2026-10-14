@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
             key.id = str("race");
             for (uint64_t i = 1; i <= 100; i++) {
                 key.revision = i;
-                OK(ud_catalog_put(c, &key, str("{\"version\":10,\"timestampMs\":42}")));
+                OK(ud_catalog_put(c, &key, str("{\"version\":10,\"id\":\"race\",\"timestampMs\":42}")));
             }
         } else if (!strcmp(argv[2], "raceRead")) {
             OK(ud_catalog_query(c,

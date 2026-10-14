@@ -517,7 +517,8 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
                            ud_named(l->driver, "process"))) {
         int process = ud_named(l->driver, "process");
         l->capabilities = process ? UD_CONNECT_EXECUTE_PROCESS
-                                  : UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_METADATA;
+                                  : UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_DELETE |
+                                        UD_CONNECT_METADATA;
 #ifdef _WIN32
         if (l->resource.length < 3 || l->resource.data[1] != ':')
             status = UD_INVALID;

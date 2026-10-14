@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
                             .framing = UD_JSON_FRAMING_ARRAY};
     OK(ud_json_discover(ctx, argv[1], (ud_string){"fixture", 7}, &json, 256, &schema));
     OK(ud_batch_field(schema, 0, &field));
-    CHECK(field.type == UD_DECIMAL128);
+    CHECK(field.type == UD_UINT64);
     OK(ud_batch_field(schema, 1, &field));
     CHECK(field.type == UD_UTF8 && field.nullable);
     OK(ud_batch_field(schema, 2, &field));

@@ -59,7 +59,7 @@ static ud_status configure(void *user, const ud_component_context *context, ud_s
 }
 static ud_status check(void *user) {
     avro_component *component = user;
-    return ud_connection_lease_check(component->lease,
+    return ud_connection_lease_authorize(component->lease,
                                      component->sink ? UD_ACCESS_WRITE : UD_ACCESS_READ);
 }
 static void dispose(void *instance, ud_status result) {
@@ -205,14 +205,16 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
         dispose(component, status);
     else
         *out = component;
-    return status;
+    return status ? ud_fail(context->memory, status, "Avro component preparation failed") : UD_OK;
 }
 static ud_status step(void *instance, const ud_component_event *event) {
     avro_component *component = instance;
     UD_TRY(check(component));
     if (component->sink) {
-        if (!event || event->kind != UD_COMPONENT_DATA)
-            return UD_OK;
+        if (!event)
+            return UD_INVALID;
+        if (event->kind != UD_COMPONENT_DATA)
+            return event->kind == UD_COMPONENT_POLL ? UD_END : UD_OK;
         if (component->generation->prepared)
             return UD_OK;
         UD_TRY(ud_avro_writer_append(component->writer, event->batch));
@@ -221,6 +223,8 @@ static ud_status step(void *instance, const ud_component_event *event) {
     }
     ud_batch *batch = NULL, *errors = NULL;
     ud_status status = ud_avro_reader_next(component->reader, &batch, &errors);
+    if (status && status != UD_END)
+        (void)ud_fail(component->context.memory, status, "Avro record decoding failed");
     if (!status && batch)
         status = component->context.emit(component->context.emit_user, 0, batch);
     if (!status && errors)

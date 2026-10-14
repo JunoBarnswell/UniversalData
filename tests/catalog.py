@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix="ud-catalog-") as temporary:
         run(root, "busy")
         connection.rollback()
     # A killed process must not publish its uncommitted Catalog document.
-    crashed = subprocess.Popen([sys.executable, "-c", "import sqlite3,sys,time; c=sqlite3.connect(sys.argv[1]); c.execute('BEGIN IMMEDIATE'); c.execute(\"UPDATE documents SET document='uncommitted' WHERE tenant='tenant-a' AND kind=2\"); print('staged',flush=True); time.sleep(30)", str(database)], stdout=subprocess.PIPE, text=True)
+    crashed = subprocess.Popen([sys.executable, "-c", "import sqlite3,sys,time; c=sqlite3.connect(sys.argv[1]); c.execute('BEGIN IMMEDIATE'); c.execute(\"UPDATE documents SET document='{\\\"uncommitted\\\":true}' WHERE tenant='tenant-a' AND kind=2\"); print('staged',flush=True); time.sleep(30)", str(database)], stdout=subprocess.PIPE, text=True)
     try:
         assert crashed.stdout.readline().strip() == "staged"
         crashed.kill()

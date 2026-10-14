@@ -3,78 +3,249 @@
   "version": 10,
   "sdkVersion": "2.0.0",
   "abi": 10,
-  "sourceFingerprint": null,
+  "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
   "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
   "windows": "Required — complete driver build, native/language/install and platform acceptance",
   "gates": [
     {
       "id": "linux-full-build",
-      "status": "NotRun",
-      "scope": "Linux complete dependency/driver profile",
-      "evidence": []
+      "status": "Passed",
+      "scope": "Linux Release PRODUCT; all six driver SDKs, BCP/OCI, HTTP/XML/network, Arrow, JNI, .NET 10 and designer",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/configure.log",
+          "sha256": "214bda47dec17ff19c8a041b5f94afa08b629ec1fda61f8e194903c12a1076a9"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/build.log",
+          "sha256": "384d3e9b0c1c13b8233fb36ef2b8c01f8aa860e059ef760762baf1bb935c04e4"
+        }
+      ]
     },
     {
       "id": "windows-full-build",
-      "status": "NotRun",
-      "scope": "Windows complete dependency/driver profile",
-      "evidence": []
+      "status": "Blocked",
+      "scope": "Required Windows PRODUCT build; no Windows host/runner supplied",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
+          "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
+        }
+      ]
     },
     {
       "id": "correctness",
-      "status": "NotRun",
-      "scope": "Types/schema/mixed records/execution identity",
-      "evidence": []
+      "status": "Partial",
+      "scope": "78 Linux cases and real four-driver/domain cases passed; complete schema physical-identity and missing live scenarios remain unverified",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "sha256": "3306492025963d8f7facb362e146e9e25af551637ce7487f866c4b7f71be20a8"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/components-product.log",
+          "sha256": "a7a2bc7fea6cb513c28e7eaa4d917819c2aba4b188b3adbaae589afcd8261689"
+        }
+      ]
     },
     {
       "id": "recovery",
-      "status": "NotRun",
-      "scope": "Real killed-process transaction/epoch/file/CDC recovery",
-      "evidence": []
+      "status": "Partial",
+      "scope": "Real Native file/source/dual-target/Journal and three-provider prepared-branch kills plus installed Worker recovery passed; complete live CDC/coordinator kill matrix remains unverified",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "sha256": "3306492025963d8f7facb362e146e9e25af551637ce7487f866c4b7f71be20a8"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/installed-web-worker-browser.log",
+          "sha256": "3553aebc37449ccb2976a5870ca7ee2d04d52d8daf656fc4afb9bee1ecfeef00"
+        }
+      ]
     },
     {
       "id": "external-integration",
-      "status": "NotRun",
-      "scope": "All real drivers/protocol resources; missing environments Blocked",
-      "evidence": []
+      "status": "Blocked",
+      "scope": "Four genuine SQL/CDC/native drivers accepted; Oracle TCPS and independent SMTP/FTP/SFTP/Azure/S3/SSAS/WMI resources remain Blocked",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "sha256": "3306492025963d8f7facb362e146e9e25af551637ce7487f866c4b7f71be20a8"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-oracle.log",
+          "sha256": "2bcba6e6f8480df1cbab54df88851e05659364fca8f4bd5ffb8e7adfa7176556"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
+          "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
+        }
+      ]
     },
     {
       "id": "language-parity",
-      "status": "NotRun",
-      "scope": "C/.NET/Java public contract parity",
-      "evidence": []
+      "status": "Passed",
+      "scope": "Independent public C, offline NuGet/.NET, Maven/Java/JNI and Native Registry/Observer/Catalog lifecycle on Linux",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/bundle-language-parity.log",
+          "sha256": "bbaa89d22bf1eab9f4cb75f86d99e07cc5d53be2cc69973e20b6bcf2fcc4783b"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/bundle-native-query-parity.log",
+          "sha256": "03ecb5a1c9badf5115a7d510d1c583d6cb9f6d07e0e2329156d7765518b4cf18"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/bundle-advanced-metadata-parity.log",
+          "sha256": "1880b5189f91f4f37c8bbcb2f1368b65beee2ac8a3ff04e3824ba47f8d818e84"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
+          "sha256": "3306492025963d8f7facb362e146e9e25af551637ce7487f866c4b7f71be20a8"
+        }
+      ]
     },
     {
       "id": "web",
-      "status": "NotRun",
-      "scope": "Typecheck/lint/build/real browser flow",
-      "evidence": []
+      "status": "Passed",
+      "scope": "Typecheck/lint/build; real edit/save/reload/deploy/output/log/debug and same-ID killed-Worker recovery from both build and installed assets",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/typecheck.log",
+          "sha256": "12f0d2d0992d72cb31849970dbe1bf1fe727512165ab17f50ebcf2408b4e16bf"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/lint.log",
+          "sha256": "193b88c67a22009aea95def0905d0e6b0106f575f68cad1a2641f65f96420d08"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/designer-build.log",
+          "sha256": "4eecf779cac9da79ab58b5d1a6a18e69dc8d41d426e64b742e04db37770ab5ee"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/browser.json",
+          "sha256": "b8ce0e6aee4d09d90e1bbc54c3c3245b526fed02db70732de0bfbe7556866a36"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/installed-web-worker-browser.log",
+          "sha256": "3553aebc37449ccb2976a5870ca7ee2d04d52d8daf656fc4afb9bee1ecfeef00"
+        }
+      ]
     },
     {
       "id": "performance",
-      "status": "NotRun",
-      "scope": "1M facts/100k lookup keys/100k errors, all six workloads",
-      "evidence": []
+      "status": "Passed",
+      "scope": "Linux six requested 1M/100k workloads at 1/2/4 workers and genuine remote native/parameter comparisons for four available databases; Oracle comparison Blocked",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/pipeline-performance.json",
+          "sha256": "da2eae387d73f53bca359d396181a9f9c12aa6ca32948739798a86057b096e01"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/pipeline-performance.log",
+          "sha256": "8a226b1593ed3685442015f9b7aa38986d0487ad282bb85a717e6ff57d7c28f9"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/postgresql-bulk-performance.jsonl",
+          "sha256": "1624d44016f2bbb4ee62fb2e2ca6a916d1df310663e9f7dfded1af21ade1a7ce"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/mysql-bulk-performance.jsonl",
+          "sha256": "ea4b095bc2a703ec1e5415118c0975c21225abc313c3bec89a57ba7194037958"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/mariadb-bulk-performance.jsonl",
+          "sha256": "55a5acdde3d7ea5a8c585c899e0247460b247e2da0dde655cd966ee46e9d21e4"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/mssql-bulk-performance.jsonl",
+          "sha256": "adcac6335a9d67c21321e23cd383a924303ce7b2c09568fd4a9750671b6cdac6"
+        }
+      ]
     },
     {
       "id": "installed-consumers",
-      "status": "NotRun",
-      "scope": "Independent C/.NET/Java/CLI/Web Windows/Linux release consumers",
-      "evidence": []
+      "status": "Partial",
+      "scope": "Same-source Linux C/.NET/Java/CLI/Web/Worker all passed; required Windows installed consumers remain Blocked",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
+          "sha256": "526a4b4f705fcbb5aa57958b2102e95c5153ed246ac46d9d3b5e7efe19e58849"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
+          "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
+        }
+      ]
     },
     {
       "id": "source-contracts",
-      "status": "NotRun",
-      "scope": "Single ownership path; unused code removed; versioned product model",
-      "evidence": []
+      "status": "Partial",
+      "scope": "Static public-function/ownership/version-model checks passed; qualified SQL Server participants, complete online identity proof and broader Avro coverage remain incomplete",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/static-check.log",
+          "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/model-check.log",
+          "sha256": "7d85e2acb283914e5223cf87480fc06f1d46f285be6daaa613443292b341531a"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
+          "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
+        }
+      ]
     },
     {
       "id": "release-integrity",
-      "status": "NotRun",
-      "scope": "Capability inventory, dependency closure, checksums and same-source versions",
-      "evidence": []
+      "status": "Partial",
+      "scope": "Linux PRODUCT manifest, 267 file checksums, same-source fingerprint, offline NuGet closure and relocatable Native/host assets passed; Windows/full-product certification remains Blocked",
+      "evidence": [
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json",
+          "sha256": "105ea1b50dc861f80c7e051d731a6e5eb0458afe5426e40281ab06dffc2632fa"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/installed.json",
+          "sha256": "38ecfe41c621e760d126125ae924e3b5bc1c831566740a1c8e10ebf34a544701"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/package-final.log",
+          "sha256": "3334a89c1431f646d6dd664625d579d0f8ea074fef579c5523469b5bd918d223"
+        },
+        {
+          "path": "docs/acceptance/evidence/universaldata-2-linux/resources.json",
+          "sha256": "479c481e6df0ee7d9fa56b24816152c0833535694b279a5bfc89296c4c6985dd"
+        }
+      ]
     }
   ],
   "delivery": {
-    "status": "NotRun — ABI 10 coherent implementation precedes concentrated build and acceptance; original artifacts retained"
+    "status": "Linux candidate accepted; complete release blocked by required gates",
+    "archive": "artifacts/universaldata-2-linux/UniversalData-2.0.0-linux-x64.zip",
+    "manifest": "artifacts/universaldata-2-linux/bundle/manifest.json",
+    "sha256": "145ad32ecf5939cc531d5df3ed1aba4ad3d17ef47e994969dd7d5022a3ecb49c",
+    "runtimeIdentifier": "linux-x64",
+    "sdkVersion": "2.0.0",
+    "abiVersion": 10,
+    "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
+    "published": false
   }
 }

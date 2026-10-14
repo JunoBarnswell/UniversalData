@@ -157,7 +157,7 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
     run(folder, doc, status=3, code=500)
     assert counts[folder.name] == 2
     folder, doc = fixture("post-no-retry", "failure", {"method": "POST"})
-    run(folder, doc, status=3, code=500)
+    run(folder, doc, status=16, code=500)
     assert counts[folder.name] == 1
     folder, doc = fixture("invalid-post-retry", config={"method": "POST", "maxAttempts": 2})
     run(folder, doc, status=5, code=-1)

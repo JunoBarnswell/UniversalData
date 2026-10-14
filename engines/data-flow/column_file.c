@@ -226,13 +226,14 @@ static ud_status export_value(column_files *component, ud_connection_lease *leas
 static ud_status step(void *pointer, const ud_component_event *event) {
     column_files *component = pointer;
     if (event->kind != UD_COMPONENT_DATA)
-        return UD_OK;
+        return event->kind == UD_COMPONENT_POLL ? UD_END : UD_OK;
     ud_batch *accepted = NULL, *errors = NULL;
     ud_status status = ud_batch_create(component->context.memory, component->fields,
                                        component->columns, event->batch->rows, &accepted);
     if (!status)
         status =
-            ud_error_schema(&component->context.errors, event->batch, component->include, &errors);
+            ud_error_batch(&component->context.errors, component->include,
+                            ud_batch_rows(event->batch), &errors);
     ud_value *values =
         !status ? ud_alloc(component->context.memory, component->columns * sizeof(*values)) : NULL;
     if (!status && !values)
@@ -314,6 +315,10 @@ static ud_status step(void *pointer, const ud_component_event *event) {
     ud_batch_destroy(errors);
     return status;
 }
+static ud_status finish(void *instance) {
+    (void)instance;
+    return UD_OK;
+}
 ud_status ud_column_files_register(ud_registry *registry) {
     static const char schema[] =
         "{\"type\":\"object\",\"additionalProperties\":false,"
@@ -347,6 +352,7 @@ ud_status ud_column_files_register(ud_registry *registry) {
             .configure = configure,
             .prepare = prepare,
             .step = step,
+            .finish = finish,
             .dispose = dispose};
         UD_TRY(ud_registry_register(registry, &descriptor));
     }

@@ -1,0 +1,33 @@
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Found ICU: /workspace/.universaldata-tools/sql-deps/usr/include (found suitable version "76.1", minimum required is "76") found components: uc i18n
+-- Found ICU: /workspace/.universaldata-tools/sql-deps/usr/include (found suitable version "76.1", minimum required is "76") found components: uc i18n
+-- Configuring done (0.7s)
+-- Generating done (0.1s)
+-- Build files have been written to: /tmp/ud2-build
+[0/4] Re-checking globbed directories...
+[1/5] cd /tmp/ud2-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /workspace/UniversalData-2.0/tests/managed_product/ManagedProduct.csproj -c Release -o /tmp/ud2-build/tests/managed-product
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/UniversalData-2.0/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedProduct -> /workspace/UniversalData-2.0/tests/managed_product/bin/Release/net10.0/ManagedProduct.dll
+  ManagedProduct -> /tmp/ud2-build/tests/managed-product/
+[2/5] cd /tmp/ud2-build/hosts && /tmp/ud2-tools/dotnet10/dotnet publish /workspace/UniversalData-2.0/products/UniversalData.CommandLine/UniversalData.CommandLine.csproj -c Release -o /tmp/ud2-build/hosts/product/cli && /tmp/ud2-tools/dotnet10/dotnet publish /workspace/UniversalData-2.0/products/UniversalData.Worker/UniversalData.Worker.csproj -c Release -o /tmp/ud2-build/hosts/product/worker && /tmp/ud2-tools/dotnet10/dotnet publish /workspace/UniversalData-2.0/products/UniversalData.Management/UniversalData.Management.csproj -c Release -o /tmp/ud2-build/hosts/product/management -p:DesignerAssets=/tmp/ud2-build/hosts/designer && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud2-build/libud_data.so.2.0.0 /tmp/ud2-build/hosts/product/cli/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud2-build/libud_data.so.2.0.0 /tmp/ud2-build/hosts/product/worker/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud2-build/libud_data.so.2.0.0 /tmp/ud2-build/hosts/product/management/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy_directory /tmp/ud2-build/hosts/product/worker /tmp/ud2-build/hosts/product/management/worker
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/UniversalData-2.0/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /workspace/UniversalData-2.0/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.CommandLine -> /workspace/UniversalData-2.0/products/UniversalData.CommandLine/bin/Release/net10.0/ud_cli.dll
+  UniversalData.CommandLine -> /tmp/ud2-build/hosts/product/cli/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/UniversalData-2.0/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /workspace/UniversalData-2.0/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Worker -> /workspace/UniversalData-2.0/products/UniversalData.Worker/bin/Release/net10.0/ud_worker.dll
+  UniversalData.Worker -> /tmp/ud2-build/hosts/product/worker/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/UniversalData-2.0/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /workspace/UniversalData-2.0/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Management -> /workspace/UniversalData-2.0/products/UniversalData.Management/bin/Release/net10.0/UniversalData.Management.dll
+  UniversalData.Management -> /tmp/ud2-build/hosts/product/management/

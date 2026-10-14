@@ -71,12 +71,14 @@ def check():
                 or bundle.get("sdkVersion") != version or bundle.get("configuration") != "Release"
                 or bundle.get("runtimeIdentifier") != delivery.get("runtimeIdentifier")):
             errors.append("Artifact manifest differs from current source/ABI")
-        expected = {"sdk/bin/ud_data.dll", "sdk/bin/ud_java.dll", "sdk/bin/ud_cli.exe",
-                    "sdk/bin/ud_worker.exe", f"packages/UniversalData.{version}.nupkg",
+        expected = {"sdk/bin/ud_data.dll", "sdk/bin/ud_java.dll", "sdk/bin/universaldata/cli/ud_cli.exe",
+                    "sdk/bin/universaldata/worker/ud_worker.exe", "sdk/bin/universaldata/management/UniversalData.Management.dll",
+                    "sdk/bin/universaldata/management/wwwroot/index.html", f"packages/UniversalData.{version}.nupkg",
                     f"packages/universal-data-{version}.jar", "sdk/include/ud/version.h",
                     "sdk/include/ud/package.h", "sdk/lib/ud_data.lib"}
         if delivery.get("runtimeIdentifier")=="linux-x64":
-            expected={"sdk/lib/libud_data.so","sdk/lib/libud_java.so","sdk/bin/ud_cli","sdk/bin/ud_worker",
+            expected={"sdk/lib/libud_data.so","sdk/lib/libud_java.so","sdk/bin/universaldata/cli/ud_cli","sdk/bin/universaldata/worker/ud_worker",
+                      "sdk/bin/universaldata/management/UniversalData.Management.dll","sdk/bin/universaldata/management/wwwroot/index.html",
                       f"packages/UniversalData.{version}.nupkg",f"packages/universal-data-{version}.jar",
                       "sdk/include/ud/version.h","sdk/include/ud/package.h"}
         if not expected.issubset({entry["path"] for entry in bundle.get("files", [])}):

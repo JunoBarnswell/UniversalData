@@ -13,13 +13,21 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/products/designer/package-lock.json")
   message(FATAL_ERROR "The product designer must include its exact npm dependency lock")
 endif()
 set(UD_DESIGNER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/designer)
-add_custom_target(ud_product_designer
+set(UD_DESIGNER_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/designer-source)
+file(MAKE_DIRECTORY ${UD_DESIGNER_SOURCE})
+file(GLOB_RECURSE UD_DESIGNER_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/products/designer/src/*)
+add_custom_command(OUTPUT ${UD_DESIGNER_OUTPUT}/build.stamp
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/products/designer/src ${UD_DESIGNER_SOURCE}/src
+  COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/products/designer/package.json ${PROJECT_SOURCE_DIR}/products/designer/package-lock.json ${PROJECT_SOURCE_DIR}/products/designer/tsconfig.json ${PROJECT_SOURCE_DIR}/products/designer/eslint.config.js ${PROJECT_SOURCE_DIR}/products/designer/index.html ${PROJECT_SOURCE_DIR}/products/designer/vite.config.ts ${UD_DESIGNER_SOURCE}/
   COMMAND ${UD_NPM} ci --no-audit --no-fund
   COMMAND ${UD_NPM} run typecheck
   COMMAND ${UD_NPM} run lint
   COMMAND ${UD_NPM} run build -- --outDir ${UD_DESIGNER_OUTPUT}
-  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/products/designer
+  COMMAND ${CMAKE_COMMAND} -E touch ${UD_DESIGNER_OUTPUT}/build.stamp
+  DEPENDS ${UD_DESIGNER_SOURCES} ${PROJECT_SOURCE_DIR}/products/designer/package.json ${PROJECT_SOURCE_DIR}/products/designer/package-lock.json ${PROJECT_SOURCE_DIR}/products/designer/tsconfig.json ${PROJECT_SOURCE_DIR}/products/designer/vite.config.ts ${PROJECT_SOURCE_DIR}/products/designer/eslint.config.js ${PROJECT_SOURCE_DIR}/products/designer/index.html
+  WORKING_DIRECTORY ${UD_DESIGNER_SOURCE}
   VERBATIM)
+add_custom_target(ud_product_designer DEPENDS ${UD_DESIGNER_OUTPUT}/build.stamp)
 set(UD_HOST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/product)
 if(WIN32)
   set(UD_HOST_SUFFIX .exe)
@@ -44,4 +52,5 @@ add_dependencies(ud_cli ud_product_hosts)
 add_executable(ud_worker IMPORTED GLOBAL)
 set_target_properties(ud_worker PROPERTIES IMPORTED_LOCATION ${UD_HOST_OUTPUT}/worker/ud_worker${UD_HOST_SUFFIX})
 add_dependencies(ud_worker ud_product_hosts)
-install(DIRECTORY ${UD_HOST_OUTPUT}/ DESTINATION ${CMAKE_INSTALL_BINDIR}/universaldata)
+install(DIRECTORY ${UD_HOST_OUTPUT}/ DESTINATION ${CMAKE_INSTALL_BINDIR}/universaldata
+  USE_SOURCE_PERMISSIONS)

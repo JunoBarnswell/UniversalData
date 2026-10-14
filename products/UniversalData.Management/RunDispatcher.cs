@@ -282,12 +282,12 @@ public sealed class RunDispatcher(HostPolicy policy, ProductConfiguration config
             start.ArgumentList.Add(configuration.WorkerPath); start.ArgumentList.Add(configuration.PolicyPath);
             process = Process.Start(start) ?? throw new InvalidOperationException("Worker failed to start");
             workers[id] = process;
-            _ = process.StandardError.ReadToEndAsync(cancellation); // Native/log API owns diagnostics; no secret stderr is exposed.
+            _ = WorkerProtocol.Discard(process.StandardError, cancellation); // Native/Catalog owns diagnostics; no unbounded stderr capture.
             await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { version = ProductInfo.Protocol, ticket = id,
                 package, parameters, executionId = state.ExecutionId, resume = state.Resume,
                 revision = state.ExecutionRevision, debug = state.Debug }, HostPolicy.JsonOptions));
             await process.StandardInput.FlushAsync(cancellation);
-            var ready = await process.StandardOutput.ReadLineAsync(cancellation) ?? throw new InvalidDataException("Worker did not become ready");
+            var ready = await WorkerProtocol.ReadLine(process.StandardOutput, 65536, cancellation) ?? throw new InvalidDataException("Worker did not become ready");
             using var message = JsonDocument.Parse(ready);
             if (message.RootElement.GetProperty("version").GetInt32() != ProductInfo.Protocol ||
                 message.RootElement.GetProperty("kind").GetString() != "ready" || message.RootElement.GetProperty("ticket").GetString() != id)
@@ -302,7 +302,7 @@ public sealed class RunDispatcher(HostPolicy policy, ProductConfiguration config
             }
             startSent = true;
             await process.StandardInput.WriteLineAsync("start"); await process.StandardInput.FlushAsync(cancellation);
-            var terminal = await process.StandardOutput.ReadLineAsync(cancellation) ?? throw new InvalidDataException("Worker outcome is unknown");
+            var terminal = await WorkerProtocol.ReadLine(process.StandardOutput, 67108864, cancellation) ?? throw new InvalidDataException("Worker outcome is unknown");
             using var outcome = JsonDocument.Parse(terminal);
             if (outcome.RootElement.GetProperty("version").GetInt32() != ProductInfo.Protocol ||
                 outcome.RootElement.GetProperty("kind").GetString() != "terminal" || outcome.RootElement.GetProperty("ticket").GetString() != id ||

@@ -53,6 +53,7 @@ ud_status ud_open_regular(ud_context *, const char *, FILE **);
 ud_status ud_move_noreplace(ud_context *, const char *, const char *);
 ud_status ud_distinct_directories(ud_context *, const char *, const char *);
 uint64_t ud_now_ms(void);
+uint64_t ud_wall_ms(void); /* UTC Unix milliseconds for persisted event timestamps. */
 uint64_t ud_monotonic_ns(void);
 uint64_t ud_thread_cpu_ns(void);
 /* OS entropy only. Never synthesize persistent identity from clocks/counters. */

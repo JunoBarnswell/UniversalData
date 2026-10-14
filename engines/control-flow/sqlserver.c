@@ -129,7 +129,7 @@ static ud_status maintenance(const ud_component_context *context, int kind,
     if (!status && kind == SERVER_BACKUP) {
         status = ud_activation_acquire_grant(context->activation, config->device, &device);
         if (!status)
-            status = ud_connection_lease_check(device, UD_ACCESS_WRITE);
+            status = ud_connection_lease_authorize(device, UD_ACCESS_WRITE);
         if (!status)
             status = ud_connection_lease_resource(device, &argument);
         if (!status && (!argument.length || memchr(argument.data, 0, argument.length)))

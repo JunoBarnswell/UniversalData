@@ -9,13 +9,14 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
 {
     public static HostPolicy Load(string path)
     {
-        var policy = JsonSerializer.Deserialize<HostPolicy>(File.ReadAllText(path), JsonOptions)
+        var policy = JsonSerializer.Deserialize<HostPolicy>(File.ReadAllText(path), PolicyJsonOptions)
                      ?? throw new InvalidDataException("Host policy is empty");
         if (!Path.IsPathFullyQualified(policy.DataDirectory) || policy.MaxConcurrency is < 1 or > 64 || policy.MemoryLimit == 0)
             throw new InvalidDataException("Invalid host resource policy");
         return policy;
     }
-    public static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions PolicyJsonOptions = CreateJsonOptions();
     private static JsonSerializerOptions CreateJsonOptions() {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()); return options;
@@ -47,7 +48,11 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
         // Values stay inside the worker and are consumed by Native; APIs expose references only.
         return File.ReadAllText(path);
     }
-    public Catalog OpenCatalog() => new(CatalogDirectory, "local", Authorize);
+    public Catalog OpenCatalog()
+    {
+        Directory.CreateDirectory(DataDirectory);
+        return new(CatalogDirectory, "local", Authorize);
+    }
     public Execution CreateExecution(string packageJson, string parametersJson = "{}", string executionId = "",
         string? stateDirectory = null, bool resume = false, Registry? registry = null, Action<ExecutionEvent>? observe = null,
         ulong eventSequenceStart = 0) =>

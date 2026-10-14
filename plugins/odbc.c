@@ -56,6 +56,9 @@ static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
         return UD_RESOURCE;
     return UD_IO;
 }
+ud_status ud_odbc_diagnostic(odbc_state *state) {
+    return failure(state, SQL_HANDLE_DBC, state->connection);
+}
 /* Registration protects every live statement against concurrent cancellation.
  * Free and ud_odbc_cancel hold the same short ownership lock; I/O does not hold it. */
 static SQLRETURN statement_allocate(odbc_state *p, SQLHSTMT *out) {
@@ -1096,9 +1099,12 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (p->cursor)
         return UD_BUSY;
     int own = !p->transaction;
-    ud_status s = own ? ud_odbc_begin(p, UD_ISOLATION_SERIALIZABLE) : UD_OK;
+    int receipted = (p->capabilities & UD_CONNECT_RECEIPTS) != 0;
+    ud_status s =
+        own ? ud_odbc_begin(p, receipted ? UD_ISOLATION_SERIALIZABLE : UD_ISOLATION_READ_COMMITTED)
+            : UD_OK;
     ud_commit_receipt previous = {0};
-    if (!s)
+    if (!s && receipted)
         s = receipt(p, tenant, o->job, o->batch_id, &previous);
     int existing = previous.committed;
     if (!s && existing &&
@@ -1163,7 +1169,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         p->host.statement_clear(&plan);
         row += count;
     }
-    if (!s && !existing) {
+    if (!s && !existing && receipted) {
         ud_field f[] = {{.name = "tenant", .name_length = 6, .type = UD_UTF8},
                         {.name = "job", .name_length = 3, .type = UD_UTF8},
                         {.name = "batch", .name_length = 5, .type = UD_UTF8},
@@ -1508,6 +1514,9 @@ static ud_status initialize(const ud_host_api *h, const char *configuration, uin
             if (p->array_parameters)
                 p->capabilities |= UD_CONNECT_PARAMETER_ARRAY;
         }
+        if (transactions != SQL_TC_NONE && p->dialect == DIALECT_GENERIC && p->array_parameters)
+            p->capabilities |= UD_CONNECT_APPEND | UD_CONNECT_TRANSACTION | UD_CONNECT_BATCH_WRITE |
+                               UD_CONNECT_PARAMETER_ARRAY;
         if (p->dialect == DIALECT_POSTGRES || p->dialect == DIALECT_MSSQL)
             p->capabilities |= UD_CONNECT_POOL;
         if (p->dialect == DIALECT_MSSQL) {

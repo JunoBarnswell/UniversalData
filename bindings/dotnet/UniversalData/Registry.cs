@@ -169,7 +169,8 @@ internal sealed class TaskRegistration
 
 internal static partial class Native
 {
-    internal static string Text(StringValue value) => Marshal.PtrToStringUTF8(value.Data, checked((int)value.Length)) ?? "";
+    internal static string Text(StringValue value) => value.Length == 0 ? "" :
+        Marshal.PtrToStringUTF8(value.Data, checked((int)value.Length)) ?? "";
     [StructLayout(LayoutKind.Sequential)] internal struct CallbackContext
     { internal uint Size, Abi; internal IntPtr Memory, Execution, Activation; internal StringValue TaskId, PipelineId, ComponentId; }
     [StructLayout(LayoutKind.Sequential)] internal struct ComponentDescriptor

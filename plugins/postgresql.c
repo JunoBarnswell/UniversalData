@@ -165,6 +165,13 @@ static PGresult *query(postgres_state *p, const char *sql, int n, const Oid *typ
         return NULL;
     /* A completed query drains its protocol; interrupted sessions are retired. */
     PGresult *result = PQgetResult(p->db), *extra;
+    /* COPY hands protocol ownership to the streaming transport. The server
+     * cannot complete this command until the client sends/consumes its data;
+     * attempting the ordinary result drain here deadlocks both sides. */
+    if (result && (PQresultStatus(result) == PGRES_COPY_IN ||
+                   PQresultStatus(result) == PGRES_COPY_OUT ||
+                   PQresultStatus(result) == PGRES_COPY_BOTH))
+        return result;
     while (wait_result(p) && (extra = PQgetResult(p->db)) != NULL) {
         PQclear(result);
         result = extra;

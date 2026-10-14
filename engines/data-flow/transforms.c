@@ -275,12 +275,13 @@ ud_status ud_transforms_register(ud_registry *registry) {
         "\"variable\"],\"additionalProperties\":false}",
         "{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}"};
     static const char *names[] = {"copyColumn", "characterMap", "rowCount", "audit"};
+    static const char *labels[] = {"Copy Column", "Character Map", "Row Count", "Audit"};
     for (uint32_t i = 0; i < 4; i++) {
         ud_component_descriptor d = {
             .struct_size = sizeof(d),
             .abi_version = UD_ABI_VERSION,
             .id = {names[i], (uint32_t)strlen(names[i])},
-            .name = {names[i], (uint32_t)strlen(names[i])},
+            .name = {labels[i], (uint32_t)strlen(labels[i])},
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = {schemas[i], (uint32_t)strlen(schemas[i])},
             .category = UD_COMPONENT_TRANSFORM,

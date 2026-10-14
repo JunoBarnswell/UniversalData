@@ -1,9 +1,19 @@
 #include "check.h"
 #include "ud/package.h"
 #include "ud/format.h"
+#include "../engines/package/internal.h"
 #include <string.h>
 static ud_string str(const char *text) {
     return (ud_string){text, (uint32_t)strlen(text)};
+}
+static void observe(void *user, const ud_execution_event *event) {
+    (void)user;
+    if (event->result && event->result != UD_BUSY && event->result != UD_MORE &&
+        event->result != UD_END)
+        fprintf(stderr, "failure task=%.*s component=%.*s state=%d result=%d\n",
+                (int)event->task_id.length, event->task_id.data,
+                (int)event->component_id.length, event->component_id.data,
+                event->state, event->result);
 }
 static ud_status authorize(void *user, ud_string tenant, ud_string resource, int32_t action) {
     (void)user;
@@ -35,7 +45,16 @@ static ud_status resolve(void *user, ud_context *memory, ud_string tenant, ud_st
     const ud_json *value = ud_json_find(document, reference.data, reference.length);
     char *text = NULL;
     uint32_t length = 0;
-    ud_status status = value ? ud_json_serialize(value, &text, &length) : UD_AUTH;
+    ud_status status = UD_AUTH;
+    if (value && ud_json_kind(value) == UD_JSON_STRING) {
+        const char *data;
+        status = ud_json_text(value, &data, &length);
+        if (!status) {
+            text = ud_strdup_n(memory, data, length);
+            if (!text) status = UD_RESOURCE;
+        }
+    } else if (value)
+        status = ud_json_serialize(value, &text, &length);
     ud_json_destroy(document);
     if (!status)
         *out = (ud_string){text, length};
@@ -56,10 +75,14 @@ int main(int argc, char **argv) {
                                                 .abi_version = UD_ABI_VERSION,
                                                 .memory_limit = 268435456},
                                     .tenant = {"fixture", 7},
-                                    .execution_id = {"product-native", 14},
+                                    .execution_id = argc > 3 && *argv[3]
+                                                        ? (ud_string){"product-native", 14}
+                                                        : (ud_string){0},
                                     .authorize = authorize,
+                                    .observe = observe,
                                     .max_batch_rows = 7,
                                     .edge_capacity = 2,
+                                    .max_depth = 32,
                                     .max_concurrency = 2,
                                     .timeout_ms = 30000,
                                     .state_directory = argc > 3 ? str(argv[3]) : (ud_string){0},
@@ -75,6 +98,8 @@ int main(int argc, char **argv) {
     if (status != atoi(argv[2])) {
         fprintf(stderr, "expected=%s actual=%s\n", ud_status_name(atoi(argv[2])),
                 ud_status_name(status));
+        if (execution)
+            fprintf(stderr, "Native: %s\n", ud_error(execution->ctx));
         if (execution)
             (void)ud_execution_destroy(execution);
         return 1;

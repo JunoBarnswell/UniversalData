@@ -349,6 +349,12 @@ ud_status ud_reserve_file(ud_context *ctx, const char *path) {
     }
     return UD_OK;
 }
+uint64_t ud_wall_ms(void) {
+    struct timespec time;
+    if (timespec_get(&time, TIME_UTC) != TIME_UTC || time.tv_sec < 0)
+        return 0;
+    return (uint64_t)time.tv_sec * 1000 + (uint64_t)time.tv_nsec / 1000000;
+}
 uint64_t ud_now_ms(void) {
 #ifdef _WIN32
     return GetTickCount64();
@@ -541,10 +547,22 @@ ud_status ud_move_noreplace(ud_context *c, const char *from, const char *to) {
     if (!ok)
         return error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS ? UD_BUSY : UD_IO;
 #elif defined(__linux__) && defined(SYS_renameat2)
-    if (syscall(SYS_renameat2, AT_FDCWD, from, AT_FDCWD, to, 1))
-        return errno == EEXIST                      ? UD_BUSY
-               : errno == ENOSYS || errno == EINVAL ? UD_UNSUPPORTED
-                                                    : UD_IO;
+    if (syscall(SYS_renameat2, AT_FDCWD, from, AT_FDCWD, to, 1)) {
+        if (errno == EEXIST)
+            return UD_BUSY;
+        if (errno != ENOSYS && errno != EINVAL && errno != EOPNOTSUPP)
+            return UD_IO;
+        /* The kernel/filesystem may lack RENAME_NOREPLACE. A hard-link
+         * publication still atomically refuses an existing target. Once the
+         * link exists, any unresolved failure is a real unknown outcome. */
+        struct stat source;
+        if (lstat(from, &source) || !S_ISREG(source.st_mode))
+            return UD_UNSUPPORTED;
+        if (link(from, to))
+            return errno == EEXIST ? UD_BUSY : UD_IO;
+        if (ud_sync_parent(c, to) || unlink(from))
+            return UD_COMMIT_UNKNOWN;
+    }
 #else
     (void)c;
     (void)from;

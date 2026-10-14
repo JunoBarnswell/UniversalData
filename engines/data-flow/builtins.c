@@ -110,7 +110,12 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                    : b->mode == UD_WRITE_DELETE ? UD_CONNECT_DELETE
                                                 : UD_CONNECT_CHANGESET;
         if (kind == SQL_SINK) {
-            caps |= UD_CONNECT_METADATA | UD_CONNECT_RECEIPTS;
+            int32_t delivery = UD_DELIVERY_RECEIPT;
+            if (!s)
+                s = ud_builtin_sink_delivery(kind, b->config, &delivery);
+            caps |= UD_CONNECT_METADATA;
+            if (delivery == UD_DELIVERY_RECEIPT)
+                caps |= UD_CONNECT_RECEIPTS;
             if (b->load_mode == UD_LOAD_NATIVE)
                 caps |= UD_CONNECT_NATIVE_BULK;
         }
@@ -217,20 +222,16 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
 #ifdef UD_WITH_ARROW_FILES
     if (!s && (kind == PARQUET_SINK || kind == IPC_SINK || kind == IPC_STREAM_SINK) &&
         !b->generation->prepared) {
-        ud_columnar_file_options options = {
-            .struct_size = sizeof(options),
-            .abi_version = UD_ABI_VERSION,
-            .batch_rows = c->max_batch_rows,
-            .format = kind == PARQUET_SINK ? UD_FILE_PARQUET
-                      : kind == IPC_SINK   ? UD_FILE_ARROW_IPC
-                                           : UD_FILE_ARROW_STREAM,
-            .buffers = c->execution->buffers,
-            .check = ud_builtin_operator_check,
-            .user = c->activation,
-            .stage_bytes = &b->stage_bytes,
-            .original_path = b->generation->mode == UD_FILE_APPEND && b->generation->base_exists
-                                 ? b->generation->original
-                                 : NULL};
+        ud_columnar_file_options options = {.struct_size = sizeof(options),
+                                            .abi_version = UD_ABI_VERSION,
+                                            .batch_rows = c->max_batch_rows,
+                                            .format = kind == PARQUET_SINK ? UD_FILE_PARQUET
+                                                      : kind == IPC_SINK   ? UD_FILE_ARROW_IPC
+                                                                           : UD_FILE_ARROW_STREAM,
+                                            .buffers = c->execution->buffers,
+                                            .check = ud_builtin_operator_check,
+                                            .user = c->activation,
+                                            .stage_bytes = &b->stage_bytes};
         s = ud_columnar_writer_open(c->memory, b->temporary, b->schema, &options,
                                     &b->columnar_writer);
     }
@@ -520,6 +521,8 @@ static const char *configuration_schema(int kind) {
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
     case SQL_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
+               "\"delivery\":{\"type\":\"string\",\"enum\":[\"response\",\"receipt\"],"
+               "\"default\":\"receipt\"},"
                "\"table\":{\"type\":\"string\"},\"mode\":{\"type\":\"string\",\"enum\":[\"append\","
                "\"upsert\",\"delete\",\"changeset\"]},\"loadMode\":{\"type\":\"string\","
                "\"enum\":[\"auto\",\"native\",\"parameters\"]},\"beforeField\":{\"type\":"
@@ -602,43 +605,44 @@ ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_cdc_register(registry));
     UD_TRY(ud_advanced_register(registry));
     static const struct {
-        const char *id;
+        const char *id, *name;
         int kind;
         uint32_t inputs, outputs;
         int sync, error;
-    } entries[] = {{"file.csv.source", CSV_SOURCE, 0, 2, -1, 1},
-                   {"file.ndjson.source", JSON_SOURCE, 0, 2, -1, 1},
-                   {"sql.source", SQL_SOURCE, 0, 2, -1, 1},
-                   {"file.csv.destination", CSV_SINK, 1, 0, -1, -1},
-                   {"file.ndjson.destination", JSON_SINK, 1, 0, -1, -1},
-                   {"sql.destination", SQL_SINK, 1, 1, -1, 0},
-                   {"sql.command", SQL_COMMAND, 1, 2, -1, 1},
-                   {"pass", PASS, 1, 1, 0, -1},
-                   {"cast", CAST, 1, 2, -1, 1},
-                   {"derive", DERIVE, 1, 2, -1, 1},
-                   {"split", SPLIT, 1, 2, -1, -1},
-                   {"multicast", MULTICAST, 1, 2, 0, -1},
-                   {"balanced", BALANCED, 1, 2, 0, -1},
-                   {"unionAll", UNION_ALL, 2, 1, -1, -1},
-                   {"sort", SORT, 1, 1, -1, -1},
-                   {"join", JOIN, 2, 1, -1, -1},
-                   {"aggregate", AGGREGATE, 1, 1, -1, -1},
-                   {"window", WINDOW, 1, 1, -1, -1},
-                   {"file.xlsx.source", XLSX_SOURCE, 0, 2, -1, 1},
-                   {"file.xlsx.destination", XLSX_SINK, 1, 0, -1, -1}
+    } entries[] = {
+        {"file.csv.source", "CSV Source", CSV_SOURCE, 0, 2, -1, 1},
+        {"file.ndjson.source", "JSON Source", JSON_SOURCE, 0, 2, -1, 1},
+        {"sql.source", "SQL Source", SQL_SOURCE, 0, 2, -1, 1},
+        {"file.csv.destination", "CSV Destination", CSV_SINK, 1, 0, -1, -1},
+        {"file.ndjson.destination", "JSON Destination", JSON_SINK, 1, 0, -1, -1},
+        {"sql.destination", "SQL Destination", SQL_SINK, 1, 1, -1, 0},
+        {"sql.command", "SQL Command", SQL_COMMAND, 1, 2, -1, 1},
+        {"pass", "Pass Through", PASS, 1, 1, 0, -1},
+        {"cast", "Data Conversion", CAST, 1, 2, -1, 1},
+        {"derive", "Derived Column", DERIVE, 1, 2, -1, 1},
+        {"split", "Conditional Split", SPLIT, 1, 2, -1, -1},
+        {"multicast", "Multicast", MULTICAST, 1, 2, 0, -1},
+        {"balanced", "Balanced Distributor", BALANCED, 1, 2, 0, -1},
+        {"unionAll", "Union All", UNION_ALL, 2, 1, -1, -1},
+        {"sort", "Sort", SORT, 1, 1, -1, -1},
+        {"join", "Hash Join", JOIN, 2, 1, -1, -1},
+        {"aggregate", "Aggregate", AGGREGATE, 1, 1, -1, -1},
+        {"window", "Window", WINDOW, 1, 1, -1, -1},
+        {"file.xlsx.source", "Excel Source", XLSX_SOURCE, 0, 2, -1, 1},
+        {"file.xlsx.destination", "Excel Destination", XLSX_SINK, 1, 0, -1, -1}
 #ifdef UD_WITH_HTTP
-                   ,
-                   {"rest.source", REST_SOURCE, 0, 1, -1, -1},
-                   {"rest.destination", REST_SINK, 1, 0, -1, -1}
+        ,
+        {"rest.source", "REST Source", REST_SOURCE, 0, 1, -1, -1},
+        {"rest.destination", "REST Destination", REST_SINK, 1, 0, -1, -1}
 #endif
 #ifdef UD_WITH_ARROW_FILES
-                   ,
-                   {"file.parquet.source", PARQUET_SOURCE, 0, 1, -1, -1},
-                   {"file.parquet.destination", PARQUET_SINK, 1, 0, -1, -1},
-                   {"file.arrowIpc.source", IPC_SOURCE, 0, 1, -1, -1},
-                   {"file.arrowIpc.destination", IPC_SINK, 1, 0, -1, -1},
-                   {"file.arrowStream.source", IPC_STREAM_SOURCE, 0, 1, -1, -1},
-                   {"file.arrowStream.destination", IPC_STREAM_SINK, 1, 0, -1, -1}
+        ,
+        {"file.parquet.source", "Parquet Source", PARQUET_SOURCE, 0, 1, -1, -1},
+        {"file.parquet.destination", "Parquet Destination", PARQUET_SINK, 1, 0, -1, -1},
+        {"file.arrowIpc.source", "Arrow IPC Source", IPC_SOURCE, 0, 1, -1, -1},
+        {"file.arrowIpc.destination", "Arrow IPC Destination", IPC_SINK, 1, 0, -1, -1},
+        {"file.arrowStream.source", "Arrow Stream Source", IPC_STREAM_SOURCE, 0, 1, -1, -1},
+        {"file.arrowStream.destination", "Arrow Stream Destination", IPC_STREAM_SINK, 1, 0, -1, -1}
 #endif
     };
     for (uint32_t i = 0; i < sizeof(entries) / sizeof(*entries); i++) {
@@ -650,7 +654,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .struct_size = sizeof(d),
             .abi_version = UD_ABI_VERSION,
             .id = {entries[i].id, (uint32_t)strlen(entries[i].id)},
-            .name = {entries[i].id, (uint32_t)strlen(entries[i].id)},
+            .name = {entries[i].name, (uint32_t)strlen(entries[i].name)},
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = {configuration_schema(kind),
                                      (uint32_t)strlen(configuration_schema(kind))},

@@ -40,6 +40,9 @@ typedef struct ud_record_options {
  * record or explicitly enabled raw bytes, identified by inputFormat. */
 UD_API ud_status ud_error_schema(const ud_error_context *, const ud_batch *, int include_input,
                                  ud_batch **);
+/* Same canonical error columns with explicitly bounded writable row capacity. */
+UD_API ud_status ud_error_batch(const ud_error_context *, int include_input, uint32_t capacity,
+                               ud_batch **);
 UD_API int32_t ud_record_error_kind(ud_status);
 UD_API int32_t ud_record_error_recoverable(ud_status);
 UD_API ud_status ud_error_append(const ud_error_context *, ud_batch *, const ud_record_error *);

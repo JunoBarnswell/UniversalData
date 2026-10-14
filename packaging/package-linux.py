@@ -87,6 +87,10 @@ with tempfile.TemporaryDirectory(prefix='ud-nuget-native-', dir=output.parent) a
                     '-p:NativeDependencyDirectory=' + str(staging),
                     '-p:NativeLicenseDirectory=' + str(sdk / 'share/UniversalData/licenses'),
                     '-p:NativeRuntimeIdentifier=linux-x64', '--nologo'], check=True)
+subprocess.run(['dotnet', 'restore', str(ROOT / 'examples/dotnet/Consumer.csproj'), '--nologo'], check=True)
+nuget_dependencies = json.loads(subprocess.check_output([sys.executable, str(ROOT / 'packaging/nuget_feed.py'),
+    '--assets', str(ROOT / 'bindings/dotnet/UniversalData/obj/project.assets.json'),
+    '--assets', str(ROOT / 'examples/dotnet/obj/project.assets.json'), '--output', str(packages)], text=True))
 maven = ['mvn', '-B', '-q']
 if a.maven_settings:
     maven += ['-s', str(a.maven_settings.resolve())]
@@ -127,7 +131,7 @@ if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache:
 manifest = dict(schemaVersion=10,protocolVersion=product['protocolVersion'], buildProfile='PRODUCT' if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache else 'CORE', sdkVersion=version, abiVersion=product['abiVersion'],
                 configuration='Release', runtimeIdentifier='linux-x64', sourceFingerprint=fingerprint,
                 capabilities=features, managedRuntime='Microsoft.AspNetCore.App 10', hosts=['cli','worker','management','designer'],
-                nativeRuntimes=runtimes, systemDependencies=sorted(external), optionalConnectors=plugins, files=files)
+                nativeRuntimes=runtimes, nugetDependencies=nuget_dependencies, systemDependencies=sorted(external), optionalConnectors=plugins, files=files)
 (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 archive = output.parent / f'UniversalData-{version}-linux-x64.zip'
 assert not archive.exists()

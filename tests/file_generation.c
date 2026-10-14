@@ -115,6 +115,11 @@ int main(int argc, char **argv) {
     OK(ud_registry_register(registry, &descriptor));
     ud_execution_options options = {.struct_size = sizeof(options),
                                     .abi_version = UD_ABI_VERSION,
+                                    .context = {.struct_size = sizeof(ud_context_options),
+                                                .abi_version = UD_ABI_VERSION},
+                                    .edge_capacity = 2,
+                                    .max_batch_rows = 7,
+                                    .max_depth = 32,
                                     .parameters = {"{}", 2},
                                     .tenant = {"test", 4},
                                     .execution_id = {"file-generation", 15},

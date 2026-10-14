@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="ud-xml-product-") as folder:
     doc = document(dict(source=source, good=good, error=errors), [dict(id="flow", kind="dataFlow", config=dict(pipeline="xml"))], [flow])
     run(doc)
     rows = [json.loads(line) for line in good.read_text().splitlines()]
-    assert [row["id"] for row in rows] == [18446744073709551615, 2]
+    assert [int(row["id"]) for row in rows] == [18446744073709551615, 2]
     rejected = [json.loads(line) for line in errors.read_text().splitlines()]
     assert len(rejected) == 1
     retained = next(value for value in rejected[0].values() if isinstance(value, str) and base64.b64encode(b'<row><id>bad</id><text>error</text></row>').decode() == value)
@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix="ud-xml-product-") as folder:
     source.write_bytes(b'<r xmlns="urn:records">' + b' ' * 16340 + b'<row a="' + b'x' * 40 + b'"><id>7</id><text>boundary</text></row></r>')
     for path in (good,errors): path.unlink()
     run(doc)
-    assert json.loads(good.read_text())["id"] == 7
+    assert int(json.loads(good.read_text())["id"]) == 7
     source.write_text('<r><row><id>1</id><text>unclosed</text>', encoding="utf-8")
     for path in (good,errors): path.unlink()
     run(doc, 6)

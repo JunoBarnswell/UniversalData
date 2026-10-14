@@ -4,7 +4,8 @@
 static int numeric(ud_type type) {
     return type == UD_INT64 || type == UD_UINT64 || type == UD_DECIMAL128;
 }
-ud_status ud_infer_scalar(ud_context *ctx, ud_field *field, const char *text, uint32_t length,
+ud_status ud_infer_scalar(ud_context *ctx, ud_field *field, uint8_t *negative_integer,
+                          const char *text, uint32_t length,
                           int json_kind) {
     if (json_kind == UD_JSON_NULL) {
         field->nullable = 1;
@@ -64,7 +65,10 @@ ud_status ud_infer_scalar(ud_context *ctx, ud_field *field, const char *text, ui
         field->precision = candidate.type == UD_DECIMAL128 ? 38 : 0;
         field->scale = candidate.type == UD_DECIMAL128 ? candidate.scale : 0;
     } else if (field->type != candidate.type) {
-        if (numeric(field->type) && numeric(candidate.type)) {
+        if ((field->type == UD_UINT64 && candidate.type == UD_INT64 && value.integer >= 0) ||
+            (field->type == UD_INT64 && candidate.type == UD_UINT64 && !*negative_integer)) {
+            field->type = UD_UINT64;
+        } else if (numeric(field->type) && numeric(candidate.type)) {
             field->type = UD_DECIMAL128;
             field->precision = 38;
             if (candidate.scale > field->scale)
@@ -81,6 +85,8 @@ ud_status ud_infer_scalar(ud_context *ctx, ud_field *field, const char *text, ui
         }
     } else if (field->type == UD_DECIMAL128 && candidate.scale > field->scale)
         field->scale = candidate.scale;
+    if (candidate.type == UD_INT64 && value.integer < 0)
+        *negative_integer = 1;
     if (field->type == UD_TIMESTAMP) {
         field->timezone = "UTC";
         field->timezone_length = 3;

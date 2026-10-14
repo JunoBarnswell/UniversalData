@@ -1,5 +1,6 @@
 #include "../package/internal.h"
 #include "ud/connection_manager.h"
+#include <limits.h>
 #ifdef _WIN32
 #define COBJMACROS
 #include <windows.h>
@@ -90,11 +91,62 @@ static ud_status quote_wide(ud_bytes *bytes, BSTR value) {
     ud_free(text);
     return status;
 }
-static ud_status variant_json(ud_bytes *bytes, const VARIANT *value, CIMTYPE cim) {
+static ud_status object_json_depth(ud_bytes *, IWbemClassObject *, uint32_t);
+static ud_status variant_json(ud_bytes *bytes, const VARIANT *value, CIMTYPE cim, uint32_t depth) {
+    if (depth > 32)
+        return UD_RESOURCE;
     if (V_VT(value) == VT_EMPTY || V_VT(value) == VT_NULL)
         return ud_bytes_put(bytes, "null", 4);
-    if (V_VT(value) & (VT_ARRAY | VT_BYREF))
+    if (V_VT(value) & VT_BYREF)
         return UD_UNSUPPORTED;
+    if (V_VT(value) & VT_ARRAY) {
+        SAFEARRAY *array = V_ARRAY(value);
+        LONG first = 0, last = -1;
+        if (!array || SafeArrayGetDim(array) != 1 ||
+            FAILED(SafeArrayGetLBound(array, 1, &first)) ||
+            FAILED(SafeArrayGetUBound(array, 1, &last)))
+            return UD_SCHEMA;
+        if ((int64_t)last - first + 1 > 65536)
+            return UD_RESOURCE;
+        VARTYPE type = V_VT(value) & VT_TYPEMASK;
+        if (type != VT_VARIANT && type != VT_I1 && type != VT_UI1 && type != VT_I2 &&
+            type != VT_UI2 && type != VT_I4 && type != VT_UI4 && type != VT_I8 &&
+            type != VT_UI8 && type != VT_R4 && type != VT_R8 && type != VT_BOOL &&
+            type != VT_DATE && type != VT_BSTR && type != VT_UNKNOWN && type != VT_DISPATCH)
+            return UD_UNSUPPORTED;
+        ud_status status = ud_bytes_put(bytes, "[", 1);
+        for (LONG index = first; !status && index <= last; index++) {
+            VARIANT element;
+            VariantInit(&element);
+            void *output;
+            if (type == VT_VARIANT)
+                output = &element;
+            else {
+                V_VT(&element) = type;
+                output = &V_I8(&element); /* VARIANT scalar payload shares this union address. */
+            }
+            if (FAILED(SafeArrayGetElement(array, &index, output)))
+                status = UD_IO;
+            if (!status && index != first)
+                status = ud_bytes_put(bytes, ",", 1);
+            if (!status)
+                status = variant_json(bytes, &element, cim & ~CIM_FLAG_ARRAY, depth + 1);
+            VariantClear(&element);
+            if (index == LONG_MAX)
+                break;
+        }
+        return status ? status : ud_bytes_put(bytes, "]", 1);
+    }
+    if (cim == CIM_OBJECT && V_VT(value) == VT_UNKNOWN && V_UNKNOWN(value)) {
+        IWbemClassObject *object = NULL;
+        HRESULT result = IUnknown_QueryInterface(V_UNKNOWN(value), &IID_IWbemClassObject,
+                                                 (void **)&object);
+        if (FAILED(result))
+            return UD_SCHEMA;
+        ud_status status = object_json_depth(bytes, object, depth + 1);
+        IWbemClassObject_Release(object);
+        return status;
+    }
     if (V_VT(value) == VT_BOOL)
         return ud_bytes_put(bytes, V_BOOL(value) ? "true" : "false", V_BOOL(value) ? 4 : 5);
     if (V_VT(value) == VT_BSTR && cim != CIM_SINT64 && cim != CIM_UINT64)
@@ -125,7 +177,9 @@ static ud_status variant_json(ud_bytes *bytes, const VARIANT *value, CIMTYPE cim
     VariantClear(&text);
     return status;
 }
-static ud_status object_json(ud_bytes *bytes, IWbemClassObject *object) {
+static ud_status object_json_depth(ud_bytes *bytes, IWbemClassObject *object, uint32_t depth) {
+    if (depth > 32)
+        return UD_RESOURCE;
     HRESULT hr = IWbemClassObject_BeginEnumeration(object, WBEM_FLAG_NONSYSTEM_ONLY);
     if (FAILED(hr))
         return UD_IO;
@@ -145,6 +199,8 @@ static ud_status object_json(ud_bytes *bytes, IWbemClassObject *object) {
         }
         if (FAILED(hr))
             status = UD_IO;
+        if (!status && count >= 65536)
+            status = UD_RESOURCE;
         if (!status && count++)
             status = ud_bytes_put(bytes, ",", 1);
         if (!status)
@@ -152,7 +208,7 @@ static ud_status object_json(ud_bytes *bytes, IWbemClassObject *object) {
         if (!status)
             status = ud_bytes_put(bytes, ":", 1);
         if (!status)
-            status = variant_json(bytes, &value, type);
+            status = variant_json(bytes, &value, type, depth);
         VariantClear(&value);
         SysFreeString(name);
     }
@@ -160,6 +216,9 @@ static ud_status object_json(ud_bytes *bytes, IWbemClassObject *object) {
     if (!status)
         status = ud_bytes_put(bytes, "}", 1);
     return status;
+}
+static ud_status object_json(ud_bytes *bytes, IWbemClassObject *object) {
+    return object_json_depth(bytes, object, 0);
 }
 static ud_status run(const ud_component_context *context, ud_connection_lease *lease,
                      const wmi_config *config, int event, ud_bytes *bytes) {
@@ -216,7 +275,7 @@ static ud_status run(const ud_component_context *context, ud_connection_lease *l
         status = ud_bytes_put(bytes, "[", 1);
     uint64_t deadline = ud_now_ms() + config->timeout, count = 0;
     while (!status && count < config->rows) {
-        status = ud_connection_lease_check(lease, UD_ACCESS_READ);
+        status = ud_connection_lease_authorize(lease, UD_ACCESS_READ);
         if (!status && ud_now_ms() >= deadline)
             status = UD_TIMEOUT;
         if (status)
@@ -271,7 +330,7 @@ static ud_status invoke(void *user, const ud_component_context *context, ud_stri
     if (!status)
         status = ud_activation_acquire_grant(context->activation, config.connection, &lease);
     if (!status)
-        status = ud_connection_lease_check(lease, UD_ACCESS_READ);
+        status = ud_connection_lease_authorize(lease, UD_ACCESS_READ);
     ud_bytes bytes = {.ctx = context->memory, .limit = (size_t)config.maximum};
 #ifdef _WIN32
     ud_memory_reservation *reservation = NULL;

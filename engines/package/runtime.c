@@ -31,7 +31,7 @@ void ud_activation_notify_kind(ud_activation *e, int32_t kind, ud_execution_stat
                                 e->component_id,
                                 state,
                                 result,
-                                ud_now_ms(),
+                                ud_wall_ms(),
                                 kind,
                                 ++e->execution->event_sequence,
                                 e};

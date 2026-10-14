@@ -33,6 +33,13 @@ static ud_status cell(odbc_state *p, const ud_value *value, bulk_cell *out, uint
                 status = UD_CORRUPT;
             if (!status)
                 size--; /* Native formatter reports required bytes including NUL. */
+            if (!status && value->type == UD_TIMESTAMP && size > 19 &&
+                formatted[10] == 'T' && formatted[size - 1] == 'Z' &&
+                size + 6 <= sizeof(formatted)) {
+                formatted[10] = ' ';
+                memcpy(formatted + size - 1, " +00:00", 7);
+                size += 6;
+            }
         }
         if (status)
             return status;
@@ -123,17 +130,14 @@ ud_status ud_mssql_bulk_stage(odbc_state *owner, const ud_write_options *options
                                                owner->configuration_length, (void **)&p);
     if (!status)
         status = sql(p, options, batch, *stage, UD_SQL_STAGE_CREATE);
-    SQLHDBC driver_connection = SQL_NULL_HDBC;
-    if (!status && (!SQL_SUCCEEDED(SQLGetInfo(p->connection, SQL_DRIVER_HDBC, &driver_connection,
-                                              sizeof(driver_connection), NULL)) ||
-                    !driver_connection))
-        status = UD_UNSUPPORTED;
-    ud_string quoted = {0};
-    if (!status)
-        status = p->host.table_identifier(p->host.context, UD_SQL_SQLSERVER, *stage, &quoted);
-    if (!status && bcp_initA(driver_connection, quoted.data, NULL, NULL, DB_IN) != SUCCEED)
-        status = UD_IO;
-    owner->host.deallocate((void *)quoted.data);
+    /* The vendor BCP entry points take the connected ODBC application handle,
+     * with SQL_COPT_SS_BCP enabled before connection establishment. */
+    SQLHDBC driver_connection = p ? p->connection : SQL_NULL_HDBC;
+    /* BCP takes an object name rather than an SQL identifier expression. The
+     * name contains only this owner's fixed ASCII prefix and hexadecimal digest. */
+    if (!status && bcp_initA(driver_connection, name, NULL, NULL, DB_IN) != SUCCEED) {
+        status = ud_odbc_diagnostic(p);
+    }
     bulk_cell *cells = !status ? p->host.allocate(p->host.context, columns * sizeof(*cells)) : NULL;
     if (!status && !cells)
         status = UD_RESOURCE;
@@ -145,8 +149,9 @@ ud_status ud_mssql_bulk_stage(odbc_state *owner, const ud_write_options *options
                                                     : SQLCHARACTER;
         static const uint8_t empty = 0;
         if (!status && bcp_bind(driver_connection, &empty, 0, 0, NULL, 0, cells[index].type,
-                                (int)index + 1) != SUCCEED)
-            status = UD_IO;
+                                (int)index + 1) != SUCCEED) {
+            status = ud_odbc_diagnostic(p);
+        }
     }
     for (uint32_t row = 0; !status && row < p->host.rows(batch); row++) {
         status = ud_odbc_control(p);
@@ -162,19 +167,20 @@ ud_status ud_mssql_bulk_stage(odbc_state *owner, const ud_write_options *options
             if (!status &&
                 bcp_colptr(driver_connection, cells[index].data ? cells[index].data : &empty,
                            (int)index + 1) != SUCCEED)
-                status = UD_IO;
+                status = ud_odbc_diagnostic(p);
             if (!status &&
                 bcp_collen(driver_connection, value.is_null ? SQL_NULL_DATA : (DBINT)length,
                            (int)index + 1) != SUCCEED)
-                status = UD_IO;
+                status = ud_odbc_diagnostic(p);
         }
-        if (!status && bcp_sendrow(driver_connection) != SUCCEED)
-            status = UD_IO;
+        if (!status && bcp_sendrow(driver_connection) != SUCCEED) {
+            status = ud_odbc_diagnostic(p);
+        }
     }
     if (!status) {
         DBINT loaded = bcp_done(driver_connection);
         if (loaded < 0 || (uint64_t)loaded != p->host.rows(batch))
-            status = UD_IO;
+            status = loaded < 0 ? ud_odbc_diagnostic(p) : UD_FENCED;
     } else if (driver_connection) {
         int abort = 1;
         bcp_control(driver_connection, BCPABORT, &abort);

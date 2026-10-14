@@ -41,3 +41,11 @@ with tempfile.TemporaryDirectory(prefix="ud-xlsx-append-") as folder:
         rows = actual.findall(f"{{{ns}}}sheetData/{{{ns}}}row")
         assert len(rows) == 3 and rows[1].find(f"{{{ns}}}c/{{{ns}}}f").text == "1+1"
         assert rows[2].find(f"{{{ns}}}c/{{{ns}}}is/{{{ns}}}t").text == "18446744073709551615"
+    # Positional compatibility alone cannot prove that an existing header still
+    # identifies the configured columns. Refuse mismatches before publication.
+    parts["xl/worksheets/sheet1.xml"] = parts["xl/worksheets/sheet1.xml"].replace(">label<", ">renamed<")
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as workbook:
+        for name, content in parts.items(): workbook.writestr(name, content.encode())
+    before = target.read_bytes()
+    subprocess.run([sys.argv[1], str(definition), "10"], check=True)
+    assert target.read_bytes() == before

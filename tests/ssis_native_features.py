@@ -89,5 +89,5 @@ with tempfile.TemporaryDirectory(prefix='ud-ssis-native-') as folder:
  with sqlite3.connect(d/'dimension.db') as db:assert db.execute('SELECT count(*) FROM dim').fetchone()[0]==3
  if A.million:
   d=root/'million-merge';d.mkdir();s=schema(field('lk'),field('lv'));left=[dict(lk=7,lv=i) for i in range(1000000)];l,lc=source(d,'left',left,s,251,dict(keys=[0],stable=True));del left;r,rc=source(d,'right',[dict(rk=7,rv=1)],schema(field('rk'),field('rv')),1,dict(keys=[0],stable=True));out,oc=sink(d,'out');p=package(d,[l,r,node('join','mergeJoin',leftKeys=['lk'],rightKeys=['rk']),out],[edge('left','join'),edge('right','join',input=1),edge('join','out')],[lc,rc,oc]);facts=run(d,p,'million-duplicate-group-low-budget',workers=8,memory=16777216);assert sum(1 for _ in (d/'out.ndjson').open())==1000000
-if A.evidence:pathlib.Path(A.evidence).write_text(json.dumps(dict(abi=9,platform='Linux',cases=results),ensure_ascii=False,indent=2)+'\n')
+if A.evidence:pathlib.Path(A.evidence).write_text(json.dumps(dict(abi=10,platform='Linux',cases=results),ensure_ascii=False,indent=2)+'\n')
 print('Native N1–N5 acceptance passed:',len(results),'cases',flush=True)

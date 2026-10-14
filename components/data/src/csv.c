@@ -403,8 +403,9 @@ ud_status ud_csv_discover(ud_context *ctx, const char *path, ud_string scope,
     reader.columns = header.n;
     reader.layout.columns = header.n;
     ud_field *fields = !status ? ud_alloc(ctx, header.n * sizeof(*fields)) : NULL;
+    uint8_t *negative = !status ? ud_alloc(ctx, header.n) : NULL;
     char **names = !status ? ud_alloc(ctx, header.n * sizeof(*names)) : NULL;
-    if (!status && (!fields || !names))
+    if (!status && (!fields || !names || !negative))
         status = UD_RESOURCE;
     for (uint32_t logical = 0; !status && logical < header.n; logical++) {
         uint32_t physical = physical_field(&reader.layout, logical);
@@ -446,7 +447,7 @@ ud_status ud_csv_discover(ud_context *ctx, const char *path, ud_string scope,
                         reader.layout.marker.length))
                 fields[logical].nullable = 1;
             else
-                status = ud_infer_scalar(ctx, fields + logical, data->text[physical],
+                status = ud_infer_scalar(ctx, fields + logical, negative + logical, data->text[physical],
                                          data->length[physical], -1);
         }
         record_free(&values);
@@ -458,6 +459,7 @@ ud_status ud_csv_discover(ud_context *ctx, const char *path, ud_string scope,
             ud_free(names[at]);
     ud_free(names);
     ud_free(fields);
+    ud_free(negative);
     record_free(&header);
     layout_clear(&reader.layout);
     if (reader.file)

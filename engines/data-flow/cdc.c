@@ -813,6 +813,8 @@ ud_status ud_cdc_register(ud_registry *registry) {
         "\"additionalProperties\":false}";
     const char *ids[] = {"mysql.cdc.source", "mariadb.cdc.source", "postgresql.cdc.source",
                          "sqlserver.cdc.source", "oracle.cdc.source"};
+    const char *names[] = {"MySQL CDC Source", "MariaDB CDC Source", "PostgreSQL CDC Source",
+                           "SQL Server CDC Source", "Oracle CDC Source"};
     const int32_t dialects[] = {UD_SQL_MYSQL, UD_SQL_MARIADB, UD_SQL_POSTGRESQL, UD_SQL_SQLSERVER,
                                 UD_SQL_ORACLE};
     for (uint32_t i = 0; i < 5; i++) {
@@ -820,7 +822,7 @@ ud_status ud_cdc_register(ud_registry *registry) {
             .struct_size = sizeof(descriptor),
             .abi_version = UD_ABI_VERSION,
             .id = {ids[i], (uint32_t)strlen(ids[i])},
-            .name = {ids[i], (uint32_t)strlen(ids[i])},
+            .name = {names[i], (uint32_t)strlen(names[i])},
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = {schema, sizeof(schema) - 1},
             .category = UD_COMPONENT_SOURCE,

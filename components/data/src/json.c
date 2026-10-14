@@ -451,6 +451,7 @@ ud_status ud_json_discover(ud_context *ctx, const char *path, ud_string scope,
     if (!reader.file)
         return UD_IO;
     ud_field *fields = NULL;
+    uint8_t *negative = NULL;
     uint32_t count = 0, capacity = 0;
     ud_status status = UD_OK;
     for (uint32_t row = 0; !status && row < sample_rows; row++) {
@@ -485,14 +486,21 @@ ud_status ud_json_discover(ud_context *ctx, const char *path, ud_string scope,
                         break;
                     }
                     ud_field *allocated = ud_alloc(ctx, next * sizeof(*allocated));
-                    if (!allocated) {
+                    uint8_t *signs = ud_alloc(ctx, next);
+                    if (!allocated || !signs) {
+                        ud_free(allocated);
+                        ud_free(signs);
                         status = UD_RESOURCE;
                         break;
                     }
                     if (count)
                         memcpy(allocated, fields, count * sizeof(*fields));
+                    if (count)
+                        memcpy(signs, negative, count);
                     ud_free(fields);
+                    ud_free(negative);
                     fields = allocated;
+                    negative = signs;
                     capacity = next;
                 }
                 fields[at].name = ud_strdup_n(ctx, name, length);
@@ -509,7 +517,7 @@ ud_status ud_json_discover(ud_context *ctx, const char *path, ud_string scope,
             if (!status && kind != UD_JSON_NULL)
                 status = ud_json_text(value, &text, &size);
             if (!status)
-                status = ud_infer_scalar(ctx, fields + at, text, size, kind);
+                status = ud_infer_scalar(ctx, fields + at, negative + at, text, size, kind);
         }
         ud_json_destroy(object);
         ud_bytes_clear(&raw);
@@ -519,6 +527,7 @@ ud_status ud_json_discover(ud_context *ctx, const char *path, ud_string scope,
     for (uint32_t at = 0; at < count; at++)
         ud_free((void *)fields[at].name);
     ud_free(fields);
+    ud_free(negative);
     fclose(reader.file);
     return status;
 }

@@ -634,6 +634,7 @@ ud_status ud_cache_components_register(ud_registry *registry) {
         "\"cache\",\"mapping\"],\"additionalProperties\":false}"};
     for (uint32_t i = 0; i < 3; i++) {
         const char *name = i == 2 ? "dbLookup" : i ? "cacheLookup" : "cacheBuild";
+        const char *label = i == 2 ? "Database Lookup" : i ? "Lookup Cache" : "Cache Build";
         ud_string declaration = {schemas[0], (uint32_t)strlen(schemas[0])};
         if (i)
             UD_TRY(ud_operator_configuration_schema(UD_OPERATOR_CACHE_LOOKUP, &declaration));
@@ -641,7 +642,7 @@ ud_status ud_cache_components_register(ud_registry *registry) {
             .struct_size = sizeof(d),
             .abi_version = UD_ABI_VERSION,
             .id = {name, (uint32_t)strlen(name)},
-            .name = {name, (uint32_t)strlen(name)},
+            .name = {label, (uint32_t)strlen(label)},
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = declaration,
             .category = i ? UD_COMPONENT_TRANSFORM : UD_COMPONENT_DESTINATION,
