@@ -19,3 +19,5 @@ Web 登录使用 HttpOnly、SameSite=Strict 会话 Cookie；修改操作还校�
 Management 不加载业务程序集。组件检查、Native 校验、Schema 发现、编译和执行统一由独立 Worker 入口完成。程序集必须符合 SDK/协议版本、固定 SHA-256 和授权路径；加载失败封锁当前 Registry，直到完整销毁。
 
 宿主按程序集哈希显式声明可信扩展。未列入清单的扩展在 Linux 必须经 systemd 用户服务的 cgroup 限制及 bubblewrap 命名空间执行，只挂载本租户资源、本次 Journal/控制目录和本次凭据。网络命名空间默认隔离；该模式当前不提供外部网络访问。没有可用用户 cgroup/命名空间时拒绝运行。Windows 当前没有配置不可信代码沙箱时也拒绝运行。可信扩展属于运行账户的信任边界。验收中应分别记录沙箱实际运行、拒绝越权、超时终止与缺失平台能力，不能把拒绝执行记为完整沙箱验收成功。
+
+Worker 在同步绑定本次控制端口后才发送带 `controlReady=true` 的 ready 帧；管理服务持久化原生执行 ID 后才发布 Running 并授权 start。开始执行前的 EOF 或拒绝仍会取消并关闭控制端口。没有控制就绪声明的旧 Worker 明确拒绝。控制通道连接失败统一为 I/O 故障，管理 API 返回不可用状态。

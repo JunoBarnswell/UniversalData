@@ -290,6 +290,8 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
                 }
             }
             var ready = await Read("ready"); string nativeId = ready.GetProperty("executionId").GetString()!;
+            if (!ready.TryGetProperty("controlReady",out var controlReady) || controlReady.ValueKind != JsonValueKind.True)
+                throw new InvalidDataException("Worker control endpoint is not ready");
             foreach(var observed in pendingEvents) {
                 if (observed.ExecutionId != nativeId) throw new InvalidDataException("Initial event identity differs from execution"); catalog.Record(observed);
             }

@@ -37,24 +37,43 @@ public static class WorkerControl
         }
         var socket = new Socket(AddressFamily.Unix,SocketType.Stream,ProtocolType.Unspecified);
         try { await socket.ConnectAsync(new UnixDomainSocketEndPoint(SocketPath(directory,ticket)),cancellation); return new NetworkStream(socket,ownsSocket:true); }
+        catch (SocketException error) { socket.Dispose(); throw new IOException("Worker control endpoint is unavailable",error); }
         catch { socket.Dispose(); throw; }
     }
-    public static async Task Serve(string directory,string ticket,string token,Execution execution,CancellationToken cancellation,SecretFilter? filter = null)
+    // Binding is synchronous: returning from Serve guarantees the endpoint is
+    // accepting connections. Worker publishes ready only after this boundary.
+    public static Task Serve(string directory,string ticket,string token,Execution execution,CancellationToken cancellation,SecretFilter? filter = null)
     {
-        Socket? listener = null; string? address = null;
-        if (!OperatingSystem.IsWindows()) {
-            Directory.CreateDirectory(directory); File.SetUnixFileMode(directory,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            address = SocketPath(directory,ticket); if (File.Exists(address)) File.Delete(address);
-            listener = new Socket(AddressFamily.Unix,SocketType.Stream,ProtocolType.Unspecified);
-            listener.Bind(new UnixDomainSocketEndPoint(address)); File.SetUnixFileMode(address,UnixFileMode.UserRead | UnixFileMode.UserWrite); listener.Listen(4);
+        cancellation.ThrowIfCancellationRequested();
+        Socket? listener = null; string? address = null; NamedPipeServerStream? firstPipe = null;
+        try {
+            if (!OperatingSystem.IsWindows()) {
+                Directory.CreateDirectory(directory); File.SetUnixFileMode(directory,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                address = SocketPath(directory,ticket); if (File.Exists(address)) File.Delete(address);
+                listener = new Socket(AddressFamily.Unix,SocketType.Stream,ProtocolType.Unspecified);
+                listener.Bind(new UnixDomainSocketEndPoint(address)); File.SetUnixFileMode(address,UnixFileMode.UserRead | UnixFileMode.UserWrite); listener.Listen(4);
+            } else firstPipe = Pipe(ticket);
+            var serving = ServeOpened(ticket,token,execution,cancellation,filter,listener,address,firstPipe);
+            if (serving.IsCompleted) serving.GetAwaiter().GetResult();
+            return serving;
+        } catch {
+            listener?.Dispose(); firstPipe?.Dispose();
+            if (address is not null && File.Exists(address)) File.Delete(address);
+            throw;
         }
+    }
+    private static NamedPipeServerStream Pipe(string ticket) => new(Name(ticket),PipeDirection.InOut,1,
+        PipeTransmissionMode.Byte,PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+    private static async Task ServeOpened(string ticket,string token,Execution execution,CancellationToken cancellation,SecretFilter? filter,
+                                          Socket? listener,string? address,NamedPipeServerStream? firstPipe)
+    {
         try {
             while(!cancellation.IsCancellationRequested) {
                 Stream? stream = null;
                 try {
                     if (listener is not null) stream = new NetworkStream(await listener.AcceptAsync(cancellation),ownsSocket:true);
                     else {
-                        var pipe = new NamedPipeServerStream(Name(ticket),PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                        var pipe = firstPipe ?? Pipe(ticket); firstPipe = null;
                         stream = pipe; await pipe.WaitForConnectionAsync(cancellation);
                     }
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation); timeout.CancelAfter(TimeSpan.FromSeconds(5));
@@ -79,6 +98,6 @@ public static class WorkerControl
                 } catch(Exception error) when(error is IOException or SocketException or OperationCanceledException) { if (cancellation.IsCancellationRequested) break; }
                 finally { if (stream is not null) await stream.DisposeAsync(); }
             }
-        } finally { listener?.Dispose(); if (address is not null && File.Exists(address)) File.Delete(address); }
+        } finally { firstPipe?.Dispose(); listener?.Dispose(); if (address is not null && File.Exists(address)) File.Delete(address); }
     }
 }

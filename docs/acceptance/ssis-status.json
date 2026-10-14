@@ -945,8 +945,8 @@
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
-      "progress": "sql.command uses Native per-row parameter binding, common error ports/savepoints and external-write intents. Unknown response cannot replay automatically and accepted facts share the transaction journal. Compilation passed; dedicated row-command constraint/recovery behavior still requires acceptance.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "progress": "Native row commands now own a local transaction or a complete shared-transaction Savepoint operation, bind repeated fields, and share typed target outcome records. Mixed errors, actual process kills, rollback retry and unknown fencing passed on SQLite; real PostgreSQL/MySQL/MariaDB/SQL Server row-command tests passed. Windows/OCI and the wider connection-fault matrix remain unverified.",
+      "verificationScope": "Current PR #7 native row-command and driver acceptance; wider platform/fault coverage remains Partial.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [

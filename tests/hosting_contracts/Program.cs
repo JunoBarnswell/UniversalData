@@ -57,6 +57,7 @@ static async Task WorkerHandshake(string worker)
         var identity = HostIdentity.Operator("local");
         var request = new WorkerRequest(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"execute",policy,identity,
             "{\"version\":10,\"id\":\"worker\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}",
+            Debug:JsonSerializer.SerializeToElement(new { previewRows = 1,breakpoints = Array.Empty<string>() }),
             ControlReference:new ParameterVault(policy).Store("{\"token\":\"test-control-capability-294871439\"}"));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         async Task<JsonElement> Read(System.Diagnostics.Process process,string kind) {
@@ -77,6 +78,17 @@ static async Task WorkerHandshake(string worker)
             try {
                 await Send(process,request); var ready = await Read(process,"ready");
                 Require(Guid.TryParse(ready.GetProperty("executionId").GetString(),out var id) && id.Version == 4,"Native did not generate an execution ID");
+                Require(ready.GetProperty("controlReady").GetBoolean(),"Worker omitted the control readiness contract");
+                // Do not send start yet. Ready must already include a usable,
+                // authenticated control endpoint, independent of OS scheduling.
+                var beforeStart = await WorkerControl.Send(policy.ControlDirectory(request.Ticket),request.Ticket,
+                    "test-control-capability-294871439","snapshot",cancellation:timeout.Token);
+                Require(!beforeStart.GetProperty("paused").GetBoolean(),"Unstarted execution reported a breakpoint");
+                try {
+                    await WorkerControl.Send(policy.ControlDirectory(request.Ticket),request.Ticket,"incorrect-capability","snapshot",cancellation:timeout.Token);
+                    throw new Exception("Unowned Worker control capability accepted");
+                } catch(UniversalDataException error) when(error.Code == StatusCode.Auth) { }
+
                 await process.StandardInput.WriteLineAsync("start"); await process.StandardInput.FlushAsync(timeout.Token);
                 var terminal = await Read(process,"terminal");
                 Require(terminal.GetProperty("executionId").GetString() == ready.GetProperty("executionId").GetString() &&
@@ -126,6 +138,6 @@ static async Task WorkerHandshake(string worker)
                 Require(process.ExitCode != 0 && result.Length == 0,"Stale Worker protocol performed an operation"); await errors;
             } finally { if (!process.HasExited) await WorkerLauncher.Terminate(process,request.Ticket,false); }
         }
-        Console.WriteLine("Native ID handshake, private Journal isolation, terminal identity, pipe loss and stale protocol rejection passed");
+        Console.WriteLine("Native ID/control readiness handshake, capability denial, private Journal isolation, terminal identity, pipe loss and stale protocol rejection passed");
     } finally { Directory.Delete(directory,true); }
 }

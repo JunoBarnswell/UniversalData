@@ -59,26 +59,27 @@ void Observe(ExecutionEvent value) {
 }
 using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,directory,request.Resume,observe:Observe,eventSequenceStart:request.EventSequence);
 if (request.Debug is { } debug) executionRun.ConfigureDebug(debug.GetRawText());
-ulong readyRevision = request.Resume ? checked(request.Revision + 1) : 1;
-catalog.Record(executionRun,readyRevision);
-Reply(new { version = ProductInfo.Protocol, kind = "ready", ticket = request.Ticket, executionId = executionRun.Id, revision = readyRevision,
-    record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,readyRevision)!) });
-var start = await WorkerProtocol.ReadLine(Console.In,64); if (start != "start") return 2;
-executionRun.Start();
 using var controls = new CancellationTokenSource();
 using var controlDocument = JsonDocument.Parse(new ParameterVault(policy).Resolve(request.ControlReference));
 string controlToken = controlDocument.RootElement.GetProperty("token").GetString()!;
 var controlServer = WorkerControl.Serve(policy.ControlDirectory(request.Ticket),request.Ticket,controlToken,executionRun,controls.Token,secretFilter);
-_ = Task.Run(async () => {
-    while (await WorkerProtocol.ReadLine(Console.In,64) is { } command) if (command == "cancel") executionRun.Cancel();
-    executionRun.Cancel();
-});
-int resultCode = 0;
-try { while (!executionRun.Wait(200)) { } } catch (UniversalDataException error) { resultCode = error.Status; }
-controls.Cancel(); await controlServer;
-var metrics = executionRun.Metrics;
-ulong terminalRevision = checked(readyRevision + 1); catalog.Record(executionRun,terminalRevision);
-Reply(new { version = ProductInfo.Protocol, kind = "terminal", ticket = request.Ticket, executionId = executionRun.Id,
-    state = metrics.State.ToString(), result = resultCode, metrics, revision = terminalRevision,
-    record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,terminalRevision)!) });
-return resultCode == 0 ? 0 : 1;
+try {
+    ulong readyRevision = request.Resume ? checked(request.Revision + 1) : 1;
+    catalog.Record(executionRun,readyRevision);
+    Reply(new { version = ProductInfo.Protocol, kind = "ready", controlReady = true, ticket = request.Ticket, executionId = executionRun.Id, revision = readyRevision,
+        record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,readyRevision)!) });
+    var start = await WorkerProtocol.ReadLine(Console.In,64); if (start != "start") return 2;
+    executionRun.Start();
+    _ = Task.Run(async () => {
+        while (await WorkerProtocol.ReadLine(Console.In,64) is { } command) if (command == "cancel") executionRun.Cancel();
+        executionRun.Cancel();
+    });
+    int resultCode = 0;
+    try { while (!executionRun.Wait(200)) { } } catch (UniversalDataException error) { resultCode = error.Status; }
+    var metrics = executionRun.Metrics;
+    ulong terminalRevision = checked(readyRevision + 1); catalog.Record(executionRun,terminalRevision);
+    Reply(new { version = ProductInfo.Protocol, kind = "terminal", ticket = request.Ticket, executionId = executionRun.Id,
+        state = metrics.State.ToString(), result = resultCode, metrics, revision = terminalRevision,
+        record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,terminalRevision)!) });
+    return resultCode == 0 ? 0 : 1;
+} finally { controls.Cancel(); await controlServer; }
