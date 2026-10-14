@@ -9796,7 +9796,8 @@
         "Derived writes bind to immutable original input; Add and Replace share one plan and row error ownership",
         "Task completion snapshots join the existing transaction Journal before prepare; package and task transaction scopes use a stable Native activation identity. Tentative row/error counters publish with the same decision.",
         "MySQL/MariaDB claim a unique receipt inside the business transaction before effects; missing-receipt gap probes are removed. Serializable isolation is preserved.",
-        "Compute internal state pages obey both row and byte limits, independent of business batch contents; logical field domains are removed from opaque aggregate state."
+        "Compute internal state pages obey both row and byte limits, independent of business batch contents; logical field domains are removed from opaque aggregate state.",
+        "Generic DateTime keys distinguish unzoned wall clocks from offset-qualified instants; explicit offsets for the same instant compare/hash equally, including in Native grouping."
       ],
       "implementationInProgress": true,
       "status": "Partial; Linux Native invariants accepted; GoldenVerified is false for every item",
@@ -13483,7 +13484,8 @@
             "components/data/src/arrow.c"
           ],
           "nativeChecks": [
-            "ssis_native_expression_contract"
+            "ssis_native_expression_contract",
+            "shared_value_semantics"
           ],
           "states": [
             "Implemented",
@@ -13507,7 +13509,8 @@
             "components/data/src/arrow.c"
           ],
           "nativeChecks": [
-            "ssis_native_expression_contract"
+            "ssis_native_expression_contract",
+            "shared_value_semantics"
           ],
           "states": [
             "Implemented",
@@ -13531,7 +13534,8 @@
             "components/data/src/arrow.c"
           ],
           "nativeChecks": [
-            "ssis_native_expression_contract"
+            "ssis_native_expression_contract",
+            "shared_value_semantics"
           ],
           "states": [
             "Implemented",
@@ -13555,7 +13559,8 @@
             "components/data/src/arrow.c"
           ],
           "nativeChecks": [
-            "ssis_native_expression_contract"
+            "ssis_native_expression_contract",
+            "shared_value_semantics"
           ],
           "states": [
             "Implemented",
@@ -13579,7 +13584,8 @@
             "components/data/src/arrow.c"
           ],
           "nativeChecks": [
-            "ssis_native_expression_contract"
+            "ssis_native_expression_contract",
+            "shared_value_semantics"
           ],
           "states": [
             "Implemented",
@@ -13603,7 +13609,8 @@
             "components/data/src/arrow.c"
           ],
           "nativeChecks": [
-            "ssis_native_expression_contract"
+            "ssis_native_expression_contract",
+            "shared_value_semantics"
           ],
           "states": [
             "Implemented",

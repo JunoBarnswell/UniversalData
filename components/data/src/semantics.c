@@ -22,6 +22,8 @@ int32_t ud_value_compare(const ud_value *a, const ud_value *b) {
                  : (a->text_length > b->text_length) - (a->text_length < b->text_length);
     }
     if (a->type == UD_DATETIME) {
+        if (a->datetime.has_offset != b->datetime.has_offset)
+            return (a->datetime.has_offset > b->datetime.has_offset) ? 1 : -1;
         int64_t x = a->datetime.ticks - (int64_t)a->datetime.offset_minutes * 600000000,
                 y = b->datetime.ticks - (int64_t)b->datetime.offset_minutes * 600000000;
         return (x > y) - (x < y);
@@ -91,10 +93,12 @@ ud_status ud_value_canonical(const ud_value *v, ud_status (*emit)(void *, const 
         UD_TRY(canonical_integer(emit, user, v->decimal.low));
         return canonical_integer(emit, user, (uint64_t)v->decimal.high);
     }
-    if (v->type == UD_DATETIME)
+    if (v->type == UD_DATETIME) {
+        UD_TRY(canonical_integer(emit, user, (uint64_t)v->datetime.has_offset));
         return canonical_integer(
             emit, user,
             (uint64_t)(v->datetime.ticks - (int64_t)v->datetime.offset_minutes * 600000000));
+    }
     if (v->type == UD_INTERVAL) {
         UD_TRY(canonical_integer(emit, user, (uint64_t)(int64_t)v->interval.months));
         UD_TRY(canonical_integer(emit, user, (uint64_t)(int64_t)v->interval.days));
