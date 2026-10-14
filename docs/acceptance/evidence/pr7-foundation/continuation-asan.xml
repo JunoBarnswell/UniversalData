@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="3"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="1"
+	timestamp="2026-10-14T14:50:35"
+	>
+	<testcase name="schema_physical_identity_and_nested_evolution" classname="schema_physical_identity_and_nested_evolution" time="0.0142748" status="run">
+		<properties/>
+		<system-out>Physical/logical identity, nested rename/reorder/projection, exact decimal widening, nulls, provenance, Wire/Arrow/JSON and drop/add refusal passed
+</system-out>
+	</testcase>
+	<testcase name="sql_command_records_recovery" classname="sql_command_records_recovery" time="1.53771" status="run">
+		<properties/>
+		<system-out>SQL row commands: mixed rows, repeated parameters, private transactions, error identities, actual process kills and unknown-commit fencing passed
+</system-out>
+	</testcase>
+	<testcase name="catalog_leases_process_recovery" classname="catalog_leases_process_recovery" time="0.561727" status="run">
+		<properties/>
+		<system-out>Real Catalog process death, expiry, increasing fences, stale writes/renewal, pool ceilings, latest revisions and tenant isolation passed
+</system-out>
+	</testcase>
+</testsuite>

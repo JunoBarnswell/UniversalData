@@ -165,7 +165,18 @@ int main(int argc, char **argv) {
         if (dialect==UD_SQL_ORACLE)
             snprintf(statement,sizeof(statement),"SELECT \"id\",\"amount\",\"label\" FROM %s ORDER BY \"id\"",sql_table);
         read.batch_size=capacity; read.sql=str(statement);
-        OK(ud_connection_read_open(connection,&read,schema));
+        /* The two target tables have different physical incarnations. Compare
+         * their values under one declared logical verification schema, while
+         * leaving the actual delivery/receipt schemas and identities intact. */
+        ud_field verification_fields[3];
+        for (uint32_t at=0;at<3;at++) {
+            verification_fields[at]=fields[at];
+            verification_fields[at].physical_identity=(ud_id){0};
+            verification_fields[at].lineage=NULL;verification_fields[at].lineage_count=0;
+            OK(ud_id_make(ctx,str("bulk-value-verification"),(ud_string){fields[at].name,fields[at].name_length},&verification_fields[at].identity));
+        }
+        ud_batch *verification_schema=NULL;OK(ud_batch_create(ctx,verification_fields,3,0,&verification_schema));
+        OK(ud_connection_read_open(connection,&read,verification_schema));ud_batch_destroy(verification_schema);
         ud_batch *signatures=NULL; OK(ud_batch_create(ctx,signature_fields,2,(uint32_t)batches,&signatures));
         uint64_t verified=0;
         for (;;) {

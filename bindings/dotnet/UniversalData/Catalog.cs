@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 namespace UniversalData;
 
 public enum CatalogKind { Project = 1, Package, Environment, Deployment, Execution, Event, Audit }
+public sealed record CatalogLease(CatalogKind Kind,string Id,string Owner,ulong Generation,ulong UntilMilliseconds);
 
 /// <summary>Projection of the Native SQLite Catalog; Native owns storage and validation.</summary>
 public sealed class Catalog : IDisposable
@@ -11,13 +12,19 @@ public sealed class Catalog : IDisposable
     private readonly Native.Authorizer grant;
     private readonly object sync = new();
     private IntPtr catalog;
+    private int authorizing;
     public Catalog(string directory, string tenant, PackageAuthorizer authorize, bool createDirectory = true,
         ulong memoryLimit = 268435456)
     {
         ArgumentNullException.ThrowIfNull(authorize);
         context = DataOwnership.Context(memoryLimit);
         grant = (_, scope, resource, action) =>
-        { try { return authorize(Native.Text(scope), Native.Text(resource), (ConnectionAccess)action) ? 0 : 13; } catch { return 13; } };
+        {
+            using var callback=Execution.EnterCallback();Interlocked.Increment(ref authorizing);
+            try { return authorize(Native.Text(scope), Native.Text(resource), (ConnectionAccess)action) ? 0 : 13; }
+            catch { return 13; }
+            finally { Interlocked.Decrement(ref authorizing); }
+        };
         try
         {
             using var strings = new NativeStrings(directory, tenant);
@@ -47,6 +54,56 @@ public sealed class Catalog : IDisposable
             DataOwnership.Check(context, status); return DataOwnership.Text(text, length);
         }
     }
+    public void CompareExchange(CatalogKind kind,string id,ulong expectedRevision,string documentJson,CatalogLease? lease = null)
+    {
+        lock(sync) {
+            Open(); using var strings=new NativeStrings(id,documentJson,lease?.Owner ?? "");
+            var key=Key(kind,strings[0],checked(expectedRevision+1));
+            int result;
+            if (lease is null) result=Native.ud_catalog_compare_exchange_unleased(catalog,ref key,strings[1],expectedRevision,IntPtr.Zero);
+            else {
+                if (lease.Kind!=kind || lease.Id!=id) throw new ArgumentException("Lease differs from the document");
+                var guard=LeaseValue(lease,strings[0],strings[2]);
+                result=Native.ud_catalog_compare_exchange(catalog,ref key,strings[1],expectedRevision,ref guard);
+            }
+            DataOwnership.Check(context,result);
+        }
+    }
+    public CatalogLease? TryAcquireLease(CatalogKind kind,string id,string owner,uint durationMilliseconds = 30000,
+        string pool = "",uint capacity = 0)
+    {
+        lock(sync) {
+            Open(); using var strings=new NativeStrings(id,owner,pool);
+            var request=new Native.CatalogLeaseRequest { Size=(uint)Marshal.SizeOf<Native.CatalogLeaseRequest>(),Abi=ProductVersion.Abi,
+                Kind=(int)kind,Id=strings[0],Owner=strings[1],Pool=strings[2],Duration=durationMilliseconds,Capacity=capacity };
+            int status=Native.ud_catalog_lease_acquire(catalog,ref request,out var generation,out var until);
+            if (status==(int)StatusCode.Busy) return null;
+            DataOwnership.Check(context,status); return new(kind,id,owner,generation,until);
+        }
+    }
+    public CatalogLease RenewLease(CatalogLease lease,uint durationMilliseconds = 30000)
+    {
+        lock(sync) {
+            Open(); using var strings=new NativeStrings(lease.Id,lease.Owner);var value=LeaseValue(lease,strings[0],strings[1]);
+            DataOwnership.Check(context,Native.ud_catalog_lease_renew(catalog,ref value,durationMilliseconds,out var until));
+            return lease with { UntilMilliseconds=until };
+        }
+    }
+    public void ReleaseLease(CatalogLease lease)
+    {
+        lock(sync) {
+            Open(); using var strings=new NativeStrings(lease.Id,lease.Owner);var value=LeaseValue(lease,strings[0],strings[1]);
+            DataOwnership.Check(context,Native.ud_catalog_lease_release(catalog,ref value));
+        }
+    }
+    public bool LeaseActive(CatalogKind kind,string id)
+    {
+        lock(sync) { Open();using var strings=new NativeStrings(id);
+            DataOwnership.Check(context,Native.ud_catalog_lease_active(catalog,(int)kind,strings[0],out var active));return active!=0; }
+    }
+    private static Native.CatalogLease LeaseValue(CatalogLease lease,Native.StringValue id,Native.StringValue owner) =>
+        new() { Size=(uint)Marshal.SizeOf<Native.CatalogLease>(),Abi=ProductVersion.Abi,Kind=(int)lease.Kind,
+            Id=id,Owner=owner,Generation=lease.Generation };
     public string Query(string nativeQueryJson)
     {
         lock (sync)
@@ -111,10 +168,16 @@ public sealed class Catalog : IDisposable
     { lock (sync) { Open(); DataOwnership.Check(context, Native.ud_catalog_prune_events(catalog, beforeMilliseconds, limit, out var removed)); return removed; } }
     private static Native.CatalogKey Key(CatalogKind kind, Native.StringValue id, ulong revision) =>
         new() { Size = (uint)Marshal.SizeOf<Native.CatalogKey>(), Abi = ProductVersion.Abi, Kind = (int)kind, Id = id, Revision = revision };
-    private void Open() => ObjectDisposedException.ThrowIf(catalog == IntPtr.Zero, this);
+    private void Open() {
+        if (Volatile.Read(ref authorizing)!=0) throw new InvalidOperationException("Catalog authorization cannot reenter its handle");
+        ObjectDisposedException.ThrowIf(catalog==IntPtr.Zero,this);
+    }
     public void Dispose()
     {
-        lock (sync) { if (catalog == IntPtr.Zero) return; Native.ud_catalog_close(catalog); catalog = IntPtr.Zero; context.Dispose(); }
+        lock (sync) {
+            if (Volatile.Read(ref authorizing)!=0) throw new InvalidOperationException("Catalog authorization cannot dispose its handle");
+            if (catalog == IntPtr.Zero) return; Native.ud_catalog_close(catalog); catalog = IntPtr.Zero; context.Dispose();
+        }
         GC.KeepAlive(grant); GC.SuppressFinalize(this);
     }
     ~Catalog() { Dispose(); }
@@ -122,6 +185,18 @@ public sealed class Catalog : IDisposable
 
 internal static partial class Native
 {
+    [StructLayout(LayoutKind.Sequential)] internal struct CatalogLeaseRequest {
+        internal uint Size,Abi;internal int Kind;internal StringValue Id,Owner,Pool;internal uint Duration,Capacity;
+    }
+    [StructLayout(LayoutKind.Sequential)] internal struct CatalogLease {
+        internal uint Size,Abi;internal int Kind;internal StringValue Id,Owner;internal ulong Generation;
+    }
+    [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_lease_acquire(IntPtr catalog,ref CatalogLeaseRequest request,out ulong generation,out ulong until);
+    [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_lease_renew(IntPtr catalog,ref CatalogLease lease,uint duration,out ulong until);
+    [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_lease_release(IntPtr catalog,ref CatalogLease lease);
+    [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_lease_active(IntPtr catalog,int kind,StringValue id,out int active);
+    [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_compare_exchange(IntPtr catalog,ref CatalogKey key,StringValue json,ulong expected,ref CatalogLease lease);
+    [DllImport(Library,EntryPoint="ud_catalog_compare_exchange",CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_compare_exchange_unleased(IntPtr catalog,ref CatalogKey key,StringValue json,ulong expected,IntPtr lease);
     [StructLayout(LayoutKind.Sequential)] internal struct CatalogBinding
     { internal uint Size, Abi; internal StringValue DeploymentId; internal ulong DeploymentRevision;
       internal StringValue PackageId, ProjectParameters, PackageParameters; }

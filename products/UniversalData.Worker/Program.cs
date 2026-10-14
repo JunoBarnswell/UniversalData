@@ -4,6 +4,9 @@ using UniversalData.Hosting;
 
 if (args.Length != 0) throw new ArgumentException("Worker uses the private inherited-pipe request protocol");
 var input = await WorkerProtocol.ReadLine(Console.In,67108864) ?? throw new InvalidDataException("Missing Worker request");
+using(var envelope=JsonDocument.Parse(input))
+    if (!envelope.RootElement.TryGetProperty("contractRevision",out var contract) || contract.GetInt32()!=ProductInfo.WorkerRevision)
+        throw new InvalidDataException("Incompatible Worker contract revision");
 var request = JsonSerializer.Deserialize<WorkerRequest>(input,HostPolicy.JsonOptions) ?? throw new InvalidDataException("Invalid Worker request");
 if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket,"N",out _) || request.Policy is null ||
     request.Identity is null || request.Identity.Grants is null || !HostIdentity.ValidId(request.Identity.Tenant) ||
@@ -49,24 +52,45 @@ if (request.BindingSnapshot is { } snapshot) {
     packageJson = binding.Package; parameters = binding.Parameters;
 }
 var secretFilter = new SecretFilter(parameters);
+void PublishCatalog(CatalogKind kind,object records) => Reply(new { version=ProductInfo.Protocol,ticket=request.Ticket,
+    kind="catalog",catalogKind=(int)kind,records });
+void ReplayCatalog(CatalogKind kind,string id,ulong after) {
+    while(true) {
+        using var page=JsonDocument.Parse(catalog.Query(JsonSerializer.Serialize(new { kind=(int)kind,id,afterRevision=after,limit=100 },HostPolicy.JsonOptions)));
+        if (page.RootElement.GetArrayLength()==0) break;
+        PublishCatalog(kind,page.RootElement);
+        after=page.RootElement[page.RootElement.GetArrayLength()-1].GetProperty("revision").GetUInt64();
+    }
+}
+// Persisted Native records, not a host counter, determine both revision and
+// event continuation. A former Worker may have recorded facts after losing its
+// management pipe. Replay them before admitting another start handshake.
+ulong eventSequence=request.EventSequence;
+if (request.Resume) {
+    ReplayCatalog(CatalogKind.Execution,request.ExecutionId,request.Revision);
+    ReplayCatalog(CatalogKind.Event,request.ExecutionId,request.EventSequence);
+    eventSequence=Math.Max(eventSequence,catalog.LatestRevision(CatalogKind.Event,request.ExecutionId));
+}
 void Observe(ExecutionEvent value) {
     // Provider messages may contain data. Persist only Native structured error codes/locations at the product boundary.
     using var errors = JsonDocument.Parse(value.ErrorChain);
     var chain = errors.RootElement.EnumerateArray().Select(error => new {
         result = error.GetProperty("result").GetInt32(),taskId = error.GetProperty("taskId").GetString(),
         pipelineId = error.GetProperty("pipelineId").GetString(),componentId = error.GetProperty("componentId").GetString() });
-    Reply(new { version = ProductInfo.Protocol, ticket = request.Ticket, kind = "event", value = value with { ErrorChain = JsonSerializer.Serialize(chain,HostPolicy.JsonOptions) } });
+    catalog.Record(value with { ErrorChain=JsonSerializer.Serialize(chain,HostPolicy.JsonOptions) });
+    PublishCatalog(CatalogKind.Event,new[] { new { id=value.ExecutionId,revision=value.Sequence,
+        document=JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Event,value.ExecutionId,value.Sequence)!) } });
 }
-using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,directory,request.Resume,observe:Observe,eventSequenceStart:request.EventSequence);
+using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,directory,request.Resume,observe:Observe,eventSequenceStart:eventSequence);
 if (request.Debug is { } debug) executionRun.ConfigureDebug(debug.GetRawText());
 using var controls = new CancellationTokenSource();
 using var controlDocument = JsonDocument.Parse(new ParameterVault(policy).Resolve(request.ControlReference));
 string controlToken = controlDocument.RootElement.GetProperty("token").GetString()!;
 var controlServer = WorkerControl.Serve(policy.ControlDirectory(request.Ticket),request.Ticket,controlToken,executionRun,controls.Token,secretFilter);
 try {
-    ulong readyRevision = request.Resume ? checked(request.Revision + 1) : 1;
+    ulong readyRevision=checked(Math.Max(request.Revision,catalog.LatestRevision(CatalogKind.Execution,executionRun.Id))+1);
     catalog.Record(executionRun,readyRevision);
-    Reply(new { version = ProductInfo.Protocol, kind = "ready", controlReady = true, ticket = request.Ticket, executionId = executionRun.Id, revision = readyRevision,
+    Reply(new { version = ProductInfo.Protocol, kind = "ready", controlReady = true, historyComplete = true,ticket = request.Ticket, executionId = executionRun.Id, revision = readyRevision,
         record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,readyRevision)!) });
     var start = await WorkerProtocol.ReadLine(Console.In,64); if (start != "start") return 2;
     executionRun.Start();

@@ -18,7 +18,7 @@ export function defaults(schema: PropertySchema): Configuration { return Object.
 export function ports(component: Component) {
   return { inputs: component.inputs, outputs: component.outputs, error: component.errorOutput };
 }
-export interface DataField { name: string; type: string; nullable: boolean; identity?: string; children?: DataField[]; precision?: number; scale?: number; timezone?: string; keyOrder?: number; }
+export interface DataField { name: string; type: string; nullable: boolean; identity?: string; physicalIdentity?: string; lineage?: string[]; children?: DataField[]; precision?: number; scale?: number; timezone?: string; keyOrder?: number; }
 export interface DataSchema { version: number; fields: DataField[]; }
 export interface NativePort { id: string; name: string; direction: number; index: number; flags: number; }
 export interface BoundNode { id: string; inputCount: number; outputCount: number; ports: NativePort[]; inputs: (DataSchema | null)[]; outputs: DataSchema[]; }

@@ -35,13 +35,44 @@ typedef struct ud_catalog_options {
  * different document is CORRUPT. Tenant is part of each physical identity. */
 UD_API ud_status ud_catalog_open(ud_context *, const ud_catalog_options *, ud_catalog **);
 UD_API ud_status ud_catalog_put(ud_catalog *, const ud_catalog_key *, ud_string json);
+/* Native-only atomic ownership. The Catalog server's persisted UTC clock is
+ * monotone; clients must also stop their Worker on a missed renewal. Expiry
+ * revokes authority, it NEVER proves that external side effects were absent. */
+typedef struct ud_catalog_lease_request {
+    uint32_t struct_size, abi_version;
+    int32_t kind;
+    ud_string id, owner, pool;
+    uint32_t duration_ms, capacity; /* empty pool requires capacity=0. */
+} ud_catalog_lease_request;
+typedef struct ud_catalog_lease {
+    uint32_t struct_size, abi_version;
+    int32_t kind;
+    ud_string id, owner;
+    uint64_t generation; /* durable increasing fencing token; never reused. */
+} ud_catalog_lease;
+/* Acquire never returns a live lease, even to the same owner. Pool capacity is
+ * fixed by its first acquisition and checked on every later acquisition.
+ * ID/owner strings remain caller-owned; no returned pointer payloads. */
+UD_API ud_status ud_catalog_lease_acquire(ud_catalog *, const ud_catalog_lease_request *,
+                                          uint64_t *generation, uint64_t *until_ms);
+UD_API ud_status ud_catalog_lease_renew(ud_catalog *, const ud_catalog_lease *,
+                                        uint32_t duration_ms, uint64_t *until_ms);
+UD_API ud_status ud_catalog_lease_release(ud_catalog *, const ud_catalog_lease *);
+UD_API ud_status ud_catalog_lease_active(ud_catalog *, int32_t kind, ud_string id, int32_t *active);
+/* Append revision expected+1 atomically, or FENCED. After an object first uses
+ * a lease, every conditional write requires its current live fencing token.
+ * Unconditional versioned documents remain available for immutable Package /
+ * execution facts, but cannot overwrite a lease-protected object. */
+UD_API ud_status ud_catalog_compare_exchange(ud_catalog *, const ud_catalog_key *, ud_string json,
+                                             uint64_t expected_revision, const ud_catalog_lease *);
 /* Owned canonical JSON, released with ud_free. Missing key returns END. */
 UD_API ud_status ud_catalog_get(ud_catalog *, const ud_catalog_key *, char **json,
                                 uint32_t *length);
 /* Owned JSON array of {id,revision}; validates all returned envelopes. */
 UD_API ud_status ud_catalog_list(ud_catalog *, int32_t kind, char **json, uint32_t *length);
 /* Indexed bounded query. Strict native JSON: {kind,id?,afterId?,afterRevision?,
- * sinceMs?,untilMs?,limit?}. Tuple (id,revision) is the stable pagination cursor;
+ * sinceMs?,untilMs?,limit?,latestOnly?}. latestOnly selects current object heads.
+ * Tuple (id,revision) is the stable pagination cursor;
  * afterRevision without afterId requires an exact id filter. limit defaults to
  * 100 and must be 1..1000. Returns [{id,revision,document}] as owned JSON.
  * Time bounds select explicit timestampMs values in stored documents.

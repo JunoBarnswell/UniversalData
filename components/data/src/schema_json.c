@@ -50,11 +50,11 @@ static ud_status parse_fields(ud_context *ctx, const ud_json *array, uint32_t de
     *count = n;
     static const char *allowed[] = {"name",    "type",     "nullable",  "precision",
                                     "scale",   "timezone", "children",  "identity",
-                                    "lineage", "keyOrder", "dictionary"};
+                                    "lineage", "keyOrder", "dictionary", "physicalIdentity"};
     for (uint32_t j = 0; j < n; j++) {
         const ud_json *v = ud_json_at(array, j);
         ud_field *f = fields + j;
-        UD_TRY(ud_json_keys(v, allowed, 11));
+        UD_TRY(ud_json_keys(v, allowed, 12));
         UD_TRY(text_value(member(v, "name"), &f->name, &f->name_length));
         const ud_json *id = member(v, "identity"), *lineage = member(v, "lineage");
         if (id) {
@@ -62,6 +62,11 @@ static ud_status parse_fields(ud_context *ctx, const ud_json *array, uint32_t de
             uint32_t bytes = 0;
             UD_TRY(text_value(id, &hex, &bytes));
             UD_TRY(ud_id_parse((ud_string){hex, bytes}, &f->identity));
+        }
+        if (member(v,"physicalIdentity")) {
+            ud_string physical={0};
+            UD_TRY(text_value(member(v,"physicalIdentity"),&physical.data,&physical.length));
+            UD_TRY(ud_id_parse(physical,&f->physical_identity));
         }
         if (lineage) {
             if (!id || ud_json_kind(lineage) != UD_JSON_ARRAY || ud_json_size(lineage) > 4096)
@@ -177,6 +182,11 @@ static ud_status emit_fields(ud_bytes *bytes, const ud_field *fields, uint32_t c
         ud_id_format(f->identity, identity);
         UD_TRY(ud_bytes_put(bytes, ",\"identity\":", 12));
         UD_TRY(ud_json_quote(bytes, identity, 32));
+        if (f->physical_identity.high || f->physical_identity.low) {
+            ud_id_format(f->physical_identity,identity);
+            UD_TRY(ud_bytes_put(bytes,",\"physicalIdentity\":",20));
+            UD_TRY(ud_json_quote(bytes,identity,32));
+        }
         UD_TRY(ud_bytes_put(bytes, ",\"lineage\":[", 12));
         for (uint32_t k = 0; k < f->lineage_count; k++) {
             if (k)

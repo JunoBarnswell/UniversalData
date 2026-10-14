@@ -57,6 +57,14 @@ public final class JavaProduct {
             require(catalog.latestRevision(Catalog.Kind.PACKAGE,"java-product")==-1L);
             require(catalog.get(Catalog.Kind.PACKAGE,"java-product",-1L).contains("java-product"));
             require(catalog.query("{\"kind\":2,\"id\":\"java-product\"}").contains("18446744073709551615"));
+            Catalog.Lease lease=catalog.tryAcquireLease(Catalog.Kind.AUDIT,"run/sdk","java-node",30000,"sdk-pool",1);
+            require(lease!=null && lease.generation()==1 && catalog.leaseActive(Catalog.Kind.AUDIT,"run/sdk"));
+            require(catalog.tryAcquireLease(Catalog.Kind.AUDIT,"run/sdk","other-node",30000,"sdk-pool",1)==null);
+            catalog.compareExchange(Catalog.Kind.AUDIT,"run/sdk",0,"{\"version\":10,\"id\":\"run/sdk\",\"state\":\"Queued\"}",lease);
+            status(17,()->catalog.compareExchange(Catalog.Kind.AUDIT,"run/sdk",0,"{\"version\":10,\"id\":\"run/sdk\"}",lease));
+            catalog.renewLease(lease,30000);catalog.releaseLease(lease);
+            require(!catalog.leaseActive(Catalog.Kind.AUDIT,"run/sdk"));
+            status(17,()->catalog.renewLease(lease,30000));
             try(Execution execution=execution(EMPTY,null,catalog::record)) {
                 execution.execute();require(catalog.latestRevision(Catalog.Kind.EVENT,execution.id())>2);
                 long latest=catalog.latestRevision(Catalog.Kind.EVENT,execution.id());

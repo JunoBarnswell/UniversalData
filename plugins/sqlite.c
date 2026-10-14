@@ -874,13 +874,13 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
     *out = (ud_plugin_api){sizeof(*out),
                            UD_PLUGIN_ABI,
                            "org.universaldata.connector.sqlite",
-                           "1.0.0",
+                           UD_SDK_VERSION,
                            UD_PLUGIN_CONNECTOR,
                            UD_CAP_READ | UD_CAP_WRITE | UD_CAP_TRANSACTION | UD_CAP_THREAD_SAFE,
                            initialize,
                            destroy,
                            plugin_shutdown,
                            &connector,
-                           NULL};
+                           NULL,sizeof(ud_field),sizeof(ud_value)};
     return UD_OK;
 }

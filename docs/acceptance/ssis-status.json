@@ -19,7 +19,7 @@
   },
   "candidate": {
     "branch": "codex/etl-architecture-advanced-extensions",
-    "state": "PR #7 foundation code is pushed. Linux PRODUCT build, 67 core tests, source/Designer checks and real browser/Worker recovery passed; full task implementation and release gates remain incomplete.",
+    "state": "Draft PR #7 continuation: Linux identity/projection and multi-process ownership/history contracts passed current scoped acceptance. SQL Server XA compiles but its actual recovery resource remains Blocked. Complete Schema state migration, Kafka/Lakehouse and cross-machine agents are still incomplete; production release is not certified.",
     "sourceCommit": "",
     "sourceFingerprint": "",
     "mergeEvidence": null,

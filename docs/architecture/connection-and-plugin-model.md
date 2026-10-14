@@ -31,7 +31,7 @@ PostgreSQL、SQLite、OCI 以及能力探测证明支持事务的 SQL Server/Pos
 
 MySQL/MariaDB 先在本行事务内持有目标元数据锁，再证明 InnoDB、触发器可见权限及不存在触发器。分析使用 Native SQL 分析器，当前只接受可证明的单目标 INSERT/UPDATE/DELETE 子集，拒绝多目标写入、INSERT SELECT、自定义函数、触发器和无法证明的语法。仅通过角色间接获得的 TRIGGER 权限尚不接受。MyISAM 和缺少证明的资源在业务写入前拒绝。
 
-普通事务和持久事务参与者是独立能力。SQL Server ODBC 当前具有普通事务及 BCP，尚未实现可靠的跨库 Prepare/Resolve/Recover；不能把它加入全局事务并模拟成功。PostgreSQL、MySQL/MariaDB、OCI 的持久参与者继续由 Native 协调器和同一 Journal 管理。
+普通事务和持久事务参与者是独立能力。SQL Server 的 Microsoft ODBC 17.3+ 资源通过官方 SQL_ATTR_ENLIST_IN_XA / XACALLPARAM 直接执行 XA start/end/prepare/commit/rollback/recover；没有 JDBC 或另一事务协调器。只有真实恢复扫描成功的资源才声明参与能力；未配置 DTC 的服务继续提供普通 SQL/BCP。分支先在同一事务写入摘要回执，恢复使用锁定读取避免 RCSI 将未提交回执误判为不存在。prepared 分支不随连接销毁回滚。SQL Server DTC 不支持 Savepoint，行错误隔离在写入前明确拒绝。PostgreSQL、MySQL/MariaDB、OCI 的持久参与者继续由 Native 协调器和同一 Journal 管理。
 
 ## 恢复事实
 
@@ -41,10 +41,10 @@ MySQL/MariaDB 先在本行事务内持有目标元数据锁，再证明 InnoDB�
 
 Applied 结果使用现有事务事实信封，仅在 Native 协调决策确认提交后发布。Epoch、错误目标及来源位置确认继续使用现有屏障；没有另建恢复系统。普通 REST 的响应确认、幂等和回执能力分别声明，不互相冒充。
 
-检查点格式修订为 2，协议族保持 10；旧修订明确拒绝恢复，旧文件保留。插件公共结构增加行命令证明与事务控制原语，旧插件因结构大小不匹配而拒绝，必须重新构建。
+检查点格式修订为 3，协议族保持 10；旧修订明确拒绝恢复，旧文件保留。插件公共结构增加行命令证明与事务控制原语，旧插件因结构大小不匹配而拒绝，必须重新构建。
 
 ## 验收范围
 
 当前 Linux 验收使用真实 SQLite 混合行、重复参数、同连接并发 Savepoint、独立行提交、外部回滚、人工恢复、进程终止和未知提交禁止重放。PostgreSQL、MySQL、MariaDB、SQL Server 真实服务验证行命令、普通 SQL 与 Native Bulk。百万行装载逐字段回读并比较完整结果签名，写入时间与生成、回读时间分别记录。
 
-Windows、OCI TCPS、跨库 SQL Server 参与者、完整连接中断/超时故障矩阵仍须分别记录代码缺口或验证受阻，不能根据上述 Linux 结果判定全部产品交付完成。
+本批 SQL Server XA、混合 PostgreSQL/SQL Server 参与者及新增 Schema/Catalog 验收尚待执行。Windows、OCI TCPS、完整连接中断/超时故障矩阵仍须分别记录代码缺口或验证受阻，不能根据上述 Linux 结果判定全部产品交付完成。

@@ -235,7 +235,10 @@ static ud_status copy_field(ud_context *ctx, const ud_field *f, ud_id parent, ud
             return UD_SCHEMA; /* Origins cannot bind an anonymous result. */
         char scope[33];
         ud_id_format(parent, scope);
-        s = ud_id_make(ctx, (ud_string){scope, 32}, (ud_string){f->name, f->name_length},
+        char physical[33];
+        ud_id_format(f->physical_identity,physical);
+        ud_string symbol=id_empty(f->physical_identity) ? (ud_string){f->name,f->name_length} : (ud_string){physical,32};
+        s = ud_id_make(ctx, (ud_string){scope, 32}, symbol,
                        &out->identity);
         if (!s)
             s = lineage_copy(ctx, &out->identity, 1, (ud_id **)&out->lineage, &out->lineage_count);
@@ -277,6 +280,7 @@ static ud_status derive_field(ud_context *ctx, const ud_field *source, ud_string
     if (depth > 32)
         return UD_SCHEMA;
     ud_field spec = *source;
+    spec.physical_identity=(ud_id){0};
     spec.name = name.data;
     spec.name_length = name.length;
     UD_TRY(ud_id_make(ctx, scope, name, &spec.identity));
@@ -329,7 +333,8 @@ int32_t ud_field_matches(const ud_field *a, const ud_field *b, int32_t mode) {
          (a->name_length && memcmp(a->name, b->name, a->name_length))))
         return 0;
     if (mode == UD_FIELD_PORT) {
-        if (ud_id_compare(a->identity, b->identity) || a->lineage_count != b->lineage_count)
+        if (ud_id_compare(a->identity, b->identity) ||
+            ud_id_compare(a->physical_identity,b->physical_identity) || a->lineage_count != b->lineage_count)
             return 0;
         for (uint32_t j = 0; j < a->lineage_count; j++)
             if (ud_id_compare(a->lineage[j], b->lineage[j]))

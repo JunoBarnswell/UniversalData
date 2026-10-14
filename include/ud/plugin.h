@@ -52,7 +52,7 @@ typedef struct ud_host_api {
     int32_t (*compare_value)(const ud_value *, const ud_value *);
     ud_status (*compile_preimage)(ud_context *, int32_t, int32_t, const ud_write_options *,
                                   const ud_batch *, uint32_t, ud_sql_statement *);
-    ud_status (*schema_from_metadata)(ud_context *, const ud_batch *, ud_string, int32_t,
+    ud_status (*schema_from_metadata)(ud_context *, const ud_batch *, ud_string, ud_string, int32_t,
                                       ud_batch **);
     ud_status (*bulk_open)(ud_context *, const ud_batch *, int32_t, ud_bulk_reader **);
     ud_status (*bulk_read)(ud_bulk_reader *, void *, uint32_t, uint32_t *);
@@ -74,6 +74,7 @@ typedef struct ud_host_api {
     ud_status (*schema_bind_identity)(ud_context *, const ud_batch *, const ud_batch *,
                                       ud_batch **);
     ud_status (*record_target)(ud_context *,ud_string,ud_string *,ud_string *);
+    ud_string resource_namespace; /* Borrowed stable tenant/resource identity, independent of Package. */
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;
@@ -89,6 +90,7 @@ typedef struct ud_plugin_api {
     /* Optional component table in the current complete ABI layout. Table and callback user data
      * belong to the library; registration holds a module reference until registry destruction. */
     const struct ud_component_plugin_api *components;
+    uint32_t field_size, value_size; /* Complete Native Data layout, required. */
 } ud_plugin_api;
 typedef struct ud_component_plugin_api {
     uint32_t struct_size, abi_version, count;

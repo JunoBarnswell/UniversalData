@@ -5,9 +5,12 @@
     "sdkVersion": "2.0.0",
     "abiVersion": 10,
     "protocolVersion": 10,
-    "checkpointRevision": 2,
+    "checkpointRevision": 3,
     "state": "SDK 2.0 / ABI and protocol family 10. PR #7 extends the unique Native runtime with authenticated tenant-scoped product entry, protected parameter references, managed lifecycle/control/recovery and Native Avro/profiling contracts. Current implementation is not release certified.",
-    "acceptanceResources": "User confirmed on 2026-10-14 that independent Windows, SSAS, FTP/SFTP, object storage and SMTP resources are unavailable: Blocked. Task-owned isolated PostgreSQL, MySQL, MariaDB and SQL Server databases were subsequently provisioned and accepted without changing historical business data. An isolated Oracle schema was created, but the OCI TCPS session attach times out (ORA-12170): live Oracle acceptance is Blocked. Windows remains required and Blocked, never exempt."
+    "acceptanceResources": "User confirmed on 2026-10-14 that independent Windows, SSAS, FTP/SFTP, object storage and SMTP resources are unavailable: Blocked. Task-owned isolated PostgreSQL, MySQL, MariaDB and SQL Server databases were subsequently provisioned and accepted without changing historical business data. An isolated Oracle schema was created, but the OCI TCPS session attach times out (ORA-12170): live Oracle acceptance is Blocked. Windows remains required and Blocked, never exempt.",
+    "dataLayoutRevision": 2,
+    "catalogRevision": 2,
+    "workerRevision": 2
   },
   "scope": {
     "name": "UniversalData 2.0 SSIS current capabilities and complete ETL product",
@@ -26,7 +29,7 @@
   },
   "candidate": {
     "branch": "codex/etl-architecture-advanced-extensions",
-    "state": "PR #7 foundation code is pushed. Linux PRODUCT build, 67 core tests, source/Designer checks and real browser/Worker recovery passed; full task implementation and release gates remain incomplete.",
+    "state": "Draft PR #7 continuation: Linux identity/projection and multi-process ownership/history contracts passed current scoped acceptance. SQL Server XA compiles but its actual recovery resource remains Blocked. Complete Schema state migration, Kafka/Lakehouse and cross-machine agents are still incomplete; production release is not certified.",
     "sourceCommit": "",
     "sourceFingerprint": "",
     "mergeEvidence": null,
@@ -8711,7 +8714,8 @@
         "decisions": [
           "Management has no authentication and RunDispatcher persists request parameter JSON; all product execution/inspection must cross one scoped Worker entry",
           "Native already owns Catalog, Journal, transactions, epochs and bulk transports; these remain the owners",
-          "Compute supports richer reports than profile.statistics exposes; Avro named references and reader resolution are absent in the baseline"
+          "Compute supports richer reports than profile.statistics exposes; Avro named references and reader resolution are absent in the baseline",
+          "PR #7 continuation: verified main remains 203c9c9f. Display-name rebinding cannot prove rename versus drop/re-add; SQL Server ODBC has an official XA request ABI independent of SQLGetXaSwitch exports; RunDispatcher process-local dictionaries cannot arbitrate multiple managers."
         ]
       },
       {
@@ -8721,7 +8725,8 @@
         "decisions": [
           "Authentication produces tenant/subject/resource grants; the same scope reaches Native Connection Manager authorization",
           "Catalog stores opaque immutable parameter references; only an authorized Worker resolves encrypted values",
-          "Managed descriptors project Native dynamic ports, plans, errors, replay-safe flags, controls and confirmations; Native retains callback owners and sealed batches"
+          "Managed descriptors project Native dynamic ports, plans, errors, replay-safe flags, controls and confirmations; Native retains callback owners and sealed batches",
+          "Continuation contracts: physical provider identity is distinct from Package logical identity and lineage, with resource scope independent of Package. Native Schema/JSON/Wire/Arrow own the projection. Native Catalog owns CAS, durable fencing generations and pool ceilings; C# and JNI only project these. Microsoft XACALLPARAM goes directly through the current ODBC participant API and Native Journal coordinator."
         ]
       },
       {
@@ -8733,7 +8738,9 @@
           "Source row counters join the epoch manifest so automatic Row Identity survives restart",
           "Control events are notified at Native aligned boundaries without managed forwarding; state snapshots use Native Wire/Journal",
           "Untrusted modules require Linux OS namespace/cgroup isolation; missing infrastructure refuses execution; Windows sandbox acceptance remains blocked",
-          "Remote CI billing limits and unavailable independent resources never become Passed"
+          "Remote CI billing limits and unavailable independent resources never become Passed",
+          "Continuation crash review: write the SQL Server receipt inside the XA branch before business DML; XA recovery plus digest-matching receipts prove outcomes, and prepared branches survive close. A lost Worker lease fences further Catalog writes and cancels its process; an expired Running record becomes RecoveryRequired without automatic side-effect replay. Wire layout revision 2 and checkpoint revision 3 explicitly refuse old recovery payloads. Cross-machine agents and structural state rebinding are still code gaps, not environment blocks.",
+          "Two-manager kill acceptance found private Worker execution/event records can lead the management index. Worker protocol revision 2 now transfers bounded canonical Native Catalog pages, continues from durable Native revisions/sequences, and rejects legacy requests; the host cannot relabel an unresolved resume as an ordinary preflight failure. The strengthened test verifies the resumed Native terminal record, not only the product status."
         ]
       }
     ],
@@ -8833,22 +8840,33 @@
         {
           "id": "P1-01",
           "name": "SQL Server durable participants",
-          "status": "Partial",
+          "status": "Verification Blocked",
           "source": [
-            "plugins/odbc.c"
+            "plugins/mssql_xa.c",
+            "plugins/odbc.c",
+            "plugins/odbc_internal.h",
+            "tests/transaction_participants.c",
+            "tests/transaction_participants.py"
           ],
-          "verification": "No new acceptance claimed for this task in the current iteration",
-          "remaining": "ODBC SQL Server declares ordinary transactions; no durable prepare/resolve/recover participant is implemented. Missing MSDTC/XA platform integration cannot be represented as successful prepare."
+          "verification": "Official Microsoft ODBC XA request implementation, Native participant callbacks, locking branch receipts and paged recovery compile in the Linux PRODUCT. The actual isolated SQL Server resource returns ODBC -3 / XA -3 on recovery, so participant capability remains disabled and both SQL Server-only and mixed PostgreSQL/SQL Server crash tests are Blocked, never passed.",
+          "remaining": "A working independent DTC/XA resource is required to verify prepare/resolve/recover and kill boundaries; Windows is unverified. Distributed SQL Server transactions reject Savepoint row isolation before DML. This is not a claim that SQL Server cross-database delivery is certified."
         },
         {
           "id": "P1-02",
           "name": "Dynamic schema and stable identities",
           "status": "Partial",
           "source": [
-            "components/data/src/schema_evolution.c"
+            "include/ud/data.h",
+            "components/data/src/schema_evolution.c",
+            "components/data/src/schema_json.c",
+            "components/data/src/wire.c",
+            "components/data/src/arrow.c",
+            "plugins/postgresql_metadata.c",
+            "tests/schema_identity.c",
+            "tests/postgresql_schema.c"
           ],
-          "verification": "No new acceptance claimed for this task in the current iteration",
-          "remaining": "Pipeline SchemaChange admits an unchanged projected contract; structural state migration/rebinding and provider-stable physical identities for rename/drop are incomplete."
+          "verification": "Physical/logical identity, recursive Struct rename/reorder/projection, exact Decimal widening, nulls, Row Identity, JSON/Wire/Arrow roundtrips and real PostgreSQL rename/drop-add DDL passed. Targeted ASan/UBSan with leak checks passed.",
+          "remaining": "Full structural running-plan/state migration and provider physical histories for MySQL/SQL Server remain code gaps. Current pipeline SchemaChange still retains its bound output shape; the accepted scope is identity/projection, not complete online Schema evolution."
         },
         {
           "id": "P1-03",
@@ -8967,9 +8985,16 @@
           "id": "EXT-07",
           "name": "Enterprise scheduling/distributed workers",
           "status": "Partial",
-          "source": [],
-          "verification": "No new acceptance claimed for this task in the current iteration",
-          "remaining": "RunDispatcher is a single manager with interval scheduling. Cron/timezone/calendars/triggers and multi-node atomic leases/heartbeats/takeover are missing."
+          "source": [
+            "catalog/catalog.c",
+            "include/ud/catalog.h",
+            "bindings/dotnet/UniversalData/Catalog.cs",
+            "bindings/java/src/main/java/org/universaldata/Catalog.java",
+            "products/UniversalData.Management/RunDispatcher.cs",
+            "tests/management_cluster.py"
+          ],
+          "verification": "Two actual Management processes dispatched eight independent Native Workers over one server-local Catalog with a shared concurrency ceiling of two. Killing the owning manager after a real POST led to RecoveryRequired; manual resume kept the Native ID, replayed durable Native history, published a Native terminal result 16, and did not resend POST. Native lease process-death/fencing/pool/tenant tests plus C# and Java lease projections passed.",
+          "remaining": "Cross-machine Worker agents, Cron/timezones/calendars/triggers, resource priorities, SLA/dependencies and the wider enterprise scheduler remain code gaps. SQLite is server-local; a shared network filesystem is not claimed as distributed Catalog support."
         },
         {
           "id": "EXT-08",
@@ -9112,7 +9137,7 @@
       "validation": {
         "nativeCommit": "433f84607a3033eab7c738698ecf5fb7cfe477f7",
         "nativeSourceFingerprint": "c7f568e3e3ae6a933b4e6229cddf81caae020640e2a5b58ce236385e07f0423f",
-        "build": "Linux Release PRODUCT and explicit CORE ASan/UBSan build passed; current hosted control-readiness build passed. Windows/remote CI remain Blocked.",
+        "build": "Linux Release PRODUCT compiled with current Native Field/Value plugin layouts, Data layout revision 2, Catalog storage revision 2, checkpoint revision 3 and private Worker protocol revision 2. Existing historical evidence below remains tied to its original SHAs.",
         "testRuns": [
           {
             "report": "commit-22f189c.xml",
@@ -9645,6 +9670,34 @@
               "cache Lookup"
             ]
           }
+        },
+        "continuation": {
+          "sourceCommit": "",
+          "sourceFingerprint": "e0105b834d3569ddf0b2c5aaaf8cbf95fd8607c1b75bd057a193616cc16046f8",
+          "core": {
+            "passed": 72,
+            "failed": 0,
+            "report": "docs/acceptance/evidence/pr7-foundation/continuation-core.xml"
+          },
+          "realDrivers": {
+            "passed": 22,
+            "blocked": 2,
+            "report": "docs/acceptance/evidence/pr7-foundation/continuation-drivers.xml",
+            "blockedReason": "Actual Microsoft ODBC XA recovery returns ODBC -3 / XA -3; capability is not admitted"
+          },
+          "sanitizers": {
+            "passed": 3,
+            "scope": "Affected Schema, Catalog leases and SQL row-command process recovery; ASan/UBSan detect_leaks=1",
+            "report": "docs/acceptance/evidence/pr7-foundation/continuation-asan.xml"
+          },
+          "designer": "npm ci; typecheck, lint and build passed",
+          "nativeBulk": "Four genuine drivers, two modes each, 10000 rows; full readback/receipt/value signatures agree. Correctness check only; no new throughput ratio is claimed. Historical one-million-row measurements retain their original source SHA.",
+          "notRun": [
+            "Windows",
+            "working SQL Server XA/DTC crash recovery",
+            "fresh installed release consumers/browser for this continuation",
+            "Kafka/Lakehouse and cross-machine agents remain undeveloped, not environment-blocked"
+          ]
         }
       }
     }

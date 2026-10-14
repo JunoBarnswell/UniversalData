@@ -1451,6 +1451,7 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
         return UD_INCOMPATIBLE;
     *out = (ud_plugin_api){.struct_size = sizeof(*out),
                            .abi_version = UD_PLUGIN_ABI,
+                           .field_size=sizeof(ud_field),.value_size=sizeof(ud_value),
                            .id = "org.universaldata.connector.oracle.oci",
                            .version = UD_SDK_VERSION,
                            .roles = UD_PLUGIN_CONNECTOR,

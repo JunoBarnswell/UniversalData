@@ -13,3 +13,11 @@ C/.NET/Java 消费同一个 Native snapshot/diff JSON，不自己解析 SQL 类�
 目标支持完整命名列映射；未供应的列由后端约束/default 决定，写失败保留原始错误。SQLite NUMERIC 的精确精度、PostgreSQL 无界 numeric/非 UTC timestamp 等没有可靠 canonical domain 时返回 Unsupported。不会推测 SQL 类型。Nullable/Decimal/Key 政策与整个实际 Schema 的指纹进入 Journal；恢复期间变化拒绝，包含新增的未投影列。
 
 Diff 使用嵌套列的原生 identity 报告子结构变化。Schema 报告有固定字节上限；失败的 preflight 也进入原生诊断，C/.NET/Java 查询结果完全相同。
+
+## Physical and logical field identity
+
+`ud_field.physical_identity` names a proven provider object/column incarnation, independently of the Package logical `identity` and sorted origin `lineage`. Discovery takes separate logical and tenant/resource namespaces. PostgreSQL supplies database/relation OIDs and attribute numbers; column rename retains physical identity while drop/re-add receives a different identity. A first discovery may bind an unbound logical projection by name; once physical identity is present, rebinding never falls back to the display name. Providers without physical proof leave it unspecified.
+
+Schema comparison and mapping use the Native recursive projection for Struct fields: compatible identity-preserving rename/reorder, ignored unprojected additions, nullability checks and exact numeric widening share the same plan and cast kernels. Missing projected fields, lost/replaced known physical identities and lossy conversions are rejected. JSON, Arrow metadata (`ud.physical_id`) and Wire carry the same identity. Wire layout revision 2 has an unambiguous marker; checkpoint revision 3 rejects former snapshots and preserves their files. Native plugins publish complete Field/Value layout sizes and must be rebuilt.
+
+This closes identity/projection foundations. Structural running-plan/state migration remains incomplete; the pipeline currently retains its bound output shape. MySQL and SQL Server provider physical discovery also require further development. New current-source unit/real-DDL tests are registered; prior-source tests do not certify this change.

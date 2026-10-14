@@ -1,4 +1,7 @@
 #include "../internal.h"
+/* Outside the valid legacy column-count domain, so old/new payloads cannot
+ * accidentally parse as each other despite retaining protocol family 10. */
+#define WIRE_LAYOUT (UINT64_C(0x5544574952450000) | UD_DATA_LAYOUT_REVISION)
 static ud_status put_field(ud_bytes *b, const ud_field *f, uint32_t depth) {
     if (depth > 32)
         return UD_SCHEMA;
@@ -10,6 +13,8 @@ static ud_status put_field(ud_bytes *b, const ud_field *f, uint32_t depth) {
     UD_TRY(ud_put_string(b, f->timezone, f->timezone_length));
     UD_TRY(ud_put_u64(b, f->identity.high));
     UD_TRY(ud_put_u64(b, f->identity.low));
+    UD_TRY(ud_put_u64(b,f->physical_identity.high));
+    UD_TRY(ud_put_u64(b,f->physical_identity.low));
     UD_TRY(ud_put_u64(b, f->key_order));
     UD_TRY(ud_put_u64(b, f->lineage_count));
     for (uint32_t i = 0; i < f->lineage_count; i++) {
@@ -64,6 +69,8 @@ static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
         return UD_CORRUPT;
     UD_TRY(ud_get_u64(b, &f->identity.high));
     UD_TRY(ud_get_u64(b, &f->identity.low));
+    UD_TRY(ud_get_u64(b,&f->physical_identity.high));
+    UD_TRY(ud_get_u64(b,&f->physical_identity.low));
     if (!f->identity.high && !f->identity.low)
         return UD_CORRUPT;
     uint64_t lineage, key_order;
@@ -236,6 +243,7 @@ ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
     if (!b || !table)
         return UD_INVALID;
     UD_TRY(ud_put_u64(b, UD_WIRE_VERSION));
+    UD_TRY(ud_put_u64(b,WIRE_LAYOUT));
     UD_TRY(ud_put_u64(b, table->columns));
     UD_TRY(ud_put_u64(b, table->rows));
     for (uint32_t j = 0; j < table->columns; j++)
@@ -283,10 +291,12 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
     if (!b || !out)
         return UD_INVALID;
     *out = NULL;
-    uint64_t version, columns, rows;
+    uint64_t version, layout, columns, rows;
     UD_TRY(ud_get_u64(b, &version));
     if (version != UD_WIRE_VERSION)
         return UD_INCOMPATIBLE;
+    UD_TRY(ud_get_u64(b,&layout));
+    if (layout!=WIRE_LAYOUT) return UD_INCOMPATIBLE;
     UD_TRY(ud_get_u64(b, &columns));
     UD_TRY(ud_get_u64(b, &rows));
     if (!columns || columns > 65536 || rows > INT32_MAX)

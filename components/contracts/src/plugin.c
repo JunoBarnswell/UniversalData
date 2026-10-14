@@ -113,6 +113,7 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
     int component_only = p->api.roles == UD_PLUGIN_COMPONENTS && p->api.components &&
                          !p->api.initialize && !p->api.destroy;
     if (!s && (p->api.struct_size != sizeof(p->api) || p->api.abi_version != UD_PLUGIN_ABI ||
+               p->api.field_size!=sizeof(ud_field) || p->api.value_size!=sizeof(ud_value) ||
                !p->api.id || !p->api.version || !p->api.roles ||
                (p->api.roles & ~(UD_PLUGIN_CONNECTOR | UD_PLUGIN_COMPONENTS)) ||
                ((p->api.roles & UD_PLUGIN_COMPONENTS) && !p->api.components) ||
@@ -188,7 +189,7 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             ud_schema_compare,
                             ud_schema_map,
                             ud_schema_bind_identity,
-                            ud_sql_record_target};
+                            ud_sql_record_target,{0}};
     *out = p;
     return UD_OK;
 }
@@ -228,7 +229,7 @@ ud_status ud_plugin_register_components(ud_plugin *p, ud_registry *registry) {
 }
 static ud_status connection_instance_create(ud_plugin *p, const char *config, uint32_t n,
                                             ud_plugin_instance **out, void *control_user,
-                                            ud_status (*check)(void *)) {
+                                            ud_status (*check)(void *),ud_string resource_namespace) {
     if (!p || !out || (!config && n))
         return UD_INVALID;
     *out = NULL;
@@ -241,6 +242,7 @@ static ud_status connection_instance_create(ud_plugin *p, const char *config, ui
     ud_host_api host = p->host;
     host.control_user = control_user;
     host.check_io = check;
+    host.resource_namespace=resource_namespace;
     ud_status s = p->api.initialize(&host, config ? config : "", n, &instance->state);
     atomic_fetch_sub(&p->active, 1);
     if (s) {
@@ -306,6 +308,7 @@ struct ud_connection {
     const ud_connector_api *api;
     uint64_t capabilities;
     int cursor, transaction, cdc, cdc_transaction, io_action, cleanup;
+    char resource_namespace[33];
     char transaction_branch[65];
     uint8_t transaction_digest[32];
     uint32_t cdc_batch_rows;
@@ -481,10 +484,14 @@ ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options 
         ud_strdup_n(p->ctx, options->resource.data, options->resource.length);
     c->options.credential_reference = (ud_string){0};
     c->api = p->api.connector;
-    ud_status status = !c->options.tenant.data || !c->options.resource.data
-                           ? UD_RESOURCE
-                           : connection_instance_create(p, configuration.data, configuration.length,
-                                                        &c->instance, c, connection_check);
+    ud_id physical={0};
+    ud_status status=!c->options.tenant.data || !c->options.resource.data ? UD_RESOURCE :
+        ud_id_make(p->ctx,c->options.tenant,c->options.resource,&physical);
+    if (!status) {
+        ud_id_format(physical,c->resource_namespace);
+        status=connection_instance_create(p,configuration.data,configuration.length,&c->instance,c,connection_check,
+            (ud_string){c->resource_namespace,32});
+    }
     if (status) {
         ud_free((void *)c->options.tenant.data);
         ud_free((void *)c->options.resource.data);
@@ -766,7 +773,7 @@ ud_status ud_connection_schema(ud_connection *connection, ud_string table, ud_st
     ud_status status = ud_connection_discover(connection, table, &metadata);
     if (!status)
         status = ud_schema_from_metadata(connection->instance->plugin->ctx, metadata, scope,
-                                         connection->dialect, out);
+                                         (ud_string){connection->resource_namespace,32},connection->dialect, out);
     ud_batch_destroy(metadata);
     return status;
 }

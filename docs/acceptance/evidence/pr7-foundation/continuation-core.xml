@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="72"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="39"
+	timestamp="2026-10-14T14:44:52"
+	>
+	<testcase name="native_checkpoint_contract_revision" classname="native_checkpoint_contract_revision" time="0.0517488" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="native_catalog_secret_migration" classname="native_catalog_secret_migration" time="0.042911" status="run">
+		<properties/>
+		<system-out>Native historical parameter migration, authorization, integrity and SQLite/WAL erasure passed
+</system-out>
+	</testcase>
+	<testcase name="transaction_fact_publication" classname="transaction_fact_publication" time="0.0412694" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="execution_identity" classname="execution_identity" time="0.0233354" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="foundation" classname="foundation" time="0.00120665" status="run">
+		<properties/>
+		<system-out>foundation: quota, ownership, cancellation, SHA-256 passed
+</system-out>
+	</testcase>
+	<testcase name="json_document" classname="json_document" time="0.000838954" status="run">
+		<properties/>
+		<system-out>strict JSON: exact numbers, unicode, duplicates, depth, ownership fixtures passed
+</system-out>
+	</testcase>
+	<testcase name="schema_physical_identity_and_nested_evolution" classname="schema_physical_identity_and_nested_evolution" time="0.00156349" status="run">
+		<properties/>
+		<system-out>Physical/logical identity, nested rename/reorder/projection, exact decimal widening, nulls, provenance, Wire/Arrow/JSON and drop/add refusal passed
+</system-out>
+	</testcase>
+	<testcase name="unified_file_schema_discovery" classname="unified_file_schema_discovery" time="0.00156503" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="native_type_domains_2" classname="native_type_domains_2" time="0.00153612" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="source_record_errors" classname="source_record_errors" time="0.0015251" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="sql_bulk_streaming" classname="sql_bulk_streaming" time="0.00122487" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="columnar" classname="columnar" time="0.001453" status="run">
+		<properties/>
+		<system-out>columnar: nulls, UTF-8, Arrow lifetimes, stream, allocation failures passed
+</system-out>
+	</testcase>
+	<testcase name="extended_scalar_types" classname="extended_scalar_types" time="0.00117598" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="json_nested_format" classname="json_nested_format" time="0.00164255" status="run">
+		<properties/>
+		<system-out>nested JSON and bounded NDJSON fixtures passed
+</system-out>
+	</testcase>
+	<testcase name="compute_plan" classname="compute_plan" time="0.00403945" status="run">
+		<properties/>
+		<system-out>compute/query: filters, aggregates, restore, sort, join, page, queue passed
+</system-out>
+	</testcase>
+	<testcase name="nested_columnar_arrow" classname="nested_columnar_arrow" time="0.00247772" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="regex_pcre2" classname="regex_pcre2" time="0.00186879" status="run">
+		<properties/>
+		<system-out>UTF8/UCP bounded PCRE2 regex fixtures passed
+</system-out>
+	</testcase>
+	<testcase name="field_mapping" classname="field_mapping" time="0.00123309" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="quality_classification" classname="quality_classification" time="0.0027973" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="sqlite_receipts_upsert" classname="sqlite_receipts_upsert" time="0.106804" status="run">
+		<properties/>
+		<system-out>SQLite typed connector: 10,000 full + 200 new / 50 updated; equivalence/receipts/authorization; NaN rejected with row+receipt rollback, corrected Infinity retry passed
+</system-out>
+	</testcase>
+	<testcase name="postgresql_cursor_cancellation" classname="postgresql_cursor_cancellation" time="1.22021" status="run">
+		<properties/>
+		<system-out>waiting for server to start.... done
+server started
+Cancel interrupted FETCH in 202 ms
+Deadline interrupted FETCH in 202 ms
+waiting for server to shut down.... done
+server stopped
+</system-out>
+	</testcase>
+	<testcase name="architecture_foundation" classname="architecture_foundation" time="0.00184555" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="shared_value_semantics" classname="shared_value_semantics" time="0.0533074" status="run">
+		<properties/>
+		<system-out>value semantics: all types/NULL/NUL/Decimal/UTC/NaN wire+Arrow+JSON, stable Sort, hash Join, restored Group, cross-batch Unique/FK/Range and bound expressions passed
+</system-out>
+	</testcase>
+	<testcase name="four_engine_scheduling_operators" classname="four_engine_scheduling_operators" time="0.0315475" status="run">
+		<properties/>
+		<system-out>Twenty-task completion scheduling, pure scope rejection, stable parallel Sort, local/merge Aggregate, hash Join and shared pool passed
+</system-out>
+	</testcase>
+	<testcase name="block_store_ownership" classname="block_store_ownership" time="0.0146442" status="run">
+		<properties/>
+		<system-out>Block Store: nested/projection ownership, no resident codec, leases and 90 injected allocation positions
+</system-out>
+	</testcase>
+	<testcase name="pipeline_tree_parallelism" classname="pipeline_tree_parallelism" time="0.0293003" status="run">
+		<properties/>
+		<system-out>Execution Trees: real barrier overlap, one shared worker limit, serialized non-thread-safe contract, read-only Step and cancellation
+</system-out>
+	</testcase>
+	<testcase name="indexed_segment_journal" classname="indexed_segment_journal" time="0.549697" status="run">
+		<properties/>
+		<system-out>Journal: 16384 indexed keys, probes=20820, snapshots=2, segments=1
+Journal: 16384 indexed keys, probes=1, snapshots=0, segments=1
+Journal corruption: torn frame, missing acknowledged segment, altered snapshot/head/tail fail closed
+</system-out>
+	</testcase>
+	<testcase name="logical_durable_task_facts" classname="logical_durable_task_facts" time="0.0505538" status="run">
+		<properties/>
+		<system-out>Task facts: executed=1 / durable=0 on denied acknowledgement; recovery clears only after durable replay; resume skips invoke
+</system-out>
+	</testcase>
+	<testcase name="core_runtime_resources" classname="core_runtime_resources" time="1.12977" status="run">
+		<properties/>
+		<system-out>Shared spill/sort/window/aggregate, quota/integrity/cleanup, concurrent activation isolation and native functions passed
+</system-out>
+	</testcase>
+	<testcase name="core_pipeline_components" classname="core_pipeline_components" time="0.257607" status="run">
+		<properties/>
+		<system-out>Quality normal/error commits, Character Map/Copy/RowCount/Audit, Window and CSV with actual shared spill passed
+</system-out>
+	</testcase>
+	<testcase name="package_execution" classname="package_execution" time="0.0500048" status="run">
+		<properties/>
+		<system-out>Package: nested control loop, expression precedence, native DataFlow, derive/split, bounded multi-output and atomic file destinations passed
+</system-out>
+	</testcase>
+	<testcase name="value_semantics_pipeline" classname="value_semantics_pipeline" time="6.3708" status="run">
+		<properties/>
+		<system-out>1 native language consumers; Package Pipeline: all 12 types, NULL/NaN/zeros/Decimal/UTC/NUL/nested Derived metadata + comparison + Split + hash Join + Aggregate passed
+</system-out>
+	</testcase>
+	<testcase name="package_failure_boundaries" classname="package_failure_boundaries" time="0.222009" status="run">
+		<properties/>
+		<system-out>Package: default-deny, cancellation, missing capability, invalid ports/version/parameters, parse failure and failure constraints passed
+</system-out>
+	</testcase>
+	<testcase name="sql_command_records_recovery" classname="sql_command_records_recovery" time="0.617942" status="run">
+		<properties/>
+		<system-out>SQL row commands: mixed rows, repeated parameters, private transactions, error identities, actual process kills and unknown-commit fencing passed
+</system-out>
+	</testcase>
+	<testcase name="four_engine_connections_enumerators" classname="four_engine_connections_enumerators" time="0.298792" status="run">
+		<properties/>
+		<system-out>Native pooled session reuse, unsupported participant refusal, Collection/Variable/Query/Schema/File enumerators passed
+</system-out>
+	</testcase>
+	<testcase name="package_sql_integration" classname="package_sql_integration" time="0.0603367" status="run">
+		<properties/>
+		<system-out>Package: SQL task/source share Connection Manager, bounded SQL cursor, derive/split, transaction receipts and file error path passed
+</system-out>
+	</testcase>
+	<testcase name="package_durable_recovery" classname="package_durable_recovery" time="0.678027" status="run">
+		<properties/>
+		<system-out>Recovery: real process kills, loop/variable/task restoration, SQL receipt replay, file publish verification, repeatable resume, source/package change, corruption/gap, writer exclusion and unknown custom effect passed
+</system-out>
+	</testcase>
+	<testcase name="catalog_leases_process_recovery" classname="catalog_leases_process_recovery" time="0.503806" status="run">
+		<properties/>
+		<system-out>Real Catalog process death, expiry, increasing fences, stale writes/renewal, pool ceilings, latest revisions and tenant isolation passed
+</system-out>
+	</testcase>
+	<testcase name="catalog_immutable_store" classname="catalog_immutable_store" time="5.18717" status="run">
+		<properties/>
+		<system-out>Native SQLite Catalog: immutable revisions, bounded pagination, tenant isolation, revocation, protocol refusal, digest/key corruption, concurrent native processes, busy handling, killed-writer rollback and legacy artifact preservation passed
+</system-out>
+	</testcase>
+	<testcase name="project_environment_deployment" classname="project_environment_deployment" time="0.117441" status="run">
+		<properties/>
+		<system-out>Project/Environment/Deployment: outer scopes, nearest shadowing, read-only parameters, shared connection owner scope, typed overrides, exact revisions, restart, version switch and rollback passed
+</system-out>
+	</testcase>
+	<testcase name="child_package_execution" classname="child_package_execution" time="0.358288" status="run">
+		<properties/>
+		<system-out>Execute Package: literal child definition, parent expression mapping, isolated roots/connections, same Execution/context, failure/CommitUnknown/cancel propagation, child events, depth/legacy rejection and real child checkpoint termination/resume passed
+</system-out>
+	</testcase>
+	<testcase name="catalog_execution_history" classname="catalog_execution_history" time="0.0747191" status="run">
+		<properties/>
+		<system-out>Catalog history: Ready/terminal immutable snapshots, success/failure/cancel/CommitUnknown states, native metrics/fingerprints, Running BUSY, tenant checks, event sequence, reopen and no plaintext parameter persistence passed
+</system-out>
+	</testcase>
+	<testcase name="filesystem_task_execution" classname="filesystem_task_execution" time="0.584329" status="run">
+		<properties/>
+		<system-out>File System Task: Unicode/binary copy, atomic no-overwrite move, delete/mkdir, manager/auth/delete grants, completed resume, real post-effect crash CommitUnknown, cancellation/revocation cleanup, target/part preservation, invalid config/path/symlink/special-file rejection passed
+</system-out>
+	</testcase>
+	<testcase name="process_task_execution" classname="process_task_execution" time="4.23134" status="run">
+		<properties/>
+		<system-out>Execute Process: direct Unicode/empty/quoted arguments, cwd, explicit execute authorization/default deny, exit policy versus exec failure, local/package timeout, live child+descendant cancellation cleanup, type/read-only rejection and actual effect/crash/unknown/completed resume passed
+</system-out>
+	</testcase>
+	<testcase name="http_task_execution" classname="http_task_execution" time="4.87374" status="run">
+		<properties/>
+		<system-out>HTTP Task: real methods/body/status, resolver/default and network denial, trusted TLS plus CA/hostname rejection, no redirects, GET-only bounded retry/exhaustion, POST no retry, bounded body/headers, local/package timeout, live cancellation/revocation, quota/schema/read-only rejection, actual request effect/crash/Unknown and completed resume passed
+</system-out>
+	</testcase>
+	<testcase name="profile_statistics_kernel" classname="profile_statistics_kernel" time="0.00228994" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="profile_task_execution" classname="profile_task_execution" time="0.857466" status="run">
+		<properties/>
+		<system-out>Profiling SQL Source: same scoped Connection Manager/resolver, real bounded SQLite cursor and read-only statistics passed; persistent SQL snapshot/replay verified
+Data Profiling: real cross-batch counts/nulls/int/float/UTF8 extrema, empty/all-null semantics, all rule failures plus failure branch, null check failure, authorization/revocation/live cancellation/deadline, row/memory quotas, pre-I/O validation, actual mid-scan and before-TaskDone crashes/replay, source mismatch and completed resume passed
+</system-out>
+	</testcase>
+	<testcase name="native_custom_task" classname="native_custom_task" time="0.439485" status="run">
+		<properties/>
+		<system-out>Native Custom Task: actual shared library/public headers, atomic descriptor rollback, current ABI4 only, old version/layout rejected, module/registry/execution unload guards, native expression/scopes, default/write denial, errors, live cancellation/deadline, real effect/crash/Unknown and completed resume passed
+</system-out>
+	</testcase>
+	<testcase name="next_phase_native_contracts" classname="next_phase_native_contracts" time="0.00481699" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="next_phase_pipeline_recovery" classname="next_phase_pipeline_recovery" time="12.2166" status="run">
+		<properties/>
+		<system-out>R1–R5 snapshot, multi-rule FK, shared cache, dual SQL/File destinations, partitioned separate-process crash replay, grant revocation, Wire corruption and schema guards passed
+</system-out>
+	</testcase>
+	<testcase name="ssis_native_features" classname="ssis_native_features" time="5.49922" status="run">
+		<properties/>
+		<system-out>mergeJoin-inner passed
+mergeJoin-left passed
+mergeJoin-full passed
+merge-UTF8-stability passed
+false-IsSorted-rejected passed
+pivot-reject passed
+pivot-sum passed
+pivot-unpivot-roundtrip passed
+pivot-count passed
+pivot-min passed
+pivot-max passed
+pivot-first passed
+pivot-last passed
+rowSampling-1 passed
+rowSampling-2 passed
+rowSampling-4 passed
+rowSampling-8 passed
+percentageSampling-1 passed
+percentageSampling-2 passed
+percentageSampling-4 passed
+percentageSampling-8 passed
+xlsx-write passed
+xlsx-read-roundtrip passed
+xlsx-shared-sparse passed
+xlsx-missing-formula passed
+xlsx-DTD passed
+xlsx-traversal passed
+xlsx-macro passed
+scd-type1-type2-new-fixed passed
+scd-receipt-resume passed
+scd-kill-after-commit passed
+scd-crash-resume passed
+Native N1–N5 acceptance passed: 32 cases
+</system-out>
+	</testcase>
+	<testcase name="pr5_foundation" classname="pr5_foundation" time="0.434798" status="run">
+		<properties/>
+		<system-out>durable-3-port multicast/union passed
+durable-8-port multicast/union passed
+durable-32-port multicast/union passed
+inner composite join passed
+left composite join passed
+right composite join passed
+full composite join passed
+semi composite join passed
+anti composite join passed
+Prepared typed SQL and receipt passed
+</system-out>
+	</testcase>
+	<testcase name="advanced_native_semantics" classname="advanced_native_semantics" time="0.00897842" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="advanced_formats_tls_rest" classname="advanced_formats_tls_rest" time="0.892114" status="run">
+		<properties/>
+		<system-out>parquet typed roundtrip passed
+arrowIpc typed roundtrip passed
+arrowStream typed roundtrip passed
+REST verified TLS, pagination, rate-limit retry, typed rows, receipts and durable resume passed
+</system-out>
+	</testcase>
+	<testcase name="advanced_catalog_ten_table_template" classname="advanced_catalog_ten_table_template" time="0.231369" status="run">
+		<properties/>
+		<system-out>Native Catalog, fixed Plan, typed 10-table template, exact Decimal/NULL, invalid binding and SDK parity passed
+</system-out>
+	</testcase>
+	<testcase name="management_multi_process_claim_recovery" classname="management_multi_process_claim_recovery" time="39.2434" status="run">
+		<properties/>
+		<system-out>{"managers": 2, "workers": 8, "maximumConcurrentEffects": 2, "nativeIds": 8, "unknownPostEffects": 1, "sameNativeId": true, "automaticReplay": false, "manualUnknownReplay": false, "nativeSnapshots": 4, "nativeTerminalResult": 16}
+</system-out>
+	</testcase>
+	<testcase name="management_authenticated_native_worker" classname="management_authenticated_native_worker" time="4.82919" status="run">
+		<properties/>
+		<system-out>Actual Management/Worker/Native: authentication, CSRF, object roles, tenant isolation, execution, protected parameters, logs and rotation passed
+</system-out>
+	</testcase>
+	<testcase name="hosting_identity_secret_resource_contracts" classname="hosting_identity_secret_resource_contracts" time="1.23935" status="run">
+		<properties/>
+		<system-out>Identity, rotation, object permissions, tenant resources, protected references and redaction passed
+</system-out>
+	</testcase>
+	<testcase name="worker_protocol" classname="worker_protocol" time="1.09685" status="run">
+		<properties/>
+		<system-out>Native ID/control readiness handshake, capability denial, private Journal isolation, terminal identity, pipe loss and stale protocol rejection passed
+</system-out>
+	</testcase>
+	<testcase name="managed_native_epoch_process_recovery" classname="managed_native_epoch_process_recovery" time="0.388882" status="run">
+		<properties/>
+		<system-out>C# Source/Transform/Destination: Native epochs, actual process kill, stable RowIds and same-ID recovery passed
+</system-out>
+	</testcase>
+	<testcase name="managed_product_worker_process_recovery" classname="managed_product_worker_process_recovery" time="0.876453" status="run">
+		<properties/>
+		<system-out>Product Worker: fixed module, Source/Transform/Destination, real process kill, same Native ID/Row IDs and committed epoch recovery passed
+</system-out>
+	</testcase>
+	<testcase name="managed_registry_scripts_debug_lifecycle" classname="managed_registry_scripts_debug_lifecycle" time="2.64475" status="run">
+		<properties/>
+		<system-out>Managed Registry/task/component ownership, expired borrows, GC, observer fault, cancellation, Native debug/step, deployment compilation and Catalog retention passed
+</system-out>
+	</testcase>
+	<testcase name="java_registry_observer_catalog_lifecycle" classname="java_registry_observer_catalog_lifecycle" time="0.189345" status="run">
+		<properties/>
+		<system-out>Java Registry/task ownership, expired borrows, GC, observer fault, cancellation and unsigned Catalog revisions passed
+</system-out>
+	</testcase>
+	<testcase name="native_enterprise_file_layout" classname="native_enterprise_file_layout" time="0.0315372" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="file_generation_process_recovery" classname="file_generation_process_recovery" time="0.110588" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="native_component_product_semantics" classname="native_component_product_semantics" time="0.172529" status="run">
+		<properties/>
+		<system-out>Whole-batch balanced dispatch, multicast copies, mixed expression errors and Import/Export Column passed
+</system-out>
+	</testcase>
+	<testcase name="native_sql_source_record_errors" classname="native_sql_source_record_errors" time="0.0592652" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="native_xlsx_preserving_append" classname="native_xlsx_preserving_append" time="0.0830176" status="run">
+		<properties/>
+		<system-out>{"state":5,"result":0,"rows":1,"errors":0}
+failure task=/4:copy; component= state=6 result=10
+failure task= component= state=6 result=10
+{"state":6,"result":10,"rows":0,"errors":0}
+</system-out>
+	</testcase>
+	<testcase name="native_avro_interoperability" classname="native_avro_interoperability" time="0.0969021" status="run">
+		<properties/>
+		<system-out>{"state":5,"result":0,"rows":6,"errors":0}
+{"state":5,"result":0,"rows":6,"errors":0}
+failure task=/4:copy; component= state=6 result=9
+failure task= component= state=6 result=9
+{"state":6,"result":9,"rows":0,"errors":0}
+</system-out>
+	</testcase>
+	<testcase name="apache_avro_native_pipeline_resolution" classname="apache_avro_native_pipeline_resolution" time="0.22024" status="run">
+		<properties/>
+		<system-out>Apache Avro 1.12: named references, tagged unions, records, enum/fixed, arrays/maps, decimals/timestamps, aliases/defaults and reader resolution passed
+</system-out>
+	</testcase>
+	<testcase name="native_xml_source_xpath_xslt_xsd" classname="native_xml_source_xpath_xslt_xsd" time="0.21889" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="native_object_transfer_sequence" classname="native_object_transfer_sequence" time="0.733986" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+</testsuite>

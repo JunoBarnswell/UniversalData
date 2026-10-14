@@ -65,13 +65,23 @@ static async Task WorkerHandshake(string worker)
                 string line = await WorkerProtocol.ReadLine(process.StandardOutput,67108864,timeout.Token) ?? throw new Exception("Worker closed its pipe");
                 using var document = JsonDocument.Parse(line); var value = document.RootElement;
                 Require(value.GetProperty("ticket").GetString() == request.Ticket,"Worker ticket changed");
-                if (value.GetProperty("kind").GetString() == "event") continue;
+                if (value.GetProperty("kind").GetString() == "catalog") continue;
                 Require(value.GetProperty("kind").GetString() == kind,"Worker phase differs"); return value.Clone();
             }
         }
         async Task Send(System.Diagnostics.Process process,WorkerRequest value) {
             await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(value,HostPolicy.JsonOptions));
             await process.StandardInput.FlushAsync(timeout.Token);
+        }
+        using(var legacy=WorkerLauncher.Launch(worker,request)) {
+            var output=legacy.StandardOutput.ReadToEndAsync(timeout.Token);
+            var errors=legacy.StandardError.ReadToEndAsync(timeout.Token);
+            var envelope=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(request,HostPolicy.JsonOptions))!.AsObject();
+            envelope.Remove("contractRevision");
+            await legacy.StandardInput.WriteLineAsync(envelope.ToJsonString());legacy.StandardInput.Close();
+            await legacy.WaitForExitAsync(timeout.Token);
+            Require(legacy.ExitCode!=0 && (await output).Length==0,"Legacy Worker request was admitted");
+            _=await errors;
         }
         using(var process = WorkerLauncher.Launch(worker,request)) {
             var errors = process.StandardError.ReadToEndAsync(timeout.Token);

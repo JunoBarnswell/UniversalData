@@ -19,7 +19,7 @@
   },
   "candidate": {
     "branch": "codex/etl-architecture-advanced-extensions",
-    "state": "PR #7 foundation code is pushed. Linux PRODUCT build, 67 core tests, source/Designer checks and real browser/Worker recovery passed; full task implementation and release gates remain incomplete.",
+    "state": "Draft PR #7 continuation: Linux identity/projection and multi-process ownership/history contracts passed current scoped acceptance. SQL Server XA compiles but its actual recovery resource remains Blocked. Complete Schema state migration, Kafka/Lakehouse and cross-machine agents are still incomplete; production release is not certified.",
     "sourceCommit": "",
     "sourceFingerprint": "",
     "mergeEvidence": null,
@@ -1734,7 +1734,8 @@
       "decisions": [
         "Management has no authentication and RunDispatcher persists request parameter JSON; all product execution/inspection must cross one scoped Worker entry",
         "Native already owns Catalog, Journal, transactions, epochs and bulk transports; these remain the owners",
-        "Compute supports richer reports than profile.statistics exposes; Avro named references and reader resolution are absent in the baseline"
+        "Compute supports richer reports than profile.statistics exposes; Avro named references and reader resolution are absent in the baseline",
+        "PR #7 continuation: verified main remains 203c9c9f. Display-name rebinding cannot prove rename versus drop/re-add; SQL Server ODBC has an official XA request ABI independent of SQLGetXaSwitch exports; RunDispatcher process-local dictionaries cannot arbitrate multiple managers."
       ]
     },
     {
@@ -1744,7 +1745,8 @@
       "decisions": [
         "Authentication produces tenant/subject/resource grants; the same scope reaches Native Connection Manager authorization",
         "Catalog stores opaque immutable parameter references; only an authorized Worker resolves encrypted values",
-        "Managed descriptors project Native dynamic ports, plans, errors, replay-safe flags, controls and confirmations; Native retains callback owners and sealed batches"
+        "Managed descriptors project Native dynamic ports, plans, errors, replay-safe flags, controls and confirmations; Native retains callback owners and sealed batches",
+        "Continuation contracts: physical provider identity is distinct from Package logical identity and lineage, with resource scope independent of Package. Native Schema/JSON/Wire/Arrow own the projection. Native Catalog owns CAS, durable fencing generations and pool ceilings; C# and JNI only project these. Microsoft XACALLPARAM goes directly through the current ODBC participant API and Native Journal coordinator."
       ]
     },
     {
@@ -1756,7 +1758,9 @@
         "Source row counters join the epoch manifest so automatic Row Identity survives restart",
         "Control events are notified at Native aligned boundaries without managed forwarding; state snapshots use Native Wire/Journal",
         "Untrusted modules require Linux OS namespace/cgroup isolation; missing infrastructure refuses execution; Windows sandbox acceptance remains blocked",
-        "Remote CI billing limits and unavailable independent resources never become Passed"
+        "Remote CI billing limits and unavailable independent resources never become Passed",
+        "Continuation crash review: write the SQL Server receipt inside the XA branch before business DML; XA recovery plus digest-matching receipts prove outcomes, and prepared branches survive close. A lost Worker lease fences further Catalog writes and cancels its process; an expired Running record becomes RecoveryRequired without automatic side-effect replay. Wire layout revision 2 and checkpoint revision 3 explicitly refuse old recovery payloads. Cross-machine agents and structural state rebinding are still code gaps, not environment blocks.",
+        "Two-manager kill acceptance found private Worker execution/event records can lead the management index. Worker protocol revision 2 now transfers bounded canonical Native Catalog pages, continues from durable Native revisions/sequences, and rejects legacy requests; the host cannot relabel an unresolved resume as an ordinary preflight failure. The strengthened test verifies the resumed Native terminal record, not only the product status."
       ]
     }
   ]

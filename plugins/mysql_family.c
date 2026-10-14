@@ -1008,7 +1008,7 @@ static ud_status prove_target(mysql_state *p, const ud_write_options *o, const u
         s = discover(p, o->table, &meta);
     ud_batch *actual_schema = NULL;
     if (!s)
-        s = p->host.schema_from_metadata(p->host.context, meta, o->table, UD_MYSQL_DIALECT,
+        s = p->host.schema_from_metadata(p->host.context, meta, o->table, p->host.resource_namespace, UD_MYSQL_DIALECT,
                                          &actual_schema);
     uint32_t columns = p->host.columns(batch);
     for (uint32_t i = 0; !s && i < columns; i++) {
@@ -1539,7 +1539,7 @@ static ud_status cdc_schema_event(mysql_state *p, ud_cdc_event *out) {
     if (!status)
         status = p->host.schema_from_metadata(
             p->host.context, metadata,
-            (ud_string){c->incarnation, (uint32_t)strlen(c->incarnation)},
+            (ud_string){c->incarnation, (uint32_t)strlen(c->incarnation)},p->host.resource_namespace,
 #if defined(UD_MYSQL_CLIENT)
             UD_SQL_MYSQL,
 #else

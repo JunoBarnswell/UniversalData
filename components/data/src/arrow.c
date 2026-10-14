@@ -49,10 +49,15 @@ static ud_status export_metadata(ud_context *ctx, const ud_field *field, const c
     ud_bytes metadata = {.ctx = ctx}, lineage = {.ctx = ctx};
     char id[33];
     ud_status s = metadata_integer(&metadata, 2 + (field->type == UD_INTERVAL) +
-                                                  (field->dictionary_kind != 0));
+                                                  (field->dictionary_kind != 0) +
+                                                  !!(field->physical_identity.high || field->physical_identity.low));
     ud_id_format(field->identity, id);
     if (!s)
         s = metadata_pair(&metadata, "ud.column_id", id, 32);
+    if (!s && (field->physical_identity.high || field->physical_identity.low)) {
+        ud_id_format(field->physical_identity,id);
+        s=metadata_pair(&metadata,"ud.physical_id",id,32);
+    }
     for (uint32_t j = 0; !s && j < field->lineage_count; j++) {
         if (j)
             s = ud_bytes_put(&lineage, ",", 1);
@@ -282,7 +287,7 @@ static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *fi
     if (pairs < 0 || pairs > 64)
         return UD_SCHEMA;
     uint32_t at = 4;
-    int id_seen = 0, lineage_seen = 0;
+    int id_seen = 0, lineage_seen = 0, physical_seen=0;
     for (int32_t j = 0; j < pairs; j++) {
         int32_t key_length, value_length;
         if (at > 1048576 - 4)
@@ -315,6 +320,9 @@ static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *fi
                 status = ud_dictionary_parse(ctx, dictionary, field);
             ud_json_destroy(dictionary);
             UD_TRY(status);
+        } else if (key_length==14 && !memcmp(key,"ud.physical_id",14)) {
+            if (physical_seen++) return UD_SCHEMA;
+            UD_TRY(ud_id_parse((ud_string){value,(uint32_t)value_length},&field->physical_identity));
         } else if (key_length == 12 && !memcmp(key, "ud.column_id", 12)) {
             if (id_seen++)
                 return UD_SCHEMA;
@@ -343,7 +351,7 @@ static ud_status import_metadata(ud_context *ctx, const char *data, ud_field *fi
             }
         }
     }
-    return id_seen == lineage_seen ? UD_OK : UD_SCHEMA;
+    return id_seen == lineage_seen && (!physical_seen || id_seen) ? UD_OK : UD_SCHEMA;
 }
 static ud_status import_field(ud_context *ctx, const struct ArrowSchema *s, ud_field *f,
                               uint32_t depth) {

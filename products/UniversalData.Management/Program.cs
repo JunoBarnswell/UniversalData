@@ -21,7 +21,9 @@ foreach (string address in urls.Split(';')) {
 }
 builder.WebHost.UseUrls(urls);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 16777216);
-var configuration = new ProductConfiguration(Path.GetFullPath(builder.Configuration["worker"] ?? Path.Combine(AppContext.BaseDirectory,"worker","ud_worker.dll")));
+string nodeId=builder.Configuration["node"] ?? Guid.NewGuid().ToString("N");
+if (!HostIdentity.ValidId(nodeId)) throw new InvalidDataException("Invalid dispatcher node identity");
+var configuration = new ProductConfiguration(Path.GetFullPath(builder.Configuration["worker"] ?? Path.Combine(AppContext.BaseDirectory,"worker","ud_worker.dll")),nodeId);
 builder.Services.AddSingleton(policy); builder.Services.AddSingleton(configuration); builder.Services.AddSingleton(identities);
 builder.Services.AddSingleton<RunDispatcher>(); builder.Services.AddHostedService(services => services.GetRequiredService<RunDispatcher>());
 ManagementSecurity.Configure(builder,policy,identities);
@@ -120,7 +122,7 @@ api.MapGet("/health",() => new { sdk = ProductInfo.Sdk,protocol = ProductInfo.Pr
 app.MapFallbackToFile("index.html"); app.Run();
 
 static object RunView(RunState value) => new { value.Version,value.Id,value.PackageId,value.PackageRevision,value.State,value.ExecutionId,value.Resume,value.Result,
-    value.TimestampMs,value.Revision,value.JobId,value.Attempt,value.NotBeforeMs,value.Debug,value.DeploymentId,value.DeploymentRevision,value.Subject,value.ProcessId };
+    value.TimestampMs,value.Revision,value.JobId,value.Attempt,value.NotBeforeMs,value.Debug,value.DeploymentId,value.DeploymentRevision,value.Subject,value.ProcessId,workerNode=value.Owner };
 static object JobView(JobState value) => new { value.Version,value.Id,value.PackageId,value.PackageRevision,value.ParametersReference,value.Enabled,value.EverySeconds,
     value.NextDueMs,value.MaxConcurrency,value.MaxAttempts,value.RetryDelaySeconds,value.Revision,value.DeploymentId,value.DeploymentRevision,value.Subject };
 static string Query(CatalogKind kind,string? afterId = null,string? afterRevision = null) {

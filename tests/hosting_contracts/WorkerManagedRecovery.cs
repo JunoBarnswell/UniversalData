@@ -28,7 +28,7 @@ static class WorkerManagedRecovery
                     string text = await WorkerProtocol.ReadLine(process.StandardOutput,67108864,timeout.Token) ?? throw new Exception("Worker terminated without a Native frame");
                     using var document = JsonDocument.Parse(text); var value = document.RootElement;
                     if (value.GetProperty("ticket").GetString() != request.Ticket) throw new Exception("Worker ticket changed");
-                    if (value.GetProperty("kind").GetString() == "event") continue;
+                    if (value.GetProperty("kind").GetString() == "catalog") continue;
                     if (value.GetProperty("kind").GetString() != kind) throw new Exception("Unexpected Worker phase"); return value.Clone();
                 }
             }

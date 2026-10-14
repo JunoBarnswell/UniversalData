@@ -56,6 +56,9 @@ def projections(model):
         macro = "UD_" + name if name in ("PLUGIN_ABI", "PACKAGE_VERSION") else "UD_" + name + "_VERSION"
         header += "#define " + macro + " " + str(protocol) + "u\n"
     header += "#define UD_CHECKPOINT_FORMAT_REVISION " + str(product["checkpointRevision"]) + "u\n"
+    header += "#define UD_DATA_LAYOUT_REVISION " + str(product["dataLayoutRevision"]) + "u\n"
+    header += "#define UD_CATALOG_FORMAT_REVISION " + str(product["catalogRevision"]) + "u\n"
+    header += "#define UD_WORKER_FORMAT_REVISION " + str(product["workerRevision"]) + "u\n"
     header += "#endif\n"
     facts = {"generatedFrom": marker, "sdkVersion": version, "abi": abi,
              "scope": model["scope"], "baseline": model["baseline"], "candidate": model["candidate"],
@@ -122,7 +125,7 @@ def projections(model):
         "bindings/dotnet/UniversalData/ProductInfo.cs":
             "// Generated from metadata/product.json.\nnamespace UniversalData;\n"
             "public static class ProductInfo\n{\n    public const string Sdk = \"" + version +
-            "\";\n    public const int Protocol = " + str(protocol) + ";\n}\n",
+            "\";\n    public const int Protocol = " + str(protocol) + ";\n    public const int WorkerRevision = " + str(product["workerRevision"]) + ";\n}\n",
         "products/designer/src/version.ts":
             "// Generated from metadata/product.json.\nexport const PRODUCT_VERSION = \"" + version +
             "\";\nexport const PROTOCOL_VERSION = " + str(protocol) + ";\n",

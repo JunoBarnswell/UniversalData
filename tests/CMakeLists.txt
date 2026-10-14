@@ -26,6 +26,9 @@ if(TARGET ud_foundation)
   add_test(NAME json_document COMMAND test_json)
 endif()
 if(TARGET ud_columnar)
+  add_executable(test_schema_identity schema_identity.c)
+  target_link_libraries(test_schema_identity PRIVATE ud_columnar)
+  add_test(NAME schema_physical_identity_and_nested_evolution COMMAND test_schema_identity)
   add_executable(test_schema_discovery schema_discovery.c)
   target_link_libraries(test_schema_discovery PRIVATE ud_columnar)
   add_test(NAME unified_file_schema_discovery COMMAND test_schema_discovery ${CMAKE_CURRENT_BINARY_DIR}/schema-discovery-fixture.txt)
@@ -76,6 +79,14 @@ if(TARGET ud_connector_sqlite)
   set_tests_properties(sqlite_receipts_upsert PROPERTIES TIMEOUT 130)
 endif()
 if(TARGET ud_connector_postgresql AND TARGET ud_plugins)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_executable(test_postgresql_schema postgresql_schema.c)
+  target_link_libraries(test_postgresql_schema PRIVATE ud_plugins)
+  add_test(NAME integration_postgresql_physical_schema COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_POSTGRESQL_CONFIG
+    $<TARGET_FILE:test_postgresql_schema> $<TARGET_FILE:ud_connector_postgresql>)
+  set_tests_properties(integration_postgresql_physical_schema PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120
+    LABELS "real-integration;postgresql" RESOURCE_LOCK ud_integration_postgresql)
   add_executable(test_postgresql_cancel postgresql_cancel.c)
   target_link_libraries(test_postgresql_cancel PRIVATE ud_plugins Threads::Threads)
   find_program(UD_TEST_PG_INITDB initdb)
@@ -156,6 +167,10 @@ if(TARGET ud_package AND TARGET ud_connector_sqlite)
   set_tests_properties(package_durable_recovery PROPERTIES TIMEOUT 180)
 endif()
 if(TARGET ud_package)
+  add_executable(test_catalog_leases catalog_leases.c)
+  target_link_libraries(test_catalog_leases PRIVATE ud_package)
+  add_test(NAME catalog_leases_process_recovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/catalog_leases.py $<TARGET_FILE:test_catalog_leases>)
+  set_tests_properties(catalog_leases_process_recovery PROPERTIES TIMEOUT 60)
   add_executable(test_catalog catalog.c)
   target_link_libraries(test_catalog PRIVATE ud_package)
   add_test(NAME catalog_immutable_store COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/catalog.py $<TARGET_FILE:test_catalog>)
@@ -294,6 +309,10 @@ endif()
 
 # Advanced SQL/CDC are actual registered acceptance entries, not unregistered
 if(UD_BUILD_HOSTS)
+  add_test(NAME management_multi_process_claim_recovery COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/management_cluster.py ${UD_DOTNET}
+    ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
+  set_tests_properties(management_multi_process_claim_recovery PROPERTIES TIMEOUT 180)
   add_test(NAME management_authenticated_native_worker COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/management_security.py ${UD_DOTNET}
     ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
@@ -378,7 +397,7 @@ if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
           SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS "real-integration;native-bulk;${driver}"
           RESOURCE_LOCK ud_integration_${driver})
       endif()
-      if(driver MATCHES "^(postgresql|mysql|mariadb|oracle_oci)$")
+      if(driver MATCHES "^(postgresql|mysql|mariadb|odbc|oracle_oci)$")
         add_test(NAME integration_${driver}_participant_recovery COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/transaction_participants.py UD_TEST_${fixture}_CONFIG
           $<TARGET_FILE:test_transaction_participants> $<TARGET_FILE:ud_connector_${driver}>)
@@ -425,4 +444,13 @@ if(TARGET ud_package)
       ${CMAKE_CURRENT_SOURCE_DIR}/network_product.py $<TARGET_FILE:test_product_native>)
     set_tests_properties(native_object_transfer_sequence PROPERTIES TIMEOUT 180)
   endif()
+endif()
+
+if(TARGET ud_connector_odbc AND TARGET ud_connector_postgresql)
+  add_test(NAME integration_mssql_postgresql_participant_recovery COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/transaction_participants.py UD_TEST_ODBC_CONFIG
+    $<TARGET_FILE:test_transaction_participants> $<TARGET_FILE:ud_connector_odbc>
+    UD_TEST_POSTGRESQL_CONFIG $<TARGET_FILE:ud_connector_postgresql>)
+  set_tests_properties(integration_mssql_postgresql_participant_recovery PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
+    LABELS "real-integration;crash-recovery;odbc;postgresql" RESOURCE_LOCK "ud_integration_odbc;ud_integration_postgresql")
 endif()

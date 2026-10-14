@@ -94,10 +94,12 @@ static ud_status count_rows(ud_connection *connection, const char *table, uint64
         }                                                                                          \
     } while (0)
 int main(int argc, char **argv) {
-    CHECK(argc == 5 && strlen(argv[4]) == 64);
+    CHECK((argc == 5 || argc == 7) && strlen(argv[4]) == 64);
     OK(ud_context_create(NULL, &context));
     ud_plugin *plugin = NULL;
     OK(ud_plugin_load(context, argv[1], 0, &plugin));
+    ud_plugin *other=NULL;
+    if (argc==7) OK(ud_plugin_load(context,argv[5],0,&other));
     ud_connection *connections[2] = {0};
     ud_transaction_branch branches[2] = {0};
     char identities[2][65];
@@ -108,12 +110,12 @@ int main(int argc, char **argv) {
                                          .resource = {"independent-participant", 23},
                                          .credential_reference = {"fixture", 7},
                                          .authorize = grant,
-                                         .resolve_user = argv[2],
+                                         .resolve_user = index && argc==7 ? argv[6] : argv[2],
                                          .resolve = configuration};
-        OK(ud_connection_open(plugin, &options, connections + index));
+        OK(ud_connection_open(index && other ? other : plugin, &options, connections + index));
         if (!(ud_connection_capabilities(connections[index]) &
               UD_CONNECT_TRANSACTION_PARTICIPANT)) {
-            fprintf(stderr, "Blocked: resource has no durable participant capability\n");
+            fprintf(stderr, "Blocked: resource has no durable participant capability (%s)\n",ud_error(context));
             return 77;
         }
         memcpy(identities[index], argv[4], 65);
@@ -176,6 +178,7 @@ int main(int argc, char **argv) {
     }
     for (uint32_t index = 0; index < 2; index++)
         OK(ud_connection_close(connections[index]));
+    if (other) OK(ud_plugin_unload(other));
     OK(ud_plugin_unload(plugin));
     ud_context_destroy(context);
     return 0;

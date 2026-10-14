@@ -16,7 +16,7 @@ endif()
 
 if(UD_WITH_ODBC)
   find_package(ODBC REQUIRED)
-  ud_plugin_target(ud_connector_odbc odbc.c mssql_cdc.c)
+  ud_plugin_target(ud_connector_odbc odbc.c mssql_cdc.c mssql_xa.c)
   if(EXISTS "${ODBC_INCLUDE_DIR}/${CMAKE_LIBRARY_ARCHITECTURE}/unixodbc.h")
     target_include_directories(ud_connector_odbc PRIVATE "${ODBC_INCLUDE_DIR}/${CMAKE_LIBRARY_ARCHITECTURE}")
   endif()
