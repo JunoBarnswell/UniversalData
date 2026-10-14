@@ -1,0 +1,5 @@
+NOTICE:  relation "ud_sdk_receipts_v11" already exists, skipping
+NOTICE:  relation "ud_sdk_tx_receipts_v11" already exists, skipping
+{"mode":"parameters","dialect":2,"rows":1000000,"batches":62,"batchRows":16384,"writeSeconds":5.401976,"generationSeconds":0.328619,"cpuSeconds":1.570035,"peakRssKiB":13408,"rowsPerSecond":185117,"verifiedRowsAndReceipts":true,"outputSignature":"4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427","verificationSeconds":1.550792,"table":"ud_bulk_b83cfe8c1a25f1e7d6fbf9880e9d1d37_parameters"}
+{"mode":"native","dialect":2,"rows":1000000,"batches":62,"batchRows":16384,"writeSeconds":1.695950,"generationSeconds":0.351574,"cpuSeconds":1.330419,"peakRssKiB":13408,"rowsPerSecond":589640,"verifiedRowsAndReceipts":true,"outputSignature":"4ce6ece55f72a94f923ceaf39d487824e46c982097a667243285a94812535427","verificationSeconds":1.571932,"table":"ud_bulk_b83cfe8c1a25f1e7d6fbf9880e9d1d37_native"}
+{"nativeSpeedup":3.185}

@@ -1,0 +1,183 @@
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Found ICU: /workspace/.universaldata-tools/sql-deps/usr/include (found suitable version "76.1", minimum required is "76") found components: uc i18n
+-- Found ICU: /workspace/.universaldata-tools/sql-deps/usr/include (found suitable version "76.1", minimum required is "76") found components: uc i18n
+-- Configuring done (0.9s)
+-- Generating done (0.1s)
+-- Build files have been written to: /tmp/ud-next-build
+[0/4] Re-checking globbed directories...
+[1/78] Building C object CMakeFiles/ud_data.dir/components/data/src/text.c.o
+/tmp/UniversalData-Next/components/data/src/text.c: In function ‘to_utf8’:
+/tmp/UniversalData-Next/components/data/src/text.c:20:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   20 |     if(size<0||size==INT32_MAX)return UD_RESOURCE;*out=ud_alloc(ctx,(size_t)size+1);if(!*out)return UD_RESOURCE;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:20:51: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   20 |     if(size<0||size==INT32_MAX)return UD_RESOURCE;*out=ud_alloc(ctx,(size_t)size+1);if(!*out)return UD_RESOURCE;
+      |                                                   ^
+/tmp/UniversalData-Next/components/data/src/text.c: In function ‘ud_text_transform’:
+/tmp/UniversalData-Next/components/data/src/text.c:42:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   42 |     if(!ctx||!out||!length||flags&~63u)return UD_INVALID;*out=NULL;*length=0;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:42:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   42 |     if(!ctx||!out||!length||flags&~63u)return UD_INVALID;*out=NULL;*length=0;
+      |                                                          ^
+/tmp/UniversalData-Next/components/data/src/text.c:50:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   50 |     if(!s)s=to_utf8(ctx,data+begin,end-begin,out,length);ud_free(data);return s;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:50:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   50 |     if(!s)s=to_utf8(ctx,data+begin,end-begin,out,length);ud_free(data);return s;
+      |                                                          ^~~~~~~
+/tmp/UniversalData-Next/components/data/src/text.c: In function ‘ud_text_terms’:
+/tmp/UniversalData-Next/components/data/src/text.c:53:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   53 |     if(!ctx||!maximum||maximum>65536||!out)return UD_INVALID;*out=NULL;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:53:62: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   53 |     if(!ctx||!maximum||maximum>65536||!out)return UD_INVALID;*out=NULL;
+      |                                                              ^
+/tmp/UniversalData-Next/components/data/src/text.c:67:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   67 |     if(it)ubrk_close(it);ud_free(data);if(!s)s=ud_batch_seal(*out);if(s){ud_batch_destroy(*out);*out=NULL;}return s;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:67:26: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   67 |     if(it)ubrk_close(it);ud_free(data);if(!s)s=ud_batch_seal(*out);if(s){ud_batch_destroy(*out);*out=NULL;}return s;
+      |                          ^~~~~~~
+[2/78] Building C object components/data/CMakeFiles/ud_columnar.dir/src/text.c.o
+/tmp/UniversalData-Next/components/data/src/text.c: In function ‘to_utf8’:
+/tmp/UniversalData-Next/components/data/src/text.c:20:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   20 |     if(size<0||size==INT32_MAX)return UD_RESOURCE;*out=ud_alloc(ctx,(size_t)size+1);if(!*out)return UD_RESOURCE;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:20:51: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   20 |     if(size<0||size==INT32_MAX)return UD_RESOURCE;*out=ud_alloc(ctx,(size_t)size+1);if(!*out)return UD_RESOURCE;
+      |                                                   ^
+/tmp/UniversalData-Next/components/data/src/text.c: In function ‘ud_text_transform’:
+/tmp/UniversalData-Next/components/data/src/text.c:42:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   42 |     if(!ctx||!out||!length||flags&~63u)return UD_INVALID;*out=NULL;*length=0;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:42:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   42 |     if(!ctx||!out||!length||flags&~63u)return UD_INVALID;*out=NULL;*length=0;
+      |                                                          ^
+/tmp/UniversalData-Next/components/data/src/text.c:50:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   50 |     if(!s)s=to_utf8(ctx,data+begin,end-begin,out,length);ud_free(data);return s;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:50:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   50 |     if(!s)s=to_utf8(ctx,data+begin,end-begin,out,length);ud_free(data);return s;
+      |                                                          ^~~~~~~
+/tmp/UniversalData-Next/components/data/src/text.c: In function ‘ud_text_terms’:
+/tmp/UniversalData-Next/components/data/src/text.c:53:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   53 |     if(!ctx||!maximum||maximum>65536||!out)return UD_INVALID;*out=NULL;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:53:62: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   53 |     if(!ctx||!maximum||maximum>65536||!out)return UD_INVALID;*out=NULL;
+      |                                                              ^
+/tmp/UniversalData-Next/components/data/src/text.c:67:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   67 |     if(it)ubrk_close(it);ud_free(data);if(!s)s=ud_batch_seal(*out);if(s){ud_batch_destroy(*out);*out=NULL;}return s;
+      |     ^~
+/tmp/UniversalData-Next/components/data/src/text.c:67:26: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   67 |     if(it)ubrk_close(it);ud_free(data);if(!s)s=ud_batch_seal(*out);if(s){ud_batch_destroy(*out);*out=NULL;}return s;
+      |                          ^~~~~~~
+[3/78] Building C object CMakeFiles/ud_data.dir/components/data/src/semantics.c.o
+[4/78] Building C object components/data/CMakeFiles/ud_columnar.dir/src/semantics.c.o
+[5/78] Linking C static library components/data/libud_columnar.a
+[6/78] Linking C executable ud_remote_bulk_benchmark
+[7/78] Linking C executable ud_benchmark
+[8/78] Linking C executable tests/test_transaction_facts
+[9/78] Linking CXX executable tests/test_catalog_secrets
+[10/78] Linking CXX shared library libud_data.so.2.1.0
+[11/78] Creating library symlink libud_data.so.11 libud_data.so
+[12/78] Linking C executable tests/test_schema_identity
+[13/78] Linking CXX executable tests/test_checkpoint_contract
+[14/78] Linking C shared library bindings/java/native/libud_java.so
+[15/78] Linking C executable tests/test_schema_discovery
+[16/78] Linking C executable tests/test_type_domains
+[17/78] Linking CXX executable tests/test_execution_identity
+[18/78] Linking C executable tests/test_record_errors
+[19/78] Linking C executable tests/test_sql_bulk
+[20/78] Linking C executable tests/test_types
+[21/78] Linking C executable tests/test_columnar
+[22/78] Linking C executable tests/test_format
+[23/78] Linking C executable tests/test_regex
+[24/78] Linking C executable tests/test_compute
+[25/78] Linking C executable tests/test_nested
+[26/78] Linking C executable tests/test_mapping
+[27/78] Linking C executable tests/test_quality
+[28/78] Linking C executable tests/test_connector_sqlite
+[29/78] Linking C executable tests/test_postgresql_schema
+[30/78] Linking C executable tests/test_postgresql_cancel
+[31/78] Linking C executable tests/test_architecture_foundation
+[32/78] Linking C executable tests/test_value_semantics
+[33/78] Linking CXX executable tests/test_infrastructure
+[34/78] Linking CXX executable tests/test_four_engines
+[35/78] Linking CXX executable tests/test_core_runtime
+[36/78] Linking CXX executable tests/test_next_phase_queries
+[37/78] Linking CXX executable tests/test_package_execution
+[38/78] Linking CXX executable tests/test_package_outcome
+[39/78] Linking CXX executable tests/test_package_sql
+[40/78] Linking CXX executable tests/test_four_engine_connections
+[41/78] Linking CXX executable tests/test_sql_command_records
+[42/78] Linking C executable tests/typed_data_runner
+[43/78] Linking CXX executable tests/test_catalog_leases
+[44/78] Linking CXX executable tests/test_catalog
+[45/78] Linking CXX executable tests/test_package_recovery
+[46/78] Linking CXX executable tests/test_project
+[47/78] Linking CXX executable tests/test_child_package
+[48/78] Linking CXX executable tests/test_catalog_history
+[49/78] Linking CXX executable tests/test_filesystem_task
+[50/78] Linking C executable tests/test_profile
+[51/78] Linking CXX executable tests/test_process_task
+[52/78] Linking C shared module tests/sample_custom_task.so
+[53/78] Linking C shared module tests/sample_custom_bad.so
+[54/78] Linking CXX executable tests/test_http_task
+[55/78] Linking C executable tests/test_postgresql_values
+[56/78] Linking CXX executable tests/test_profile_task
+[57/78] Linking CXX executable tests/test_next_phase
+[58/78] Linking C executable tests/test_custom_task
+[59/78] Linking C executable tests/test_advanced_sql
+[60/78] Linking C executable tests/test_advanced_native
+[61/78] Linking C executable tests/test_wire_decode
+[62/78] Linking C executable tests/test_transaction_participants
+[63/78] Linking C executable tests/test_advanced_cdc
+[64/78] Linking CXX executable tests/test_next_phase_execution
+[65/78] Linking C executable tests/test_mysql_domains
+[66/78] Linking C executable tests/test_file_layout
+[67/78] Linking C executable tests/test_ssis_expression
+[68/78] Linking CXX executable tests/test_file_generation
+[69/78] Linking CXX executable tests/test_product_native
+[70/78] Linking CXX executable tests/test_ssis_workflow
+[71/78] Linking C executable tests/test_ssis_database
+[72/78] cd /tmp/ud-next-build/hosts && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.CommandLine/UniversalData.CommandLine.csproj -c Release -o /tmp/ud-next-build/hosts/product/cli && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.Worker/UniversalData.Worker.csproj -c Release -o /tmp/ud-next-build/hosts/product/worker && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/products/UniversalData.Management/UniversalData.Management.csproj -c Release -o /tmp/ud-next-build/hosts/product/management -p:DesignerAssets=/tmp/ud-next-build/hosts/designer && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.1.0 /tmp/ud-next-build/hosts/product/cli/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.1.0 /tmp/ud-next-build/hosts/product/worker/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /tmp/ud-next-build/libud_data.so.2.1.0 /tmp/ud-next-build/hosts/product/management/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy_directory /tmp/ud-next-build/hosts/product/worker /tmp/ud-next-build/hosts/product/management/worker
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.CommandLine -> /tmp/UniversalData-Next/products/UniversalData.CommandLine/bin/Release/net10.0/ud_cli.dll
+  UniversalData.CommandLine -> /tmp/ud-next-build/hosts/product/cli/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Worker -> /tmp/UniversalData-Next/products/UniversalData.Worker/bin/Release/net10.0/ud_worker.dll
+  UniversalData.Worker -> /tmp/ud-next-build/hosts/product/worker/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Management -> /tmp/UniversalData-Next/products/UniversalData.Management/bin/Release/net10.0/UniversalData.Management.dll
+  UniversalData.Management -> /tmp/ud-next-build/hosts/product/management/
+[73/78] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/hosting_contracts/HostingContracts.csproj -c Release -o /tmp/ud-next-build/tests/hosting-contracts
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /tmp/UniversalData-Next/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  HostingContracts -> /tmp/UniversalData-Next/tests/hosting_contracts/bin/Release/net10.0/HostingContracts.dll
+  HostingContracts -> /tmp/ud-next-build/tests/hosting-contracts/
+[74/78] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/managed_recovery/ManagedRecovery.csproj -c Release -o /tmp/ud-next-build/tests/managed-recovery
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedRecovery -> /tmp/UniversalData-Next/tests/managed_recovery/bin/Release/net10.0/ManagedRecovery.dll
+  ManagedRecovery -> /tmp/ud-next-build/tests/managed-recovery/
+[75/78] cd /tmp/ud-next-build/tests && /tmp/ud2-tools/dotnet10/dotnet publish /tmp/UniversalData-Next/tests/managed_product/ManagedProduct.csproj -c Release -o /tmp/ud-next-build/tests/managed-product
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /tmp/UniversalData-Next/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedProduct -> /tmp/UniversalData-Next/tests/managed_product/bin/Release/net10.0/ManagedProduct.dll
+  ManagedProduct -> /tmp/ud-next-build/tests/managed-product/

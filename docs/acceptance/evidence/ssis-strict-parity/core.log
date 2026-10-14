@@ -1,0 +1,154 @@
+Internal ctest changing into directory: /tmp/ud-next-build
+Test project /tmp/ud-next-build
+      Start   1: native_checkpoint_contract_revision
+ 1/74 Test   #1: native_checkpoint_contract_revision .............   Passed    0.04 sec
+      Start   2: native_catalog_secret_migration
+ 2/74 Test   #2: native_catalog_secret_migration .................   Passed    0.03 sec
+      Start   3: transaction_fact_publication
+ 3/74 Test   #3: transaction_fact_publication ....................   Passed    0.04 sec
+      Start   4: execution_identity
+ 4/74 Test   #4: execution_identity ..............................   Passed    0.02 sec
+      Start   5: foundation
+ 5/74 Test   #5: foundation ......................................   Passed    0.00 sec
+      Start   6: json_document
+ 6/74 Test   #6: json_document ...................................   Passed    0.00 sec
+      Start   7: schema_physical_identity_and_nested_evolution
+ 7/74 Test   #7: schema_physical_identity_and_nested_evolution ...   Passed    0.00 sec
+      Start   8: unified_file_schema_discovery
+ 8/74 Test   #8: unified_file_schema_discovery ...................   Passed    0.00 sec
+      Start   9: native_type_domains_2
+ 9/74 Test   #9: native_type_domains_2 ...........................   Passed    0.00 sec
+      Start  10: source_record_errors
+10/74 Test  #10: source_record_errors ............................   Passed    0.00 sec
+      Start  11: sql_bulk_streaming
+11/74 Test  #11: sql_bulk_streaming ..............................   Passed    0.00 sec
+      Start  12: columnar
+12/74 Test  #12: columnar ........................................   Passed    0.00 sec
+      Start  13: extended_scalar_types
+13/74 Test  #13: extended_scalar_types ...........................   Passed    0.00 sec
+      Start  14: json_nested_format
+14/74 Test  #14: json_nested_format ..............................   Passed    0.00 sec
+      Start  15: compute_plan
+15/74 Test  #15: compute_plan ....................................   Passed    0.00 sec
+      Start  16: nested_columnar_arrow
+16/74 Test  #16: nested_columnar_arrow ...........................   Passed    0.00 sec
+      Start  17: regex_pcre2
+17/74 Test  #17: regex_pcre2 .....................................   Passed    0.00 sec
+      Start  18: field_mapping
+18/74 Test  #18: field_mapping ...................................   Passed    0.00 sec
+      Start  19: quality_classification
+19/74 Test  #19: quality_classification ..........................   Passed    0.00 sec
+      Start  20: sqlite_receipts_upsert
+20/74 Test  #20: sqlite_receipts_upsert ..........................   Passed    0.09 sec
+      Start  22: postgresql_cursor_cancellation
+21/74 Test  #22: postgresql_cursor_cancellation ..................   Passed    1.04 sec
+      Start  23: architecture_foundation
+22/74 Test  #23: architecture_foundation .........................   Passed    0.00 sec
+      Start  24: shared_value_semantics
+23/74 Test  #24: shared_value_semantics ..........................   Passed    0.05 sec
+      Start  25: four_engine_scheduling_operators
+24/74 Test  #25: four_engine_scheduling_operators ................   Passed    0.03 sec
+      Start  26: block_store_ownership
+25/74 Test  #26: block_store_ownership ...........................   Passed    0.01 sec
+      Start  27: pipeline_tree_parallelism
+26/74 Test  #27: pipeline_tree_parallelism .......................   Passed    0.02 sec
+      Start  28: indexed_segment_journal
+27/74 Test  #28: indexed_segment_journal .........................   Passed    0.42 sec
+      Start  29: logical_durable_task_facts
+28/74 Test  #29: logical_durable_task_facts ......................   Passed    0.04 sec
+      Start  30: core_runtime_resources
+29/74 Test  #30: core_runtime_resources ..........................   Passed    1.09 sec
+      Start  31: core_pipeline_components
+30/74 Test  #31: core_pipeline_components ........................   Passed    0.21 sec
+      Start  32: package_execution
+31/74 Test  #32: package_execution ...............................   Passed    0.05 sec
+      Start  33: value_semantics_pipeline
+32/74 Test  #33: value_semantics_pipeline ........................   Passed    2.47 sec
+      Start  34: package_failure_boundaries
+33/74 Test  #34: package_failure_boundaries ......................   Passed    0.17 sec
+      Start  35: sql_command_records_recovery
+34/74 Test  #35: sql_command_records_recovery ....................   Passed    0.56 sec
+      Start  36: four_engine_connections_enumerators
+35/74 Test  #36: four_engine_connections_enumerators .............   Passed    0.30 sec
+      Start  37: package_sql_integration
+36/74 Test  #37: package_sql_integration .........................   Passed    0.06 sec
+      Start  38: package_durable_recovery
+37/74 Test  #38: package_durable_recovery ........................   Passed    0.64 sec
+      Start  39: catalog_leases_process_recovery
+38/74 Test  #39: catalog_leases_process_recovery .................   Passed    0.44 sec
+      Start  40: catalog_immutable_store
+39/74 Test  #40: catalog_immutable_store .........................   Passed    5.11 sec
+      Start  41: project_environment_deployment
+40/74 Test  #41: project_environment_deployment ..................   Passed    0.10 sec
+      Start  42: child_package_execution
+41/74 Test  #42: child_package_execution .........................   Passed    0.30 sec
+      Start  43: catalog_execution_history
+42/74 Test  #43: catalog_execution_history .......................   Passed    0.06 sec
+      Start  44: filesystem_task_execution
+43/74 Test  #44: filesystem_task_execution .......................   Passed    0.46 sec
+      Start  45: process_task_execution
+44/74 Test  #45: process_task_execution ..........................   Passed    3.48 sec
+      Start  46: http_task_execution
+45/74 Test  #46: http_task_execution .............................   Passed    3.57 sec
+      Start  47: profile_statistics_kernel
+46/74 Test  #47: profile_statistics_kernel .......................   Passed    0.01 sec
+      Start  48: profile_task_execution
+47/74 Test  #48: profile_task_execution ..........................   Passed    0.67 sec
+      Start  49: native_custom_task
+48/74 Test  #49: native_custom_task ..............................   Passed    0.40 sec
+      Start  50: next_phase_native_contracts
+49/74 Test  #50: next_phase_native_contracts .....................   Passed    0.00 sec
+      Start  51: next_phase_pipeline_recovery
+50/74 Test  #51: next_phase_pipeline_recovery ....................   Passed    6.76 sec
+      Start  52: ssis_native_features
+51/74 Test  #52: ssis_native_features ............................   Passed    1.92 sec
+      Start  53: pr5_foundation
+52/74 Test  #53: pr5_foundation ..................................   Passed    0.43 sec
+      Start  54: advanced_native_semantics
+53/74 Test  #54: advanced_native_semantics .......................   Passed    0.01 sec
+      Start  55: advanced_formats_tls_rest
+54/74 Test  #55: advanced_formats_tls_rest .......................   Passed    0.87 sec
+      Start  56: advanced_catalog_ten_table_template
+55/74 Test  #56: advanced_catalog_ten_table_template .............   Passed    0.16 sec
+      Start  57: management_multi_process_claim_recovery
+56/74 Test  #57: management_multi_process_claim_recovery .........   Passed   35.19 sec
+      Start  58: management_authenticated_native_worker
+57/74 Test  #58: management_authenticated_native_worker ..........   Passed    2.26 sec
+      Start  59: hosting_identity_secret_resource_contracts
+58/74 Test  #59: hosting_identity_secret_resource_contracts ......   Passed    1.02 sec
+      Start  60: worker_protocol
+59/74 Test  #60: worker_protocol .................................   Passed    0.93 sec
+      Start  61: managed_native_epoch_process_recovery
+60/74 Test  #61: managed_native_epoch_process_recovery ...........   Passed    0.34 sec
+      Start  62: managed_product_worker_process_recovery
+61/74 Test  #62: managed_product_worker_process_recovery .........   Passed    0.84 sec
+      Start  63: managed_registry_scripts_debug_lifecycle
+62/74 Test  #63: managed_registry_scripts_debug_lifecycle ........   Passed    1.23 sec
+      Start  64: java_registry_observer_catalog_lifecycle
+63/74 Test  #64: java_registry_observer_catalog_lifecycle ........   Passed    0.15 sec
+      Start  92: native_enterprise_file_layout
+64/74 Test  #92: native_enterprise_file_layout ...................   Passed    0.03 sec
+      Start  93: file_generation_process_recovery
+65/74 Test  #93: file_generation_process_recovery ................   Passed    0.10 sec
+      Start  94: native_component_product_semantics
+66/74 Test  #94: native_component_product_semantics ..............   Passed    0.14 sec
+      Start  95: native_sql_source_record_errors
+67/74 Test  #95: native_sql_source_record_errors .................   Passed    0.05 sec
+      Start  96: native_xlsx_preserving_append
+68/74 Test  #96: native_xlsx_preserving_append ...................   Passed    0.07 sec
+      Start  97: native_avro_interoperability
+69/74 Test  #97: native_avro_interoperability ....................   Passed    0.09 sec
+      Start  98: apache_avro_native_pipeline_resolution
+70/74 Test  #98: apache_avro_native_pipeline_resolution ..........   Passed    0.16 sec
+      Start  99: native_xml_source_xpath_xslt_xsd
+71/74 Test  #99: native_xml_source_xpath_xslt_xsd ................   Passed    0.19 sec
+      Start 100: native_object_transfer_sequence
+72/74 Test #100: native_object_transfer_sequence .................   Passed    0.67 sec
+      Start 102: ssis_native_expression_contract
+73/74 Test #102: ssis_native_expression_contract .................   Passed    0.03 sec
+      Start 103: ssis_row_error_atomicity_recovery
+74/74 Test #103: ssis_row_error_atomicity_recovery ...............   Passed    0.95 sec
+
+100% tests passed, 0 tests failed out of 74
+
+Total Test time (real) =  76.65 sec

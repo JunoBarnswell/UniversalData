@@ -1,0 +1,71 @@
+Internal ctest changing into directory: /tmp/ud-next-build
+Test project /tmp/ud-next-build
+      Start 21: integration_postgresql_physical_schema
+ 1/23 Test #21: integration_postgresql_physical_schema ..............   Passed    0.06 sec
+      Start 65: integration_postgresql_sql
+ 2/23 Test #65: integration_postgresql_sql ..........................   Passed    0.09 sec
+      Start 66: integration_postgresql_cdc
+ 3/23 Test #66: integration_postgresql_cdc ..........................   Passed    0.14 sec
+      Start 67: integration_postgresql_row_command
+ 4/23 Test #67: integration_postgresql_row_command ..................   Passed    0.06 sec
+      Start 68: integration_postgresql_native_bulk
+ 5/23 Test #68: integration_postgresql_native_bulk ..................   Passed    0.07 sec
+      Start 69: integration_postgresql_participant_recovery
+ 6/23 Test #69: integration_postgresql_participant_recovery .........   Passed    0.45 sec
+      Start 70: integration_mariadb_sql
+ 7/23 Test #70: integration_mariadb_sql .............................   Passed    0.11 sec
+      Start 71: integration_mariadb_cdc
+ 8/23 Test #71: integration_mariadb_cdc .............................   Passed    0.24 sec
+      Start 72: integration_mariadb_row_command
+ 9/23 Test #72: integration_mariadb_row_command .....................   Passed    0.11 sec
+      Start 73: integration_mariadb_type_domains
+10/23 Test #73: integration_mariadb_type_domains ....................   Passed    0.06 sec
+      Start 74: integration_mariadb_native_bulk
+11/23 Test #74: integration_mariadb_native_bulk .....................   Passed    0.08 sec
+      Start 75: integration_mariadb_participant_recovery
+12/23 Test #75: integration_mariadb_participant_recovery ............   Passed    0.42 sec
+      Start 76: integration_odbc_sql
+13/23 Test #76: integration_odbc_sql ................................   Passed    0.39 sec
+      Start 77: integration_odbc_cdc
+14/23 Test #77: integration_odbc_cdc ................................   Passed   11.21 sec
+      Start 78: integration_odbc_row_command
+15/23 Test #78: integration_odbc_row_command ........................   Passed    0.08 sec
+      Start 79: integration_odbc_native_bulk
+16/23 Test #79: integration_odbc_native_bulk ........................   Passed    0.12 sec
+      Start 80: integration_odbc_participant_recovery
+17/23 Test #80: integration_odbc_participant_recovery ...............***Skipped   0.07 sec
+      Start 81: integration_oracle_oci_sql
+18/23 Test #81: integration_oracle_oci_sql ..........................***Skipped   0.03 sec
+      Start 82: integration_oracle_oci_cdc
+19/23 Test #82: integration_oracle_oci_cdc ..........................***Skipped   0.03 sec
+      Start 83: integration_oracle_oci_row_command
+20/23 Test #83: integration_oracle_oci_row_command ..................***Skipped   0.03 sec
+      Start 84: integration_oracle_oci_native_bulk
+21/23 Test #84: integration_oracle_oci_native_bulk ..................***Skipped   0.03 sec
+      Start 85: integration_oracle_oci_participant_recovery
+22/23 Test #85: integration_oracle_oci_participant_recovery .........***Skipped   0.03 sec
+      Start 95: integration_mssql_postgresql_participant_recovery
+23/23 Test #95: integration_mssql_postgresql_participant_recovery ...***Skipped   0.07 sec
+
+100% tests passed, 0 tests failed out of 23
+
+Label Time Summary:
+crash-recovery      =   1.04 sec*proc (5 tests)
+mariadb             =   1.01 sec*proc (6 tests)
+native-bulk         =   0.29 sec*proc (4 tests)
+odbc                =  11.93 sec*proc (6 tests)
+oracle_oci          =   0.14 sec*proc (5 tests)
+postgresql          =   0.94 sec*proc (7 tests)
+real-integration    =  13.95 sec*proc (23 tests)
+row-command         =   0.28 sec*proc (4 tests)
+
+Total Test time (real) =  13.96 sec
+
+The following tests did not run:
+	 80 - integration_odbc_participant_recovery (Skipped)
+	 81 - integration_oracle_oci_sql (Skipped)
+	 82 - integration_oracle_oci_cdc (Skipped)
+	 83 - integration_oracle_oci_row_command (Skipped)
+	 84 - integration_oracle_oci_native_bulk (Skipped)
+	 85 - integration_oracle_oci_participant_recovery (Skipped)
+	 95 - integration_mssql_postgresql_participant_recovery (Skipped)
