@@ -20,7 +20,7 @@
   "candidate": {
     "branch": "codex/etl-ssis-product-alignment",
     "state": "Draft PR #6 Linux delivery: complete PRODUCT build, 78 actual CTest passes with 4 Oracle environment skips, real four-driver SQL/CDC/native bulk, six performance workloads, browser and independent installed C/.NET/Java/CLI/Web/Worker acceptance passed. 25 audit items have current scoped behavior passes, 17 remain Partial, 8 are Blocked, and 039/040 are NotApplicable; 4 source items remain Partial. Complete 50-item certification is not claimed.",
-    "sourceCommit": null,
+    "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27",
     "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
     "mergeEvidence": null,
     "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/6"
@@ -41,7 +41,8 @@
     "sdkVersion": "2.0.0",
     "abiVersion": 10,
     "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
-    "published": false
+    "published": false,
+    "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
   },
   "requiredGates": 11,
   "passedGates": 4,

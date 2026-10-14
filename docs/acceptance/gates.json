@@ -246,6 +246,7 @@
     "sdkVersion": "2.0.0",
     "abiVersion": 10,
     "sourceFingerprint": "4a2f68a6671848b9dc3e6983140409d95fbe4ca8489fa673be567e0f4b87e3aa",
-    "published": false
+    "published": false,
+    "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
   }
 }
