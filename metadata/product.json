@@ -9499,10 +9499,51 @@
         ],
         "sandboxEnvironment": "bubblewrap namespace creation succeeds; systemd user bus is unavailable, so enforced user cgroup launch cannot be accepted",
         "ci": {
-          "commit": "22f189c0353a4c76e8a85c932e797ede15d51b10",
-          "runId": 38556015263,
-          "jobsHaveSteps": false,
-          "annotation": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the Billing & plans section in your settings"
+          "sourceCommit": "315e26437e94ea7c3b2d8e3695178e0080a61a5e",
+          "workflowRun": 38570917177,
+          "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38570917177",
+          "status": "Verification Blocked",
+          "jobStepsExecuted": false,
+          "annotations": [
+            {
+              "annotation_level": "failure",
+              "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+              "title": ""
+            }
+          ],
+          "jobs": [
+            {
+              "id": 115875569518,
+              "name": "native-core (ubuntu-24.04)",
+              "conclusion": "failure",
+              "steps": []
+            },
+            {
+              "id": 115875570305,
+              "name": "native-core (windows-2025)",
+              "conclusion": "failure",
+              "steps": []
+            },
+            {
+              "id": 115875570397,
+              "name": "source-and-designer",
+              "conclusion": "failure",
+              "steps": []
+            },
+            {
+              "id": 115875571426,
+              "name": "complete-drivers-and-delivery",
+              "conclusion": "skipped",
+              "steps": []
+            },
+            {
+              "id": 115875598273,
+              "name": "release-readiness",
+              "conclusion": "failure",
+              "steps": []
+            }
+          ],
+          "evidence": "docs/acceptance/evidence/pr7-foundation/ci-315e264.json"
         },
         "evidenceDirectory": "docs/acceptance/evidence/pr7-foundation",
         "checkpointRevision": 2,
