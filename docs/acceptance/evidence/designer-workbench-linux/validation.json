@@ -65,5 +65,7 @@
     "Whole-file nullability is not inferred from samples; Excel RowId was explicitly declared required.",
     "These runs are correctness/resource evidence, not a controlled Native Bulk versus parameterized SQL performance comparison.",
     "Full SSIS parity remains Partial; Windows and unavailable independent services are not counted as passed."
-  ]
+  ],
+  "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+  "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/9"
 }

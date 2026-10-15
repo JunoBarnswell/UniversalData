@@ -14,7 +14,7 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/designer-workbench-linux/build.log",
-          "sha256": "565b821cfb40d8269afa304c8ac0a038b3173755a06c64b22bbbefe9d5c1fa59"
+          "sha256": "9c2fc8eb88ce0995271c0ccf6e9ca7f8708cb2208938b9ec404fb59ff6601b45"
         },
         {
           "path": "docs/acceptance/evidence/designer-workbench-linux/version-build.log",
@@ -27,7 +27,7 @@
       ],
       "currentEvidence": {
         "status": "Passed",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
           "docs/acceptance/evidence/designer-workbench-linux/build.log",
@@ -37,7 +37,7 @@
       },
       "reason": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
       "description": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
-      "sourceCommit": null,
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
       "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
       "previousEvidence": [
         {
@@ -72,7 +72,7 @@
       "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
       "currentEvidence": {
         "status": "Blocked",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
@@ -107,7 +107,7 @@
       ],
       "currentEvidence": {
         "status": "Partial",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
@@ -158,7 +158,7 @@
       "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
       "currentEvidence": {
         "status": "Partial",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
@@ -203,7 +203,7 @@
       "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
       "currentEvidence": {
         "status": "Blocked",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
@@ -239,11 +239,11 @@
       ],
       "reason": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
       "description": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
-      "sourceCommit": null,
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
       "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
       "currentEvidence": {
         "status": "Passed",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
           "docs/acceptance/evidence/designer-workbench-linux/native-core.log",
@@ -282,7 +282,7 @@
       ],
       "currentEvidence": {
         "status": "Passed",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
           "docs/acceptance/evidence/designer-workbench-linux/browser-local.json",
@@ -292,7 +292,7 @@
       },
       "reason": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
       "description": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
-      "sourceCommit": null,
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
       "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
       "previousEvidence": [
         {
@@ -326,7 +326,7 @@
       "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
       "currentEvidence": {
         "status": "Partial",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
@@ -361,11 +361,11 @@
       ],
       "reason": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
       "description": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
-      "sourceCommit": null,
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
       "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
       "currentEvidence": {
         "status": "Passed",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
           "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
@@ -396,7 +396,7 @@
       ],
       "currentEvidence": {
         "status": "Passed",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
           "docs/acceptance/evidence/designer-workbench-linux/static-contracts.log"
@@ -404,7 +404,7 @@
       },
       "reason": "Current source product projection, public API, boundaries and notices",
       "description": "Current source product projection, public API, boundaries and notices",
-      "sourceCommit": null,
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
       "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
       "previousEvidence": [
         {
@@ -433,11 +433,11 @@
       ],
       "reason": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
       "description": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
-      "sourceCommit": null,
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
       "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
       "currentEvidence": {
         "status": "Passed",
-        "sourceCommit": null,
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
         "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
           "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
@@ -466,6 +466,6 @@
     "runtimeIdentifier": "linux-x64",
     "sdkVersion": "2.2.0",
     "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-    "sourceCommit": null
+    "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592"
   }
 }

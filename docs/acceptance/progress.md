@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 2.2.0 / ABI 11；Designer 3.0 Linux implementation and recorded scope accepted; draft PR pending. Production release remains gated.。
+SDK 2.2.0 / ABI 11；Draft PR #9; Linux workbench acceptance and installed SDK passed. Full production release remains gated by the recorded inherited Partial/Blocked items.。
 
 门禁通过 6/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
