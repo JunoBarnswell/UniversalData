@@ -1,0 +1,1868 @@
+{
+  "schemaVersion": 11,
+  "protocolVersion": 11,
+  "buildProfile": "PRODUCT",
+  "sdkVersion": "2.2.0",
+  "abiVersion": 11,
+  "configuration": "Release",
+  "runtimeIdentifier": "linux-x64",
+  "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+  "capabilities": {
+    "sqlite": true,
+    "postgresql": true,
+    "odbc": true,
+    "mysql": true,
+    "mariadb": true,
+    "oracle_oci": true,
+    "arrow_files": true,
+    "http": true,
+    "xml": true,
+    "network": true
+  },
+  "managedRuntime": "Microsoft.AspNetCore.App 10",
+  "hosts": [
+    "cli",
+    "worker",
+    "management",
+    "designer"
+  ],
+  "nativeRuntimes": [
+    {
+      "project": "ICU",
+      "version": "76.1",
+      "soname": "libicuuc.so.76",
+      "originalSha256": "a8e433e81075732faf255b17d4a25ce28632e41fef1a75e727ee7f4ed73ab151",
+      "sha256": "5193df4ccfad9f343074bbb6a83d12a1968848691f0605d8fa8bdadd5381ba2f",
+      "needed": [
+        "libicudata.so.76",
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "modification": "Relocatable $ORIGIN RUNPATH only",
+      "licenseFiles": [
+        "sdk/share/UniversalData/licenses/native-runtimes/ICU/ICU76-COPYRIGHT.txt"
+      ]
+    },
+    {
+      "project": "ICU",
+      "version": "76.1",
+      "soname": "libicudata.so.76",
+      "originalSha256": "a04b2b906193fa1e40f968a3d16d7d6c844a1fafbdd5bce6e9f67b01c124ff24",
+      "sha256": "852704a393d4b0c631c985e5df65942fbc359ad35dc1a2182615bc37f70d9ec1",
+      "needed": [],
+      "modification": "Relocatable $ORIGIN RUNPATH only",
+      "licenseFiles": [
+        "sdk/share/UniversalData/licenses/native-runtimes/ICU/ICU76-COPYRIGHT.txt"
+      ]
+    },
+    {
+      "project": "Apache-Arrow",
+      "version": "23.0.1",
+      "soname": "libarrow.so.2300",
+      "originalSha256": "604b2e4b936a1f52479261c8e77b1483131c76015b923b4d11fff87d2e8e8d7c",
+      "sha256": "604b2e4b936a1f52479261c8e77b1483131c76015b923b4d11fff87d2e8e8d7c",
+      "needed": [
+        "librt.so.1",
+        "libpthread.so.0",
+        "libdl.so.2",
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "modification": "Relocatable $ORIGIN RUNPATH only",
+      "licenseFiles": [
+        "sdk/share/UniversalData/licenses/native-runtimes/Apache-Arrow/Arrow23-LICENSE.txt",
+        "sdk/share/UniversalData/licenses/native-runtimes/Apache-Arrow/Arrow23-NOTICE.txt"
+      ]
+    },
+    {
+      "project": "Apache-Arrow",
+      "version": "23.0.1",
+      "soname": "libparquet.so.2300",
+      "originalSha256": "05464db9f29f3e3c72bda50625b2c3ae15931b2a75dfea352a08400da4f1a14f",
+      "sha256": "05464db9f29f3e3c72bda50625b2c3ae15931b2a75dfea352a08400da4f1a14f",
+      "needed": [
+        "libarrow.so.2300",
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "modification": "Relocatable $ORIGIN RUNPATH only",
+      "licenseFiles": [
+        "sdk/share/UniversalData/licenses/native-runtimes/Apache-Arrow/Arrow23-LICENSE.txt",
+        "sdk/share/UniversalData/licenses/native-runtimes/Apache-Arrow/Arrow23-NOTICE.txt"
+      ]
+    }
+  ],
+  "nugetDependencies": [
+    {
+      "id": "microsoft.aspnetcore.app.ref",
+      "version": "8.0.22",
+      "archive": "microsoft.aspnetcore.app.ref.8.0.22.nupkg"
+    },
+    {
+      "id": "microsoft.codeanalysis.analyzers",
+      "version": "3.11.0",
+      "archive": "microsoft.codeanalysis.analyzers.3.11.0.nupkg"
+    },
+    {
+      "id": "microsoft.codeanalysis.common",
+      "version": "4.14.0",
+      "archive": "microsoft.codeanalysis.common.4.14.0.nupkg"
+    },
+    {
+      "id": "microsoft.codeanalysis.csharp",
+      "version": "4.14.0",
+      "archive": "microsoft.codeanalysis.csharp.4.14.0.nupkg"
+    },
+    {
+      "id": "microsoft.netcore.app.host.linux-x64",
+      "version": "8.0.22",
+      "archive": "microsoft.netcore.app.host.linux-x64.8.0.22.nupkg"
+    },
+    {
+      "id": "microsoft.netcore.app.ref",
+      "version": "8.0.22",
+      "archive": "microsoft.netcore.app.ref.8.0.22.nupkg"
+    },
+    {
+      "id": "system.collections.immutable",
+      "version": "9.0.0",
+      "archive": "system.collections.immutable.9.0.0.nupkg"
+    },
+    {
+      "id": "system.reflection.metadata",
+      "version": "9.0.0",
+      "archive": "system.reflection.metadata.9.0.0.nupkg"
+    }
+  ],
+  "systemDependencies": [
+    "ld-linux-x86-64.so.2",
+    "libc.so.6",
+    "libcurl.so.4",
+    "libdl.so.2",
+    "libexpat.so.1",
+    "libgcc_s.so.1",
+    "libm.so.6",
+    "libpcre2-8.so.0",
+    "libpthread.so.0",
+    "librt.so.1",
+    "libstdc++.so.6",
+    "libxml2.so.2",
+    "libxslt.so.1",
+    "libz.so.1"
+  ],
+  "optionalConnectors": [
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_mariadb.so",
+      "dependencies": [
+        "libmariadb.so.3",
+        "libz.so.1",
+        "libc.so.6"
+      ],
+      "vendorClientsBundled": false
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_mysql.so",
+      "dependencies": [
+        "libmysqlclient.so.24",
+        "libz.so.1",
+        "libc.so.6"
+      ],
+      "vendorClientsBundled": false
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_odbc.so",
+      "dependencies": [
+        "libodbc.so.2",
+        "libmsodbcsql-18.7.so.1.1",
+        "libc.so.6"
+      ],
+      "vendorClientsBundled": false
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_oracle_oci.so",
+      "dependencies": [
+        "libclntsh.so.23.1",
+        "libc.so.6"
+      ],
+      "vendorClientsBundled": false
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_postgresql.so",
+      "dependencies": [
+        "libpq.so.5",
+        "libc.so.6"
+      ],
+      "vendorClientsBundled": false
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_sqlite.so",
+      "dependencies": [
+        "libc.so.6"
+      ],
+      "vendorClientsBundled": false
+    }
+  ],
+  "files": [
+    {
+      "path": "packages/UniversalData.2.2.0.nupkg",
+      "bytes": 37752563,
+      "sha256": "d2c7f8e0fdf3181f6baa00c339929e805a8c9b8a5222dc36136e1c12b675536c"
+    },
+    {
+      "path": "packages/microsoft.aspnetcore.app.ref.8.0.22.nupkg",
+      "bytes": 4428807,
+      "sha256": "1acd0dab5290deb807cf07bc1906c24dbc3a8b51467dad3c606c971990e3e96f"
+    },
+    {
+      "path": "packages/microsoft.codeanalysis.analyzers.3.11.0.nupkg",
+      "bytes": 1605871,
+      "sha256": "850da5e84e8f3b89bb8be66c7c5944c7ef7752c2cfa38218df00e4346d75fd2c"
+    },
+    {
+      "path": "packages/microsoft.codeanalysis.common.4.14.0.nupkg",
+      "bytes": 7181900,
+      "sha256": "9deff3c47dc6aa8181e0e7a69c4f28244946e666a2fbfebb01268aab098bd811"
+    },
+    {
+      "path": "packages/microsoft.codeanalysis.csharp.4.14.0.nupkg",
+      "bytes": 17342224,
+      "sha256": "e4cce3dd791860b9300d6875eebd4d11749b5f0c166103e23a6912325828d496"
+    },
+    {
+      "path": "packages/microsoft.netcore.app.host.linux-x64.8.0.22.nupkg",
+      "bytes": 4985509,
+      "sha256": "ee27b507da3d0f74a0afcf0ac4ab3b21f846972a6e5f8633124a5ef5203e3cdb"
+    },
+    {
+      "path": "packages/microsoft.netcore.app.ref.8.0.22.nupkg",
+      "bytes": 6842701,
+      "sha256": "d344884f83e67b6c5e61bf0f51200b0271de38847752527094ad214599338d2e"
+    },
+    {
+      "path": "packages/system.collections.immutable.9.0.0.nupkg",
+      "bytes": 651019,
+      "sha256": "fbaab954c7a87396e6e1616ca15ea705703d755e696bf3b8c96fa039d8bcc9a7"
+    },
+    {
+      "path": "packages/system.reflection.metadata.9.0.0.nupkg",
+      "bytes": 1114539,
+      "sha256": "6af1166dc0a1ed7829b127ac9d1dff4a0c568bfe82e4ec6347cf497ff49f4634"
+    },
+    {
+      "path": "packages/universal-data-2.2.0.jar",
+      "bytes": 52236,
+      "sha256": "027ae93c51c8003ff757c36fb1af203e78b1d7d79bbb4a47ecb9ac3de836a2cd"
+    },
+    {
+      "path": "packages/universal-data-2.2.0.pom",
+      "bytes": 921,
+      "sha256": "ee6b7efd9592eb3f2a19bb997ff9321a70945f7de97fc76448d95bbee9da00bd"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/Microsoft.CodeAnalysis.CSharp.dll",
+      "bytes": 6697768,
+      "sha256": "53302acca07700e9bb10dcf21034435d6e0454c8eebf2481164ec13e520004c9"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/Microsoft.CodeAnalysis.dll",
+      "bytes": 3029800,
+      "sha256": "395736b2d0e02be77bedc3847b269da7a93bf8e49cd3431a4a8e68d2c52d5846"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/UniversalData.Hosting.dll",
+      "bytes": 78848,
+      "sha256": "a91de3c96c7dbb3834a396229198f926dde02ff047081da1718aaba3d5bce68c"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/UniversalData.Hosting.pdb",
+      "bytes": 25700,
+      "sha256": "23c235b7f99af0d18889c7aa4f6c58238d007906052514d7d5d7c5b853cf45ab"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/UniversalData.dll",
+      "bytes": 136192,
+      "sha256": "ca6da6b1f7cd933fd36764530eee8cad05de489100aed59a63b03781aca0f438"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/UniversalData.pdb",
+      "bytes": 40668,
+      "sha256": "0d89e72872703914024d7bb34120d3a061171ef48624b9619ead7f355ced6ee7"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/cs/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 441640,
+      "sha256": "f719e4b45e06f203a1c2d4e79fa2b496f8b16f6f63c4265809844def53ad41f3"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/cs/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 48424,
+      "sha256": "818f84b95fd8273ec0e9753f90af2a98820bb0492cb53268db70a7403eaaa2af"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/de/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 471848,
+      "sha256": "d936e4075af47eb5a34e8418e6bf1eaa3e4d3c86d6b40ab7dffefbd8e6f8b594"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/de/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50456,
+      "sha256": "1b1d805608929ec02b8acc2fb8c09ec7a335797b11686719ee2112d5bfbb18fc"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/es/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 461608,
+      "sha256": "559fa2a4d36a832a5e05f92dabff6ba737cc0443f95850611c485b21592046fe"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/es/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 49960,
+      "sha256": "4c83f9c227fa9a912209c5450380ef34e84d91867aff8208300e8aadab269456"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/fr/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 473880,
+      "sha256": "c538cddb8e217bc1b96312956b7923855d6f392e467d7b7c7ce9341d9da1f23c"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/fr/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50488,
+      "sha256": "a92746c7d8f241e7d207a7995007f59d694a10e5f8903ceadfc5a73c195f63a0"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/it/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 468240,
+      "sha256": "995a868345367e1c68011617d8b8ac85decf2dd15fb85ea92a28205e2c6a5fba"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/it/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50440,
+      "sha256": "9489584f3d6ec723bfd2adf1a0d1bdc9bafcadab857fa7c48d18157e223a5541"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ja/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 515376,
+      "sha256": "866eabb5f0f51df82de1a2be933c542df60617d033f463e7010719bdc6f55fa7"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ja/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 54040,
+      "sha256": "9b0bea97965c04ce925e92a5b8575b866c75b185a89741185f4b24f72182a0bb"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ko/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 473392,
+      "sha256": "f8b995c988ddee33a02e41fe4658d63aef32f380678aef70a5164143a25c1ee4"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ko/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50464,
+      "sha256": "2c799493e0a5032ed0e643a550d149dc324210da3a69337a68ae6460f56bb2e1"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/libud_data.so",
+      "bytes": 3062728,
+      "sha256": "d0e1ecb10e310d3241748db39d969f49fd60c84a2fc40c9448a138fa37dab2f2"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/pl/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 474416,
+      "sha256": "bfd0ba4491a1e072f243b4599d0b9fe1f189ecbef4aae6b0aa4c6306079717df"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/pl/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50488,
+      "sha256": "a6d855a49e7b867ff1837b5b24d037a67a7bc9723a569ebdea85f0c73c8146e2"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/pt-BR/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 453928,
+      "sha256": "0bb661e270c1b6675bf2b06b0465ea8b0b551f0765999f31ab9cae308f83e3de"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/pt-BR/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 49424,
+      "sha256": "40258d2ce74c4fb71bd7b145f6d33081f3d73e19afda25050832dde3e58cf33f"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ru/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 621360,
+      "sha256": "68c0ed0122bd4e153717bcbd7d8a53d52d90535859b622df601c27eab58cfb3b"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ru/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 60728,
+      "sha256": "9f6778a2b6d2141397b8d331fc38577ae2b398b6120eb3654db7575b62e1b0d4"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/tr/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 449848,
+      "sha256": "93202286c8514bfa1b1c4b413666cd11a84abd69496e7aa8d2f9d565bd2d15a1"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/tr/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 48936,
+      "sha256": "6af8e8e793b071ef1de200629bb551dd2bdbce3823376b347836a2af15367a5c"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ud_cli",
+      "bytes": 76416,
+      "sha256": "27003e21d04ea817cc96f6e892e08d0c99916465fea78e07203630dc8ef7dc1a"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ud_cli.deps.json",
+      "bytes": 5492,
+      "sha256": "69f02325765d781f9fc8434aeb962fa6cf9724f8cc5c05c85805aa3da64788eb"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ud_cli.dll",
+      "bytes": 13824,
+      "sha256": "a9afa8f0e53e323c985c398a4e265d1ba6eec3029024d7c3eeb845a238da4325"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ud_cli.pdb",
+      "bytes": 12980,
+      "sha256": "ceb3479f5febbf84c96fa3ed95900cf4a38a5e4e0423bd94495cf9d81be2bc4b"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/ud_cli.runtimeconfig.json",
+      "bytes": 330,
+      "sha256": "9950d4583cfc9a106857c0d5b8a75b53e8774852b57b80bc3823a74d44a4d87f"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/zh-Hans/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 401168,
+      "sha256": "5b81b1d4537d44a365fdb48aa24e51a0b0c3ee308debcc225c9339249e0a8bb3"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/zh-Hans/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 45368,
+      "sha256": "a41b72555a1943e367e9714fb3329454dbad4366500db0899519ffb558a060cb"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/zh-Hant/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 400680,
+      "sha256": "d1e716652b5705373fb560105ca2710ff2bc0b704285b50b08ec8df9fd2f8287"
+    },
+    {
+      "path": "sdk/bin/universaldata/cli/zh-Hant/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 45328,
+      "sha256": "0bb422559a2582df1a49faed25a337b6037eb3878ac4ee7c118b68349ca312b7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/Microsoft.CodeAnalysis.CSharp.dll",
+      "bytes": 6697768,
+      "sha256": "53302acca07700e9bb10dcf21034435d6e0454c8eebf2481164ec13e520004c9"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/Microsoft.CodeAnalysis.dll",
+      "bytes": 3029800,
+      "sha256": "395736b2d0e02be77bedc3847b269da7a93bf8e49cd3431a4a8e68d2c52d5846"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.Hosting.dll",
+      "bytes": 78848,
+      "sha256": "a91de3c96c7dbb3834a396229198f926dde02ff047081da1718aaba3d5bce68c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.Hosting.pdb",
+      "bytes": 25700,
+      "sha256": "23c235b7f99af0d18889c7aa4f6c58238d007906052514d7d5d7c5b853cf45ab"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.Management",
+      "bytes": 76416,
+      "sha256": "b553244dc6eca626d9c81c8cd8d8fb5bb5f9f8831e9c8dd3762c52bab5a8094d"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.Management.deps.json",
+      "bytes": 5546,
+      "sha256": "3f6bd374b96908733642a9ed9860766cef9d22789c6079d2548ae20827d04012"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.Management.dll",
+      "bytes": 201216,
+      "sha256": "7d59cc6589b99d0429460c0bf402c40afbde4912e87693f371432413cdd70098"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.Management.pdb",
+      "bytes": 50584,
+      "sha256": "af553d48b1fbd112901dd5a20fadea23c204ecb47e741081d6860db03ebc8f58"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.Management.runtimeconfig.json",
+      "bytes": 472,
+      "sha256": "f71b4c67b5233a19be9131b5fe4b45fe7829997cf2b42e762d6baa037da93863"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.Management.staticwebassets.endpoints.json",
+      "bytes": 21582,
+      "sha256": "c93ba9d8ca4c4a7f6bbbb60df6d4e4b88e443fe0310ee9dbfe03cda719ca85d6"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.dll",
+      "bytes": 136192,
+      "sha256": "ca6da6b1f7cd933fd36764530eee8cad05de489100aed59a63b03781aca0f438"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/UniversalData.pdb",
+      "bytes": 40668,
+      "sha256": "0d89e72872703914024d7bb34120d3a061171ef48624b9619ead7f355ced6ee7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/cs/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 441640,
+      "sha256": "f719e4b45e06f203a1c2d4e79fa2b496f8b16f6f63c4265809844def53ad41f3"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/cs/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 48424,
+      "sha256": "818f84b95fd8273ec0e9753f90af2a98820bb0492cb53268db70a7403eaaa2af"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/de/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 471848,
+      "sha256": "d936e4075af47eb5a34e8418e6bf1eaa3e4d3c86d6b40ab7dffefbd8e6f8b594"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/de/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50456,
+      "sha256": "1b1d805608929ec02b8acc2fb8c09ec7a335797b11686719ee2112d5bfbb18fc"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/es/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 461608,
+      "sha256": "559fa2a4d36a832a5e05f92dabff6ba737cc0443f95850611c485b21592046fe"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/es/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 49960,
+      "sha256": "4c83f9c227fa9a912209c5450380ef34e84d91867aff8208300e8aadab269456"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/fr/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 473880,
+      "sha256": "c538cddb8e217bc1b96312956b7923855d6f392e467d7b7c7ce9341d9da1f23c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/fr/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50488,
+      "sha256": "a92746c7d8f241e7d207a7995007f59d694a10e5f8903ceadfc5a73c195f63a0"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/it/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 468240,
+      "sha256": "995a868345367e1c68011617d8b8ac85decf2dd15fb85ea92a28205e2c6a5fba"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/it/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50440,
+      "sha256": "9489584f3d6ec723bfd2adf1a0d1bdc9bafcadab857fa7c48d18157e223a5541"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/ja/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 515376,
+      "sha256": "866eabb5f0f51df82de1a2be933c542df60617d033f463e7010719bdc6f55fa7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/ja/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 54040,
+      "sha256": "9b0bea97965c04ce925e92a5b8575b866c75b185a89741185f4b24f72182a0bb"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/ko/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 473392,
+      "sha256": "f8b995c988ddee33a02e41fe4658d63aef32f380678aef70a5164143a25c1ee4"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/ko/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50464,
+      "sha256": "2c799493e0a5032ed0e643a550d149dc324210da3a69337a68ae6460f56bb2e1"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/libud_data.so",
+      "bytes": 3062728,
+      "sha256": "d0e1ecb10e310d3241748db39d969f49fd60c84a2fc40c9448a138fa37dab2f2"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/pl/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 474416,
+      "sha256": "bfd0ba4491a1e072f243b4599d0b9fe1f189ecbef4aae6b0aa4c6306079717df"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/pl/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50488,
+      "sha256": "a6d855a49e7b867ff1837b5b24d037a67a7bc9723a569ebdea85f0c73c8146e2"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/pt-BR/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 453928,
+      "sha256": "0bb661e270c1b6675bf2b06b0465ea8b0b551f0765999f31ab9cae308f83e3de"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/pt-BR/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 49424,
+      "sha256": "40258d2ce74c4fb71bd7b145f6d33081f3d73e19afda25050832dde3e58cf33f"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/ru/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 621360,
+      "sha256": "68c0ed0122bd4e153717bcbd7d8a53d52d90535859b622df601c27eab58cfb3b"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/ru/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 60728,
+      "sha256": "9f6778a2b6d2141397b8d331fc38577ae2b398b6120eb3654db7575b62e1b0d4"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/tr/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 449848,
+      "sha256": "93202286c8514bfa1b1c4b413666cd11a84abd69496e7aa8d2f9d565bd2d15a1"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/tr/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 48936,
+      "sha256": "6af8e8e793b071ef1de200629bb551dd2bdbce3823376b347836a2af15367a5c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/web.config",
+      "bytes": 500,
+      "sha256": "6883ebf5635c222224b1aa49431be7298bb82e9a65ef11493812c35e2c84ee4e"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/Microsoft.CodeAnalysis.CSharp.dll",
+      "bytes": 6697768,
+      "sha256": "53302acca07700e9bb10dcf21034435d6e0454c8eebf2481164ec13e520004c9"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/Microsoft.CodeAnalysis.dll",
+      "bytes": 3029800,
+      "sha256": "395736b2d0e02be77bedc3847b269da7a93bf8e49cd3431a4a8e68d2c52d5846"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/UniversalData.Hosting.dll",
+      "bytes": 78848,
+      "sha256": "a91de3c96c7dbb3834a396229198f926dde02ff047081da1718aaba3d5bce68c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/UniversalData.Hosting.pdb",
+      "bytes": 25700,
+      "sha256": "23c235b7f99af0d18889c7aa4f6c58238d007906052514d7d5d7c5b853cf45ab"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/UniversalData.dll",
+      "bytes": 136192,
+      "sha256": "ca6da6b1f7cd933fd36764530eee8cad05de489100aed59a63b03781aca0f438"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/UniversalData.pdb",
+      "bytes": 40668,
+      "sha256": "0d89e72872703914024d7bb34120d3a061171ef48624b9619ead7f355ced6ee7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/cs/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 441640,
+      "sha256": "f719e4b45e06f203a1c2d4e79fa2b496f8b16f6f63c4265809844def53ad41f3"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/cs/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 48424,
+      "sha256": "818f84b95fd8273ec0e9753f90af2a98820bb0492cb53268db70a7403eaaa2af"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/de/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 471848,
+      "sha256": "d936e4075af47eb5a34e8418e6bf1eaa3e4d3c86d6b40ab7dffefbd8e6f8b594"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/de/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50456,
+      "sha256": "1b1d805608929ec02b8acc2fb8c09ec7a335797b11686719ee2112d5bfbb18fc"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/es/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 461608,
+      "sha256": "559fa2a4d36a832a5e05f92dabff6ba737cc0443f95850611c485b21592046fe"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/es/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 49960,
+      "sha256": "4c83f9c227fa9a912209c5450380ef34e84d91867aff8208300e8aadab269456"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/fr/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 473880,
+      "sha256": "c538cddb8e217bc1b96312956b7923855d6f392e467d7b7c7ce9341d9da1f23c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/fr/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50488,
+      "sha256": "a92746c7d8f241e7d207a7995007f59d694a10e5f8903ceadfc5a73c195f63a0"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/it/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 468240,
+      "sha256": "995a868345367e1c68011617d8b8ac85decf2dd15fb85ea92a28205e2c6a5fba"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/it/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50440,
+      "sha256": "9489584f3d6ec723bfd2adf1a0d1bdc9bafcadab857fa7c48d18157e223a5541"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ja/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 515376,
+      "sha256": "866eabb5f0f51df82de1a2be933c542df60617d033f463e7010719bdc6f55fa7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ja/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 54040,
+      "sha256": "9b0bea97965c04ce925e92a5b8575b866c75b185a89741185f4b24f72182a0bb"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ko/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 473392,
+      "sha256": "f8b995c988ddee33a02e41fe4658d63aef32f380678aef70a5164143a25c1ee4"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ko/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50464,
+      "sha256": "2c799493e0a5032ed0e643a550d149dc324210da3a69337a68ae6460f56bb2e1"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/libud_data.so",
+      "bytes": 3062728,
+      "sha256": "c8222859bac8ae9cc7c8fbb117a5cd3fbcf3c2393d5a65413e4b5bf0b21b53ef"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/pl/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 474416,
+      "sha256": "bfd0ba4491a1e072f243b4599d0b9fe1f189ecbef4aae6b0aa4c6306079717df"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/pl/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50488,
+      "sha256": "a6d855a49e7b867ff1837b5b24d037a67a7bc9723a569ebdea85f0c73c8146e2"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/pt-BR/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 453928,
+      "sha256": "0bb661e270c1b6675bf2b06b0465ea8b0b551f0765999f31ab9cae308f83e3de"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/pt-BR/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 49424,
+      "sha256": "40258d2ce74c4fb71bd7b145f6d33081f3d73e19afda25050832dde3e58cf33f"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ru/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 621360,
+      "sha256": "68c0ed0122bd4e153717bcbd7d8a53d52d90535859b622df601c27eab58cfb3b"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ru/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 60728,
+      "sha256": "9f6778a2b6d2141397b8d331fc38577ae2b398b6120eb3654db7575b62e1b0d4"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/tr/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 449848,
+      "sha256": "93202286c8514bfa1b1c4b413666cd11a84abd69496e7aa8d2f9d565bd2d15a1"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/tr/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 48936,
+      "sha256": "6af8e8e793b071ef1de200629bb551dd2bdbce3823376b347836a2af15367a5c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ud_worker",
+      "bytes": 76416,
+      "sha256": "12cb35494f45478acf6d018feed09136c93319fd3b9a494e0192213e0e338de2"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ud_worker.deps.json",
+      "bytes": 5501,
+      "sha256": "e774ccca72432b3cddfcff47aef3145121cb76311dbd35c68eb0e1c700d22acf"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ud_worker.dll",
+      "bytes": 34816,
+      "sha256": "d532691cceb6800b01719f83ad9c41f6a327844bdc4e3380db4e3f17223d88ff"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ud_worker.pdb",
+      "bytes": 14480,
+      "sha256": "e32f8dc6c830126aa0de5e41da506a337ab12a835e9bf2928eb773e26c1b89dc"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/ud_worker.runtimeconfig.json",
+      "bytes": 330,
+      "sha256": "9950d4583cfc9a106857c0d5b8a75b53e8774852b57b80bc3823a74d44a4d87f"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/zh-Hans/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 401168,
+      "sha256": "5b81b1d4537d44a365fdb48aa24e51a0b0c3ee308debcc225c9339249e0a8bb3"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/zh-Hans/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 45368,
+      "sha256": "a41b72555a1943e367e9714fb3329454dbad4366500db0899519ffb558a060cb"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/zh-Hant/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 400680,
+      "sha256": "d1e716652b5705373fb560105ca2710ff2bc0b704285b50b08ec8df9fd2f8287"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/worker/zh-Hant/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 45328,
+      "sha256": "0bb422559a2582df1a49faed25a337b6037eb3878ac4ee7c118b68349ca312b7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-6H0Qc71z.js",
+      "bytes": 900114,
+      "sha256": "0237b7033f4e1f72cf177995f5bc310811750d01b44c402ba17171b32c00bbf1"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-6H0Qc71z.js.br",
+      "bytes": 245312,
+      "sha256": "9e46e449431d7405b61385a883cb756b5c2b7cf4ab15347bd7348321c50df97a"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-6H0Qc71z.js.gz",
+      "bytes": 292947,
+      "sha256": "5252dcf3d91134c36cf01aaaf1127b4c0a9123d9b88f87ef49cc1d9263c29ff2"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BCOhbQ6L.js",
+      "bytes": 899124,
+      "sha256": "c14716026f435a69648f273b5e72b947839d8c218eb5b2a9c741b82f60551a03"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BCOhbQ6L.js.br",
+      "bytes": 245407,
+      "sha256": "51909d2507ba65085d3acef18f79bb4642ee0652af5c65f145cdfbfbab709197"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BCOhbQ6L.js.gz",
+      "bytes": 292687,
+      "sha256": "75f04ee7ac26381fdfeea4974742ed11add6e86cd64f2e6d882be9f3ecab330e"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BR2ONEpt.js",
+      "bytes": 908238,
+      "sha256": "ceb1e13b63d44b0b8e405db88932522b4bd41c69ae4755ef24383a1033176f24"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BR2ONEpt.js.br",
+      "bytes": 247397,
+      "sha256": "5826eca81356da46f106f8a97e3c09b51f13b26c3599836db46f68fc01171cc7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BR2ONEpt.js.gz",
+      "bytes": 295694,
+      "sha256": "72b9c24ae35e00d648c4bbb4c891a5690a2a9b75c62d8807dab4df83db6fc02e"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-Bkl2bZFw.css",
+      "bytes": 29492,
+      "sha256": "3450a414e331aecf652ff4dca2e64c395879b31589b939dc1f3b43d8842fb366"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-Bkl2bZFw.css.br",
+      "bytes": 5240,
+      "sha256": "2574e5282a9da2d262ca882c5a5aa9a201eda7730ea415e2ca5baba46d7c5636"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-Bkl2bZFw.css.gz",
+      "bytes": 5924,
+      "sha256": "2edcfe5d0f4f2a4ccaa493163f26115c6634f645462be8b2a3361d898b373c80"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BnOaTPo0.css",
+      "bytes": 28135,
+      "sha256": "f5da230564f00bb3dd4f0ab64d3e57bda936bb511f3cd17d9ab933c2f77117e3"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BnOaTPo0.css.br",
+      "bytes": 4914,
+      "sha256": "f8bd5a4bacf98cc7c037dcc3e4f472be692088884aaad30519d57ed02160ef20"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BnOaTPo0.css.gz",
+      "bytes": 5551,
+      "sha256": "b8e2ad461ea41aedd608da899a729bec183c0a5d967e8c52e4c28734687d620d"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BvAw7SRW.js",
+      "bytes": 910368,
+      "sha256": "5103f25151e298aa1955e059de7ddf3fa91501f47f5f267b088f00aec922c2c8"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BvAw7SRW.js.br",
+      "bytes": 248078,
+      "sha256": "12384da41a7b7fa0d98c1dbec11baee4be2731997ae679105c89e94cd8d7ddbd"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-BvAw7SRW.js.gz",
+      "bytes": 296428,
+      "sha256": "2c6945ddb485e3eb3f2e4ea1bd848c46094d83256c70c4df53724af636554c3b"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C0FLq0tB.js",
+      "bytes": 473074,
+      "sha256": "12c027220b91fc3c10825dcee3b62c51f23cc5c82b171017f0a10fa343f7691f"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C0FLq0tB.js.br",
+      "bytes": 129213,
+      "sha256": "fd35febe0ed2010fbceeb809f2e74f8dd120a84bb6d38088bff7a2c1a0693fae"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C0FLq0tB.js.gz",
+      "bytes": 152417,
+      "sha256": "9b00e6abddfd6b89b9bc0883a3d1354335e57d21bc7fd67b8b891669519a80e2"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C1zI496j.js",
+      "bytes": 466757,
+      "sha256": "56ebe18cf11ae00b39239c86ab7dca2ab183773d0cf82d9b55a2c4d6bf58bce7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C1zI496j.js.br",
+      "bytes": 127653,
+      "sha256": "edaddaadac482a4d116f24dd08f5f520328374aea4e1e3cbddb75665f67b10ce"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C1zI496j.js.gz",
+      "bytes": 150587,
+      "sha256": "dbb5feccc6ba2e7360824d4ed95418ad61cc3bae75335e1537272130b52e0f20"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C3dTRtW8.css",
+      "bytes": 29590,
+      "sha256": "8ad0f466f665a0072aef697441d28a59fa3298dc4e7257229904296a63aecc5d"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C3dTRtW8.css.br",
+      "bytes": 5259,
+      "sha256": "c9180742b07cd7d4cc631b57a45196c428493c672a0565a4eaea1ef17b5020d4"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C3dTRtW8.css.gz",
+      "bytes": 5944,
+      "sha256": "099d8830cba059e9846c18a2540846e8fe3a01aa49817004a28c5eff39ec7869"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C87PoIMG.js",
+      "bytes": 901031,
+      "sha256": "c4a6482ac54c71f769e990b716422c626a08a1fa7a81c712e2d6e7f926bcc9c9"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C87PoIMG.js.br",
+      "bytes": 245783,
+      "sha256": "846880f18e9803dc13e385a81f70abe8df216808f5c35bb12a77b242d28a30fa"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C87PoIMG.js.gz",
+      "bytes": 293233,
+      "sha256": "3bac561c0100ba4f43f8a4cd427c1b2eace2903f41b1fd215dc74de459391521"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C9NaTWi5.css",
+      "bytes": 44383,
+      "sha256": "92e89e414f6a5e41b7429b83c7c611a8d7264573bc84773100bb19f2c4bb0dce"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C9NaTWi5.css.br",
+      "bytes": 7859,
+      "sha256": "bf16652fc6dc62c61184ece539a0409079601f5ab69fd1d539b332415678e17b"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-C9NaTWi5.css.gz",
+      "bytes": 8864,
+      "sha256": "e9da3f1a39b1417d66133970e46e6497c764309024f403674be29578a3f393be"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CGlEt0AC.js",
+      "bytes": 909329,
+      "sha256": "9ea33a7e514cd44c72ae4df6abe26619f815cc6cc43215ef473fae6d48236a7f"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CGlEt0AC.js.br",
+      "bytes": 247772,
+      "sha256": "eba00c3b40217eb773ee68589492be72b83416ddcf628f6331d99ddc291103ab"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CGlEt0AC.js.gz",
+      "bytes": 296098,
+      "sha256": "98c43ff9e98b68135ef8f05d557c118419a7088df640cb9d564bdb7ad4572ad8"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CKd9LiPL.js",
+      "bytes": 907100,
+      "sha256": "3a4e2701381d2dc17f40426c22bd30428ade7e8b980f7e8f48a4dfbe8ce66dd1"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CKd9LiPL.js.br",
+      "bytes": 247298,
+      "sha256": "27cc627a55c2080502ff7fdffb5fb3e19607590b5611b9963425cbbafee55d73"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CKd9LiPL.js.gz",
+      "bytes": 295347,
+      "sha256": "234b6881e1add98013ff86b78f386c77b3cc79baf0e5e096b524a6ffe59c4374"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CPfC5FwY.css",
+      "bytes": 44224,
+      "sha256": "fd3ee40a1bd207751f027ce8eb6795a40323b83f698044eadfe0c156bad14a07"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CPfC5FwY.css.br",
+      "bytes": 7840,
+      "sha256": "842d74c444fe7952df99aa7f78ff4670e5dbf55983fe9e1bd3da86f1ac65b2bd"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CPfC5FwY.css.gz",
+      "bytes": 8843,
+      "sha256": "16ac1885b5d067e033a9683581c9a2daf84394482944e26ccc8587d7ad3b278c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CWZM1Ahg.js",
+      "bytes": 908546,
+      "sha256": "5fecfe8f9961712b6fc109566006bf8bb9db501d65ce930a87a5fb90eeeb09d2"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CWZM1Ahg.js.br",
+      "bytes": 247524,
+      "sha256": "a5360175ffec89575cbc3d1e4d560d9a34e4f092d721636e0fca0c79a658a20b"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CWZM1Ahg.js.gz",
+      "bytes": 295783,
+      "sha256": "7b04ee4af624920e0b6759c063b5dc92c5c9fc6682434e88578bb72cce5ea644"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-Cjz8T0AC.js",
+      "bytes": 472831,
+      "sha256": "95e503559b5ecc49624bfa011bfdbe1b267409ed6104e704444935a97c64f78a"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-Cjz8T0AC.js.br",
+      "bytes": 129221,
+      "sha256": "5615376737958b5933ca6b9b724ca8e7597df2de35a5d5356b88fe8c505acc3c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-Cjz8T0AC.js.gz",
+      "bytes": 152348,
+      "sha256": "acdad0e9bdbf370f445c141ab7aab7059ccb28b79ae20d6b4899997d945fb5c7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CuEc0ZCJ.js",
+      "bytes": 909922,
+      "sha256": "8ae292e0d6fa9f56e215850f5449495adee13f58038ddea1839628b636ea2427"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CuEc0ZCJ.js.br",
+      "bytes": 248150,
+      "sha256": "288c8486036fac88d4c567769ee1883b73c68a9b738544404f861037519be5df"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-CuEc0ZCJ.js.gz",
+      "bytes": 296363,
+      "sha256": "b441b93076bcb1721a41fb21844ec5aea47fcfe2abb95449e0188fa5f67a4a39"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-D1Xmo4My.js",
+      "bytes": 909935,
+      "sha256": "660bbab1483d9733afc08cb294562f6cc6333934c6bd5aa867922c5614984a8f"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-D1Xmo4My.js.br",
+      "bytes": 248128,
+      "sha256": "355b76579ad55ac3363cb60b26a81bb4da2c838011c4270518a88069ff76b70b"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-D1Xmo4My.js.gz",
+      "bytes": 296371,
+      "sha256": "2446617a35668527efa4eddcc81c82079bb556306e8a1ecd5e8db951b42b7a07"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-D8qVSvZb.js",
+      "bytes": 472936,
+      "sha256": "902b98bbedd1e286db8d7ad5d97914e8e0046b3ae6fdb8e1b9d10ac9d520aec5"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-D8qVSvZb.js.br",
+      "bytes": 129107,
+      "sha256": "26ff73c9d02d87f2ccd97f3f2f2545837b10dd3d9e29cfb6a51b74219bef6bd8"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-D8qVSvZb.js.gz",
+      "bytes": 152410,
+      "sha256": "47c966bba59d2c5284be984883ede2cce062a8adcd9e603a5709030c3e565582"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DAw34Xvx.js",
+      "bytes": 901343,
+      "sha256": "6bebc17344382fe4f31c75feeea9a0a2faa566e75cfe657515bac1e300aeae0a"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DAw34Xvx.js.br",
+      "bytes": 246171,
+      "sha256": "05408a58a1b857e139ff15444508e3fcb5c4f2dafba84a5fa6fdb8382466a85e"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DAw34Xvx.js.gz",
+      "bytes": 293328,
+      "sha256": "d153c9da3049b5deb96320dc6099a4e1c26ea5ea8e17b8c7eb1794ca7414880a"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DK2SjjFn.js",
+      "bytes": 473445,
+      "sha256": "912a18f8fe5e68a9f681ea35b0f2fad4761cb510cbfbeb64b0f2f46b8a1ab444"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DK2SjjFn.js.br",
+      "bytes": 129424,
+      "sha256": "e6851d202cd4c82f6aafb87f2b504f74b9f655388a8fcbe66ab4aa586914dea7"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DK2SjjFn.js.gz",
+      "bytes": 152524,
+      "sha256": "3ecee28d8b791b3445f0f5d8ca79131b0f53c103e17aec14ccc1df0c165f1ff5"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DRW9zLkk.js",
+      "bytes": 908864,
+      "sha256": "551e309e4d80b76a8fd96697fb19cc07474054c1ad15819d2783416bbf868546"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DRW9zLkk.js.br",
+      "bytes": 247746,
+      "sha256": "1ac0cb9dc36a938b82aa21268db5fd12a90240e314ec47ce30f3202927f93173"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DRW9zLkk.js.gz",
+      "bytes": 295898,
+      "sha256": "124c2d5378652e63d947b3b9a4c245f3e69a5641403f6419c7671e221b41270f"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DTfZ3Zug.js",
+      "bytes": 906979,
+      "sha256": "e38318142cdcc3679ffd55f172d7bfa0154fa310dc6359c0acd7d761bf12ad41"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DTfZ3Zug.js.br",
+      "bytes": 247197,
+      "sha256": "37d1be0494f0cafe9fa710e5333f93fa35225bc3693a171cc7778abd2e02d888"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DTfZ3Zug.js.gz",
+      "bytes": 295290,
+      "sha256": "8203d42fad558697765aae5ad5d5876f05fa002718e19cdeb2f706cb3842383b"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DVZWUR8W.js",
+      "bytes": 907177,
+      "sha256": "2f8ecd0339de494e82539aae725d044fe4db666b10a3d498079a827072b2ec46"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DVZWUR8W.js.br",
+      "bytes": 247043,
+      "sha256": "db95fa233b06c4ce1d2ba734190018b949c57a1bdf43943dbbe08a84cec9200c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DVZWUR8W.js.gz",
+      "bytes": 295330,
+      "sha256": "283c6975eddaf4a26df491c697e2173df91fa3c7616d85ac49910752ed6aa5d9"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DqvPOE3I.js",
+      "bytes": 899698,
+      "sha256": "400cfdda85bdb169925066392e9a39f431f78ad29457ee642cc3557719adb534"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DqvPOE3I.js.br",
+      "bytes": 245445,
+      "sha256": "50eccd17e6d956dc1c8f4ec5750f87d4d4bdfda07d6f1b209a09ad9d7f901ff1"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DqvPOE3I.js.gz",
+      "bytes": 292808,
+      "sha256": "f1caaa7f41a8afa1c0639a304d89a44009a015d43a08f775f0a2c0d965d25d4e"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DsFFnMWg.js",
+      "bytes": 900667,
+      "sha256": "967c267cc402b28bc7c7376036111d41a70b2891e5ffda1e644e1fad8796ed7c"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DsFFnMWg.js.br",
+      "bytes": 245814,
+      "sha256": "30ad42563bfd4f63e8eefbb0435281747919b771c4aa2507db23dd9b7d6e4b4d"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-DsFFnMWg.js.gz",
+      "bytes": 293115,
+      "sha256": "451f96f901fe19bc19cfdcdb29aacaae83cdc1ae538a23fe1ae57274d3bae4cd"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-JK2mf4pp.js",
+      "bytes": 472825,
+      "sha256": "9e86bc6e0a490c97d6ef80af31138a76c0e07be3f65815841ea9563e865108c0"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-JK2mf4pp.js.br",
+      "bytes": 129160,
+      "sha256": "145d4d02960573d4dbb0217bbada8ce0b38f7259331612c4322393c5930bfb13"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-JK2mf4pp.js.gz",
+      "bytes": 152353,
+      "sha256": "9242e4383cd2b0fd019037a55dbe53d584bb2059a9ec210fc30488a906d5af52"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-MH02rqh1.js",
+      "bytes": 908135,
+      "sha256": "373d7be5b934c0ee68ee1123a1c17b10bcb55e655ded2c0ea0a7a27523e093db"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-MH02rqh1.js.br",
+      "bytes": 247560,
+      "sha256": "85d55fced390ce7f18f9018e7e40e4437e03cca256cfd47be3e638519d6b015f"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/assets/index-MH02rqh1.js.gz",
+      "bytes": 295649,
+      "sha256": "8b079e8e1daa43161c0399880c9c63befc9532915c0188845d1bbed7443a4b56"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/build.stamp",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/index.html",
+      "bytes": 361,
+      "sha256": "fd55875da69aef47759dcc80e02c2c6baa6c4c32d12c08a81b1ca24f6b9264ab"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/index.html.br",
+      "bytes": 158,
+      "sha256": "7eb44a6f262135143e52b83a0c26e887af1996606176893900f0e485bb986203"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/wwwroot/index.html.gz",
+      "bytes": 268,
+      "sha256": "a4853815a8e67780401d9c24d3970b5f1976e9e96bb6c479af10221d8b282b1a"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/zh-Hans/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 401168,
+      "sha256": "5b81b1d4537d44a365fdb48aa24e51a0b0c3ee308debcc225c9339249e0a8bb3"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/zh-Hans/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 45368,
+      "sha256": "a41b72555a1943e367e9714fb3329454dbad4366500db0899519ffb558a060cb"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/zh-Hant/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 400680,
+      "sha256": "d1e716652b5705373fb560105ca2710ff2bc0b704285b50b08ec8df9fd2f8287"
+    },
+    {
+      "path": "sdk/bin/universaldata/management/zh-Hant/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 45328,
+      "sha256": "0bb422559a2582df1a49faed25a337b6037eb3878ac4ee7c118b68349ca312b7"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/Microsoft.CodeAnalysis.CSharp.dll",
+      "bytes": 6697768,
+      "sha256": "53302acca07700e9bb10dcf21034435d6e0454c8eebf2481164ec13e520004c9"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/Microsoft.CodeAnalysis.dll",
+      "bytes": 3029800,
+      "sha256": "395736b2d0e02be77bedc3847b269da7a93bf8e49cd3431a4a8e68d2c52d5846"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/UniversalData.Hosting.dll",
+      "bytes": 78848,
+      "sha256": "a91de3c96c7dbb3834a396229198f926dde02ff047081da1718aaba3d5bce68c"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/UniversalData.Hosting.pdb",
+      "bytes": 25700,
+      "sha256": "23c235b7f99af0d18889c7aa4f6c58238d007906052514d7d5d7c5b853cf45ab"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/UniversalData.dll",
+      "bytes": 136192,
+      "sha256": "ca6da6b1f7cd933fd36764530eee8cad05de489100aed59a63b03781aca0f438"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/UniversalData.pdb",
+      "bytes": 40668,
+      "sha256": "0d89e72872703914024d7bb34120d3a061171ef48624b9619ead7f355ced6ee7"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/cs/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 441640,
+      "sha256": "f719e4b45e06f203a1c2d4e79fa2b496f8b16f6f63c4265809844def53ad41f3"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/cs/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 48424,
+      "sha256": "818f84b95fd8273ec0e9753f90af2a98820bb0492cb53268db70a7403eaaa2af"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/de/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 471848,
+      "sha256": "d936e4075af47eb5a34e8418e6bf1eaa3e4d3c86d6b40ab7dffefbd8e6f8b594"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/de/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50456,
+      "sha256": "1b1d805608929ec02b8acc2fb8c09ec7a335797b11686719ee2112d5bfbb18fc"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/es/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 461608,
+      "sha256": "559fa2a4d36a832a5e05f92dabff6ba737cc0443f95850611c485b21592046fe"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/es/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 49960,
+      "sha256": "4c83f9c227fa9a912209c5450380ef34e84d91867aff8208300e8aadab269456"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/fr/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 473880,
+      "sha256": "c538cddb8e217bc1b96312956b7923855d6f392e467d7b7c7ce9341d9da1f23c"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/fr/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50488,
+      "sha256": "a92746c7d8f241e7d207a7995007f59d694a10e5f8903ceadfc5a73c195f63a0"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/it/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 468240,
+      "sha256": "995a868345367e1c68011617d8b8ac85decf2dd15fb85ea92a28205e2c6a5fba"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/it/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50440,
+      "sha256": "9489584f3d6ec723bfd2adf1a0d1bdc9bafcadab857fa7c48d18157e223a5541"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ja/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 515376,
+      "sha256": "866eabb5f0f51df82de1a2be933c542df60617d033f463e7010719bdc6f55fa7"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ja/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 54040,
+      "sha256": "9b0bea97965c04ce925e92a5b8575b866c75b185a89741185f4b24f72182a0bb"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ko/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 473392,
+      "sha256": "f8b995c988ddee33a02e41fe4658d63aef32f380678aef70a5164143a25c1ee4"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ko/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50464,
+      "sha256": "2c799493e0a5032ed0e643a550d149dc324210da3a69337a68ae6460f56bb2e1"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/libud_data.so",
+      "bytes": 3062728,
+      "sha256": "d0e1ecb10e310d3241748db39d969f49fd60c84a2fc40c9448a138fa37dab2f2"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/pl/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 474416,
+      "sha256": "bfd0ba4491a1e072f243b4599d0b9fe1f189ecbef4aae6b0aa4c6306079717df"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/pl/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 50488,
+      "sha256": "a6d855a49e7b867ff1837b5b24d037a67a7bc9723a569ebdea85f0c73c8146e2"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/pt-BR/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 453928,
+      "sha256": "0bb661e270c1b6675bf2b06b0465ea8b0b551f0765999f31ab9cae308f83e3de"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/pt-BR/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 49424,
+      "sha256": "40258d2ce74c4fb71bd7b145f6d33081f3d73e19afda25050832dde3e58cf33f"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ru/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 621360,
+      "sha256": "68c0ed0122bd4e153717bcbd7d8a53d52d90535859b622df601c27eab58cfb3b"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ru/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 60728,
+      "sha256": "9f6778a2b6d2141397b8d331fc38577ae2b398b6120eb3654db7575b62e1b0d4"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/tr/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 449848,
+      "sha256": "93202286c8514bfa1b1c4b413666cd11a84abd69496e7aa8d2f9d565bd2d15a1"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/tr/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 48936,
+      "sha256": "6af8e8e793b071ef1de200629bb551dd2bdbce3823376b347836a2af15367a5c"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ud_worker",
+      "bytes": 76416,
+      "sha256": "12cb35494f45478acf6d018feed09136c93319fd3b9a494e0192213e0e338de2"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ud_worker.deps.json",
+      "bytes": 5501,
+      "sha256": "e774ccca72432b3cddfcff47aef3145121cb76311dbd35c68eb0e1c700d22acf"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ud_worker.dll",
+      "bytes": 34816,
+      "sha256": "d532691cceb6800b01719f83ad9c41f6a327844bdc4e3380db4e3f17223d88ff"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ud_worker.pdb",
+      "bytes": 14480,
+      "sha256": "e32f8dc6c830126aa0de5e41da506a337ab12a835e9bf2928eb773e26c1b89dc"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/ud_worker.runtimeconfig.json",
+      "bytes": 330,
+      "sha256": "9950d4583cfc9a106857c0d5b8a75b53e8774852b57b80bc3823a74d44a4d87f"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/zh-Hans/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 401168,
+      "sha256": "5b81b1d4537d44a365fdb48aa24e51a0b0c3ee308debcc225c9339249e0a8bb3"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/zh-Hans/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 45368,
+      "sha256": "a41b72555a1943e367e9714fb3329454dbad4366500db0899519ffb558a060cb"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/zh-Hant/Microsoft.CodeAnalysis.CSharp.resources.dll",
+      "bytes": 400680,
+      "sha256": "d1e716652b5705373fb560105ca2710ff2bc0b704285b50b08ec8df9fd2f8287"
+    },
+    {
+      "path": "sdk/bin/universaldata/worker/zh-Hant/Microsoft.CodeAnalysis.resources.dll",
+      "bytes": 45328,
+      "sha256": "0bb422559a2582df1a49faed25a337b6037eb3878ac4ee7c118b68349ca312b7"
+    },
+    {
+      "path": "sdk/include/UniversalData/dependencies/sqlite/sqlite3.h",
+      "bytes": 658960,
+      "sha256": "88da6f1963bc192dfa18a3a48b423cf1fbbb04f903202efe9a78e3a597473e18"
+    },
+    {
+      "path": "sdk/include/ud/activation.h",
+      "bytes": 747,
+      "sha256": "d962f0a9148df1c61ac55f10509b68cd223ec9fa1b6e4d6457cf65eecdde8d13"
+    },
+    {
+      "path": "sdk/include/ud/avro.h",
+      "bytes": 2061,
+      "sha256": "5ee3013bca3ec8f557be11434cd3b34d41ce899adf255902f44276b6448da849"
+    },
+    {
+      "path": "sdk/include/ud/buffer.h",
+      "bytes": 2914,
+      "sha256": "b45fe600fbc37dba7df3bb02a09b2d7c2e0a3ebdda4acdae9d3e8e4624f21926"
+    },
+    {
+      "path": "sdk/include/ud/cache.h",
+      "bytes": 3550,
+      "sha256": "724a88191af973413db97e9f9b8295126dfbfde9f2142941f65d90a418514e64"
+    },
+    {
+      "path": "sdk/include/ud/catalog.h",
+      "bytes": 6913,
+      "sha256": "bd6bcfcbbd9e3e59f060c24ee9fd1c4bc4bf45922a5a328273cb3675d659cfba"
+    },
+    {
+      "path": "sdk/include/ud/cdc.h",
+      "bytes": 880,
+      "sha256": "5ba9cfa24cdf76add38be8368d701bbc16bfc665f55068c9ec19c36238336c32"
+    },
+    {
+      "path": "sdk/include/ud/columnar_file.h",
+      "bytes": 1258,
+      "sha256": "c213f5fc98237067a8af1225d212a283d650ec17ef628b7d4c0be852ea1e39b3"
+    },
+    {
+      "path": "sdk/include/ud/component.h",
+      "bytes": 11566,
+      "sha256": "24eb8d4b7495f88a17c10501a0b0e304c0455623eac0559e2452cc3c9a377f8b"
+    },
+    {
+      "path": "sdk/include/ud/compute.h",
+      "bytes": 3952,
+      "sha256": "24840587882fdcccd5b26485b920193b831420367d4c1aabe2104ce611c4f266"
+    },
+    {
+      "path": "sdk/include/ud/connection_manager.h",
+      "bytes": 4503,
+      "sha256": "5c4afb5fb5f69cc0186a0f821079c38eb580378819ec7e22ba1854d04cc55749"
+    },
+    {
+      "path": "sdk/include/ud/connector.h",
+      "bytes": 13430,
+      "sha256": "21ea7f2b5808d05c912b6a6fab7fb6bf345444560955b3d91c8c0a10043d4530"
+    },
+    {
+      "path": "sdk/include/ud/csv.h",
+      "bytes": 3154,
+      "sha256": "c90aea13bfac7b2e001eab0a682ce289f406c74c56adc9b39399299826312df6"
+    },
+    {
+      "path": "sdk/include/ud/cursor.h",
+      "bytes": 927,
+      "sha256": "41ea49595a4e44638490001356445b45c3c5a23c4823b2a3916a24c9c8911a00"
+    },
+    {
+      "path": "sdk/include/ud/data.h",
+      "bytes": 18112,
+      "sha256": "41c72fc04ad524a9435c013b1713aa8bfc06953874cdf23b981e9ef8775c4e20"
+    },
+    {
+      "path": "sdk/include/ud/engine.h",
+      "bytes": 955,
+      "sha256": "c17649ad44321e79484889c135946aa49cec89dbc0d4f678f562f5a7ae3de1aa"
+    },
+    {
+      "path": "sdk/include/ud/error.h",
+      "bytes": 2031,
+      "sha256": "5f56a6d49239316382100541be4f4b8fc82713493faa3a204c0bd2f902ef030e"
+    },
+    {
+      "path": "sdk/include/ud/execution.h",
+      "bytes": 628,
+      "sha256": "8bf2ac7bd4b36073b105967ffa383d8e1615dbfce365d3b44d926ab68b903b90"
+    },
+    {
+      "path": "sdk/include/ud/expression.h",
+      "bytes": 4184,
+      "sha256": "d33c11339a0d61fea0e3f22bcac684b542596e64fc4542f79061fc63ef66ec98"
+    },
+    {
+      "path": "sdk/include/ud/format.h",
+      "bytes": 4476,
+      "sha256": "ea4f523cb8a23fc68e2c8c52ce88eb8da6313b5f6319b5095e509f1c34d81ffc"
+    },
+    {
+      "path": "sdk/include/ud/http.h",
+      "bytes": 1078,
+      "sha256": "343910fdb4c991492412e00519a089e198a0ca358db37089cf23410fd87c4fef"
+    },
+    {
+      "path": "sdk/include/ud/json.h",
+      "bytes": 2306,
+      "sha256": "85f9abda6e9aa9ba43625d1de90caa5176aa834ddf61e81c85ed2d45dfb01219"
+    },
+    {
+      "path": "sdk/include/ud/memory.h",
+      "bytes": 1448,
+      "sha256": "e9796fb60cd8f9806b9b5d82b8fb85269955f7438b3f97b13a7af69d89241972"
+    },
+    {
+      "path": "sdk/include/ud/operator.h",
+      "bytes": 5701,
+      "sha256": "99239f46c9f824d3e094f735087e33b6cbb611fb400584c97b50f2f548576afc"
+    },
+    {
+      "path": "sdk/include/ud/package.h",
+      "bytes": 8917,
+      "sha256": "44bb59cee8ed3e40a03b268e4900df7b6b50b9d3d51fce7dc2d46379ae51ead4"
+    },
+    {
+      "path": "sdk/include/ud/partition.h",
+      "bytes": 930,
+      "sha256": "2e9c3f031656cdf0f540661de2d176c220e3cd221bdee023a289483e66599e27"
+    },
+    {
+      "path": "sdk/include/ud/plugin.h",
+      "bytes": 6372,
+      "sha256": "2dd1726b21416bce1f557fcc92a7f180b919ab79a708df04b80ee799b4e1c7f6"
+    },
+    {
+      "path": "sdk/include/ud/profile.h",
+      "bytes": 1775,
+      "sha256": "24ba87ff6236e6e7bf9421a800d82859f87f692d73fe5db89004eeef38fd05a0"
+    },
+    {
+      "path": "sdk/include/ud/project.h",
+      "bytes": 1434,
+      "sha256": "f97404cf78ec2bb05981674c90d02bc38135cd89e2c364a9f327bc16282c3775"
+    },
+    {
+      "path": "sdk/include/ud/quality.h",
+      "bytes": 3582,
+      "sha256": "bd34cae9b2a143fa0cfd5fa10413820cee34df61d76dc78f70363b3069738c12"
+    },
+    {
+      "path": "sdk/include/ud/regex.h",
+      "bytes": 1245,
+      "sha256": "a34500e6d0edc2d9aaa8bd8aed2f07ba4587fae5925295c24dd41c4e06e1b2f9"
+    },
+    {
+      "path": "sdk/include/ud/sql.h",
+      "bytes": 4375,
+      "sha256": "c1033035987775946d180c6cf6fcfec846e1f1c81a70887de3a6acd38d4164eb"
+    },
+    {
+      "path": "sdk/include/ud/status.h",
+      "bytes": 1241,
+      "sha256": "77a67d3218bc113cb7308a3fedecae7f28f525f574b8121a5d68b4c7c0763a6b"
+    },
+    {
+      "path": "sdk/include/ud/stream.h",
+      "bytes": 761,
+      "sha256": "0cbd33d2e52234295f3f6c2a7da1f58d4a88b8594fd8efc7c1bb15ec6ddbae48"
+    },
+    {
+      "path": "sdk/include/ud/text.h",
+      "bytes": 557,
+      "sha256": "2276e667b81a4109eda8cac34480f4c82e43876a5988b7d844fa9f82d0b7be9b"
+    },
+    {
+      "path": "sdk/include/ud/version.h",
+      "bytes": 547,
+      "sha256": "98490c298a7742510c011a0ad3668827ccfd5fc516250fa28d5dbb92976de4a9"
+    },
+    {
+      "path": "sdk/include/ud/xlsx.h",
+      "bytes": 1894,
+      "sha256": "290b12986c6fe6260d72feeb525d1a28135f2c59a0f6232b367e3150ec4f210f"
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_mariadb.so",
+      "bytes": 96632,
+      "sha256": "06d0098bb471375b8ca71602cacdc6159ac39afa085bae0f54d51045dc755b48"
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_mysql.so",
+      "bytes": 96544,
+      "sha256": "4471e9aa0dbe72cbc3f12ec68da777ad93289a9b2df8e5aed14d88a83cacfc20"
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_odbc.so",
+      "bytes": 99152,
+      "sha256": "6f93df788ef30f9f0f3198871b8907424d84317a5d24ba755fcf87cd04d666ae"
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_oracle_oci.so",
+      "bytes": 94496,
+      "sha256": "66b93aed5f5c0f9e41f0f90d41817101c2405727dcb8ce424198769c0b184c11"
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_postgresql.so",
+      "bytes": 82304,
+      "sha256": "4ca137e045c881ace86f02d79864fc0530ae68e5d0ec43afecdc75c5c41d3e36"
+    },
+    {
+      "path": "sdk/lib/UniversalData/plugins/ud_connector_sqlite.so",
+      "bytes": 1511704,
+      "sha256": "901553babc3437fcd1759e5dc3b25748f973efe0328c15d45e7acbac18b7599a"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/FindUDArrow.cmake",
+      "bytes": 1521,
+      "sha256": "0a2e49cd5073ce160bcfe68b9e5e1e85d96549eda05a12278d38362d25992048"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/FindUDPCRE2.cmake",
+      "bytes": 992,
+      "sha256": "4e780758907d0aca28f82b65cfb1f028e1e01f35126d001726429fd046f59071"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/UniversalDataComponents.cmake",
+      "bytes": 1384,
+      "sha256": "5c588750361286a9d7f89c27699d911ccd73680a8b3dc0b8228a44ce4e92bae6"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/UniversalDataConfig.cmake",
+      "bytes": 2457,
+      "sha256": "95faee27b7072b753fc6e719787717aa2a9f7751072d52c205480defa391c48f"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/UniversalDataConfigVersion.cmake",
+      "bytes": 3675,
+      "sha256": "e7e1b0eb3b54d07d4c733ca9617331cdc0cee4c50aa9cd8cb3deef5e6399e13b"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/UniversalDataTargets-release.cmake",
+      "bytes": 5070,
+      "sha256": "5356aefb6ced2b924b6f4ba0fb2d8cf4db6cb4588d891193c1982f194edded22"
+    },
+    {
+      "path": "sdk/lib/cmake/UniversalData/UniversalDataTargets.cmake",
+      "bytes": 7977,
+      "sha256": "0b5f033e7ca714befa8af359c408f67ec2979695bd8989768d73d68a3ef40599"
+    },
+    {
+      "path": "sdk/lib/libarrow.so.2300",
+      "bytes": 52334816,
+      "sha256": "604b2e4b936a1f52479261c8e77b1483131c76015b923b4d11fff87d2e8e8d7c"
+    },
+    {
+      "path": "sdk/lib/libicudata.so.76",
+      "bytes": 31867649,
+      "sha256": "852704a393d4b0c631c985e5df65942fbc359ad35dc1a2182615bc37f70d9ec1"
+    },
+    {
+      "path": "sdk/lib/libicuuc.so.76",
+      "bytes": 2425289,
+      "sha256": "5193df4ccfad9f343074bbb6a83d12a1968848691f0605d8fa8bdadd5381ba2f"
+    },
+    {
+      "path": "sdk/lib/libparquet.so.2300",
+      "bytes": 12416216,
+      "sha256": "05464db9f29f3e3c72bda50625b2c3ae15931b2a75dfea352a08400da4f1a14f"
+    },
+    {
+      "path": "sdk/lib/libud_columnar.a",
+      "bytes": 427330,
+      "sha256": "eef73eb12cc36bdce90d2757944ea24770bafbfb124a07f6dfcce7ac10d6a450"
+    },
+    {
+      "path": "sdk/lib/libud_compute.a",
+      "bytes": 500686,
+      "sha256": "985d19bc144f564c985a3f55caa1363d33204d1636e4cb81a20c5c518e92f42b"
+    },
+    {
+      "path": "sdk/lib/libud_data.so",
+      "bytes": 3062728,
+      "sha256": "4848baeee2e335ec833ac8203c22e18c507e3adfc98b055342281833e6532cee"
+    },
+    {
+      "path": "sdk/lib/libud_data.so.11",
+      "bytes": 3062728,
+      "sha256": "4848baeee2e335ec833ac8203c22e18c507e3adfc98b055342281833e6532cee"
+    },
+    {
+      "path": "sdk/lib/libud_data.so.2.2.0",
+      "bytes": 3062728,
+      "sha256": "4848baeee2e335ec833ac8203c22e18c507e3adfc98b055342281833e6532cee"
+    },
+    {
+      "path": "sdk/lib/libud_expression.a",
+      "bytes": 89716,
+      "sha256": "c7b0e753154d14cd9d3925601fca30216dbb9afe33bff83e3b581a05cb7440d3"
+    },
+    {
+      "path": "sdk/lib/libud_foundation.a",
+      "bytes": 64150,
+      "sha256": "9fb519721effe586a5f009614d3fc00423cad495c35959bcb4473f622bef55b0"
+    },
+    {
+      "path": "sdk/lib/libud_java.so",
+      "bytes": 84536,
+      "sha256": "71b54ea316f4269093ab5e50f1fdfe1c332132c1d30dd66e8034b8d902e2aebf"
+    },
+    {
+      "path": "sdk/lib/libud_package.a",
+      "bytes": 1386384,
+      "sha256": "35a5a6e1d6473378ca889708af111f1179f5c388c1f261dc7902563fa1fd632c"
+    },
+    {
+      "path": "sdk/lib/libud_plugins.a",
+      "bytes": 57914,
+      "sha256": "b5494d518112a65042ed9d61101a396412541269f007649308e04b7008386dc8"
+    },
+    {
+      "path": "sdk/lib/libud_runtime.a",
+      "bytes": 67386,
+      "sha256": "90c7da6c5f67e709fd81b7f7d0723a0890fd9f9e5e538b628d14126ad6213588"
+    },
+    {
+      "path": "sdk/lib/libud_sqlite_dependency.a",
+      "bytes": 1770822,
+      "sha256": "2664fb6d936eb2c6868d64d0de3742a297eeaf462a917c22e3c60f0315ba3160"
+    },
+    {
+      "path": "sdk/share/UniversalData/LICENSE",
+      "bytes": 1083,
+      "sha256": "e8b5b5709fb92363cf899f297f800622c29cd22414c4306914e919f90012ef2e"
+    },
+    {
+      "path": "sdk/share/UniversalData/NOTICE",
+      "bytes": 597,
+      "sha256": "6c2be4ba20608051b1888fff2a5907744f935b9a1382283f883b0b629fe3bc35"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/Apache-2.0.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/Arrow23-LICENSE.txt",
+      "bytes": 113501,
+      "sha256": "23fc45dce1769d9ddf4aac4d6cdaf3f7f0d14fcc4d930dd0d4afbefa2ea3322a"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/Arrow23-NOTICE.txt",
+      "bytes": 2916,
+      "sha256": "afd895d61a00101f6d5a41cf518c83865d815e8109e956f512a0ce4ea9738c06"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/DuckDB-MIT.txt",
+      "bytes": 1072,
+      "sha256": "7e17fd31249fa875cb3b1c5e05c6c3e99b75509f6a2804ca176c217834de1dcb"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/ICU76-COPYRIGHT.txt",
+      "bytes": 2214,
+      "sha256": "5bbff5f646ce750ac0a347e7f91793279b7422a1119820b5f75d98879c201c68"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/XLSX-native-dependencies.md",
+      "bytes": 1353,
+      "sha256": "524a69e9d047b99efef3d7f2d9b58263ebbef576635f9e6766db69ef38efe26a"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/native-runtimes/Apache-Arrow/Arrow23-LICENSE.txt",
+      "bytes": 113501,
+      "sha256": "23fc45dce1769d9ddf4aac4d6cdaf3f7f0d14fcc4d930dd0d4afbefa2ea3322a"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/native-runtimes/Apache-Arrow/Arrow23-NOTICE.txt",
+      "bytes": 2916,
+      "sha256": "afd895d61a00101f6d5a41cf518c83865d815e8109e956f512a0ce4ea9738c06"
+    },
+    {
+      "path": "sdk/share/UniversalData/licenses/native-runtimes/ICU/ICU76-COPYRIGHT.txt",
+      "bytes": 2214,
+      "sha256": "5bbff5f646ce750ac0a347e7f91793279b7422a1119820b5f75d98879c201c68"
+    }
+  ]
+}

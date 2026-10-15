@@ -168,9 +168,9 @@ static PGresult *query(postgres_state *p, const char *sql, int n, const Oid *typ
     /* COPY hands protocol ownership to the streaming transport. The server
      * cannot complete this command until the client sends/consumes its data;
      * attempting the ordinary result drain here deadlocks both sides. */
-    if (result && (PQresultStatus(result) == PGRES_COPY_IN ||
-                   PQresultStatus(result) == PGRES_COPY_OUT ||
-                   PQresultStatus(result) == PGRES_COPY_BOTH))
+    if (result &&
+        (PQresultStatus(result) == PGRES_COPY_IN || PQresultStatus(result) == PGRES_COPY_OUT ||
+         PQresultStatus(result) == PGRES_COPY_BOTH))
         return result;
     while (wait_result(p) && (extra = PQgetResult(p->db)) != NULL) {
         PQclear(result);
@@ -1085,12 +1085,16 @@ static int transaction_statement(const char *sql) {
            !strcmp(token, "ROLLBACK") || !strcmp(token, "SAVEPOINT") || !strcmp(token, "RELEASE") ||
            !strcmp(token, "END") || !strcmp(token, "PREPARE");
 }
-static ud_status savepoint(void *state,ud_string statement) {
-    postgres_state *p=state;
-    if (!p->transaction) return UD_UNSUPPORTED;
-    char *sql=plugin_string(&p->host,statement.data,statement.length);
-    if (!sql) return UD_RESOURCE;
-    ud_status status=command(p,sql); p->host.deallocate(sql); return status;
+static ud_status savepoint(void *state, ud_string statement) {
+    postgres_state *p = state;
+    if (!p->transaction)
+        return UD_UNSUPPORTED;
+    char *sql = plugin_string(&p->host, statement.data, statement.length);
+    if (!sql)
+        return UD_RESOURCE;
+    ud_status status = command(p, sql);
+    p->host.deallocate(sql);
+    return status;
 }
 static ud_status execute_command(void *state, const ud_read_options *options, uint64_t *processed) {
     postgres_state *p = state;
@@ -1455,9 +1459,10 @@ static ud_status cdc_close(void *state) {
 static const ud_connector_api connector = {
     .struct_size = sizeof(connector),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities = UD_CONNECT_TRANSACTIONAL_DML |
-        UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
-        UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
+    .capabilities =
+        UD_CONNECT_READONLY_SCAN | UD_CONNECT_TRANSACTIONAL_DML | UD_CONNECT_READ |
+        UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
+        UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
         UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
         UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
         UD_CONNECT_PROVISION | UD_CONNECT_NATIVE_BULK | UD_CONNECT_TRANSACTION_PARTICIPANT,
@@ -1504,6 +1509,8 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
                            destroy,
                            plugin_shutdown,
                            &connector,
-                           NULL,sizeof(ud_field),sizeof(ud_value)};
+                           NULL,
+                           sizeof(ud_field),
+                           sizeof(ud_value)};
     return UD_OK;
 }

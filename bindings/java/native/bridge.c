@@ -1254,51 +1254,89 @@ JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativePut(JNIEnv *env, jcl
     if (status)
         fail(env, status, ud_status_name(status));
 }
-JNIEXPORT jlongArray JNICALL Java_org_universaldata_Catalog_nativeLease(JNIEnv *env,jclass type,
-    jlong handle,jint operation,jint kind,jbyteArray id,jbyteArray owner,jlong generation,
-    jint duration,jbyteArray pool,jint capacity) {
+JNIEXPORT jlongArray JNICALL Java_org_universaldata_Catalog_nativeLease(
+    JNIEnv *env, jclass type, jlong handle, jint operation, jint kind, jbyteArray id,
+    jbyteArray owner, jlong generation, jint duration, jbyteArray pool, jint capacity) {
     (void)type;
-    java_catalog *catalog=(java_catalog *)(intptr_t)handle;
-    uint32_t sizes[3]={0};
-    char *texts[]={copy_data(env,catalog->callbacks.ctx,id,sizes),
-        copy_data(env,catalog->callbacks.ctx,owner,sizes+1),copy_data(env,catalog->callbacks.ctx,pool,sizes+2)};
-    ud_status status=texts[0] && texts[1] && texts[2] ? UD_OK : UD_RESOURCE;
-    uint64_t token=0,until=0;
-    ud_catalog_lease lease={.struct_size=sizeof(lease),.abi_version=UD_ABI_VERSION,.kind=kind,
-        .id={texts[0],sizes[0]},.owner={texts[1],sizes[1]},.generation=(uint64_t)generation};
-    if (!status && (duration<0 || capacity<0 || generation<0)) status=UD_INVALID;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    uint32_t sizes[3] = {0};
+    char *texts[] = {copy_data(env, catalog->callbacks.ctx, id, sizes),
+                     copy_data(env, catalog->callbacks.ctx, owner, sizes + 1),
+                     copy_data(env, catalog->callbacks.ctx, pool, sizes + 2)};
+    ud_status status = texts[0] && texts[1] && texts[2] ? UD_OK : UD_RESOURCE;
+    uint64_t token = 0, until = 0;
+    ud_catalog_lease lease = {.struct_size = sizeof(lease),
+                              .abi_version = UD_ABI_VERSION,
+                              .kind = kind,
+                              .id = {texts[0], sizes[0]},
+                              .owner = {texts[1], sizes[1]},
+                              .generation = (uint64_t)generation};
+    if (!status && (duration < 0 || capacity < 0 || generation < 0))
+        status = UD_INVALID;
     if (!status) {
-        if (operation==1) {
-            ud_catalog_lease_request request={.struct_size=sizeof(request),.abi_version=UD_ABI_VERSION,
-                .kind=kind,.id=lease.id,.owner=lease.owner,.pool={texts[2],sizes[2]},
-                .duration_ms=(uint32_t)duration,.capacity=(uint32_t)capacity};
-            status=ud_catalog_lease_acquire(catalog->catalog,&request,&token,&until);
-        } else if (operation==2) { token=(uint64_t)generation;status=ud_catalog_lease_renew(catalog->catalog,&lease,(uint32_t)duration,&until); }
-        else if (operation==3) status=ud_catalog_lease_release(catalog->catalog,&lease);
-        else if (operation==4) { int32_t active=0;status=ud_catalog_lease_active(catalog->catalog,kind,lease.id,&active);token=(uint64_t)active; }
-        else status=UD_INVALID;
+        if (operation == 1) {
+            ud_catalog_lease_request request = {.struct_size = sizeof(request),
+                                                .abi_version = UD_ABI_VERSION,
+                                                .kind = kind,
+                                                .id = lease.id,
+                                                .owner = lease.owner,
+                                                .pool = {texts[2], sizes[2]},
+                                                .duration_ms = (uint32_t)duration,
+                                                .capacity = (uint32_t)capacity};
+            status = ud_catalog_lease_acquire(catalog->catalog, &request, &token, &until);
+        } else if (operation == 2) {
+            token = (uint64_t)generation;
+            status = ud_catalog_lease_renew(catalog->catalog, &lease, (uint32_t)duration, &until);
+        } else if (operation == 3)
+            status = ud_catalog_lease_release(catalog->catalog, &lease);
+        else if (operation == 4) {
+            int32_t active = 0;
+            status = ud_catalog_lease_active(catalog->catalog, kind, lease.id, &active);
+            token = (uint64_t)active;
+        } else
+            status = UD_INVALID;
     }
-    for (uint32_t at=0;at<3;at++) ud_free(texts[at]);
-    if (operation==1 && status==UD_BUSY) return NULL;
-    if (status) { fail(env,status,ud_status_name(status));return NULL; }
-    jlongArray result=(*env)->NewLongArray(env,2);
-    if (result) { jlong values[]={(jlong)token,(jlong)until};(*env)->SetLongArrayRegion(env,result,0,2,values); }
+    for (uint32_t at = 0; at < 3; at++)
+        ud_free(texts[at]);
+    if (operation == 1 && status == UD_BUSY)
+        return NULL;
+    if (status) {
+        fail(env, status, ud_status_name(status));
+        return NULL;
+    }
+    jlongArray result = (*env)->NewLongArray(env, 2);
+    if (result) {
+        jlong values[] = {(jlong)token, (jlong)until};
+        (*env)->SetLongArrayRegion(env, result, 0, 2, values);
+    }
     return result;
 }
-JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeCompareExchange(JNIEnv *env,jclass type,
-    jlong handle,jint kind,jbyteArray id,jlong expected,jbyteArray document,jbyteArray owner,jlong generation) {
+JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeCompareExchange(
+    JNIEnv *env, jclass type, jlong handle, jint kind, jbyteArray id, jlong expected,
+    jbyteArray document, jbyteArray owner, jlong generation) {
     (void)type;
-    java_catalog *catalog=(java_catalog *)(intptr_t)handle;
-    uint32_t sizes[3]={0};
-    char *texts[]={copy_data(env,catalog->callbacks.ctx,id,sizes),
-        copy_data(env,catalog->callbacks.ctx,document,sizes+1),copy_data(env,catalog->callbacks.ctx,owner,sizes+2)};
-    ud_catalog_key key={sizeof(key),UD_ABI_VERSION,kind,{texts[0],sizes[0]},(uint64_t)expected+1};
-    ud_catalog_lease lease={.struct_size=sizeof(lease),.abi_version=UD_ABI_VERSION,.kind=kind,
-        .id=key.id,.owner={texts[2],sizes[2]},.generation=(uint64_t)generation};
-    ud_status status=texts[0] && texts[1] && texts[2] ?
-        ud_catalog_compare_exchange(catalog->catalog,&key,(ud_string){texts[1],sizes[1]},(uint64_t)expected,generation ? &lease : NULL) : UD_RESOURCE;
-    for (uint32_t at=0;at<3;at++) ud_free(texts[at]);
-    if (status) fail(env,status,ud_status_name(status));
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+    uint32_t sizes[3] = {0};
+    char *texts[] = {copy_data(env, catalog->callbacks.ctx, id, sizes),
+                     copy_data(env, catalog->callbacks.ctx, document, sizes + 1),
+                     copy_data(env, catalog->callbacks.ctx, owner, sizes + 2)};
+    ud_catalog_key key = {
+        sizeof(key), UD_ABI_VERSION, kind, {texts[0], sizes[0]}, (uint64_t)expected + 1};
+    ud_catalog_lease lease = {.struct_size = sizeof(lease),
+                              .abi_version = UD_ABI_VERSION,
+                              .kind = kind,
+                              .id = key.id,
+                              .owner = {texts[2], sizes[2]},
+                              .generation = (uint64_t)generation};
+    ud_status status =
+        texts[0] && texts[1] && texts[2]
+            ? ud_catalog_compare_exchange(catalog->catalog, &key, (ud_string){texts[1], sizes[1]},
+                                          (uint64_t)expected, generation ? &lease : NULL)
+            : UD_RESOURCE;
+    for (uint32_t at = 0; at < 3; at++)
+        ud_free(texts[at]);
+    if (status)
+        fail(env, status, ud_status_name(status));
 }
 JNIEXPORT jstring JNICALL Java_org_universaldata_Catalog_nativeGet(JNIEnv *env, jclass type,
                                                                    jlong handle, jint kind,
@@ -1351,21 +1389,28 @@ JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeRecord(
     ud_status status = UD_OK;
     for (uint32_t at = 0; !status && at < 6; at++) {
         texts[at] = copy_data(env, catalog->callbacks.ctx, arrays[at], lengths + at);
-        if (!texts[at]) status = UD_RESOURCE;
+        if (!texts[at])
+            status = UD_RESOURCE;
     }
-    ud_execution_event event = {.struct_size = sizeof(event), .abi_version = UD_ABI_VERSION,
-                                 .package_id = {texts[0], lengths[0]},
-                                 .execution_id = {texts[1], lengths[1]},
-                                 .task_id = {texts[2], lengths[2]},
-                                 .pipeline_id = {texts[3], lengths[3]},
-                                 .component_id = {texts[4], lengths[4]},
-                                 .state = state, .result = result, .timestamp_ms = (uint64_t)timestamp,
-                                 .kind = kind, .sequence = (uint64_t)sequence,
-                                 .error_chain = {texts[5], lengths[5]}};
+    ud_execution_event event = {.struct_size = sizeof(event),
+                                .abi_version = UD_ABI_VERSION,
+                                .package_id = {texts[0], lengths[0]},
+                                .execution_id = {texts[1], lengths[1]},
+                                .task_id = {texts[2], lengths[2]},
+                                .pipeline_id = {texts[3], lengths[3]},
+                                .component_id = {texts[4], lengths[4]},
+                                .state = state,
+                                .result = result,
+                                .timestamp_ms = (uint64_t)timestamp,
+                                .kind = kind,
+                                .sequence = (uint64_t)sequence,
+                                .error_chain = {texts[5], lengths[5]}};
     if (!status)
         status = ud_catalog_record_event(catalog->catalog, &event, (uint64_t)sequence);
-    for (uint32_t at = 0; at < 6; at++) ud_free(texts[at]);
-    if (status) fail(env, status, ud_status_name(status));
+    for (uint32_t at = 0; at < 6; at++)
+        ud_free(texts[at]);
+    if (status)
+        fail(env, status, ud_status_name(status));
 }
 JNIEXPORT jlong JNICALL Java_org_universaldata_Catalog_nativeLatest(JNIEnv *env, jclass type,
                                                                     jlong handle, jint kind,
@@ -1448,40 +1493,60 @@ JNIEXPORT jobjectArray JNICALL Java_org_universaldata_Catalog_nativeBind(
 }
 
 JNIEXPORT jstring JNICALL Java_org_universaldata_Catalog_nativeBindingSnapshot(
-    JNIEnv *env,jclass type,jlong handle,jbyteArray deployment,jlong revision,jbyteArray package_id) {
+    JNIEnv *env, jclass type, jlong handle, jbyteArray deployment, jlong revision,
+    jbyteArray package_id) {
     (void)type;
     java_catalog *catalog = (java_catalog *)(intptr_t)handle;
     uint32_t sizes[2] = {0};
-    char *a = copy_data(env,catalog->callbacks.ctx,deployment,sizes);
-    char *b = copy_data(env,catalog->callbacks.ctx,package_id,sizes + 1);
-    char *json = NULL; uint32_t length = 0;
-    ud_catalog_binding binding = {.struct_size = sizeof(binding),.abi_version = UD_ABI_VERSION,
-        .deployment_id = {a,sizes[0]},.deployment_revision = (uint64_t)revision,.package_id = {b,sizes[1]}};
-    ud_status status = a && b ? ud_catalog_binding_snapshot(catalog->catalog,&binding,&json,&length) : UD_RESOURCE;
-    jstring result = !status ? utf8_length(env,json,length) : NULL;
-    ud_free(a); ud_free(b); ud_free(json);
-    if (status) fail(env,status,ud_status_name(status));
+    char *a = copy_data(env, catalog->callbacks.ctx, deployment, sizes);
+    char *b = copy_data(env, catalog->callbacks.ctx, package_id, sizes + 1);
+    char *json = NULL;
+    uint32_t length = 0;
+    ud_catalog_binding binding = {.struct_size = sizeof(binding),
+                                  .abi_version = UD_ABI_VERSION,
+                                  .deployment_id = {a, sizes[0]},
+                                  .deployment_revision = (uint64_t)revision,
+                                  .package_id = {b, sizes[1]}};
+    ud_status status = a && b
+                           ? ud_catalog_binding_snapshot(catalog->catalog, &binding, &json, &length)
+                           : UD_RESOURCE;
+    jstring result = !status ? utf8_length(env, json, length) : NULL;
+    ud_free(a);
+    ud_free(b);
+    ud_free(json);
+    if (status)
+        fail(env, status, ud_status_name(status));
     return result;
 }
 JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeProtectParameters(
-    JNIEnv *env,jclass type,jlong handle,jbyteArray id,jlong revision,jbyteArray reference) {
+    JNIEnv *env, jclass type, jlong handle, jbyteArray id, jlong revision, jbyteArray reference) {
     (void)type;
     java_catalog *catalog = (java_catalog *)(intptr_t)handle;
     uint32_t sizes[2] = {0};
-    char *a = copy_data(env,catalog->callbacks.ctx,id,sizes);
-    char *b = copy_data(env,catalog->callbacks.ctx,reference,sizes + 1);
-    ud_catalog_key key = {sizeof(key),UD_ABI_VERSION,UD_CATALOG_AUDIT,{a,sizes[0]},(uint64_t)revision};
-    ud_status status = a && b ? ud_catalog_protect_parameters(catalog->catalog,&key,(ud_string){b,sizes[1]}) : UD_RESOURCE;
-    ud_free(a); ud_free(b);
-    if (status) fail(env,status,ud_status_name(status));
+    char *a = copy_data(env, catalog->callbacks.ctx, id, sizes);
+    char *b = copy_data(env, catalog->callbacks.ctx, reference, sizes + 1);
+    ud_catalog_key key = {
+        sizeof(key), UD_ABI_VERSION, UD_CATALOG_AUDIT, {a, sizes[0]}, (uint64_t)revision};
+    ud_status status =
+        a && b ? ud_catalog_protect_parameters(catalog->catalog, &key, (ud_string){b, sizes[1]})
+               : UD_RESOURCE;
+    ud_free(a);
+    ud_free(b);
+    if (status)
+        fail(env, status, ud_status_name(status));
 }
-JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeSecureCompact(JNIEnv *env,jclass type,jlong handle) {
-    (void)type; java_catalog *catalog = (java_catalog *)(intptr_t)handle;
+JNIEXPORT void JNICALL Java_org_universaldata_Catalog_nativeSecureCompact(JNIEnv *env, jclass type,
+                                                                          jlong handle) {
+    (void)type;
+    java_catalog *catalog = (java_catalog *)(intptr_t)handle;
     ud_status status = ud_catalog_secure_compact(catalog->catalog);
-    if (status) fail(env,status,ud_status_name(status));
+    if (status)
+        fail(env, status, ud_status_name(status));
 }
-JNIEXPORT jlong JNICALL Java_org_universaldata_Registry_nativeFeatures(JNIEnv *env,jclass type) {
-    (void)env; (void)type; return (jlong)ud_registry_features();
+JNIEXPORT jlong JNICALL Java_org_universaldata_Registry_nativeFeatures(JNIEnv *env, jclass type) {
+    (void)env;
+    (void)type;
+    return (jlong)ud_registry_features();
 }
 
 /* JNI is a lifecycle projection of the same Native function and Batch contract. */
@@ -2327,5 +2392,124 @@ JNIEXPORT jlongArray JNICALL Java_org_universaldata_Batch_nativeDateTime(JNIEnv 
     jlongArray result = (*env)->NewLongArray(env, 3);
     if (result)
         (*env)->SetLongArrayRegion(env, result, 0, 3, parts);
+    return result;
+}
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativePreview(JNIEnv *env, jclass cls,
+                                                                         jlong handle,
+                                                                         jbyteArray pipeline,
+                                                                         jbyteArray component,
+                                                                         jint rows, jint samples) {
+    (void)cls;
+    java_execution *e = (java_execution *)(intptr_t)handle;
+    uint32_t a = 0, b = 0, n = 0;
+    char *p = copy_data(env, e->ctx, pipeline, &a), *c = copy_data(env, e->ctx, component, &b),
+         *text = NULL;
+    ud_status s = p && c ? ud_execution_preview(e->execution, (ud_string){p, a}, (ud_string){c, b},
+                                                (uint32_t)rows, (uint32_t)samples, &text, &n)
+                         : UD_INVALID;
+    jstring result = NULL;
+    if (s)
+        fail(env, s, ud_status_name(s));
+    else
+        result = utf8(env, text);
+    ud_free(p);
+    ud_free(c);
+    ud_free(text);
+    return result;
+}
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeInspectFile(
+    JNIEnv *env, jclass cls, jlong handle, jbyteArray connection, jbyteArray config) {
+    (void)cls;
+    java_execution *e = (java_execution *)(intptr_t)handle;
+    uint32_t a = 0, b = 0, n = 0;
+    char *p = copy_data(env, e->ctx, connection, &a), *c = copy_data(env, e->ctx, config, &b),
+         *text = NULL;
+    ud_status s = p && c ? ud_execution_inspect_file(e->execution, (ud_string){p, a},
+                                                     (ud_string){c, b}, &text, &n)
+                         : UD_INVALID;
+    jstring result = NULL;
+    if (s)
+        fail(env, s, ud_status_name(s));
+    else
+        result = utf8(env, text);
+    ud_free(p);
+    ud_free(c);
+    ud_free(text);
+    return result;
+}
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeReidentifyPackage(JNIEnv *env,
+                                                                                   jclass cls,
+                                                                                   jlong handle,
+                                                                                   jbyteArray id) {
+    (void)cls;
+    java_execution *e = (java_execution *)(intptr_t)handle;
+    uint32_t a = 0, n = 0;
+    char *p = copy_data(env, e->ctx, id, &a), *text = NULL;
+    ud_status s = p ? ud_execution_reidentify_package(e->execution, (ud_string){p, a}, &text, &n)
+                    : UD_INVALID;
+    jstring result = NULL;
+    if (s)
+        fail(env, s, ud_status_name(s));
+    else
+        result = utf8(env, text);
+    ud_free(p);
+    ud_free(text);
+    return result;
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeConnectorCatalog(
+    JNIEnv *env, jclass cls, jlong handle, jbyteArray paths) {
+    (void)cls;
+    java_execution *e = (java_execution *)(intptr_t)handle;
+    uint32_t a = 0, n = 0;
+    char *p = copy_data(env, e->ctx, paths, &a), *text = NULL;
+    ud_status s =
+        p ? ud_execution_connector_catalog(e->execution, (ud_string){p, a}, &text, &n) : UD_INVALID;
+    jstring result = NULL;
+    if (s)
+        fail(env, s, ud_status_name(s));
+    else
+        result = utf8(env, text);
+    ud_free(p);
+    ud_free(text);
+    return result;
+}
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeMetadata(
+    JNIEnv *env, jclass cls, jlong handle, jbyteArray connection, jint kind, jbyteArray parent,
+    jlong offset) {
+    (void)cls;
+    java_execution *e = (java_execution *)(intptr_t)handle;
+    uint32_t a = 0, b = 0, n = 0;
+    char *p = copy_data(env, e->ctx, connection, &a), *c = copy_data(env, e->ctx, parent, &b),
+         *text = NULL;
+    ud_status s = p && c ? ud_execution_metadata(e->execution, (ud_string){p, a}, kind,
+                                                 (ud_string){c, b}, (uint64_t)offset, &text, &n)
+                         : UD_INVALID;
+    jstring result = NULL;
+    if (s)
+        fail(env, s, ud_status_name(s));
+    else
+        result = utf8(env, text);
+    ud_free(p);
+    ud_free(c);
+    ud_free(text);
+    return result;
+}
+
+JNIEXPORT jstring JNICALL Java_org_universaldata_Execution_nativeProgress(JNIEnv *env, jclass cls,
+                                                                          jlong handle) {
+    (void)cls;
+    java_execution *e = (java_execution *)(intptr_t)handle;
+    char *text = NULL;
+    uint32_t n = 0;
+    ud_status s = ud_execution_progress(e->execution, &text, &n);
+    jstring result = NULL;
+    if (s)
+        fail(env, s, ud_status_name(s));
+    else
+        result = utf8(env, text);
+    ud_free(text);
     return result;
 }

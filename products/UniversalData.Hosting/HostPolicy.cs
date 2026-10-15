@@ -4,14 +4,14 @@ using System.Text.Json.Serialization;
 namespace UniversalData.Hosting;
 
 public sealed record TenantResources(string[] FileRoots, string[] NetworkOrigins, string[] PluginRoots,
-    string[] CredentialReferences, Dictionary<string, ConnectionAccess[]>? Resources = null, string[]? ReadOnlyRoots = null);
+    string[] CredentialReferences, Dictionary<string, ConnectionAccess[]>? Resources = null, string[]? ReadOnlyRoots = null, string[]? TestResources = null);
 
 /// <summary>One host resource ceiling, narrowed by the authenticated tenant and subject before Native binding.</summary>
 public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string[] NetworkOrigins,
     string[] PluginRoots, Dictionary<string, string> CredentialFiles, uint MaxConcurrency = 4,
     ulong MemoryLimit = 268435456, Dictionary<string, ConnectionAccess[]>? Resources = null,
     string? IdentityFile = null, Dictionary<string, TenantResources>? Tenants = null,
-    string[]? TrustedAssemblyHashes = null, uint ExecutionTimeoutSeconds = 3600, uint CancellationGraceSeconds = 10)
+    string[]? TrustedAssemblyHashes = null, uint ExecutionTimeoutSeconds = 3600, uint CancellationGraceSeconds = 10, string[]? TestResources = null)
 {
     [JsonIgnore] public string Tenant { get; init; } = "local";
     [JsonIgnore] public HostIdentity Identity { get; init; } = HostIdentity.Operator("local");
@@ -57,7 +57,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
         return this with { DataDirectory = Path.Combine(DataDirectory, "tenants", identity.Tenant), Tenant = identity.Tenant, Identity = identity,
             FileRoots = resources.FileRoots, ReadOnlyRoots = resources.ReadOnlyRoots ?? [], NetworkOrigins = resources.NetworkOrigins, PluginRoots = resources.PluginRoots,
             CredentialFiles = CredentialFiles.Where(pair => resources.CredentialReferences.Contains(pair.Key, StringComparer.Ordinal) && identity.Allows("credential.use", pair.Key)).ToDictionary(),
-            Resources = resources.Resources };
+            Resources = resources.Resources, TestResources = (resources.TestResources ?? []).Where(resource => (TestResources ?? []).Contains(resource,StringComparer.Ordinal)).ToArray() };
     }
     public string CatalogDirectory => Path.Combine(DataDirectory, "catalog");
     public string ControlDirectory(string ticket) {
@@ -89,9 +89,14 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
             try { HostFiles.NoLinks(resource); } catch { return false; }
             if (Inside(resource, DataDirectory) || CredentialFiles.Values.Any(path => Inside(resource,path)) || IdentityFile is not null && resource == IdentityFile) return false;
         }
+        foreach(string root in FileRoots.Concat(ReadOnlyRoots)) {
+            string imports=Path.Combine(root,".ud-imports");
+            if(Inside(resource,imports)&&!Inside(resource,Path.Combine(imports,Tenant,Identity.Subject)))return false;
+        }
         if (!Identity.Allows("resource." + access.ToString().ToLowerInvariant(), resource)) return false;
         if (Resources is not null && Resources.TryGetValue(resource, out var grants) && grants.Contains(access)) return true;
-        if (access == ConnectionAccess.Execute) return PluginRoots.Any(root => Inside(resource, root));
+        if (access is ConnectionAccess.Open or ConnectionAccess.Execute && PluginRoots.Any(root => Inside(resource, root))) return true;
+        if (access == ConnectionAccess.Execute) return false;
         if (Uri.TryCreate(resource, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "ftp" or "ftps" or "sftp" or "smtp" or "smtps")
             return uri.UserInfo.Length == 0 && NetworkOrigins.Any(origin => Uri.TryCreate(origin, UriKind.Absolute, out var permitted) &&
                 uri.Scheme == permitted.Scheme && uri.Host.Equals(permitted.Host, StringComparison.OrdinalIgnoreCase) && uri.Port == permitted.Port);

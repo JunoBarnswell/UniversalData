@@ -167,7 +167,9 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
         if (!status)
             status = ud_activation_acquire_connection(
                 context->activation, connection,
-                UD_CONNECT_READ | UD_CONNECT_PREPARED | UD_CONNECT_METADATA, &c->remote);
+                UD_CONNECT_READ | UD_CONNECT_PREPARED | UD_CONNECT_METADATA |
+                    (context->execution->preview_pipeline ? UD_CONNECT_READONLY_SCAN : 0),
+                &c->remote);
         ud_batch *actual = NULL;
         if (!status)
             status = ud_connection_lease_discover(c->remote, c->table, &actual);
@@ -486,7 +488,7 @@ static ud_status observe(cache_component *c, const ud_batch *input) {
     if (!status) {
         if (c->observation_count == c->observation_capacity) {
             uint32_t cap = c->observation_capacity ? c->observation_capacity * 2 : 16;
-            char(*keys)[65] = ud_alloc(c->context.memory, (size_t)cap * 65);
+            char (*keys)[65] = ud_alloc(c->context.memory, (size_t)cap * 65);
             if (!keys)
                 return UD_RESOURCE;
             if (c->observation_count)
@@ -665,6 +667,8 @@ ud_status ud_cache_components_register(ud_registry *registry) {
             .restore = restore_state,
             .confirm_epoch = i == 2 ? confirm_epoch : NULL,
             .effects = i == 2 ? UD_EFFECT_EXTERNAL_READ : 0};
+        if (i == 2)
+            d.capabilities |= UD_COMPONENT_PREVIEW_SAFE;
         UD_TRY(ud_registry_register(registry, &d));
     }
     return UD_OK;

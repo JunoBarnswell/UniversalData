@@ -1,0 +1,2 @@
+# Optional product browser gate; isolated from Native test dependencies.
+playwright==1.62.0

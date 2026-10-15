@@ -1,6 +1,6 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "2.1.0",
+  "sdkVersion": "2.2.0",
   "abi": 11,
   "specification": "UniversalData_SSIS_Strict_Parity_Codex.md",
   "baseline": "867228797e6f2433cedff684f59ca1d28d3b4b29",

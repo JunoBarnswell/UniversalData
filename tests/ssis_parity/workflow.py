@@ -104,6 +104,39 @@ def package(root, source, driver, config, runid, batch, transaction, load):
     if transaction=='package':document['policy']['transaction']=flow.pop('transaction')
     return document
 
+def verify_business_rows(db, runid, dirty, table_prefix='ud_ssis_', branch_reference=None):
+    """Independent row/field/branch/aggregate/error oracle, shared by CLI and Web acceptance."""
+    expected=json.loads((pathlib.Path(__file__).parent/'fixtures/expected.json').read_text())
+    branch_reference=branch_reference or expected['dirty' if dirty else 'clean']['branches']
+    rows=[]
+    exports={}
+    for branch in TABLES[:4]:
+        fields=[field('source_row_id','uint64'),field('order_no'),field('customer_name'),field('original_name_length','uint64'),field('first_character'),field('name_token_count','int64'),field('middle_category'),field('status_label'),field('is_negative_amount','int64'),field('tax_amount','decimal128',True,precision=38,scale=2),field('order_month','uint64'),field('status',nullable=True),field('region'),field('product_code'),field('amount','decimal128',True,precision=38,scale=2),field('category_path'),field('created_at'),field('remark',nullable=True)]
+        actual=db('SELECT '+','.join(f['name'] for f in fields)+f" FROM {table_prefix}{branch} WHERE run_id='{runid}' ORDER BY source_row_id",fields)
+        ids=[r['source_row_id'] for r in actual];ref=branch_reference[branch.upper()]
+        assert len(ids)==ref['count'] and digest_rows(ids)==ref['rowIdsSha256'],(branch,len(ids),ref)
+        for row in actual:
+            original,amount,invalid=raw_row(row['source_row_id'],dirty);assert not invalid
+            tax=None if amount is None else (amount*Decimal('.13')).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)
+            if tax is not None and tax.is_zero():tax=abs(tax)  # SQL DECIMAL has one zero representation.
+            want=dict(source_row_id=original['RowId'],order_no=original['OrderNo'],customer_name=original['CustomerName'].strip(' ').upper(),original_name_length=len(original['CustomerName'].encode('utf-16-le'))//2,first_character=original['CustomerName'][0],name_token_count=3,middle_category=original['ProductCode'],status_label=original['Status'] or 'UNKNOWN',is_negative_amount=int(amount is not None and amount<0),tax_amount=None if tax is None else str(tax),order_month=10,status=original['Status'],region=original['Region'],product_code=original['ProductCode'],amount=None if amount is None else str(amount.quantize(Decimal('.01'))),category_path=original['CategoryPath'],created_at=original['CreatedAt'],remark=original['Remark'])
+            assert row==want,(branch,row,want)
+        rows+=actual
+        exports[branch]=actual
+    ids=[x['source_row_id'] for x in rows];assert len(set(ids))==len(ids)==expected['dirty' if dirty else 'clean']['businessRows']
+    for table,key,refkey in [('region_summary','region','region'),('product_summary','product_code','product')]:
+        actual=db(f"SELECT {key},input_rows,amount_sum FROM {table_prefix}{table} WHERE run_id='{runid}' ORDER BY {key}",[field(key),field('input_rows','uint64'),field('amount_sum','decimal128',True,precision=38,scale=2)])
+        got={r[key]:dict(count=r['input_rows'],amountSum=r['amount_sum']) for r in actual};assert got==expected['dirty' if dirty else 'clean'][refkey],got
+        exports[table]=actual
+    errors=db(f"SELECT source_row_id,error_kind,error_code,error_column,source_position,raw_amount,raw_record FROM {table_prefix}errors WHERE run_id='{runid}' ORDER BY source_row_id",[field('source_row_id','uint64'),field('error_kind'),field('error_code'),field('error_column'),field('source_position',nullable=True),field('raw_amount',nullable=True),field('raw_record',nullable=True)])
+    assert [r['source_row_id'] for r in errors]==expected['dirty' if dirty else 'clean']['errorRowIds']
+    for r in errors:
+        assert r['error_kind']=='conversion' and r['error_code']!='0' and len(r['error_column'])==32 and int(r['source_position'])==r['source_row_id']-1 and r['raw_amount']=='INVALID_DECIMAL',r
+        raw=json.loads(r['raw_record']);assert len(raw)==1 and raw[0]['Amount']=='INVALID_DECIMAL' and int(raw[0]['RowId'])==r['source_row_id'],r
+    signature=hashlib.sha256(json.dumps(sorted(rows,key=lambda r:r['source_row_id']),ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+    exports['errors']=errors
+    return dict(businessRows=len(rows),errorRows=len(errors),outputSignature=signature,branchSignatures=branch_reference),exports
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--runner',required=True,type=pathlib.Path);p.add_argument('--database',required=True,type=pathlib.Path);p.add_argument('--plugin',required=True,type=pathlib.Path);p.add_argument('--output',type=pathlib.Path);p.add_argument('--case',action='append');p.add_argument('--exclude-case',action='append',default=[]);a=p.parse_args()
     config=os.environ.get('UD_TEST_MYSQL_CONFIG')
@@ -132,7 +165,6 @@ def main():
         facts=generate(root,dirty);assert facts==expected['dirty' if dirty else 'clean']
         xlsx(root/('dirty.xlsx' if dirty else 'clean.xlsx'),dirty)
     def verify(runid,dirty,reordered=False):
-        rows=[]
         branch_reference=expected['dirty' if dirty else 'clean']['branches']
         if reordered:
             indices={name:[] for name in ('VIP','REFUND','PAID_OTHER','OTHER')}
@@ -142,38 +174,14 @@ def main():
                 branch='PAID_OTHER' if raw['Status']=='PAID' else 'REFUND' if raw['Status']=='REFUND' or (amount is not None and amount<0) else 'OTHER'
                 indices[branch].append(ordinal)
             branch_reference={name:dict(count=len(ids),rowIdsSha256=digest_rows(ids)) for name,ids in indices.items()}
-        exports={}
-        for branch in TABLES[:4]:
-            fields=[field('source_row_id','uint64'),field('order_no'),field('customer_name'),field('original_name_length','uint64'),field('first_character'),field('name_token_count','int64'),field('middle_category'),field('status_label'),field('is_negative_amount','int64'),field('tax_amount','decimal128',True,precision=38,scale=2),field('order_month','uint64'),field('status',nullable=True),field('region'),field('product_code'),field('amount','decimal128',True,precision=38,scale=2),field('category_path'),field('created_at'),field('remark',nullable=True)]
-            actual=db('SELECT '+','.join(f['name'] for f in fields)+f" FROM ud_ssis_{branch} WHERE run_id='{runid}' ORDER BY source_row_id",fields)
-            ids=[r['source_row_id'] for r in actual];ref=branch_reference[branch.upper()]
-            assert len(ids)==ref['count'] and digest_rows(ids)==ref['rowIdsSha256'],(branch,len(ids),ref)
-            for row in actual:
-                original,amount,invalid=raw_row(row['source_row_id'],dirty);assert not invalid
-                tax=None if amount is None else (amount*Decimal('.13')).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)
-                if tax is not None and tax.is_zero():tax=abs(tax)  # SQL DECIMAL has one zero representation.
-                want=dict(source_row_id=original['RowId'],order_no=original['OrderNo'],customer_name=original['CustomerName'].strip(' ').upper(),original_name_length=len(original['CustomerName'].encode('utf-16-le'))//2,first_character=original['CustomerName'][0],name_token_count=3,middle_category=original['ProductCode'],status_label=original['Status'] or 'UNKNOWN',is_negative_amount=int(amount is not None and amount<0),tax_amount=None if tax is None else str(tax),order_month=10,status=original['Status'],region=original['Region'],product_code=original['ProductCode'],amount=None if amount is None else str(amount.quantize(Decimal('.01'))),category_path=original['CategoryPath'],created_at=original['CreatedAt'],remark=original['Remark'])
-                assert row==want,(branch,row,want)
-            rows+=actual
-            exports[branch]=actual
-        ids=[x['source_row_id'] for x in rows];assert len(set(ids))==len(ids)==expected['dirty' if dirty else 'clean']['businessRows']
-        for table,key,refkey in [('region_summary','region','region'),('product_summary','product_code','product')]:
-            actual=db(f"SELECT {key},input_rows,amount_sum FROM ud_ssis_{table} WHERE run_id='{runid}' ORDER BY {key}",[field(key),field('input_rows','uint64'),field('amount_sum','decimal128',True,precision=38,scale=2)])
-            got={r[key]:dict(count=r['input_rows'],amountSum=r['amount_sum']) for r in actual};assert got==expected['dirty' if dirty else 'clean'][refkey],got
-            exports[table]=actual
-        errors=db(f"SELECT source_row_id,error_kind,error_code,error_column,source_position,raw_amount,raw_record FROM ud_ssis_errors WHERE run_id='{runid}' ORDER BY source_row_id",[field('source_row_id','uint64'),field('error_kind'),field('error_code'),field('error_column'),field('source_position',nullable=True),field('raw_amount',nullable=True),field('raw_record',nullable=True)])
-        assert [r['source_row_id'] for r in errors]==expected['dirty' if dirty else 'clean']['errorRowIds']
-        for r in errors:
-            assert r['error_kind']=='conversion' and r['error_code']!='0' and len(r['error_column'])==32 and int(r['source_position'])==r['source_row_id']-1 and r['raw_amount']=='INVALID_DECIMAL',r
-            raw=json.loads(r['raw_record']);assert len(raw)==1 and raw[0]['Amount']=='INVALID_DECIMAL' and int(raw[0]['RowId'])==r['source_row_id'],r
-        signature=hashlib.sha256(json.dumps(sorted(rows,key=lambda r:r['source_row_id']),ensure_ascii=False,sort_keys=True).encode()).hexdigest()
-        exports['errors']=errors
+        summary,exports=verify_business_rows(db,runid,dirty,branch_reference=branch_reference)
+        signature=summary['outputSignature']
         archive=case/(runid+'-readback.zip')
         if not archive.exists():
             with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as output:
                 for table,records in exports.items():output.writestr(table+'.ndjson',''.join(json.dumps(record,ensure_ascii=False,sort_keys=True)+'\n' for record in records))
                 output.writestr('identity.json',json.dumps(dict(runId=runid,outputSignature=signature,branchReference=branch_reference),indent=2))
-        return dict(businessRows=len(rows),errorRows=len(errors),outputSignature=signature,branchSignatures=branch_reference,readbackArchive=archive.name,readbackSha256=hashlib.sha256(archive.read_bytes()).hexdigest())
+        return dict(summary,readbackArchive=archive.name,readbackSha256=hashlib.sha256(archive.read_bytes()).hexdigest())
     cases=[(f'{fmt}-{kind}-{txn}',fmt,kind=='dirty',txn,4096,4,'native',False) for fmt in ('csv','xlsx') for kind in ('clean','dirty') for txn in ('single','multi')]
     cases += [('csv-clean-batch1','csv',False,'single',1,2,'native',False),('csv-clean-batch64','csv',False,'single',64,2,'native',False),('csv-clean-batch1024','csv',False,'single',1024,2,'native',False),('csv-clean-parameters','csv',False,'single',4096,4,'parameters',False),('csv-clean-small-batch','csv',False,'single',127,1,'native',False),('csv-dirty-large-batch','csv',True,'multi',8192,8,'native',False),('csv-dirty-kill','csv',True,'multi',4096,4,'native',True)]
     cases += [(f'csv-dirty-read-kill-{row}','csv',True,'multi',9999 if row==49999 else 1000,4,'native',row) for row in (5000,25000,49999)]

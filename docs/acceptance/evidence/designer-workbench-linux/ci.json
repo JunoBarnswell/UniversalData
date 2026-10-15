@@ -1,0 +1,16 @@
+{
+  "sourceCommit": "cac56e247cfea81845f3f06c77ef72d7de27f18d",
+  "runId": 38705520691,
+  "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38705520691",
+  "status": "Verification Blocked",
+  "conclusion": "failure",
+  "jobStepsExecuted": 0,
+  "annotations": [
+    {
+      "level": "failure",
+      "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+    }
+  ],
+  "completeDrivers": "Skipped: configured independent product runner/resources were not enabled",
+  "interpretation": "No compilation or browser step ran remotely. Local Linux passes do not imply remote CI or Windows passes."
+}

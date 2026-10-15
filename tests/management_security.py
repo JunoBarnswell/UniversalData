@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
     identities.write_text(json.dumps({'version': 1, 'users': [
         {'id': name, 'tenant': tenant, 'passwordHash': encoded('password-for-' + name, name.encode().ljust(32, b'0')),
          'stamp': name.ljust(64, '0'), 'roles': [role]}
-        for name, tenant, role in [('admin-a', 'a', 'admin'), ('reader-a', 'a', 'reader'), ('admin-b', 'b', 'admin')]],
+        for name, tenant, role in [('admin-a', 'a', 'admin'), ('peer-a', 'a', 'admin'), ('reader-a', 'a', 'reader'), ('admin-b', 'b', 'admin')]],
         'roles': {'admin': [{'permission': '*', 'resource': '*'}], 'reader': [{'permission': 'package.read', 'resource': '*'}, {'permission': 'component.read', 'resource': '*'}]}}))
     policy = root / 'policy.json'
     data = root / 'product'
@@ -42,19 +42,20 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         port = reserve.getsockname()[1]
     address = f'http://127.0.0.1:{port}'
     clients = {}
-    def request(client, path, method='GET', value=None, csrf=True):
+    def request(client, path, method='GET', value=None, csrf=True, raw=None, extra_headers=None):
         opener, token = clients.get(client, (urllib.request.build_opener(urllib.request.ProxyHandler({})), ''))
         headers = {'Content-Type': 'application/json'}
         if token and csrf:
             headers['X-UD-CSRF'] = token
-        body = json.dumps(value).encode() if value is not None else None
+        headers.update(extra_headers or {})
+        body = raw if raw is not None else json.dumps(value).encode() if value is not None else None
         try:
             response = opener.open(urllib.request.Request(address + '/api' + path, data=body, headers=headers, method=method), timeout=20)
         except urllib.error.HTTPError as error:
             response = error
         text = response.read().decode()
         return response.code, json.loads(text) if text and 'application/json' in response.headers.get('Content-Type', '') else text
-    for client in ['admin-a', 'reader-a', 'admin-b']:
+    for client in ['admin-a', 'peer-a', 'reader-a', 'admin-b']:
         clients[client] = (urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())), '')
     process = subprocess.Popen([dotnet, management, '--policy', str(policy), '--worker', worker, '--urls', address], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     try:
@@ -104,6 +105,57 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         for path in data.rglob('*'):
             if path.is_file():
                 assert secret.encode() not in path.read_bytes(), str(path)
+
+        # Designer inspections are real Native reads in the same Worker; source
+        # uploads stay subject-owned and publication never starts execution.
+        status, imported = request('admin-a', '/files/upload', 'POST', raw=b'Amount,Customer\n12,VIP\n3,Other\n',
+            extra_headers={'Content-Type': 'application/octet-stream', 'X-File-Name': 'orders.csv'})
+        assert status == 200, (status, imported)
+        target = resource / 'a' / 'never-written.csv'
+        target.write_text('untouched\n')
+        draft_package = {'version': 11, 'id': 'designer-draft', 'connections': [
+            dict(id='input', driver='file', resource=imported['resource']), dict(id='output', driver='file', resource=str(target))],
+            'controlFlow': {'tasks': [dict(id='run',kind='dataFlow',config=dict(pipeline='main'))], 'constraints': []}, 'dataFlows': []}
+        inspect = dict(package=draft_package,connection='input',format='csv',options=dict(header=True))
+        status, discovered = request('admin-a', '/files/inspect', 'POST', inspect)
+        assert status == 200, (status, discovered)
+        assert [field['name'] for field in discovered['schema']['fields']] == ['Amount', 'Customer']
+        assert request('peer-a','/files/inspect','POST',inspect)[0] == 403
+        assert request('admin-b','/files/inspect','POST',inspect)[0] == 403
+        source = dict(id='read',component='file.csv.source',config=dict(connection='input',schema=discovered['schema'],fileFormat=discovered['metadata']['options']))
+        draft_package['dataFlows'] = [dict(id='main',components=[source,
+            dict(id='calculation',component='derive',config=dict(columns=[dict(action='add',name='Doubled',expression='[Amount] * 2L')])),
+            dict(id='write',component='file.csv.destination',config=dict(connection='output',fileMode='overwrite'))],
+            paths=[dict(**{'from':'read','to':'calculation'},output=0,input=0),dict(**{'from':'calculation','to':'write'},output=0,input=0)])]
+        preview_request = dict(package=draft_package,pipelineId='main',componentId='write',sourceRows=2,sampleRows=2)
+        status, preview = request('admin-a','/preview','POST',preview_request)
+        assert status == 200 and preview['result'] == 0, (status, preview)
+        edges = preview['snapshot']['preview']
+        assert next(edge for edge in edges if edge['component']=='calculation')['totalRows'] == 2
+        assert target.read_text() == 'untouched\n'
+        assert request('reader-a','/preview','POST',preview_request)[0] == 403
+        write = dict(document=draft_package,expectedRevision='0',baseRevision='0')
+        assert request('admin-a','/drafts/designer-draft','PUT',write)[0] == 200
+        assert request('admin-a','/drafts/designer-draft','PUT',write)[0] == 409
+        status, drafts = request('admin-a','/drafts')
+        assert status == 200 and any(draft['packageId']=='designer-draft' for draft in drafts)
+        assert request('peer-a','/drafts')[1] == []
+        assert request('admin-b','/drafts')[1] == []
+        assert request('peer-a','/drafts/designer-draft')[0] == 404
+        assert request('admin-b','/drafts/designer-draft')[0] == 404
+        assert request('reader-a','/drafts/designer-draft','PUT',write)[0] == 403
+        status, version = request('admin-a','/versions','POST',dict(document=draft_package,expectedPackageRevision='0'))
+        assert status == 200 and version['revision'] == '1', (status, version)
+        draft_package['dataFlows'][0]['components'][1]['config']['columns'][0]['expression'] = '[Amount] * 3L'
+        status, publication = request('admin-a','/publications','POST',dict(document=draft_package,expectedPackageRevision='1'))
+        assert status == 200 and publication['revision'] == '2', (status, publication)
+        status, stored = request('admin-a','/packages/designer-draft/versions/2')
+        assert status == 200 and stored['dataFlows'][0]['components'][1]['config']['columns'][0]['expression'] == '[Amount] * 3L'
+        assert target.read_text() == 'untouched\n'
+        assert request('admin-a','/publications','POST',dict(document=draft_package,expectedPackageRevision='1'))[0] == 409
+        status, current_runs = request('admin-a','/executions')
+        assert status == 200 and all(run['packageId']!='designer-draft' for run in current_runs)
+        assert request('admin-a','/tests','POST',dict(package=draft_package,targetConnection='output',tables={}))[0] == 403
         assert request('admin-a', '/auth/password', 'POST', {'currentPassword': 'password-for-admin-a', 'password': 'rotated-password-for-admin-a'})[0] == 204
         assert request('admin-a', '/auth/session')[0] == 401
         assert request('reader-a', '/auth/logout', 'POST')[0] == 204
@@ -115,4 +167,4 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         except subprocess.TimeoutExpired:
             process.kill()
             process.communicate(timeout=5)
-print('Actual Management/Worker/Native: authentication, CSRF, object roles, tenant isolation, execution, protected parameters, logs and rotation passed')
+print('Actual Management/Worker/Native: authentication, CSRF, roles, upload ownership, Native discovery/preview, draft/version CAS, current-draft publication without execution, protected parameters, logs and rotation passed')

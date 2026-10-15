@@ -76,6 +76,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
         uint64_t caps = source_kind(kind) ? UD_CONNECT_READ : UD_CONNECT_APPEND;
         if (kind == SQL_SOURCE)
             caps |= UD_CONNECT_RECORD_ERRORS;
+        if (kind == SQL_SOURCE && c->execution->preview_pipeline)
+            caps |= UD_CONNECT_READONLY_SCAN;
         if (kind == SQL_COMMAND)
             caps = UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_TRANSACTIONAL_DML;
         if (kind == SQL_SINK || kind == REST_SINK)
@@ -98,11 +100,15 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                     ? ud_acquire_http_connection(c->activation, connection, &b->lease)
                     : ud_activation_acquire_connection(c->activation, connection, caps, &b->lease);
     }
-    uint64_t batch = c->max_batch_rows;
+    uint64_t batch =
+        c->recommended_batch_rows ? c->recommended_batch_rows(c->emit_user) : c->max_batch_rows;
     if (!s && ud_member(b->config, "batchSize"))
         s = ud_json_uint(ud_member(b->config, "batchSize"), &batch);
     if (!s && (!batch || batch > c->max_batch_rows))
         s = UD_SCHEMA;
+    if (!s && source_kind(kind) && c->execution->preview_pipeline &&
+        batch > c->execution->preview_source_rows)
+        batch = c->execution->preview_source_rows;
     if (!s && (file_source(kind) || file_sink(kind))) {
         ud_string path = {0};
         s = ud_connection_lease_path(b->lease, &path);
@@ -327,7 +333,7 @@ static ud_status step(void *ptr, const ud_component_event *event) {
         return ud_builtin_blocking(b);
     }
     if (event->kind == UD_COMPONENT_INPUT_END)
-        return b->operator? ud_operator_finish_input(b->operator, event->input) : UD_OK;
+        return b->operator ? ud_operator_finish_input(b->operator, event->input) : UD_OK;
     if (event->kind == UD_COMPONENT_POLL)
         return kind == SORT || kind == JOIN || kind == WINDOW || kind == AGGREGATE
                    ? ud_builtin_blocking(b)
@@ -643,6 +649,8 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .confirm = source_kind(kind) ? ud_builtin_confirm : NULL,
             .diagnostics = source_kind(kind) || kind == SQL_SINK ? ud_builtin_diagnostics : NULL,
             .dispose = ud_builtin_dispose};
+        if (category != UD_COMPONENT_DESTINATION && kind != SQL_COMMAND && kind != REST_SOURCE)
+            d.capabilities |= UD_COMPONENT_PREVIEW_SAFE;
         if (kind == JOIN)
             d.input_demand = ud_builtin_builtin_demand;
         if (kind == SPLIT || kind == MULTICAST || kind == BALANCED || kind == UNION_ALL)

@@ -2,9 +2,9 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 2.1.0 / ABI 11；Draft PR #8. Native core implemented and Linux acceptance sealed; complete SSIS parity remains Partial.。
+SDK 2.2.0 / ABI 11；Draft PR #9; Linux workbench acceptance and installed SDK passed. Full production release remains gated by the recorded inherited Partial/Blocked items.。
 
-门禁通过 2/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
+门禁通过 6/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
 | 整改 | 当前状态 |
 |---|---|

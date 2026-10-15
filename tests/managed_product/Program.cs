@@ -42,6 +42,41 @@ try {
         Require(execution.Metrics.Result == StatusCode.Io, "Observer failure reaches Native error lifecycle");
     }
     var source = Path.Combine(root, "source.ndjson"); var destination = Path.Combine(root, "destination.ndjson");
+    var csvSource=Path.Combine(root,"preview.csv");File.WriteAllText(csvSource,"id,label\n1,first\n2,second\n");
+    var inspectionPackage=JsonSerializer.Serialize(new {version=11,id="managed-preview",connections=new[]{new{id="input",driver="file",resource=csvSource}},controlFlow=new{tasks=Array.Empty<object>(),constraints=Array.Empty<object>()},dataFlows=Array.Empty<object>()});
+    using(var previewExecution=new Execution(inspectionPackage,"local",Allow)) {
+        Require(previewExecution.ConnectorCatalog("[]")=="[]","C# connector metadata projection");
+        using(var cloned=JsonDocument.Parse(previewExecution.ReidentifyPackage("managed-preview-copy")))Require(cloned.RootElement.GetProperty("id").GetString()=="managed-preview-copy","C# Native package identity projection");
+        using var discovered=JsonDocument.Parse(previewExecution.InspectFile("input","{\"format\":\"csv\",\"options\":{\"header\":true}}"));
+        string pipeline=JsonSerializer.Serialize(new {id="preview",components=new[]{new{id="read",component="file.csv.source",config=new{connection="input",schema=discovered.RootElement.GetProperty("schema")}}},paths=Array.Empty<object>()});
+        using var preview=JsonDocument.Parse(previewExecution.Preview(pipeline,"read",2,1));
+        Require(preview.RootElement.GetProperty("result").GetInt32()==0 && preview.RootElement.GetProperty("snapshot").GetProperty("preview")[0].GetProperty("totalRows").GetInt32()==2,"C# calls bounded Native Pipeline preview");
+        using var progress=JsonDocument.Parse(previewExecution.Progress());Require(progress.RootElement.GetProperty("pipelines").GetArrayLength()==0,"C# reads Native progress after plan disposal");
+    }
+    // Port IDs belong to their Package namespace. A test/template snapshot
+    // resolves those references in Native before changing the Package ID.
+    var cloneNode=System.Text.Json.Nodes.JsonNode.Parse(inspectionPackage)!.AsObject();
+    cloneNode["connections"]!.AsArray().Add(JsonSerializer.SerializeToNode(new{id="output",driver="file",resource=destination}));
+    cloneNode["controlFlow"]=JsonSerializer.SerializeToNode(new{tasks=new[]{new{id="flow",kind="dataFlow",config=new{pipeline="main"}}},constraints=Array.Empty<object>()});
+    using(var inspection=new Execution(inspectionPackage,"local",Allow)) {
+        using var discovery=JsonDocument.Parse(inspection.InspectFile("input","{\"format\":\"csv\",\"options\":{\"header\":true}}"));
+        cloneNode["dataFlows"]=JsonSerializer.SerializeToNode(new[]{new{id="main",components=new object[]{
+            new{id="read",component="file.csv.source",config=new{connection="input",schema=discovery.RootElement.GetProperty("schema")}},
+            new{id="write",component="file.csv.destination",config=new{connection="output",fileMode="overwrite"}}},paths=new[]{new{from="read",output=0,to="write",input=0}}}});
+    }
+    using(var bound=new Execution(cloneNode.ToJsonString(),"local",Allow)) {
+        foreach(string id in new[]{"read","write"}) {
+            var component=cloneNode["dataFlows"]![0]!["components"]!.AsArray().Single(node=>node!["id"]!.GetValue<string>()==id)!;
+            using var ports=JsonDocument.Parse(bound.ComponentPorts("main",id,component["component"]!.GetValue<string>(),component["config"]!.ToJsonString()));
+            string identity=ports.RootElement.EnumerateArray().First(port=>port.GetProperty("direction").GetInt32()==(id=="read"?2:1)&&port.GetProperty("index").GetInt32()==0).GetProperty("id").GetString()!;
+            cloneNode["dataFlows"]![0]!["paths"]![0]![id=="read"?"output":"input"]=identity;
+        }
+    }
+    using(var bound=new Execution(cloneNode.ToJsonString(),"local",Allow)) {
+        string snapshot=bound.ReidentifyPackage("managed-port-copy");using var parsed=JsonDocument.Parse(snapshot);
+        Require(parsed.RootElement.GetProperty("dataFlows")[0].GetProperty("paths")[0].GetProperty("output").ValueKind==JsonValueKind.Number,"Native normalized the bound output port");
+        using var clone=new Execution(snapshot,"local",Allow);Require(clone.Explain().Contains("main",StringComparison.Ordinal)&&!File.Exists(destination),"Native clone rebinding introduced no destination write");
+    }
     File.WriteAllText(source, "{\"id\":1}\n{\"id\":2}\n{\"id\":3}\n{\"id\":4}\n{\"id\":5}\n");
     var document = JsonSerializer.Serialize(new {
         version=11, id = "managed-flow", connections = new[] { new { id = "source", driver = "file", resource = source }, new { id = "target", driver = "file", resource = destination } },
@@ -69,7 +104,7 @@ try {
         registry.RegisterComponent(new("managed.pass", "Managed pass", ComponentCategory.Transform, 1, 1, "{}",
             (_, inputs) => [inputs[0]], () => new Pass(transformed), SynchronousInput: 0, ThreadSafe: true));
         using var execution = new Execution(document, "local", Allow, registry: registry, maxBatchRows: 2, maxConcurrency: 4);
-        execution.ConfigureDebug("{\"previewRows\":2,\"breakpoints\":[\"/4:flow;\"]}");
+        execution.ConfigureDebug("{\"previewRows\":2,\"definitionBreakpoints\":[[\"flow\"]]}");
         execution.Start();
         static JsonDocument Paused(Execution execution) {
             var deadline = DateTime.UtcNow.AddSeconds(10);

@@ -1,29 +1,38 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "2.1.0",
+  "sdkVersion": "2.2.0",
   "abi": 11,
   "scope": {
-    "name": "UniversalData SSIS 2025 strict parity, Native scalar/expression and seven-target ETL delivery",
+    "name": "UniversalData Designer 3.0 on SDK 2.2.0; inherited SSIS alignment remains separately tracked",
     "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
     "windows": "Required — complete driver build, native/language/install and platform acceptance",
     "extensions": "50 applicable audit items require current source and behavior evidence; ETL-039/040 NotApplicable"
   },
   "baseline": {
-    "mainCommit": "867228797e6f2433cedff684f59ca1d28d3b4b29",
+    "mainCommit": "bf5ab4e4195bf59eb06b016d094c38e397f9a214",
     "merged": true,
-    "sdkVersion": "2.0.0",
-    "abiVersion": 10,
+    "sdkVersion": "2.1.0",
+    "abiVersion": 11,
     "mergeEvidence": {
-      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/7"
+      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/8"
+    },
+    "artifacts": {
+      "archive": "artifacts/ssis-strict-parity/UniversalData-2.1.0-linux-x64.zip",
+      "sha256": "4ac9171df0cf469f50e1f035a780a5caf918e83ef1179fc655b6017554400d90",
+      "manifest": "artifacts/ssis-strict-parity/bundle/manifest.json",
+      "runtimeIdentifier": "linux-x64",
+      "sdkVersion": "2.1.0",
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d"
     }
   },
   "candidate": {
-    "branch": "codex/ssis-strict-parity",
-    "state": "Draft PR #8. Native core implemented and Linux acceptance sealed; complete SSIS parity remains Partial.",
-    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-    "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+    "branch": "codex/designer-data-workbench",
+    "state": "Draft PR #9; Linux workbench acceptance and installed SDK passed. Full production release remains gated by the recorded inherited Partial/Blocked items.",
+    "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+    "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
     "mergeEvidence": null,
-    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/8"
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/9"
   },
   "remoteCI": {
     "state": "VerificationBlocked",
@@ -72,16 +81,16 @@
     "reason": "GitHub did not start build steps because of account billing/spending restrictions. Skipped complete-product delivery is not accepted as a pass."
   },
   "artifacts": {
-    "archive": "artifacts/ssis-strict-parity/UniversalData-2.1.0-linux-x64.zip",
-    "sha256": "4ac9171df0cf469f50e1f035a780a5caf918e83ef1179fc655b6017554400d90",
-    "manifest": "artifacts/ssis-strict-parity/bundle/manifest.json",
+    "archive": "artifacts/designer-workbench-linux/UniversalData-2.2.0-linux-x64.zip",
+    "sha256": "f70b9d925c775c3a91f421ce8d55384e87a365f2316ebbf8ca7cb881e8cd9e7e",
+    "manifest": "artifacts/designer-workbench-linux/bundle/manifest.json",
     "runtimeIdentifier": "linux-x64",
-    "sdkVersion": "2.1.0",
-    "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d"
+    "sdkVersion": "2.2.0",
+    "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+    "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592"
   },
   "requiredGates": 11,
-  "passedGates": 2,
+  "passedGates": 6,
   "items": [
     {
       "id": "ETL-001",

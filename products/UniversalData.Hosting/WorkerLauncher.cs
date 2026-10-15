@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace UniversalData.Hosting;
@@ -6,6 +7,7 @@ namespace UniversalData.Hosting;
 /// <summary>All product Native inspection, script compilation and execution use the same Worker process entry.</summary>
 public static class WorkerLauncher
 {
+    private static readonly ConcurrentDictionary<string,SemaphoreSlim> inspections=new(StringComparer.Ordinal);
     public static Process Launch(string workerPath, WorkerRequest request)
     {
         workerPath = Path.GetFullPath(workerPath); HostFiles.NoLinks(workerPath);
@@ -37,6 +39,13 @@ public static class WorkerLauncher
             Mount(Path.GetDirectoryName(dotnet)!,false); Mount(Path.GetDirectoryName(workerPath)!,false);
             foreach (string path in request.Policy.PluginRoots.Concat(request.Policy.ReadOnlyRoots)) Mount(path,false);
             foreach (string path in request.Policy.FileRoots) Mount(path,true);
+            foreach(string root in request.Policy.FileRoots.Concat(request.Policy.ReadOnlyRoots).Distinct(StringComparer.Ordinal)) {
+                string imports=Path.Combine(root,".ud-imports");
+                if(!Directory.Exists(imports))continue;
+                HostFiles.NoLinks(imports);start.ArgumentList.Add("--tmpfs");start.ArgumentList.Add(imports);
+                string own=Path.Combine(imports,request.Identity.Tenant,request.Identity.Subject);
+                if(Directory.Exists(own))Mount(own,request.Policy.FileRoots.Contains(root,StringComparer.Ordinal));
+            }
             foreach (string path in (Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? "").Split(Path.PathSeparator,StringSplitOptions.RemoveEmptyEntries)) Mount(path,false);
             foreach (string path in request.Policy.CredentialFiles.Values) Mount(path,false);
             var vault = new ParameterVault(request.Policy);
@@ -66,6 +75,12 @@ public static class WorkerLauncher
         try { if (!process.HasExited) process.Kill(entireProcessTree:true); } catch(InvalidOperationException) { }
     }
     public static async Task<JsonElement> Inspect(string workerPath, WorkerRequest request, CancellationToken cancellation = default)
+    {
+        var gate=inspections.GetOrAdd(request.Policy.DataDirectory,_=>new SemaphoreSlim((int)Math.Min(2,request.Policy.MaxConcurrency)));
+        await gate.WaitAsync(cancellation);
+        try{return await InspectCore(workerPath,request,cancellation);}finally{gate.Release();}
+    }
+    private static async Task<JsonElement> InspectCore(string workerPath,WorkerRequest request,CancellationToken cancellation)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation); deadline.CancelAfter(TimeSpan.FromSeconds(60));
         using var process = Launch(workerPath,request);

@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace UniversalData;
 
 [Flags]
-public enum RegistryFeatures : ulong { ScopedJournal = 1, ControlEvents = 0x0004000000000000UL }
+public enum RegistryFeatures : ulong { ScopedJournal = 1, ReadOnlyPreview = 2, ControlEvents = 0x0004000000000000UL }
 
 public interface IManagedTask : IDisposable
 {

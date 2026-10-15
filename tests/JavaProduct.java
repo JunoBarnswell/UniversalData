@@ -84,6 +84,16 @@ public final class JavaProduct {
             try{expired[0].rows();throw new AssertionError("Function argument outlived callback");}catch(IllegalStateException expected){}
         }
         Path root=Files.createTempDirectory("ud-java-catalog-");
+        Path previewFile=root.resolve("preview.csv");Files.writeString(previewFile,"id,label\n1,first\n2,second\n");
+        String previewPackage=EMPTY.replace("\"dataFlows\":[]","\"connections\":[{\"id\":\"input\",\"driver\":\"file\",\"resource\":\""+previewFile.toString().replace("\\","\\\\")+"\"}],\"dataFlows\":[]");
+        try(Execution preview=execution(previewPackage,null,null)) {
+            require(preview.connectorCatalog("[]").equals("[]"));
+            require(preview.reidentifyPackage("java-preview-copy").contains("java-preview-copy"));
+            require(preview.inspectFile("input","{\"format\":\"csv\",\"options\":{\"header\":true}}").contains("\"schema\""));
+            String pipeline="{\"id\":\"preview\",\"components\":[{\"id\":\"source\",\"component\":\"file.csv.source\",\"config\":{\"connection\":\"input\",\"schema\":{\"version\":11,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"label\",\"type\":\"utf8\",\"nullable\":false}]}}}],\"paths\":[]}";
+            String sample=preview.preview(pipeline,"source",2,1);require(sample.contains("\"result\":0")&&sample.contains("\"totalRows\":2"));
+            require(preview.progress().contains("\"pipelines\":[]"));
+        }
         try(Catalog catalog=new Catalog(root.toString(),"local",(tenant,resource,action)->true)) {
             catalog.put(Catalog.Kind.PACKAGE,"java-product",-1L,EMPTY);
             require(catalog.latestRevision(Catalog.Kind.PACKAGE,"java-product")==-1L);

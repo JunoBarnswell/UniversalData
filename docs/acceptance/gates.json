@@ -1,44 +1,56 @@
 {
   "generatedFrom": "metadata/product.json",
   "version": 11,
-  "sdkVersion": "2.1.0",
+  "sdkVersion": "2.2.0",
   "abi": 11,
-  "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+  "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
   "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
   "windows": "Required — complete driver build, native/language/install and platform acceptance",
   "gates": [
     {
       "id": "linux-full-build",
       "status": "Passed",
-      "scope": "Linux Release PRODUCT compiles all six drivers and codecs, BCP/OCI client entry points, HTTP/XML/network, Arrow, JNI, .NET 10 and designer.",
+      "scope": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/product-build.log",
-          "sha256": "d03fa6eee9b431d16d3b3808ca135a75aafe55a1f0b7df6afd8dd121a4dda8d8"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/build.log",
+          "sha256": "9c2fc8eb88ce0995271c0ccf6e9ca7f8708cb2208938b9ec404fb59ff6601b45"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/datetime-build.log",
-          "sha256": "5154303676d7017b43136925e11c093d60f86dd5effe5e41e61768bd2e901c72"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/version-build.log",
+          "sha256": "1334ec386c20a7ef37cbf40fca4dbb7d185163828dcd1bc4b2d1d493c37c4694"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
-          "sha256": "1af96d3860be166140510c6f1f514c3b779ab754781ea09f12e9e49ce98de642"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
+          "sha256": "9fc6259fae0c320f2684a30ea335bee39b98aa7b76de4224fccdc9e2574f9035"
         }
       ],
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
         "status": "Passed",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/product-build.log",
-          "docs/acceptance/evidence/ssis-strict-parity/datetime-build.log",
-          "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
+          "docs/acceptance/evidence/designer-workbench-linux/build.log",
+          "docs/acceptance/evidence/designer-workbench-linux/version-build.log",
+          "docs/acceptance/evidence/designer-workbench-linux/manifest.json"
         ]
       },
-      "reason": "Linux Release PRODUCT compiles all six drivers and codecs, BCP/OCI client entry points, HTTP/XML/network, Arrow, JNI, .NET 10 and designer.",
-      "description": "Linux Release PRODUCT compiles all six drivers and codecs, BCP/OCI client entry points, HTTP/XML/network, Arrow, JNI, .NET 10 and designer.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf"
+      "reason": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
+      "description": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Passed",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/product-build.log",
+            "docs/acceptance/evidence/ssis-strict-parity/datetime-build.log",
+            "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
+          ]
+        }
+      ]
     },
     {
       "id": "windows-full-build",
@@ -59,14 +71,25 @@
       "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
       "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
         "status": "Blocked",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/resources.json",
-          "docs/acceptance/evidence/ssis-strict-parity/ci.json"
+          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
         ]
-      }
+      },
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Blocked",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+            "docs/acceptance/evidence/ssis-strict-parity/ci.json"
+          ]
+        }
+      ]
     },
     {
       "id": "correctness",
@@ -83,18 +106,29 @@
         }
       ],
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
         "status": "Partial",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/core.xml",
-          "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
         ]
       },
       "reason": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
       "description": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
       "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf"
+      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Partial",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+            "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+          ]
+        }
+      ]
     },
     {
       "id": "recovery",
@@ -123,16 +157,27 @@
       "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
       "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
         "status": "Partial",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/core.xml",
-          "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
-          "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
-          "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
         ]
-      }
+      },
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Partial",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+            "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+            "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+            "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+          ]
+        }
+      ]
     },
     {
       "id": "external-integration",
@@ -157,71 +202,109 @@
       "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
       "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
         "status": "Blocked",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
-          "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
-          "docs/acceptance/evidence/ssis-strict-parity/resources.json"
+          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
         ]
-      }
+      },
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Blocked",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+            "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+            "docs/acceptance/evidence/ssis-strict-parity/resources.json"
+          ]
+        }
+      ]
     },
     {
       "id": "language-parity",
-      "status": "Partial",
-      "scope": "Current C/.NET/Java/CLI installed consumption and Native callback lifecycles pass; full Java plan/variable surfaces and Windows are incomplete.",
+      "status": "Passed",
+      "scope": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/core.xml",
-          "sha256": "7be9c09b6757d57b0dfe694e654652f7a040d5382176b30c0bec06199ce498fc"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/native-core.log",
+          "sha256": "1dc49062cab628086d7e6e6d8cfd836cebb611ee13288681fac70a575ec8841e"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/installed.json",
-          "sha256": "fb3f708d42b1c3a6caa5d5ba3ae91e5e9f4b7c5ea5900a3e11b2a656702d2962"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
+          "sha256": "b97aff6a0772cf206b77d6a647d089a0eb1e200c2506cb9cbc8f394d2c359879"
         }
       ],
-      "reason": "Current C/.NET/Java/CLI installed consumption and Native callback lifecycles pass; full Java plan/variable surfaces and Windows are incomplete.",
-      "description": "Current C/.NET/Java/CLI installed consumption and Native callback lifecycles pass; full Java plan/variable surfaces and Windows are incomplete.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "reason": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
+      "description": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-        "status": "Partial",
+        "status": "Passed",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/core.xml",
-          "docs/acceptance/evidence/ssis-strict-parity/installed.json"
+          "docs/acceptance/evidence/designer-workbench-linux/native-core.log",
+          "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json"
         ]
-      }
+      },
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Partial",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+            "docs/acceptance/evidence/ssis-strict-parity/installed.json"
+          ]
+        }
+      ]
     },
     {
       "id": "web",
-      "status": "Partial",
-      "scope": "Published Chromium editor/compile/mapping/split/save/deploy/log/debug/kill/resume passes; complete specialized editors and arbitrary-node preview remain incomplete.",
+      "status": "Passed",
+      "scope": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/browser.json",
-          "sha256": "c106442752afc8e9db8c01b380bdf61693c9fe4913b33a2fb0ba25c2f06a346f"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/browser-local.json",
+          "sha256": "d1f0374240c984af666bcc5b0f10ff3fd10be3efbe06efe9551a97284c0a4adf"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/qa.json",
-          "sha256": "a6ee8722ddbe7ca83966a1ab0b2030f3cc06a54eaaac064ffa2f8548a5ea4f04"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/browser-mysql.json",
+          "sha256": "8974d639901ef9f7764348e6751186807663c4582174e622096263be07effa05"
+        },
+        {
+          "path": "docs/acceptance/evidence/designer-workbench-linux/row-accounting.json",
+          "sha256": "b0d2f2aed9c4fb83bcc7685a5874324e223605a58e88b1c5f42e1e253623f6ee"
         }
       ],
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-        "status": "Partial",
+        "status": "Passed",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/browser.json",
-          "docs/acceptance/evidence/ssis-strict-parity/qa.json"
+          "docs/acceptance/evidence/designer-workbench-linux/browser-local.json",
+          "docs/acceptance/evidence/designer-workbench-linux/browser-mysql.json",
+          "docs/acceptance/evidence/designer-workbench-linux/row-accounting.json"
         ]
       },
-      "reason": "Published Chromium editor/compile/mapping/split/save/deploy/log/debug/kill/resume passes; complete specialized editors and arbitrary-node preview remain incomplete.",
-      "description": "Published Chromium editor/compile/mapping/split/save/deploy/log/debug/kill/resume passes; complete specialized editors and arbitrary-node preview remain incomplete.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf"
+      "reason": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
+      "description": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Partial",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/browser.json",
+            "docs/acceptance/evidence/ssis-strict-parity/qa.json"
+          ]
+        }
+      ]
     },
     {
       "id": "performance",
@@ -242,112 +325,147 @@
       "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
       "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
         "status": "Partial",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/performance.json",
-          "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
         ]
-      }
+      },
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Partial",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/performance.json",
+            "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+          ]
+        }
+      ]
     },
     {
       "id": "installed-consumers",
-      "status": "Partial",
-      "scope": "Same-source Linux C, offline NuGet, Maven/JNI, CLI, Worker and Web pass all 15 commands and 273 file checks; required Windows consumption is unavailable.",
+      "status": "Passed",
+      "scope": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/installed.json",
-          "sha256": "fb3f708d42b1c3a6caa5d5ba3ae91e5e9f4b7c5ea5900a3e11b2a656702d2962"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
+          "sha256": "b97aff6a0772cf206b77d6a647d089a0eb1e200c2506cb9cbc8f394d2c359879"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
-          "sha256": "1af96d3860be166140510c6f1f514c3b779ab754781ea09f12e9e49ce98de642"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/installed-consumers.log",
+          "sha256": "a3c5a38a5388cf48c22341b8cd5c82c59e7573a1a0ac924166038a821a8d26fc"
         }
       ],
-      "reason": "Same-source Linux C, offline NuGet, Maven/JNI, CLI, Worker and Web pass all 15 commands and 273 file checks; required Windows consumption is unavailable.",
-      "description": "Same-source Linux C, offline NuGet, Maven/JNI, CLI, Worker and Web pass all 15 commands and 273 file checks; required Windows consumption is unavailable.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "reason": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
+      "description": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-        "status": "Partial",
+        "status": "Passed",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/installed.json",
-          "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
+          "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
+          "docs/acceptance/evidence/designer-workbench-linux/installed-consumers.log"
         ]
-      }
+      },
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Partial",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/installed.json",
+            "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
+          ]
+        }
+      ]
     },
     {
       "id": "source-contracts",
       "status": "Passed",
-      "scope": "Public function, ownership/version model and JSON/XML static checks pass.",
+      "scope": "Current source product projection, public API, boundaries and notices",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/source-contracts.log",
+          "path": "docs/acceptance/evidence/designer-workbench-linux/static-contracts.log",
           "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
         }
       ],
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
         "status": "Passed",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/source-contracts.log"
+          "docs/acceptance/evidence/designer-workbench-linux/static-contracts.log"
         ]
       },
-      "reason": "Public function, ownership/version model and JSON/XML static checks pass.",
-      "description": "Public function, ownership/version model and JSON/XML static checks pass.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf"
+      "reason": "Current source product projection, public API, boundaries and notices",
+      "description": "Current source product projection, public API, boundaries and notices",
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Passed",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/source-contracts.log"
+          ]
+        }
+      ]
     },
     {
       "id": "release-integrity",
-      "status": "Partial",
-      "scope": "Current Linux PRODUCT archive checksums, 273 files, source fingerprint and relocated native/host assets pass; Windows/full-product certification and GitHub runner execution remain blocked.",
+      "status": "Passed",
+      "scope": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
-          "sha256": "1af96d3860be166140510c6f1f514c3b779ab754781ea09f12e9e49ce98de642"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
+          "sha256": "9fc6259fae0c320f2684a30ea335bee39b98aa7b76de4224fccdc9e2574f9035"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/installed.json",
-          "sha256": "fb3f708d42b1c3a6caa5d5ba3ae91e5e9f4b7c5ea5900a3e11b2a656702d2962"
-        },
-        {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/resources.json",
-          "sha256": "806c81a3e6e8d3ab848a7683e78bf0a37cae76872df1a2b6760902febec6558e"
-        },
-        {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/ci.json",
-          "sha256": "63df411c5aa03b812155717ded79a305513c1ef85d1a56952011207c092e6b82"
+          "path": "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
+          "sha256": "b97aff6a0772cf206b77d6a647d089a0eb1e200c2506cb9cbc8f394d2c359879"
         }
       ],
-      "reason": "Current Linux PRODUCT archive checksums, 273 files, source fingerprint and relocated native/host assets pass; Windows/full-product certification and GitHub runner execution remain blocked.",
-      "description": "Current Linux PRODUCT archive checksums, 273 files, source fingerprint and relocated native/host assets pass; Windows/full-product certification and GitHub runner execution remain blocked.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+      "reason": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
+      "description": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
+      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
       "currentEvidence": {
-        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-        "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-        "status": "Partial",
+        "status": "Passed",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
         "evidence": [
-          "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
-          "docs/acceptance/evidence/ssis-strict-parity/installed.json",
-          "docs/acceptance/evidence/ssis-strict-parity/resources.json",
-          "docs/acceptance/evidence/ssis-strict-parity/ci.json"
+          "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
+          "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json"
         ]
-      }
+      },
+      "previousEvidence": [
+        {
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "status": "Partial",
+          "evidence": [
+            "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
+            "docs/acceptance/evidence/ssis-strict-parity/installed.json",
+            "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+            "docs/acceptance/evidence/ssis-strict-parity/ci.json"
+          ]
+        }
+      ]
     }
   ],
   "delivery": {
-    "archive": "artifacts/ssis-strict-parity/UniversalData-2.1.0-linux-x64.zip",
-    "sha256": "4ac9171df0cf469f50e1f035a780a5caf918e83ef1179fc655b6017554400d90",
-    "manifest": "artifacts/ssis-strict-parity/bundle/manifest.json",
+    "archive": "artifacts/designer-workbench-linux/UniversalData-2.2.0-linux-x64.zip",
+    "sha256": "f70b9d925c775c3a91f421ce8d55384e87a365f2316ebbf8ca7cb881e8cd9e7e",
+    "manifest": "artifacts/designer-workbench-linux/bundle/manifest.json",
     "runtimeIdentifier": "linux-x64",
-    "sdkVersion": "2.1.0",
-    "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d"
+    "sdkVersion": "2.2.0",
+    "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+    "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592"
   }
 }

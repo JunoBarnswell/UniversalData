@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/metadata/product.json")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/metadata/product.json" UD_PRODUCT_MODEL)
 string(JSON UD_SDK_VERSION GET "${UD_PRODUCT_MODEL}" product sdkVersion)
 string(JSON UD_ABI_VERSION GET "${UD_PRODUCT_MODEL}" product abiVersion)

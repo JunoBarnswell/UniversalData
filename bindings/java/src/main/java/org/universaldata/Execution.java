@@ -72,6 +72,27 @@ public final class Execution implements AutoCloseable {
         }
     }
     private static native String nativeCatalog(long handle);
+    public String connectorCatalog(String pathsJson) {
+        control(); synchronized(controller) { lifetime.readLock().lock();try {open();return nativeConnectorCatalog(handle,Utf8.bytes(pathsJson));}finally{lifetime.readLock().unlock();} }
+    }
+    private static native String nativeConnectorCatalog(long handle,byte[] pathsJson);
+    public String reidentifyPackage(String id) {control();synchronized(controller){lifetime.readLock().lock();try{open();return nativeReidentifyPackage(handle,Utf8.bytes(id));}finally{lifetime.readLock().unlock();}}}
+    private static native String nativeReidentifyPackage(long handle,byte[] id);
+    public String metadata(String connection,int kind,String parent,long offset) {
+        control(); synchronized(controller) { lifetime.readLock().lock();try {open();return nativeMetadata(handle,Utf8.bytes(connection),kind,Utf8.bytes(parent),offset);}finally{lifetime.readLock().unlock();} }
+    }
+    private static native String nativeMetadata(long handle,byte[] connection,int kind,byte[] parent,long offset);
+    public String inspectFile(String connection, String configuration) {
+        control(); synchronized(controller) { lifetime.readLock().lock(); try { open();return nativeInspectFile(handle,Utf8.bytes(connection),Utf8.bytes(configuration)); } finally { lifetime.readLock().unlock(); } }
+    }
+    private static native String nativeInspectFile(long handle,byte[] connection,byte[] configuration);
+    public String preview(String pipelineJson, String componentId, int sourceRows, int sampleRows) {
+        control(); synchronized(controller) { lifetime.readLock().lock();
+            try { open(); return nativePreview(handle, Utf8.bytes(pipelineJson), Utf8.bytes(componentId), sourceRows, sampleRows); }
+            finally { lifetime.readLock().unlock(); }
+        }
+    }
+    private static native String nativePreview(long handle, byte[] pipeline, byte[] component, int sourceRows, int sampleRows);
     public String explain() { return inspect(false); }
     public String diagnostics() { return inspect(true); }
     private String inspect(boolean diagnostics) {
@@ -87,6 +108,8 @@ public final class Execution implements AutoCloseable {
         control();lifetime.readLock().lock();try { open();nativeDebug(handle,Utf8.bytes(command),configure); }
         finally { lifetime.readLock().unlock(); }
     }
+    public String progress() { control();lifetime.readLock().lock();try {open();return nativeProgress(handle);}finally{lifetime.readLock().unlock();} }
+    private static native String nativeProgress(long handle);
     public String debugSnapshot() {
         control();lifetime.readLock().lock();try { open();return nativeDebugSnapshot(handle); }
         finally { lifetime.readLock().unlock(); }

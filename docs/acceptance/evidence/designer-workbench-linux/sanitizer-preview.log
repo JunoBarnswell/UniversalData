@@ -1,0 +1,12 @@
+Internal ctest changing into directory: /tmp/ud-next-asan
+Test project /tmp/ud-next-asan
+    Start  1: native_designer_readonly_preview
+1/3 Test  #1: native_designer_readonly_preview ...   Passed    0.31 sec
+    Start 30: package_execution
+2/3 Test #30: package_execution ..................   Passed    0.10 sec
+    Start 39: child_package_execution
+3/3 Test #39: child_package_execution ............   Passed    0.78 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Total Test time (real) =   1.20 sec

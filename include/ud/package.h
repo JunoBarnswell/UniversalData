@@ -95,12 +95,35 @@ UD_API ud_status ud_execution_diagnostics(ud_execution *, char **, uint32_t *);
  * at Task/Batch or resolved Epoch boundaries; active transactions never park. */
 UD_API ud_status ud_execution_debug_configure(ud_execution *, ud_string configuration);
 UD_API ud_status ud_execution_debug_control(ud_execution *, ud_string command);
+/* Concurrent, atomic component counters. Includes no data or mutable schema. */
+UD_API ud_status ud_execution_progress(ud_execution *, char **, uint32_t *);
 UD_API ud_status ud_execution_debug_snapshot(ud_execution *, char **, uint32_t *);
+/* One-shot bounded read-only slice of the regular Native Pipeline. Keeps the
+ * selected node and its ancestors, omits destinations, tasks and confirmation.
+ * source_rows 1..10000 per source; sample_rows 1..32 per output. Results include
+ * cumulative port counts, typed Schema and original Row Identity. The execution
+ * must be READY, non-durable and have no extension registry. */
+UD_API ud_status ud_execution_preview(ud_execution *, ud_string pipeline, ud_string component,
+                                      uint32_t source_rows, uint32_t sample_rows, char **,
+                                      uint32_t *);
 /* One Data Schema result. Database resources discover a table; file resources
  * accept csv/ndjson/jsonArray or infer the framing from the filename. Sampling
  * is bounded to 256 complete records; unsupported unions never narrow silently.
  * File discovery also accepts {"format":"csv","options":{...}} so the same
  * fileFormat contract governs inference, decoding and encoding. */
+UD_API ud_status ud_execution_metadata(ud_execution *, ud_string connection, int32_t kind,
+                                       ud_string parent, uint64_t offset, char **, uint32_t *);
+/* Authorized absolute plugin paths -> actual Native plugin identity/capabilities.
+ * No connections or credentials are opened. Failed modules retain their status. */
+UD_API ud_status ud_execution_connector_catalog(ud_execution *, ud_string paths, char **,
+                                                uint32_t *);
+/* Clone a READY builtin Package under a new identity. Native-bound path ports
+ * become resolved indices before the namespace changes. No task/component is
+ * prepared or executed. Extension registries are explicitly unsupported. */
+UD_API ud_status ud_execution_reidentify_package(ud_execution *, ud_string new_id, char **,
+                                                 uint32_t *);
+UD_API ud_status ud_execution_inspect_file(ud_execution *, ud_string connection,
+                                           ud_string configuration, char **, uint32_t *);
 UD_API ud_status ud_execution_discover_schema(ud_execution *, ud_string connection, ud_string table,
                                               char **, uint32_t *);
 UD_API ud_status ud_execution_execute(ud_execution *);

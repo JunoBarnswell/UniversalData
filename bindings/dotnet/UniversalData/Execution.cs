@@ -144,6 +144,19 @@ public sealed class Execution : IDisposable
         get { Open(); var m = new Native.ExecutionMetricsValue { Size = (uint)Marshal.SizeOf<Native.ExecutionMetricsValue>(), Abi = ProductVersion.Abi }; Check(Native.ud_execution_get_metrics(execution, ref m)); return new((ExecutionState)m.State, (StatusCode)m.Result, m.Input, m.Output, m.Rejected, m.Batches, m.Queued, m.HighWater, m.Memory, m.Executed, m.Durable, m.Recovery, m.Resumed, m.Spill, m.Trees, m.TreeHighWater, m.WorkerHighWater, m.Committed, m.Acknowledged, m.Errors, m.ErrorRows, m.CommittedErrors, m.AcknowledgedErrors); }
     }
 
+    private static void WorkbenchContract() { if((Registry.Features & RegistryFeatures.ReadOnlyPreview)==0)throw new UniversalDataException((int)StatusCode.Incompatible,"Native runtime does not provide the designer workbench contract"); }
+
+    public string ConnectorCatalog(string pathsJson)
+    { Control(); lock(controller) { Open();WorkbenchContract(); using var strings=new NativeStrings(pathsJson);
+        Check(Native.ud_execution_connector_catalog(execution,strings[0],out var text,out var length));return DataOwnership.Text(text,length); } }
+    public string ReidentifyPackage(string id)
+    {Control();lock(controller){Open();WorkbenchContract();using var strings=new NativeStrings(id);Check(Native.ud_execution_reidentify_package(execution,strings[0],out var text,out var length));return DataOwnership.Text(text,length);}}
+    public string Metadata(string connection, int kind, string parent = "", ulong offset = 0)
+    { Control(); lock(controller) { Open();WorkbenchContract(); using var strings=new NativeStrings(connection,parent);
+        Check(Native.ud_execution_metadata(execution,strings[0],kind,strings[1],offset,out var text,out var length));return DataOwnership.Text(text,length); } }
+    public string InspectFile(string connection, string configuration)
+    { Control(); lock(controller) { Open();WorkbenchContract(); using var strings=new NativeStrings(connection,configuration);
+        Check(Native.ud_execution_inspect_file(execution,strings[0],strings[1],out var text,out var length)); return DataOwnership.Text(text,length); } }
     public string DiscoverSchema(string connection, string table)
     {
         Control(); lock (controller)
@@ -171,6 +184,15 @@ public sealed class Execution : IDisposable
     { Control(); lock (controller) { Open(); using var strings = new NativeStrings(pipelineId,componentId,kind,configuration);
         Check(Native.ud_execution_component_ports(execution, strings[0], strings[1], strings[2], strings[3], out var text, out var length));
         return DataOwnership.Text(text,length); } }
+    public string Preview(string pipelineJson, string componentId, uint sourceRows = 1000, uint sampleRows = 32)
+    {
+        Control(); lock (controller) {
+            Open(); WorkbenchContract();
+            using var strings = new NativeStrings(pipelineJson, componentId);
+            Check(Native.ud_execution_preview(execution, strings[0], strings[1], sourceRows, sampleRows, out var text, out var length));
+            return DataOwnership.Text(text, length);
+        }
+    }
     public string Explain() => Inspect(false);
 
     public void ConfigureDebug(string configuration)
@@ -182,6 +204,12 @@ public sealed class Execution : IDisposable
     {
         Control(); Open(); using var strings = new NativeStrings(command);
         Check(Native.ud_execution_debug_control(execution, strings[0]));
+    }
+    public string Progress()
+    {
+        Control();Open();WorkbenchContract();bool retained=false;
+        try {execution.DangerousAddRef(ref retained);Check(Native.ud_execution_progress(execution,out var text,out var length));return DataOwnership.Text(text,length);}
+        finally {if(retained)execution.DangerousRelease();}
     }
     public string DebugSnapshot()
     {
@@ -237,6 +265,12 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_component_ports(ExecutionHandle execution, StringValue pipelineId, StringValue componentId, StringValue kind, StringValue configuration, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_configure(ExecutionHandle execution, StringValue configuration);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_control(ExecutionHandle execution, StringValue command);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_metadata(ExecutionHandle execution, StringValue connection, int kind, StringValue parent, ulong offset, out IntPtr text, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_connector_catalog(ExecutionHandle execution, StringValue paths, out IntPtr text, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_reidentify_package(ExecutionHandle execution, StringValue id, out IntPtr text, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_inspect_file(ExecutionHandle execution, StringValue connection, StringValue config, out IntPtr text, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_preview(ExecutionHandle execution, StringValue pipeline, StringValue component, uint sourceRows, uint sampleRows, out IntPtr text, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_progress(ExecutionHandle execution, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_snapshot(ExecutionHandle execution, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_record_execution(IntPtr catalog, ExecutionHandle execution, ulong revision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void Observer(IntPtr user, IntPtr executionEvent);

@@ -16,6 +16,8 @@ typedef struct ud_xlsx_options {
     uint64_t *stage_bytes;     /* Writer reserves existing Buffer spill quota until publication. */
     const char *original_path; /* Writer-only frozen workbook generation for preserving append. */
 } ud_xlsx_options;
+UD_API ud_status ud_xlsx_discover(ud_context *, const char *, ud_string, ud_string, ud_batch **,
+                                  char **, uint32_t *);
 UD_API ud_status ud_xlsx_reader_open(ud_context *, const char *, const ud_field *, uint32_t,
                                      const ud_xlsx_options *, ud_xlsx_reader **);
 /* Rejected is an identified one-row original-schema value set with cell location

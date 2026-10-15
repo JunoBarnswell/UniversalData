@@ -44,7 +44,7 @@ static ud_status bind_operator(const ud_component_context *c, int kind, ud_strin
                                    .kind = kind,
                                    .max_batch_rows = c->max_batch_rows,
                                    .buffers = c->execution->buffers,
-                                   .check = (ud_status(*)(void *))ud_activation_check,
+                                   .check = (ud_status (*)(void *))ud_activation_check,
                                    .user = c->activation,
                                    .configuration = text,
                                    .input_order = order,
@@ -163,7 +163,7 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
 static ud_status pull(relational_component *r) {
     ud_batch *batch = NULL;
     uint32_t port = 0;
-    ud_status s = ud_operator_pull(r->operator, & batch, &port);
+    ud_status s = ud_operator_pull(r->operator, &batch, &port);
     if (s == UD_BUSY)
         return UD_OK;
     if (s)
@@ -311,7 +311,7 @@ static ud_status sink_bind(relational_component *r, const ud_batch *const *in) {
                                    .keys = r->keys,
                                    .key_count = r->key_count + 3,
                                    .buffers = r->context.execution->buffers,
-                                   .check = (ud_status(*)(void *))ud_activation_check,
+                                   .check = (ud_status (*)(void *))ud_activation_check,
                                    .user = r->context.activation,
                                    .partition_count = 1};
     return ud_operator_create(r->context.memory, &options, in, &r->operator);
@@ -407,7 +407,7 @@ static ud_status sink_next(relational_component *r, const ud_batch **b, uint32_t
         r->pending = NULL;
     }
     if (!r->pending) {
-        UD_TRY(ud_operator_pull(r->operator, & r->pending, NULL));
+        UD_TRY(ud_operator_pull(r->operator, &r->pending, NULL));
         r->pending_row = 0;
     }
     *b = r->pending;
@@ -567,7 +567,7 @@ ud_status ud_relational_register(ud_registry *registry) {
                             : k == UD_OPERATOR_SCD                                         ? 5
                                                                                            : -1,
             .capabilities = UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_REPLAY_SAFE |
-                            UD_COMPONENT_STATEFUL |
+                            UD_COMPONENT_PREVIEW_SAFE | UD_COMPONENT_STATEFUL |
                             (k == UD_OPERATOR_ROW_SAMPLING ? UD_COMPONENT_BLOCKING
                                                            : UD_COMPONENT_PARTIALLY_BLOCKING),
             .optional_outputs = k == UD_OPERATOR_DIFF_COMPARE ? UINT64_C(16)

@@ -98,6 +98,8 @@ struct ud_execution {
     atomic_uint error_count;
     atomic_int error_limit_reason;
     ud_bytes pipeline_reports, bound_plans, control_reports, schema_reports;
+    void *active_progress; /* Pipeline-owned plans; diagnostics_lock protects registration/lifetime.
+                            */
     uint64_t control_record_count, control_records_dropped, pipeline_record_count,
         pipeline_records_dropped;
     ud_mutex diagnostics_lock, cancellation_lock;
@@ -106,6 +108,10 @@ struct ud_execution {
     ud_mutex events_lock, journal_lock, serial_tasks_lock;
     uint64_t event_sequence;
     struct ud_debug *debug;
+    ud_json *preview_pipeline;
+    uint32_t preview_source_rows;
+    ud_authorize_fn preview_authorize;
+    void *preview_authorize_user;
     ud_buffer_manager *buffers;
     struct ud_connection_lease *buffer_lease;
     int threaded;
@@ -139,9 +145,11 @@ enum { UD_DEBUG_TASK = 1, UD_DEBUG_BATCH = 2, UD_DEBUG_EPOCH = 3 };
 int ud_debug_enabled(const ud_execution *);
 ud_status ud_debug_boundary(ud_activation *, int32_t);
 void ud_debug_advance(ud_activation *);
-ud_status ud_debug_preview(ud_activation *, uint32_t, const ud_batch *);
+ud_status ud_debug_preview(ud_activation *, const ud_component_port *, const ud_batch *);
 void ud_debug_destroy(ud_execution *);
+ud_status ud_preview_build(ud_execution *, ud_string, ud_string, ud_json **);
 ud_status ud_connection_field_namespace(ud_activation *, ud_string, ud_string, char[33]);
+ud_status ud_component_port_identity(const ud_component_context *, uint32_t, ud_string, ud_id *);
 ud_status ud_pipeline_field_namespace(const ud_component_context *, char output[33]);
 ud_status ud_transforms_register(ud_registry *);
 ud_status ud_builtin_register(ud_registry *);
@@ -234,10 +242,12 @@ enum { UD_FILE_BASE = 1, UD_FILE_PREPARED = 2 };
 ud_status ud_checkpoint_file_read(ud_activation *, int32_t, ud_string, char **, uint32_t *);
 ud_status ud_checkpoint_file_record(ud_activation *, int32_t, ud_string, ud_string);
 ud_status ud_checkpoint_file_done(ud_activation *, const char *target);
-ud_status ud_checkpoint_effect_read(ud_activation *,ud_string,const uint8_t digest[32],ud_command_result *);
-ud_status ud_checkpoint_effect_intent(ud_activation *,ud_string,const uint8_t digest[32]);
-ud_status ud_checkpoint_effect_retry(ud_activation *,ud_string,const uint8_t digest[32]);
-ud_status ud_checkpoint_effect_complete(ud_activation *,ud_string,const uint8_t digest[32],const ud_command_result *);
+ud_status ud_checkpoint_effect_read(ud_activation *, ud_string, const uint8_t digest[32],
+                                    ud_command_result *);
+ud_status ud_checkpoint_effect_intent(ud_activation *, ud_string, const uint8_t digest[32]);
+ud_status ud_checkpoint_effect_retry(ud_activation *, ud_string, const uint8_t digest[32]);
+ud_status ud_checkpoint_effect_complete(ud_activation *, ud_string, const uint8_t digest[32],
+                                        const ud_command_result *);
 
 void ud_checkpoint_close(ud_execution *);
 ud_status ud_execution_buffer_options(ud_execution *, ud_buffer_options *);
