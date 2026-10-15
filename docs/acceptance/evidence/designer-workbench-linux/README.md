@@ -33,3 +33,5 @@ Native 是唯一数据处理与提交恢复所有者。管理层授权并派发�
 只读预览有源行数、样本数、字节与时间限制，仅允许明确的 Native 安全组件；脚本、扩展、CDC、自定义 SQL、控制任务依赖的 full-cache 暂不能预览。发现样本不能证明全文件可空性，Excel 验收显式声明 RowId 必填。上述检查不是受控 Native Bulk/参数 SQL 性能对比，不报告未经测量的加速倍数。
 
 Windows、独立 SSIS Golden 及未提供的专项外部资源保持 Verification Blocked；继承的完整动态 Schema、SQL Server 跨库参与者和 Avro 等历史缺口仍按产品模型中的 Partial 状态处理。未把这些缺口扩大成本次全部开发阻塞，也未把 Linux 通过冒充完整生产发布。
+
+当前远程 CI 注释明确指出账户付款失败或需要提高 spending limit，作业未启动；见 `ci.json`。完整驱动作业也未启用独立 runner/resources，因此跳过。保留实际 Failure/Skipped，未改为成功；这不构成本机编译失败的证据。
