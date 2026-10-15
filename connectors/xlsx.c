@@ -1,6 +1,7 @@
 #include "ud/xlsx.h"
 #include "../components/data/internal.h"
 #include <zlib.h>
+#include <ctype.h>
 #include <expat.h>
 #include <math.h>
 /* OOXML ZIP and SAX only. No Office process, macro/formula evaluator, temporary
@@ -94,7 +95,12 @@ struct ud_xlsx_reader {
     ud_value *values, *raw_values;
     ud_status record_error;
     uint32_t error_column;
-    ud_bytes content, cell, formula_text;
+    ud_bytes content, cell, formula_text, sheets;
+    ud_field *discovered;
+    uint8_t *infer_negative;
+    uint32_t discovered_columns;
+    int discovery_header, in_cell_xfs;
+    uint8_t date_formats[65536];
     int row_open, cell_open, done, error_policy, result_rejected, deferred, range_finished;
     char cell_type[16];
     ud_batch *reject_schema;
@@ -724,6 +730,16 @@ static void XMLCALL start(void *user, const char *qualified, const char **atts) 
         }
         if (!strcmp(name, "sheet")) {
             const char *n = attribute(atts, "name"), *id = attribute(atts, "id");
+            if (n) {
+                ud_status s =
+                    r->sheets.size ? ud_bytes_put(&r->sheets, ",", sizeof(",") - 1) : UD_OK;
+                if (!s)
+                    s = ud_json_quote(&r->sheets, n, (uint32_t)strlen(n));
+                if (s) {
+                    abort_xml(r, s);
+                    return;
+                }
+            }
             if (n && id && (!r->sheet || !strcmp(r->sheet, n)) && !r->relation) {
                 if (!r->sheet)
                     r->sheet = ud_strdup_n(r->ctx, n, strlen(n));
@@ -758,6 +774,39 @@ static void XMLCALL start(void *user, const char *qualified, const char **atts) 
                 if (!r->sheet_path)
                     abort_xml(r, UD_RESOURCE);
             }
+        }
+    } else if (r->parse_kind == 3) {
+        if (!strcmp(name, "numFmt")) {
+            const char *id = attribute(atts, "numFmtId"), *format = attribute(atts, "formatCode");
+            unsigned long n = id ? strtoul(id, NULL, 10) : 65536;
+            if (n < 65536 && format) {
+                int quoted = 0, date = 0, time = 0;
+                for (const char *p = format; *p; p++) {
+                    if (*p == '"')
+                        quoted = !quoted;
+                    else if (*p == '\\' && p[1])
+                        p++;
+                    else if (!quoted) {
+                        char c = (char)tolower((unsigned char)*p);
+                        date |= c == 'y' || c == 'd';
+                        time |= c == 'h' || c == 's';
+                    }
+                }
+                r->date_formats[n] = (uint8_t)(time ? 2 : date ? 1 : 0);
+            }
+        } else if (!strcmp(name, "cellXfs"))
+            r->in_cell_xfs = 1;
+        else if (!strcmp(name, "xf") && r->in_cell_xfs) {
+            const char *id = attribute(atts, "numFmtId");
+            unsigned long n = id ? strtoul(id, NULL, 10) : 0;
+            if (r->style_count >= 4096 || n >= 65536) {
+                abort_xml(r, UD_RESOURCE);
+                return;
+            }
+            r->styles[r->style_count++] = n >= 14 && n <= 17   ? 1
+                                          : n >= 18 && n <= 22 ? 2
+                                          : n >= 45 && n <= 47 ? 2
+                                                               : r->date_formats[n];
         }
     } else if (r->parse_kind == 4) {
         if (!strcmp(name, "si")) {
@@ -802,6 +851,18 @@ static void XMLCALL start(void *user, const char *qualified, const char **atts) 
                 abort_xml(r, UD_CORRUPT);
                 return;
             }
+            if (r->discovered && col > r->columns) {
+                abort_xml(r, UD_RESOURCE);
+                return;
+            }
+            const char *style = attribute(atts, "s");
+            char *style_end = NULL;
+            unsigned long style_index = style ? strtoul(style, &style_end, 10) : 0;
+            if (style && (!*style || !style_end || *style_end || style_index >= 4096)) {
+                abort_xml(r, UD_CORRUPT);
+                return;
+            }
+            r->cell_style = (uint32_t)style_index;
             r->cell_column = col;
             r->row_last_column = col;
             r->cell_open = 1;
@@ -848,7 +909,10 @@ static void XMLCALL characters(void *user, const char *p, int n) {
 static void XMLCALL end(void *user, const char *qualified) {
     ud_xlsx_reader *r = user;
     const char *name = local(qualified);
-    if (r->parse_kind == 4) {
+    if (r->parse_kind == 3) {
+        if (!strcmp(name, "cellXfs"))
+            r->in_cell_xfs = 0;
+    } else if (r->parse_kind == 4) {
         if (!strcmp(name, "t"))
             r->inside_text = 0;
         if (!strcmp(name, "si")) {
@@ -873,7 +937,7 @@ static void XMLCALL end(void *user, const char *qualified) {
                 if (!status)
                     status = ooxml_text(r->ctx, raw.text, raw.text_length, &decoded);
                 if (!status && (decoded.size != field->name_length ||
-                                 memcmp(decoded.data, field->name, decoded.size)))
+                                memcmp(decoded.data, field->name, decoded.size)))
                     status = UD_INCOMPATIBLE;
                 ud_bytes_clear(&decoded);
                 if (status)
@@ -893,6 +957,41 @@ static void XMLCALL end(void *user, const char *qualified) {
                 }
                 if (!s)
                     s = cell_value(r, r->cell_type, column, r->values + column);
+                if (!s && r->discovered) {
+                    if (column + 1 > r->discovered_columns)
+                        r->discovered_columns = column + 1;
+                    ud_value *v = r->values + column;
+                    ud_field *f = r->discovered + column;
+                    if (r->discovery_header && r->row_number == r->first_row) {
+                        if (v->is_null || !v->text_length)
+                            s = UD_SCHEMA;
+                        else {
+                            f->name = ud_strdup_n(r->ctx, v->text, v->text_length);
+                            f->name_length = v->text_length;
+                            if (!f->name)
+                                s = UD_RESOURCE;
+                        }
+                    } else if (v->is_null)
+                        f->nullable = 1;
+                    else if (r->cell_style < r->style_count && r->styles[r->cell_style] &&
+                             (!r->cell_type[0] || !strcmp(r->cell_type, "n"))) {
+                        ud_type type = r->styles[r->cell_style] == 1 ? UD_DATE32 : UD_DATETIME;
+                        if (f->type && f->type != type)
+                            s = UD_INCOMPATIBLE;
+                        else
+                            f->type = type;
+                    } else {
+                        int kind = !strcmp(r->cell_type, "b") ? UD_JSON_BOOL : -1;
+                        const char *text =
+                            kind == UD_JSON_BOOL
+                                ? (v->text_length == 1 && v->text[0] == '1' ? "true" : "false")
+                                : v->text;
+                        uint32_t size =
+                            kind == UD_JSON_BOOL ? (uint32_t)strlen(text) : v->text_length;
+                        s = ud_infer_scalar(r->ctx, f, r->infer_negative + column, text, size,
+                                            kind);
+                    }
+                }
                 if (s) {
                     snprintf(r->location, sizeof(r->location), "row:%u/column:%u", r->row_number,
                              r->cell_column);
@@ -989,7 +1088,7 @@ ud_status ud_xlsx_reader_open(ud_context *ctx, const char *path, const ud_field 
     r->ctx = ctx;
     r->columns = columns;
     r->options = *o;
-    r->content.ctx = r->cell.ctx = r->formula_text.ctx = ctx;
+    r->content.ctx = r->cell.ctx = r->formula_text.ctx = r->sheets.ctx = ctx;
     ud_status s =
         ud_json_parse(ctx, o->configuration.data, o->configuration.length, &r->config, NULL);
     if (!s)
@@ -1087,6 +1186,8 @@ ud_status ud_xlsx_reader_open(ud_context *ctx, const char *path, const ud_field 
     const ud_json *date = member(r->config, "datePolicy");
     if (!s && date && !named(date, "workbook") && !named(date, r->date1904 ? "1904" : "1900"))
         s = UD_INCOMPATIBLE;
+    if (!s && entry(&r->archive, "xl/styles.xml"))
+        s = parse_part(r, "xl/styles.xml", 3);
     if (!s)
         s = parse_part(r, "xl/sharedStrings.xml", 4);
     if (!s)
@@ -1222,9 +1323,9 @@ ud_status ud_xlsx_reader_metadata(const ud_xlsx_reader *r, char **out, uint32_t 
     if (!s)
         s = ud_json_quote(&b, r->location, (uint32_t)strlen(r->location));
     if (!s)
-        s = ud_bytes_put(&b, "}", 1);
+        s = ud_bytes_put(&b, "}", sizeof("}") - 1);
     if (!s)
-        s = ud_bytes_put(&b, "\0", 1);
+        s = ud_bytes_put(&b, "\0", sizeof("\0") - 1);
     if (!s) {
         *length = (uint32_t)b.size - 1;
         *out = (char *)b.data;
@@ -1261,6 +1362,7 @@ void ud_xlsx_reader_close(ud_xlsx_reader *r) {
     ud_bytes_clear(&r->content);
     ud_bytes_clear(&r->cell);
     ud_bytes_clear(&r->formula_text);
+    ud_bytes_clear(&r->sheets);
     ud_json_destroy(r->config);
     ud_free(r);
 }
@@ -1454,8 +1556,8 @@ static ud_status write_header(ud_xlsx_writer *writer, const ud_field *fields, ui
     writer->row = 1;
     UD_TRY(write_text(writer, "<row r=\"1\">"));
     for (uint32_t at = 0; at < columns; at++) {
-        ud_value value = {.type = UD_UTF8, .text = fields[at].name,
-                           .text_length = fields[at].name_length};
+        ud_value value = {
+            .type = UD_UTF8, .text = fields[at].name, .text_length = fields[at].name_length};
         UD_TRY(write_cell(writer, at, &value));
     }
     return write_text(writer, "</row>");
@@ -1560,7 +1662,8 @@ static ud_status append_workbook(ud_xlsx_writer *writer, const ud_field *fields,
     if (!configured && !member(writer->config, "header")) {
         configured = ud_bytes_put(&configuration, text, text_size - 1);
         if (!configured)
-            configured = ud_bytes_put(&configuration, ",\"header\":true}", 15);
+            configured =
+                ud_bytes_put(&configuration, ",\"header\":true}", sizeof(",\"header\":true}") - 1);
     } else if (!configured)
         configured = ud_bytes_put(&configuration, text, text_size);
     ud_free(text);
@@ -1659,11 +1762,11 @@ static ud_status append_workbook(ud_xlsx_writer *writer, const ud_field *fields,
                xml.data[name_end] != '/' && xml.data[name_end] != '>')
             name_end++;
         if (!status)
-            status = ud_bytes_put(&writer->tail, "</", 2);
+            status = ud_bytes_put(&writer->tail, "</", sizeof("</") - 1);
         if (!status)
             status = ud_bytes_put(&writer->tail, xml.data + name_start, name_end - name_start);
         if (!status)
-            status = ud_bytes_put(&writer->tail, ">", 1);
+            status = ud_bytes_put(&writer->tail, ">", sizeof(">") - 1);
         if (!status)
             status =
                 ud_bytes_put(&writer->tail, xml.data + state.data_start + state.data_open_length,
@@ -1926,4 +2029,148 @@ ud_status ud_xlsx_reader_rejected_record(const ud_xlsx_reader *r, ud_status *cod
         *out = NULL;
     }
     return status;
+}
+
+ud_status ud_xlsx_discover(ud_context *ctx, const char *path, ud_string scope,
+                           ud_string configuration, ud_batch **out, char **metadata,
+                           uint32_t *length) {
+    if (!ctx || !path || !out || !metadata || !length)
+        return UD_INVALID;
+    *out = NULL;
+    *metadata = NULL;
+    *length = 0;
+    ud_json *config = NULL;
+    ud_status s = ud_json_parse(ctx, configuration.length ? configuration.data : "{}",
+                                configuration.length ? configuration.length : 2, &config, NULL);
+    if (!s && member(config, "range"))
+        s = UD_UNSUPPORTED;
+    ud_bytes options = {.ctx = ctx};
+    if (!s)
+        s = ud_bytes_put(&options, "{\"header\":false", sizeof("{\"header\":false") - 1);
+    for (uint32_t i = 0; !s && i < ud_json_size(config); i++) {
+        const char *key = NULL;
+        uint32_t n = 0;
+        s = ud_json_key(config, i, &key, &n);
+        if (!s && n == 6 && !memcmp(key, "header", 6))
+            continue;
+        if (!s)
+            s = ud_bytes_put(&options, ",", sizeof(",") - 1);
+        if (!s)
+            s = ud_json_quote(&options, key, n);
+        if (!s)
+            s = ud_bytes_put(&options, ":", sizeof(":") - 1);
+        char *text = NULL;
+        uint32_t size = 0;
+        if (!s)
+            s = ud_json_serialize(ud_json_find(config, key, n), &text, &size);
+        if (!s)
+            s = ud_bytes_put(&options, text, size);
+        ud_free(text);
+    }
+    if (!s)
+        s = ud_bytes_put(&options, "}", sizeof("}") - 1);
+    const uint32_t columns = 1024;
+    ud_field *fields = ud_alloc(ctx, columns * sizeof(*fields)),
+             *inferred = ud_alloc(ctx, columns * sizeof(*inferred));
+    uint8_t *negative = ud_alloc(ctx, columns);
+    char (*names)[24] = ud_alloc(ctx, columns * 24);
+    if (!fields || !inferred || !negative || !names)
+        s = UD_RESOURCE;
+    for (uint32_t i = 0; !s && i < columns; i++) {
+        int n = snprintf(names[i], 24, "column_%u", i + 1);
+        fields[i] = (ud_field){
+            .name = names[i], .name_length = (uint32_t)n, .type = UD_UTF8, .nullable = 1};
+    }
+    ud_buffer_manager *buffers = NULL;
+    ud_buffer_options limits = {.struct_size = sizeof(limits),
+                                .abi_version = UD_ABI_VERSION,
+                                .max_blocks = 2048,
+                                .resident_limit = 16777216,
+                                .working_limit = 16777216,
+                                .spill_limit = 0};
+    if (!s)
+        s = ud_buffer_manager_create(ctx, &limits, &buffers);
+    ud_xlsx_reader *r = NULL;
+    ud_xlsx_options o = {.struct_size = sizeof(o),
+                         .abi_version = UD_ABI_VERSION,
+                         .batch_size = 1,
+                         .configuration = {(char *)options.data, (uint32_t)options.size},
+                         .buffers = buffers};
+    if (!s)
+        s = ud_xlsx_reader_open(ctx, path, fields, columns, &o, &r);
+    if (!s) {
+        r->discovered = inferred;
+        r->infer_negative = negative;
+        r->discovery_header = !member(config, "header") || named(member(config, "header"), "true");
+    }
+    for (uint32_t row = 0; !s && row < 257; row++) {
+        ud_batch *batch = NULL;
+        int32_t rejected = 0;
+        s = ud_xlsx_reader_next(r, &batch, &rejected);
+        ud_batch_destroy(batch);
+        if (s == UD_END) {
+            s = UD_OK;
+            break;
+        }
+    }
+    if (!s) {
+        for (uint32_t i = 0; i < r->discovered_columns; i++) {
+            if (!inferred[i].name && r->discovery_header) {
+                s = UD_SCHEMA;
+                break;
+            }
+            if (!inferred[i].name) {
+                inferred[i].name = ud_strdup_n(ctx, names[i], (uint32_t)strlen(names[i]));
+                inferred[i].name_length = (uint32_t)strlen(names[i]);
+            }
+            inferred[i].nullable = 1; /* Sampling cannot prove absence of future blanks. */
+        }
+        if (!s)
+            s = ud_infer_schema(ctx, inferred, r->discovered_columns, scope, out);
+    }
+    if (!s) {
+        ud_bytes b = {.ctx = ctx};
+        s = ud_bytes_put(&b, "{\"format\":\"xlsx\",\"sheets\":[",
+                         sizeof("{\"format\":\"xlsx\",\"sheets\":[") - 1);
+        if (!s)
+            s = ud_bytes_put(&b, r->sheets.data, r->sheets.size);
+        if (!s)
+            s = ud_bytes_put(&b, "],\"selectedSheet\":", sizeof("],\"selectedSheet\":") - 1);
+        if (!s)
+            s = ud_json_quote(&b, r->sheet, (uint32_t)strlen(r->sheet));
+        if (!s)
+            s = ud_bytes_put(&b, ",\"sampleRows\":256,\"headerConfirmed\":false}",
+                             sizeof(",\"sampleRows\":256,\"headerConfirmed\":false}") - 1);
+        if (!s) {
+            *metadata = ud_strdup_n(ctx, (char *)b.data, b.size);
+            if (!*metadata)
+                s = UD_RESOURCE;
+            else
+                *length = (uint32_t)b.size;
+        }
+        ud_bytes_clear(&b);
+    }
+    ud_xlsx_reader_close(r);
+    if (buffers) {
+        ud_status closed = ud_buffer_manager_destroy(buffers);
+        if (!s)
+            s = closed;
+    }
+    if (inferred)
+        for (uint32_t i = 0; i < columns; i++)
+            ud_free((void *)inferred[i].name);
+    ud_free(fields);
+    ud_free(inferred);
+    ud_free(negative);
+    ud_free(names);
+    ud_json_destroy(config);
+    ud_bytes_clear(&options);
+    if (s) {
+        ud_batch_destroy(*out);
+        *out = NULL;
+        ud_free(*metadata);
+        *metadata = NULL;
+        *length = 0;
+    }
+    return s;
 }

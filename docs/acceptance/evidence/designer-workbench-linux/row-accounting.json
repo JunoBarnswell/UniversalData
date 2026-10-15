@@ -1,0 +1,1628 @@
+[
+  {
+    "case": "csv-formal",
+    "run": {
+      "version": 11,
+      "id": "06e0a61f27e8484487363236b2ffb992",
+      "packageId": "workbench-b9ef6df664f240bbaf047665f5c8f864",
+      "packageRevision": "2",
+      "state": "Succeeded",
+      "executionId": "339abf0a-6ef3-40a5-9f71-54abb5a812a1",
+      "resume": false,
+      "result": 0,
+      "failure": null,
+      "timestampMs": 1792051916178,
+      "revision": 4,
+      "jobId": null,
+      "attempt": 1,
+      "notBeforeMs": 0,
+      "debug": {
+        "previewRows": 16,
+        "breakpoints": [],
+        "definitionBreakpoints": []
+      },
+      "deploymentId": "workbench-b9ef6df664f240bbaf047665f5c8f864",
+      "deploymentRevision": "1",
+      "subject": "designer",
+      "processId": 346332,
+      "workerNode": "d132f5b1677948288dbc4be10f5556c2"
+    },
+    "metrics": {
+      "state": 5,
+      "result": 0,
+      "inputRows": 50000,
+      "outputRows": 50011,
+      "committedRows": 50011,
+      "acknowledgedRows": 50011,
+      "errorRows": 50,
+      "committedErrorRows": 50,
+      "acknowledgedErrorRows": 50,
+      "spillBytes": 141151483,
+      "memoryUsed": 1954140,
+      "batches": 819
+    },
+    "nodes": [
+      {
+        "id": "source",
+        "component": "file.csv.source",
+        "state": 5,
+        "result": 0,
+        "processedRows": 0,
+        "producedRows": 50000,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "52f8cc79a792809904e6bbf4ef3c6da5",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 50000
+          },
+          {
+            "id": "2becdee2ca21f4060b8720672f1f5f00",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "convert",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 50000,
+        "producedRows": 50000,
+        "rejectedRows": 50,
+        "ports": [
+          {
+            "id": "3852c532dc79feb4863df29ac0a1cafa",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "33f1360a83399a30d1d8bb898585ccaa",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "80f3c96e11dda59d25d7347c5add5965",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 50
+          }
+        ]
+      },
+      {
+        "id": "derive",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 49950,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "2811fe506df3372414db6bb7a0df14c7",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "6f94087b6ad835c09fc271baa505d3b1",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "9b47fff80a0a0083b0547e111e981d6f",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "boolean",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 49950,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "8ce87d41ff271e918883b7d132964060",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "a22df472d02da6a39cd118e5deda9e6a",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "72dd0bcad1f67cf189fb39ca6cd727c1",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "fan",
+        "component": "multicast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 149850,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "c8a0b80baadfe19c99485b9f737a4d8a",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "09b4732eb86ff2b55c771b91dff93616",
+            "name": "split",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "8b0d7768d4ddb576d47e55a25aa6a73e",
+            "name": "region",
+            "direction": 2,
+            "index": 1,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "da845ae07a1e6519bae876d173c72e46",
+            "name": "product",
+            "direction": 2,
+            "index": 2,
+            "flags": 1,
+            "rows": 49950
+          }
+        ]
+      },
+      {
+        "id": "split",
+        "component": "split",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 49950,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "7b250c2803b93bc624c84ab4135d86ca",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "6d0e6ec4a74c3c47817220745a0a7d28",
+            "name": "VIP \u5ba2\u6237",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 3004
+          },
+          {
+            "id": "488ae6da3978b51c9f6f6fc1bd1b1d0d",
+            "name": "REFUND",
+            "direction": 2,
+            "index": 1,
+            "flags": 1,
+            "rows": 15327
+          },
+          {
+            "id": "770904649a3d1b167b66e79f6986d97f",
+            "name": "PAID_OTHER",
+            "direction": 2,
+            "index": 2,
+            "flags": 1,
+            "rows": 14284
+          },
+          {
+            "id": "85932133039f1a781c6b5c647a5856ca",
+            "name": "OTHER",
+            "direction": 2,
+            "index": 3,
+            "flags": 1,
+            "rows": 17335
+          },
+          {
+            "id": "9b929d5477745356c748c44108f41aeb",
+            "name": "error",
+            "direction": 2,
+            "index": 4,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "normalize0",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 3004,
+        "producedRows": 3004,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "c509c0d2d469b323b7ae48cba8795b8d",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "0cbbee409b1a38aeded3d770d4337a35",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 3004
+          },
+          {
+            "id": "39440d86d196cdca07ba4185b1e65847",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "vip",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 3004,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "2367f1a2ea1a4d6ebf139a23b7757e65",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "e6b945d9f6b79f6e2a5fc10e09797071",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "normalize1",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 15327,
+        "producedRows": 15327,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "15dca5626679075f997b1280d10d1cbf",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "b5bb5d29dd7b08a8023fade3ad717e9f",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 15327
+          },
+          {
+            "id": "e23859d94d39c0f35578cf89168d7c08",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "refund",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 15327,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "42ed18a02f2b28bfdda7afb924966bc9",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "d44a0ea342c1c40f595a48d2257f042d",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "normalize2",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 14284,
+        "producedRows": 14284,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "6c40fbfc7901dfa6e652cf891442a7fd",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "1643ba1664ea4d7e1e61479fd70d3c46",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 14284
+          },
+          {
+            "id": "16426f205eb328a4494cc00928223ae1",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "paid_other",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 14284,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "837389aa0fab894517bdf0d8be1a03f9",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "c1e11abba8a30915f2829faa17e22f80",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "normalize3",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 17335,
+        "producedRows": 17335,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "463f7d7c9a27f6b005c6876720c2e4fb",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "6085dfdcb3afe244b8b908e23fe33d72",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 17335
+          },
+          {
+            "id": "8c0912f9249d058b71d9df88e12cb428",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "other",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 17335,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "9d1a8ea65860ef625f6bfb3c4f01047d",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "44b047167281215aa4ec7bd749182f67",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "group0",
+        "component": "aggregate",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 4,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "60028a7859201af239be3f8f788e7e20",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "c67ffcf44550e43aad73791096bb5bc1",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 4
+          }
+        ]
+      },
+      {
+        "id": "group0Run",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 4,
+        "producedRows": 4,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "c441367d020fbafece97705e443d7a6f",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "b5a968288274221e5d8f879259145375",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 4
+          },
+          {
+            "id": "ec499c492ae4ca31b0f928f52c744e64",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "group0Normalize",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 4,
+        "producedRows": 4,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "47959ad7c16effff51ceb90a89121d9d",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "faecd577855af919a718cb1b4f305007",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 4
+          },
+          {
+            "id": "654c4f248c121a652c5cf11923ad422d",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "region_summary",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 4,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "4845a0b36c4ac0d292c3c2a9becdc13e",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "236c6e6c7000bb4b1d736f11d4b92cca",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "group1",
+        "component": "aggregate",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 7,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "d9078c2ff3dd135ea48464a0d9b84e88",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "9cb1f14f5b0b4473422da39010ba335a",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 7
+          }
+        ]
+      },
+      {
+        "id": "group1Run",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 7,
+        "producedRows": 7,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "9dd904496605e163cccac212a33ae1bc",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "4efac64872b5eda2e7adead1b163831b",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 7
+          },
+          {
+            "id": "fedfa3ccbafce4d74212ad54c3ee7357",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "group1Normalize",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 7,
+        "producedRows": 7,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "0f79462f95b9c30f5b32e4400eeeee13",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "7e23f03336636b27b6c1be84fa16bf27",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 7
+          },
+          {
+            "id": "c5767fdda3c1718006e5ec1e79b54d23",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "product_summary",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 7,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "534f00393bb9a71a4e6f05dfe774364c",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "2759cd0ebac01da86b1439bbc3c13d86",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "errorDetails",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 50,
+        "producedRows": 50,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "1e599b38b53cae7c4b24fadb8886b918",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "13a409e05c054e4da2194e85588b05c7",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 50
+          },
+          {
+            "id": "e9f54ad4b0a35cc62a3108734cd9226f",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "errors",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 50,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "5f10b49cb02fa02f59aba8fc1c8d101f",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "a11b64ba3e3589d843f45563dfb3248b",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      }
+    ],
+    "productionUnchanged": null
+  },
+  {
+    "case": "xlsx-isolated",
+    "run": {
+      "version": 11,
+      "id": "8becbeaed990419086625bfeb2f37af7",
+      "packageId": "test-44e9b1d75f104b23a376d5f7fe1323ff",
+      "packageRevision": "1",
+      "state": "Succeeded",
+      "executionId": "8cdab6d1-03af-44f5-a585-7a79fbd05aee",
+      "resume": false,
+      "result": 0,
+      "failure": null,
+      "timestampMs": 1792051936543,
+      "revision": 4,
+      "jobId": null,
+      "attempt": 1,
+      "notBeforeMs": 0,
+      "debug": null,
+      "deploymentId": null,
+      "deploymentRevision": null,
+      "subject": "designer",
+      "processId": 346596,
+      "workerNode": "d132f5b1677948288dbc4be10f5556c2"
+    },
+    "metrics": {
+      "state": 5,
+      "result": 0,
+      "inputRows": 50000,
+      "outputRows": 50011,
+      "committedRows": 50011,
+      "acknowledgedRows": 50011,
+      "errorRows": 50,
+      "committedErrorRows": 50,
+      "acknowledgedErrorRows": 50,
+      "spillBytes": 294577312,
+      "memoryUsed": 1417720,
+      "batches": 225
+    },
+    "nodes": [
+      {
+        "id": "source-99975efa-ba1b-4a20-8b2b-130ce6db10a0",
+        "component": "file.xlsx.source",
+        "state": 5,
+        "result": 0,
+        "processedRows": 0,
+        "producedRows": 50000,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "c8b1432a49882f1a34d68b4ce951eb3e",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 50000
+          },
+          {
+            "id": "0b832dcc640f0f2990fe205bb6c47ace",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "convert",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 50000,
+        "producedRows": 50000,
+        "rejectedRows": 50,
+        "ports": [
+          {
+            "id": "17673a4098e5fe6bd822e4b2f229632f",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "805a7666fe38192f7c19f4359d568829",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "68dcc33cfa1d89c8b921f8d82701ab7e",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 50
+          }
+        ]
+      },
+      {
+        "id": "derive",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 49950,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "70dcf107e67fc4f5769ade571ca3f504",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "19d0a11854b05cf7c4b9a4ddc2bede84",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "8dd99b68ef41bf868505e0b0289a640e",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "boolean",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 49950,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "802c8dced41d8b3ffd446aa1501ca60f",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "faedc492c131cb0b6bdce72366677072",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "ae6be9efc94ef78ee3f308e050efdad5",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "fan",
+        "component": "multicast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 149850,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "4a26f32f62735bbcf30cca483c461351",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "0eb18d74e160ca37289072fd8c5539ce",
+            "name": "split",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "b2a82a84321a26d32d9488a021e5d22d",
+            "name": "region",
+            "direction": 2,
+            "index": 1,
+            "flags": 1,
+            "rows": 49950
+          },
+          {
+            "id": "9e9e83f77092e2bac04f08ac3c35ff3b",
+            "name": "product",
+            "direction": 2,
+            "index": 2,
+            "flags": 1,
+            "rows": 49950
+          }
+        ]
+      },
+      {
+        "id": "split",
+        "component": "split",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 49950,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "bad32cfed9f55f1489813a39242c7ea9",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "f76e033b03295b6f1ce445039f6bb61b",
+            "name": "VIP \u5ba2\u6237",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 3004
+          },
+          {
+            "id": "44b489d1b09dd1492dcd0aefc6063ce6",
+            "name": "REFUND",
+            "direction": 2,
+            "index": 1,
+            "flags": 1,
+            "rows": 15327
+          },
+          {
+            "id": "f76422938b89ff576b04431be3e5eea8",
+            "name": "PAID_OTHER",
+            "direction": 2,
+            "index": 2,
+            "flags": 1,
+            "rows": 14284
+          },
+          {
+            "id": "29cc8d2b2db333a92c17edfb76f4c2e8",
+            "name": "OTHER",
+            "direction": 2,
+            "index": 3,
+            "flags": 1,
+            "rows": 17335
+          },
+          {
+            "id": "fc26f2dddc2eeb64e8785b02642b0721",
+            "name": "error",
+            "direction": 2,
+            "index": 4,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "normalize0",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 3004,
+        "producedRows": 3004,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "9ed7c26142fbb368b5ea7cb20bfc482e",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "ccf1550ed7523325fce643ae85bcbfbb",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 3004
+          },
+          {
+            "id": "44a900ae1321cee65f9429de2562692f",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "vip",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 3004,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "59cb7c3fe1956662127c947bd44f3a37",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "4635a4f962a37aa4fdadcebc23def88b",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "normalize1",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 15327,
+        "producedRows": 15327,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "00471aeafd36d00ec1fc5b86a6f34d8a",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "fb6f65d7b9df707dfaba4f5a24cb8f45",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 15327
+          },
+          {
+            "id": "5e6e794cc27c20e5e9f3f22eebcca03d",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "refund",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 15327,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "0ba4b8a335260db07e8e05925735467f",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "715272542f2f5cb5e694fcf289b5f5e6",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "normalize2",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 14284,
+        "producedRows": 14284,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "86a1783d75256ec599a89d917b1d19fa",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "60e09b898ac4c93c3d91a3bf1fce08a0",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 14284
+          },
+          {
+            "id": "9b5e3268b81aa44232461b379cc0ed6f",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "paid_other",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 14284,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "519347d7e34ce1681c254d716b1810e1",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "af19f705f7a78945483baccae15bc781",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "normalize3",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 17335,
+        "producedRows": 17335,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "16464ea651473bbd3ddb4233153bf22e",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "08964677c58da920a2b5b071ec50e03e",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 17335
+          },
+          {
+            "id": "219b38925afe73a0f47b9eb931e4eb47",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "other",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 17335,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "e9647edefcbfc872fe590976d07612db",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "99ce22417fe6066915fbc9f8d2ee5327",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "group0",
+        "component": "aggregate",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 4,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "c185d67f0ca03dea03d9e4a520629258",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "00bcd033202878ce3942dde1a7cf7bb7",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 4
+          }
+        ]
+      },
+      {
+        "id": "group0Run",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 4,
+        "producedRows": 4,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "f11f02155064e5bd89a5898f94a270e8",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "ad5998cfcc78efbf411b7398e5086674",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 4
+          },
+          {
+            "id": "340296232b0cbe0919caa582789b9780",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "group0Normalize",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 4,
+        "producedRows": 4,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "18a7ffeabcfcecf6631bc302f0524c68",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "e98649c0bc8dd71d0d2467ca776a9f3c",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 4
+          },
+          {
+            "id": "52827891e5ed4ff4e35d00715ca7d44e",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "region_summary",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 4,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "59a2cf0445b071bf323d3718f7cc2c2f",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "4e4029ba662603bd2adfe3114bedfb6c",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "group1",
+        "component": "aggregate",
+        "state": 5,
+        "result": 0,
+        "processedRows": 49950,
+        "producedRows": 7,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "a34f87f4f2ebf43efcc882ca65f16af7",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "ebf78e1de49d0b887729015d2792a3fd",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 7
+          }
+        ]
+      },
+      {
+        "id": "group1Run",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 7,
+        "producedRows": 7,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "7ca0893f8bacd23209ee440649e23481",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "deea8c8c69dc0363800b723716aab9bd",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 7
+          },
+          {
+            "id": "a8536797359c03e7f63f9d02cedd915f",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "group1Normalize",
+        "component": "cast",
+        "state": 5,
+        "result": 0,
+        "processedRows": 7,
+        "producedRows": 7,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "cd720f5ed92bf31d11adc21f603c2854",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "24f89c6b9a913a3ff76528a8021a1b53",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 7
+          },
+          {
+            "id": "86ec4283ce5a324b1efa7b2934bc6a3b",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "product_summary",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 7,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "7bec25c21b8199c08f6c94ed67351e12",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "7f6f7fa04101b09cd5254d4f1f67eeab",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "errorDetails",
+        "component": "derive",
+        "state": 5,
+        "result": 0,
+        "processedRows": 50,
+        "producedRows": 50,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "dd053c3ace05fec6fba42449ca5134a7",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "7259609944354a9bc9d49bc3acf5f425",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 1,
+            "rows": 50
+          },
+          {
+            "id": "530bf0538b497fc88f6482aecbd94656",
+            "name": "output1",
+            "direction": 2,
+            "index": 1,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "id": "errors",
+        "component": "sql.destination",
+        "state": 5,
+        "result": 0,
+        "processedRows": 50,
+        "producedRows": 0,
+        "rejectedRows": 0,
+        "ports": [
+          {
+            "id": "a3846c39a42a77a4c77f86a3b9ed2e0b",
+            "name": "input0",
+            "direction": 1,
+            "index": 0,
+            "flags": 1
+          },
+          {
+            "id": "b55dd45d33c9eda91dace089325aabdf",
+            "name": "output0",
+            "direction": 2,
+            "index": 0,
+            "flags": 2,
+            "rows": 0
+          }
+        ]
+      }
+    ],
+    "productionUnchanged": true
+  }
+]

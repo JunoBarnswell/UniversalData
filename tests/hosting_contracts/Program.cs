@@ -19,6 +19,9 @@ try {
     Require(!scope.Authorize("b",Path.Combine(resources,"a","file.csv"),ConnectionAccess.Read),"Tenant identity bypass");
     Require(!scope.Authorize("a",Path.Combine(resources,"b","file.csv"),ConnectionAccess.Read),"Cross tenant file access");
     Require(!scope.Authorize("a",scope.CatalogDirectory,ConnectionAccess.Read),"Catalog leaked into package file scope");
+    Require(scope.Authorize("a",Path.Combine(modules,"ud_connector_sqlite.so"),ConnectionAccess.Open),"Native plugin open denied inside authorized module root");
+    Require(!scope.Authorize("a",Path.Combine(modules,"ud_connector_sqlite.so"),ConnectionAccess.Write),"Module load root allowed package writes");
+    Require(!scope.Authorize("a",Path.Combine(resources,"a",".ud-imports","a","another-subject","file.csv"),ConnectionAccess.Read),"Another subject's upload was readable");
     var executing = scope with { StateDirectory = scope.ExecutionDirectory(Guid.NewGuid().ToString("N")) };
     Require(executing.Authorize("a",executing.StateDirectory!,ConnectionAccess.CheckpointWrite),"Internal Journal grant denied");
     Require(!executing.Authorize("a",executing.StateDirectory!,ConnectionAccess.Read) &&
@@ -109,7 +112,16 @@ static async Task WorkerHandshake(string worker)
         }
         // A real Package cannot read its own Journal directory through a normal
         // file lease. Internal checkpoint grants still allow Native recovery.
-        request = request with { Ticket = Guid.NewGuid().ToString("N") };
+        var validDebug=request.Debug;
+        request=request with {Ticket=Guid.NewGuid().ToString("N"),Debug=JsonSerializer.SerializeToElement(new {previewRows=999999,breakpoints=new[]{"startup-secret-849821"}})};
+        using(var process=WorkerLauncher.Launch(worker,request)) {
+            var errors=process.StandardError.ReadToEndAsync(timeout.Token);
+            await Send(process,request);var failed=await Read(process,"failed");
+            Require(failed.GetProperty("result").GetInt32()==(int)StatusCode.Schema && failed.GetProperty("phase").GetString()=="native.debug","Worker startup lost its Native status or lifecycle phase");
+            Require(!failed.GetRawText().Contains("startup-secret-849821",StringComparison.Ordinal),"Startup failure exposed provider content");
+            process.StandardInput.Close();await process.WaitForExitAsync(timeout.Token);Require(process.ExitCode!=0,"Worker startup failure was reported as success");await errors;
+        }
+        request = request with { Ticket = Guid.NewGuid().ToString("N"),Debug=validDebug };
         string privateFile = Path.Combine(policy.ExecutionDirectory(request.Ticket),"private.ndjson");
         Directory.CreateDirectory(Path.GetDirectoryName(privateFile)!); File.WriteAllText(privateFile,"{\"id\":1}\n");
         string probe = JsonSerializer.Serialize(new { version=11,id = "private-state-probe",

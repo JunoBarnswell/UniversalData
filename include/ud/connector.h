@@ -31,7 +31,10 @@ enum {
     UD_CONNECT_TRANSACTION_PARTICIPANT = 1048576,
     UD_CONNECT_PARAMETER_ARRAY = 2097152,
     UD_CONNECT_RECORD_ERRORS = 4194304, /* Complete SQL record notifications and isolation. */
-    UD_CONNECT_TRANSACTIONAL_DML = 8388608 /* Accepted row DML is governed by transaction/savepoint rollback. */
+    UD_CONNECT_TRANSACTIONAL_DML =
+        8388608, /* Accepted row DML is governed by transaction/savepoint rollback. */
+    UD_CONNECT_READONLY_SCAN =
+        16777216 /* Table scans cannot execute external writes; enforced by the driver. */
 };
 enum { UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE };
 enum {
@@ -123,8 +126,12 @@ typedef struct ud_read_options {
     ud_read_record_fn record;
 } ud_read_options;
 enum {
-    UD_COMMAND_NOT_EXECUTED = 0, UD_COMMAND_PENDING, UD_COMMAND_APPLIED,
-    UD_COMMAND_COMMITTED, UD_COMMAND_REJECTED, UD_COMMAND_UNKNOWN
+    UD_COMMAND_NOT_EXECUTED = 0,
+    UD_COMMAND_PENDING,
+    UD_COMMAND_APPLIED,
+    UD_COMMAND_COMMITTED,
+    UD_COMMAND_REJECTED,
+    UD_COMMAND_UNKNOWN
 };
 /* APPLIED belongs to the caller's still-open transaction; COMMITTED is a
  * completed local transaction. A rejection is safe only after rollback proof.
@@ -137,7 +144,8 @@ typedef struct ud_command_result {
     ud_string provider_code;
 } ud_command_result;
 UD_API void ud_command_result_clear(ud_command_result *);
-UD_API ud_status ud_connection_execute_record(ud_connection *, const ud_read_options *, ud_command_result *);
+UD_API ud_status ud_connection_execute_record(ud_connection *, const ud_read_options *,
+                                              ud_command_result *);
 typedef struct ud_write_options {
     uint32_t struct_size, abi_version;
     int32_t mode;
@@ -207,7 +215,7 @@ typedef struct ud_connector_api {
      * bypasses user SQL restrictions, never authorizes arbitrary product SQL. */
     ud_status (*savepoint)(void *, ud_string native_statement);
     /* Optional provider proof inside the row transaction, before business mutation. */
-    ud_status (*record_validate)(void *,const ud_read_options *);
+    ud_status (*record_validate)(void *, const ud_read_options *);
 } ud_connector_api;
 UD_API ud_status ud_connection_savepoint(ud_connection *, ud_string, int32_t);
 UD_API ud_status ud_connection_record_diagnostic(ud_connection *, ud_string *);

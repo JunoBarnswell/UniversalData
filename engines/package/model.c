@@ -239,8 +239,14 @@ ud_status ud_package_check(const ud_package *p) {
     }
     const ud_json *layout = ud_member(p->document, "layout");
     if (layout) {
-        static const char *layout_keys[] = {"version", "nodes", "viewports"};
-        UD_TRY(ud_json_keys(layout, layout_keys, 3));
+        static const char *layout_keys[] = {"version", "nodes", "viewports", "label"};
+        UD_TRY(ud_json_keys(layout, layout_keys, 4));
+        if (ud_member(layout, "label")) {
+            ud_string label = {0};
+            UD_TRY(ud_json_string(ud_member(layout, "label"), &label));
+            if (label.length > 1024)
+                return UD_SCHEMA;
+        }
         uint64_t epoch;
         UD_TRY(ud_json_uint(ud_member(layout, "version"), &epoch));
         if (epoch != UD_CONFIG_VERSION)
@@ -254,9 +260,10 @@ ud_status ud_package_check(const ud_package *p) {
                 return UD_SCHEMA;
             for (uint32_t index = 0; index < ud_json_size(entries); index++) {
                 const ud_json *entry = ud_json_at(entries, index);
-                static const char *node_keys[] = {"flow", "id", "x", "y"};
+                static const char *node_keys[] = {"flow", "id", "x", "y", "label"};
                 static const char *viewport_keys[] = {"flow", "x", "y", "zoom"};
-                UD_TRY(ud_json_keys(entry, collection ? viewport_keys : node_keys, 4));
+                UD_TRY(ud_json_keys(entry, collection ? viewport_keys : node_keys,
+                                    collection ? 4 : 5));
                 ud_string flow;
                 UD_TRY(ud_json_string(ud_member(entry, "flow"), &flow));
                 const ud_json *graph = NULL;
@@ -274,6 +281,12 @@ ud_status ud_package_check(const ud_package *p) {
                     return UD_SCHEMA;
                 ud_string node = {0};
                 if (!collection) {
+                    if (ud_member(entry, "label")) {
+                        ud_string label;
+                        UD_TRY(ud_json_string(ud_member(entry, "label"), &label));
+                        if (label.length > 512)
+                            return UD_RESOURCE;
+                    }
                     UD_TRY(ud_json_string(ud_member(entry, "id"), &node));
                     const ud_json *items = ud_member(graph, control ? "tasks" : "components");
                     int found = 0;

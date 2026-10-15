@@ -184,6 +184,9 @@ ud_status ud_activation_report_fault(const ud_activation *activation, ud_status 
     return status;
 }
 ud_status ud_component_lookup(ud_activation *e, ud_string id, ud_component_descriptor *out) {
+    if (!out)
+        return UD_INVALID;
+    *out = (ud_component_descriptor){.struct_size = sizeof(*out), .abi_version = UD_ABI_VERSION};
     return ud_registry_find(e->execution->registry, id, out);
 }
 ud_status ud_activation_bind_roots(ud_activation *e) {
@@ -400,7 +403,8 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     if (s) {
         atomic_store(&e->state, UD_EXEC_FAILED);
         atomic_store(&e->result, s);
-        if(e->package)ud_activation_notify(&e->root,UD_EXEC_FAILED,s);
+        if (e->package)
+            ud_activation_notify(&e->root, UD_EXEC_FAILED, s);
         ud_status closed = ud_execution_destroy(e);
         return closed ? closed : s;
     }
@@ -472,7 +476,8 @@ static ud_status execute(ud_execution *e) {
     if (!s)
         s = ud_execution_prepare_buffers(e);
     if (!s)
-        s = ud_activation_run_definition(&e->root);
+        s = e->preview_pipeline ? ud_pipeline_execute(&e->root, e->preview_pipeline)
+                                : ud_activation_run_definition(&e->root);
     if (s == UD_BUSY)
         s = UD_TRANSIENT; /* Terminal lock contention must not look like wait. */
     if (!s) {
@@ -669,6 +674,8 @@ ud_status ud_execution_destroy(ud_execution *e) {
         ud_bytes_clear(&e->bound_plans);
         ud_bytes_clear(&e->control_reports);
         ud_debug_destroy(e);
+        ud_json_destroy(e->preview_pipeline);
+        e->preview_pipeline = NULL;
         e->disposed = 1;
     }
     if (ud_memory_used(ctx) != ud_allocation_bytes(e)) {

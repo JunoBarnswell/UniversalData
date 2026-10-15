@@ -1,0 +1,69 @@
+{
+  "scope": "Designer 3.0 Linux workbench",
+  "status": "Code Complete",
+  "baseline": "bf5ab4e4195bf59eb06b016d094c38e397f9a214",
+  "sdkVersion": "2.2.0",
+  "abiVersion": 11,
+  "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+  "core": {
+    "passed": 75,
+    "failed": 0,
+    "log": "native-core.log"
+  },
+  "sanitizers": {
+    "passed": 4,
+    "failed": 0,
+    "logs": [
+      "sanitizer-preview.log",
+      "sanitizer-row-recovery.log"
+    ]
+  },
+  "drivers": {
+    "passed": 4,
+    "failed": 0,
+    "scope": "MySQL SQL/types/prepared participant crash recovery; MariaDB SQL",
+    "log": "drivers.log"
+  },
+  "browser": {
+    "local": "Passed: import, Native formulas, drag/undo/redo, sink-free preview, current draft v2 publication, explicit execute, definition breakpoint, step, real Worker kill and same-ID recovery",
+    "mysql": "Passed: CSV/Excel discovery, connection/table/schema discovery, mapping, Native expression errors and split priority, seven targets, readonly SQL Source and isolated tests"
+  },
+  "rowAccounting": {
+    "input": 50000,
+    "business": 49950,
+    "rejected": 50,
+    "aggregates": 11,
+    "committed": 50011,
+    "acknowledged": 50011,
+    "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+    "csvEqualsExcel": true,
+    "productionUnchanged": true
+  },
+  "installed": {
+    "status": "Passed",
+    "files": 330,
+    "languages": [
+      "C",
+      "C# NuGet",
+      "Java Maven/JNI"
+    ],
+    "hosts": [
+      "CLI",
+      "Worker",
+      "Management",
+      "Designer"
+    ]
+  },
+  "platform": {
+    "linux": "Passed within the recorded workbench scope",
+    "windows": "Verification Blocked: no independent Windows resource",
+    "ssisGolden": "Verification Blocked: no independent Microsoft SSIS oracle"
+  },
+  "limitations": [
+    "Preview is explicitly bounded and excludes untrusted extensions/scripts, CDC, arbitrary SQL and control-task-dependent full-cache assets.",
+    "The full seven-target business graph is an independent Native Package fixture, then edited through real UI; the basic CSV-to-MySQL flow is created from an empty workbench without JSON.",
+    "Whole-file nullability is not inferred from samples; Excel RowId was explicitly declared required.",
+    "These runs are correctness/resource evidence, not a controlled Native Bulk versus parameterized SQL performance comparison.",
+    "Full SSIS parity remains Partial; Windows and unavailable independent services are not counted as passed."
+  ]
+}

@@ -49,8 +49,7 @@ static ud_status sql_record(void *user, ud_batch *batch, ud_status code, uint32_
         return UD_OK;
     if (!source->source_errors)
         UD_TRY(ud_error_batch(&source->context.errors, source->records.include_input,
-                               source->context.max_batch_rows,
-                               &source->source_errors));
+                              source->context.max_batch_rows, &source->source_errors));
     ud_bytes raw = {.ctx = source->context.memory, .limit = 16777216};
     ud_status status = UD_OK;
     if (source->records.include_input) {
@@ -668,7 +667,10 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         status = ud_operator_create(c->memory, &options, inputs, &b->source_sort);
     }
     if (!status && b->materialized) {
+        uint64_t preview_read = 0;
         for (;;) {
+            if (c->execution->preview_pipeline && preview_read >= c->execution->preview_source_rows)
+                break;
             ud_batch *input = NULL;
             status = ud_activation_check(c->activation);
             if (!status)
@@ -679,6 +681,9 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
                 status = UD_OK;
                 break;
             }
+            if (!status)
+                preview_read +=
+                    (input ? input->rows : 0) + (b->source_errors ? b->source_errors->rows : 0);
             if (!status && b->source_errors) {
                 ud_batch *errors = b->source_errors;
                 b->source_errors = NULL;

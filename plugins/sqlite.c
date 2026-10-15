@@ -53,10 +53,11 @@ static ud_status failure(sqlite_state *p, int code) {
                           code == SQLITE_BUSY || code == SQLITE_LOCKED ? UD_BUSY
                           : code == SQLITE_READONLY || code == SQLITE_AUTH || code == SQLITE_PERM
                               ? UD_AUTH
-                          : code == SQLITE_INTERRUPT ? UD_CANCELLED
+                          : code == SQLITE_INTERRUPT          ? UD_CANCELLED
                           : (code & 255) == SQLITE_CONSTRAINT ? UD_QUALITY
-                          : code == SQLITE_TOOBIG ? UD_TRUNCATED
-                          : code == SQLITE_MISMATCH ? UD_PARSE : UD_IO,
+                          : code == SQLITE_TOOBIG             ? UD_TRUNCATED
+                          : code == SQLITE_MISMATCH           ? UD_PARSE
+                                                              : UD_IO,
                           "SQLite operation failed (diagnostic values redacted)");
 }
 static ud_status initialize(const ud_host_api *h, const char *config, uint32_t n, void **out) {
@@ -633,21 +634,30 @@ static int statement_authorize(void *user, int action, const char *a, const char
                ? SQLITE_DENY
                : SQLITE_OK;
 }
-static ud_status savepoint(void *state,ud_string statement) {
+static ud_status savepoint(void *state, ud_string statement) {
     sqlite_state *p = state;
-    if (!p->transaction) return UD_UNSUPPORTED;
-    char *sql = plugin_string(&p->host,statement.data,statement.length);
-    if (!sql) return UD_RESOURCE;
-    int result = sqlite3_exec(p->db,sql,NULL,NULL,NULL);
-    p->host.deallocate(sql); return result == SQLITE_OK ? UD_OK : failure(p,result);
+    if (!p->transaction)
+        return UD_UNSUPPORTED;
+    char *sql = plugin_string(&p->host, statement.data, statement.length);
+    if (!sql)
+        return UD_RESOURCE;
+    int result = sqlite3_exec(p->db, sql, NULL, NULL, NULL);
+    p->host.deallocate(sql);
+    return result == SQLITE_OK ? UD_OK : failure(p, result);
 }
-static ud_status record_diagnostic(void *state,ud_string *out) {
-    sqlite_state *p = state; *out = (ud_string){0};
-    if (!p->record_code) return UD_OK;
-    char code[32]; int length = snprintf(code,sizeof(code),"SQLITE_%d",p->record_code);
-    char *copy = plugin_string(&p->host,code,(uint32_t)length);
-    if (!copy) return UD_RESOURCE;
-    p->record_code = 0; *out = (ud_string){copy,(uint32_t)length}; return UD_OK;
+static ud_status record_diagnostic(void *state, ud_string *out) {
+    sqlite_state *p = state;
+    *out = (ud_string){0};
+    if (!p->record_code)
+        return UD_OK;
+    char code[32];
+    int length = snprintf(code, sizeof(code), "SQLITE_%d", p->record_code);
+    char *copy = plugin_string(&p->host, code, (uint32_t)length);
+    if (!copy)
+        return UD_RESOURCE;
+    p->record_code = 0;
+    *out = (ud_string){copy, (uint32_t)length};
+    return UD_OK;
 }
 static ud_status connector_execute_command(void *state, const ud_read_options *options,
                                            uint64_t *processed) {
@@ -842,11 +852,12 @@ static ud_status provision(void *state) {
 static const ud_connector_api connector = {
     .struct_size = sizeof(connector),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities = UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND |
-                    UD_CONNECT_UPSERT | UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS |
-                    UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA |
-                    UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_PREPARED |
-                    UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION | UD_CONNECT_TRANSACTIONAL_DML,
+    .capabilities = UD_CONNECT_READONLY_SCAN | UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS |
+                    UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
+                    UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
+                    UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
+                    UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION |
+                    UD_CONNECT_TRANSACTIONAL_DML,
     .test = connector_test,
     .discover = connector_discover,
     .read_open = connector_read_open,
@@ -881,6 +892,8 @@ UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *ou
                            destroy,
                            plugin_shutdown,
                            &connector,
-                           NULL,sizeof(ud_field),sizeof(ud_value)};
+                           NULL,
+                           sizeof(ud_field),
+                           sizeof(ud_value)};
     return UD_OK;
 }

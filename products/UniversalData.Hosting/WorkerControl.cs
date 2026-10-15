@@ -88,6 +88,7 @@ public static class WorkerControl
                         if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(token),Encoding.UTF8.GetBytes(supplied))) throw new UniversalDataException((int)StatusCode.Auth,"Invalid control capability");
                         switch(root.GetProperty("action").GetString()) {
                             case "cancel": execution.Cancel(); break;
+                            case "metrics": using(var progress=JsonDocument.Parse(execution.Progress())) value=new {metrics=execution.Metrics,progress=progress.RootElement.Clone()};break;
                             case "snapshot": using(var snapshot = JsonDocument.Parse(filter?.Json(execution.DebugSnapshot()) ?? execution.DebugSnapshot())) value = snapshot.RootElement.Clone(); break;
                             case "debug": execution.DebugControl(root.GetProperty("command").GetRawText()); break;
                             default: throw new ArgumentException("Unknown control action");

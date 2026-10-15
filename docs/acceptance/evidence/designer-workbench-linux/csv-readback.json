@@ -1,0 +1,23 @@
+{
+  "businessRows": 49950,
+  "errorRows": 50,
+  "outputSignature": "51a233b26419fcc616f47d90eb8cdf49697c50f60638d36da6335099edf5ed6c",
+  "branchSignatures": {
+    "VIP": {
+      "count": 3004,
+      "rowIdsSha256": "f1edac9db312ff0dbfca15f3b6580c4b9f3da87cd9e3eca8c281f106662a7797"
+    },
+    "REFUND": {
+      "count": 15327,
+      "rowIdsSha256": "52ffbf9f25db85e0f9425533bcb3541dd517fa0f3a3ab48c567230155fe4aa90"
+    },
+    "PAID_OTHER": {
+      "count": 14284,
+      "rowIdsSha256": "30de26ce6d4ab578da71e1e22a90629ad32d03bfa79b98752cfc79053e66f63d"
+    },
+    "OTHER": {
+      "count": 17335,
+      "rowIdsSha256": "794088caa3da951b0be79ead581e7f67c29365e399dc2494636e728c08b73e0a"
+    }
+  }
+}

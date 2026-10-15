@@ -1,0 +1,268 @@
+{
+  "exitCode": 0,
+  "sdkVersion": "2.2.0",
+  "abiVersion": 11,
+  "configuration": "Release",
+  "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+  "archive": "/tmp/UniversalData-Next/artifacts/designer-workbench-linux/UniversalData-2.2.0-linux-x64.zip",
+  "archiveSha256": "f70b9d925c775c3a91f421ce8d55384e87a365f2316ebbf8ca7cb881e8cd9e7e",
+  "verifiedFiles": 330,
+  "unpackedDirectory": "/workspace/ud-designer3-installed/bundle",
+  "logs": "/workspace/ud-designer3-installed",
+  "nativeLibrary": {
+    "path": "/workspace/ud-designer3-installed/bundle/sdk/lib/libud_data.so",
+    "sha256": "4848baeee2e335ec833ac8203c22e18c507e3adfc98b055342281833e6532cee"
+  },
+  "nuget": {
+    "path": "/workspace/ud-designer3-installed/bundle/packages/UniversalData.2.2.0.nupkg",
+    "sha256": "d2c7f8e0fdf3181f6baa00c339929e805a8c9b8a5222dc36136e1c12b675536c",
+    "nativeFromPackage": true,
+    "sdkLoaderPath": false
+  },
+  "maven": {
+    "path": "/workspace/ud-designer3-installed/bundle/packages/universal-data-2.2.0.jar",
+    "sha256": "027ae93c51c8003ff757c36fb1af203e78b1d7d79bbb4a47ecb9ac3de836a2cd",
+    "nativeFromBundle": true
+  },
+  "c": {
+    "cmakeTarget": "UniversalData::Data",
+    "dynamicPackage": true,
+    "dynamicResources": true,
+    "installedHostPipeline": true,
+    "dynamicSQLite": true
+  },
+  "languageParity": "10003 rows / 20006 input and output / 8 tasks; Package/Project/child and scalar/nested/wire equality",
+  "nativeQueryParity": "C/.NET/Java SQLite discovery/refresh, three compatibility policies and row identity from identified Wire",
+  "installedWebWorkerBrowser": "Passed",
+  "commands": [
+    {
+      "step": "c-configure",
+      "command": [
+        "/workspace/.universaldata-tools/bin/cmake",
+        "-S",
+        "/workspace/ud-designer3-installed/c-source",
+        "-B",
+        "/workspace/ud-designer3-installed/c-build",
+        "-DCMAKE_PREFIX_PATH=/workspace/ud-designer3-installed/bundle/sdk",
+        "-DCMAKE_BUILD_TYPE=Release"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-build",
+      "command": [
+        "/workspace/.universaldata-tools/bin/cmake",
+        "--build",
+        "/workspace/ud-designer3-installed/c-build",
+        "--config",
+        "Release",
+        "--parallel",
+        "4"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-dynamic-resources",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/core_runtime.py",
+        "/workspace/ud-designer3-installed/c-build/consumer_resources"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "installed-host-pipeline",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/core_pipeline.py",
+        "/workspace/ud-designer3-installed/bundle/sdk/bin/universaldata/cli/ud_cli",
+        "/workspace/ud-designer3-installed/c-build/consumer_wire_decode"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "c-dynamic-sqlite",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/package_sql.py",
+        "/workspace/ud-designer3-installed/c-build/consumer_sql",
+        "/workspace/ud-designer3-installed/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-restore-package",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "restore",
+        "/workspace/ud-designer3-installed/dotnet-package/Consumer.csproj",
+        "--source",
+        "/workspace/ud-designer3-installed/bundle/packages",
+        "--packages",
+        "/workspace/ud-designer3-installed/nuget-cache",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-build-package",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "build",
+        "/workspace/ud-designer3-installed/dotnet-package/Consumer.csproj",
+        "--configuration",
+        "Release",
+        "--no-restore",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-restore-data",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "restore",
+        "/workspace/ud-designer3-installed/dotnet-data/DataConsumer.csproj",
+        "--source",
+        "/workspace/ud-designer3-installed/bundle/packages",
+        "--packages",
+        "/workspace/ud-designer3-installed/nuget-cache",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "nuget-build-data",
+      "command": [
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "build",
+        "/workspace/ud-designer3-installed/dotnet-data/DataConsumer.csproj",
+        "--configuration",
+        "Release",
+        "--no-restore",
+        "--nologo",
+        "--verbosity:minimal"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "maven-install",
+      "command": [
+        "/workspace/.universaldata-tools/maven/bin/mvn",
+        "-B",
+        "-q",
+        "-s",
+        "/workspace/.universaldata-tools/maven-settings.xml",
+        "-f",
+        "/workspace/ud-designer3-installed/bundle/packages/universal-data-2.2.0.pom",
+        "install:install-file",
+        "-Dfile=/workspace/ud-designer3-installed/bundle/packages/universal-data-2.2.0.jar",
+        "-DpomFile=/workspace/ud-designer3-installed/bundle/packages/universal-data-2.2.0.pom",
+        "-DlocalRepositoryPath=/workspace/ud-designer3-installed/maven-repository"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "maven-consumer",
+      "command": [
+        "/workspace/.universaldata-tools/maven/bin/mvn",
+        "-B",
+        "-q",
+        "-s",
+        "/workspace/.universaldata-tools/maven-settings.xml",
+        "-f",
+        "/workspace/ud-designer3-installed/java-consumer/pom.xml",
+        "-Dmaven.repo.local=/workspace/ud-designer3-installed/java-cache",
+        "package"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-language-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/package_language_parity.py",
+        "/workspace/ud-designer3-installed/c-build/consumer_package",
+        "/workspace/ud-designer3-installed/c-build/consumer_data",
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "/workspace/ud-designer3-installed/dotnet-package/bin/Release/net8.0/Consumer.dll",
+        "/workspace/ud-designer3-installed/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "/workspace/ud-designer3-installed/java-consumer/target/classes",
+        "/workspace/ud-designer3-installed/maven-repository/org/universaldata/universal-data/2.2.0/universal-data-2.2.0.jar",
+        "/workspace/ud-designer3-installed/bundle/sdk/lib",
+        "--managed-native-local"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-native-query-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/next_phase_queries.py",
+        "--query",
+        "/workspace/ud-designer3-installed/c-build/consumer_query",
+        "--data",
+        "/workspace/ud-designer3-installed/c-build/consumer_data",
+        "--dotnet",
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "--data-dll",
+        "/workspace/ud-designer3-installed/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "--java",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "--classes",
+        "/workspace/ud-designer3-installed/java-consumer/target/classes",
+        "--jar",
+        "/workspace/ud-designer3-installed/maven-repository/org/universaldata/universal-data/2.2.0/universal-data-2.2.0.jar",
+        "--native",
+        "/workspace/ud-designer3-installed/bundle/sdk/lib",
+        "--sqlite",
+        "/workspace/ud-designer3-installed/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "bundle-advanced-metadata-parity",
+      "command": [
+        "/workspace/.universaldata-tools/bin/python3",
+        "/tmp/UniversalData-Next/tests/advanced_metadata.py",
+        "--query",
+        "/workspace/ud-designer3-installed/c-build/consumer_query",
+        "--sqlite",
+        "/workspace/ud-designer3-installed/bundle/sdk/lib/UniversalData/plugins/ud_connector_sqlite.so",
+        "--dotnet",
+        "/tmp/ud2-tools/dotnet10/dotnet",
+        "--data-dll",
+        "/workspace/ud-designer3-installed/dotnet-data/bin/Release/net8.0/DataConsumer.dll",
+        "--java",
+        "/workspace/.universaldata-tools/jdk17/bin/java",
+        "--classes",
+        "/workspace/ud-designer3-installed/java-consumer/target/classes",
+        "--jar",
+        "/workspace/ud-designer3-installed/maven-repository/org/universaldata/universal-data/2.2.0/universal-data-2.2.0.jar",
+        "--native",
+        "/workspace/ud-designer3-installed/bundle/sdk/lib"
+      ],
+      "exitCode": 0
+    },
+    {
+      "step": "installed-web-worker-browser",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/UniversalData-Next/tests/web_product.py",
+        "--url",
+        "http://127.0.0.1:42801",
+        "--root",
+        "/workspace/ud-designer3-installed/web/resources",
+        "--evidence",
+        "/workspace/ud-designer3-installed/browser",
+        "--browser-executable",
+        "/usr/bin/chromium"
+      ],
+      "exitCode": 0
+    }
+  ]
+}

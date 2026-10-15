@@ -20,7 +20,7 @@ foreach (string address in urls.Split(';')) {
         throw new InvalidDataException("Remote management endpoints require HTTPS");
 }
 builder.WebHost.UseUrls(urls);
-builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 16777216);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 67108864);
 string nodeId=builder.Configuration["node"] ?? Guid.NewGuid().ToString("N");
 if (!HostIdentity.ValidId(nodeId)) throw new InvalidDataException("Invalid dispatcher node identity");
 var configuration = new ProductConfiguration(Path.GetFullPath(builder.Configuration["worker"] ?? Path.Combine(AppContext.BaseDirectory,"worker","ud_worker.dll")),nodeId);
@@ -30,7 +30,7 @@ ManagementSecurity.Configure(builder,policy,identities);
 var app = builder.Build();
 app.Use(async (context,next) => {
     try { await next(); }
-    catch(UniversalDataException failure) { if (context.Response.HasStarted) throw; context.Response.StatusCode = failure.Code == StatusCode.Auth ? 403 : 422;
+    catch(UniversalDataException failure) { if (context.Response.HasStarted) throw; context.Response.StatusCode = failure.Code == StatusCode.Auth ? 403 : failure.Code == StatusCode.Fenced ? 409 : 422;
         await context.Response.WriteAsJsonAsync(new { result = failure.Status,error = failure.Code.ToString() }); }
     catch(Exception error) when(error is ArgumentException or JsonException or FormatException or OverflowException) {
         if (context.Response.HasStarted) throw; context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new { error = "Invalid request" }); }
@@ -42,34 +42,86 @@ app.UseDefaultFiles(); app.UseStaticFiles();
 var api = app.MapGroup("/api").RequireAuthorization();
 HostIdentity Identity(HttpContext context) => context.Identity(identities);
 HostPolicy Scope(HttpContext context) => policy.Bind(Identity(context));
-async Task<IResult> Inspect(HttpContext context,string mode,JsonElement package,JsonElement? payload = null,string permission = "package.read") {
+async Task<JsonElement> InspectValue(HttpContext context,string mode,JsonElement package,JsonElement? payload = null,string permission = "package.read") {
     var identity = Identity(context); string id = package.GetProperty("id").GetString()!; identity.Require(permission,id);
     var scoped = Scope(context); string text = package.GetRawText();
     var request = new WorkerRequest(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),mode,scoped,identity,text,Payload:payload,Isolated:scoped.RequiresIsolation(text));
-    return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,request,context.RequestAborted));
+    return await WorkerLauncher.Inspect(configuration.WorkerPath,request,context.RequestAborted);
 }
+async Task<IResult> Inspect(HttpContext context,string mode,JsonElement package,JsonElement? payload = null,string permission = "package.read") => Results.Json(await InspectValue(context,mode,package,payload,permission));
 const string empty = "{\"version\":11,\"id\":\"component-catalog\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
 api.MapGet("/components",async (HttpContext context) => {
     Identity(context).Require("component.read","*"); using var document = JsonDocument.Parse(empty); var scoped = Scope(context);
     return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"components",scoped,Identity(context),empty),context.RequestAborted));
+});
+api.MapGet("/connectors",async(HttpContext context)=>{
+    var scoped=Scope(context);var identity=Identity(context);identity.Require("component.read","*");identity.Require("resource.list","*");
+    var paths=scoped.PluginRoots.Where(Directory.Exists).SelectMany(root=>Directory.EnumerateFiles(root,"*",SearchOption.TopDirectoryOnly))
+        .Where(path=>Path.GetFileName(path).StartsWith("ud_connector_",StringComparison.Ordinal)&&Path.GetExtension(path) is ".so" or ".dll" or ".dylib")
+        .Where(path=>scoped.Authorize(scoped.Tenant,path,ConnectionAccess.Open)).Distinct(StringComparer.Ordinal).Take(32).ToArray();
+    foreach(string path in paths)HostFiles.NoLinks(path);
+    return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"connectors",scoped,identity,empty,
+        Payload:JsonSerializer.SerializeToElement(paths,HostPolicy.JsonOptions)),context.RequestAborted));
 });
 api.MapGet("/expression-language",async (HttpContext context) => {
     Identity(context).Require("component.read","*");using var document=JsonDocument.Parse(empty);var scoped=Scope(context);
     return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"expressionLanguage",scoped,Identity(context),empty),context.RequestAborted));
 });
 api.MapPost("/expression",async (ExpressionRequest request,HttpContext context) => {
-    var document=JsonNode.Parse(request.Package.GetRawText())!.AsObject();document["controlFlow"]=JsonNode.Parse("{\"tasks\":[],\"constraints\":[]}");document["dataFlows"]=new JsonArray();document.Remove("layout");using var package=JsonDocument.Parse(document.ToJsonString());
+    using var package=JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
     return await Inspect(context,"expression",package.RootElement,JsonSerializer.SerializeToElement(new {request.Schema,request.Source},HostPolicy.JsonOptions));
 });
 api.MapPost("/ports",async (PortRequest request,HttpContext context) => {
-    var document = JsonNode.Parse(request.Package.GetRawText())!.AsObject();
-    document["controlFlow"] = JsonNode.Parse("{\"tasks\":[],\"constraints\":[]}"); document["dataFlows"] = new JsonArray(); document.Remove("layout");
-    using var package = JsonDocument.Parse(document.ToJsonString());
+    using var package=JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
     return await Inspect(context,"ports",package.RootElement,JsonSerializer.SerializeToElement(new { request.PipelineId,request.ComponentId,request.Kind,request.Configuration },HostPolicy.JsonOptions));
 });
 api.MapPost("/validate",async (JsonElement document,HttpContext context) => await Inspect(context,"validate",document));
-api.MapPost("/schema",async (DiscoveryRequest request,HttpContext context) => await Inspect(context,"schema",request.Package,
-    JsonSerializer.SerializeToElement(new { request.Connection,table = request.Table ?? "" },HostPolicy.JsonOptions),"package.discover"));
+api.MapPost("/schema",async (DiscoveryRequest request,HttpContext context) => {
+    using var package=JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
+    return await Inspect(context,"schema",package.RootElement,
+        JsonSerializer.SerializeToElement(new { request.Connection,table = request.Table ?? "" },HostPolicy.JsonOptions),"package.discover");
+});
+api.MapPost("/preview",async (PreviewRequest request,HttpContext context) => {
+    var document=DesignerWorkspace.InspectionPackage(request.Package,true);
+    if(request.Package.TryGetProperty("extensions",out var extensions)&&extensions.GetArrayLength()!=0)return Results.BadRequest(new {error="Preview cannot load extensions"});
+    var pipeline=request.Package.GetProperty("dataFlows").EnumerateArray().Single(flow=>flow.GetProperty("id").GetString()==request.PipelineId).Clone();
+    using var package=JsonDocument.Parse(document.ToJsonString());
+    return await Inspect(context,"preview",package.RootElement,JsonSerializer.SerializeToElement(new {pipeline,request.ComponentId,request.SourceRows,request.SampleRows},HostPolicy.JsonOptions),"package.preview");
+});
+api.MapPost("/files/inspect",async (FileInspectionRequest request,HttpContext context) => {
+    using var package=JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
+    return await Inspect(context,"file",package.RootElement,JsonSerializer.SerializeToElement(new {request.Connection,configuration=new {format=request.Format,options=request.Options}},HostPolicy.JsonOptions),"package.discover");
+});
+api.MapPost("/metadata",async (MetadataRequest request,HttpContext context) => {
+    using var package=JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
+    return await Inspect(context,"metadata",package.RootElement,JsonSerializer.SerializeToElement(new {request.Connection,request.Kind,request.Parent,request.Offset},HostPolicy.JsonOptions),"package.discover");
+});
+api.MapPost("/schema/compare",async (SchemaComparisonRequest request,HttpContext context) => {
+    using var package=JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
+    return await Inspect(context,"schemaCompare",package.RootElement,JsonSerializer.SerializeToElement(new {request.Expected,request.Actual,request.Policy},HostPolicy.JsonOptions),"package.discover");
+});
+api.MapPost("/files/upload",async Task<IResult> (HttpContext context) => Results.Ok(await DesignerWorkspace.Upload(Scope(context),context.Request,context.RequestAborted)));
+api.MapGet("/drafts/{id}",(string id,HttpContext context) => DesignerWorkspace.ReadDraft(Scope(context),Identity(context),id) is {} draft ? Results.Ok(draft) : Results.NotFound());
+api.MapGet("/drafts",(HttpContext context)=>Results.Ok(DesignerWorkspace.ListDrafts(Scope(context),Identity(context))));
+api.MapPut("/drafts/{id}",(string id,DraftWrite request,HttpContext context) => Results.Ok(DesignerWorkspace.WriteDraft(Scope(context),Identity(context),id,request)));
+api.MapPost("/versions",(PublicationRequest request,HttpContext context) => Results.Ok(DesignerWorkspace.SaveVersion(Scope(context),Identity(context),request.Document,request.ExpectedPackageRevision)));
+api.MapPost("/publications",async (PublicationRequest request,HttpContext context,RunDispatcher dispatcher) => {
+    var identity=Identity(context);string id=request.Document.GetProperty("id").GetString()!;identity.Require("package.deploy",id);identity.Require("deployment.write",id);
+    await Inspect(context,"validate",request.Document);
+    var saved=DesignerWorkspace.SaveVersion(Scope(context),identity,request.Document,request.ExpectedPackageRevision);
+    using var version=JsonDocument.Parse(JsonSerializer.Serialize(saved,HostPolicy.JsonOptions));string revision=version.RootElement.GetProperty("revision").GetString()!;
+    var deployment=dispatcher.For(identity).Deploy(identity,new(id,id,revision));return Results.Ok(new {deployment,revision,document=request.Document});
+});
+api.MapPost("/tests",async (TestRequest request,HttpContext context,RunDispatcher dispatcher) => {
+    var identity=Identity(context);var package=DesignerWorkspace.IsolatedTest(Scope(context),identity,request);
+    using var original=JsonDocument.Parse(package.ToJsonString());
+    var bound=await InspectValue(context,"reidentify",original.RootElement,JsonSerializer.SerializeToElement(new{id="test-"+Guid.NewGuid().ToString("N")},HostPolicy.JsonOptions));
+    using var doc=JsonDocument.Parse(bound.GetProperty("package").GetRawText());var plan=bound.GetProperty("plan");
+    foreach(var pipeline in plan.GetProperty("pipelines").EnumerateArray())foreach(var tree in pipeline.GetProperty("trees").EnumerateArray())foreach(var node in tree.GetProperty("nodes").EnumerateArray())
+        if((node.GetProperty("effects").GetUInt32()&2)!=0&&node.GetProperty("component").GetString()!="sql.destination")return Results.BadRequest(new {error="Test contains an external side effect outside approved SQL destinations"});
+    var saved=DesignerWorkspace.SaveVersion(Scope(context),identity,doc.RootElement,"0");
+    string id=doc.RootElement.GetProperty("id").GetString()!;return Results.Accepted(value:RunView(dispatcher.For(identity).Enqueue(identity,new(id,"1"))));
+});
 api.MapPost("/scripts/compile",async (ScriptRequest request,HttpContext context) => {
     var identity = Identity(context); identity.Require("script.compile","*"); var scoped = Scope(context);
     return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"compile",scoped,identity,
@@ -105,6 +157,7 @@ api.MapPost("/executions",(RunRequest request,HttpContext context,RunDispatcher 
 api.MapGet("/executions/{ticket}",(string ticket,HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Get(Identity(context),ticket) is { } run ? Results.Ok(RunView(run)) : Results.NotFound());
 api.MapPost("/executions/{ticket}/cancel",async (string ticket,HttpContext context,RunDispatcher dispatcher) => { await dispatcher.For(Identity(context)).Cancel(Identity(context),ticket); return Results.Accepted(); });
 api.MapPost("/executions/{ticket}/resume",(string ticket,HttpContext context,RunDispatcher dispatcher) => Results.Accepted(value:RunView(dispatcher.For(Identity(context)).Resume(Identity(context),ticket))));
+api.MapGet("/executions/{ticket}/metrics",async (string ticket,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).Metrics(Identity(context),ticket)));
 api.MapGet("/executions/{ticket}/debug",async (string ticket,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).Debug(Identity(context),ticket)));
 api.MapPost("/executions/{ticket}/debug",async (string ticket,JsonElement command,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).Debug(Identity(context),ticket,command)));
 api.MapGet("/jobs",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Jobs(Identity(context)).Select(JobView));
@@ -125,11 +178,11 @@ api.MapPost("/logs/retention",(RetentionRequest request,HttpContext context) => 
 });
 api.MapGet("/resources",(HttpContext context) => { var scope = Scope(context); scope.Identity.Require("resource.list","*");
     return new { fileRoots = scope.FileRoots,readOnlyRoots = scope.ReadOnlyRoots,networkOrigins = scope.NetworkOrigins,credentialReferences = scope.CredentialFiles.Keys,
-        resources = scope.Resources?.Keys.Where(resource => scope.Identity.Allows("resource.open",resource)) }; });
+        testResources = scope.TestResources ?? [], resources = scope.Resources?.Keys.Where(resource => scope.Identity.Allows("resource.open",resource)) }; });
 api.MapGet("/health",() => new { sdk = ProductInfo.Sdk,protocol = ProductInfo.Protocol });
 app.MapFallbackToFile("index.html"); app.Run();
 
-static object RunView(RunState value) => new { value.Version,value.Id,value.PackageId,value.PackageRevision,value.State,value.ExecutionId,value.Resume,value.Result,
+static object RunView(RunState value) => new { value.Version,value.Id,value.PackageId,value.PackageRevision,value.State,value.ExecutionId,value.Resume,value.Result,value.Failure,
     value.TimestampMs,value.Revision,value.JobId,value.Attempt,value.NotBeforeMs,value.Debug,value.DeploymentId,value.DeploymentRevision,value.Subject,value.ProcessId,workerNode=value.Owner };
 static object JobView(JobState value) => new { value.Version,value.Id,value.PackageId,value.PackageRevision,value.ParametersReference,value.Enabled,value.EverySeconds,
     value.NextDueMs,value.MaxConcurrency,value.MaxAttempts,value.RetryDelaySeconds,value.Revision,value.DeploymentId,value.DeploymentRevision,value.Subject };
@@ -144,3 +197,5 @@ sealed record RetentionRequest(ulong BeforeMs,uint Limit = 1000);
 sealed record PortRequest(JsonElement Package,string PipelineId,string ComponentId,string Kind,JsonElement Configuration);
 
 record ExpressionRequest(JsonElement Package,JsonElement Schema,string Source);
+
+record SchemaComparisonRequest(JsonElement Package,JsonElement Expected,JsonElement Actual,JsonElement Policy);

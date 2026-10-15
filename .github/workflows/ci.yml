@@ -65,6 +65,12 @@ jobs:
           cmake --build build/core --config Release --parallel 4
           ctest --test-dir build/core -C Release --output-on-failure --parallel 4 --no-tests=error --output-junit core-results.xml -LE 'real-integration|ssis-golden'
           python scripts/ctest_release_gate.py build/core/core-results.xml
+      - name: Real Designer, Worker and Native browser recovery
+        if: runner.os == 'Linux'
+        run: |
+          python -m pip install -r tests/requirements-browser.txt
+          python -m playwright install --with-deps chromium
+          python tests/web_host.py --dotnet dotnet --management build/core/hosts/product/management/UniversalData.Management.dll --worker build/core/hosts/product/worker/ud_worker.dll --evidence build/core/browser
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -72,6 +78,7 @@ jobs:
           path: |
             build/core/Testing
             build/core/core-results.xml
+            build/core/browser
           if-no-files-found: error
   complete-drivers-and-delivery:
     # Configured independent resources are required for complete PRODUCT gates.

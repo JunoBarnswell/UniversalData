@@ -1,0 +1,64 @@
+{
+  "status": "Passed",
+  "noJsonFileToMySQL": true,
+  "nativeSourceDiscovery": true,
+  "nativeConnection": true,
+  "visualMapping": true,
+  "readonlySinkPreview": true,
+  "currentDraftPublication": true,
+  "publishDoesNotExecute": true,
+  "writeConfirmation": true,
+  "nativeFormulaDiagnostics": true,
+  "nativeSplitPriority": true,
+  "sevenTargetRun": "06e0a61f27e8484487363236b2ffb992",
+  "isolatedRun": "8becbeaed990419086625bfeb2f37af7",
+  "readonlySQLSource": true,
+  "xlsxIsolated": true,
+  "productionUnchanged": true,
+  "errors": [],
+  "console": [
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "level": "warning",
+      "text": "Unknown highlighting tag function(variableName)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+    }
+  ],
+  "http": [
+    {
+      "status": 401,
+      "path": "/auth/session"
+    },
+    {
+      "status": 422,
+      "path": "/ports"
+    },
+    {
+      "status": 404,
+      "path": "/drafts/workbench-b9ef6df664f240bbaf047665f5c8f864"
+    },
+    {
+      "status": 400,
+      "path": "/executions/06e0a61f27e8484487363236b2ffb992/debug"
+    }
+  ],
+  "browserPlugin": "Browser plugin not available"
+}

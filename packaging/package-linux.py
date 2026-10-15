@@ -26,6 +26,8 @@ version = product['sdkVersion']
 assert sys.platform.startswith('linux') and not output.exists(), 'Use a new Linux artifact directory'
 cache = (build / 'CMakeCache.txt').read_text()
 assert 'CMAKE_BUILD_TYPE:STRING=Release' in cache and 'UD_SANITIZE:BOOL=ON' not in cache
+assert re.search(r'^CMAKE_PROJECT_VERSION:STATIC=' + re.escape(version) + r'$', cache, re.M), \
+    'Reconfigure the build from the authoritative product version before packaging'
 inventory = json.loads(a.runtime_dependencies.read_text())
 assert isinstance(inventory, list) and inventory, 'Explicit runtime inventory is required'
 

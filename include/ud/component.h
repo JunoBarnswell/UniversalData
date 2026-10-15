@@ -43,6 +43,8 @@ typedef ud_status (*ud_component_emit_event)(void *, uint32_t, const ud_componen
 typedef struct ud_component_plan ud_component_plan;
 enum { UD_PORT_INPUT = 1, UD_PORT_OUTPUT = 2, UD_PORT_REQUIRED = 1, UD_PORT_ERROR = 2 };
 typedef struct ud_component_port {
+    /* Logical Package graph identity; independent of tenant, project binding
+     * and activation. Schema/row identities retain their physical scope. */
     ud_id id;
     ud_string name;
     uint32_t direction, index, flags;
@@ -95,6 +97,9 @@ typedef struct ud_component_context {
  * schema boundaries. These callbacks cannot emit or schedule MORE/END; Native
  * owns control propagation and checkpoints the resulting component state. */
 #define UD_COMPONENT_CONTROL_EVENTS UINT64_C(0x0004000000000000)
+/* Explicit opt-in: prepare/step/finish perform no external writes. Native still
+ * checks the bound effect plan and denies write/receipt/execute capabilities. */
+#define UD_COMPONENT_PREVIEW_SAFE UINT64_C(0x0001000000000000)
 #define UD_FUNCTION_CONTEXTUAL UINT64_C(0x0002000000000000)
 #define UD_FUNCTION_PURE UINT64_C(0x2000000000000000)
 #define UD_FUNCTION_DETERMINISTIC UINT64_C(0x1000000000000000)
@@ -178,6 +183,7 @@ UD_API void ud_component_plan_clear(ud_component_plan *);
 UD_API uint64_t ud_registry_features(void);
 /* Additional Registry/runtime feature bits; independent of descriptor caps. */
 #define UD_REGISTRY_SCOPED_JOURNAL UINT64_C(1)
+#define UD_REGISTRY_READONLY_PREVIEW UINT64_C(2)
 UD_API ud_status ud_registry_create(ud_context *, ud_registry **);
 /* Copies descriptor metadata, retains callback user by contract (host lifetime).
  * Duplicate IDs reject. Built-in IDs cannot be shadowed. Registry mutations and

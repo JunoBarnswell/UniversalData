@@ -5,7 +5,7 @@ set(src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/cdc.c ${PROJECT_SOURCE_DIR}/con
 if(UD_WITH_ARROW_FILES)
   list(APPEND src ${PROJECT_SOURCE_DIR}/connectors/columnar_file.cpp)
 endif()
-list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/debug.c ${CMAKE_CURRENT_SOURCE_DIR}/file_generation.c)
+list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/debug.c ${CMAKE_CURRENT_SOURCE_DIR}/preview.c ${CMAKE_CURRENT_SOURCE_DIR}/file_inspection.c ${CMAKE_CURRENT_SOURCE_DIR}/definition.c ${CMAKE_CURRENT_SOURCE_DIR}/file_generation.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/network.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/wmi.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/sqlserver.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/column_file.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/avro.c ${PROJECT_SOURCE_DIR}/connectors/avro.c)
 if(UD_WITH_XML)

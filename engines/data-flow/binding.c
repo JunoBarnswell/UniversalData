@@ -292,7 +292,7 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
         s = ud_derive_bind(c, config, in[0], &plan, out);
         ud_derive_destroy(plan);
     } else if (!s && (kind == SORT || kind == JOIN || kind == WINDOW || kind == AGGREGATE)) {
-        ud_operator *operator= NULL;
+        ud_operator *operator = NULL;
         s = ud_builtin_create_operator(c, kind, config, in, &operator);
         if (!s)
             s = ud_operator_schema(operator, 0, out);
@@ -380,8 +380,10 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
             int policy;
             s = ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy);
             ud_string statement = {0};
-            if (!s) s = ud_json_string(ud_member(config,"statement"),&statement);
-            if (!s) s = ud_sql_validate_record_command(statement);
+            if (!s)
+                s = ud_json_string(ud_member(config, "statement"), &statement);
+            if (!s)
+                s = ud_sql_validate_record_command(statement);
             const ud_json *parameters = ud_member(config, "parameters");
             for (uint32_t at = 0; !s && at < ud_json_size(parameters); at++) {
                 uint64_t column;
@@ -511,9 +513,15 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
             if (names && kind == SPLIT && direction) {
                 if (i + 2 < ports->output_count) {
                     const ud_json *branch = ud_json_at(names, i);
-                    static const char *allow[] = {"id", "condition"};
-                    s = ud_json_keys(branch, allow, 2);
-                    value = ud_member(branch, "id");
+                    static const char *allow[] = {"id", "name", "condition"};
+                    s = ud_json_keys(branch, allow, 3);
+                    value = ud_member(branch, "name") ? ud_member(branch, "name")
+                                                      : ud_member(branch, "id");
+                    ud_string logical = {0};
+                    if (!s)
+                        s = ud_json_string(ud_member(branch, "id"), &logical);
+                    if (!s)
+                        s = ud_component_port_identity(c, direction, logical, &port->id);
                 } else if (i + 2 == ports->output_count)
                     value = ud_member(config, "default");
             }

@@ -22,7 +22,9 @@ public sealed record RunState(int Version, string Id, string PackageId, string P
     string State, string Subject, string SubjectStamp, string ControlReference, string ExecutionId = "", bool Resume = false, ulong ExecutionRevision = 0,
     int Result = 0, int? ProcessId = null, string? Owner = null, long TimestampMs = 0, ulong Revision = 1,
     long? ProcessStartedAtMs = null, string? JobId = null, uint Attempt = 1, long NotBeforeMs = 0,
-    JsonElement? Debug = null, string? DeploymentId = null, string? DeploymentRevision = null, int RecordVersion = 2);
+    JsonElement? Debug = null, string? DeploymentId = null, string? DeploymentRevision = null, int RecordVersion = 2, RunFailure? Failure = null);
+public sealed record RunFailure(int Result,string Phase,string ErrorType);
+internal sealed class WorkerFailureException(RunFailure failure) : Exception("Worker lifecycle failed") { public RunFailure Failure { get; }=failure; }
 
 /// <summary>Tenant-separated dispatch over one Native execution and Catalog contract.</summary>
 public sealed class RunDispatcher(HostPolicy root, ProductConfiguration configuration, IdentityDirectory identities) : BackgroundService
@@ -157,7 +159,7 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
             var state = Get(id); identity.Require("package.execute",state.PackageId);
             using var catalog = policy.OpenCatalog();
             if (state.State != "RecoveryRequired" || state.ExecutionId.Length == 0 || workers.ContainsKey(id) || Alive(state) || catalog.LeaseActive(CatalogKind.Audit,"run/"+id)) throw new ArgumentException("Execution is not ready for recovery");
-            state = state with { State = "Queued",Resume = true,ExecutionRevision = catalog.LatestRevision(CatalogKind.Execution,state.ExecutionId),
+            state = state with { State = "Queued",Failure=null,Resume = true,ExecutionRevision = catalog.LatestRevision(CatalogKind.Execution,state.ExecutionId),
                 Subject = identity.Subject,SubjectStamp = identity.Stamp,Owner = null,ProcessId = null,Attempt=checked(state.Attempt+1),Revision = checked(state.Revision + 1),TimestampMs = Now };
             Save(state); return state;
         }
@@ -183,8 +185,22 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
     {
         identity.Require("execution.debug",id); var state = Get(id);
         using var catalog=policy.OpenCatalog();
+        if(state.Debug is not null && command is null && state.State is not ("Running" or "Claimed")) {
+            var revision=catalog.LatestRevision(CatalogKind.Audit,"debug/"+id);if(revision!=0){using var snapshot=JsonDocument.Parse(catalog.Get(CatalogKind.Audit,"debug/"+id,revision)!);return snapshot.RootElement.GetProperty("snapshot").Clone();}
+        }
         if (state.State != "Running" || state.Debug is null || !Alive(state) || !catalog.LeaseActive(CatalogKind.Audit,"run/"+id)) throw new ArgumentException("Execution is not an active debug session");
         return await WorkerControl.Send(policy.ControlDirectory(id),id,Token(state),command is null ? "snapshot" : "debug",command);
+    }
+    public async Task<JsonElement> Metrics(HostIdentity identity,string id)
+    {
+        identity.Require("execution.read",id);var state=Get(identity,id) ?? throw new ArgumentException("Execution was not found");
+        using var catalog=policy.OpenCatalog();
+        if(state.State=="Running"&&Alive(state)&&catalog.LeaseActive(CatalogKind.Audit,"run/"+id))
+            return await WorkerControl.Send(policy.ControlDirectory(id),id,Token(state),"metrics");
+        if(state.ExecutionId.Length==0)return JsonSerializer.SerializeToElement(new {metrics=new {},progress=new {pipelines=Array.Empty<object>()}},HostPolicy.JsonOptions);
+        var revision=catalog.LatestRevision(CatalogKind.Execution,state.ExecutionId);if(revision==0)throw new IOException("Native execution facts are unavailable");
+        using var record=JsonDocument.Parse(catalog.Get(CatalogKind.Execution,state.ExecutionId,revision)!);
+        return JsonSerializer.SerializeToElement(new {metrics=record.RootElement.Clone(),diagnostics=record.RootElement.TryGetProperty("diagnostics",out var details)?details.Clone():(JsonElement?)null},HostPolicy.JsonOptions);
     }
     private static bool Alive(RunState state)
     {
@@ -334,6 +350,7 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
                     var text = await WorkerProtocol.ReadLine(process.StandardOutput,67108864,deadline.Token) ?? throw new InvalidDataException("Worker outcome is unknown");
                     using var message = JsonDocument.Parse(text); var value = message.RootElement;
                     if (value.GetProperty("version").GetInt32() != ProductInfo.Protocol || value.GetProperty("ticket").GetString() != id) throw new InvalidDataException("Worker identity differs from dispatch");
+                    if(value.GetProperty("kind").GetString()=="failed")throw new WorkerFailureException(new RunFailure(value.GetProperty("result").GetInt32(),value.GetProperty("phase").GetString()!,value.GetProperty("errorType").GetString()!));
                     if (value.GetProperty("kind").GetString() == "catalog") {
                         var kind=(CatalogKind)value.GetProperty("catalogKind").GetInt32();
                         if (kind is not (CatalogKind.Execution or CatalogKind.Event)) throw new InvalidDataException("Worker returned an invalid Catalog kind");
@@ -366,13 +383,17 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
                 CheckDeployment(state.DeploymentId,state.DeploymentRevision,state.PackageId,state.PackageRevision);
                 if (catalog.Get(CatalogKind.Audit,"cancel/"+id,state.Attempt) is not null)
                     throw new OperationCanceledException("Dispatch was cancelled before Native start");
-                state = Get(id) with { State = "Running",ExecutionId = nativeId,ProcessId = process.Id,ProcessStartedAtMs = new DateTimeOffset(process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds(),
+                state = Get(id) with { State = "Running",Failure=null,ExecutionId = nativeId,ProcessId = process.Id,ProcessStartedAtMs = new DateTimeOffset(process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds(),
                     Revision = checked(Get(id).Revision + 1),TimestampMs = Now }; Save(state);
             }
             startSent = true; await process.StandardInput.WriteLineAsync("start"); await process.StandardInput.FlushAsync(deadline.Token);
             var terminal = await Read("terminal");
             if (terminal.GetProperty("executionId").GetString() != nativeId) throw new InvalidDataException("Worker terminal identity differs");
             catalog.Put(CatalogKind.Execution,nativeId,terminal.GetProperty("revision").GetUInt64(),terminal.GetProperty("record").GetRawText());
+            if(terminal.TryGetProperty("debug",out var debug)&&debug.ValueKind==JsonValueKind.Object) {
+                string debugId="debug/"+id;ulong revision=catalog.LatestRevision(CatalogKind.Audit,debugId)+1;
+                catalog.Put(CatalogKind.Audit,debugId,revision,JsonSerializer.Serialize(new {version=ProductInfo.Protocol,id=debugId,snapshot=debug},HostPolicy.JsonOptions));
+            }
             int result = terminal.GetProperty("result").GetInt32(); string final = terminal.GetProperty("state").GetString()!;
             if (final is not ("Succeeded" or "Failed" or "Cancelled" or "RecoveryRequired")) throw new InvalidDataException("Invalid Native terminal state");
             lock(gate) {
@@ -386,8 +407,9 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
             await process.WaitForExitAsync(deadline.Token);
         } catch(Exception error) when(error is not OutOfMemoryException) {
             bool unknown = startSent || isolated && process is not null || state.Resume && state.Result==(int)StatusCode.CommitUnknown;
+            var failure=error is WorkerFailureException worker?worker.Failure:new RunFailure(error is UniversalDataException nativeError?nativeError.Status:error is IOException?(int)StatusCode.Io:(int)StatusCode.Invalid,"dispatch",error.GetType().Name);
             try { lock(gate) { var current = Get(id); if (!terminalRecorded && current.State != "Cancelled") Save(current with { State = unknown ? "RecoveryRequired" : Volatile.Read(ref cancelled)!=0 ? "Cancelled" : "Failed",
-                Result = unknown ? (int)StatusCode.CommitUnknown : error is UniversalDataException native ? native.Status : (int)StatusCode.Invalid,
+                Result = unknown ? (int)StatusCode.CommitUnknown : failure.Result,Failure=failure,
                 Revision = checked(current.Revision + 1),TimestampMs = Now }); } }
             catch(UniversalDataException fenced) when(fenced.Code==StatusCode.Fenced) { /* New owner will reconcile unknown effects. */ }
         } finally {

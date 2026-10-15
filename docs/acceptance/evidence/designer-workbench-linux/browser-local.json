@@ -1,0 +1,43 @@
+{
+  "status": "Passed",
+  "packageId": "task-1a44f16f-8936-4488-aafc-162fa34ddf7a",
+  "sourceDiscovery": true,
+  "noJsonEditor": true,
+  "nativeFormulaCompile": true,
+  "nativeBeforeAfter": true,
+  "dragUndoRedo": true,
+  "currentDraftPublication": true,
+  "publishDoesNotExecute": true,
+  "previewDoesNotWrite": true,
+  "definitionBreakpoint": true,
+  "nativeStep": true,
+  "actualWorkerTermination": true,
+  "resumeSameNativeId": true,
+  "outputSignature": "476ed7810ec5a1b7a3c46faab9b9756fccebe2b977325c165ac00bc8ad9e8105",
+  "browserErrors": [],
+  "consoleMessages": [
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+    }
+  ],
+  "httpErrors": [
+    {
+      "status": 401,
+      "path": "/api/auth/session"
+    },
+    {
+      "status": 400,
+      "path": "/api/executions/9b8ddda76f644a2dbeb9427de51c499a/debug"
+    }
+  ],
+  "browserPlugin": "Browser plugin not available"
+}

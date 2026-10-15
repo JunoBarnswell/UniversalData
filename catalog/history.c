@@ -72,6 +72,28 @@ ud_status ud_catalog_record_execution(ud_catalog *c, const ud_execution *e, uint
         s = ud_bytes_put(&b, values, (size_t)count);
     if (!s && b.size > UINT32_MAX)
         s = UD_OVERFLOW;
+    if (!s && b.size) {
+        b.size--;
+        char facts[512];
+        int n = snprintf(
+            facts, sizeof(facts),
+            ",\"committedRows\":%llu,\"acknowledgedRows\":%llu,\"errorRows\":%llu,"
+            "\"committedErrorRows\":%llu,\"acknowledgedErrorRows\":%llu,\"errorCount\":%llu,"
+            "\"diagnostics\":",
+            (unsigned long long)m.committed_rows, (unsigned long long)m.acknowledged_rows,
+            (unsigned long long)m.error_rows, (unsigned long long)m.committed_error_rows,
+            (unsigned long long)m.acknowledged_error_rows, (unsigned long long)m.error_count);
+        s = ud_bytes_put(&b, facts, (size_t)n);
+        char *diagnostics = NULL;
+        uint32_t length = 0;
+        if (!s && m.state != UD_EXEC_RUNNING && m.state != UD_EXEC_DRAINING)
+            s = ud_execution_diagnostics((ud_execution *)e, &diagnostics, &length);
+        if (!s)
+            s = diagnostics ? ud_bytes_put(&b, diagnostics, length) : ud_bytes_put(&b, "null", 4);
+        ud_free(diagnostics);
+        if (!s)
+            s = ud_bytes_put(&b, "}", 1);
+    }
     ud_catalog_key key = {sizeof(key), UD_ABI_VERSION, UD_CATALOG_EXECUTION,
                           e->options.execution_id, revision};
     if (!s)

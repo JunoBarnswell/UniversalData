@@ -46,7 +46,7 @@ typedef struct mysql_state {
     ud_read_options record_options;
     char *host_name, *user, *password, *database, *ca, *cert, *key;
     uint32_t port, timeout;
-    int utc, transaction, broken, bulk_allowed;
+    int utc, transaction, broken, bulk_allowed, cursor_readonly;
     int cleanup, xa_state;
     char branch_id[65];
     unsigned int record_code;
@@ -77,7 +77,8 @@ static ud_status check(mysql_state *p) {
 static ud_status classify_failure(mysql_state *p, unsigned int code, const char *state) {
     if (!p->cleanup && atomic_load(&p->cancelled))
         return UD_CANCELLED;
-    if (code == 2002 || code == 2003 || code == 2005 || code == 2006 || code == 2013 || code == 2055) {
+    if (code == 2002 || code == 2003 || code == 2005 || code == 2006 || code == 2013 ||
+        code == 2055) {
         p->broken = 1;
         return UD_TRANSIENT;
     }
@@ -281,6 +282,10 @@ static ud_status read_close(void *state) {
     p->cursor = NULL;
     p->host.batch_destroy(p->schema);
     p->schema = NULL;
+    if (p->cursor_readonly) {
+        p->cursor_readonly = 0;
+        return command(p, "ROLLBACK");
+    }
     return UD_OK;
 }
 static ud_status read_open(void *state, const ud_read_options *o, const ud_batch *schema) {
@@ -288,7 +293,11 @@ static ud_status read_open(void *state, const ud_read_options *o, const ud_batch
     if (p->cursor)
         return UD_BUSY;
     MYSQL_STMT *stmt = NULL;
-    ud_status s = statement(p, o->sql, &stmt);
+    ud_status s = !p->transaction ? command(p, "START TRANSACTION READ ONLY") : UD_OK;
+    if (!s && !p->transaction)
+        p->cursor_readonly = 1;
+    if (!s)
+        s = statement(p, o->sql, &stmt);
     unsigned long cursor = CURSOR_TYPE_READ_ONLY, prefetch = o->batch_size;
     if (!s && (mysql_stmt_attr_set(stmt, STMT_ATTR_CURSOR_TYPE, &cursor) ||
                mysql_stmt_attr_set(stmt, STMT_ATTR_PREFETCH_ROWS, &prefetch)))
@@ -331,6 +340,12 @@ static ud_status read_open(void *state, const ud_read_options *o, const ud_batch
     if (s) {
         if (stmt)
             mysql_stmt_close(stmt);
+        if (p->cursor_readonly) {
+            p->cursor_readonly = 0;
+            ud_status closed = command(p, "ROLLBACK");
+            if (closed)
+                return closed;
+        }
         return s;
     }
     p->cursor = stmt;
@@ -2001,13 +2016,13 @@ ud_status ud_mysql_initialize(const ud_host_api *h, const char *configuration, u
 const ud_connector_api ud_mysql_connector = {
     .struct_size = sizeof(ud_connector_api),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities = UD_CONNECT_TRANSACTIONAL_DML | UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS |
-                    UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
-                    UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
-                    UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET | UD_CONNECT_CDC |
-                    UD_CONNECT_NATIVE_CDC | UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE |
-                    UD_CONNECT_PROVISION | UD_CONNECT_NATIVE_BULK |
-                    UD_CONNECT_TRANSACTION_PARTICIPANT,
+    .capabilities = UD_CONNECT_READONLY_SCAN | UD_CONNECT_TRANSACTIONAL_DML | UD_CONNECT_READ |
+                    UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT |
+                    UD_CONNECT_DELETE | UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL |
+                    UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL |
+                    UD_CONNECT_CHANGESET | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC |
+                    UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION |
+                    UD_CONNECT_NATIVE_BULK | UD_CONNECT_TRANSACTION_PARTICIPANT,
     .test = test,
     .discover = discover,
     .read_open = read_open,

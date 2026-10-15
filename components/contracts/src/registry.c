@@ -77,7 +77,8 @@ static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor 
     int function = d->category == UD_COMPONENT_FUNCTION;
     int task = d->category == UD_COMPONENT_TASK;
     int enumerator = d->category == UD_COMPONENT_ENUMERATOR;
-    if ((function || task || enumerator) && (d->capabilities & UD_COMPONENT_CONTROL_EVENTS)) return UD_SCHEMA;
+    if ((function || task || enumerator) && (d->capabilities & UD_COMPONENT_CONTROL_EVENTS))
+        return UD_SCHEMA;
     if ((function && d->cancel) || ((function || task || enumerator) && d->describe_plan))
         return UD_SCHEMA;
     if (!function &&
@@ -315,13 +316,14 @@ static ud_status describe_entry(ud_bytes *bytes, const ud_component_descriptor *
                      "\"errorOutput\":%d,\"synchronousInput\":%d,\"capabilities\":%llu,"
                      "\"optionalInputs\":%llu,\"optionalOutputs\":%llu,\"stateVersion\":%u,"
                      "\"effects\":%u,\"minimumArguments\":%u,\"maximumArguments\":%u,"
-                     "\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s}",
+                     "\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s,\"previewSafe\":%s}",
                      d->category, d->inputs, d->outputs, d->bind_ports ? "true" : "false",
                      d->error_output, d->synchronous_input, (unsigned long long)d->capabilities,
                      (unsigned long long)d->optional_inputs,
                      (unsigned long long)d->optional_outputs, d->state_version, d->effects,
                      d->min_arguments, d->max_arguments, d->checkpoint ? "true" : "false",
-                     d->restore ? "true" : "false", d->describe_plan ? "true" : "false");
+                     d->restore ? "true" : "false", d->describe_plan ? "true" : "false",
+                     d->capabilities & UD_COMPONENT_PREVIEW_SAFE ? "true" : "false");
     return n < 0 || (size_t)n >= sizeof(info) ? UD_RESOURCE : ud_bytes_put(bytes, info, (size_t)n);
 }
 ud_status ud_registry_describe(const ud_registry *r, char **out, uint32_t *length) {
@@ -379,5 +381,5 @@ ud_status ud_component_plan_copy(ud_context *ctx, const ud_component_plan *sourc
 }
 
 uint64_t ud_registry_features(void) {
-    return UD_COMPONENT_CONTROL_EVENTS | UD_REGISTRY_SCOPED_JOURNAL;
+    return UD_COMPONENT_CONTROL_EVENTS | UD_REGISTRY_SCOPED_JOURNAL | UD_REGISTRY_READONLY_PREVIEW;
 }
