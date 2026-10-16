@@ -16,11 +16,11 @@
   },
   "candidate": {
     "branch": "codex/studio4-stream-batch",
-    "state": "Draft review candidate; current portable checks passed. Planned extensions and blocked production/platform gates are explicit.",
-    "sourceCommit": null,
+    "state": "Draft PR #10; 75 portable checks passed and 1 Windows SSIS check skipped. Production gates, one-hour soak and planned extensions remain explicit.",
+    "sourceCommit": "9d0630980cafb34170f9fb8d1d1d1f2cae6f4e7d",
     "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
     "mergeEvidence": null,
-    "pullRequest": null
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/10"
   },
   "remoteCI": {
     "state": "NotRun",

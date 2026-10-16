@@ -26,11 +26,11 @@
   },
   "candidate": {
     "branch": "codex/studio4-stream-batch",
-    "state": "Draft review candidate; current portable checks passed. Planned extensions and blocked production/platform gates are explicit.",
-    "sourceCommit": null,
+    "state": "Draft PR #10; 75 portable checks passed and 1 Windows SSIS check skipped. Production gates, one-hour soak and planned extensions remain explicit.",
+    "sourceCommit": "9d0630980cafb34170f9fb8d1d1d1f2cae6f4e7d",
     "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
     "mergeEvidence": null,
-    "pullRequest": null
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/10"
   },
   "goals": [
     {
@@ -1558,7 +1558,7 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "cd3dcf6c89cdcd038ca31fe844049122718bed4baace615f6a3265c67ab82596"
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
           "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
@@ -1601,7 +1601,7 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "cd3dcf6c89cdcd038ca31fe844049122718bed4baace615f6a3265c67ab82596"
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
           "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
@@ -1637,7 +1637,7 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "cd3dcf6c89cdcd038ca31fe844049122718bed4baace615f6a3265c67ab82596"
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
           "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
@@ -1680,7 +1680,7 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "cd3dcf6c89cdcd038ca31fe844049122718bed4baace615f6a3265c67ab82596"
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
           "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
@@ -1716,7 +1716,7 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "cd3dcf6c89cdcd038ca31fe844049122718bed4baace615f6a3265c67ab82596"
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
           "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
@@ -1752,7 +1752,7 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "cd3dcf6c89cdcd038ca31fe844049122718bed4baace615f6a3265c67ab82596"
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
           "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
@@ -1795,7 +1795,7 @@
       "evidence": [
         {
           "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "cd3dcf6c89cdcd038ca31fe844049122718bed4baace615f6a3265c67ab82596"
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
           "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",

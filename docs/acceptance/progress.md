@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 4.0.0 / ABI 12；Draft review candidate; current portable checks passed. Planned extensions and blocked production/platform gates are explicit.。
+SDK 4.0.0 / ABI 12；Draft PR #10; 75 portable checks passed and 1 Windows SSIS check skipped. Production gates, one-hour soak and planned extensions remain explicit.。
 
 门禁通过 2/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
