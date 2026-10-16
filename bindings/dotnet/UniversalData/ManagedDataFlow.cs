@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace UniversalData;
 
 public enum ComponentCategory { Source = 2, Transform = 3, Destination = 4 }
-public enum ComponentEventKind { Data = 1, InputEnd = 2, Poll = 3, Watermark = 4, Barrier = 5, SchemaChange = 6 }
+public enum ComponentEventKind { Data = 1, InputEnd = 2, Poll = 3, Watermark = 4, Barrier = 5, SchemaChange = 6, Idle = 7, Active = 8 }
 [Flags] public enum SourceAcknowledgement { None = 0, Final = 1, Epoch = 2 }
 [Flags] public enum ComponentEffects { None = 0, ExternalRead = 1, ExternalWrite = 2, Transactional = 4, Receipted = 8, CommitUnknown = 16, Idempotent = 32, KeyedReplace = 64 }
 public sealed record ManagedComponentDefinition(string Id, string Name, ComponentCategory Category,
@@ -14,7 +14,7 @@ public sealed record ManagedComponentDefinition(string Id, string Name, Componen
     ComponentEffects Effects = ComponentEffects.None, string? Version = null,
     bool ReplaySafe = false, SourceAcknowledgement Acknowledgement = SourceAcknowledgement.None, bool HandlesControlEvents = true,
     Func<string, ManagedPortBinding>? BindPorts = null,
-    Func<ManagedComponentContext, string, string[], ManagedPhysicalPlan>? DescribePlan = null);
+    Func<ManagedComponentContext, string, string[], ManagedPhysicalPlan>? DescribePlan = null, bool Continuous = false, bool StreamSafe = false, bool OwnsWatermark = false);
 public interface IManagedComponent : IDisposable
 {
     void Open(ManagedComponentContext context, string configuration, string[] inputs, string[] outputs) { }
@@ -124,6 +124,7 @@ public sealed class ManagedComponentContext
         Check(Native.ud_schema_to_json_raw(schema,out var text,out var length)); return DataOwnership.Text(text,length);
     }
     public uint MaximumBatchRows { get { callback.Open(); return value.MaxRows; } }
+    public bool IsStopping { get { callback.Open(); return Native.ud_activation_stopping(value.Activation) != 0; } }
     public void CheckCancellation() { callback.Open(); Check(Native.ud_activation_check(value.Activation)); }
     public ManagedBatch CreateBatch(string schemaJson, string rowsJson) {
         callback.Open(); var schema = Utf8.Bytes(schemaJson); var rows = Utf8.Bytes(rowsJson);
@@ -158,7 +159,7 @@ public sealed partial class Registry
                 Id = strings.Pin(definition.Id), Name = strings.Pin(definition.Name), Version = strings.Pin(definition.Version ?? ProductVersion.Sdk),
                 Configuration = strings.Pin(definition.ConfigurationSchema), Category = (int)definition.Category, Inputs = definition.Inputs, Outputs = definition.Outputs,
                 SynchronousInput = definition.SynchronousInput, ErrorOutput = definition.ErrorOutput, OptionalInputs = definition.OptionalInputs, OptionalOutputs = definition.OptionalOutputs,
-                Capabilities = (definition.HandlesControlEvents ? 0x0004000000000000UL : 0) | (definition.ReplaySafe ? 0x8000000000000000UL : 0) | (definition.ThreadSafe ? 0x4000000000000000UL : 0) | (definition.Stateful ? 0x0800000000000000UL : 0) | (definition.Blocking ? 0x0400000000000000UL : 0),
+                Capabilities = (definition.OwnsWatermark ? 0x0000200000000000UL : 0) | (definition.Continuous ? 0x0000800000000000UL : 0) | (definition.StreamSafe ? 0x0000400000000000UL : 0) | (definition.HandlesControlEvents ? 0x0004000000000000UL : 0) | (definition.ReplaySafe ? 0x8000000000000000UL : 0) | (definition.ThreadSafe ? 0x4000000000000000UL : 0) | (definition.Stateful ? 0x0800000000000000UL : 0) | (definition.Blocking ? 0x0400000000000000UL : 0),
                 StateVersion = definition.StateVersion, Effects = (uint)definition.Effects, User = registration.Pointer,
                 Configure = Marshal.GetFunctionPointerForDelegate(registration.Configure), Prepare = Marshal.GetFunctionPointerForDelegate(registration.Prepare),
                 Step = Marshal.GetFunctionPointerForDelegate(registration.Step), Finish = Marshal.GetFunctionPointerForDelegate(registration.Finish),

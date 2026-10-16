@@ -7,6 +7,9 @@ ud_status ud_operator_configuration_schema(int32_t kind, ud_string *out) {
         return UD_INVALID;
     const char *schema = NULL;
     switch (kind) {
+    case UD_OPERATOR_EVENT_WINDOW:
+        schema = "{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"tumbling\",\"sliding\",\"session\"],\"default\":\"tumbling\"},\"timeField\":{\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":\"string\",\"minLength\":1}],\"x-role\":\"field-selector\"},\"sizeMicros\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9223372036854775807,\"default\":60000000},\"slideMicros\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9223372036854775807,\"default\":60000000},\"gapMicros\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9223372036854775807,\"default\":30000000},\"allowedLatenessMicros\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9223372036854775807,\"default\":0},\"maxWindows\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":1000000,\"default\":4096},\"stateBytes\":{\"type\":\"integer\",\"minimum\":4096,\"default\":1048576},\"latePolicy\":{\"enum\":[\"fail\",\"drop\",\"redirect\"],\"default\":\"fail\"},\"plan\":{\"type\":\"object\"}},\"required\":[\"timeField\",\"plan\"],\"additionalProperties\":false}";
+        break;
     case UD_OPERATOR_CACHE_LOOKUP:
         schema =
             "{\"type\":\"object\",\"properties\":{\"cache\":{\"type\":\"string\",\"minLength\":1,"

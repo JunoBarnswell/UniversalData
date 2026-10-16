@@ -162,6 +162,8 @@ public sealed class Catalog : IDisposable
             DataOwnership.Check(context, Native.ud_catalog_record_event(catalog, ref value, executionEvent.Sequence));
         }
     }
+    public void RecordProgress(Execution execution, ulong revision)
+    { lock (sync) { Open(); execution.RecordProgress(catalog, revision); } }
     public void Record(Execution execution, ulong revision)
     { lock (sync) { Open(); execution.RecordCatalog(catalog, revision); } }
     public ulong PruneEvents(ulong beforeMilliseconds, uint limit = 1000)

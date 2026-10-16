@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { api, type Session } from "./api";
 import { Authentication, SessionControls } from "./Authentication";
-import { Editor, type OpenWorkspace } from "./Editor";
+import { Workspace, useWorkspaces } from "./features/workspace/Workspace";
+import { Appearance } from "./shared/design-system/Appearance";
 import { Executions } from "./Executions";
 import { Jobs } from "./Jobs";
 import { Projects } from "./Projects";
@@ -30,8 +31,8 @@ export default function App() {
 function AuthenticatedApp({ session }: { session: Session }) {
   const [page, setPage] = useState<Page>("projects"),
     [components, setComponents] = useState<Component[]>([]),
-    [error, setError] = useState(""),
-    [workspace, setWorkspace] = useState<OpenWorkspace>();
+    [error, setError] = useState("");
+  const workspace = useWorkspaces();
   useEffect(() => {
     const controller = new AbortController();
     api<Component[]>("/components", { signal: controller.signal })
@@ -67,6 +68,7 @@ function AuthenticatedApp({ session }: { session: Session }) {
             </button>
           ))}
         </nav>
+        <Appearance />
         <SessionControls session={session} />
       </header>
       {error ? (
@@ -80,7 +82,7 @@ function AuthenticatedApp({ session }: { session: Session }) {
       {page === "projects" ? (
         <Projects
           open={(version) => {
-            setWorkspace({
+            workspace.open({
               token: crypto.randomUUID(),
               document: version.document,
               revision: String(version.revision),
@@ -88,15 +90,16 @@ function AuthenticatedApp({ session }: { session: Session }) {
             setPage("designer");
           }}
           create={(importFile) => {
-            setWorkspace({ token: crypto.randomUUID(), import: importFile });
+            workspace.open({ token: crypto.randomUUID(), import: importFile });
             setPage("designer");
           }}
         />
       ) : null}
       <div className="designer-page" hidden={page !== "designer"}>
-        <Editor
+        <Workspace
+          visible={page === "designer"}
           components={components}
-          request={workspace}
+          workspace={workspace}
           onExecution={() => setPage("runs")}
         />
       </div>

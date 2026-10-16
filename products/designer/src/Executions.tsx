@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Search, Plus, Pause, Play, SkipForward } from "lucide-react";
+import { Search, Plus } from "lucide-react";
 import { api, post, encode } from "./api";
 import { ExecutionConfirmation } from "./ReleaseDialog";
-import { RunMonitor } from "./RunMonitor";
+import { RunMonitor } from "./features/observability/RunMonitor";
 import {
   stateName,
   failurePhase,
@@ -46,12 +46,6 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
   const [query, setQuery] = useState(""),
     [state, setState] = useState(""),
     [error, setError] = useState("");
-  const [debug, setDebug] = useState<{
-    paused: boolean;
-    pauseRequested: boolean;
-    preview: unknown;
-  }>();
-
   const [creating, setCreating] = useState(false),
     [deployments, setDeployments] = useState<Deployment[]>([]),
     [confirmation, setConfirmation] = useState<{
@@ -93,33 +87,6 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
       });
     return () => controller.abort();
   }, [run?.executionId, after, run?.state, componentFilter, errorOnly]);
-  const activeDebug = Boolean(run?.debug);
-  useEffect(() => {
-    if (!activeDebug || run?.state !== "Running") return;
-    const controller = new AbortController();
-    const update = () =>
-      api<{ paused: boolean; pauseRequested: boolean; preview: unknown }>(
-        `/executions/${run.id}/debug`,
-        { signal: controller.signal },
-      )
-        .then(setDebug)
-        .catch((error) => {
-          if (!controller.signal.aborted) setError(String(error));
-        });
-    void update();
-    const timer = window.setInterval(update, 1000);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [run?.id, run?.state, activeDebug]);
-  async function debugControl(action: string) {
-    try {
-      await post(`/executions/${selected}/debug`, { action });
-    } catch (error) {
-      setError(String(error));
-    }
-  }
   async function control(action: "cancel" | "resume") {
     try {
       await post(`/executions/${selected}/${action}`);
@@ -273,39 +240,7 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
           ) : (
             <p className="muted">选择执行以查看详情。</p>
           )}
-          <section className="debug-controls">
-            <h3>调试控制</h3>
-            <p className="muted">
-              {!run?.debug
-                ? "创建执行时开启调试。"
-                : debug?.paused
-                  ? "已在安全边界暂停。"
-                  : debug?.pauseRequested
-                    ? "正在等待安全边界。"
-                    : "调试会话运行中。"}
-            </p>
-            <button
-              disabled={!run?.debug || run.state !== "Running"}
-              onClick={() => void debugControl("pause")}
-            >
-              <Pause size={16} />
-              暂停
-            </button>
-            <button
-              disabled={!debug?.paused || run?.state !== "Running"}
-              onClick={() => void debugControl("continue")}
-            >
-              <Play size={16} />
-              继续
-            </button>
-            <button
-              disabled={!debug?.paused || run?.state !== "Running"}
-              onClick={() => void debugControl("step")}
-            >
-              <SkipForward size={16} />
-              单批次步进
-            </button>
-          </section>
+          {selected ? <RunMonitor key={`${selected}/${run?.attempt??0}`} ticket={selected} /> : null}
         </aside>
       </div>
       <section className="log-panel">
@@ -379,7 +314,6 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
           </button>
         </div>
       </section>
-      {selected ? <RunMonitor ticket={selected} /> : null}
       {creating ? (
         <div className="modal-backdrop">
           <section

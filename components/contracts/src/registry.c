@@ -74,6 +74,7 @@ static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor 
         ((d->capabilities & UD_COMPONENT_BLOCKING) &&
          (d->capabilities & UD_COMPONENT_PARTIALLY_BLOCKING)))
         return UD_SCHEMA;
+    if((d->capabilities & UD_COMPONENT_WATERMARK_POLICY) && (d->category != UD_COMPONENT_TRANSFORM || d->inputs!=1 || !(d->capabilities&UD_COMPONENT_CONTROL_EVENTS)))return UD_SCHEMA;
     int function = d->category == UD_COMPONENT_FUNCTION;
     int task = d->category == UD_COMPONENT_TASK;
     int enumerator = d->category == UD_COMPONENT_ENUMERATOR;
@@ -316,14 +317,17 @@ static ud_status describe_entry(ud_bytes *bytes, const ud_component_descriptor *
                      "\"errorOutput\":%d,\"synchronousInput\":%d,\"capabilities\":%llu,"
                      "\"optionalInputs\":%llu,\"optionalOutputs\":%llu,\"stateVersion\":%u,"
                      "\"effects\":%u,\"minimumArguments\":%u,\"maximumArguments\":%u,"
-                     "\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s,\"previewSafe\":%s}",
+                     "\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s,\"previewSafe\":%s,\"continuous\":%s,\"streamSafe\":%s,\"watermarkPolicy\":%s}",
                      d->category, d->inputs, d->outputs, d->bind_ports ? "true" : "false",
                      d->error_output, d->synchronous_input, (unsigned long long)d->capabilities,
                      (unsigned long long)d->optional_inputs,
                      (unsigned long long)d->optional_outputs, d->state_version, d->effects,
                      d->min_arguments, d->max_arguments, d->checkpoint ? "true" : "false",
                      d->restore ? "true" : "false", d->describe_plan ? "true" : "false",
-                     d->capabilities & UD_COMPONENT_PREVIEW_SAFE ? "true" : "false");
+                     d->capabilities & UD_COMPONENT_PREVIEW_SAFE ? "true" : "false",
+                     d->capabilities & UD_COMPONENT_CONTINUOUS ? "true" : "false",
+                     d->capabilities & UD_COMPONENT_STREAM_SAFE ? "true" : "false",
+                     d->capabilities & UD_COMPONENT_WATERMARK_POLICY ? "true" : "false");
     return n < 0 || (size_t)n >= sizeof(info) ? UD_RESOURCE : ud_bytes_put(bytes, info, (size_t)n);
 }
 ud_status ud_registry_describe(const ud_registry *r, char **out, uint32_t *length) {

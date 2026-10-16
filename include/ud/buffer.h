@@ -28,13 +28,17 @@ UD_API ud_status ud_buffer_manager_create(ud_context *, const ud_buffer_options 
 UD_API ud_status ud_buffer_store(ud_buffer_manager *, const ud_batch *, ud_buffer_block **);
 /* View owns the pin/rehydration. Batch is borrowed sealed until view release.
  * Resident bytes count unique immutable allocations including capacity/headers;
- * working bytes count all codec/read allocations in the manager's domain. */
+ * working bytes count codec/read allocations and operator state subquotas in the manager's domain. */
 UD_API ud_status ud_buffer_read(ud_buffer_block *, ud_buffer_view **);
 UD_API const ud_batch *ud_buffer_view_batch(const ud_buffer_view *);
 UD_API void ud_buffer_view_release(ud_buffer_view *);
 /* BUSY preserves the handle when views are alive. Other results consume it;
  * a failed spill deletion remains owned by the manager for destroy retry. */
 UD_API ud_status ud_buffer_release(ud_buffer_block *);
+/* Referenced allocation bytes (not process RSS); shared allocations remain
+ * globally deduplicated in manager resident_bytes. */
+UD_API uint64_t ud_buffer_block_bytes(const ud_buffer_block *);
+UD_API uint32_t ud_buffer_block_rows(const ud_buffer_block *);
 UD_API uint32_t ud_buffer_block_views(const ud_buffer_block *);
 UD_API ud_status ud_buffer_manager_metrics(const ud_buffer_manager *, ud_buffer_metrics *);
 /* State indexes share the same bounded working domain as Wire/rehydration. */

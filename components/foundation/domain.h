@@ -6,6 +6,8 @@ typedef struct ud_memory_scope {
     ud_memory_domain *previous;
 } ud_memory_scope;
 ud_status ud_memory_domain_create(ud_context *, uint64_t limit, ud_memory_domain **);
+ud_status ud_memory_domain_create_child(ud_context *, uint64_t, ud_memory_domain *,
+                                        ud_memory_domain **);
 void ud_memory_domain_enter(ud_memory_domain *, ud_memory_scope *);
 void ud_memory_domain_leave(const ud_memory_scope *);
 uint64_t ud_memory_domain_used(const ud_memory_domain *);

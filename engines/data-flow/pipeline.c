@@ -68,7 +68,13 @@ typedef struct node {
     uint32_t *inputs, *outputs, output_edges, ended, next_port, tree;
     uint8_t *emitted;
     void *instance;
-    int opened, emit_allowed, pending;
+    int opened, emit_allowed, pending, control_pending, watermark_refresh;
+    uint32_t watermark_refresh_input;
+    ud_component_event deferred_control;
+    uint64_t idle_mask, idle_started, idle_ms, sampled_rows;
+    atomic_uint_fast64_t live_idle_ms;
+    atomic_int idle;
+    atomic_int_fast64_t live_watermark;
     atomic_int state, result;
     ud_activation activation;
     ud_component_context context;
@@ -130,6 +136,7 @@ typedef struct physical_plan {
     ud_json *epoch_record;
     struct physical_plan *progress_next;
     int progress_registered;
+    uint64_t sampled_ms;
 } physical_plan;
 static ud_status plan_json(physical_plan *, ud_bytes *, int, ud_status);
 static int index_of(const physical_plan *p, ud_string id) {
@@ -776,8 +783,15 @@ static ud_status route_event(void *user, uint32_t port, const ud_component_event
     if (event->kind == UD_COMPONENT_DATA)
         return route_identified(user, port, (ud_batch *)event->batch);
     if (event->kind != UD_COMPONENT_WATERMARK && event->kind != UD_COMPONENT_CHECKPOINT_BARRIER &&
-        event->kind != UD_COMPONENT_SCHEMA_CHANGE && event->kind != UD_COMPONENT_INPUT_END)
+        event->kind != UD_COMPONENT_SCHEMA_CHANGE && event->kind != UD_COMPONENT_INPUT_END &&
+        event->kind != UD_COMPONENT_IDLE && event->kind != UD_COMPONENT_ACTIVE)
         return UD_SCHEMA;
+    if (event->kind == UD_COMPONENT_WATERMARK) {
+        if (event->watermark < n->last_watermark)
+            return UD_FENCED;
+        n->last_watermark = event->watermark;
+        atomic_store(&n->live_watermark, event->watermark);
+    }
     if (event->kind == UD_COMPONENT_SCHEMA_CHANGE ||
         (event->kind == UD_COMPONENT_CHECKPOINT_BARRIER && event->schema_version))
         n->schema_version = event->schema_version;
@@ -1077,6 +1091,9 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
         n->context.input_count = n->descriptor.inputs;
         n->last_watermark = INT64_MIN;
         atomic_init(&n->staged_epoch, 0);
+        atomic_init(&n->idle, 0);
+        atomic_init(&n->live_idle_ms, 0);
+        atomic_init(&n->live_watermark, INT64_MIN);
         n->context.output_count = n->descriptor.outputs;
         n->context.input_plans = n->input_plans;
         n->context.output_schemas = (const ud_batch *const *)n->schemas;
@@ -1109,11 +1126,17 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
             s = n->descriptor.describe_plan(n->descriptor.user, &n->context,
                                             (ud_string){n->json, n->json_length}, inputs,
                                             &n->binding);
+        if (!s && n->descriptor.category == UD_COMPONENT_SOURCE && !n->descriptor.describe_plan &&
+            (n->descriptor.capabilities & UD_COMPONENT_CONTINUOUS))
+            n->binding.boundedness = UD_SOURCE_CONTINUOUS;
         ud_free(inputs);
         if (!s && (n->binding.struct_size != sizeof(n->binding) ||
                    n->binding.abi_version != UD_ABI_VERSION || !n->binding.partitions ||
                    n->binding.partitions > 64 || n->binding.ordering < UD_ORDER_UNORDERED ||
-                   n->binding.ordering > UD_ORDER_GLOBAL))
+                   n->binding.ordering > UD_ORDER_GLOBAL ||
+                   n->binding.boundedness > UD_SOURCE_SNAPSHOT_THEN_STREAM ||
+                   (n->descriptor.category == UD_COMPONENT_SOURCE && n->binding.boundedness &&
+                    !(n->descriptor.capabilities & UD_COMPONENT_CONTINUOUS))))
             s = UD_SCHEMA;
         if (s)
             return node_failed(n, s, "schema/plan binding");
@@ -1129,7 +1152,24 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                     return UD_SCHEMA;
             }
         }
+        for (uint32_t input = 0; input < n->descriptor.inputs; input++)
+            if (n->input_plans[input].boundedness > n->binding.boundedness)
+                n->binding.boundedness = n->input_plans[input].boundedness;
         n->binding.effects |= n->descriptor.effects;
+        if (n->binding.boundedness && n->descriptor.category != UD_COMPONENT_SOURCE &&
+            (n->descriptor.capabilities & (UD_COMPONENT_BLOCKING | UD_COMPONENT_STATEFUL)) &&
+            !(n->descriptor.capabilities & UD_COMPONENT_STREAM_SAFE) &&
+            !(n->descriptor.category == UD_COMPONENT_DESTINATION &&
+              (n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT))))
+            return node_failed(n, UD_UNSUPPORTED,
+                               "unbounded input requires window/TTL or bounded reference state");
+        if (ud_member(n->configuration, "latePolicy")) {
+            ud_string policy;
+            UD_TRY(ud_json_string(ud_member(n->configuration, "latePolicy"), &policy));
+            if (ud_named(policy, "redirect") && !(n->context.connected_outputs & UINT64_C(2)) &&
+                !e->execution->preview_pipeline)
+                return node_failed(n, UD_SCHEMA, "late redirect requires connected output 1");
+        }
         if (e->execution->preview_pipeline && (n->binding.effects & UD_EFFECT_EXTERNAL_WRITE))
             return UD_AUTH;
         n->binding.state_version = n->descriptor.state_version;
@@ -1367,7 +1407,7 @@ static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
     }
     int active = 0;
     for (uint32_t i = 0; i < p->count; i++)
-        if (p->nodes[i].descriptor.confirm_epoch && p->nodes[i].barrier_epoch == epoch)
+        if (p->nodes[i].descriptor.confirm_epoch && atomic_load(&p->nodes[i].staged_epoch) == epoch)
             active = 1;
     if (!active) {
         ud_mutex_unlock(&p->epoch_lock);
@@ -1484,10 +1524,13 @@ static ud_status notify_control(node *n, const ud_component_event *event) {
     if (!(n->descriptor.capabilities & UD_COMPONENT_CONTROL_EVENTS))
         return UD_OK;
     int allowed = n->emit_allowed;
-    n->emit_allowed = 0;
+    n->emit_allowed =
+        event->kind == UD_COMPONENT_WATERMARK || event->kind == UD_COMPONENT_CHECKPOINT_BARRIER;
     ud_status status = n->descriptor.step(n->instance, event);
     n->emit_allowed = allowed;
-    return status == UD_MORE || status == UD_END ? UD_INVALID : status;
+    return status == UD_END || (status == UD_MORE && event->kind == UD_COMPONENT_SCHEMA_CHANGE)
+               ? UD_INVALID
+               : status;
 }
 static ud_status stream_control(physical_plan *p, node *n, const ud_component_event *event) {
     ud_activation *e = p->execution;
@@ -1506,31 +1549,53 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
                 required |= UINT64_C(1) << i;
         if ((n->barrier_mask & required) != required)
             return UD_OK;
-        UD_TRY(notify_control(n, event));
-        UD_TRY(stage_epoch(p, n, event->epoch));
-        UD_TRY(forward_control(p, n, event));
-        return commit_epoch(p, event->epoch);
+        n->deferred_control = *event;
+        n->deferred_control.batch = NULL;
+        n->deferred_control.source_position = (ud_string){0};
+        n->control_pending = 1;
+        return notify_control(n, event);
     }
-    if (event->kind == UD_COMPONENT_WATERMARK) {
-        if ((n->watermark_mask & bit) && event->watermark < n->watermarks[event->input])
-            return UD_FENCED;
-        n->watermarks[event->input] = event->watermark;
-        n->watermark_mask |= bit;
+    if (event->kind == UD_COMPONENT_IDLE || event->kind == UD_COMPONENT_ACTIVE) {
+        if (event->kind == UD_COMPONENT_IDLE)
+            n->idle_mask |= bit;
+        else
+            n->idle_mask &= ~bit;
+        uint64_t required =
+            n->descriptor.inputs == 64 ? UINT64_MAX : (UINT64_C(1) << n->descriptor.inputs) - 1;
+        if (event->kind == UD_COMPONENT_ACTIVE || n->idle_mask == required)
+            return forward_control(p, n, event);
+    }
+    if (event->kind == UD_COMPONENT_WATERMARK || event->kind == UD_COMPONENT_IDLE) {
+        if (event->kind == UD_COMPONENT_WATERMARK) {
+            n->idle_mask &= ~bit;
+            if ((n->watermark_mask & bit) && event->watermark < n->watermarks[event->input])
+                return UD_FENCED;
+            n->watermarks[event->input] = event->watermark;
+            n->watermark_mask |= bit;
+            if (n->descriptor.capabilities & UD_COMPONENT_WATERMARK_POLICY)
+                return notify_control(n, event);
+        }
         uint64_t required = 0;
         int64_t minimum = INT64_MAX;
         for (uint32_t i = 0; i < n->descriptor.inputs; i++)
-            if (n->inputs[i] != UINT32_MAX && !p->edges[n->inputs[i]].ended) {
+            if (n->inputs[i] != UINT32_MAX && !p->edges[n->inputs[i]].ended &&
+                !(n->idle_mask & (UINT64_C(1) << i))) {
                 required |= UINT64_C(1) << i;
                 if (n->watermarks[i] < minimum)
                     minimum = n->watermarks[i];
             }
-        if ((n->watermark_mask & required) != required || minimum <= n->last_watermark)
+        if (!required || (n->watermark_mask & required) != required || minimum <= n->last_watermark)
             return UD_OK;
         n->last_watermark = minimum;
         ud_component_event output = *event;
+        output.kind = UD_COMPONENT_WATERMARK;
         output.watermark = minimum;
-        UD_TRY(notify_control(n, &output));
-        return forward_control(p, n, &output);
+        atomic_store(&n->live_watermark, minimum);
+        n->deferred_control = output;
+        n->deferred_control.batch = NULL;
+        n->deferred_control.source_position = (ud_string){0};
+        n->control_pending = 1;
+        return notify_control(n, &output);
     }
     if (event->kind == UD_COMPONENT_SCHEMA_CHANGE) {
         if (!event->batch)
@@ -1615,6 +1680,39 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
             }
             return UD_OK;
         }
+    if (n->control_pending && !n->pending) {
+        memset(n->emitted, 0, n->descriptor.outputs);
+        n->emit_allowed = 1;
+        ud_status status = UD_OK;
+        if (n->deferred_control.kind == UD_COMPONENT_CHECKPOINT_BARRIER)
+            status = stage_epoch(p, n, n->deferred_control.epoch);
+        if (!status)
+            status = forward_control(p, n, &n->deferred_control);
+        n->emit_allowed = 0;
+        if (!status && n->deferred_control.kind == UD_COMPONENT_CHECKPOINT_BARRIER)
+            status = commit_epoch(p, n->deferred_control.epoch);
+        if (!status) {
+            n->control_pending = 0;
+            *progress = 1;
+        }
+        return status;
+    }
+    if (n->watermark_refresh && !n->pending && !n->control_pending) {
+        // END removes an input from the frontier even when the other inputs
+        // never produce another Watermark. Drain any output from END first.
+        n->watermark_refresh = 0;
+        memset(n->emitted, 0, n->descriptor.outputs);
+        n->emit_allowed = 1;
+        ud_component_event idle = {.struct_size = sizeof(idle),
+                                   .abi_version = UD_ABI_VERSION,
+                                   .kind = UD_COMPONENT_IDLE,
+                                   .input = n->watermark_refresh_input};
+        ud_status status = stream_control(p, n, &idle);
+        n->emit_allowed = 0;
+        n->pending = status == UD_MORE;
+        *progress = 1;
+        return status == UD_MORE ? UD_OK : status;
+    }
     if (n->barrier_mask && !n->pending && atomic_load(&n->staged_epoch) != n->barrier_epoch) {
         uint64_t required = 0;
         for (uint32_t port = 0; port < n->descriptor.inputs; port++)
@@ -1667,8 +1765,10 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
                     return status;
                 }
                 input = view ? ud_buffer_view_batch(view) : NULL;
-                if (received.kind == UD_STREAM_DATA)
+                if (received.kind == UD_STREAM_DATA) {
+                    n->idle_mask &= ~(UINT64_C(1) << port);
                     atomic_fetch_add(&v->consumed, input->rows);
+                }
                 event.kind = received.kind;
                 event.input = port;
                 event.batch = input;
@@ -1709,7 +1809,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     atomic_store(&n->state, n->ended == n->descriptor.inputs && n->descriptor.inputs
                                 ? UD_EXEC_DRAINING
                                 : UD_EXEC_RUNNING);
-    ud_activation_notify(&n->activation, atomic_load(&n->state), UD_OK);
+    if (n->steps == 0 || event.kind != UD_COMPONENT_POLL)
+        ud_activation_notify(&n->activation, atomic_load(&n->state), UD_OK);
     memset(n->emitted, 0, n->descriptor.outputs);
     n->emit_allowed = 1;
     uint64_t started = ud_now_ms(), cpu = ud_thread_cpu_ns();
@@ -1724,7 +1825,11 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     ud_task_cancel_register(&n->activation, n->instance, n->descriptor.cancel);
     ud_status s = ud_activation_check(&n->activation);
     if (!s)
-        s = e->execution->preview_pipeline && n->descriptor.category == UD_COMPONENT_SOURCE &&
+        s = atomic_load(&e->execution->stop_requested) &&
+                    n->descriptor.category == UD_COMPONENT_SOURCE &&
+                    !(n->descriptor.capabilities & UD_COMPONENT_CONTINUOUS)
+                ? UD_END
+            : e->execution->preview_pipeline && n->descriptor.category == UD_COMPONENT_SOURCE &&
                     n->produced >= e->execution->preview_source_rows
                 ? UD_END
             : event.kind >= UD_COMPONENT_WATERMARK ? stream_control(p, n, &event)
@@ -1736,6 +1841,27 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     atomic_fetch_add(&n->live_callback_ms, ud_now_ms() - started);
     n->cpu_ns += ud_thread_cpu_ns() - cpu;
     n->emit_allowed = 0;
+    if (s == UD_BUSY && n->descriptor.category == UD_COMPONENT_SOURCE &&
+        (n->descriptor.capabilities & UD_COMPONENT_CONTINUOUS)) {
+        uint64_t now = ud_now_ms();
+        if (!n->idle_started)
+            n->idle_started = now;
+        atomic_store(&n->idle, 1);
+        atomic_store(&n->live_idle_ms, n->idle_ms + now - n->idle_started);
+        ud_work_group_defer(p->group, n->tree, 50);
+        return UD_OK;
+    }
+    if (n->idle_started) {
+        n->idle_ms += ud_now_ms() - n->idle_started;
+        n->idle_started = 0;
+    }
+    atomic_store(&n->live_idle_ms, n->idle_ms);
+    atomic_store(&n->idle, 0);
+    if ((s == UD_OK || s == UD_MORE) && event.kind == UD_COMPONENT_INPUT_END &&
+        n->ended < n->descriptor.inputs) {
+        n->watermark_refresh = 1;
+        n->watermark_refresh_input = event.input;
+    }
     int was_pending = n->pending;
     n->pending = s == UD_MORE;
     if (s == UD_MORE)
@@ -1829,6 +1955,8 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
     UD_TRY(ud_json_quote(b, p->execution->task_id.data, p->execution->task_id.length));
     UD_TRY(ud_bytes_put(b, ",", 1));
     UD_TRY(json_number(b, "treeConcurrency", p->concurrency));
+    UD_TRY(ud_bytes_put(b, ",", 1));
+    UD_TRY(json_number(b, "confirmedEpoch", atomic_load(&p->confirmed_epoch)));
     if (p->execution->execution->options.state_directory.length)
         UD_TRY(ud_bytes_put(
             b, ",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"",
@@ -1852,6 +1980,8 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
             UD_TRY(ud_json_quote(b, n->descriptor.id.data, n->descriptor.id.length));
             UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
             UD_TRY(json_number(b, "capabilities", n->descriptor.capabilities));
+            UD_TRY(ud_bytes_put(b, ",", 1));
+            UD_TRY(json_number(b, "boundedness", n->binding.boundedness));
             const char *mode = n->descriptor.capabilities & UD_COMPONENT_BLOCKING ? "blocking"
                                : n->descriptor.capabilities & UD_COMPONENT_PARTIALLY_BLOCKING
                                    ? "partiallyBlocking"
@@ -2163,6 +2293,7 @@ ud_status ud_execution_progress(ud_execution *e, char **out, uint32_t *length) {
     ud_bytes b = {.ctx = e->ctx, .limit = 4194304};
     ud_status s = ud_bytes_put(&b, "{\"pipelines\":[", sizeof("{\"pipelines\":[") - 1);
     ud_mutex_lock(&e->diagnostics_lock);
+    uint64_t sampled_at = ud_now_ms();
     uint32_t count = 0;
     for (physical_plan *p = e->active_progress; !s && p; p = p->progress_next) {
         if (count++)
@@ -2171,8 +2302,16 @@ ud_status ud_execution_progress(ud_execution *e, char **out, uint32_t *length) {
             s = ud_bytes_put(&b, "{\"id\":", sizeof("{\"id\":") - 1);
         if (!s)
             s = ud_json_quote(&b, p->id.data, p->id.length);
-        if (!s)
-            s = ud_bytes_put(&b, ",\"nodes\":[", sizeof(",\"nodes\":[") - 1);
+        if (!s) {
+            char facts[256];
+            int n = snprintf(
+                facts, sizeof(facts),
+                ",\"sampledAtMs\":%llu,\"sampleWindowMs\":%llu,\"confirmedEpoch\":%llu,\"nodes\":[",
+                (unsigned long long)sampled_at,
+                (unsigned long long)(p->sampled_ms ? sampled_at - p->sampled_ms : 0),
+                (unsigned long long)atomic_load(&p->confirmed_epoch));
+            s = ud_bytes_put(&b, facts, (size_t)n);
+        }
         for (uint32_t i = 0; !s && i < p->count; i++) {
             node *n = p->nodes + i;
             if (i)
@@ -2191,6 +2330,22 @@ ud_status ud_execution_progress(ud_execution *e, char **out, uint32_t *length) {
                 s = ud_bytes_put(&b, ",", 1);
                 if (!s)
                     s = json_number(&b, names[k], values[k]);
+            }
+            if (!s) {
+                uint64_t rows = atomic_load(&n->live_produced),
+                         elapsed = p->sampled_ms ? sampled_at - p->sampled_ms : 0;
+                char facts[384];
+                int size = snprintf(
+                    facts, sizeof(facts),
+                    ",\"boundedness\":%u,\"idle\":%s,\"idleMs\":%llu,\"watermark\":%lld,"
+                    "\"rateRowsPerSecond\":%.3f,\"stagedEpoch\":%llu",
+                    n->binding.boundedness, atomic_load(&n->idle) ? "true" : "false",
+                    (unsigned long long)atomic_load(&n->live_idle_ms),
+                    (long long)atomic_load(&n->live_watermark),
+                    elapsed ? (double)(rows - n->sampled_rows) * 1000.0 / (double)elapsed : 0.0,
+                    (unsigned long long)atomic_load(&n->staged_epoch));
+                s = ud_bytes_put(&b, facts, (size_t)size);
+                n->sampled_rows = rows;
             }
             if (!s)
                 s = ud_bytes_put(&b, ",\"ports\":[", sizeof(",\"ports\":[") - 1);
@@ -2211,6 +2366,27 @@ ud_status ud_execution_progress(ud_execution *e, char **out, uint32_t *length) {
             if (!s)
                 s = ud_bytes_put(&b, "]}", 2);
         }
+        if (!s)
+            s = ud_bytes_put(&b, "],\"paths\":[", 11);
+        for (uint32_t k = 0; !s && k < p->paths; k++) {
+            edge *path = p->edges + k;
+            ud_queue_metrics queue = {0};
+            s = ud_queue_snapshot(path->queue, &queue);
+            char facts[384];
+            int size = snprintf(facts, sizeof(facts),
+                                "%s{\"from\":%u,\"to\":%u,\"output\":%u,\"input\":%u,"
+                                "\"queueBatches\":%llu,\"queueRows\":%llu,\"referencedBytes\":%llu,"
+                                "\"capacity\":%llu,\"producedRows\":%llu,\"consumedRows\":%llu}",
+                                k ? "," : "", path->from, path->to, path->output, path->input,
+                                (unsigned long long)queue.batches, (unsigned long long)queue.rows,
+                                (unsigned long long)queue.referenced_bytes,
+                                (unsigned long long)queue.capacity,
+                                (unsigned long long)atomic_load(&path->produced),
+                                (unsigned long long)atomic_load(&path->consumed));
+            if (!s)
+                s = ud_bytes_put(&b, facts, (size_t)size);
+        }
+        p->sampled_ms = sampled_at;
         if (!s)
             s = ud_bytes_put(&b, "]}", 2);
     }

@@ -76,16 +76,16 @@ with tempfile.TemporaryDirectory(prefix="ud-avro-") as root:
     standard = {"type": "record", "name": "rows", "fields": [{"name": "id", "type": "long"}, {"name": "text", "type": "string"}]}
     values = [(-9223372036854775808, "中文"), (9223372036854775807, "line\nquoted"), (0, "")]
     object_file(source, standard, [integer(key) + binary(text.encode()) for key, text in values])
-    schema = {"version": 11, "fields": [{"name": "id", "type": "int64", "nullable": False}, {"name": "text", "type": "utf8", "nullable": False}]}
+    schema = {"version": 12, "fields": [{"name": "id", "type": "int64", "nullable": False}, {"name": "text", "type": "utf8", "nullable": False}]}
     for codec in ("null", "deflate"):
-        package = {"version": 11, "id": "avro-interop", "connections": [{"id": "input", "driver": "file", "resource": str(source)}, {"id": "output", "driver": "file", "resource": str(target)}],
+        package = {"version": 12, "id": "avro-interop", "connections": [{"id": "input", "driver": "file", "resource": str(source)}, {"id": "output", "driver": "file", "resource": str(target)}],
                    "controlFlow": {"tasks": [{"id": "copy", "kind": "dataFlow", "config": {"pipeline": "flow"}}], "constraints": []},
                    "dataFlows": [{"id": "flow", "components": [{"id": "source", "component": "file.avro.source", "config": {"connection": "input", "schema": schema}}, {"id": "sink", "component": "file.avro.sink", "config": {"connection": "output", "codec": codec, "fileMode": "overwrite"}}], "paths": [{"from": "source", "output": 0, "to": "sink", "input": 0}]}]}
         definition = root / "package.json"
         definition.write_text(json.dumps(package))
         subprocess.run([str(runner), str(definition), "0"], check=True)
         metadata, actual = read_object(target)
-        assert actual == values and json.loads(metadata[b"ud.schema"])["version"] == 11
+        assert actual == values and json.loads(metadata[b"ud.schema"])["version"] == 12
     # Invalid framing cannot become an isolated row conversion failure.
     source.write_bytes(source.read_bytes()[:-1])
     subprocess.run([str(runner), str(definition), "9"], check=True)

@@ -79,7 +79,7 @@ struct ud_execution {
     uint8_t parameters_fingerprint[32];
     ud_string deployment_metadata; /* Immutable, cached before cancellation. */
     ud_activation root;
-    atomic_int state, result;
+    atomic_int state, result, stop_requested;
     atomic_uint_fast64_t input_rows, output_rows, rejected_rows, batches, queued, high_water,
         executed_tasks, durable_tasks, recovery_tasks, resumed_tasks, spill_bytes, committed_rows,
         acknowledged_rows, error_rows, committed_error_rows, acknowledged_error_rows;

@@ -28,6 +28,7 @@ export type FlowNodeValue = Node<
     outputFields?: number;
     portRows?: Record<number, number>;
     stale?: boolean;
+    runtime?:string;
     failed?: boolean;
   },
   "component"
@@ -81,6 +82,7 @@ export const FlowNode = memo(function FlowNode({
         </div>
         {data.failed ? <TriangleAlert size={16} /> : null}
       </div>
+      {data.runtime?<div className="node-fields" role="status">{data.runtime}</div>:null}
       <div className="node-fields">
         {data.inputFields === undefined
           ? "待绑定字段"

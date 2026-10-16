@@ -11,7 +11,7 @@ static class WorkerManagedRecovery
         Directory.CreateDirectory(directory); string root = Path.Combine(directory,"effects"); Directory.CreateDirectory(root);
         string digest = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(module))).ToLowerInvariant();
         var policy = new HostPolicy(Path.Combine(directory,"state"),[root],[],[Path.GetDirectoryName(module)!],new(),TrustedAssemblyHashes:[digest]);
-        string package = JsonSerializer.Serialize(new { version=11,id = "managed-worker-recovery",
+        string package = JsonSerializer.Serialize(new { version=12,id = "managed-worker-recovery",
             extensions = new[] { new { kind = "managedAssembly",path = module,sha256 = digest } },
             controlFlow = new { tasks = new[] { new { id = "flow",kind = "dataFlow",config = new { pipeline = "rows" } } },constraints = Array.Empty<object>() },
             dataFlows = new[] { new { id = "rows",components = new[] {

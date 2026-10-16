@@ -1,4 +1,4 @@
-#include "ud/buffer.h"
+#include "../state.h"
 #include "../../data/internal.h"
 #include "../../foundation/thread.h"
 #include "../../foundation/domain.h"
@@ -24,7 +24,7 @@ struct ud_buffer_block {
     ud_buffer_manager *manager;
     ud_batch *batch;
     storage_part *parts;
-    uint32_t part_count, readers;
+    uint32_t part_count, readers, rows;
     int closing;
     char *path;
     uint64_t wire_bytes;
@@ -294,6 +294,8 @@ ud_status ud_buffer_store(ud_buffer_manager *manager, const ud_batch *batch,
             status = UD_RESOURCE;
         else
             block->manager = manager;
+        if (block)
+            block->rows = batch->rows;
     }
     if (status) {
         ud_free(list.parts);
@@ -610,4 +612,28 @@ ud_status ud_buffer_working_copy_value(ud_buffer_manager *m, const ud_value *val
     ud_status status = ud_copy_value(m->ctx, value, out, 0);
     ud_memory_domain_leave(&scope);
     return status;
+}
+
+uint64_t ud_buffer_block_bytes(const ud_buffer_block *block) {
+    if (!block)
+        return 0;
+    ud_mutex_lock(&block->manager->mutex);
+    uint64_t bytes = block->wire_bytes;
+    if (block->batch) {
+        bytes = 0;
+        for (uint32_t i = 0; i < block->part_count; i++)
+            bytes += block->parts[i].bytes;
+    }
+    ud_mutex_unlock(&block->manager->mutex);
+    return bytes;
+}
+uint32_t ud_buffer_block_rows(const ud_buffer_block *block) {
+    return block ? block->rows : 0;
+}
+
+ud_status ud_buffer_state_domain_create(ud_buffer_manager *manager, uint64_t limit,
+                                        ud_memory_domain **out) {
+    if (!manager)
+        return UD_INVALID;
+    return ud_memory_domain_create_child(manager->ctx, limit, manager->working, out);
 }

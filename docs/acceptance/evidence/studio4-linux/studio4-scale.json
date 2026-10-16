@@ -1,0 +1,29 @@
+{
+  "browser": "154.0.8037.57",
+  "viewport": [
+    1600,
+    1050
+  ],
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "cpus": 3,
+  "cases": [
+    {
+      "nodes": 200,
+      "renderedNodes": 8,
+      "openMs": 714.1,
+      "fitViewMs": 484.1
+    },
+    {
+      "nodes": 500,
+      "renderedNodes": 8,
+      "openMs": 1674.6,
+      "fitViewMs": 220.8
+    },
+    {
+      "nodes": 1000,
+      "renderedNodes": 8,
+      "openMs": 4853.7,
+      "fitViewMs": 9138.8
+    }
+  ]
+}

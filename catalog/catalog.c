@@ -369,6 +369,8 @@ static ud_status put_document(ud_catalog *c, const ud_catalog_key *key, ud_strin
         status = ud_json_uint(ud_member(doc, "timestampMs"), &timestamp);
     if (!status && timestamp > INT64_MAX)
         status = UD_OVERFLOW;
+    int observation = !status && key->kind == UD_CATALOG_EXECUTION &&
+                      ud_json_kind(ud_member(doc,"progress")) == UD_JSON_OBJECT;
     ud_json_destroy(doc);
     uint8_t digest[32];
     if (!status)
@@ -415,6 +417,20 @@ static ud_status put_document(ud_catalog *c, const ud_catalog_key *key, ud_strin
             sqlite3_finalize(s);
         } else
             status = found;
+    }
+    if (!status && observation) {
+        // Retain eight recent observation revisions; immutable Ready/terminal,
+        // Native events, Source positions and Journal snapshots are untouched.
+        sqlite3_stmt *prune = NULL;
+        status = prepare(c,"DELETE FROM documents WHERE tenant=?1 AND kind=?2 AND id=?3 "
+            "AND json_type(document,'$.progress')='object' AND revision NOT IN "
+            "(SELECT revision FROM documents WHERE tenant=?1 AND kind=?2 AND id=?3 "
+            "AND json_type(document,'$.progress')='object' ORDER BY revision DESC LIMIT 8)",&prune);
+        if (!status) status=bind_text(prune,1,c->options.tenant);
+        if (!status) status=sql_status(sqlite3_bind_int(prune,2,key->kind));
+        if (!status) status=bind_text(prune,3,key->id);
+        if (!status) status=sql_status(sqlite3_step(prune));
+        sqlite3_finalize(prune);
     }
     if (transaction) {
         /* A rejected fencing check has not appended data. Persist its clock
@@ -638,7 +654,7 @@ ud_status ud_catalog_record_event(ud_catalog *c, const ud_execution_event *event
         return UD_INCOMPATIBLE;
     if (!string_valid(event->execution_id, 1) || !string_valid(event->package_id, 1))
         return UD_INVALID;
-    if (event->state < UD_EXEC_CREATED || event->state > UD_EXEC_RECOVERY_REQUIRED ||
+    if (event->state < UD_EXEC_CREATED || event->state > UD_EXEC_STOPPED ||
         event->kind < UD_EXEC_EVENT_STATE || event->kind > UD_EXEC_EVENT_ERROR)
         return UD_INVALID;
     ud_bytes json = {.ctx = c->ctx};

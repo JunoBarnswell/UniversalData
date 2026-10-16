@@ -25,7 +25,9 @@ enum {
     UD_COMPONENT_POLL = UD_STREAM_POLL,
     UD_COMPONENT_WATERMARK = UD_STREAM_WATERMARK,
     UD_COMPONENT_CHECKPOINT_BARRIER = UD_STREAM_BARRIER,
-    UD_COMPONENT_SCHEMA_CHANGE = UD_STREAM_SCHEMA_CHANGE
+    UD_COMPONENT_SCHEMA_CHANGE = UD_STREAM_SCHEMA_CHANGE,
+    UD_COMPONENT_IDLE = UD_STREAM_IDLE,
+    UD_COMPONENT_ACTIVE = UD_STREAM_ACTIVE
 };
 typedef struct ud_component_event {
     uint32_t struct_size, abi_version;
@@ -94,8 +96,8 @@ typedef struct ud_component_context {
 #define UD_ENUMERATOR_SNAPSHOT UINT64_C(0x0010000000000000)
 #define UD_ENUMERATOR_RESUMABLE UINT64_C(0x0008000000000000)
 /* Opt-in step notifications at aligned barrier, reduced watermark and accepted
- * schema boundaries. These callbacks cannot emit or schedule MORE/END; Native
- * owns control propagation and checkpoints the resulting component state. */
+ * schema boundaries. WATERMARK/BARRIER may emit bounded output and return MORE;
+ * Native drains it before forwarding control and checkpointing state. */
 #define UD_COMPONENT_CONTROL_EVENTS UINT64_C(0x0004000000000000)
 /* Explicit opt-in: prepare/step/finish perform no external writes. Native still
  * checks the bound effect plan and denies write/receipt/execute capabilities. */
@@ -112,7 +114,14 @@ struct ud_component_plan {
     uint32_t algorithm, state_version, partition_key_count, effects;
     ud_id partition_keys[16];
     ud_string physical_tree; /* Owned by the plan; input_plans borrow it. */
+    uint32_t boundedness; /* UD_SOURCE_BOUNDED/CONTINUOUS/SNAPSHOT_THEN_STREAM. */
 };
+enum { UD_SOURCE_BOUNDED = 0, UD_SOURCE_CONTINUOUS = 1, UD_SOURCE_SNAPSHOT_THEN_STREAM = 2 };
+/* Owns the output time policy: consume upstream Watermarks, publish the
+ * component's derived frontier. Requires one input and CONTROL_EVENTS. */
+#define UD_COMPONENT_WATERMARK_POLICY UINT64_C(0x0000200000000000)
+#define UD_COMPONENT_STREAM_SAFE UINT64_C(0x0000400000000000)
+#define UD_COMPONENT_CONTINUOUS UINT64_C(0x0000800000000000)
 enum {
     UD_EFFECT_EXTERNAL_READ = 1,
     UD_EFFECT_EXTERNAL_WRITE = 2,

@@ -52,7 +52,8 @@ enum {
     UD_OPERATOR_DIFF_COMPARE,
     UD_OPERATOR_FUZZY_LOOKUP,
     UD_OPERATOR_FUZZY_GROUPING,
-    UD_OPERATOR_CACHE_LOOKUP
+    UD_OPERATOR_CACHE_LOOKUP,
+    UD_OPERATOR_EVENT_WINDOW
 };
 typedef struct ud_sort_key {
     ud_id field;
@@ -133,6 +134,8 @@ UD_API ud_status ud_operator_diagnostics(const ud_operator *, char **, uint32_t 
 UD_API ud_status ud_operator_push(ud_operator *, uint32_t port, const ud_batch *);
 UD_API ud_status ud_operator_finish_input(ud_operator *, uint32_t port);
 UD_API ud_status ud_operator_pull(ud_operator *, ud_batch **, uint32_t *output);
+/* Same operator lifecycle: monotonic event-time input, never a second executor. */
+UD_API ud_status ud_operator_watermark(ud_operator *, int64_t);
 UD_API ud_status ud_operator_checkpoint(ud_operator *, ud_batch **);
 /* Atomic replacement after replay and output-integrity checks succeed. */
 UD_API ud_status ud_operator_restore(ud_operator **, const ud_batch *);

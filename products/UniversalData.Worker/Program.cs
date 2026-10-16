@@ -122,9 +122,25 @@ try {
         executionRun.Cancel();
     });
     int resultCode = 0;
-    try { while (!executionRun.Wait(200)) { } } catch (UniversalDataException error) { resultCode = error.Status; }
+    ulong currentRevision = readyRevision;
+    long lastProgress = Environment.TickCount64;
+    try {
+        while (!executionRun.Wait(200)) {
+            if (Environment.TickCount64 - lastProgress < 1000) continue;
+            try {
+                ulong revision=checked(currentRevision+1);
+                catalog.RecordProgress(executionRun,revision);currentRevision=revision;
+                PublishCatalog(CatalogKind.Execution,new[] { new { id=executionRun.Id,revision=currentRevision,
+                    document=JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,currentRevision)!) } });
+            } catch(UniversalDataException sample) when(sample.Code is StatusCode.Resource or StatusCode.Busy or StatusCode.Transient) {
+                // Optional observation pressure must not replace the Native result.
+                // The last persisted observation retains its own Native timestamp.
+            }
+            lastProgress = Environment.TickCount64;
+        }
+    } catch (UniversalDataException error) { resultCode = error.Status; }
     var metrics = executionRun.Metrics;
-    ulong terminalRevision = checked(readyRevision + 1); catalog.Record(executionRun,terminalRevision);
+    ulong terminalRevision = checked(currentRevision + 1); catalog.Record(executionRun,terminalRevision);
     Reply(new { version = ProductInfo.Protocol, kind = "terminal", ticket = request.Ticket, executionId = executionRun.Id,
         state = metrics.State.ToString(), result = resultCode, metrics, revision = terminalRevision,
         record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,terminalRevision)!),

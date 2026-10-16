@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play, SkipForward } from "lucide-react";
-import { api, post } from "./api";
-import { DataGrid } from "./DataGrid";
+import { executionFeed, type FeedMode } from "./executionFeed";
+import { api, post } from "../../api";
+import { DataGrid } from "../../DataGrid";
 import {
   stateName,
   failurePhase,
   type NativePlan,
   type PreviewEdge,
   type RunState,
-} from "./model";
+} from "../../model";
 export interface ProgressNode {
   id: string;
   state?: number;
@@ -17,11 +18,31 @@ export interface ProgressNode {
   producedRows?: number;
   rejectedRows?: number;
   callbackMs?: number;
-  ports?: { index: number; rows: number }[];
+  boundedness?: number;
+  idle?: boolean;
+  idleMs?: number;
+  watermark?: number | bigint;
+  rateRowsPerSecond?: number;
+  stagedEpoch?: number | bigint;
+  ports?: { index: number; rows?: number }[];
 }
 export interface RunFacts {
   metrics: Record<string, unknown>;
-  progress?: { pipelines: { id: string; nodes: ProgressNode[] }[] };
+  progress?: {
+    pipelines: {
+      id: string;
+      nodes: ProgressNode[];
+      paths?: {
+        from: number;
+        to: number;
+        queueBatches: number;
+        queueRows: number;
+        referencedBytes: number;
+        capacity: number;
+      }[];
+      confirmedEpoch?: number | bigint;
+    }[];
+  };
   diagnostics?: NativePlan;
 }
 export function RunMonitor({
@@ -45,52 +66,56 @@ export function RunMonitor({
       preview: PreviewEdge[];
     }>(),
     [port, setPort] = useState(""),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [feedMode, setFeedMode] = useState<FeedMode>("连接中"),
+    [events, setEvents] = useState<unknown[]>([]),
+    [gap, setGap] = useState(false),
+    [sampleTime, setSampleTime] = useState<string>();
   const callback = useRef(onFacts);
   useEffect(() => {
     callback.current = onFacts;
   }, [onFacts]);
   useEffect(() => {
     const controller = new AbortController();
-    let polling = false;
-    async function refresh() {
-      if (polling) return;
-      polling = true;
-      try {
-        const [run, facts] = await Promise.all([
-          api<RunState>(`/executions/${ticket}`, { signal: controller.signal }),
-          api<RunFacts>(`/executions/${ticket}/metrics`, {
-            signal: controller.signal,
-          }),
-        ]);
-        if (controller.signal.aborted) return;
-        setRun(run);
-        setFacts(facts);
-        callback.current?.(facts);
-        if (run.debug && run.state !== "Queued" && run.state !== "Claimed") {
-          try {
-            const debug = await api<{
-              paused: boolean;
-              pauseRequested: boolean;
-              preview: PreviewEdge[];
-            }>(`/executions/${ticket}/debug`, { signal: controller.signal });
-            if (!controller.signal.aborted) setSnapshot(debug);
-          } catch {
-            /* State may finish between a control request and the next poll. */
-          }
+    let readingDebug = false;
+    void executionFeed(
+      ticket,
+      controller.signal,
+      (snapshot) => {
+        setRun(snapshot.run);
+        setFacts(snapshot.facts);
+        callback.current?.(snapshot.facts);
+        if (snapshot.gap) setGap(true);
+        if (snapshot.events.length)
+          setEvents((current) => [...current, ...snapshot.events].slice(-100));
+        if (
+          snapshot.run.debug &&
+          !readingDebug &&
+          !["Queued", "Claimed"].includes(snapshot.run.state)
+        ) {
+          readingDebug = true;
+          void api<{
+            paused: boolean;
+            pauseRequested: boolean;
+            preview: PreviewEdge[];
+          }>(`/executions/${ticket}/debug`, { signal: controller.signal })
+            .then((value) => {
+              if (!controller.signal.aborted) {
+                setSnapshot(value);
+                setSampleTime(new Date().toLocaleTimeString());
+              }
+            })
+            .catch(() => {})
+            .finally(() => {
+              readingDebug = false;
+            });
         }
-      } catch (error) {
-        if (!controller.signal.aborted) setError(String(error));
-      } finally {
-        polling = false;
-      }
-    }
-    void refresh();
-    const timer = window.setInterval(refresh, 1200);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
+      },
+      setFeedMode,
+    ).catch((error) => {
+      if (!controller.signal.aborted) setError(String(error));
+    });
+    return () => controller.abort();
   }, [ticket]);
   async function control(action: string) {
     try {
@@ -99,7 +124,7 @@ export function RunMonitor({
       setError(String(error));
     }
   }
-  const rows =
+  const rows: (ProgressNode & { pipeline: string })[] =
     facts?.progress?.pipelines.flatMap((pipeline) =>
       pipeline.nodes.map((node) => ({ ...node, pipeline: pipeline.id })),
     ) ??
@@ -117,12 +142,26 @@ export function RunMonitor({
   const metrics = facts?.metrics ?? {};
   return (
     <section className={`run-monitor${compact ? " compact" : ""}`}>
+      <p className="feed-status" role="status">
+        {feedMode} · Native Catalog{facts?.metrics.observedAtMs ? ` · 快照 ${new Date(Number(facts.metrics.observedAtMs)).toLocaleTimeString()}` : ""}{gap ? " · 事件有缺口，已补齐最新快照" : ""}
+      </p>
       <header>
         <h3>
           {run
             ? `${caption ?? `${run.packageId} v${run.packageRevision}`} · ${stateName(run.state)}`
             : "读取 Native 执行事实…"}
         </h3>
+        {run?.state === "Running" ? (
+          <button
+            onClick={() =>
+              void post(`/executions/${ticket}/stop`).catch((error) =>
+                setError(String(error)),
+              )
+            }
+          >
+            停止并排空
+          </button>
+        ) : null}
         {run?.debug ? (
           <div className="inline-actions">
             <button
@@ -187,6 +226,9 @@ export function RunMonitor({
               <th>输出行</th>
               <th>异常行</th>
               <th>处理耗时</th>
+              <th>输入语义</th>
+              <th>行/秒</th>
+              <th>Watermark (µs)</th>
             </tr>
           </thead>
           <tbody>
@@ -202,11 +244,52 @@ export function RunMonitor({
                 <td>{String(node.producedRows ?? 0)}</td>
                 <td>{String(node.rejectedRows ?? 0)}</td>
                 <td>{String(node.callbackMs ?? 0)} ms</td>
+                <td>
+                  {node.boundedness
+                    ? node.idle
+                      ? "持续 · 空闲"
+                      : "持续"
+                    : "有界"}
+                </td>
+                <td>{node.rateRowsPerSecond?.toFixed(1) ?? "—"}</td>
+                <td>
+                  {node.watermark === undefined ||
+                  String(node.watermark) === "-9223372036854775808"
+                    ? "—"
+                    : String(node.watermark)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {facts?.progress?.pipelines.map((pipeline) => (
+        <div key={pipeline.id} className="path-metrics">
+          <strong>
+            {pipeline.id} · 已确认 Epoch {String(pipeline.confirmedEpoch ?? 0)}
+          </strong>
+          {pipeline.paths?.map((path, index) => (
+            <p key={index}>
+              {pipeline.nodes[path.from]?.id} → {pipeline.nodes[path.to]?.id} ·
+              排队 {path.queueBatches}/{path.capacity} 批 · {path.queueRows} 行
+              · 引用 {path.referencedBytes} 字节
+              {path.queueBatches >= path.capacity ? " · 背压" : ""}
+            </p>
+          ))}
+        </div>
+      ))}
+      <details>
+        <summary>Native 事件时间轴（保留最近 100 条）</summary>
+        <pre>
+          {events
+            .map((event) =>
+              JSON.stringify(event, (_, value) =>
+                typeof value === "bigint" ? String(value) : value,
+              ),
+            )
+            .join("\n")}
+        </pre>
+      </details>
       <p className="muted">
         分流输出按首个命中核账；复制与聚合组件的输出不能直接相加。提交与确认计数来自
         Native。
@@ -214,7 +297,8 @@ export function RunMonitor({
       {edges.length ? (
         <>
           <label>
-            查看真实端口数据
+            查看真实端口数据 · 首批有界样本 · 最近读取 {sampleTime ?? "—"}
+            （非滚动全量数据）
             <select
               value={
                 edge ? `${edge.pipeline}/${edge.component}/${edge.port}` : ""

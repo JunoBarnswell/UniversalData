@@ -81,7 +81,7 @@ with zipfile.ZipFile(bundle) as archive:
             if mode and not entry.is_dir(): (unpacked/entry.filename).chmod(mode)
 manifest = json.loads((unpacked / "manifest.json").read_text(encoding="utf-8"))
 version = manifest["sdkVersion"]
-assert manifest["schemaVersion"] == 11 and manifest["abiVersion"] == json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]["abiVersion"] and manifest["configuration"] == "Release"
+assert manifest["schemaVersion"] == 12 and manifest["abiVersion"] == json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]["abiVersion"] and manifest["configuration"] == "Release"
 assert manifest["runtimeIdentifier"] == ("win-x64" if os.name == "nt" else "linux-x64")
 fingerprint = subprocess.check_output([sys.executable, str(ROOT / "scripts/release_guard.py"), "--fingerprint"],
                                       env=environment, text=True).strip()

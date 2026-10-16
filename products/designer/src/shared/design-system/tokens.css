@@ -1,0 +1,175 @@
+:root {
+  font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  font-synthesis: none;
+  color-scheme: light;
+  --text: #253348;
+  --canvas: #f4f7fa;
+  --surface: #ffffff;
+  --panel: #f7f9fb;
+  --accent: #087f8c;
+  --accent-hover: #076d79;
+  --accent-light: #e8f5f5;
+  --on-accent: #fff;
+  --line: #cbd6df;
+  --muted: #526479;
+  --danger: #ae2939;
+  --danger-surface: #fff1f1;
+  --success: #1a6d43;
+  --success-surface: #edf9ef;
+  --warning: #8a5900;
+  --focus: #087f8c80;
+  --shadow: #20344822;
+  --control-height: 32px;
+  --control-padding: 6px 11px;
+  color: var(--text);
+  background: var(--canvas);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --text: #e0e8f1;
+  --canvas: #101820;
+  --surface: #18232e;
+  --panel: #1d2b38;
+  --accent: #69d5de;
+  --accent-hover: #8ae3e9;
+  --accent-light: #153d45;
+  --on-accent: #08262a;
+  --line: #42586c;
+  --muted: #a1b4c6;
+  --danger: #ff9ba6;
+  --danger-surface: #452730;
+  --success: #8ed9ae;
+  --success-surface: #1a3b30;
+  --warning: #f3c66e;
+  --focus: #69d5de99;
+  --shadow: #0007;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    color-scheme: dark;
+    --text: #e0e8f1;
+    --canvas: #101820;
+    --surface: #18232e;
+    --panel: #1d2b38;
+    --accent: #69d5de;
+    --accent-hover: #8ae3e9;
+    --accent-light: #153d45;
+    --on-accent: #08262a;
+    --line: #42586c;
+    --muted: #a1b4c6;
+    --danger: #ff9ba6;
+    --danger-surface: #452730;
+    --success: #8ed9ae;
+    --success-surface: #1a3b30;
+    --warning: #f3c66e;
+    --focus: #69d5de99;
+    --shadow: #0007;
+  }
+}
+:root[data-density="compact"] {
+  --control-height: 26px;
+  --control-padding: 3px 7px;
+  font-size: 12px;
+}
+button {
+  min-height: var(--control-height);
+  padding: var(--control-padding);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+[hidden] {
+  display: none !important;
+}
+.workspace-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.workspace-tabs > div {
+  display: flex;
+  border-right: 1px solid var(--line);
+}
+.workspace-tabs button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.workspace-tabs .active {
+  background: var(--surface);
+  box-shadow: inset 0 2px var(--accent);
+}
+.workspace-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.workspace-empty {
+  padding: 32px;
+  color: var(--muted);
+}
+.appearance-controls {
+  display: flex;
+  gap: 4px;
+  max-width: 210px;
+}
+.command-menu {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 540px;
+  width: calc(100vw - 32px);
+  box-shadow: 0 12px 48px var(--shadow);
+}
+.command-menu::backdrop {
+  background: #0008;
+}
+.command-menu header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.command-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 50vh;
+  overflow: auto;
+  margin-top: 10px;
+}
+.command-results button {
+  justify-content: flex-start;
+}
+.feed-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+.path-metrics {
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  margin: 8px 0;
+}
+@media (max-width: 1100px) {
+  .appearance-controls {
+    max-width: 150px;
+  }
+  .main-header nav button {
+    padding: 5px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

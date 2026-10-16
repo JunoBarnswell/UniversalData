@@ -808,6 +808,7 @@ static ud_status execute_task(void *user, uint32_t index) {
         has = 1;
     }
     int32_t state = UD_EXEC_SKIPPED;
+    if (atomic_load(&parent->execution->stop_requested)) pass = 0;
     if (!status && pass) {
         status = task_result(run);
         state = status == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED

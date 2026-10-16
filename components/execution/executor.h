@@ -10,6 +10,7 @@ ud_status ud_executor_create(ud_context *, uint32_t concurrency, ud_executor **)
 ud_status ud_executor_start(ud_executor *);
 ud_status ud_work_group_create(ud_executor *, uint32_t count, uint32_t concurrency,
                               ud_work_quantum, void *, ud_work_group **);
+void ud_work_group_defer(ud_work_group *, uint32_t, uint32_t milliseconds);
 void ud_work_group_ready(ud_work_group *, uint32_t);
 /* The caller participates, and nested joins help only their own child group.
  * A serial group stays on its caller for native instance thread affinity. */

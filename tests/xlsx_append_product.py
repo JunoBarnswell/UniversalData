@@ -24,8 +24,8 @@ with tempfile.TemporaryDirectory(prefix="ud-xlsx-append-") as folder:
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as workbook:
         for name, content in parts.items():
             workbook.writestr(name, content.encode())
-    schema = {"version": 11, "fields": [{"name": "id", "type": "uint64", "nullable": False}, {"name": "label", "type": "utf8", "nullable": False}]}
-    doc = {"version": 11, "id": "xlsx-preserving-append", "connections": [{"id": "input", "driver": "file", "resource": str(source)}, {"id": "output", "driver": "file", "resource": str(target)}],
+    schema = {"version": 12, "fields": [{"name": "id", "type": "uint64", "nullable": False}, {"name": "label", "type": "utf8", "nullable": False}]}
+    doc = {"version": 12, "id": "xlsx-preserving-append", "connections": [{"id": "input", "driver": "file", "resource": str(source)}, {"id": "output", "driver": "file", "resource": str(target)}],
         "controlFlow": {"tasks": [{"id": "copy", "kind": "dataFlow", "config": {"pipeline": "rows"}}], "constraints": []}, "dataFlows": [{"id": "rows", "components": [
             {"id": "read", "component": "file.ndjson.source", "config": {"connection": "input", "schema": schema}},
             {"id": "write", "component": "file.xlsx.destination", "config": {"connection": "output", "fileMode": "append", "sheet": "Data", "header": True}}],

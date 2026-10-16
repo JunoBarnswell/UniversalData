@@ -1,0 +1,71 @@
+{
+  "status": "Passed",
+  "packageId": "task-94d925fb-242e-4e7c-8a4c-e0e1fd2d79ac",
+  "sourceDiscovery": true,
+  "noJsonEditor": true,
+  "nativeFormulaCompile": true,
+  "nativeBeforeAfter": true,
+  "dragUndoRedo": true,
+  "currentDraftPublication": true,
+  "publishDoesNotExecute": true,
+  "previewDoesNotWrite": true,
+  "definitionBreakpoint": true,
+  "nativeStep": true,
+  "actualWorkerTermination": true,
+  "resumeSameNativeId": true,
+  "outputSignature": "476ed7810ec5a1b7a3c46faab9b9756fccebe2b977325c165ac00bc8ad9e8105",
+  "studio4Tabs": true,
+  "commandMenu": true,
+  "themes": true,
+  "density": true,
+  "browserErrors": [],
+  "consoleMessages": [
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "httpErrors": [
+    {
+      "status": 401,
+      "path": "/api/auth/session"
+    },
+    {
+      "status": 400,
+      "path": "/api/executions/517b82e60ecc47c29f28838b5a53e85d/debug"
+    },
+    {
+      "status": 404,
+      "path": "/api/drafts/browser-100699c3b86544428f34a2fbe91aa520-scale-200"
+    },
+    {
+      "status": 404,
+      "path": "/api/drafts/browser-100699c3b86544428f34a2fbe91aa520-scale-500"
+    },
+    {
+      "status": 404,
+      "path": "/api/drafts/browser-100699c3b86544428f34a2fbe91aa520-scale-1000"
+    }
+  ],
+  "browserPlugin": "Browser plugin not available"
+}

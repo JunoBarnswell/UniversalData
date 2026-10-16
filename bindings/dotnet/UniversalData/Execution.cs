@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace UniversalData;
 
 public enum ExecutionState
-{ Created, Validating, Ready, Running, Draining, Succeeded, Failed, Cancelled, Skipped, RecoveryRequired }
+{ Created, Validating, Ready, Running, Draining, Succeeded, Failed, Cancelled, Skipped, RecoveryRequired, Stopped }
 
 public enum ConnectionAccess
 { Open = 1, Discover, Read, Write, Receipt, Delete = 8, Execute = 9, Network = 10,
@@ -136,6 +136,8 @@ public sealed class Execution : IDisposable
     public bool Wait(uint timeoutMilliseconds)
     { Control(); lock (controller) { Open(); int s = Native.ud_execution_wait(execution, timeoutMilliseconds); if (s == 11) return false; Check(s); return true; } }
 
+    public void Stop() { Open(); Native.ud_execution_stop(execution); }
+
     public void Cancel()
     { try { if (!execution.IsClosed) Native.ud_execution_cancel(execution); } catch (ObjectDisposedException) { } }
 
@@ -221,6 +223,9 @@ public sealed class Execution : IDisposable
     }
 
     public string Diagnostics() => Inspect(true);
+    internal void RecordProgress(IntPtr catalog, ulong revision)
+    { Control(); lock (controller) { Open(); Check(Native.ud_catalog_record_progress(catalog, execution, revision)); } }
+
     internal void RecordCatalog(IntPtr catalog, ulong revision)
     { Control(); lock (controller) { Open(); Check(Native.ud_catalog_record_execution(catalog, execution, revision)); } }
 
@@ -273,6 +278,7 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_progress(ExecutionHandle execution, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_snapshot(ExecutionHandle execution, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_record_execution(IntPtr catalog, ExecutionHandle execution, ulong revision);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_record_progress(IntPtr catalog, ExecutionHandle execution, ulong revision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void Observer(IntPtr user, IntPtr executionEvent);
     [StructLayout(LayoutKind.Sequential)] internal struct ExecutionEventValue
     { internal uint Size, Abi; internal StringValue PackageId, ExecutionId, TaskId, PipelineId, ComponentId;
@@ -303,6 +309,7 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_wait(ExecutionHandle execution, uint timeout);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void ud_execution_cancel(ExecutionHandle execution);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void ud_execution_stop(ExecutionHandle execution);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_get_metrics(ExecutionHandle execution, ref ExecutionMetricsValue metrics);
 

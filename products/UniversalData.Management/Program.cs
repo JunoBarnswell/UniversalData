@@ -49,7 +49,7 @@ async Task<JsonElement> InspectValue(HttpContext context,string mode,JsonElement
     return await WorkerLauncher.Inspect(configuration.WorkerPath,request,context.RequestAborted);
 }
 async Task<IResult> Inspect(HttpContext context,string mode,JsonElement package,JsonElement? payload = null,string permission = "package.read") => Results.Json(await InspectValue(context,mode,package,payload,permission));
-const string empty = "{\"version\":11,\"id\":\"component-catalog\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
+string empty = "{\"version\":"+ProductInfo.Protocol+",\"id\":\"component-catalog\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
 api.MapGet("/components",async (HttpContext context) => {
     Identity(context).Require("component.read","*"); using var document = JsonDocument.Parse(empty); var scoped = Scope(context);
     return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"components",scoped,Identity(context),empty),context.RequestAborted));
@@ -155,6 +155,8 @@ api.MapPost("/deployments/{id}/start",async (string id,HttpContext context,RunDi
 api.MapPost("/deployments/{id}/stop",async (string id,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).ActivateDeployment(Identity(context),id,false)));
 api.MapPost("/executions",(RunRequest request,HttpContext context,RunDispatcher dispatcher) => Results.Accepted(value:RunView(dispatcher.For(Identity(context)).Enqueue(Identity(context),request))));
 api.MapGet("/executions/{ticket}",(string ticket,HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Get(Identity(context),ticket) is { } run ? Results.Ok(RunView(run)) : Results.NotFound());
+api.MapPost("/executions/{ticket}/stop",async (string ticket,HttpContext context,RunDispatcher dispatcher) => { await dispatcher.For(Identity(context)).Stop(Identity(context),ticket); return Results.Accepted(); });
+api.MapGet("/executions/{ticket}/events",async (string ticket,HttpContext context,RunDispatcher dispatcher) => await ExecutionFeed.Stream(context,ticket,dispatcher,policy,identities));
 api.MapPost("/executions/{ticket}/cancel",async (string ticket,HttpContext context,RunDispatcher dispatcher) => { await dispatcher.For(Identity(context)).Cancel(Identity(context),ticket); return Results.Accepted(); });
 api.MapPost("/executions/{ticket}/resume",(string ticket,HttpContext context,RunDispatcher dispatcher) => Results.Accepted(value:RunView(dispatcher.For(Identity(context)).Resume(Identity(context),ticket))));
 api.MapGet("/executions/{ticket}/metrics",async (string ticket,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).Metrics(Identity(context),ticket)));

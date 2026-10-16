@@ -29,7 +29,7 @@ ud_status ud_queue_push(ud_queue *queue, const ud_stream_event *event) {
     if (!queue || !event || event->struct_size != sizeof(*event) ||
         event->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    if (event->kind < UD_STREAM_DATA || event->kind > UD_STREAM_SCHEMA_CHANGE ||
+    if (event->kind < UD_STREAM_DATA || event->kind > UD_STREAM_ACTIVE ||
         event->kind == UD_STREAM_POLL || (event->kind == UD_STREAM_DATA && !event->block) ||
         (event->kind == UD_STREAM_BARRIER && !event->epoch) ||
         (event->source_position.length && !event->source_position.data))
@@ -124,4 +124,17 @@ int32_t ud_queue_front_kind(const ud_queue *q) {
     int32_t kind = q->count ? q->events[q->head].kind : 0;
     ud_mutex_unlock((ud_mutex *)&q->mutex);
     return kind;
+}
+
+ud_status ud_queue_snapshot(const ud_queue *q, ud_queue_metrics *out) {
+    if (!q || !out) return UD_INVALID;
+    memset(out, 0, sizeof(*out));
+    ud_mutex_lock((ud_mutex *)&q->mutex);out->capacity = q->capacity;
+    for (uint32_t i = 0; i < q->count; i++) {
+        const ud_stream_event *event = q->events + (q->head + i) % q->capacity;
+        if (event->kind == UD_STREAM_DATA) {
+            out->batches++;out->rows += ud_buffer_block_rows(event->block);out->referenced_bytes += ud_buffer_block_bytes(event->block);
+        }
+    }
+    ud_mutex_unlock((ud_mutex *)&q->mutex);return UD_OK;
 }

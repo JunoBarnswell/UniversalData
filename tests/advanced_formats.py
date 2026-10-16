@@ -3,9 +3,9 @@ import copy,http.server,json,pathlib,ssl,subprocess,sys,tempfile,threading,urlli
 runner=str(pathlib.Path(sys.argv[1]).resolve())
 field=lambda name,type='int64',nullable=False,**kw:dict(name=name,type=type,nullable=nullable,**kw)
 node=lambda id,component,**config:dict(id=id,component=component,config=config)
-def document(connections,nodes,paths):return dict(version=11,id='formats',connections=connections,controlFlow=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='p'))],constraints=[]),dataFlows=[dict(id='p',components=nodes,paths=[{'from':a,'output':0,'to':b,'input':0} for a,b in paths])])
+def document(connections,nodes,paths):return dict(version=12,id='formats',connections=connections,controlFlow=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='p'))],constraints=[]),dataFlows=[dict(id='p',components=nodes,paths=[{'from':a,'output':0,'to':b,'input':0} for a,b in paths])])
 with tempfile.TemporaryDirectory(prefix='ud-advanced-formats-') as tmp:
- root=pathlib.Path(tmp);schema=dict(version=11,fields=[field('id'),field('text','utf8',True),field('amount','decimal128',True,precision=30,scale=6),field('payload','binary',True),field('stamp','timestamp',True,timezone='UTC'),field('items','list',False,children=[field('item','int64',True)])]);records=[dict(id=i,text=None if i%3==0 else '汉😀',amount=None if i%5==0 else '9007199254740993.123456',payload=None if i%7==0 else '' if i%2 else 'AP8B',stamp=None if i%11==0 else '2026-01-01T00:00:00.000001Z',items=[i,None]) for i in range(31)]
+ root=pathlib.Path(tmp);schema=dict(version=12,fields=[field('id'),field('text','utf8',True),field('amount','decimal128',True,precision=30,scale=6),field('payload','binary',True),field('stamp','timestamp',True,timezone='UTC'),field('items','list',False,children=[field('item','int64',True)])]);records=[dict(id=i,text=None if i%3==0 else '汉😀',amount=None if i%5==0 else '9007199254740993.123456',payload=None if i%7==0 else '' if i%2 else 'AP8B',stamp=None if i%11==0 else '2026-01-01T00:00:00.000001Z',items=[i,None]) for i in range(31)]
  (root/'in.ndjson').write_text(''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in records))
  def execute(name,p):
   folder=root/name;folder.mkdir();(folder/'state').mkdir();(folder/'spill').mkdir();p=copy.deepcopy(p);p['connections'].append(dict(id='spill',driver='file',resource=str(folder/'spill')));p['policy']=dict(buffers=dict(connection='spill',residentBytes=1048576,workingBytes=8388608,spillBytes=100000000,maxBlocks=2048));path=folder/'package.json';path.write_text(json.dumps(p));r=subprocess.run([runner,str(path),str(folder/'state'),'0','4'],capture_output=True,text=True,timeout=60);assert r.returncode==0,(r.stdout,r.stderr);facts=json.loads(r.stdout);assert facts['result']==0,(name,facts,r.stderr);return folder,p
@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix='ud-advanced-formats-') as tmp:
     subset=records[cursor:cursor+7];self.reply(200,dict(rows=subset,nextCursor=str(cursor+7) if cursor+7<len(records) else None));return
    key=tuple(params.get(k,[''])[0] for k in ('tenant','job','batch'));self.reply(200,receipts.get(key,dict(committed=False)))
   def do_POST(self):
-   body=json.loads(self.rfile.read(int(self.headers['Content-Length'])));assert len(body['rows'])==len(body['rowInfo']);assert body['schema']['version']==11
+   body=json.loads(self.rfile.read(int(self.headers['Content-Length'])));assert len(body['rows'])==len(body['rowInfo']);assert body['schema']['version']==12
    key=tuple(body[k] for k in ('tenant','job','batchId'));receipt=dict(committed=True,digest=body['digest'],sourcePosition=body['sourcePosition'])
    if key in receipts:assert receipts[key]==receipt
    else:written.extend(body['rows']);receipts[key]=receipt

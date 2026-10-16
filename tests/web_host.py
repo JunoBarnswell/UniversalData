@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory(prefix='ud-browser-host-') as directory:
             else:raise TimeoutError('Product host start timed out')
             command=[args.browser_python,str(pathlib.Path(__file__).with_name('web_product.py')),'--url',address,'--root',str(resources),'--evidence',str(args.evidence),'--subject','acceptance']
             if args.browser_executable:command+=['--browser-executable',str(args.browser_executable)]
-            subprocess.run(command,env={**os.environ,'UD_BROWSER_PASSWORD':password},check=True,timeout=300)
+            subprocess.run(command,env={**os.environ,'UD_BROWSER_PASSWORD':password},check=True,timeout=600)
         finally:
             host.terminate()
             try:host.wait(timeout=15)

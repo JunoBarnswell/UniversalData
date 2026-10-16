@@ -108,7 +108,7 @@ with sync_playwright() as playwright:
         save('file-discovery.png')
         wizard.get_by_label('确认文件格式与字段').check()
         wizard.get_by_role('button', name='添加数据源', exact=True).click()
-        page.get_by_label('作业包名称').fill(identity)
+        page.locator('.workspace-panel:not([hidden])').get_by_label('作业包名称').fill(identity)
         source_id=page.locator('.react-flow__node').first.get_attribute('data-id')
         derived_id=add_component('derive')
         connect(source_id,derived_id)
@@ -189,7 +189,46 @@ with sync_playwright() as playwright:
         save('executions.png')
         page.get_by_role('button',name='作业',exact=True).click();page.get_by_role('heading',name='作业管理',exact=True).wait_for()
         page.get_by_role('button',name='项目',exact=True).click();page.get_by_role('row').filter(has_text=identity).get_by_role('button',name='打开工作台').click()
-        expect(page.get_by_label('作业包名称')).to_have_value(identity)
+        expect(page.locator('.workspace-panel:not([hidden])').get_by_label('作业包名称')).to_have_value(identity)
+        print('Studio 4 theme and command journey',flush=True)
+        page.get_by_label('主题',exact=True).select_option('dark')
+        page.get_by_label('界面密度',exact=True).select_option('compact')
+        assert page.locator('html').get_attribute('data-theme')=='dark'
+        page.keyboard.press('Control+k')
+        commands=page.get_by_role('dialog',name='工作台命令')
+        commands.get_by_label('搜索命令').fill('自动布局');page.keyboard.press('Enter')
+        expect(commands).not_to_be_visible()
+        expect(page.locator('.workspace-tabs [role=tab]')).to_have_count(1)
+        page.get_by_role('button',name='项目',exact=True).click()
+        page.get_by_role('button',name='空白任务',exact=True).click()
+        expect(page.locator('.workspace-tabs [role=tab]')).to_have_count(2)
+        page.locator('.workspace-tabs [role=tab]').first.click()
+        expect(page.locator('.workspace-panel:not([hidden])').get_by_label('作业包名称')).to_have_value(identity)
+        page.get_by_label('主题',exact=True).select_option('light')
+        page.get_by_label('界面密度',exact=True).select_option('comfortable')
+        print('Studio 4 tabs passed; starting scale journey',flush=True)
+        performance=[]
+        page.on('dialog',lambda dialog:dialog.accept())
+        page.set_viewport_size(dict(width=1600,height=1050))
+        for count in [200,500,1000]:
+            name=identity+'-scale-'+str(count)
+            scale=dict(version=12,id=name,variables=dict(counter=dict(type='int64',default=0)),dataFlows=[],
+                controlFlow=dict(tasks=[dict(id='step-'+str(index),kind='set',config=dict(name='counter',value=dict(literal=index,type='int64'))) for index in range(count)],constraints=[]))
+            api('PUT','/packages/'+name+'/versions/1',scale)
+            page.get_by_role('button',name='项目',exact=True).click()
+            started=time.perf_counter()
+            page.get_by_role('row').filter(has_text=name).get_by_role('button',name='打开工作台').click()
+            panel=page.locator('.workspace-panel:not([hidden])')
+            expect(panel.locator('.graph-count')).to_contain_text(str(count)+' 个组件',timeout=60000)
+            opened=(time.perf_counter()-started)*1000
+            started=time.perf_counter();panel.get_by_role('button',name='Fit View',exact=True).click()
+            page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+            zoomed=(time.perf_counter()-started)*1000
+            assert len(api('GET','/packages/'+name+'/versions/1')['controlFlow']['tasks'])==count
+            performance.append(dict(nodes=count,renderedNodes=panel.locator('.react-flow__node').count(),openMs=round(opened,1),fitViewMs=round(zoomed,1)))
+            page.get_by_role('button',name='关闭 '+name,exact=True).click()
+        page.locator('.workspace-tabs [role=tab]').first.click()
+        (args.evidence/'studio4-scale.json').write_text(json.dumps(dict(browser=browser.version,viewport=[1600,1050],platform=__import__('platform').platform(),cpus=os.cpu_count(),cases=performance),indent=2))
         for width,height,name in [(768,950,'designer-compact.png'),(390,844,'designer-phone.png')]:
             page.set_viewport_size(dict(width=width,height=height));save(name)
         assert not errors, errors
@@ -201,11 +240,13 @@ with sync_playwright() as playwright:
         (args.evidence/'browser.json').write_text(json.dumps(dict(status='Passed',packageId=package_id,sourceDiscovery=True,noJsonEditor=True,
             nativeFormulaCompile=True,nativeBeforeAfter=True,dragUndoRedo=True,currentDraftPublication=True,publishDoesNotExecute=True,previewDoesNotWrite=True,
             definitionBreakpoint=True,nativeStep=True,actualWorkerTermination=True,resumeSameNativeId=True,outputSignature=__import__('hashlib').sha256(output.read_bytes()).hexdigest(),
-            browserErrors=errors,consoleMessages=console,httpErrors=http,browserPlugin='Browser plugin not available'),indent=2))
+            studio4Tabs=True,commandMenu=True,themes=True,density=True,browserErrors=errors,consoleMessages=console,httpErrors=http,browserPlugin='Browser plugin not available'),indent=2))
     except BaseException:
+        (args.evidence/'failure-original.txt').write_text(__import__('traceback').format_exc())
+        print(__import__('traceback').format_exc(),flush=True)
         (args.evidence/'failure-runs.json').write_text(json.dumps(api('GET','/executions'),indent=2))
         (args.evidence/'failure-console.json').write_text(json.dumps(dict(errors=errors,console=console,http=http),indent=2))
-        save('failure.png');(args.evidence/'failure.txt').write_text(page.locator('body').inner_text());(args.evidence/'failure-nodes.json').write_text(json.dumps(page.locator('.react-flow__node').evaluate_all('(nodes)=>nodes.map(node=>({id:node.dataset.id,style:node.getAttribute("style"),box:node.getBoundingClientRect().toJSON()}))'),indent=2));raise
+        page.screenshot(path=str(args.evidence/'failure.png'),full_page=False,timeout=5000);(args.evidence/'failure.txt').write_text(page.locator('body').inner_text());(args.evidence/'failure-nodes.json').write_text(json.dumps(page.locator('.react-flow__node').evaluate_all('(nodes)=>nodes.map(node=>({id:node.dataset.id,style:node.getAttribute("style"),box:node.getBoundingClientRect().toJSON()}))'),indent=2));raise
     finally:
         browser.close()
 print('Real browser file import, Native formulas/preview, current-draft publication, breakpoints/step, Worker kill and recovery passed')
