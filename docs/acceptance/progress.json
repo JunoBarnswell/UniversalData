@@ -16,17 +16,27 @@
   },
   "candidate": {
     "branch": "codex/studio4-stream-batch",
-    "state": "Draft PR #10; 75 portable checks passed and 1 Windows SSIS check skipped. Production gates, one-hour soak and planned extensions remain explicit.",
+    "state": "Draft PR #10; local portable checks passed. Remote CI could not start because of GitHub billing/spending limits; production and extension gates remain explicit.",
     "sourceCommit": "9d0630980cafb34170f9fb8d1d1d1f2cae6f4e7d",
     "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
     "mergeEvidence": null,
     "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/10"
   },
   "remoteCI": {
-    "state": "NotRun",
-    "sourceCommit": null,
-    "url": null,
-    "reason": "Current candidate CI has not run. Prior GitHub billing restrictions are historical evidence in history.designer3Delivery.remoteCI."
+    "state": "VerificationBlocked",
+    "sourceCommit": "f3b40463a38b404bbc9d5701b21beaef1f84d963",
+    "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38937562090",
+    "status": "completed",
+    "conclusion": "failure",
+    "steps": 0,
+    "annotations": [
+      {
+        "level": "failure",
+        "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      }
+    ],
+    "reason": "GitHub did not start any build steps because of account billing/spending limits. This is an environment blocker, not a passed build."
   },
   "artifacts": null,
   "requiredGates": 11,

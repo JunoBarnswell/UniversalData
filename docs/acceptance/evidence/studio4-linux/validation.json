@@ -15,5 +15,6 @@
   "archive": "Not produced: installed-consumer and complete PRODUCT delivery remain unverified",
   "externalCDC": "Blocked: no current provider credentials/resources supplied",
   "windows": "Blocked",
-  "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56"
+  "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
+  "remoteCI": "Blocked before build: GitHub account billing/spending restriction (run 38937562090)."
 }
