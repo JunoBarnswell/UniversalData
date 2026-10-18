@@ -18,12 +18,16 @@ static int index_of(const ud_plan *p, ud_string name) {
             return (int)i;
     return -1;
 }
-static ud_status list(ud_plan *p, const ud_json *array, uint32_t **out, uint32_t *count) {
+static ud_status list(ud_plan *p, const ud_json *array, uint32_t **out, uint32_t *count,
+                      int allow_empty) {
     if (!array)
         return UD_OK;
-    if (ud_json_kind(array) != UD_JSON_ARRAY || !ud_json_size(array) || ud_json_size(array) > p->n)
+    if (ud_json_kind(array) != UD_JSON_ARRAY || (!allow_empty && !ud_json_size(array)) ||
+        ud_json_size(array) > p->n)
         return UD_SCHEMA;
     *count = ud_json_size(array);
+    if (!*count)
+        return UD_OK; /* Empty GROUP BY is the global aggregate, not an empty projection. */
     *out = ud_alloc(p->ctx, *count * sizeof(**out));
     if (!*out)
         return UD_RESOURCE;
@@ -61,8 +65,8 @@ static ud_status bind(ud_plan *p, const ud_expression_options *bindings) {
     UD_TRY(ud_json_text(member(p->definition, "version"), &version.data, &version.length));
     if (!named(version, UD_PROTOCOL_VERSION_TEXT))
         return UD_INCOMPATIBLE;
-    UD_TRY(list(p, member(p->definition, "projection"), &p->projection, &p->project_n));
-    UD_TRY(list(p, member(p->definition, "group"), &p->keys, &p->key_n));
+    UD_TRY(list(p, member(p->definition, "projection"), &p->projection, &p->project_n, 0));
+    UD_TRY(list(p, member(p->definition, "group"), &p->keys, &p->key_n, 1));
     const ud_json *aggregates = member(p->definition, "aggregates");
     if (aggregates && (ud_json_kind(aggregates) != UD_JSON_ARRAY || !ud_json_size(aggregates) ||
                        ud_json_size(aggregates) > 65536 - p->key_n))
@@ -215,7 +219,7 @@ static ud_status result_schema(ud_plan *p) {
             if (a->kind == 4 && field.type != UD_FLOAT64 && field.type != UD_DURATION &&
                 field.type != UD_INTERVAL) {
                 field.type = UD_DECIMAL128;
-                field.scalar=(ud_scalar_metadata){.kind=field.scalar.kind?UD_DT_NUMERIC:0};
+                field.scalar = (ud_scalar_metadata){.kind = field.scalar.kind ? UD_DT_NUMERIC : 0};
                 field.precision = 38;
                 field.scale =
                     p->fields[a->column].type == UD_DECIMAL128 ? p->fields[a->column].scale : 0;

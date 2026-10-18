@@ -1,6 +1,7 @@
 import { PROTOCOL_VERSION } from "./version";
 export type Configuration = Record<string, unknown>;
 export interface PropertySchema {
+  "x-role"?:string;
   type?: string | string[];
   title?: string;
   description?: string;
@@ -27,6 +28,8 @@ export interface Component {
   outputs: number;
   dynamicPorts: boolean;
   previewSafe?: boolean;
+  continuous?:boolean;
+  streamSafe?:boolean;
   structuralControl?: boolean;
   children?: boolean;
   errorOutput: number;
@@ -81,6 +84,7 @@ export interface PackageDocument {
   };
 }
 export interface RunState {
+  attempt?:number;
   id: string;
   packageId: string;
   packageRevision: string;
@@ -131,6 +135,7 @@ export const stateName = (state: string) =>
     Succeeded: "已完成",
     Failed: "失败",
     Cancelled: "已取消",
+    Stopped: "已停止（排空完成）",
     RecoveryRequired: "需要恢复",
   })[state] ?? state;
 export function defaults(schema: PropertySchema): Configuration {

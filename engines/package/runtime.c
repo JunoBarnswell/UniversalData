@@ -155,6 +155,7 @@ ud_status ud_activation_scope_identity(const ud_activation *activation, char out
     ud_bytes_clear(&bytes);
     return status;
 }
+int ud_activation_stopping(const ud_activation *e) {return e && atomic_load(&e->execution->stop_requested);}
 ud_status ud_activation_check(const ud_activation *e) {
     if (!e)
         return UD_INVALID;
@@ -268,6 +269,7 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     e->root.execution = e;
     e->root.definition = &e->root;
     atomic_init(&e->root.cancelled, 0);
+    atomic_init(&e->stop_requested, 0);
     atomic_init(&e->root.input_rows, 0);
     atomic_init(&e->root.output_rows, 0);
     atomic_init(&e->root.rejected_rows, 0);
@@ -494,7 +496,7 @@ static ud_status execute(ud_execution *e) {
     int32_t state = s == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
                     : s == UD_CANCELLED    ? UD_EXEC_CANCELLED
                     : s                    ? UD_EXEC_FAILED
-                                           : UD_EXEC_SUCCEEDED;
+                    : atomic_load(&e->stop_requested) ? UD_EXEC_STOPPED : UD_EXEC_SUCCEEDED;
 
     atomic_store(&e->result, s);
     atomic_store(&e->state, state);
@@ -558,6 +560,11 @@ ud_status ud_execution_wait(ud_execution *e, uint32_t timeout) {
     }
     ud_mutex_unlock(&e->events_lock);
     return atomic_load(&e->result);
+}
+void ud_execution_stop(ud_execution *e) {
+    if (!e) return;
+    atomic_store(&e->stop_requested, 1);
+    ud_executor_cancel(e->executor); /* Wake parked work; does not cancel Context. */
 }
 void ud_execution_cancel(ud_execution *e) {
     if (e) {

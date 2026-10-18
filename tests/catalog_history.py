@@ -12,7 +12,8 @@ with tempfile.TemporaryDirectory(prefix="ud-history-") as temporary:
     database = root / "catalog.sqlite3"
     with sqlite3.connect(database) as connection:
         rows = connection.execute("SELECT kind,document FROM documents ORDER BY kind,id,revision").fetchall()
-    assert sum(kind == 5 for kind, _ in rows) == 8
+    assert sum(kind == 5 for kind, _ in rows) == 16
+    assert sum(kind == 5 and "progress" in json.loads(document) for kind, document in rows)==8
     assert sum(kind == 6 for kind, _ in rows) >= 8
     assert all("FixtureSensitive" not in document for _, document in rows)
     expected_hash = hashlib.sha256(b'{"secret":"FixtureSensitive"}').hexdigest()
@@ -20,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix="ud-history-") as temporary:
         if kind != 5:
             continue
         record = json.loads(document)
-        assert record["version"] == 11
+        assert record["version"] == 12
         assert record["parametersHash"] == expected_hash
         assert len(record["definitionHash"]) == 64
         assert record["projectId"] == "project"

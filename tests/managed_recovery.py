@@ -9,7 +9,10 @@ import time
 with tempfile.TemporaryDirectory(prefix='ud-managed-recovery-') as directory:
     root = pathlib.Path(directory)
     command = [sys.argv[1], sys.argv[2], sys.argv[3], directory]
-    child = subprocess.Popen(command + ['new'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    window = len(sys.argv)>4 and sys.argv[4].startswith('window')
+    suffix=['window'] if window else []
+    if len(sys.argv)>4 and sys.argv[4]=='window-pre':(root/'pre-barrier').touch()
+    child = subprocess.Popen(command + ['new']+suffix, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         deadline = time.monotonic() + 25
         while not (root / 'kill-ready').exists():
@@ -19,12 +22,12 @@ with tempfile.TemporaryDirectory(prefix='ud-managed-recovery-') as directory:
                 raise AssertionError('Managed epoch did not reach the real kill boundary')
             time.sleep(0.02)
         original = (root / 'identity').read_text()
-        before = json.loads((root / 'rows.json').read_text())
-        assert len(before) == 3 and sorted(before.values()) == [0, 1, 2]
+        before = json.loads((root / 'rows.json').read_text()) if (root/'rows.json').exists() else {}
+        assert not before if window else len(before) == 3 and sorted(before.values()) == [0, 1, 2]
         child.kill()
         child.communicate(timeout=10)
         (root / 'continue').write_text('resume')
-        resumed = subprocess.run(command + ['resume'], capture_output=True, text=True, timeout=30)
+        resumed = subprocess.run(command + ['resume']+suffix, capture_output=True, text=True, timeout=30)
         assert resumed.returncode == 0, (resumed.stdout, resumed.stderr)
         assert resumed.stdout.strip() == original
         rows = json.loads((root / 'rows.json').read_text())

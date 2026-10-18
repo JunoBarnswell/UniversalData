@@ -13,6 +13,8 @@ UD_API ud_status ud_queue_push(ud_queue *, const ud_stream_event *);
 UD_API ud_status ud_queue_pop(ud_queue *, ud_stream_event *);
 /* Inspect only the head kind; DATA demand must not block ordered control. */
 UD_API int32_t ud_queue_front_kind(const ud_queue *);
+typedef struct ud_queue_metrics { uint64_t batches, rows, referenced_bytes, capacity; } ud_queue_metrics;
+UD_API ud_status ud_queue_snapshot(const ud_queue *, ud_queue_metrics *);
 UD_API uint32_t ud_queue_count(const ud_queue *);
 /* Call only after producers/consumers have joined. */
 UD_API ud_status ud_queue_destroy(ud_queue *);

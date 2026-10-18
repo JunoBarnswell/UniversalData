@@ -17,6 +17,8 @@ typedef struct relational_component {
     uint64_t committed, conflicts;
 } relational_component;
 static int outputs(int k) {
+    if (k == UD_OPERATOR_EVENT_WINDOW)
+        return 2;
     if (k == UD_OPERATOR_DIFF_COMPARE)
         return 5;
     if (k == UD_OPERATOR_ASOF_JOIN || k == UD_OPERATOR_TEMPORAL_JOIN)
@@ -206,6 +208,8 @@ static ud_status step(void *ptr, const ud_component_event *event) {
         UD_TRY(ud_operator_push(r->operator, event->input, event->batch));
     else if (event->kind == UD_COMPONENT_INPUT_END)
         UD_TRY(ud_operator_finish_input(r->operator, event->input));
+    if (event->kind == UD_COMPONENT_WATERMARK && r->kind == UD_OPERATOR_EVENT_WINDOW)
+        UD_TRY(ud_operator_watermark(r->operator, event->watermark));
     return pull(r);
 }
 static uint64_t demand(void *ptr) {
@@ -528,11 +532,159 @@ static ud_status sink_diagnostics(void *ptr, char **out, uint32_t *length) {
     *length = (uint32_t)n;
     return *out ? UD_OK : UD_RESOURCE;
 }
+typedef struct event_time {
+    ud_component_context context;
+    uint32_t field;
+    int64_t lag, maximum, emitted;
+    int pending;
+} event_time;
+static ud_status time_options(const ud_component_context *c, ud_string text, const ud_batch *input,
+                              event_time *t) {
+    ud_json *config = NULL;
+    UD_TRY(ud_json_parse(c->memory, text.data, text.length, &config, NULL));
+    ud_status s = ud_compute_field_index(input, ud_member(config, "field"), &t->field);
+    uint64_t lag = 0;
+    if (!s)
+        s = ud_json_uint(ud_member(config, "lagMicros"), &lag);
+    if (!s && (lag > INT64_MAX || input->column[t->field].field.nullable ||
+               (input->column[t->field].field.type != UD_TIMESTAMP &&
+                input->column[t->field].field.type != UD_INT64)))
+        s = UD_SCHEMA;
+    t->lag = (int64_t)lag;
+    t->context = *c;
+    t->maximum = t->emitted = INT64_MIN;
+    ud_json_destroy(config);
+    return s;
+}
+static ud_status time_configure(void *u, const ud_component_context *c, ud_string text,
+                                const ud_batch *const *in, ud_batch **out) {
+    (void)u;
+    event_time t = {0};
+    UD_TRY(time_options(c, text, in[0], &t));
+    return ud_batch_create(c->memory, in[0]->schema->fields, in[0]->columns, 0, out);
+}
+static ud_status time_prepare(void *u, const ud_component_context *c, ud_string text,
+                              const ud_batch *const *in, const ud_batch *const *out,
+                              void **instance) {
+    (void)u;
+    (void)out;
+    *instance = NULL;
+    event_time *t = ud_alloc(c->memory, sizeof(*t));
+    if (!t)
+        return UD_RESOURCE;
+    ud_status s = time_options(c, text, in[0], t);
+    if (s) {
+        ud_free(t);
+        return s;
+    }
+    *instance = t;
+    return UD_OK;
+}
+static ud_status time_step(void *instance, const ud_component_event *event) {
+    event_time *t = instance;
+    UD_TRY(ud_activation_check(t->context.activation));
+    if (event->kind == UD_COMPONENT_DATA) {
+        for (uint32_t row = 0; row < event->batch->rows; row++) {
+            ud_value value;
+            UD_TRY(ud_batch_get(event->batch, row, t->field, &value));
+            if (value.is_null || value.is_absent)
+                return UD_SCHEMA;
+            if (value.integer > t->maximum)
+                t->maximum = value.integer;
+        }
+        UD_TRY(t->context.emit(t->context.emit_user, 0, (ud_batch *)event->batch));
+        t->pending = 1;
+        return UD_MORE;
+    }
+    if (event->kind == UD_COMPONENT_INPUT_END)
+        return UD_END;
+    if (event->kind == UD_COMPONENT_POLL && t->pending) {
+        t->pending = 0;
+        int64_t mark = t->maximum < INT64_MIN + t->lag ? INT64_MIN : t->maximum - t->lag;
+        if (mark > t->emitted) {
+            ud_component_event wm = {.struct_size = sizeof(wm),
+                                     .abi_version = UD_ABI_VERSION,
+                                     .kind = UD_COMPONENT_WATERMARK,
+                                     .watermark = mark};
+            UD_TRY(t->context.emit_event(t->context.emit_user, 0, &wm));
+            t->emitted = mark;
+            return UD_MORE;
+        }
+    }
+    return UD_OK;
+}
+static void time_dispose(void *instance, ud_status outcome) {
+    (void)outcome;
+    ud_free(instance);
+}
+static ud_status time_checkpoint(void *instance, ud_batch **out) {
+    event_time *t = instance;
+    if (t->pending)
+        return UD_BUSY;
+    ud_field field = {.name = "maximum", .name_length = 7, .type = UD_INT64};
+    ud_value value = {.type = UD_INT64, .integer = t->maximum};
+    UD_TRY(ud_batch_create(t->context.memory, &field, 1, 1, out));
+    ud_status s = ud_batch_append(*out, &value, 1);
+    if (!s)
+        s = ud_batch_seal(*out);
+    if (s) {
+        ud_batch_destroy(*out);
+        *out = NULL;
+    }
+    return s;
+}
+static ud_status time_restore(void *instance, const ud_batch *state) {
+    event_time *t = instance;
+    ud_value value;
+    if (state->rows != 1 || state->columns != 1)
+        return UD_CORRUPT;
+    UD_TRY(ud_batch_get(state, 0, 0, &value));
+    if (value.type != UD_INT64 || value.is_null)
+        return UD_CORRUPT;
+    t->maximum = value.integer;
+    t->emitted = t->maximum < INT64_MIN + t->lag ? INT64_MIN : t->maximum - t->lag;
+    return UD_OK;
+}
+static ud_status register_event_time(ud_registry *registry) {
+    static const char schema[] =
+        "{\"type\":\"object\",\"properties\":{\"field\":{\"anyOf\":[{\"type\":\"integer\","
+        "\"minimum\":0},{\"type\":\"string\",\"minLength\":1}],\"x-role\":\"field-selector\"},"
+        "\"lagMicros\":{\"type\":\"integer\",\"minimum\":0,\"default\":0}},\"required\":[\"field\"]"
+        ",\"additionalProperties\":false}";
+    ud_component_descriptor d = {.struct_size = sizeof(d),
+                                 .abi_version = UD_ABI_VERSION,
+                                 .id = {"eventTime", 9},
+                                 .name = {"Event time / Watermark", 22},
+                                 .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
+                                 .configuration_schema = {schema, sizeof(schema) - 1},
+                                 .category = UD_COMPONENT_TRANSFORM,
+                                 .inputs = 1,
+                                 .outputs = 1,
+                                 .synchronous_input = 0,
+                                 .error_output = -1,
+                                 .capabilities =
+                                     UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_REPLAY_SAFE |
+                                     UD_COMPONENT_PREVIEW_SAFE | UD_COMPONENT_STATEFUL |
+                                     UD_COMPONENT_STREAM_SAFE | UD_COMPONENT_CONTROL_EVENTS |
+                                     UD_COMPONENT_WATERMARK_POLICY,
+                                 .configure = time_configure,
+                                 .prepare = time_prepare,
+                                 .step = time_step,
+                                 .finish = finish,
+                                 .dispose = time_dispose,
+                                 .state_version = 1,
+                                 .checkpoint = time_checkpoint,
+                                 .restore = time_restore};
+    return ud_registry_register(registry, &d);
+}
+
 ud_status ud_relational_register(ud_registry *registry) {
+    UD_TRY(register_event_time(registry));
     static const struct {
         const char *id;
         int kind;
-    } entries[] = {{"merge", UD_OPERATOR_MERGE},
+    } entries[] = {{"eventWindow", UD_OPERATOR_EVENT_WINDOW},
+                   {"merge", UD_OPERATOR_MERGE},
                    {"mergeJoin", UD_OPERATOR_MERGE_JOIN},
                    {"pivot", UD_OPERATOR_PIVOT},
                    {"unpivot", UD_OPERATOR_UNPIVOT},
@@ -588,6 +740,10 @@ ud_status ud_relational_register(ud_registry *registry) {
             .state_version = 1,
             .checkpoint = checkpoint,
             .restore = restore_state};
+        if (k == UD_OPERATOR_EVENT_WINDOW) {
+            d.capabilities |= UD_COMPONENT_CONTROL_EVENTS | UD_COMPONENT_STREAM_SAFE;
+            d.optional_outputs |= UINT64_C(2);
+        }
         UD_TRY(ud_registry_register(registry, &d));
     }
     ud_component_descriptor d = {

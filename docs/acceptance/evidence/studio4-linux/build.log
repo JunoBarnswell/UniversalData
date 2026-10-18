@@ -1,0 +1,707 @@
+[0/2] Re-checking globbed directories...
+[1/282] Building C object CMakeFiles/ud_data.dir/components/expression/src/sdk.c.o
+[2/282] Building C object CMakeFiles/ud_data.dir/components/expression/src/formula.c.o
+[3/282] Building C object CMakeFiles/ud_data.dir/components/contracts/src/registry.c.o
+[4/282] Building C object CMakeFiles/ud_data.dir/components/expression/src/expression.c.o
+[5/282] Building C object CMakeFiles/ud_data.dir/components/contracts/src/plugin.c.o
+[6/282] Building C object CMakeFiles/ud_data.dir/components/execution/src/runtime.c.o
+[7/282] Building C object CMakeFiles/ud_data.dir/components/expression/src/functions.c.o
+[8/282] Building C object CMakeFiles/ud_data.dir/components/execution/src/buffer.c.o
+/workspace/work/studio4/components/execution/src/buffer.c: In function ‘collect’:
+/workspace/work/studio4/components/execution/src/buffer.c:104:62: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  104 |         if (capacity <= list->capacity || (uint64_t)capacity > SIZE_MAX / sizeof(*list->parts))
+      |                                                              ^
+[9/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/cache_lookup.c.o
+[10/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/operator_binding.c.o
+[11/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/event_window.c.o
+[12/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/replay.c.o
+/workspace/work/studio4/components/compute/src/replay.c: In function ‘ud_replay_restore’:
+/workspace/work/studio4/components/compute/src/replay.c:259:57: warning: pointer targets in passing argument 2 of ‘ud_batch_deserialize’ differ in signedness [-Wpointer-sign]
+  259 |                 s = ud_batch_deserialize(r->ctx, payload.text, payload.text_length, &b);
+      |                                                  ~~~~~~~^~~~~
+      |                                                         |
+      |                                                         const char *
+In file included from /workspace/work/studio4/include/ud/compute.h:3,
+                 from /workspace/work/studio4/components/compute/src/../internal.h:3,
+                 from /workspace/work/studio4/components/compute/src/state.h:3,
+                 from /workspace/work/studio4/components/compute/src/replay.h:3,
+                 from /workspace/work/studio4/components/compute/src/replay.c:1:
+/workspace/work/studio4/include/ud/data.h:305:53: note: expected ‘const uint8_t *’ {aka ‘const unsigned char *’} but argument is of type ‘const char *’
+  305 | UD_API ud_status ud_batch_deserialize(ud_context *, const uint8_t *, uint64_t, ud_batch **);
+      |                                                     ^~~~~~~~~~~~~~~
+[13/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/profile_operator.c.o
+/workspace/work/studio4/components/compute/src/profile_operator.c: In function ‘ud_profile_operator_bind’:
+/workspace/work/studio4/components/compute/src/profile_operator.c:34:53: warning: comparison of integer expressions of different signedness: ‘uint64_t’ {aka ‘long unsigned int’} and ‘long int’ [-Wsign-compare]
+   34 |             if (p[i] < '0' || p[i] > '9' || maximum > (INT64_MAX - (uint32_t)(p[i] - '0')) / 10)
+      |                                                     ^
+[14/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/stat.c.o
+[15/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/matching.c.o
+[16/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/temporal.c.o
+[17/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/multiway.c.o
+[18/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/diff.c.o
+[19/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/text_transform.c.o
+[20/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/nested.c.o
+[21/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/advanced.c.o
+[22/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/ordered.c.o
+[23/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/state.c.o
+[24/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/window.c.o
+[25/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/hash_join.c.o
+[26/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/join.c.o
+[27/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/unpivot.c.o
+[28/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/sum.c.o
+[29/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/sampling.c.o
+[30/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/declarations.c.o
+[31/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/pivot.c.o
+[32/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/scd.c.o
+[33/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/relational.c.o
+[34/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/cache.c.o
+/workspace/work/studio4/components/compute/src/cache.c: In function ‘ud_cache_seal’:
+/workspace/work/studio4/components/compute/src/cache.c:210:66: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  210 |             if (capacity < cache->capacity || (uint64_t)capacity > SIZE_MAX / sizeof(*cache->pages))
+      |                                                                  ^
+[35/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/collection.c.o
+[36/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/operator.c.o
+[37/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/compute.c.o
+[38/282] Building C object CMakeFiles/ud_data.dir/components/compute/src/quality.c.o
+[39/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/cdc.c.o
+/workspace/work/studio4/engines/data-flow/cdc.c: In function ‘configure’:
+/workspace/work/studio4/engines/data-flow/cdc.c:62:34: warning: unused parameter ‘user’ [-Wunused-parameter]
+   62 | static ud_status configure(void *user, const ud_component_context *c, ud_string text,
+      |                            ~~~~~~^~~~
+[40/282] Building C object CMakeFiles/ud_data.dir/engines/package/templates.c.o
+[41/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/advanced.c.o
+[42/282] Building C object CMakeFiles/ud_data.dir/connectors/rest.c.o
+[43/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/delivery.c.o
+[44/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/error.c.o
+[45/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/quality.c.o
+[46/282] Building C object CMakeFiles/ud_data.dir/connectors/xlsx.c.o
+[47/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/relational.c.o
+[48/282] Building C object CMakeFiles/ud_data.dir/connectors/http.c.o
+[49/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/cache.c.o
+[50/282] Building C object CMakeFiles/ud_data.dir/engines/package/assets.c.o
+/workspace/work/studio4/engines/package/assets.c: In function ‘ud_asset_acquire’:
+/workspace/work/studio4/engines/package/assets.c:283:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  283 |         if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_restore(asset->cache,state);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);ud_batch_destroy(state);
+      |         ^~
+/workspace/work/studio4/engines/package/assets.c:283:99: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  283 |         if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_restore(asset->cache,state);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);ud_batch_destroy(state);
+      |                                                                                                   ^~
+/workspace/work/studio4/engines/package/assets.c: In function ‘ud_asset_partial’:
+/workspace/work/studio4/engines/package/assets.c:416:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  416 |     if(!a||!lease||!out)return UD_INVALID;*out=NULL;struct ud_cache_asset*asset=find_asset(a,id);if(!asset||asset->mode!=UD_CACHE_PARTIAL)return UD_SCHEMA;
+      |     ^~
+/workspace/work/studio4/engines/package/assets.c:416:43: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  416 |     if(!a||!lease||!out)return UD_INVALID;*out=NULL;struct ud_cache_asset*asset=find_asset(a,id);if(!asset||asset->mode!=UD_CACHE_PARTIAL)return UD_SCHEMA;
+      |                                           ^
+/workspace/work/studio4/engines/package/assets.c:420:7: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  420 |       if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);
+      |       ^~
+/workspace/work/studio4/engines/package/assets.c:420:97: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  420 |       if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);
+      |                                                                                                 ^~
+/workspace/work/studio4/engines/package/assets.c:423:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  423 |     if(!status)status=ud_cache_retain(asset->cache);if(!status)*out=asset->cache;ud_mutex_unlock(&a->execution->asset_lock);return status;
+      |     ^~
+/workspace/work/studio4/engines/package/assets.c:423:53: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  423 |     if(!status)status=ud_cache_retain(asset->cache);if(!status)*out=asset->cache;ud_mutex_unlock(&a->execution->asset_lock);return status;
+      |                                                     ^~
+[51/282] Building C object CMakeFiles/ud_data.dir/engines/package/resources.c.o
+[52/282] Building C object CMakeFiles/ud_data.dir/engines/package/child.c.o
+[53/282] Building C object CMakeFiles/ud_data.dir/engines/control-flow/enumerator.c.o
+/workspace/work/studio4/engines/control-flow/enumerator.c: In function ‘prepare’:
+/workspace/work/studio4/engines/control-flow/enumerator.c:172:9: warning: missing initializer for field ‘parameters’ of ‘ud_read_options’ [-Wmissing-field-initializers]
+  172 |         ud_read_options options = {sizeof(options), UD_ABI_VERSION, c->max_batch_rows, sql};
+      |         ^~~~~~~~~~~~~~~
+In file included from /workspace/work/studio4/include/ud/package.h:4,
+                 from /workspace/work/studio4/engines/control-flow/../package/internal.h:3,
+                 from /workspace/work/studio4/engines/control-flow/enumerator.c:1:
+/workspace/work/studio4/include/ud/connector.h:123:21: note: ‘parameters’ declared here
+  123 |     const ud_batch *parameters; /* Borrowed sealed typed parameter batch. */
+      |                     ^~~~~~~~~~
+[54/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/transforms.c.o
+[55/282] Building C object CMakeFiles/ud_data.dir/engines/package/project.c.o
+[56/282] Building C object CMakeFiles/ud_data.dir/engines/package/runtime.c.o
+/workspace/work/studio4/engines/package/runtime.c: In function ‘ud_activation_notify_kind’:
+/workspace/work/studio4/engines/package/runtime.c:37:33: warning: missing initializer for field ‘error_chain’ of ‘ud_execution_event’ [-Wmissing-field-initializers]
+   37 |                                 e};
+      |                                 ^
+In file included from /workspace/work/studio4/engines/package/internal.h:3,
+                 from /workspace/work/studio4/engines/package/runtime.c:1:
+/workspace/work/studio4/include/ud/package.h:32:15: note: ‘error_chain’ declared here
+   32 |     ud_string error_chain; /* Bounded Native JSON frames, no SQL/raw data; callback lifetime. */
+      |               ^~~~~~~~~~~
+[57/282] Building C object CMakeFiles/ud_data.dir/engines/package/model.c.o
+[58/282] Building C object CMakeFiles/ud_data.dir/engines/control-flow/profile.c.o
+[59/282] Building C object CMakeFiles/ud_data.dir/engines/control-flow/http.c.o
+[60/282] Building C object CMakeFiles/ud_data.dir/engines/control-flow/filesystem.c.o
+[61/282] Building C object CMakeFiles/ud_data.dir/engines/control-flow/process.c.o
+[62/282] Building C object CMakeFiles/ud_data.dir/engines/package/checkpoint.c.o
+[63/282] Building C object CMakeFiles/ud_data.dir/engines/control-flow/control.c.o
+[64/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/builtins.c.o
+[65/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/pipeline.c.o
+/workspace/work/studio4/engines/data-flow/pipeline.c: In function ‘step’:
+/workspace/work/studio4/engines/data-flow/pipeline.c:1739:5: warning: missing initializer for field ‘epoch’ of ‘ud_component_event’ [-Wmissing-field-initializers]
+ 1739 |     ud_component_event event = {sizeof(event), UD_ABI_VERSION, UD_COMPONENT_POLL, 0, NULL};
+      |     ^~~~~~~~~~~~~~~~~~
+In file included from /workspace/work/studio4/include/ud/package.h:3,
+                 from /workspace/work/studio4/engines/data-flow/../package/internal.h:3,
+                 from /workspace/work/studio4/engines/data-flow/pipeline.c:1:
+/workspace/work/studio4/include/ud/component.h:37:14: note: ‘epoch’ declared here
+   37 |     uint64_t epoch, schema_version;
+      |              ^~~~~
+[66/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/destination.c.o
+/workspace/work/studio4/engines/data-flow/destination.c: In function ‘ud_builtin_sink_write’:
+/workspace/work/studio4/engines/data-flow/destination.c:258:27: warning: missing initializer for field ‘operations’ of ‘ud_write_options’ [-Wmissing-field-initializers]
+  258 |                           b->key_count};
+      |                           ^
+In file included from /workspace/work/studio4/include/ud/package.h:4,
+                 from /workspace/work/studio4/engines/data-flow/../package/internal.h:3,
+                 from /workspace/work/studio4/engines/data-flow/builtins_internal.h:3,
+                 from /workspace/work/studio4/engines/data-flow/destination.c:1:
+/workspace/work/studio4/include/ud/connector.h:155:20: note: ‘operations’ declared here
+  155 |     const int32_t *operations; /* CHANGESET: one typed action per row, in supplied order. */
+      |                    ^~~~~~~~~~
+[67/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/binding.c.o
+[68/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/derive.c.o
+[69/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/source.c.o
+/workspace/work/studio4/engines/data-flow/source.c: In function ‘open_file_reader’:
+/workspace/work/studio4/engines/data-flow/source.c:145:30: warning: missing initializer for field ‘framing’ of ‘ud_json_options’ [-Wmissing-field-initializers]
+  145 |                              1048576,   UD_ROUND_EXACT,    &b->records};
+      |                              ^~~~~~~
+In file included from /workspace/work/studio4/engines/data-flow/../package/internal.h:7,
+                 from /workspace/work/studio4/engines/data-flow/builtins_internal.h:3,
+                 from /workspace/work/studio4/engines/data-flow/source.c:1:
+/workspace/work/studio4/include/ud/format.h:45:13: note: ‘framing’ declared here
+   45 |     int32_t framing;
+      |             ^~~~~~~
+[70/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/row_transform.c.o
+[71/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/lifecycle.c.o
+[72/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/sql_task.c.o
+[73/282] Building C object CMakeFiles/ud_data.dir/catalog/catalog.c.o
+[74/282] Building C object CMakeFiles/ud_data.dir/catalog/history.c.o
+[75/282] Building C object CMakeFiles/ud_data.dir/connectors/manager.c.o
+[76/282] Building C object CMakeFiles/ud_data.dir/engines/package/preview.c.o
+[77/282] Building C object CMakeFiles/ud_data.dir/catalog/deployment.c.o
+[78/282] Building C object CMakeFiles/ud_data.dir/engines/package/debug.c.o
+[79/282] Building C object CMakeFiles/ud_data.dir/engines/package/file_inspection.c.o
+[80/282] Building C object CMakeFiles/ud_data.dir/engines/package/definition.c.o
+[81/282] Building C object CMakeFiles/ud_data.dir/engines/control-flow/network.c.o
+/workspace/work/studio4/engines/control-flow/network.c:189:18: warning: ‘invoke’ defined but not used [-Wunused-function]
+  189 | static ud_status invoke(void *user, const ud_component_context *context, ud_string text) {
+      |                  ^~~~~~
+/workspace/work/studio4/engines/control-flow/network.c:122:18: warning: ‘configure’ defined but not used [-Wunused-function]
+  122 | static ud_status configure(void *user, const ud_component_context *context, ud_string text,
+      |                  ^~~~~~~~~
+[82/282] Building C object CMakeFiles/ud_data.dir/engines/control-flow/wmi.c.o
+[83/282] Building C object CMakeFiles/ud_data.dir/engines/package/file_generation.c.o
+[84/282] Building C object CMakeFiles/ud_data.dir/engines/control-flow/sqlserver.c.o
+[85/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/column_file.c.o
+[86/282] Building C object components/contracts/CMakeFiles/ud_plugins.dir/src/registry.c.o
+[87/282] Building C object CMakeFiles/ud_data.dir/engines/data-flow/avro.c.o
+[88/282] Building C object components/expression/CMakeFiles/ud_expression.dir/src/sdk.c.o
+[89/282] Building C object components/expression/CMakeFiles/ud_expression.dir/src/formula.c.o
+[90/282] Building C object components/contracts/CMakeFiles/ud_plugins.dir/src/plugin.c.o
+[91/282] Building C object components/expression/CMakeFiles/ud_expression.dir/src/functions.c.o
+[92/282] Linking C static library components/contracts/libud_plugins.a
+[93/282] Building C object components/expression/CMakeFiles/ud_expression.dir/src/expression.c.o
+[94/282] Building C object components/execution/CMakeFiles/ud_runtime.dir/src/runtime.c.o
+[95/282] Linking C shared library libud_data.so.4.0.0
+[96/282] Creating library symlink libud_data.so.12 libud_data.so
+[97/282] Linking C static library components/expression/libud_expression.a
+[98/282] Building C object components/execution/CMakeFiles/ud_runtime.dir/src/buffer.c.o
+/workspace/work/studio4/components/execution/src/buffer.c: In function ‘collect’:
+/workspace/work/studio4/components/execution/src/buffer.c:104:62: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  104 |         if (capacity <= list->capacity || (uint64_t)capacity > SIZE_MAX / sizeof(*list->parts))
+      |                                                              ^
+[99/282] Linking C static library components/execution/libud_runtime.a
+[100/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/operator_binding.c.o
+[101/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/cache_lookup.c.o
+[102/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/event_window.c.o
+[103/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/replay.c.o
+/workspace/work/studio4/components/compute/src/replay.c: In function ‘ud_replay_restore’:
+/workspace/work/studio4/components/compute/src/replay.c:259:57: warning: pointer targets in passing argument 2 of ‘ud_batch_deserialize’ differ in signedness [-Wpointer-sign]
+  259 |                 s = ud_batch_deserialize(r->ctx, payload.text, payload.text_length, &b);
+      |                                                  ~~~~~~~^~~~~
+      |                                                         |
+      |                                                         const char *
+In file included from /workspace/work/studio4/include/ud/compute.h:3,
+                 from /workspace/work/studio4/components/compute/src/../internal.h:3,
+                 from /workspace/work/studio4/components/compute/src/state.h:3,
+                 from /workspace/work/studio4/components/compute/src/replay.h:3,
+                 from /workspace/work/studio4/components/compute/src/replay.c:1:
+/workspace/work/studio4/include/ud/data.h:305:53: note: expected ‘const uint8_t *’ {aka ‘const unsigned char *’} but argument is of type ‘const char *’
+  305 | UD_API ud_status ud_batch_deserialize(ud_context *, const uint8_t *, uint64_t, ud_batch **);
+      |                                                     ^~~~~~~~~~~~~~~
+[104/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/matching.c.o
+[105/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/profile_operator.c.o
+/workspace/work/studio4/components/compute/src/profile_operator.c: In function ‘ud_profile_operator_bind’:
+/workspace/work/studio4/components/compute/src/profile_operator.c:34:53: warning: comparison of integer expressions of different signedness: ‘uint64_t’ {aka ‘long unsigned int’} and ‘long int’ [-Wsign-compare]
+   34 |             if (p[i] < '0' || p[i] > '9' || maximum > (INT64_MAX - (uint32_t)(p[i] - '0')) / 10)
+      |                                                     ^
+[106/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/stat.c.o
+[107/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/multiway.c.o
+[108/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/temporal.c.o
+[109/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/diff.c.o
+[110/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/advanced.c.o
+[111/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/nested.c.o
+[112/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/ordered.c.o
+[113/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/text_transform.c.o
+[114/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/hash_join.c.o
+[115/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/state.c.o
+[116/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/join.c.o
+[117/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/window.c.o
+[118/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/sum.c.o
+[119/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/unpivot.c.o
+[120/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/pivot.c.o
+[121/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/declarations.c.o
+[122/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/sampling.c.o
+[123/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/scd.c.o
+[124/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/relational.c.o
+[125/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/collection.c.o
+[126/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/compute.c.o
+[127/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/operator.c.o
+[128/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/cache.c.o
+/workspace/work/studio4/components/compute/src/cache.c: In function ‘ud_cache_seal’:
+/workspace/work/studio4/components/compute/src/cache.c:210:66: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+  210 |             if (capacity < cache->capacity || (uint64_t)capacity > SIZE_MAX / sizeof(*cache->pages))
+      |                                                                  ^
+[129/282] Building C object components/compute/CMakeFiles/ud_compute.dir/src/quality.c.o
+[130/282] Linking C static library components/compute/libud_compute.a
+[131/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/cdc.c.o
+/workspace/work/studio4/engines/data-flow/cdc.c: In function ‘configure’:
+/workspace/work/studio4/engines/data-flow/cdc.c:62:34: warning: unused parameter ‘user’ [-Wunused-parameter]
+   62 | static ud_status configure(void *user, const ud_component_context *c, ud_string text,
+      |                            ~~~~~~^~~~
+[132/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/rest.c.o
+[133/282] Building C object engines/package/CMakeFiles/ud_package.dir/templates.c.o
+[134/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/advanced.c.o
+[135/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/http.c.o
+[136/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/relational.c.o
+[137/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/xlsx.c.o
+[138/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/delivery.c.o
+[139/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/error.c.o
+[140/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/quality.c.o
+[141/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/cache.c.o
+[142/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/enumerator.c.o
+/workspace/work/studio4/engines/control-flow/enumerator.c: In function ‘prepare’:
+/workspace/work/studio4/engines/control-flow/enumerator.c:172:9: warning: missing initializer for field ‘parameters’ of ‘ud_read_options’ [-Wmissing-field-initializers]
+  172 |         ud_read_options options = {sizeof(options), UD_ABI_VERSION, c->max_batch_rows, sql};
+      |         ^~~~~~~~~~~~~~~
+In file included from /workspace/work/studio4/include/ud/package.h:4,
+                 from /workspace/work/studio4/engines/control-flow/../package/internal.h:3,
+                 from /workspace/work/studio4/engines/control-flow/enumerator.c:1:
+/workspace/work/studio4/include/ud/connector.h:123:21: note: ‘parameters’ declared here
+  123 |     const ud_batch *parameters; /* Borrowed sealed typed parameter batch. */
+      |                     ^~~~~~~~~~
+[143/282] Building C object engines/package/CMakeFiles/ud_package.dir/assets.c.o
+/workspace/work/studio4/engines/package/assets.c: In function ‘ud_asset_acquire’:
+/workspace/work/studio4/engines/package/assets.c:283:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  283 |         if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_restore(asset->cache,state);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);ud_batch_destroy(state);
+      |         ^~
+/workspace/work/studio4/engines/package/assets.c:283:99: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  283 |         if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_restore(asset->cache,state);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);ud_batch_destroy(state);
+      |                                                                                                   ^~
+/workspace/work/studio4/engines/package/assets.c: In function ‘ud_asset_partial’:
+/workspace/work/studio4/engines/package/assets.c:416:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  416 |     if(!a||!lease||!out)return UD_INVALID;*out=NULL;struct ud_cache_asset*asset=find_asset(a,id);if(!asset||asset->mode!=UD_CACHE_PARTIAL)return UD_SCHEMA;
+      |     ^~
+/workspace/work/studio4/engines/package/assets.c:416:43: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  416 |     if(!a||!lease||!out)return UD_INVALID;*out=NULL;struct ud_cache_asset*asset=find_asset(a,id);if(!asset||asset->mode!=UD_CACHE_PARTIAL)return UD_SCHEMA;
+      |                                           ^
+/workspace/work/studio4/engines/package/assets.c:420:7: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  420 |       if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);
+      |       ^~
+/workspace/work/studio4/engines/package/assets.c:420:97: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  420 |       if(!status)status=ud_cache_create(a->execution->ctx,asset->schema,&options,&asset->cache);if(!status)status=ud_cache_fingerprint(asset->cache,asset->fingerprint);
+      |                                                                                                 ^~
+/workspace/work/studio4/engines/package/assets.c:423:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  423 |     if(!status)status=ud_cache_retain(asset->cache);if(!status)*out=asset->cache;ud_mutex_unlock(&a->execution->asset_lock);return status;
+      |     ^~
+/workspace/work/studio4/engines/package/assets.c:423:53: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  423 |     if(!status)status=ud_cache_retain(asset->cache);if(!status)*out=asset->cache;ud_mutex_unlock(&a->execution->asset_lock);return status;
+      |                                                     ^~
+[144/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/transforms.c.o
+[145/282] Building C object engines/package/CMakeFiles/ud_package.dir/resources.c.o
+[146/282] Building C object engines/package/CMakeFiles/ud_package.dir/project.c.o
+[147/282] Building C object engines/package/CMakeFiles/ud_package.dir/child.c.o
+[148/282] Building C object engines/package/CMakeFiles/ud_package.dir/model.c.o
+[149/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/profile.c.o
+[150/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/http.c.o
+[151/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/process.c.o
+[152/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/filesystem.c.o
+[153/282] Building C object engines/package/CMakeFiles/ud_package.dir/checkpoint.c.o
+[154/282] Building C object engines/package/CMakeFiles/ud_package.dir/runtime.c.o
+/workspace/work/studio4/engines/package/runtime.c: In function ‘ud_activation_notify_kind’:
+/workspace/work/studio4/engines/package/runtime.c:37:33: warning: missing initializer for field ‘error_chain’ of ‘ud_execution_event’ [-Wmissing-field-initializers]
+   37 |                                 e};
+      |                                 ^
+In file included from /workspace/work/studio4/engines/package/internal.h:3,
+                 from /workspace/work/studio4/engines/package/runtime.c:1:
+/workspace/work/studio4/include/ud/package.h:32:15: note: ‘error_chain’ declared here
+   32 |     ud_string error_chain; /* Bounded Native JSON frames, no SQL/raw data; callback lifetime. */
+      |               ^~~~~~~~~~~
+[155/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/builtins.c.o
+[156/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/control.c.o
+[157/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/binding.c.o
+[158/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/source.c.o
+/workspace/work/studio4/engines/data-flow/source.c: In function ‘open_file_reader’:
+/workspace/work/studio4/engines/data-flow/source.c:145:30: warning: missing initializer for field ‘framing’ of ‘ud_json_options’ [-Wmissing-field-initializers]
+  145 |                              1048576,   UD_ROUND_EXACT,    &b->records};
+      |                              ^~~~~~~
+In file included from /workspace/work/studio4/engines/data-flow/../package/internal.h:7,
+                 from /workspace/work/studio4/engines/data-flow/builtins_internal.h:3,
+                 from /workspace/work/studio4/engines/data-flow/source.c:1:
+/workspace/work/studio4/include/ud/format.h:45:13: note: ‘framing’ declared here
+   45 |     int32_t framing;
+      |             ^~~~~~~
+[159/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/destination.c.o
+/workspace/work/studio4/engines/data-flow/destination.c: In function ‘ud_builtin_sink_write’:
+/workspace/work/studio4/engines/data-flow/destination.c:258:27: warning: missing initializer for field ‘operations’ of ‘ud_write_options’ [-Wmissing-field-initializers]
+  258 |                           b->key_count};
+      |                           ^
+In file included from /workspace/work/studio4/include/ud/package.h:4,
+                 from /workspace/work/studio4/engines/data-flow/../package/internal.h:3,
+                 from /workspace/work/studio4/engines/data-flow/builtins_internal.h:3,
+                 from /workspace/work/studio4/engines/data-flow/destination.c:1:
+/workspace/work/studio4/include/ud/connector.h:155:20: note: ‘operations’ declared here
+  155 |     const int32_t *operations; /* CHANGESET: one typed action per row, in supplied order. */
+      |                    ^~~~~~~~~~
+[160/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/pipeline.c.o
+/workspace/work/studio4/engines/data-flow/pipeline.c: In function ‘step’:
+/workspace/work/studio4/engines/data-flow/pipeline.c:1739:5: warning: missing initializer for field ‘epoch’ of ‘ud_component_event’ [-Wmissing-field-initializers]
+ 1739 |     ud_component_event event = {sizeof(event), UD_ABI_VERSION, UD_COMPONENT_POLL, 0, NULL};
+      |     ^~~~~~~~~~~~~~~~~~
+In file included from /workspace/work/studio4/include/ud/package.h:3,
+                 from /workspace/work/studio4/engines/data-flow/../package/internal.h:3,
+                 from /workspace/work/studio4/engines/data-flow/pipeline.c:1:
+/workspace/work/studio4/include/ud/component.h:37:14: note: ‘epoch’ declared here
+   37 |     uint64_t epoch, schema_version;
+      |              ^~~~~
+[161/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/derive.c.o
+[162/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/row_transform.c.o
+[163/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/sql_task.c.o
+[164/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/lifecycle.c.o
+[165/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/deployment.c.o
+[166/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/catalog.c.o
+[167/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/catalog/history.c.o
+[168/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/__/connectors/manager.c.o
+[169/282] Building C object engines/package/CMakeFiles/ud_package.dir/debug.c.o
+[170/282] Building C object engines/package/CMakeFiles/ud_package.dir/preview.c.o
+[171/282] Building C object engines/package/CMakeFiles/ud_package.dir/definition.c.o
+[172/282] Building C object engines/package/CMakeFiles/ud_package.dir/file_inspection.c.o
+[173/282] Building C object engines/package/CMakeFiles/ud_package.dir/file_generation.c.o
+[174/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/wmi.c.o
+[175/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/network.c.o
+/workspace/work/studio4/engines/control-flow/network.c:189:18: warning: ‘invoke’ defined but not used [-Wunused-function]
+  189 | static ud_status invoke(void *user, const ud_component_context *context, ud_string text) {
+      |                  ^~~~~~
+/workspace/work/studio4/engines/control-flow/network.c:122:18: warning: ‘configure’ defined but not used [-Wunused-function]
+  122 | static ud_status configure(void *user, const ud_component_context *context, ud_string text,
+      |                  ^~~~~~~~~
+[176/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/control-flow/sqlserver.c.o
+[177/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/column_file.c.o
+[178/282] Building C object engines/package/CMakeFiles/ud_package.dir/__/data-flow/avro.c.o
+[179/282] Linking C static library engines/package/libud_package.a
+[180/282] Building C object plugins/CMakeFiles/ud_connector_sqlite.dir/sqlite.c.o
+[181/282] Building C object tests/CMakeFiles/test_streaming_protocol.dir/streaming_protocol.c.o
+[182/282] Building C object tests/CMakeFiles/test_designer_preview.dir/designer_preview.c.o
+/workspace/work/studio4/tests/designer_preview.c: In function ‘main’:
+/workspace/work/studio4/tests/designer_preview.c:92:5: warning: missing initializer for field ‘allocator_user’ of ‘ud_context_options’ [-Wmissing-field-initializers]
+   92 |     ud_context_options co = {sizeof(co), UD_ABI_VERSION, 134217728};
+      |     ^~~~~~~~~~~~~~~~~~
+In file included from /workspace/work/studio4/include/ud/data.h:3,
+                 from /workspace/work/studio4/include/ud/expression.h:3,
+                 from /workspace/work/studio4/include/ud/component.h:3,
+                 from /workspace/work/studio4/include/ud/package.h:3,
+                 from /workspace/work/studio4/tests/designer_preview.c:1:
+/workspace/work/studio4/include/ud/memory.h:16:11: note: ‘allocator_user’ declared here
+   16 |     void *allocator_user;
+      |           ^~~~~~~~~~~~~~
+[183/282] Building C object bindings/java/native/CMakeFiles/ud_java.dir/bridge.c.o
+[184/282] Building C object tests/CMakeFiles/test_catalog_secrets.dir/catalog_secrets.c.o
+[185/282] Building C object tests/CMakeFiles/test_checkpoint_contract.dir/checkpoint_contract.c.o
+[186/282] Building C object tests/CMakeFiles/test_execution_identity.dir/execution_identity.c.o
+[187/282] Building C object tests/CMakeFiles/test_quality.dir/quality.c.o
+[188/282] Building C object tests/CMakeFiles/test_event_window.dir/event_window.c.o
+[189/282] Building C object tests/CMakeFiles/test_compute.dir/compute.c.o
+/workspace/work/studio4/tests/compute.c: In function ‘main’:
+/workspace/work/studio4/tests/compute.c:67:5: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+   67 |     ud_field right_fields[] = {{"other_key", 9, UD_UTF8, 1}, {"label", 5, UD_INT64, 0}};
+      |     ^~~~~~~~
+In file included from /workspace/work/studio4/include/ud/compute.h:3,
+                 from /workspace/work/studio4/tests/compute.c:2:
+/workspace/work/studio4/include/ud/data.h:102:13: note: ‘precision’ declared here
+  102 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+/workspace/work/studio4/tests/compute.c:67:5: warning: missing initializer for field ‘precision’ of ‘ud_field’ [-Wmissing-field-initializers]
+   67 |     ud_field right_fields[] = {{"other_key", 9, UD_UTF8, 1}, {"label", 5, UD_INT64, 0}};
+      |     ^~~~~~~~
+/workspace/work/studio4/include/ud/data.h:102:13: note: ‘precision’ declared here
+  102 |     int32_t precision, scale; /* Decimal: precision 1..38, scale -38..38. */
+      |             ^~~~~~~~~
+[190/282] Building C object tests/CMakeFiles/test_architecture_foundation.dir/architecture_foundation.c.o
+/workspace/work/studio4/tests/architecture_foundation.c: In function ‘expression’:
+/workspace/work/studio4/tests/architecture_foundation.c:9:5: warning: missing initializer for field ‘resolve_field’ of ‘ud_expression_options’ [-Wmissing-field-initializers]
+    9 |     ud_expression_options o = {sizeof(o), UD_ABI_VERSION, schema, NULL, NULL};
+      |     ^~~~~~~~~~~~~~~~~~~~~
+In file included from /workspace/work/studio4/tests/architecture_foundation.c:2:
+/workspace/work/studio4/include/ud/expression.h:18:34: note: ‘resolve_field’ declared here
+   18 |     ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
+      |                                  ^~~~~~~~~~~~~
+[191/282] Building C object tests/CMakeFiles/test_connector_sqlite.dir/connector_sqlite.c.o
+/workspace/work/studio4/tests/connector_sqlite.c: In function ‘transfer’:
+/workspace/work/studio4/tests/connector_sqlite.c:88:5: warning: missing initializer for field ‘parameters’ of ‘ud_read_options’ [-Wmissing-field-initializers]
+   88 |     ud_read_options read = {sizeof(read), UD_ABI_VERSION, 257, {sql, (uint32_t)strlen(sql)}};
+      |     ^~~~~~~~~~~~~~~
+In file included from /workspace/work/studio4/include/ud/sql.h:3,
+                 from /workspace/work/studio4/include/ud/plugin.h:5,
+                 from /workspace/work/studio4/tests/connector_sqlite.c:1:
+/workspace/work/studio4/include/ud/connector.h:123:21: note: ‘parameters’ declared here
+  123 |     const ud_batch *parameters; /* Borrowed sealed typed parameter batch. */
+      |                     ^~~~~~~~~~
+[192/282] Building C object tests/CMakeFiles/test_value_semantics.dir/value_semantics.c.o
+/workspace/work/studio4/tests/value_semantics.c: In function ‘expressions’:
+/workspace/work/studio4/tests/value_semantics.c:365:5: warning: missing initializer for field ‘resolve_field’ of ‘ud_expression_options’ [-Wmissing-field-initializers]
+  365 |     ud_expression_options o = {sizeof(o), UD_ABI_VERSION, batch, NULL, NULL};
+      |     ^~~~~~~~~~~~~~~~~~~~~
+In file included from /workspace/work/studio4/include/ud/compute.h:4,
+                 from /workspace/work/studio4/tests/value_semantics.c:1:
+/workspace/work/studio4/include/ud/expression.h:18:34: note: ‘resolve_field’ declared here
+   18 |     ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
+      |                                  ^~~~~~~~~~~~~
+[193/282] Building C object tests/CMakeFiles/test_four_engines.dir/four_engines.c.o
+[194/282] Building C object tests/CMakeFiles/test_package_execution.dir/package_execution.c.o
+[195/282] Building C object tests/CMakeFiles/test_next_phase_queries.dir/next_phase_queries.c.o
+[196/282] Building C object tests/CMakeFiles/test_infrastructure.dir/infrastructure.c.o
+[197/282] Building C object tests/CMakeFiles/test_core_runtime.dir/core_runtime.c.o
+[198/282] Building C object tests/CMakeFiles/test_package_outcome.dir/package_outcome.c.o
+[199/282] Building C object tests/CMakeFiles/test_sql_command_records.dir/sql_command_records.c.o
+[200/282] Building C object tests/CMakeFiles/test_four_engine_connections.dir/four_engine_connections.c.o
+[201/282] Building C object tests/CMakeFiles/test_package_sql.dir/package_sql.c.o
+[202/282] Building C object tests/CMakeFiles/test_package_recovery.dir/package_recovery.c.o
+[203/282] Building C object tests/CMakeFiles/test_catalog_leases.dir/catalog_leases.c.o
+[204/282] Building C object tests/CMakeFiles/test_project.dir/project.c.o
+[205/282] Building C object tests/CMakeFiles/test_catalog.dir/catalog.c.o
+[206/282] Building C object tests/CMakeFiles/test_child_package.dir/child_package.c.o
+[207/282] Building C object tests/CMakeFiles/test_catalog_history.dir/catalog_history.c.o
+[208/282] Building C object tests/CMakeFiles/test_filesystem_task.dir/filesystem_task.c.o
+[209/282] Building C object tests/CMakeFiles/test_process_task.dir/process_task.c.o
+[210/282] Building C object tests/CMakeFiles/test_http_task.dir/http_task.c.o
+[211/282] Building C object tests/CMakeFiles/sample_custom_task.dir/__/examples/plugins/custom_task.c.o
+/workspace/work/studio4/examples/plugins/custom_task.c: In function ‘parse’:
+/workspace/work/studio4/examples/plugins/custom_task.c:86:38: warning: missing initializer for field ‘resolve_field’ of ‘ud_expression_options’ [-Wmissing-field-initializers]
+   86 |                                      c->resolve_user};
+      |                                      ^
+In file included from /workspace/work/studio4/include/ud/component.h:3,
+                 from /workspace/work/studio4/include/ud/plugin.h:7,
+                 from /workspace/work/studio4/examples/plugins/custom_task.c:1:
+/workspace/work/studio4/include/ud/expression.h:18:34: note: ‘resolve_field’ declared here
+   18 |     ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
+      |                                  ^~~~~~~~~~~~~
+[212/282] Building C object tests/CMakeFiles/test_profile_task.dir/profile_task.c.o
+[213/282] Building C object tests/CMakeFiles/sample_custom_bad.dir/__/examples/plugins/custom_task.c.o
+/workspace/work/studio4/examples/plugins/custom_task.c: In function ‘parse’:
+/workspace/work/studio4/examples/plugins/custom_task.c:86:38: warning: missing initializer for field ‘resolve_field’ of ‘ud_expression_options’ [-Wmissing-field-initializers]
+   86 |                                      c->resolve_user};
+      |                                      ^
+In file included from /workspace/work/studio4/include/ud/component.h:3,
+                 from /workspace/work/studio4/include/ud/plugin.h:7,
+                 from /workspace/work/studio4/examples/plugins/custom_task.c:1:
+/workspace/work/studio4/include/ud/expression.h:18:34: note: ‘resolve_field’ declared here
+   18 |     ud_expression_field_resolver resolve_field; /* Required for nonprimitive references. */
+      |                                  ^~~~~~~~~~~~~
+[214/282] Building C object tests/CMakeFiles/test_custom_task.dir/custom_task.c.o
+[215/282] Building C object tests/CMakeFiles/test_next_phase.dir/next_phase.c.o
+[216/282] Building C object tests/CMakeFiles/test_next_phase_execution.dir/next_phase_execution.c.o
+/workspace/work/studio4/tests/next_phase_execution.c: In function ‘observe’:
+/workspace/work/studio4/tests/next_phase_execution.c:95:21: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 6 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+   95 |                     "{\"committed\":%llu,\"memoryUsed\":%llu,\"spillBytes\":%llu,"
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+......
+   98 |                     (unsigned long long)m.spill_bytes, m.worker_high_water);
+      |                                                        ~~~~~~~~~~~~~~~~~~~
+      |                                                         |
+      |                                                         uint64_t {aka long unsigned int}
+/workspace/work/studio4/tests/next_phase_execution.c:96:43: note: format string is defined here
+   96 |                     "\"workerHighWater\":%u",
+      |                                          ~^
+      |                                           |
+      |                                           unsigned int
+      |                                          %lu
+/workspace/work/studio4/tests/next_phase_execution.c: In function ‘main’:
+/workspace/work/studio4/tests/next_phase_execution.c:166:35: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 2 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  166 |     printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,
+      |                                  ~^                                            ~~~~~~~~~~~~~~~~~~~
+      |                                   |                                             |
+      |                                   unsigned int                                  uint64_t {aka long unsigned int}
+      |                                  %lu
+/workspace/work/studio4/tests/next_phase_execution.c:166:56: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 3 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  166 |     printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,
+      |                                                       ~^
+      |                                                        |
+      |                                                        unsigned int
+      |                                                       %lu
+  167 |            m.tree_high_water, (unsigned long long)m.spill_bytes);
+      |            ~~~~~~~~~~~~~~~~~
+      |             |
+      |             uint64_t {aka long unsigned int}
+[217/282] Building C object tests/CMakeFiles/test_advanced_native.dir/advanced_native.c.o
+[218/282] Building C object tests/CMakeFiles/test_transaction_participants.dir/transaction_participants.c.o
+[219/282] Building C object tests/CMakeFiles/test_advanced_sql.dir/advanced_sql.c.o
+[220/282] Building C object tests/CMakeFiles/test_advanced_cdc.dir/advanced_cdc.c.o
+[221/282] Building C object tests/CMakeFiles/test_file_generation.dir/file_generation.c.o
+[222/282] Building C object tests/CMakeFiles/test_product_native.dir/product_native.c.o
+[223/282] Building C object tests/CMakeFiles/test_mysql_domains.dir/mysql_domains.c.o
+[224/282] Building C object tests/CMakeFiles/test_ssis_expression.dir/ssis_parity/expression.c.o
+[225/282] Building C object tests/CMakeFiles/test_ssis_workflow.dir/ssis_parity/runner.c.o
+/workspace/work/studio4/tests/ssis_parity/runner.c: In function ‘observe’:
+/workspace/work/studio4/tests/ssis_parity/runner.c:101:21: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 7 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  101 |                     "{\"input\":%llu,\"committed\":%llu,\"memoryUsed\":%llu,\"spillBytes\":%llu,"
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+......
+  105 |                     (unsigned long long)m.spill_bytes, m.worker_high_water);
+      |                                                        ~~~~~~~~~~~~~~~~~~~
+      |                                                         |
+      |                                                         uint64_t {aka long unsigned int}
+/workspace/work/studio4/tests/ssis_parity/runner.c:102:43: note: format string is defined here
+  102 |                     "\"workerHighWater\":%u",
+      |                                          ~^
+      |                                           |
+      |                                           unsigned int
+      |                                          %lu
+/workspace/work/studio4/tests/ssis_parity/runner.c: In function ‘main’:
+/workspace/work/studio4/tests/ssis_parity/runner.c:174:35: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 2 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  174 |     printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,
+      |                                  ~^                                            ~~~~~~~~~~~~~~~~~~~
+      |                                   |                                             |
+      |                                   unsigned int                                  uint64_t {aka long unsigned int}
+      |                                  %lu
+/workspace/work/studio4/tests/ssis_parity/runner.c:174:56: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 3 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  174 |     printf(",\"workerHighWater\":%u,\"treeHighWater\":%u,\"spillBytes\":%llu", m.worker_high_water,
+      |                                                       ~^
+      |                                                        |
+      |                                                        unsigned int
+      |                                                       %lu
+  175 |            m.tree_high_water, (unsigned long long)m.spill_bytes);
+      |            ~~~~~~~~~~~~~~~~~
+      |             |
+      |             uint64_t {aka long unsigned int}
+[226/282] Linking C shared library bindings/java/native/libud_java.so
+[227/282] Linking C shared module plugins/ud_connector_sqlite.so
+[228/282] Linking C executable tests/test_designer_preview
+[229/282] Linking C executable tests/test_catalog_secrets
+[230/282] Linking C executable tests/test_streaming_protocol
+[231/282] Linking C executable tests/test_transaction_facts
+[232/282] Linking C executable tests/test_checkpoint_contract
+[233/282] Linking C executable tests/test_event_window
+[234/282] Linking C executable tests/test_nested
+[235/282] Linking C executable tests/test_regex
+[236/282] Linking C executable tests/test_mapping
+[237/282] Linking C executable tests/test_compute
+[238/282] Linking C executable tests/test_quality
+[239/282] Linking C executable tests/test_execution_identity
+[240/282] Linking C executable tests/test_architecture_foundation
+[241/282] Linking C executable tests/test_connector_sqlite
+[242/282] Linking C executable tests/test_value_semantics
+[243/282] Linking C executable tests/test_four_engines
+[244/282] Linking C executable tests/test_core_runtime
+[245/282] Linking C executable tests/test_package_execution
+[246/282] Linking C executable tests/test_next_phase_queries
+[247/282] Linking C executable tests/test_infrastructure
+[248/282] Linking C executable tests/test_package_outcome
+[249/282] Linking C executable tests/test_four_engine_connections
+[250/282] Linking C executable tests/test_package_sql
+[251/282] Linking C executable tests/test_package_recovery
+[252/282] Linking C executable tests/test_catalog
+[253/282] Linking C executable tests/test_catalog_leases
+[254/282] Linking C executable tests/test_sql_command_records
+[255/282] Linking C executable tests/test_project
+[256/282] Linking C executable tests/test_filesystem_task
+[257/282] Linking C executable tests/test_catalog_history
+[258/282] Linking C executable tests/test_child_package
+[259/282] Linking C executable tests/test_process_task
+[260/282] Linking C executable tests/test_profile_task
+[261/282] Linking C executable tests/test_profile
+[262/282] Linking C shared module tests/sample_custom_task.so
+[263/282] Linking C shared module tests/sample_custom_bad.so
+[264/282] Linking C executable tests/test_http_task
+[265/282] Linking C executable tests/test_custom_task
+[266/282] Linking C executable tests/test_next_phase
+[267/282] Linking C executable tests/test_advanced_native
+[268/282] Linking C executable tests/test_next_phase_execution
+[269/282] Linking C executable tests/test_transaction_participants
+[270/282] Linking C executable tests/test_advanced_cdc
+[271/282] Linking C executable tests/test_advanced_sql
+[272/282] Linking C executable tests/test_mysql_domains
+[273/282] Linking C executable tests/test_ssis_expression
+[274/282] Linking C executable tests/test_file_generation
+[275/282] Linking C executable tests/test_ssis_workflow
+[276/282] Linking C executable tests/test_product_native
+[277/282] Generating designer/build.stamp
+npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+
+added 214 packages in 7s
+
+> universaldata-designer@4.0.0 typecheck
+> tsc --noEmit
+
+
+> universaldata-designer@4.0.0 lint
+> eslint .
+
+
+> universaldata-designer@4.0.0 build
+> tsc --noEmit && vite build --outDir /workspace/work/studio4/build/studio4/hosts/designer
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 1800 modules transformed.
+rendering chunks...
+computing gzip size...
+../designer/index.html                   0.36 kB │ gzip:   0.26 kB
+../designer/assets/index-lBCYv-Wl.css   47.75 kB │ gzip:   9.13 kB
+../designer/assets/index-ClaKui8M.js   920.35 kB │ gzip: 297.72 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 3.52s
+[278/282] cd /workspace/work/studio4/build/studio4/hosts && /workspace/work/tools/dotnet10/dotnet publish /workspace/work/studio4/products/UniversalData.CommandLine/UniversalData.CommandLine.csproj -c Release -o /workspace/work/studio4/build/studio4/hosts/product/cli && /workspace/work/tools/dotnet10/dotnet publish /workspace/work/studio4/products/UniversalData.Worker/UniversalData.Worker.csproj -c Release -o /workspace/work/studio4/build/studio4/hosts/product/worker && /workspace/work/tools/dotnet10/dotnet publish /workspace/work/studio4/products/UniversalData.Management/UniversalData.Management.csproj -c Release -o /workspace/work/studio4/build/studio4/hosts/product/management -p:DesignerAssets=/workspace/work/studio4/build/studio4/hosts/designer && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /workspace/work/studio4/build/studio4/libud_data.so.4.0.0 /workspace/work/studio4/build/studio4/hosts/product/cli/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /workspace/work/studio4/build/studio4/libud_data.so.4.0.0 /workspace/work/studio4/build/studio4/hosts/product/worker/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy /workspace/work/studio4/build/studio4/libud_data.so.4.0.0 /workspace/work/studio4/build/studio4/hosts/product/management/libud_data.so && /workspace/.universaldata-tools/lib/python3.12/site-packages/cmake/data/bin/cmake -E copy_directory /workspace/work/studio4/build/studio4/hosts/product/worker /workspace/work/studio4/build/studio4/hosts/product/management/worker
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/work/studio4/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /workspace/work/studio4/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.CommandLine -> /workspace/work/studio4/products/UniversalData.CommandLine/bin/Release/net10.0/ud_cli.dll
+  UniversalData.CommandLine -> /workspace/work/studio4/build/studio4/hosts/product/cli/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/work/studio4/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /workspace/work/studio4/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Worker -> /workspace/work/studio4/products/UniversalData.Worker/bin/Release/net10.0/ud_worker.dll
+  UniversalData.Worker -> /workspace/work/studio4/build/studio4/hosts/product/worker/
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/work/studio4/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /workspace/work/studio4/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  UniversalData.Management -> /workspace/work/studio4/products/UniversalData.Management/bin/Release/net10.0/UniversalData.Management.dll
+  UniversalData.Management -> /workspace/work/studio4/build/studio4/hosts/product/management/
+[279/282] cd /workspace/work/studio4/build/studio4/tests && /workspace/work/tools/dotnet10/dotnet publish /workspace/work/studio4/tests/hosting_contracts/HostingContracts.csproj -c Release -o /workspace/work/studio4/build/studio4/tests/hosting-contracts
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/work/studio4/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  UniversalData.Hosting -> /workspace/work/studio4/products/UniversalData.Hosting/bin/Release/net10.0/UniversalData.Hosting.dll
+  HostingContracts -> /workspace/work/studio4/tests/hosting_contracts/bin/Release/net10.0/HostingContracts.dll
+  HostingContracts -> /workspace/work/studio4/build/studio4/tests/hosting-contracts/
+[280/282] cd /workspace/work/studio4/build/studio4/tests && /workspace/work/tools/dotnet10/dotnet publish /workspace/work/studio4/tests/managed_recovery/ManagedRecovery.csproj -c Release -o /workspace/work/studio4/build/studio4/tests/managed-recovery
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/work/studio4/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedRecovery -> /workspace/work/studio4/tests/managed_recovery/bin/Release/net10.0/ManagedRecovery.dll
+  ManagedRecovery -> /workspace/work/studio4/build/studio4/tests/managed-recovery/
+[281/282] cd /workspace/work/studio4/build/studio4/tests && /workspace/work/tools/dotnet10/dotnet publish /workspace/work/studio4/tests/managed_product/ManagedProduct.csproj -c Release -o /workspace/work/studio4/build/studio4/tests/managed-product
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UniversalData -> /workspace/work/studio4/bindings/dotnet/UniversalData/bin/Release/net8.0/UniversalData.dll
+  ManagedProduct -> /workspace/work/studio4/tests/managed_product/bin/Release/net10.0/ManagedProduct.dll
+  ManagedProduct -> /workspace/work/studio4/build/studio4/tests/managed-product/

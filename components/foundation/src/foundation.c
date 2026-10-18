@@ -18,7 +18,30 @@ struct ud_memory_domain {
     ud_context *ctx;
     uint64_t limit;
     atomic_uint_fast64_t used, peak;
+    atomic_uint children;
+    struct ud_memory_domain *parent;
 };
+static ud_status domain_reserve(ud_memory_domain *domain, uint64_t bytes) {
+    for (ud_memory_domain *at = domain; at; at = at->parent) {
+        uint64_t used = atomic_load(&at->used);
+        do {
+            if (used > at->limit || bytes > at->limit - used) {
+                for (ud_memory_domain *prior = domain; prior != at; prior = prior->parent)
+                    atomic_fetch_sub(&prior->used, bytes);
+                return UD_RESOURCE;
+            }
+        } while (!atomic_compare_exchange_weak(&at->used, &used, used + bytes));
+        uint64_t peak = atomic_load(&at->peak);
+        while (peak < used + bytes &&
+               !atomic_compare_exchange_weak(&at->peak, &peak, used + bytes)) {
+        }
+    }
+    return UD_OK;
+}
+static void domain_release(ud_memory_domain *domain, uint64_t bytes) {
+    for (ud_memory_domain *at = domain; at; at = at->parent)
+        atomic_fetch_sub(&at->used, bytes);
+}
 static _Thread_local ud_memory_domain *allocation_domain;
 struct ud_memory_reservation {
     ud_context *ctx;
@@ -146,24 +169,15 @@ ud_status ud_memory_reserve(ud_context *ctx, uint64_t bytes, ud_memory_reservati
         return UD_RESOURCE;
     ud_memory_domain *domain =
         allocation_domain && allocation_domain->ctx == ctx ? allocation_domain : NULL;
-    if (domain) {
-        uint64_t used = atomic_load(&domain->used);
-        do {
-            if (used > domain->limit || bytes > domain->limit - used) {
-                ud_free(reservation);
-                return ud_fail(ctx, UD_RESOURCE, "external codec domain quota exceeded");
-            }
-        } while (!atomic_compare_exchange_weak(&domain->used, &used, used + bytes));
-        uint64_t peak = atomic_load(&domain->peak);
-        while (peak < used + bytes &&
-               !atomic_compare_exchange_weak(&domain->peak, &peak, used + bytes)) {
-        }
+    if (domain_reserve(domain, bytes)) {
+        ud_free(reservation);
+        return ud_fail(ctx, UD_RESOURCE, "external codec domain quota exceeded");
     }
     uint64_t used = atomic_load(&ctx->used);
     do {
         if (used > ctx->options.memory_limit || bytes > ctx->options.memory_limit - used) {
             if (domain)
-                atomic_fetch_sub(&domain->used, bytes);
+                domain_release(domain, bytes);
             ud_free(reservation);
             return ud_fail(ctx, UD_RESOURCE, "external codec memory quota exceeded");
         }
@@ -179,7 +193,7 @@ void ud_memory_release(ud_memory_reservation *reservation) {
         return;
     atomic_fetch_sub(&reservation->ctx->used, reservation->bytes);
     if (reservation->domain)
-        atomic_fetch_sub(&reservation->domain->used, reservation->bytes);
+        domain_release(reservation->domain, reservation->bytes);
     ud_free(reservation);
 }
 void *ud_alloc(ud_context *c, size_t n) {
@@ -188,25 +202,16 @@ void *ud_alloc(ud_context *c, size_t n) {
     size_t total = n + sizeof(allocation);
     ud_memory_domain *domain =
         allocation_domain && allocation_domain->ctx == c ? allocation_domain : NULL;
-    if (domain) {
-        uint64_t owned = atomic_load(&domain->used);
-        do {
-            if (owned > domain->limit || total > domain->limit - owned) {
-                ud_fail(c, UD_RESOURCE, "allocation domain quota exceeded");
-                return NULL;
-            }
-        } while (!atomic_compare_exchange_weak(&domain->used, &owned, owned + total));
-        uint64_t peak = atomic_load(&domain->peak);
-        while (peak < owned + total &&
-               !atomic_compare_exchange_weak(&domain->peak, &peak, owned + total)) {
-        }
+    if (domain_reserve(domain, total)) {
+        ud_fail(c, UD_RESOURCE, "allocation domain quota exceeded");
+        return NULL;
     }
     uint64_t old = atomic_load(&c->used);
     do {
         if (old > c->options.memory_limit || total > c->options.memory_limit - old) {
             ud_fail(c, UD_RESOURCE, "memory quota exceeded: requested %zu bytes", total);
             if (domain)
-                atomic_fetch_sub(&domain->used, total);
+                domain_release(domain, total);
             return NULL;
         }
     } while (!atomic_compare_exchange_weak(&c->used, &old, old + total));
@@ -214,7 +219,7 @@ void *ud_alloc(ud_context *c, size_t n) {
     if (!a) {
         atomic_fetch_sub(&c->used, total);
         if (domain)
-            atomic_fetch_sub(&domain->used, total);
+            domain_release(domain, total);
         ud_fail(c, UD_RESOURCE, "allocator rejected %zu bytes", total);
         return NULL;
     }
@@ -238,7 +243,7 @@ void ud_free(void *p) {
     c->options.deallocate(c->options.allocator_user, a);
     atomic_fetch_sub(&c->used, n);
     if (domain)
-        atomic_fetch_sub(&domain->used, n);
+        domain_release(domain, n);
 }
 ud_status ud_memory_domain_create(ud_context *ctx, uint64_t limit, ud_memory_domain **out) {
     if (!ctx || !limit || !out)
@@ -250,6 +255,17 @@ ud_status ud_memory_domain_create(ud_context *ctx, uint64_t limit, ud_memory_dom
     (*out)->limit = limit;
     atomic_init(&(*out)->used, 0);
     atomic_init(&(*out)->peak, 0);
+    atomic_init(&(*out)->children, 0);
+    return UD_OK;
+}
+ud_status ud_memory_domain_create_child(ud_context *ctx, uint64_t limit, ud_memory_domain *parent,
+                                        ud_memory_domain **out) {
+    if (parent && parent->ctx != ctx)
+        return UD_INVALID;
+    UD_TRY(ud_memory_domain_create(ctx, limit, out));
+    (*out)->parent = parent;
+    if (parent)
+        atomic_fetch_add(&parent->children, 1);
     return UD_OK;
 }
 void ud_memory_domain_enter(ud_memory_domain *domain, ud_memory_scope *scope) {
@@ -268,8 +284,10 @@ uint64_t ud_memory_domain_peak(const ud_memory_domain *domain) {
 ud_status ud_memory_domain_destroy(ud_memory_domain *domain) {
     if (!domain)
         return UD_OK;
-    if (atomic_load(&domain->used))
+    if (atomic_load(&domain->used) || atomic_load(&domain->children))
         return UD_BUSY;
+    if (domain->parent)
+        atomic_fetch_sub(&domain->parent->children, 1);
     ud_free(domain);
     return UD_OK;
 }

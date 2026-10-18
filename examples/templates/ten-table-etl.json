@@ -1,5 +1,5 @@
 {
-  "version": 11,
+  "version": 12,
   "id": "tenTypedTables",
   "parameters": {
     "sqlitePlugin": {
@@ -175,7 +175,7 @@
         "pipeline": "table_00",
         "statement": "SELECT \"key_0\",\"amount_0\" FROM \"table_00\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_0",
@@ -214,7 +214,7 @@
         "pipeline": "table_01",
         "statement": "SELECT \"key_1\",\"amount_1\" FROM \"table_01\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_1",
@@ -253,7 +253,7 @@
         "pipeline": "table_02",
         "statement": "SELECT \"key_2\",\"amount_2\" FROM \"table_02\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_2",
@@ -292,7 +292,7 @@
         "pipeline": "table_03",
         "statement": "SELECT \"key_3\",\"amount_3\" FROM \"table_03\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_3",
@@ -331,7 +331,7 @@
         "pipeline": "table_04",
         "statement": "SELECT \"key_4\",\"amount_4\" FROM \"table_04\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_4",
@@ -370,7 +370,7 @@
         "pipeline": "table_05",
         "statement": "SELECT \"key_5\",\"amount_5\" FROM \"table_05\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_5",
@@ -409,7 +409,7 @@
         "pipeline": "table_06",
         "statement": "SELECT \"key_6\",\"amount_6\" FROM \"table_06\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_6",
@@ -448,7 +448,7 @@
         "pipeline": "table_07",
         "statement": "SELECT \"key_7\",\"amount_7\" FROM \"table_07\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_7",
@@ -487,7 +487,7 @@
         "pipeline": "table_08",
         "statement": "SELECT \"key_8\",\"amount_8\" FROM \"table_08\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_8",
@@ -526,7 +526,7 @@
         "pipeline": "table_09",
         "statement": "SELECT \"key_9\",\"amount_9\" FROM \"table_09\"",
         "schema": {
-          "version": 11,
+          "version": 12,
           "fields": [
             {
               "name": "key_9",

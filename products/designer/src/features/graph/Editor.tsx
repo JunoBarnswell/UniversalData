@@ -1,4 +1,6 @@
-import { PROTOCOL_VERSION } from "./version";
+import { ComponentPalette } from "./ComponentPalette";
+import { CommandMenu } from "../workspace/CommandMenu";
+import { PROTOCOL_VERSION } from "../../version";
 import {
   useCallback,
   useEffect,
@@ -20,8 +22,6 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  Search,
-  ChevronDown,
   Undo2,
   Redo2,
   Save,
@@ -39,7 +39,7 @@ import {
   WandSparkles,
   FileInput,
 } from "lucide-react";
-import { api, post, encode, decode, ApiError } from "./api";
+import { api, post, encode, decode, ApiError } from "../../api";
 import {
   defaults,
   emptyPackage,
@@ -60,28 +60,36 @@ import {
   type Connection,
   type Deployment,
   type DraftRecord,
-} from "./model";
-import { useHistory } from "./useHistory";
-import { FlowNode, type FlowNodeValue } from "./FlowNode";
-import { PropertyForm } from "./PropertyForm";
-import { FileSourceEditor } from "./FileSourceEditor";
-import { FieldMapping } from "./FieldMapping";
-import { SSISColumnEditor, SSISSplitEditor } from "./SSISColumnEditor";
-import { PreviewPanel } from "./PreviewPanel";
-import { ConnectionCenter } from "./ConnectionCenter";
-import { SourceWizard } from "./SourceWizard";
-import { SqlEditor, ConnectionSelect } from "./SqlEditors";
-import { AggregateEditor, JoinEditor, LookupEditor } from "./RelationalEditors";
-import { ResizeHandle } from "./ResizeHandle";
-import { ExecutionConfirmation } from "./ReleaseDialog";
-import { TestDialog } from "./TestDialog";
-import { VersionDiff } from "./VersionDiff";
-import { RunMonitor, type RunFacts } from "./RunMonitor";
+} from "../../model";
+import { useHistory } from "../../useHistory";
+import { FlowNode, type FlowNodeValue } from "../../FlowNode";
+import { PropertyForm } from "../../PropertyForm";
+import { FileSourceEditor } from "../../FileSourceEditor";
+import { FieldMapping } from "../../FieldMapping";
+import { SSISColumnEditor, SSISSplitEditor } from "../../SSISColumnEditor";
+import { PreviewPanel } from "../../PreviewPanel";
+import { ConnectionCenter } from "../../ConnectionCenter";
+import { SourceWizard } from "../../SourceWizard";
+import { SqlEditor, ConnectionSelect } from "../../SqlEditors";
+import {
+  AggregateEditor,
+  JoinEditor,
+  LookupEditor,
+} from "../../RelationalEditors";
+import { ResizeHandle } from "../../ResizeHandle";
+import { ExecutionConfirmation } from "../../ReleaseDialog";
+import { TestDialog } from "../../TestDialog";
+import { VersionDiff } from "../../VersionDiff";
+import {
+  RunMonitor,
+  type RunFacts,
+  type ProgressNode,
+} from "../observability/RunMonitor";
 import {
   removeGraphNodes,
   duplicateGraphNodes,
   templateNodes,
-} from "./graphEditing";
+} from "../../graphEditing";
 const nodeTypes = { component: FlowNode };
 const constraintId = (edge: { from: string; to: string; on: string }) =>
   `constraint/${encode([edge.from, edge.to, edge.on])}`;
@@ -101,6 +109,14 @@ interface Props {
   components: Component[];
   request?: OpenWorkspace;
   onExecution: () => void;
+  active?: boolean;
+  onStatus?: (
+    token: string,
+    label: string,
+    dirty: boolean,
+    packageId: string,
+    revision?: string,
+  ) => void;
 }
 export function Editor(props: Props) {
   return (
@@ -124,42 +140,13 @@ const portScope = (document: PackageDocument) =>
     dataFlows: [],
     controlFlow: { tasks: [], constraints: [] },
   });
-const categories = [
-  { label: "读取", test: (component: Component) => component.category === 2 },
-  {
-    label: "清洗",
-    test: (component: Component) =>
-      component.category === 3 &&
-      /quality|cast|clean|duplicate|copyColumn|importColumn|exportColumn/.test(
-        component.id,
-      ),
-  },
-  {
-    label: "计算",
-    test: (component: Component) =>
-      component.category === 3 &&
-      /derive|window|pivot|script|expression/.test(component.id),
-  },
-  {
-    label: "关联",
-    test: (component: Component) =>
-      component.category === 3 && /join|lookup|scd/i.test(component.id),
-  },
-  {
-    label: "分流",
-    test: (component: Component) =>
-      component.category === 3 &&
-      /split|multicast|balanced|unionAll/.test(component.id),
-  },
-  {
-    label: "聚合与排序",
-    test: (component: Component) =>
-      component.category === 3 &&
-      /aggregate|sort|sampling|profile/i.test(component.id),
-  },
-  { label: "输出", test: (component: Component) => component.category === 4 },
-];
-function EditorCanvas({ components, request, onExecution }: Props) {
+function EditorCanvas({
+  components,
+  request,
+  onExecution,
+  active = true,
+  onStatus,
+}: Props) {
   const history = useHistory(
       () =>
         request?.document ?? {
@@ -202,7 +189,8 @@ function EditorCanvas({ components, request, onExecution }: Props) {
     [importOpen, setImportOpen] = useState(Boolean(request?.import)),
     [documentOpen, setDocumentOpen] = useState(false),
     [versionsOpen, setVersionsOpen] = useState(false),
-    [testOpen, setTestOpen] = useState(false);
+    [testOpen, setTestOpen] = useState(false),
+    [commandsOpen, setCommandsOpen] = useState(false);
   const [versions, setVersions] = useState<CatalogDocument<PackageDocument>[]>(
       [],
     ),
@@ -231,6 +219,7 @@ function EditorCanvas({ components, request, onExecution }: Props) {
     }>(),
     [confirmation, setConfirmation] = useState(false);
   const [draftSavedText, setDraftSavedText] = useState<string>();
+  const [remoteDraft, setRemoteDraft] = useState<DraftRecord>();
   const [draftMessage, setDraftMessage] = useState("草稿尚未保存"),
     [draftReady, setDraftReady] = useState(!request?.document),
     [draftConflict, setDraftConflict] = useState(false);
@@ -252,9 +241,6 @@ function EditorCanvas({ components, request, onExecution }: Props) {
       Record<string, { x: number; y: number }>
     >({}),
     [draftViewport, setDraftViewport] = useState<Viewport>();
-  const [measurements, setMeasurements] = useState<
-    Record<string, { width: number; height: number }>
-  >({});
   const scopes = useMemo(() => controlScopes(document), [document]),
     flow =
       scopes.some((scope) => scope.id === flowId) ||
@@ -372,7 +358,9 @@ function EditorCanvas({ components, request, onExecution }: Props) {
           .filter((edge) => edge.component === node.id)
           .map((edge) => [edge.port, edge.totalRows]),
       );
-    const live = liveNodes.find((value) => value.id === node.id);
+    const live = liveNodes.find((value) => value.id === node.id) as
+      | ProgressNode
+      | undefined;
     if (preview?.text === dataText && bound?.ports)
       for (const port of bound.ports)
         if (port.direction === 2 && port.rows !== undefined)
@@ -383,7 +371,6 @@ function EditorCanvas({ components, request, onExecution }: Props) {
     return {
       id: node.id,
       type: "component",
-      measured: measurements[`${flow}/${node.id}`],
       selected: selectedNodes.includes(node.id),
       position: dragPositions[node.id] ??
         layout ?? { x: 70 + index * 300, y: 140 },
@@ -398,6 +385,9 @@ function EditorCanvas({ components, request, onExecution }: Props) {
         ),
         outputFields: bound?.outputs[0]?.fields.length,
         portRows,
+        runtime: live
+          ? `${live.boundedness ? "持续" : "有界"}${live.idle ? " · 空闲" : ""} · ${live.rateRowsPerSecond?.toFixed(1) ?? "—"} 行/秒`
+          : undefined,
         stale,
         failed: Boolean((bound?.result ?? 0) || (live?.result ?? 0)),
       },
@@ -611,6 +601,27 @@ function EditorCanvas({ components, request, onExecution }: Props) {
       controller.abort();
     };
   }, [item, control, flow, document]);
+  const [initialText] = useState(text);
+  const dirty =
+    text !== initialText && draftSavedText !== text && saved?.text !== text;
+  useEffect(() => {
+    if (request)
+      onStatus?.(
+        request.token,
+        document.layout?.label ?? document.id,
+        dirty,
+        document.id,
+        saved?.id === document.id ? saved.revision : undefined,
+      );
+  }, [
+    request,
+    onStatus,
+    document.id,
+    document.layout?.label,
+    dirty,
+    saved?.id,
+    saved?.revision,
+  ]);
   const runAction = useCallback(
     async (operation: "save" | "validate" | "publish") => {
       const snapshot = document,
@@ -670,15 +681,11 @@ function EditorCanvas({ components, request, onExecution }: Props) {
   );
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
+      if (!active) return;
       const target = event.target as HTMLElement;
       if (event.key.toLowerCase() === "k" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
-        setCatalogOpen(true);
-        requestAnimationFrame(() =>
-          window.document
-            .querySelector<HTMLInputElement>('input[aria-label="搜索组件"]')
-            ?.focus(),
-        );
+        setCommandsOpen(true);
         return;
       }
       if (event.key.toLowerCase() === "s" && (event.ctrlKey || event.metaKey)) {
@@ -694,7 +701,7 @@ function EditorCanvas({ components, request, onExecution }: Props) {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [runAction, undo, redo]);
+  }, [runAction, undo, redo, active]);
   function withPosition(
     current: PackageDocument,
     id: string,
@@ -761,8 +768,9 @@ function EditorCanvas({ components, request, onExecution }: Props) {
       };
     if (component.id === "multicast")
       config = { outputs: ["业务明细", "维度统计"] };
-    if (component.id === "aggregate")
+    if (component.id === "aggregate" || component.id === "eventWindow")
       config = {
+        ...config,
         plan: {
           version: PROTOCOL_VERSION,
           group: [],
@@ -1034,30 +1042,6 @@ function EditorCanvas({ components, request, onExecution }: Props) {
   }
   const changes = useCallback(
     (updates: NodeChange[]) => {
-      const dimensions = updates.filter(
-        (update) =>
-          update.type === "dimensions" &&
-          update.dimensions &&
-          update.dimensions.width > 0 &&
-          update.dimensions.height > 0,
-      );
-      if (dimensions.length)
-        setMeasurements((current) => {
-          let next = current;
-          for (const update of dimensions)
-            if (update.type === "dimensions" && update.dimensions) {
-              const key = `${flow}/${update.id}`,
-                old = next[key];
-              if (
-                old?.width !== update.dimensions.width ||
-                old.height !== update.dimensions.height
-              ) {
-                if (next === current) next = { ...current };
-                next[key] = update.dimensions;
-              }
-            }
-          return next;
-        });
       for (const update of updates)
         if (update.type === "select")
           setSelectedNodes((current) =>
@@ -1240,6 +1224,44 @@ function EditorCanvas({ components, request, onExecution }: Props) {
   } as CSSProperties;
   return (
     <>
+      <CommandMenu
+        open={commandsOpen}
+        close={() => setCommandsOpen(false)}
+        actions={[
+          {
+            id: "save",
+            label: "保存版本",
+            run: () => void runAction("save"),
+            disabled: busy,
+          },
+          {
+            id: "validate",
+            label: "Native 校验",
+            run: () => void runAction("validate"),
+            disabled: busy,
+          },
+          {
+            id: "publish",
+            label: "发布版本",
+            run: () => void runAction("publish"),
+            disabled: busy,
+          },
+          {
+            id: "connections",
+            label: "连接中心",
+            run: () => setConnectionsOpen(true),
+          },
+          { id: "layout", label: "自动布局", run: layout },
+          { id: "undo", label: "撤销", run: undo, disabled: !history.canUndo },
+          { id: "redo", label: "重做", run: redo, disabled: !history.canRedo },
+          { id: "catalog", label: "搜索组件", run: () => setCatalogOpen(true) },
+          {
+            id: "json",
+            label: "查看 Package 文档",
+            run: () => setDocumentOpen(true),
+          },
+        ]}
+      />
       <div className="workspace-heading">
         <div>
           <small>项目 / 数据集成</small>
@@ -1267,6 +1289,23 @@ function EditorCanvas({ components, request, onExecution }: Props) {
               ? draftMessage
               : "草稿有未保存更改"}
           </span>
+          {draftConflict ? (
+            <button
+              onClick={() =>
+                void api<DraftRecord>(
+                  `/drafts/${encodeURIComponent(document.id)}`,
+                )
+                  .then((remote) => {
+                    setRemoteDraft(remote);
+                    setComparison(remote.document);
+                    setVersionsOpen(true);
+                  })
+                  .catch((error) => setMessage(errorText(error)))
+              }
+            >
+              比较远程草稿
+            </button>
+          ) : null}
           <small>
             {saved?.id === document.id
               ? `已保存 v${saved.revision}${saved.text === text ? "" : " · 草稿有更改"}`
@@ -1354,7 +1393,15 @@ function EditorCanvas({ components, request, onExecution }: Props) {
           <Database size={15} />
           连接中心
         </button>
+        <span role="status" className="graph-count">{items.length} 个组件 · {edges.length} 条路径</span>
+        {items.length>100?<select aria-label="定位组件" value={selected??""} onChange={event=>{const id=event.target.value;setSelectedNodes(id?[id]:[]);setInspectorOpen(true);if(id)void graphApi.fitView({nodes:[{id}],maxZoom:1,padding:0.3});}}><option value="">定位组件…</option>{items.map(node=><option key={node.id} value={node.id}>{label(node.id)}</option>)}</select>:null}
         <div className="toolbar-actions">
+          <button
+            onClick={() => setCommandsOpen(true)}
+            aria-keyshortcuts="Control+k Meta+k"
+          >
+            命令 ⌘/Ctrl K
+          </button>
           <button aria-label="撤销" disabled={!history.canUndo} onClick={undo}>
             <Undo2 size={15} />
           </button>
@@ -1398,82 +1445,14 @@ function EditorCanvas({ components, request, onExecution }: Props) {
         className={`editor-body workbench${catalogOpen ? " catalog-open" : ""}${inspectorOpen ? "" : " inspector-collapsed"}`}
         style={bodyStyle}
       >
-        <aside className="component-rail">
-          {!control ? (
-            <section className="template-list">
-              <h3>组件模板</h3>
-              <button onClick={() => insertTemplate("derive-split")}>
-                字段处理 → 业务分流
-              </button>
-              <button onClick={() => insertTemplate("dimensions")}>
-                复制 → 双维度统计
-              </button>
-            </section>
-          ) : null}
-          <label className="search">
-            <Search size={15} />
-            <input
-              aria-label="搜索组件"
-              placeholder="搜索数据源、清洗、分流…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-          {(control
-            ? [
-                {
-                  label: "控制任务",
-                  test: (component: Component) => component.category === 1,
-                },
-              ]
-            : [
-                ...categories,
-                {
-                  label: "其他转换",
-                  test: (component: Component) =>
-                    component.category === 3 &&
-                    !categories.some((group) => group.test(component)),
-                },
-              ]
-          ).map((group) => (
-            <section key={group.label}>
-              <h3>
-                <ChevronDown size={14} />
-                {group.label}
-              </h3>
-              {components
-                .filter(
-                  (component) =>
-                    group.test(component) &&
-                    `${component.id} ${component.name}`
-                      .toLowerCase()
-                      .includes(search.toLowerCase()),
-                )
-                .map((component) => (
-                  <button
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData(
-                        "application/universaldata-component",
-                        component.id,
-                      );
-                      event.dataTransfer.effectAllowed = "copy";
-                    }}
-                    className="catalog-row"
-                    key={component.id}
-                    onClick={() => add(component)}
-                  >
-                    <Database size={18} />
-                    <span>
-                      <strong>{component.name}</strong>
-                      <small>{component.id}</small>
-                    </span>
-                    <Plus size={13} />
-                  </button>
-                ))}
-            </section>
-          ))}
-        </aside>
+        <ComponentPalette
+          components={components}
+          control={control}
+          search={search}
+          setSearch={setSearch}
+          add={add}
+          template={insertTemplate}
+        />
         <ResizeHandle
           label="调整组件目录宽度"
           value={rail}
@@ -1524,6 +1503,7 @@ function EditorCanvas({ components, request, onExecution }: Props) {
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
+              onlyRenderVisibleElements={items.length > 100}
               onNodesChange={changes}
               onNodesDelete={(deleted) => {
                 edit((current) =>
@@ -1666,9 +1646,10 @@ function EditorCanvas({ components, request, onExecution }: Props) {
                 setSourceRows={setSourceRows}
               />
             </div>
-            {monitor ? (
-              <div hidden={!showMonitor}>
+            {monitor && active && showMonitor ? (
+              <div>
                 <RunMonitor
+                  key={monitor}
                   ticket={monitor}
                   compact
                   caption={monitorCaption}
@@ -1762,6 +1743,37 @@ function EditorCanvas({ components, request, onExecution }: Props) {
                   destinations={splitDestinations}
                   preview={() => void readPreview()}
                 />
+              ) : item.component === "eventWindow" ? (
+                <>
+                  <p className="muted">
+                    事件时间采用微秒；窗口 [start, end) 在 Watermark ≥ end +
+                    允许迟到后输出最终结果。迟到输出必须连接端口 1。
+                  </p>
+                  <PropertyForm
+                    schema={{
+                      ...descriptor.configurationSchema,
+                      properties: Object.fromEntries(
+                        Object.entries(
+                          descriptor.configurationSchema.properties ?? {},
+                        ).filter(([key]) => key !== "plan"),
+                      ),
+                    }}
+                    value={Object.fromEntries(
+                      Object.entries(item.config).filter(
+                        ([key]) => key !== "plan",
+                      ),
+                    )}
+                    change={(value) =>
+                      configure({ ...value, plan: item.config.plan })
+                    }
+                    fields={inputSchema?.fields}
+                  />
+                  <AggregateEditor
+                    value={item.config}
+                    change={configure}
+                    fields={inputSchema?.fields ?? []}
+                  />
+                </>
               ) : item.component === "aggregate" ? (
                 <AggregateEditor
                   value={item.config}
@@ -1857,6 +1869,13 @@ function EditorCanvas({ components, request, onExecution }: Props) {
                   value={item.config}
                   change={configure}
                 />
+              ) : null}
+              {descriptor.continuous ? (
+                <p className="muted">
+                  Native 持续源 ·
+                  结束由源模式和停止策略决定；空闲不等于完成。位点与确认沿用
+                  Native Journal。
+                </p>
               ) : null}
               <details>
                 <summary>组件身份与专业信息</summary>
@@ -1988,6 +2007,43 @@ function EditorCanvas({ components, request, onExecution }: Props) {
             >
               更多版本
             </button>
+            {remoteDraft ? (
+              <div className="inline-actions">
+                <p>
+                  远程草稿 r{String(remoteDraft.revision)}
+                  ；本地编辑仍保留。请选择合并后的保存基准。
+                </p>
+                <button
+                  onClick={() => {
+                    draftRevisions.current.set(
+                      document.id,
+                      remoteDraft.revision,
+                    );
+                    setDraftConflict(false);
+                    setRemoteDraft(undefined);
+                    setVersionsOpen(false);
+                    setDraftSavedText(undefined);
+                  }}
+                >
+                  保留本地并重新保存
+                </button>
+                <button
+                  onClick={() => {
+                    draftRevisions.current.set(
+                      document.id,
+                      remoteDraft.revision,
+                    );
+                    resetHistory(remoteDraft.document);
+                    setDraftSavedText(encode(remoteDraft.document));
+                    setDraftConflict(false);
+                    setRemoteDraft(undefined);
+                    setVersionsOpen(false);
+                  }}
+                >
+                  采用远程草稿
+                </button>
+              </div>
+            ) : null}
             {comparison ? (
               <VersionDiff previous={comparison} current={document} />
             ) : null}

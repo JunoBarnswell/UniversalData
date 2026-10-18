@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
             status, result = request(name, '/auth/login', 'POST', {'subject': name, 'password': 'password-for-' + name})
             assert status == 200, (status, result)
             clients[name] = (clients[name][0], result['csrf'])
-        package = {'version': 11, 'id': 'protected-package', 'parameters': {'password': {'type': 'utf8'}},
+        package = {'version': 12, 'id': 'protected-package', 'parameters': {'password': {'type': 'utf8'}},
             'variables': {'counter': {'type': 'int64', 'default': 0}},
             'controlFlow': {'tasks': [{'id': 'set', 'kind': 'set', 'config': {'name': 'counter', 'value': {'literal': 1, 'type': 'int64'}}}], 'constraints': []}, 'dataFlows': []}
         assert request('reader-a', '/packages/protected-package/versions/1', 'PUT', package)[0] == 403
@@ -98,6 +98,26 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
             assert time.monotonic() < deadline, state
             time.sleep(.1)
         assert state['state'] == 'Succeeded', state
+        # SSE projects the exact persisted Native facts and event revisions.
+        assert request('reader-a','/executions/'+ticket+'/events')[0] == 403
+        assert request('admin-b','/executions/'+ticket+'/events')[0] == 404
+        def feed(cursor=None):
+            opener,_=clients['admin-a']
+            headers={'Accept':'text/event-stream'}
+            if cursor:headers['Last-Event-ID']=cursor
+            with opener.open(urllib.request.Request(address+'/api/executions/'+ticket+'/events',headers=headers),timeout=20) as response:
+                assert response.headers['Content-Type'].startswith('text/event-stream')
+                text=response.read().decode()
+            frames=[]
+            for block in text.split('\n\n'):
+                lines=block.splitlines()
+                payload=next((line[6:] for line in lines if line.startswith('data: ')),None)
+                if payload:frames.append((next(line[4:] for line in lines if line.startswith('id: ')),json.loads(payload)))
+            return frames
+        frames=feed();assert frames and frames[-1][1]['terminal'],frames
+        assert frames[-1][1]['source']=='native-catalog' and frames[-1][1]['run']['executionId']==state['executionId']
+        resumed=feed(frames[-1][0]);assert resumed[-1][1]['events']==[] and not resumed[-1][1]['gap'],resumed
+        reset=feed('999999999999999.999999999999999.999999999999999');assert reset[0][1]['gap'],reset
         assert request('admin-b', '/executions/' + ticket)[0] == 404
         assert request('admin-b', '/logs?executionId=' + state['executionId'])[0] == 403
         status, logs = request('admin-a', '/logs?executionId=' + state['executionId'])
@@ -113,7 +133,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         assert status == 200, (status, imported)
         target = resource / 'a' / 'never-written.csv'
         target.write_text('untouched\n')
-        draft_package = {'version': 11, 'id': 'designer-draft', 'connections': [
+        draft_package = {'version': 12, 'id': 'designer-draft', 'connections': [
             dict(id='input', driver='file', resource=imported['resource']), dict(id='output', driver='file', resource=str(target))],
             'controlFlow': {'tasks': [dict(id='run',kind='dataFlow',config=dict(pipeline='main'))], 'constraints': []}, 'dataFlows': []}
         inspect = dict(package=draft_package,connection='input',format='csv',options=dict(header=True))

@@ -15,7 +15,8 @@ enum {
     UD_EXEC_FAILED,
     UD_EXEC_CANCELLED,
     UD_EXEC_SKIPPED,
-    UD_EXEC_RECOVERY_REQUIRED
+    UD_EXEC_RECOVERY_REQUIRED,
+    UD_EXEC_STOPPED
 };
 UD_API int32_t ud_execution_terminal(ud_execution_state);
 UD_API int32_t ud_execution_transition_allowed(ud_execution_state from, ud_execution_state to);

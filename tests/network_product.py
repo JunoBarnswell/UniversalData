@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix="ud-network-product-") as folder:
     upload = root / "upload.bin"; upload.write_bytes(data)
     def run(driver, operation, file, name):
         package = root / f"{name}.json"
-        doc = dict(version=11, id="network-product", connections=[dict(id="remote", driver=driver, resource=f"http://127.0.0.1:{server.server_port}/{name}"), dict(id="local", driver="file", resource=str(file))],
+        doc = dict(version=12, id="network-product", connections=[dict(id="remote", driver=driver, resource=f"http://127.0.0.1:{server.server_port}/{name}"), dict(id="local", driver="file", resource=str(file))],
             controlFlow=dict(tasks=[dict(id="transfer", kind=f"{driver}.{operation}", config=dict(connection="remote", file="local"))], constraints=[]), dataFlows=[])
         package.write_text(json.dumps(doc)); result = subprocess.run([sys.argv[1], str(package), "0"], capture_output=True, text=True, timeout=40)
         assert result.returncode == 0, (result.stdout,result.stderr)

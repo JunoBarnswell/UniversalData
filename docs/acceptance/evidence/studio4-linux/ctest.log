@@ -1,0 +1,165 @@
+Internal ctest changing into directory: /workspace/work/studio4/build/studio4
+Test project /workspace/work/studio4/build/studio4
+      Start 57: management_multi_process_claim_recovery
+      Start 52: next_phase_pipeline_recovery
+      Start 58: management_authenticated_native_worker
+      Start 53: ssis_native_features
+ 1/76 Test #53: ssis_native_features ............................   Passed   10.10 sec
+      Start 41: catalog_immutable_store
+ 2/76 Test #58: management_authenticated_native_worker ..........   Passed   10.66 sec
+      Start 34: value_semantics_pipeline
+ 3/76 Test #34: value_semantics_pipeline ........................   Passed    4.00 sec
+      Start 75: ssis_row_error_atomicity_recovery
+ 4/76 Test #41: catalog_immutable_store .........................   Passed    5.35 sec
+      Start 47: http_task_execution
+ 5/76 Test #75: ssis_row_error_atomicity_recovery ...............   Passed    3.75 sec
+      Start 46: process_task_execution
+ 6/76 Test #47: http_task_execution .............................   Passed    3.89 sec
+      Start 65: managed_registry_scripts_debug_lifecycle
+ 7/76 Test #65: managed_registry_scripts_debug_lifecycle ........   Passed    2.16 sec
+      Start 60: worker_protocol
+ 8/76 Test #52: next_phase_pipeline_recovery ....................   Passed   21.94 sec
+      Start 59: hosting_identity_secret_resource_contracts
+ 9/76 Test #46: process_task_execution ..........................   Passed    3.70 sec
+      Start 29: indexed_segment_journal
+10/76 Test #60: worker_protocol .................................   Passed    2.29 sec
+      Start 64: managed_product_worker_process_recovery
+11/76 Test #29: indexed_segment_journal .........................   Passed    1.73 sec
+      Start 31: core_runtime_resources
+12/76 Test #59: hosting_identity_secret_resource_contracts ......   Passed    1.99 sec
+      Start 49: profile_task_execution
+13/76 Test #49: profile_task_execution ..........................   Passed    0.66 sec
+      Start 39: package_durable_recovery
+14/76 Test #64: managed_product_worker_process_recovery .........   Passed    1.03 sec
+      Start 36: sql_command_records_recovery
+15/76 Test #31: core_runtime_resources ..........................   Passed    1.09 sec
+      Start 61: managed_native_epoch_process_recovery
+16/76 Test #39: package_durable_recovery ........................   Passed    0.61 sec
+      Start 17: native_event_time_windows
+17/76 Test #36: sql_command_records_recovery ....................   Passed    0.58 sec
+      Start 45: filesystem_task_execution
+18/76 Test #61: managed_native_epoch_process_recovery ...........   Passed    0.59 sec
+      Start 40: catalog_leases_process_recovery
+19/76 Test #45: filesystem_task_execution .......................   Passed    0.43 sec
+      Start 54: pr5_foundation
+20/76 Test #40: catalog_leases_process_recovery .................   Passed    0.47 sec
+      Start 66: java_registry_observer_catalog_lifecycle
+21/76 Test #66: java_registry_observer_catalog_lifecycle ........   Passed    0.36 sec
+      Start 73: apache_avro_native_pipeline_resolution
+22/76 Test #54: pr5_foundation ..................................   Passed    0.56 sec
+      Start 50: native_custom_task
+23/76 Test #73: apache_avro_native_pipeline_resolution ..........   Passed    0.27 sec
+      Start 43: child_package_execution
+24/76 Test #50: native_custom_task ..............................   Passed    0.43 sec
+      Start 32: core_pipeline_components
+25/76 Test #43: child_package_execution .........................   Passed    0.37 sec
+      Start 37: four_engine_connections_enumerators
+26/76 Test #32: core_pipeline_components ........................   Passed    0.38 sec
+      Start 23: sqlite_receipts_upsert
+27/76 Test #37: four_engine_connections_enumerators .............   Passed    0.33 sec
+      Start  1: native_streaming_protocol
+28/76 Test #23: sqlite_receipts_upsert ..........................   Passed    0.29 sec
+      Start 56: advanced_catalog_ten_table_template
+29/76 Test #56: advanced_catalog_ten_table_template .............   Passed    0.14 sec
+      Start 42: project_environment_deployment
+30/76 Test #42: project_environment_deployment ..................   Passed    0.10 sec
+      Start 25: shared_value_semantics
+31/76 Test #25: shared_value_semantics ..........................   Passed    0.14 sec
+      Start 35: package_failure_boundaries
+32/76 Test #35: package_failure_boundaries ......................   Passed    0.13 sec
+      Start 69: native_component_product_semantics
+33/76 Test #69: native_component_product_semantics ..............   Passed    0.10 sec
+      Start 72: native_avro_interoperability
+34/76 Test #72: native_avro_interoperability ....................   Passed    0.07 sec
+      Start  2: native_designer_readonly_preview
+35/76 Test  #2: native_designer_readonly_preview ................   Passed    0.09 sec
+      Start 71: native_xlsx_preserving_append
+36/76 Test #71: native_xlsx_preserving_append ...................   Passed    0.08 sec
+      Start 70: native_sql_source_record_errors
+37/76 Test #70: native_sql_source_record_errors .................   Passed    0.05 sec
+      Start 33: package_execution
+38/76 Test #33: package_execution ...............................   Passed    0.06 sec
+      Start 38: package_sql_integration
+39/76 Test #38: package_sql_integration .........................   Passed    0.05 sec
+      Start 74: ssis_native_expression_contract
+40/76 Test #74: ssis_native_expression_contract .................   Passed    0.05 sec
+      Start 63: native_window_window-pre_process_recovery
+41/76 Test #63: native_window_window-pre_process_recovery .......   Passed    0.34 sec
+      Start 44: catalog_execution_history
+42/76 Test  #1: native_streaming_protocol .......................   Passed    1.59 sec
+      Start 62: native_window_window-post_process_recovery
+43/76 Test #44: catalog_execution_history .......................   Passed    0.10 sec
+      Start 68: file_generation_process_recovery
+44/76 Test #68: file_generation_process_recovery ................   Passed    0.12 sec
+      Start  5: transaction_fact_publication
+45/76 Test  #5: transaction_fact_publication ....................   Passed    0.09 sec
+      Start 30: logical_durable_task_facts
+46/76 Test #30: logical_durable_task_facts ......................   Passed    0.08 sec
+      Start  3: native_checkpoint_contract_revision
+47/76 Test  #3: native_checkpoint_contract_revision .............   Passed    0.05 sec
+      Start 67: native_enterprise_file_layout
+48/76 Test #67: native_enterprise_file_layout ...................   Passed    0.08 sec
+      Start  4: native_catalog_secret_migration
+49/76 Test #62: native_window_window-post_process_recovery ......   Passed    0.54 sec
+      Start 26: four_engine_scheduling_operators
+50/76 Test  #4: native_catalog_secret_migration .................   Passed    0.07 sec
+      Start 28: pipeline_tree_parallelism
+51/76 Test #26: four_engine_scheduling_operators ................   Passed    0.06 sec
+      Start 51: next_phase_native_contracts
+52/76 Test #28: pipeline_tree_parallelism .......................   Passed    0.03 sec
+      Start  6: execution_identity
+53/76 Test  #6: execution_identity ..............................   Passed    0.01 sec
+      Start 55: advanced_native_semantics
+54/76 Test #51: next_phase_native_contracts .....................   Passed    0.02 sec
+      Start 27: block_store_ownership
+55/76 Test #55: advanced_native_semantics .......................   Passed    0.01 sec
+      Start 12: source_record_errors
+56/76 Test #27: block_store_ownership ...........................   Passed    0.01 sec
+      Start 16: json_nested_format
+57/76 Test #12: source_record_errors ............................   Passed    0.00 sec
+      Start 19: nested_columnar_arrow
+58/76 Test #19: nested_columnar_arrow ...........................   Passed    0.00 sec
+      Start  9: schema_physical_identity_and_nested_evolution
+59/76 Test #16: json_nested_format ..............................   Passed    0.00 sec
+      Start 10: unified_file_schema_discovery
+60/76 Test  #9: schema_physical_identity_and_nested_evolution ...   Passed    0.00 sec
+      Start 18: compute_plan
+61/76 Test #18: compute_plan ....................................   Passed    0.00 sec
+      Start 13: sql_bulk_streaming
+62/76 Test #10: unified_file_schema_discovery ...................   Passed    0.00 sec
+      Start  8: json_document
+63/76 Test #13: sql_bulk_streaming ..............................   Passed    0.00 sec
+64/76 Test  #8: json_document ...................................   Passed    0.00 sec
+      Start 14: columnar
+      Start 21: field_mapping
+65/76 Test #21: field_mapping ...................................   Passed    0.00 sec
+      Start 22: quality_classification
+66/76 Test #14: columnar ........................................   Passed    0.00 sec
+      Start 24: architecture_foundation
+67/76 Test #22: quality_classification ..........................   Passed    0.00 sec
+      Start 48: profile_statistics_kernel
+68/76 Test #24: architecture_foundation .........................   Passed    0.00 sec
+      Start 20: regex_pcre2
+69/76 Test #20: regex_pcre2 .....................................   Passed    0.00 sec
+      Start 15: extended_scalar_types
+70/76 Test #48: profile_statistics_kernel .......................   Passed    0.00 sec
+      Start 11: native_type_domains_2
+71/76 Test #15: extended_scalar_types ...........................   Passed    0.00 sec
+      Start  7: foundation
+72/76 Test #11: native_type_domains_2 ...........................   Passed    0.00 sec
+      Start 76: ssis_microsoft_golden
+73/76 Test  #7: foundation ......................................   Passed    0.00 sec
+74/76 Test #76: ssis_microsoft_golden ...........................***Skipped   0.06 sec
+75/76 Test #17: native_event_time_windows .......................   Passed    4.54 sec
+76/76 Test #57: management_multi_process_claim_recovery .........   Passed   41.63 sec
+
+100% tests passed, 0 tests failed out of 76
+
+Label Time Summary:
+ssis-golden         =   0.06 sec*proc (1 test)
+windows-resource    =   0.06 sec*proc (1 test)
+
+Total Test time (real) =  41.63 sec
+
+The following tests did not run:
+	 76 - ssis_microsoft_golden (Skipped)

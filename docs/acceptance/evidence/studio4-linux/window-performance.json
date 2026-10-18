@@ -1,0 +1,10 @@
+{
+  "exitCode": 0,
+  "elapsedSeconds": 4.6968,
+  "maximumRSSKiB": 9344,
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "cpuCount": 3,
+  "stdout": "{\"scenario\":\"1000-row batches / 10-microsecond keyed windows\",\"inputEvents\":1000000,\"emittedWindows\":100000,\"elapsedMs\":4673.817,\"eventsPerSecond\":213957.876,\"batchP95Ms\":7.852,\"batchP99Ms\":35.244}\nevent windows: boundaries, lateness, session merge, compact restore, spill and 1000000 events passed\n",
+  "stderr": "",
+  "limitations": "Finite one-million-event regression; not a one-hour continuous soak. Latency percentiles describe complete 1000-row batches including input creation and output drain, not individual events. This is one local run, not a production capacity claim."
+}

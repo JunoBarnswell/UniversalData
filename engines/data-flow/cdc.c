@@ -583,16 +583,13 @@ static ud_status step(void *instance, const ud_component_event *input) {
         }
         return UD_MORE;
     }
-    if (s->ended || (s->limit && s->transactions >= s->limit)) {
+    if (s->ended || (!s->begun && atomic_load(&s->context.execution->stop_requested)) || (s->limit && s->transactions >= s->limit)) {
         s->ended = 1;
         return UD_END;
     }
     ud_cdc_event event = {0};
     ud_status status = ud_connection_lease_cdc_next(s->lease, &event);
-    if (status == UD_BUSY) {
-        UD_TRY(ud_wait(s->context.memory, 10));
-        return UD_MORE;
-    }
+    if (status == UD_BUSY) return UD_BUSY;
     if (status)
         return status;
     if (event.kind == UD_CDC_BEGIN) {
@@ -800,6 +797,17 @@ static ud_status finish(void *instance) {
     cdc_source *s = instance;
     return s->begun ? UD_CORRUPT : UD_OK;
 }
+static ud_status describe(void *user, const ud_component_context *c, ud_string text,
+                          const ud_batch *const *in, ud_component_plan *plan) {
+    (void)user;(void)in;ud_json *config = NULL;
+    UD_TRY(ud_json_parse(c->memory, text.data, text.length, &config, NULL));
+    uint64_t limit = 0; ud_status status = UD_OK;
+    if (ud_member(config, "maxTransactions")) status = ud_json_uint(ud_member(config, "maxTransactions"), &limit);
+    ud_string mode = {0};
+    if (!status) status = ud_json_string(ud_member(config, "mode"), &mode);
+    plan->boundedness = limit ? UD_SOURCE_BOUNDED : ud_named(mode, "snapshotAndStream") ? UD_SOURCE_SNAPSHOT_THEN_STREAM : UD_SOURCE_CONTINUOUS;
+    ud_json_destroy(config);return status;
+}
 ud_status ud_cdc_register(ud_registry *registry) {
     static const char schema[] =
         "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\",\"minLength\":1},"
@@ -830,11 +838,12 @@ ud_status ud_cdc_register(ud_registry *registry) {
             .synchronous_input = -1,
             .error_output = -1,
             .capabilities =
-                UD_COMPONENT_REPLAY_SAFE | UD_COMPONENT_STATEFUL | UD_COMPONENT_THREAD_SAFE,
+                UD_COMPONENT_REPLAY_SAFE | UD_COMPONENT_STATEFUL | UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_CONTINUOUS,
             .effects = UD_EFFECT_EXTERNAL_READ,
             .state_version = 2,
             .user = (void *)(intptr_t)dialects[i],
             .configure = configure,
+            .describe_plan = describe,
             .prepare = prepare,
             .step = step,
             .finish = finish,

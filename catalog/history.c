@@ -13,12 +13,13 @@ static void hex_digest(const uint8_t digest[32], char out[65]) {
     }
     out[64] = 0;
 }
-ud_status ud_catalog_record_execution(ud_catalog *c, const ud_execution *e, uint64_t revision) {
+static ud_status record_execution(ud_catalog *c, const ud_execution *e, uint64_t revision,
+                                  int progress) {
     if (!c || !e || !revision)
         return UD_INVALID;
     ud_execution_metrics m = {.struct_size = sizeof(m), .abi_version = UD_ABI_VERSION};
     UD_TRY(ud_execution_get_metrics(e, &m));
-    if (m.state != UD_EXEC_READY && !ud_execution_terminal(m.state))
+    if (!progress && m.state != UD_EXEC_READY && !ud_execution_terminal(m.state))
         return UD_BUSY;
     if (!ud_same(c->options.tenant, e->options.tenant))
         return UD_AUTH;
@@ -86,11 +87,26 @@ ud_status ud_catalog_record_execution(ud_catalog *c, const ud_execution *e, uint
         s = ud_bytes_put(&b, facts, (size_t)n);
         char *diagnostics = NULL;
         uint32_t length = 0;
-        if (!s && m.state != UD_EXEC_RUNNING && m.state != UD_EXEC_DRAINING)
+        if (!s && !progress && m.state != UD_EXEC_RUNNING && m.state != UD_EXEC_DRAINING)
             s = ud_execution_diagnostics((ud_execution *)e, &diagnostics, &length);
         if (!s)
             s = diagnostics ? ud_bytes_put(&b, diagnostics, length) : ud_bytes_put(&b, "null", 4);
         ud_free(diagnostics);
+        if (!s && progress) {
+            char observed[80];
+            int observed_length = snprintf(observed, sizeof(observed), ",\"observedAtMs\":%llu",
+                                           (unsigned long long)ud_wall_ms());
+            s = ud_bytes_put(&b, observed, (size_t)observed_length);
+            char *value = NULL;
+            uint32_t size = 0;
+            if (!s)
+                s = ud_execution_progress((ud_execution *)e, &value, &size);
+            if (!s)
+                s = ud_bytes_put(&b, ",\"progress\":", 12);
+            if (!s)
+                s = ud_bytes_put(&b, value, size);
+            ud_free(value);
+        }
         if (!s)
             s = ud_bytes_put(&b, "}", 1);
     }
@@ -100,4 +116,11 @@ ud_status ud_catalog_record_execution(ud_catalog *c, const ud_execution *e, uint
         s = ud_catalog_put(c, &key, (ud_string){(char *)b.data, (uint32_t)b.size});
     ud_bytes_clear(&b);
     return s;
+}
+
+ud_status ud_catalog_record_execution(ud_catalog *c, const ud_execution *e, uint64_t revision) {
+    return record_execution(c, e, revision, 0);
+}
+ud_status ud_catalog_record_progress(ud_catalog *c, const ud_execution *e, uint64_t revision) {
+    return record_execution(c, e, revision, 1);
 }

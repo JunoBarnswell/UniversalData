@@ -2,47 +2,35 @@
   "modelVersion": 2,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "2.2.0",
-    "abiVersion": 11,
-    "protocolVersion": 11,
-    "checkpointRevision": 1,
-    "state": "Native-owned Designer 3.0 workbench with bounded read-only previews, file discovery, immutable publication, scoped drafts, isolated SQL test snapshots and real row/commit observability. Formal production release remains unproven without Windows and independent SSIS gates.",
-    "acceptanceResources": "User confirmed on 2026-10-14 that independent Windows, SSAS, FTP/SFTP, object storage and SMTP resources are unavailable: Blocked. Task-owned isolated PostgreSQL, MySQL, MariaDB and SQL Server databases were subsequently provisioned and accepted without changing historical business data. An isolated Oracle schema was created, but the OCI TCPS session attach times out (ORA-12170): live Oracle acceptance is Blocked. Windows remains required and Blocked, never exempt.",
+    "sdkVersion": "4.0.0",
+    "abiVersion": 12,
+    "protocolVersion": 12,
+    "checkpointRevision": 2,
+    "state": "Studio 4 / Streaming foundation candidate: single Native lifecycle, event-time windows, bounded state/observation, workspace tabs and Native Catalog feed. Portable verification passed; full production release remains gated.",
+    "acceptanceResources": "This session verified local Linux C/.NET/Java/Chromium, isolated SQLite and HTTP fixtures. Current external CDC, Windows/SSIS and complete vendor-driver resources are unavailable; prior external acceptance is historical.",
     "dataLayoutRevision": 1,
     "catalogRevision": 1,
-    "workerRevision": 1
+    "workerRevision": 2
   },
   "scope": {
-    "name": "UniversalData Designer 3.0 on SDK 2.2.0; inherited SSIS alignment remains separately tracked",
+    "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",
     "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
     "windows": "Required — complete driver build, native/language/install and platform acceptance",
     "extensions": "50 applicable audit items require current source and behavior evidence; ETL-039/040 NotApplicable"
   },
   "baseline": {
-    "mainCommit": "bf5ab4e4195bf59eb06b016d094c38e397f9a214",
+    "mainCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529",
     "merged": true,
-    "sdkVersion": "2.1.0",
-    "abiVersion": 11,
-    "mergeEvidence": {
-      "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/8"
-    },
-    "artifacts": {
-      "archive": "artifacts/ssis-strict-parity/UniversalData-2.1.0-linux-x64.zip",
-      "sha256": "4ac9171df0cf469f50e1f035a780a5caf918e83ef1179fc655b6017554400d90",
-      "manifest": "artifacts/ssis-strict-parity/bundle/manifest.json",
-      "runtimeIdentifier": "linux-x64",
-      "sdkVersion": "2.1.0",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d"
-    }
+    "sdkVersion": "2.2.0",
+    "abiVersion": 11
   },
   "candidate": {
-    "branch": "codex/designer-data-workbench",
-    "state": "Draft PR #9; Linux workbench acceptance and installed SDK passed. Full production release remains gated by the recorded inherited Partial/Blocked items.",
-    "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-    "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+    "branch": "codex/studio4-stream-batch",
+    "state": "Draft PR #10; local portable checks passed. Remote CI could not start because of GitHub billing/spending limits; production and extension gates remain explicit.",
+    "sourceCommit": "9d0630980cafb34170f9fb8d1d1d1f2cae6f4e7d",
+    "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
     "mergeEvidence": null,
-    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/9"
+    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/10"
   },
   "goals": [
     {
@@ -51,7 +39,7 @@
       "name": "Complete product dependency closure",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "CMakeLists.txt",
@@ -64,14 +52,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Complete Linux PRODUCT build enables all six database drivers, genuine BCP/OCI client SDKs, Arrow/Parquet, HTTP/XML/network, JNI, .NET 10 hosts and the built designer. Missing dependencies fail configuration. Linux closure passed; Windows PRODUCT closure is Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/configure.log",
-          "docs/acceptance/evidence/universaldata-2-linux/build.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -80,7 +65,7 @@
       "name": "SQL parameter arrays and truthful bulk capabilities",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/odbc.c",
@@ -93,14 +78,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "ODBC row offsets, processed counts and per-row statuses are checked. Native BCP and parameter arrays have distinct capabilities. Generic transactional array append selects response delivery and refuses uncertain replay. Actual SQL Server parameter/BCP integration passed; an independent unknown-DBMS ODBC array resource is unavailable.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -109,7 +91,7 @@
       "name": "Native execution identity",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/package/runtime.c",
@@ -122,23 +104,16 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native generates one UUID when a new execution omits its ID, exposes it to all hosts and requires the original identity for recovery. Native, managed, Java and killed-Worker browser cases passed on Linux.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "execution_identity",
         "managed_registry_scripts_debug_lifecycle",
         "java_registry_observer_catalog_lifecycle"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -147,7 +122,7 @@
       "name": "Source record error ports",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/source.c",
@@ -165,17 +140,15 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Canonical source error ports preserve field/component/source-row identity, classify conversion/truncation/constraint faults and retain raw contents only when requested. CSV/NDJSON/multiline JSON array and real SQLite mixed-result conversion cases passed; ambiguous record framing remains fatal.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "source_record_errors",
         "native_sql_source_record_errors"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -184,7 +157,7 @@
       "name": "Expression transform row errors",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/row_transform.c",
@@ -197,17 +170,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Derived Column and Conditional Split redirect a real overflow surrounded by valid rows in one batch, retain shared error identity/raw Wire and continue valid records. Derived output field attribution is retained. Fatal execution statuses never become rejected records.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_component_product_semantics"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -216,7 +186,7 @@
       "name": "Destination isolation and error barrier",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/destination.c",
@@ -229,17 +199,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "SQL rejected records use the same Native error schema and actual savepoints/parameter binding under declared transactions. Native dual SQL/file destinations and separate-process kills after normal/error commits passed. The complete cross-driver constraint/error-target transaction crash matrix remains unverified.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "next_phase_pipeline_recovery"
       ],
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -248,7 +215,7 @@
       "name": "Complete unsigned integer domain",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "include/ud/data.h",
@@ -262,7 +229,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "UINT64_MAX and overflow/negative boundaries, compare/hash/arithmetic, Wire/Arrow and enum/set dictionaries passed Native domain tests. Actual MySQL/MariaDB unsigned values and common Data semantics passed; bindings project the sole Native type domain.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_type_domains_2",
         "shared_value_semantics",
@@ -270,11 +237,9 @@
         "integration_mariadb_type_domains"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -283,7 +248,7 @@
       "name": "Duration and calendar Interval",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "include/ud/data.h",
@@ -297,18 +262,16 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Signed microsecond Duration includes INT64_MIN and negative long TIME; calendar Interval preserves independent signed month/day/microsecond extrema through Wire/Arrow. Actual MySQL/MariaDB -123:45:56.123456 decoded exactly; Native boundary tests passed.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_type_domains_2",
         "integration_mysql_type_domains",
         "integration_mariadb_type_domains"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -317,7 +280,7 @@
       "name": "JSON and dictionary fidelity",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/mysql.c",
@@ -331,18 +294,16 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual MySQL/MariaDB JSON keeps the UINT64_MAX lexeme; ENUM numeric/empty labels and SET empty labels/bitmaps retain ordered dictionaries. Native schema/Wire/Arrow dictionary and physical-provider cases passed.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_type_domains_2",
         "integration_mysql_type_domains",
         "integration_mariadb_type_domains"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -351,7 +312,7 @@
       "name": "CDC TRUNCATE semantics",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/cdc.c",
@@ -368,7 +329,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "PG and MySQL-family TRUNCATE emit the common ChangeSet event. Authorized SQL reset compiles to transactional DELETE without sequence reset. Ordinary SQL/CDC integration passed; a real TRUNCATE kill/confirmation boundary has not been accepted.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "integration_postgresql_cdc",
         "integration_mysql_cdc",
@@ -376,11 +337,8 @@
       ],
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -389,7 +347,7 @@
       "name": "Recoverable transaction participants",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "connectors/manager.c",
@@ -402,7 +360,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Connection Manager preflights participants before effects; PostgreSQL PREPARE TRANSACTION and MySQL/MariaDB XA survived real process death, rollback, commit and partial commit across two connections. OCI participant code compiles but TCPS attach is Blocked. Capability-qualified SQL Server/MSDTC participation is not implemented; unsupported resources fail before effects.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "integration_postgresql_participant_recovery",
         "integration_mysql_participant_recovery",
@@ -410,11 +368,8 @@
       ],
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -423,7 +378,7 @@
       "name": "Durable coordinator decisions",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/package/checkpoint.c",
@@ -436,7 +391,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Journal durably stages and publishes transaction-owned task/batch/cursor/epoch facts. Real killed-process fact publication and three-provider two-phase recovery passed, together with pipeline source/dual-target and file-publication kills. A single end-to-end live CDC/coordinator kill matrix remains unverified.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "transaction_fact_publication",
         "file_generation_process_recovery",
@@ -444,11 +399,8 @@
       ],
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -457,7 +409,7 @@
       "name": "PostgreSQL COPY loading",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/postgresql.c"
@@ -469,14 +421,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Authenticated libpq COPY FROM STDIN shares the business/receipt transaction and checks delivered rows. Genuine remote SQL/native integration and one million rows with Unicode/control bytes, integer checks and every receipt passed; native write time was 2.944x faster than parameter transport.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/postgresql-bulk-performance.jsonl"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -485,7 +434,7 @@
       "name": "MySQL and MariaDB native loading",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/mysql.c",
@@ -498,15 +447,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Genuine MySQL/MariaDB LOCAL INFILE reads only the retained Native Batch token; no server-selected path is opened. Session capability follows local_infile, warnings/row mismatches fail. Real SQL/CDC/native integration and one-million-row receipts passed; gains were 1.768x and 1.372x.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/mysql-bulk-performance.jsonl",
-          "docs/acceptance/evidence/universaldata-2-linux/mariadb-bulk-performance.jsonl"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -515,7 +460,7 @@
       "name": "SQL Server BCP loading",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/odbc.c"
@@ -527,15 +472,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual Microsoft BCP uses the connected application HDBC and controlled temporary staging, then original-connection business/receipt commit. Linux real SQL/CDC/native integration and one million rows passed, with 1.980x speedup. Windows BCP acceptance remains Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/mssql-bulk-performance.jsonl",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -544,7 +485,7 @@
       "name": "OCI staged Direct Path loading",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "plugins/oracle_oci.c"
@@ -556,15 +497,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "OCI Direct Path stages on a dedicated loader; original business apply/receipt remain transactional and cleanup waits for branch resolution. Full client/DP/XA compilation passed. An isolated Oracle schema exists, but OCI TCPS session attach times out ORA-12170; live behavior, kill recovery and performance are Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Blocked",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-oracle.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -573,7 +510,7 @@
       "name": "Enterprise file layouts and publication",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/package/file_generation.c",
@@ -587,18 +524,16 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Enterprise CSV layouts and Journal-backed create/overwrite/append passed real file-publication process kills. XLSX append preserves other sheet/formula/custom-part bytes and exact integer cells; a mismatched header rejects publication without changing the original file.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_enterprise_file_layout",
         "file_generation_process_recovery",
         "native_xlsx_preserving_append"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -607,7 +542,7 @@
       "name": "Incremental overlap target capability proof",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/binding.c",
@@ -620,14 +555,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Incremental overlap uses KEYED_REPLACE effects and declared-key lineage rather than destination names or a fixed SQL-Upsert requirement. Native overlapping/resume and receipt tests passed; an independent HTTP keyed-replace overlap recovery scenario remains unverified.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -636,7 +568,7 @@
       "name": "Unified file and database discovery",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/source.c",
@@ -650,16 +582,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "File/database discovery returns the same Native Data Schema. Bounded CSV/JSON inference preserves UINT64/Decimal/date/nullability, leading-zero text and stable identities. Native inference and real four-driver schema discovery passed; ambiguous unions are explicitly rejected.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "unified_file_schema_discovery"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -668,7 +598,7 @@
       "name": "One SDK and protocol family",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "metadata/product.json",
@@ -682,16 +612,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "One generated source defines SDK 2.0.0 and ABI/Package/Wire/Plugin/Checkpoint/Worker family 10 for C, .NET and Java. Old ABI/packages and Worker requests are rejected; historical raw data and artifacts are preserved. Linux protocol/installed-native checks passed.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -700,7 +625,7 @@
       "name": "SQLite indexed Native Catalog",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "catalog/catalog.c",
@@ -713,20 +638,15 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native SQLite Catalog owns immutable versioned documents, indices, executions/events and jobs under WAL/FULL transactions. Concurrent first-open/read/write and killed writer tests passed; existing readers do not acquire a bootstrap writer lock. No .udc directory scan remains.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "catalog_immutable_store",
         "catalog_execution_history"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -735,7 +655,7 @@
       "name": "Durable execution logs",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "catalog/catalog.c",
@@ -750,20 +670,15 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native event sequence and UTC wall timestamps persist with execution/task/component/error linkage. Managed and Java observers record into the same Catalog; pagination, error retention and sequence-preserving pruning passed. Real browser logs have current UTC dates.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle",
         "java_registry_observer_catalog_lifecycle"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -772,7 +687,7 @@
       "name": "Deployment and execution management",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "catalog/deployment.c",
@@ -788,18 +703,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Management uses Native immutable revisions/deployments and independent Workers. Real browser deploy/execute/logs, SIGKILL of a Native-owning Worker, RecoveryRequired and manual same-ID recovery passed with exact output and no automatic replay.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -808,7 +716,7 @@
       "name": "CLI resource policy",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "connectors/manager.c",
@@ -823,16 +731,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "CLI, Worker and management share HostPolicy resource scopes and credential-file references. Actual installed/product CLI pipelines use this shared policy; outside grants and revoked resources fail in Native before effects. No retired C CLI host remains.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -841,7 +744,7 @@
       "name": "Online Schema Change barrier",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "components/data/src/schema_evolution.c",
@@ -855,17 +758,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Schema/version/position events are durable before admission; the existing checkpoint barrier rebinds affected components and fences incompatible changes. Native schema guards and MySQL-family schema-change fencing passed. Provider physical field identity across drop/re-add and complete online/restart compatibility proof remain incomplete.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "next_phase_pipeline_recovery"
       ],
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -874,7 +774,7 @@
       "name": "CDC field presence and key images",
       "priority": "P0",
       "code": "Partial",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "include/ud/connector.h",
@@ -889,7 +789,7 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Batch/Wire presence distinguishes absent from NULL; MySQL MINIMAL/NOBLOB images retain presence and binary JSON/dictionaries preserve full domains. Real four-provider insert/update/delete/resume tests passed. PostgreSQL default replica-identity partial-image, broader binlog type and online field-identity acceptance are not complete.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_type_domains_2",
         "integration_postgresql_cdc",
@@ -898,11 +798,8 @@
       ],
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -911,7 +808,7 @@
       "name": "Plain REST and receipt guarantees",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "connectors/rest.c",
@@ -924,14 +821,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "REST response/idempotent/receipt modes bind to the one Native write/Journal path. Ordinary writes issue once and unresolved intent returns CommitUnknown; local real TLS/receipt flows and HTTP ambiguous-failure cases passed. External receipt-service process-kill acceptance remains unavailable.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -940,7 +834,7 @@
       "name": "Row SQL command parameter binding",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/sql_task.c",
@@ -953,14 +847,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native row commands now own a local transaction or a complete shared-transaction Savepoint operation, bind repeated fields, and share typed target outcome records. Mixed errors, actual process kills, rollback retry and unknown fencing passed on SQLite; real PostgreSQL/MySQL/MariaDB/SQL Server row-command tests passed. Windows/OCI and the wider connection-fault matrix remain unverified.",
-      "verificationScope": "Current PR #7 native row-command and driver acceptance; wider platform/fault coverage remains Partial.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -969,7 +860,7 @@
       "name": "Public managed Registry and native callback ownership",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "bindings/dotnet/UniversalData/Registry.cs",
@@ -985,20 +876,15 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Public C# Registry task/component and Java task registrations use leased Native instances. GC pressure, busy disposal, exactly-once finish/close, expired borrowed access, observer exceptions and actual cancellation passed. Failed module registration retains instances/assembly owners until Native teardown.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle",
         "java_registry_observer_catalog_lifecycle"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1007,7 +893,7 @@
       "name": "Deployment-compiled C# scripts",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "bindings/dotnet/UniversalData",
@@ -1023,17 +909,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Deployment compiles a deterministic fixed C# assembly with protocol/digest attributes. SDK, CLI and Worker use Registry.LoadPackageExtensions with host execute grants and registry-owned module lifetime. Real managed deployment/assembly load passed; equivalent script execution through every installed host is not yet independently accepted.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle"
       ],
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1042,7 +925,7 @@
       "name": "Balanced batch dispatch",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/transforms.c"
@@ -1054,17 +937,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual 67-row/seven-row-batch pipelines send each whole batch, including the tail, to exactly one balanced output; Multicast delivers a complete copy to each output. The common Native dispatch state remains checkpointed; no alternate executor was added.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_component_product_semantics"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1073,7 +953,7 @@
       "name": "Import and Export Column",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/column_file.c",
@@ -1087,17 +967,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual Native Import/Export Column pipeline reads and publishes exact UTF8 Unicode/multiline payloads through authorized relative Connection Manager resources. Source identity, bounded Binary/UTF8 and canonical error output use common contracts; export uses Journal-backed file generations.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_component_product_semantics"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/components-product.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1106,7 +983,7 @@
       "name": "XML Source",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "connectors/xml.c",
@@ -1119,16 +996,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native bounded Expat record framing and XPath extraction feed canonical Data batches and common error ports; quota-owned buffers and inherited namespaces are preserved. Actual XML Source records, invalid-record handling and XML task pipelines passed on Linux.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_xml_source_xpath_xslt_xsd"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1137,7 +1012,7 @@
       "name": "XPath XSLT and XSD tasks",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/xml.c",
@@ -1150,16 +1025,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual XPath, XSLT and XSD tasks passed through Native file leases and generation publication. DTD, external entity and implicit schema/stylesheet loads are rejected; no independent XML execution or file authorization path exists.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_xml_source_xpath_xslt_xsd"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1168,7 +1041,7 @@
       "name": "SMTP task",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -1183,15 +1056,11 @@
       ],
       "evidence": [],
       "progress": "smtp.send uses the sole Native curl owner, credential references, UTF8 subject/MIME encoding and cancellation/deadlines. Interrupted sends retain unknown commit. A genuine independent SMTP acceptance resource is unavailable per user: Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Blocked",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1200,7 +1069,7 @@
       "name": "Windows WMI tasks",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/wmi.c"
@@ -1214,15 +1083,11 @@
       ],
       "evidence": [],
       "progress": "Native Windows COM WMI query/event tasks support bounded scalar/array/embedded-object JSON with exact signed/unsigned integer lexemes and common authorization/cancellation. Non-Windows binding rejects. Windows compile/runtime and independent WMI resources are unavailable: Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Blocked",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1231,7 +1096,7 @@
       "name": "FTP and SFTP resources",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -1247,15 +1112,11 @@
       ],
       "evidence": [],
       "progress": "Native FTP/SFTP transfers share Connection Manager grants, credential references, curl cancellation and local generation publication. SFTP requires explicitly granted known-hosts; remote replacement declares uncertain effects. Genuine independent FTP/SFTP resources are unavailable: Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Blocked",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1264,7 +1125,7 @@
       "name": "Avro IO",
       "priority": "P1",
       "code": "Partial",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "connectors/avro.c",
@@ -1278,16 +1139,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native Avro OCF null/deflate, signed integer extrema and UTF8 interoperability passed independent framing fixtures; malformed OCF fails. Primitive/nested/logical types and explicit lossless UINT64/Duration/Interval extensions are connected. Named references and ambiguous/general unions remain unsupported and are rejected; their complete product coverage is not claimed.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_avro_interoperability"
       ],
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1307,7 +1166,12 @@
       "evidence": [],
       "officialEvidence": [
         "https://learn.microsoft.com/en-us/sql/data-quality-services/data-quality-services?view=sql-server-ver16"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "NotApplicable",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
+      }
     },
     {
       "id": "ETL-040",
@@ -1326,7 +1190,12 @@
       "evidence": [],
       "officialEvidence": [
         "https://learn.microsoft.com/en-us/analysis-services/data-mining/data-mining-ssas"
-      ]
+      ],
+      "previousDeliveryVerification": {
+        "status": "NotApplicable",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
+      }
     },
     {
       "id": "ETL-041",
@@ -1334,7 +1203,7 @@
       "name": "SQL Server maintenance Agent and SSAS XMLA",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/sqlserver.c"
@@ -1348,15 +1217,11 @@
       ],
       "evidence": [],
       "progress": "Native SQL Server maintenance/Agent tasks use common parameterized SQL leases and backup file grants; SSAS XMLA uses common bounded XML/HTTP and unknown-commit semantics. SQL Server SQL/CDC/BCP resources were accepted, but independent maintenance/Agent/SSAS-specific resources were not supplied: Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Blocked",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1365,7 +1230,7 @@
       "name": "Exact Distinct profiling with shared Compute budget",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "components/compute/src/profile.c",
@@ -1378,17 +1243,15 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Exact Distinct uses the existing Compute value set and resource budgets. Profile kernel, pipeline statistics and shared comparison tests passed; approximation remains explicitly named approxDistinct only.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "profile_statistics_kernel",
         "profile_task_execution"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1397,7 +1260,7 @@
       "name": "Durable job queue and schedules",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "products/UniversalData.Management/RunDispatcher.cs",
@@ -1410,14 +1273,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native persistent Catalog jobs bind immutable deployment revisions, deduplicate due times and persist queue/concurrency/retry state. Unknown worker outcomes stop automatic retry. Native Catalog/job state and real Worker recovery passed; a timed schedule/service-restart/retry browser scenario remains unverified.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1426,7 +1286,7 @@
       "name": "Proven filter pushdown and streaming JSON array",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/data-flow/source.c",
@@ -1440,18 +1300,15 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "One bounded JSON Reader handles NDJSON and multiline arrays, shared record errors and checked resume offsets; malformed framing is fatal. Real array/error/resume tests passed. Complete provider-specific filter-pushdown comparison proof remains unverified; unproved predicates retain Native evaluation.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "source_record_errors",
         "unified_file_schema_discovery"
       ],
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1460,7 +1317,7 @@
       "name": "Azure Blob and ADLS Gen2",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -1475,18 +1332,14 @@
       ],
       "evidence": [],
       "progress": "Native Azure Blob PUT and ADLS create/append/flush share curl, credential scopes and generations. Real local HTTP protocol/byte/publication-sequence tests passed. This is not independent Azure authentication/service acceptance; external resources are unavailable: Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_object_transfer_sequence"
       ],
       "previousDeliveryVerification": {
-        "status": "Blocked",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1495,7 +1348,7 @@
       "name": "S3 and MinIO",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/network.c",
@@ -1510,18 +1363,14 @@
       ],
       "evidence": [],
       "progress": "S3/MinIO streaming transfer and SigV4 credentials use the common Native transport/grants/cancellation and explicit exclusive-create/replacement guarantees. Local actual HTTP bytes/conditional-header tests passed. Independent signed S3/MinIO service acceptance is unavailable: Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "native_object_transfer_sequence"
       ],
       "previousDeliveryVerification": {
-        "status": "Blocked",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1530,7 +1379,7 @@
       "name": "ASP.NET Core 10 management and isolated workers",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "hosts",
@@ -1547,18 +1396,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual ASP.NET Core 10 loopback management dispatches separate Worker processes owning Native Execution/Registry/Catalog. Bounded Worker protocol lines and debug queues use one shared host protocol. Build and real browser management, cancellation/debug lifecycle and killed-Worker recovery passed.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1567,7 +1409,7 @@
       "name": "React Flow package designer",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "products/designer/src/Editor.tsx",
@@ -1582,18 +1424,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "React Flow designer uses Native metadata/bound dynamic ports, stable package IDs/layout, field mapping and configuration validation. Typecheck/lint/build and actual drag/undo/redo, save/reload, deploy/execute and desktop/compact screenshots passed; no fabricated product records or validation evaluator.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1602,7 +1437,7 @@
       "name": "Safe native runtime debugging",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "include/ud/package.h",
@@ -1620,21 +1455,14 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native task/batch/safe-epoch boundaries, bounded output preview, pause/continue and single-batch stepping passed managed lifecycle tests. Real browser task pause, Worker termination and same-ID recovery passed. Transactions never park at an unsafe boundary; cancellation stays Native-owned.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/browser.json",
-          "docs/acceptance/evidence/universaldata-2-linux/browser-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1643,7 +1471,7 @@
       "name": "Full Linux and Windows driver CI",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         ".github/workflows/ci.yml",
@@ -1657,15 +1485,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "CI registers advanced SQL/CDC/native bulk/real participant recovery and explicit Linux/Windows PRODUCT matrices with required dependency/resource preflight. Local Linux complete-driver build and registered tests passed. Windows/self-hosted full-resource CI execution remains unavailable: Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
-        "status": "Blocked",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/build.log",
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1674,7 +1498,7 @@
       "name": "Independent release consumers and capability manifests",
       "priority": "P0",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "packaging/package-linux.py",
@@ -1689,16 +1513,11 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Relocatable same-source Linux PRODUCT bundle passed 267-file/SHA256/protocol checks, independent public C/CMake, offline NuGet/.NET, Maven/Java/JNI, actual installed CLI, three-language Package/Data/Schema parity and installed management/Worker browser process-kill recovery. The package contains all enabled driver modules, host/designer assets and dependency inventories. Windows release consumption remains Blocked.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "previousDeliveryVerification": {
         "status": "Partial",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/installed.json",
-          "docs/acceptance/evidence/universaldata-2-linux/installed-final.log",
-          "docs/acceptance/evidence/universaldata-2-linux/bundle-manifest.json",
-          "docs/acceptance/evidence/universaldata-2-linux/resources.json"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     },
     {
@@ -1707,7 +1526,7 @@
       "name": "HTTP response variable mappings",
       "priority": "P1",
       "code": "Implemented",
-      "verification": "Partial",
+      "verification": "NotRun",
       "requiredThisDelivery": true,
       "implementation": [
         "engines/control-flow/http.c"
@@ -1719,526 +1538,315 @@
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "HTTP Task maps actual status/body/header responses into typed Native variables, including rejected statuses and UTF8/BINARY bodies. Real HTTP execution tests passed; ambiguous external writes return CommitUnknown without automatic replay.",
-      "verificationScope": "Current PR #7 source requires fresh acceptance. PR #6 results are historical evidence only.",
+      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
       "acceptanceCases": [
         "http_task_execution"
       ],
       "previousDeliveryVerification": {
-        "status": "Passed",
-        "evidence": [
-          "docs/acceptance/evidence/universaldata-2-linux/ctest-final-linux.log"
-        ],
-        "sourceCommit": "dbc47aad5c48a9d987c2ac122d62d44efbff8e27"
+        "status": "Partial",
+        "evidence": [],
+        "sourceCommit": "09118e27f6cab45524c8bbeab581c1fa805a0529"
       }
     }
   ],
   "gates": [
     {
       "id": "linux-full-build",
-      "status": "Passed",
-      "scope": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
+      "status": "Partial",
+      "scope": "CORE build only; full PRODUCT driver dependency closure unverified.",
+      "reason": "CORE build only; full PRODUCT driver dependency closure unverified.",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/build.log",
-          "sha256": "9c2fc8eb88ce0995271c0ccf6e9ca7f8708cb2208938b9ec404fb59ff6601b45"
+          "path": "docs/acceptance/evidence/studio4-linux/build.log",
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/version-build.log",
-          "sha256": "1334ec386c20a7ef37cbf40fca4dbb7d185163828dcd1bc4b2d1d493c37c4694"
+          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
         },
         {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
-          "sha256": "9fc6259fae0c320f2684a30ea335bee39b98aa7b76de4224fccdc9e2574f9035"
-        }
-      ],
-      "currentEvidence": {
-        "status": "Passed",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/build.log",
-          "docs/acceptance/evidence/designer-workbench-linux/version-build.log",
-          "docs/acceptance/evidence/designer-workbench-linux/manifest.json"
-        ]
-      },
-      "reason": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
-      "description": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
-      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-      "previousEvidence": [
+          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
+          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
+        },
         {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Passed",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/product-build.log",
-            "docs/acceptance/evidence/ssis-strict-parity/datetime-build.log",
-            "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
-          ]
+          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
+          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
+          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
+          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
+          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
         }
       ]
     },
     {
       "id": "windows-full-build",
       "status": "Blocked",
-      "scope": "Independent Windows PRODUCT/installed acceptance is required and unavailable; remote jobs did not start.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/resources.json",
-          "sha256": "806c81a3e6e8d3ab848a7683e78bf0a37cae76872df1a2b6760902febec6558e"
-        },
-        {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/ci.json",
-          "sha256": "63df411c5aa03b812155717ded79a305513c1ef85d1a56952011207c092e6b82"
-        }
-      ],
-      "reason": "Independent Windows PRODUCT/installed acceptance is required and unavailable; remote jobs did not start.",
-      "description": "Independent Windows PRODUCT/installed acceptance is required and unavailable; remote jobs did not start.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-      "currentEvidence": {
-        "status": "Blocked",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
-        ]
-      },
-      "previousEvidence": [
-        {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Blocked",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/resources.json",
-            "docs/acceptance/evidence/ssis-strict-parity/ci.json"
-          ]
-        }
-      ]
+      "scope": "Windows toolchain/SSIS resources unavailable.",
+      "reason": "Windows toolchain/SSIS resources unavailable.",
+      "evidence": []
     },
     {
       "id": "correctness",
       "status": "Partial",
-      "scope": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
+      "scope": "75 portable cases passed; full inherited SSIS and vendor semantics remain unverified.",
+      "reason": "75 portable cases passed; full inherited SSIS and vendor semantics remain unverified.",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/core.xml",
-          "sha256": "7be9c09b6757d57b0dfe694e654652f7a040d5382176b30c0bec06199ce498fc"
+          "path": "docs/acceptance/evidence/studio4-linux/build.log",
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/matrix.json",
-          "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
-        }
-      ],
-      "currentEvidence": {
-        "status": "Partial",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
-        ]
-      },
-      "reason": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
-      "description": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-      "previousEvidence": [
+          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
+        },
         {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Partial",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/core.xml",
-            "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
-          ]
+          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
+          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
+          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
+          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
+          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
+          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
         }
       ]
     },
     {
       "id": "recovery",
-      "status": "Partial",
-      "scope": "Current file/dual-target/managed Worker and prepared-participant recovery pass; 50K input/commit deaths, same-ID resume and confirmation counters pass. Missing provider/Windows/full CDC cases remain explicit.",
+      "status": "Passed",
+      "scope": "Portable Native Journal, process kill, window state, disk spill and same-ID recovery passed.",
+      "reason": "Portable Native Journal, process kill, window state, disk spill and same-ID recovery passed.",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/core.xml",
-          "sha256": "7be9c09b6757d57b0dfe694e654652f7a040d5382176b30c0bec06199ce498fc"
+          "path": "docs/acceptance/evidence/studio4-linux/build.log",
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
-          "sha256": "5cace55b805507f6542c3a3bbb68d1c68f3ee39fc208e1b382a390c0fbca5c23"
+          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
-          "sha256": "1803d76a25069ca2ce15e388a40e833fbfdc7ed9dc590bbce1f80e463e98cbf6"
+          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
+          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/matrix.json",
-          "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
-        }
-      ],
-      "reason": "Current file/dual-target/managed Worker and prepared-participant recovery pass; 50K input/commit deaths, same-ID resume and confirmation counters pass. Missing provider/Windows/full CDC cases remain explicit.",
-      "description": "Current file/dual-target/managed Worker and prepared-participant recovery pass; 50K input/commit deaths, same-ID resume and confirmation counters pass. Missing provider/Windows/full CDC cases remain explicit.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-      "currentEvidence": {
-        "status": "Partial",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
-        ]
-      },
-      "previousEvidence": [
+          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
+          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
+        },
         {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Partial",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/core.xml",
-            "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
-            "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
-            "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
-          ]
+          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
+          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
+          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
+          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
         }
       ]
     },
     {
       "id": "external-integration",
       "status": "Blocked",
-      "scope": "22 genuine database cases pass; 7 unavailable/unsupported participant/Oracle cases are skipped, and independent vendor resources remain unavailable.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
-          "sha256": "5cace55b805507f6542c3a3bbb68d1c68f3ee39fc208e1b382a390c0fbca5c23"
-        },
-        {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
-          "sha256": "1803d76a25069ca2ce15e388a40e833fbfdc7ed9dc590bbce1f80e463e98cbf6"
-        },
-        {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/resources.json",
-          "sha256": "806c81a3e6e8d3ab848a7683e78bf0a37cae76872df1a2b6760902febec6558e"
-        }
-      ],
-      "reason": "22 genuine database cases pass; 7 unavailable/unsupported participant/Oracle cases are skipped, and independent vendor resources remain unavailable.",
-      "description": "22 genuine database cases pass; 7 unavailable/unsupported participant/Oracle cases are skipped, and independent vendor resources remain unavailable.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-      "currentEvidence": {
-        "status": "Blocked",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
-        ]
-      },
-      "previousEvidence": [
-        {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Blocked",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
-            "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
-            "docs/acceptance/evidence/ssis-strict-parity/resources.json"
-          ]
-        }
-      ]
+      "scope": "No current external CDC/driver acceptance resources.",
+      "reason": "No current external CDC/driver acceptance resources.",
+      "evidence": []
     },
     {
       "id": "language-parity",
-      "status": "Passed",
-      "scope": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
+      "status": "Partial",
+      "scope": "Current Native/C#/Java ABI and lifecycle tests passed; complete streaming cross-host UAT remains partial.",
+      "reason": "Current Native/C#/Java ABI and lifecycle tests passed; complete streaming cross-host UAT remains partial.",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/native-core.log",
-          "sha256": "1dc49062cab628086d7e6e6d8cfd836cebb611ee13288681fac70a575ec8841e"
+          "path": "docs/acceptance/evidence/studio4-linux/build.log",
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
-          "sha256": "b97aff6a0772cf206b77d6a647d089a0eb1e200c2506cb9cbc8f394d2c359879"
-        }
-      ],
-      "reason": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
-      "description": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
-      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-      "currentEvidence": {
-        "status": "Passed",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/native-core.log",
-          "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json"
-        ]
-      },
-      "previousEvidence": [
+          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
+        },
         {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Partial",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/core.xml",
-            "docs/acceptance/evidence/ssis-strict-parity/installed.json"
-          ]
+          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
+          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
+          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
+          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
+          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
+          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
         }
       ]
     },
     {
       "id": "web",
-      "status": "Passed",
-      "scope": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
+      "status": "Partial",
+      "scope": "Actual browser core journey and 200/500/1000-node scaling passed; full UI/a11y/probe matrix partial.",
+      "reason": "Actual browser core journey and 200/500/1000-node scaling passed; full UI/a11y/probe matrix partial.",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/browser-local.json",
-          "sha256": "d1f0374240c984af666bcc5b0f10ff3fd10be3efbe06efe9551a97284c0a4adf"
+          "path": "docs/acceptance/evidence/studio4-linux/build.log",
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/browser-mysql.json",
-          "sha256": "8974d639901ef9f7764348e6751186807663c4582174e622096263be07effa05"
+          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
         },
         {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/row-accounting.json",
-          "sha256": "b0d2f2aed9c4fb83bcc7685a5874324e223605a58e88b1c5f42e1e253623f6ee"
-        }
-      ],
-      "currentEvidence": {
-        "status": "Passed",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/browser-local.json",
-          "docs/acceptance/evidence/designer-workbench-linux/browser-mysql.json",
-          "docs/acceptance/evidence/designer-workbench-linux/row-accounting.json"
-        ]
-      },
-      "reason": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
-      "description": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
-      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-      "previousEvidence": [
+          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
+          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
+        },
         {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Partial",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/browser.json",
-            "docs/acceptance/evidence/ssis-strict-parity/qa.json"
-          ]
+          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
+          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
+          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
+          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
+          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
         }
       ]
     },
     {
       "id": "performance",
       "status": "Partial",
-      "scope": "Four genuine one-million-row native/parameter comparisons and the 50K batch/concurrency/recovery matrix record CPU/RSS/spill and full readback signatures. Broader workloads and Windows are unverified.",
+      "scope": "One million events and observed batch latency/RSS recorded; one-hour soak NotRun.",
+      "reason": "One million events and observed batch latency/RSS recorded; one-hour soak NotRun.",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/performance.json",
-          "sha256": "a4916ff09ccef9527d7b352e49857ecf06627cdebc2493b246c5167fd3f5f7dc"
+          "path": "docs/acceptance/evidence/studio4-linux/build.log",
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
         },
         {
-          "path": "docs/acceptance/evidence/ssis-strict-parity/matrix.json",
-          "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
-        }
-      ],
-      "reason": "Four genuine one-million-row native/parameter comparisons and the 50K batch/concurrency/recovery matrix record CPU/RSS/spill and full readback signatures. Broader workloads and Windows are unverified.",
-      "description": "Four genuine one-million-row native/parameter comparisons and the 50K batch/concurrency/recovery matrix record CPU/RSS/spill and full readback signatures. Broader workloads and Windows are unverified.",
-      "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-      "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-      "currentEvidence": {
-        "status": "Partial",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/validation.json"
-        ]
-      },
-      "previousEvidence": [
+          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
+        },
         {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Partial",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/performance.json",
-            "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
-          ]
+          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
+          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
+          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
+          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
+          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
+          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
         }
       ]
     },
     {
       "id": "installed-consumers",
-      "status": "Passed",
-      "scope": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
-          "sha256": "b97aff6a0772cf206b77d6a647d089a0eb1e200c2506cb9cbc8f394d2c359879"
-        },
-        {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/installed-consumers.log",
-          "sha256": "a3c5a38a5388cf48c22341b8cd5c82c59e7573a1a0ac924166038a821a8d26fc"
-        }
-      ],
-      "reason": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
-      "description": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
-      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-      "currentEvidence": {
-        "status": "Passed",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
-          "docs/acceptance/evidence/designer-workbench-linux/installed-consumers.log"
-        ]
-      },
-      "previousEvidence": [
-        {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Partial",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/installed.json",
-            "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
-          ]
-        }
-      ]
+      "status": "NotRun",
+      "scope": "No current distributable archive or independent installed SDK consumer run.",
+      "reason": "No current distributable archive or independent installed SDK consumer run.",
+      "evidence": []
     },
     {
       "id": "source-contracts",
       "status": "Passed",
-      "scope": "Current source product projection, public API, boundaries and notices",
+      "scope": "Product projections, whitespace, epoch migration and C/.NET/Java compilation verified.",
+      "reason": "Product projections, whitespace, epoch migration and C/.NET/Java compilation verified.",
       "evidence": [
         {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/static-contracts.log",
-          "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
-        }
-      ],
-      "currentEvidence": {
-        "status": "Passed",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/static-contracts.log"
-        ]
-      },
-      "reason": "Current source product projection, public API, boundaries and notices",
-      "description": "Current source product projection, public API, boundaries and notices",
-      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-      "previousEvidence": [
+          "path": "docs/acceptance/evidence/studio4-linux/build.log",
+          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
+        },
         {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Passed",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/source-contracts.log"
-          ]
+          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
+          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
+          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
+          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
+          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
+        },
+        {
+          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
+          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
         }
       ]
     },
     {
       "id": "release-integrity",
-      "status": "Passed",
-      "scope": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
-          "sha256": "9fc6259fae0c320f2684a30ea335bee39b98aa7b76de4224fccdc9e2574f9035"
-        },
-        {
-          "path": "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
-          "sha256": "b97aff6a0772cf206b77d6a647d089a0eb1e200c2506cb9cbc8f394d2c359879"
-        }
-      ],
-      "reason": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
-      "description": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
-      "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-      "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-      "currentEvidence": {
-        "status": "Passed",
-        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
-        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-        "evidence": [
-          "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
-          "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json"
-        ]
-      },
-      "previousEvidence": [
-        {
-          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
-          "status": "Partial",
-          "evidence": [
-            "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
-            "docs/acceptance/evidence/ssis-strict-parity/installed.json",
-            "docs/acceptance/evidence/ssis-strict-parity/resources.json",
-            "docs/acceptance/evidence/ssis-strict-parity/ci.json"
-          ]
-        }
-      ]
+      "status": "NotRun",
+      "scope": "Review branch only; no release archive or release certification.",
+      "reason": "Review branch only; no release archive or release certification.",
+      "evidence": []
     }
   ],
-  "artifacts": {
-    "archive": "artifacts/designer-workbench-linux/UniversalData-2.2.0-linux-x64.zip",
-    "sha256": "f70b9d925c775c3a91f421ce8d55384e87a365f2316ebbf8ca7cb881e8cd9e7e",
-    "manifest": "artifacts/designer-workbench-linux/bundle/manifest.json",
-    "runtimeIdentifier": "linux-x64",
-    "sdkVersion": "2.2.0",
-    "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
-    "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592"
-  },
+  "artifacts": null,
   "remoteCI": {
     "state": "VerificationBlocked",
-    "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
-    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38637673809",
+    "sourceCommit": "f3b40463a38b404bbc9d5701b21beaef1f84d963",
+    "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38937562090",
     "status": "completed",
     "conclusion": "failure",
-    "jobs": [
-      {
-        "id": 116104898127,
-        "name": "source-and-designer",
-        "conclusion": "failure",
-        "steps": 0
-      },
-      {
-        "id": 116104898465,
-        "name": "native-core (ubuntu-24.04)",
-        "conclusion": "failure",
-        "steps": 0
-      },
-      {
-        "id": 116104898543,
-        "name": "native-core (windows-2025)",
-        "conclusion": "failure",
-        "steps": 0
-      },
-      {
-        "id": 116104899923,
-        "name": "complete-drivers-and-delivery",
-        "conclusion": "skipped",
-        "steps": 0
-      },
-      {
-        "id": 116104920549,
-        "name": "release-readiness",
-        "conclusion": "failure",
-        "steps": 0
-      }
-    ],
+    "steps": 0,
     "annotations": [
       {
         "level": "failure",
         "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
       }
     ],
-    "reason": "GitHub did not start build steps because of account billing/spending restrictions. Skipped complete-product delivery is not accepted as a pass."
+    "reason": "GitHub did not start any build steps because of account billing/spending limits. This is an environment blocker, not a passed build."
   },
   "historicalEvidence": {
     "sourceFingerprint": "c052cd5f064096e0aeccc56832870e2b62313665c9719a97834319552b5f1491",
@@ -2248,11 +1856,12 @@
   "limitations": [
     "No Microsoft .dtsx/COM/SSISDB compatibility layer; native C17 is the sole execution owner",
     "All 50 applicable audit items remain incomplete until current source AND behavior evidence exists",
-    "Current Linux PRODUCT build and real four-driver SQL/CDC/native bulk acceptance passed; Windows, Oracle TCPS and independent SMTP/FTP/SFTP/Azure/S3/SSAS/WMI acceptance are Blocked.",
     "Qualified SQL Server distributed transaction participation, complete online schema physical-identity proof and broader Avro named-reference/union coverage are not certified complete; see existing audit items.",
     "Raw data, old packages, plugins and recovery directories remain preserved; old protocols are rejected rather than migrated in place",
-    "SDK 2.1.0 / ABI and protocol family 11 is a clean break. Historical protocol 10 packages, plugins and recovery states are retained but rejected, and historical acceptance does not certify this source.",
-    "SSIS strict parity remains Partial: LCID comparison/sort inheritance, root/intermediate DT_STR rules, the complete 29x29 conversion legality/result matrix, exact Decimal promotion and all vendor transform behaviors are not implemented or certified. Real Windows SSIS 2025 Golden acceptance is VerificationBlocked."
+    "SSIS strict parity remains Partial: LCID comparison/sort inheritance, root/intermediate DT_STR rules, the complete 29x29 conversion legality/result matrix, exact Decimal promotion and all vendor transform behaviors are not implemented or certified. Real Windows SSIS 2025 Golden acceptance is VerificationBlocked.",
+    "SDK 4.0.0 / ABI and protocol family 12 rejects prior schemas, plugins and recovery state; no compatibility path is supplied.",
+    "This candidate is a Linux CORE build with SQLite/HTTP/JNI/hosts, not full PRODUCT/Windows acceptance. One-hour continuous soak and actual external CDC acceptance are NotRun/Blocked.",
+    "Stream-table refresh, bounded stream-stream joins, TTL deduplication, microbatch triggers and rate budgets remain Planned. Live probes retain explicit-debug first-N sampling; rolling hot probes are not implemented."
   ],
   "componentCatalog": [
     {
@@ -2354,6 +1963,11 @@
       "ssis": "Transaction / Checkpoint / Catalog",
       "entries": "Journal 4、目标 receipt、immutable artifacts/history",
       "contract": "当前版本索引式分段 Journal、原子快照/manifest、目标 receipt、不可变 artifacts/history；不提供跨任意目标的分布式事务"
+    },
+    {
+      "ssis": "Event-time streaming / Studio observation",
+      "entries": "eventTime; eventWindow; Native Catalog execution feed",
+      "contract": "One Native Pipeline/Compute/Buffer/Journal. Final tumbling/sliding/session aggregates, native Watermark policy, bounded shared working subquotas and stable window RowIds. No second stream engine or exactly-once certification."
     }
   ],
   "deferredComponents": "Current source limitations remain itemized under ETL-011 (qualified SQL Server participants), ETL-025/026 (complete online identity/presence proof) and ETL-038 (unsupported Avro named references/general unions). Missing Windows and independent protocol resources remain Blocked; no historical ABI 9 pass is inherited.",
@@ -9207,7 +8821,543 @@
           }
         ]
       }
-    ]
+    ],
+    "designer3Delivery": {
+      "candidate": {
+        "branch": "codex/designer-data-workbench",
+        "state": "Draft PR #9; Linux workbench acceptance and installed SDK passed. Full production release remains gated by the recorded inherited Partial/Blocked items.",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+        "mergeEvidence": null,
+        "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/9"
+      },
+      "product": {
+        "name": "UniversalData",
+        "sdkVersion": "4.0.0",
+        "abiVersion": 12,
+        "protocolVersion": 12,
+        "checkpointRevision": 2,
+        "state": "Studio 4 event-time and workbench candidate; current verification is tracked separately. No production or exactly-once certification.",
+        "acceptanceResources": "User confirmed on 2026-10-14 that independent Windows, SSAS, FTP/SFTP, object storage and SMTP resources are unavailable: Blocked. Task-owned isolated PostgreSQL, MySQL, MariaDB and SQL Server databases were subsequently provisioned and accepted without changing historical business data. An isolated Oracle schema was created, but the OCI TCPS session attach times out (ORA-12170): live Oracle acceptance is Blocked. Windows remains required and Blocked, never exempt.",
+        "dataLayoutRevision": 1,
+        "catalogRevision": 1,
+        "workerRevision": 2
+      },
+      "scope": {
+        "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",
+        "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
+        "windows": "Required — complete driver build, native/language/install and platform acceptance",
+        "extensions": "50 applicable audit items require current source and behavior evidence; ETL-039/040 NotApplicable"
+      },
+      "artifacts": {
+        "archive": "artifacts/designer-workbench-linux/UniversalData-2.2.0-linux-x64.zip",
+        "sha256": "f70b9d925c775c3a91f421ce8d55384e87a365f2316ebbf8ca7cb881e8cd9e7e",
+        "manifest": "artifacts/designer-workbench-linux/bundle/manifest.json",
+        "runtimeIdentifier": "linux-x64",
+        "sdkVersion": "2.2.0",
+        "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+        "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592"
+      },
+      "remoteCI": {
+        "state": "VerificationBlocked",
+        "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+        "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38637673809",
+        "status": "completed",
+        "conclusion": "failure",
+        "jobs": [
+          {
+            "id": 116104898127,
+            "name": "source-and-designer",
+            "conclusion": "failure",
+            "steps": 0
+          },
+          {
+            "id": 116104898465,
+            "name": "native-core (ubuntu-24.04)",
+            "conclusion": "failure",
+            "steps": 0
+          },
+          {
+            "id": 116104898543,
+            "name": "native-core (windows-2025)",
+            "conclusion": "failure",
+            "steps": 0
+          },
+          {
+            "id": 116104899923,
+            "name": "complete-drivers-and-delivery",
+            "conclusion": "skipped",
+            "steps": 0
+          },
+          {
+            "id": 116104920549,
+            "name": "release-readiness",
+            "conclusion": "failure",
+            "steps": 0
+          }
+        ],
+        "annotations": [
+          {
+            "level": "failure",
+            "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+          }
+        ],
+        "reason": "GitHub did not start build steps because of account billing/spending restrictions. Skipped complete-product delivery is not accepted as a pass."
+      },
+      "gates": [
+        {
+          "id": "linux-full-build",
+          "status": "Passed",
+          "scope": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/build.log",
+              "sha256": "9c2fc8eb88ce0995271c0ccf6e9ca7f8708cb2208938b9ec404fb59ff6601b45"
+            },
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/version-build.log",
+              "sha256": "1334ec386c20a7ef37cbf40fca4dbb7d185163828dcd1bc4b2d1d493c37c4694"
+            },
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
+              "sha256": "9fc6259fae0c320f2684a30ea335bee39b98aa7b76de4224fccdc9e2574f9035"
+            }
+          ],
+          "currentEvidence": {
+            "status": "Passed",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/build.log",
+              "docs/acceptance/evidence/designer-workbench-linux/version-build.log",
+              "docs/acceptance/evidence/designer-workbench-linux/manifest.json"
+            ]
+          },
+          "reason": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
+          "description": "Linux PRODUCT dependency closure and coherent SDK 2.2.0 build",
+          "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+          "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Passed",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/product-build.log",
+                "docs/acceptance/evidence/ssis-strict-parity/datetime-build.log",
+                "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "windows-full-build",
+          "status": "Blocked",
+          "scope": "Independent Windows PRODUCT/installed acceptance is required and unavailable; remote jobs did not start.",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+              "sha256": "806c81a3e6e8d3ab848a7683e78bf0a37cae76872df1a2b6760902febec6558e"
+            },
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/ci.json",
+              "sha256": "63df411c5aa03b812155717ded79a305513c1ef85d1a56952011207c092e6b82"
+            }
+          ],
+          "reason": "Independent Windows PRODUCT/installed acceptance is required and unavailable; remote jobs did not start.",
+          "description": "Independent Windows PRODUCT/installed acceptance is required and unavailable; remote jobs did not start.",
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "currentEvidence": {
+            "status": "Blocked",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/validation.json"
+            ]
+          },
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Blocked",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+                "docs/acceptance/evidence/ssis-strict-parity/ci.json"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "correctness",
+          "status": "Partial",
+          "scope": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+              "sha256": "7be9c09b6757d57b0dfe694e654652f7a040d5382176b30c0bec06199ce498fc"
+            },
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/matrix.json",
+              "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
+            }
+          ],
+          "currentEvidence": {
+            "status": "Partial",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/validation.json"
+            ]
+          },
+          "reason": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
+          "description": "74 current Linux core tests, exact scalar/expression checks, 50K row-atomic errors and the 24-case MySQL matrix pass; full SSIS semantics and Golden remain incomplete.",
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Partial",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+                "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "recovery",
+          "status": "Partial",
+          "scope": "Current file/dual-target/managed Worker and prepared-participant recovery pass; 50K input/commit deaths, same-ID resume and confirmation counters pass. Missing provider/Windows/full CDC cases remain explicit.",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+              "sha256": "7be9c09b6757d57b0dfe694e654652f7a040d5382176b30c0bec06199ce498fc"
+            },
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+              "sha256": "5cace55b805507f6542c3a3bbb68d1c68f3ee39fc208e1b382a390c0fbca5c23"
+            },
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+              "sha256": "1803d76a25069ca2ce15e388a40e833fbfdc7ed9dc590bbce1f80e463e98cbf6"
+            },
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/matrix.json",
+              "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
+            }
+          ],
+          "reason": "Current file/dual-target/managed Worker and prepared-participant recovery pass; 50K input/commit deaths, same-ID resume and confirmation counters pass. Missing provider/Windows/full CDC cases remain explicit.",
+          "description": "Current file/dual-target/managed Worker and prepared-participant recovery pass; 50K input/commit deaths, same-ID resume and confirmation counters pass. Missing provider/Windows/full CDC cases remain explicit.",
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "currentEvidence": {
+            "status": "Partial",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/validation.json"
+            ]
+          },
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Partial",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+                "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+                "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+                "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "external-integration",
+          "status": "Blocked",
+          "scope": "22 genuine database cases pass; 7 unavailable/unsupported participant/Oracle cases are skipped, and independent vendor resources remain unavailable.",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+              "sha256": "5cace55b805507f6542c3a3bbb68d1c68f3ee39fc208e1b382a390c0fbca5c23"
+            },
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+              "sha256": "1803d76a25069ca2ce15e388a40e833fbfdc7ed9dc590bbce1f80e463e98cbf6"
+            },
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+              "sha256": "806c81a3e6e8d3ab848a7683e78bf0a37cae76872df1a2b6760902febec6558e"
+            }
+          ],
+          "reason": "22 genuine database cases pass; 7 unavailable/unsupported participant/Oracle cases are skipped, and independent vendor resources remain unavailable.",
+          "description": "22 genuine database cases pass; 7 unavailable/unsupported participant/Oracle cases are skipped, and independent vendor resources remain unavailable.",
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "currentEvidence": {
+            "status": "Blocked",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/validation.json"
+            ]
+          },
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Blocked",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/drivers-other.xml",
+                "docs/acceptance/evidence/ssis-strict-parity/drivers-mysql.xml",
+                "docs/acceptance/evidence/ssis-strict-parity/resources.json"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "language-parity",
+          "status": "Passed",
+          "scope": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/native-core.log",
+              "sha256": "1dc49062cab628086d7e6e6d8cfd836cebb611ee13288681fac70a575ec8841e"
+            },
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
+              "sha256": "b97aff6a0772cf206b77d6a647d089a0eb1e200c2506cb9cbc8f394d2c359879"
+            }
+          ],
+          "reason": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
+          "description": "Linux Native/C#/Java workbench APIs and installed dynamic consumers",
+          "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+          "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+          "currentEvidence": {
+            "status": "Passed",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/native-core.log",
+              "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json"
+            ]
+          },
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Partial",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/core.xml",
+                "docs/acceptance/evidence/ssis-strict-parity/installed.json"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "web",
+          "status": "Passed",
+          "scope": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/browser-local.json",
+              "sha256": "d1f0374240c984af666bcc5b0f10ff3fd10be3efbe06efe9551a97284c0a4adf"
+            },
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/browser-mysql.json",
+              "sha256": "8974d639901ef9f7764348e6751186807663c4582174e622096263be07effa05"
+            },
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/row-accounting.json",
+              "sha256": "b0d2f2aed9c4fb83bcc7685a5874324e223605a58e88b1c5f42e1e253623f6ee"
+            }
+          ],
+          "currentEvidence": {
+            "status": "Passed",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/browser-local.json",
+              "docs/acceptance/evidence/designer-workbench-linux/browser-mysql.json",
+              "docs/acceptance/evidence/designer-workbench-linux/row-accounting.json"
+            ]
+          },
+          "reason": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
+          "description": "Linux real browser workbench, 50K CSV/Excel and installed browser recovery; independent Windows remains blocked",
+          "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+          "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Partial",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/browser.json",
+                "docs/acceptance/evidence/ssis-strict-parity/qa.json"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "performance",
+          "status": "Partial",
+          "scope": "Four genuine one-million-row native/parameter comparisons and the 50K batch/concurrency/recovery matrix record CPU/RSS/spill and full readback signatures. Broader workloads and Windows are unverified.",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/performance.json",
+              "sha256": "a4916ff09ccef9527d7b352e49857ecf06627cdebc2493b246c5167fd3f5f7dc"
+            },
+            {
+              "path": "docs/acceptance/evidence/ssis-strict-parity/matrix.json",
+              "sha256": "30c1a7f174a51f9da4f91ffdd10bab61cb8b8c3d16722e2f55325bda6e1059c0"
+            }
+          ],
+          "reason": "Four genuine one-million-row native/parameter comparisons and the 50K batch/concurrency/recovery matrix record CPU/RSS/spill and full readback signatures. Broader workloads and Windows are unverified.",
+          "description": "Four genuine one-million-row native/parameter comparisons and the 50K batch/concurrency/recovery matrix record CPU/RSS/spill and full readback signatures. Broader workloads and Windows are unverified.",
+          "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+          "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+          "currentEvidence": {
+            "status": "Partial",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "scope": "This designer batch does not complete the inherited cross-platform SSIS gate. See productAlignment.designer3 for the actual Linux acceptance.",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/validation.json"
+            ]
+          },
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Partial",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/performance.json",
+                "docs/acceptance/evidence/ssis-strict-parity/matrix.json"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "installed-consumers",
+          "status": "Passed",
+          "scope": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
+              "sha256": "b97aff6a0772cf206b77d6a647d089a0eb1e200c2506cb9cbc8f394d2c359879"
+            },
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/installed-consumers.log",
+              "sha256": "a3c5a38a5388cf48c22341b8cd5c82c59e7573a1a0ac924166038a821a8d26fc"
+            }
+          ],
+          "reason": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
+          "description": "Linux independent C/NuGet/Maven/JNI/CLI/Worker/Management/Designer consumers",
+          "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+          "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+          "currentEvidence": {
+            "status": "Passed",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
+              "docs/acceptance/evidence/designer-workbench-linux/installed-consumers.log"
+            ]
+          },
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Partial",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/installed.json",
+                "docs/acceptance/evidence/ssis-strict-parity/manifest.json"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "source-contracts",
+          "status": "Passed",
+          "scope": "Current source product projection, public API, boundaries and notices",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/static-contracts.log",
+              "sha256": "1e6e9f229929b3d886002b1f5c309476495e1b90bb09a67daabe3010b0294000"
+            }
+          ],
+          "currentEvidence": {
+            "status": "Passed",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/static-contracts.log"
+            ]
+          },
+          "reason": "Current source product projection, public API, boundaries and notices",
+          "description": "Current source product projection, public API, boundaries and notices",
+          "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+          "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Passed",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/source-contracts.log"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "release-integrity",
+          "status": "Passed",
+          "scope": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
+          "evidence": [
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
+              "sha256": "9fc6259fae0c320f2684a30ea335bee39b98aa7b76de4224fccdc9e2574f9035"
+            },
+            {
+              "path": "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json",
+              "sha256": "b97aff6a0772cf206b77d6a647d089a0eb1e200c2506cb9cbc8f394d2c359879"
+            }
+          ],
+          "reason": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
+          "description": "Linux 330-file ZIP hashes, exact source fingerprint and same-version install consumers; this is not a full production release",
+          "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+          "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+          "currentEvidence": {
+            "status": "Passed",
+            "sourceCommit": "b18f630cdca9f1bf1bd6664b4700f9517092d592",
+            "sourceFingerprint": "3aaa40f1372d27410484bbad692423449b0a92b96077eba4abe80b868bc21ee9",
+            "evidence": [
+              "docs/acceptance/evidence/designer-workbench-linux/manifest.json",
+              "docs/acceptance/evidence/designer-workbench-linux/installed-sdk.json"
+            ]
+          },
+          "previousEvidence": [
+            {
+              "sourceCommit": "1be60212a5162b51eddff072b7925725e6a81e3d",
+              "sourceFingerprint": "e80628e8ba7ffc32ee226687563057a1dd1b5b91ce8987b9a3423de9440277cf",
+              "status": "Partial",
+              "evidence": [
+                "docs/acceptance/evidence/ssis-strict-parity/manifest.json",
+                "docs/acceptance/evidence/ssis-strict-parity/installed.json",
+                "docs/acceptance/evidence/ssis-strict-parity/resources.json",
+                "docs/acceptance/evidence/ssis-strict-parity/ci.json"
+              ]
+            }
+          ]
+        }
+      ]
+    }
   },
   "productAlignment": {
     "authority": "Latest direct user request; prior uploaded prompts are historical input, not independent instructions",
@@ -14951,6 +15101,358 @@
           "result": "Placement, refreshed dynamic handles, gestures/history/layout, scoped autosave, responsive panels; installed SDK 2.2.0 and exact version checks"
         }
       ]
+    }
+  },
+  "studio4": {
+    "baseline": "09118e27f6cab45524c8bbeab581c1fa805a0529",
+    "trigger": "final-only at end+allowedLateness; no update/retraction protocol",
+    "probe": "Existing explicit-debug first-N only, not a rolling hot probe",
+    "items": [
+      {
+        "id": "UI01",
+        "goal": "Workspace tabs and history",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "UI02",
+        "goal": "200/500/1000 node browser performance",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "UI03",
+        "goal": "Native properties, formula and field mapping",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "UI04",
+        "goal": "Draft CAS, close protection and tabs",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": "Draft/version CAS API and tabs verified; full UI conflict-resolution journey NotRun.",
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "UI05",
+        "goal": "Bounded Native first-N probes",
+        "implementation": "Partial",
+        "verification": "Partial",
+        "blocked": "Only existing explicit-debug first-N probes; rolling hot sampling remains unimplemented.",
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "UI06",
+        "goal": "Commands, themes, density and keyboard",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": "Themes/density/commands tested; full keyboard and accessibility audit NotRun.",
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "UI07",
+        "goal": "Read-only preview and immutable publication",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "UI08",
+        "goal": "Native Catalog feed and reconnect cursor",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "UI09",
+        "goal": "Native binding errors and unsupported continuous state",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "UI10",
+        "goal": "Existing tenant and sample authorization",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/browser.json",
+          "docs/acceptance/evidence/studio4-linux/studio4-scale.json"
+        ]
+      },
+      {
+        "id": "ST01",
+        "goal": "Bounded END",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST02",
+        "goal": "Continuous idle executor defer",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST03",
+        "goal": "Partition idle and minimum Watermark",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST04",
+        "goal": "Tumbling keyed final aggregation",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST05",
+        "goal": "Sliding and merging sessions with lateness",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST06",
+        "goal": "FIFO drain and aligned Barrier",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": "Two-input frontier/idle/END verified; simultaneous two-source Barrier fault injection NotRun.",
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST07",
+        "goal": "Shared bounded queue backpressure",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST08",
+        "goal": "Existing projected schema evolution rejection",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": "Existing projected-schema rules only; no current live vendor schema-drift UAT.",
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST09",
+        "goal": "Native Journal recovery with compact window state",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST10",
+        "goal": "CommitUnknown and receipt recovery",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST11",
+        "goal": "Truthful multi-sink commit policy",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST12",
+        "goal": "Event-time expiry, quota and Buffer Store spill",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST13",
+        "goal": "Graceful Stop distinct from Cancel/Pause",
+        "implementation": "Implemented",
+        "verification": "Passed",
+        "blocked": null,
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST14",
+        "goal": "Bounded subscriptions and slow write deadlines",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": "Quota/write-deadline implementation and authenticated cursor replay verified; sustained slow-client UAT NotRun.",
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "ST15",
+        "goal": "One million events and one hour soak with resource metrics",
+        "implementation": "Partial",
+        "verification": "Partial",
+        "blocked": "1h continuous soak NotRun; finite regression is not production capacity proof.",
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/window-performance.json"
+        ]
+      },
+      {
+        "id": "ST16",
+        "goal": "C/.NET/Java single epoch and Package",
+        "implementation": "Implemented",
+        "verification": "Partial",
+        "blocked": "Current C/.NET/Java ABI/lifecycle passed; identical event-window package across all three hosts not separately certified.",
+        "evidence": [
+          "docs/acceptance/evidence/studio4-linux/ctest.xml",
+          "docs/acceptance/evidence/studio4-linux/asan-ubsan.log"
+        ]
+      },
+      {
+        "id": "S07",
+        "goal": "Versioned stream/table refresh",
+        "implementation": "Planned",
+        "verification": "NotRun",
+        "blocked": "Not implemented in this foundation candidate; continuous unsafe state is rejected.",
+        "evidence": []
+      },
+      {
+        "id": "S08",
+        "goal": "Bounded stream/stream join",
+        "implementation": "Planned",
+        "verification": "NotRun",
+        "blocked": "Not implemented in this foundation candidate; continuous unsafe state is rejected.",
+        "evidence": []
+      },
+      {
+        "id": "S09",
+        "goal": "Key TTL deduplication",
+        "implementation": "Planned",
+        "verification": "NotRun",
+        "blocked": "Not implemented in this foundation candidate; continuous unsafe state is rejected.",
+        "evidence": []
+      },
+      {
+        "id": "S11",
+        "goal": "Microbatch time/row triggers",
+        "implementation": "Planned",
+        "verification": "NotRun",
+        "blocked": "Not implemented in this foundation candidate; continuous unsafe state is rejected.",
+        "evidence": []
+      },
+      {
+        "id": "S13",
+        "goal": "Native rate budgets",
+        "implementation": "Planned",
+        "verification": "NotRun",
+        "blocked": "Not implemented in this foundation candidate; continuous unsafe state is rejected.",
+        "evidence": []
+      }
+    ],
+    "verificationScope": {
+      "scope": "Linux CORE profile with SQLite, HTTP, JNI and .NET 10 product hosts; not the complete PRODUCT dependency profile",
+      "timestampUtc": "2026-10-16T17:07:11.832597+00:00",
+      "tests": {
+        "total": 76,
+        "passed": 75,
+        "failed": 0,
+        "skipped": 1,
+        "skippedReason": "Independent Windows SSIS Golden environment unavailable"
+      },
+      "sanitizers": "ASan/UBSan: native event windows and stream protocol passed, including working-domain quotas and leak assertions",
+      "browser": "Actual Chromium 154 / Management / Worker / Native journey, no mock Worker or UI-side execution",
+      "millionEvents": "1000000 input events, 100000 final windows; batch P95/P99 and RSS recorded separately",
+      "oneHourSoak": "NotRun",
+      "archive": "Not produced: installed-consumer and complete PRODUCT delivery remain unverified",
+      "externalCDC": "Blocked: no current provider credentials/resources supplied",
+      "windows": "Blocked",
+      "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
+      "remoteCI": "Blocked before build: GitHub account billing/spending restriction (run 38937562090)."
     }
   }
 }

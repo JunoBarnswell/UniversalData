@@ -26,10 +26,10 @@ with tempfile.TemporaryDirectory(prefix="ud-profile-task-") as temporary:
             variables[kind] = {"type": "utf8", "default": ""}
             statistics.append({"kind": kind, "column": 1, "variable": kind})
         checks = [{"id": "rows", "expression": expr("eq", ref("rows"), lit(len(records)))}, {"id": "range", "expression": expr("ge", ref("min"), lit(-1))}]
-        doc = {"version": 11, "id": "profile", "variables": variables,
+        doc = {"version": 12, "id": "profile", "variables": variables,
                "connections": [{"id": "input", "driver": "file", "resource": str(source)}],
                "controlFlow": {"tasks": [{"id": "profile", "kind": "data.profile", "config": {"pipeline": "p", "checks": checks, "passedVariable": "passed", "failedChecksVariable": "failures"}}], "constraints": []},
-               "dataFlows": [{"id": "p", "components": [{"id": "source", "component": "file.ndjson.source", "config": {"connection": "input", "schema": {"version": 11, "fields": [{"name": "x", "type": "int64", "nullable": True}, {"name": "t", "type": "utf8", "nullable": True}]}, "batchSize": 3}}, {"id": "stats", "component": "profile.statistics", "config": {"statistics": statistics}}], "paths": [{"from": "source", "output": 0, "to": "stats", "input": 0}]}]}
+               "dataFlows": [{"id": "p", "components": [{"id": "source", "component": "file.ndjson.source", "config": {"connection": "input", "schema": {"version": 12, "fields": [{"name": "x", "type": "int64", "nullable": True}, {"name": "t", "type": "utf8", "nullable": True}]}, "batchSize": 3}}, {"id": "stats", "component": "profile.statistics", "config": {"statistics": statistics}}], "paths": [{"from": "source", "output": 0, "to": "stats", "input": 0}]}]}
         expected = {"rows": len(records), "nulls": sum(row["x"] is None for row in records), "min": min((r["x"] for r in records if r["x"] is not None), default=None), "max": max((r["x"] for r in records if r["x"] is not None), default=None), "textMin": min((r["t"] for r in records if r["t"] is not None), default=None), "textMax": max((r["t"] for r in records if r["t"] is not None), default=None), "passed": True, "failures": 0}
         expected.update(distinct=len({row['x'] for row in records if row['x'] is not None}),
             topK={"method": "SpaceSaving32"}, histogram={"method": "signedLog2Approximate"},

@@ -619,6 +619,9 @@ JNIEXPORT jboolean JNICALL Java_org_universaldata_Execution_nativeWait(JNIEnv *e
         fail(e, s, ud_status_name(s));
     return s ? JNI_FALSE : JNI_TRUE;
 }
+JNIEXPORT void JNICALL Java_org_universaldata_Execution_nativeStop(JNIEnv *e, jclass cls, jlong handle) {
+    (void)e;(void)cls;java_execution *j=(java_execution *)(intptr_t)handle;ud_execution_stop(j->execution);
+}
 JNIEXPORT void JNICALL Java_org_universaldata_Execution_nativeCancel(JNIEnv *e, jclass cls,
                                                                      jlong handle) {
     (void)e;
@@ -2105,7 +2108,7 @@ JNIEXPORT void JNICALL Java_org_universaldata_Registry_nativeRegisterComponent(
     JNIEnv *env, jclass type, jlong handle, jbyteArray id, jbyteArray name, jbyteArray version,
     jbyteArray schema, jint category, jint inputs, jint outputs, jint synchronous, jint error,
     jlong optional_inputs, jlong optional_outputs, jboolean replay, jboolean threads,
-    jboolean stateful, jboolean blocking, jint state_version, jint effects, jboolean controls,
+    jboolean stateful, jboolean blocking, jboolean continuous, jboolean stream_safe, jboolean owns_watermark, jint state_version, jint effects, jboolean controls,
     jboolean final_ack, jboolean epoch_ack, jobject definition) {
     java_registry *registry = (java_registry *)(intptr_t)handle;
     char *text[4] = {0};
@@ -2171,7 +2174,8 @@ JNIEXPORT void JNICALL Java_org_universaldata_Registry_nativeRegisterComponent(
         .capabilities =
             (replay ? UD_COMPONENT_REPLAY_SAFE : 0) | (threads ? UD_COMPONENT_THREAD_SAFE : 0) |
             (stateful ? UD_COMPONENT_STATEFUL : 0) | (blocking ? UD_COMPONENT_BLOCKING : 0) |
-            (controls ? UD_COMPONENT_CONTROL_EVENTS : 0),
+            (controls ? UD_COMPONENT_CONTROL_EVENTS : 0) |
+            (continuous ? UD_COMPONENT_CONTINUOUS : 0) | (stream_safe ? UD_COMPONENT_STREAM_SAFE : 0) | (owns_watermark ? UD_COMPONENT_WATERMARK_POLICY : 0),
         .configure = java_component_configure,
         .prepare = java_component_prepare,
         .step = java_component_step,
@@ -2258,7 +2262,7 @@ JNIEXPORT jlong JNICALL Java_org_universaldata_DataFlowContext_nativeNumber(JNIE
     (void)env;
     (void)type;
     const ud_component_context *c = (const ud_component_context *)(intptr_t)pointer;
-    return kind == 0   ? (jlong)c->recovery_epoch
+    return kind == 3 ? ud_activation_stopping(c->activation) : kind == 0   ? (jlong)c->recovery_epoch
            : kind == 1 ? c->recovery_terminal
                        : (jlong)(c->recommended_batch_rows ? c->recommended_batch_rows(c->emit_user)
                                                            : c->max_batch_rows);

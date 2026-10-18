@@ -4,6 +4,7 @@ public final class DataFlowContext extends CallbackScope {
     private final long context;private final boolean emissions;
     DataFlowContext(long context) { this(context,false); }
     DataFlowContext(long context,boolean emissions) { super(nativeMemory(context));this.context=context;this.emissions=emissions; }
+    public boolean isStopping() { check();return nativeNumber(context,3)!=0; }
     public void checkCancellation() { check();nativeCheck(context); }
     public String taskId() { check();return nativeText(context,0,0); }
     public String pipelineId() { check();return nativeText(context,1,0); }

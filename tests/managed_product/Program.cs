@@ -11,15 +11,15 @@ static void Throws<T>(Action action) where T : Exception
 { try { action(); } catch (T) { return; } throw new Exception("Expected " + typeof(T).Name); }
 static bool Allow(string tenant, string resource, ConnectionAccess access) => true;
 static string TaskPackage(string kind, object? extensions = null) => JsonSerializer.Serialize(new {
-    version=11, id = "managed-product", extensions,
+    version=12, id = "managed-product", extensions,
     controlFlow = new { tasks = new[] { new { id = "task", kind, config = new { } } }, constraints = Array.Empty<object>() },
     dataFlows = Array.Empty<object>() });
 // Leave absent extension lists absent, rather than introducing a null protocol value.
 static string PlainPackage(string kind) => TaskPackage(kind).Replace(",\"extensions\":null", "");
 try {
-    using(var temporal=new Batch("{\"version\":11,\"fields\":[{\"name\":\"instant\",\"type\":\"datetime\",\"nullable\":false,\"scalar\":{\"type\":\"DT_DBTIMESTAMPOFFSET\",\"fractionalDigits\":7}}]}","[{\"instant\":\"9999-12-31T23:59:59.9999999+00:00\"}]")) {
+    using(var temporal=new Batch("{\"version\":12,\"fields\":[{\"name\":\"instant\",\"type\":\"datetime\",\"nullable\":false,\"scalar\":{\"type\":\"DT_DBTIMESTAMPOFFSET\",\"fractionalDigits\":7}}]}","[{\"instant\":\"9999-12-31T23:59:59.9999999+00:00\"}]")) {
         Require(temporal.GetDateTime(0,0)==new TemporalValue(DateTime.MaxValue.Ticks,0),"C# preserves the Native 100ns value and offset");
-        using var restored=Batch.FromWire(temporal.ToWire());Require(restored.GetDateTime(0,0)==temporal.GetDateTime(0,0),"C# ABI 11 Wire temporal metadata");
+        using var restored=Batch.FromWire(temporal.ToWire());Require(restored.GetDateTime(0,0)==temporal.GetDateTime(0,0),"C# ABI 12 Wire temporal metadata");
     }
     var counts = new Counts();
     using (var registry = new Registry()) {
@@ -36,14 +36,14 @@ try {
             "Managed task callback ownership and lifecycle");
         Throws<ObjectDisposedException>(() => _ = counts.Borrowed!.TaskId);
     }
-    const string empty = "{\"version\":11,\"id\":\"observer\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
+    const string empty = "{\"version\":12,\"id\":\"observer\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
     using (var execution = new Execution(empty, "local", Allow, observe: _ => throw new Exception("observer failure"))) {
         Throws<UniversalDataException>(execution.Execute);
         Require(execution.Metrics.Result == StatusCode.Io, "Observer failure reaches Native error lifecycle");
     }
     var source = Path.Combine(root, "source.ndjson"); var destination = Path.Combine(root, "destination.ndjson");
     var csvSource=Path.Combine(root,"preview.csv");File.WriteAllText(csvSource,"id,label\n1,first\n2,second\n");
-    var inspectionPackage=JsonSerializer.Serialize(new {version=11,id="managed-preview",connections=new[]{new{id="input",driver="file",resource=csvSource}},controlFlow=new{tasks=Array.Empty<object>(),constraints=Array.Empty<object>()},dataFlows=Array.Empty<object>()});
+    var inspectionPackage=JsonSerializer.Serialize(new {version=12,id="managed-preview",connections=new[]{new{id="input",driver="file",resource=csvSource}},controlFlow=new{tasks=Array.Empty<object>(),constraints=Array.Empty<object>()},dataFlows=Array.Empty<object>()});
     using(var previewExecution=new Execution(inspectionPackage,"local",Allow)) {
         Require(previewExecution.ConnectorCatalog("[]")=="[]","C# connector metadata projection");
         using(var cloned=JsonDocument.Parse(previewExecution.ReidentifyPackage("managed-preview-copy")))Require(cloned.RootElement.GetProperty("id").GetString()=="managed-preview-copy","C# Native package identity projection");
@@ -79,20 +79,20 @@ try {
     }
     File.WriteAllText(source, "{\"id\":1}\n{\"id\":2}\n{\"id\":3}\n{\"id\":4}\n{\"id\":5}\n");
     var document = JsonSerializer.Serialize(new {
-        version=11, id = "managed-flow", connections = new[] { new { id = "source", driver = "file", resource = source }, new { id = "target", driver = "file", resource = destination } },
+        version=12, id = "managed-flow", connections = new[] { new { id = "source", driver = "file", resource = source }, new { id = "target", driver = "file", resource = destination } },
         controlFlow = new { tasks = new[] { new { id = "flow", kind = "dataFlow", config = new { pipeline = "rows" } } }, constraints = Array.Empty<object>() },
         dataFlows = new[] { new { id = "rows", components = new object[] {
-            new { id = "read", component = "file.ndjson.source", config = new { connection = "source", schema = new { version=11, fields = new[] { new { name = "id", type = "int64", nullable = false } } } } },
+            new { id = "read", component = "file.ndjson.source", config = new { connection = "source", schema = new { version=12, fields = new[] { new { name = "id", type = "int64", nullable = false } } } } },
             new { id = "managed", component = "managed.pass", config = new { } },
             new { id = "write", component = "file.ndjson.destination", config = new { connection = "target" } } },
             paths = new[] { new { from = "read", output = 0, to = "managed", input = 0 }, new { from = "managed", output = 0, to = "write", input = 0 } } } } });
     using(var functions=new Registry()) {
         functions.RegisterFunction(new("managed.triple","Triple",1,1,
-            _ => "{\"version\":11,\"fields\":[{\"name\":\"result\",\"type\":\"int64\",\"nullable\":false}]}",
+            _ => "{\"version\":12,\"fields\":[{\"name\":\"result\",\"type\":\"int64\",\"nullable\":false}]}",
             (context,input) => {context.CheckCancellation();using var metadata=JsonDocument.Parse(context.ResultSchema);string name=metadata.RootElement.GetProperty("fields")[0].GetProperty("name").GetString()!;return context.CreateResult(JsonSerializer.Serialize(new[]{new Dictionary<string,long>{{name,checked(input!.GetInt64(0,0)!.Value*3)}}}));},ThreadSafe:true));
         string custom=document.Replace("managed.pass","derive").Replace("\"config\":{}","\"config\":{\"columns\":[{\"name\":\"triple\",\"expression\":\"managed.triple([id])+1L\"}]}");
         using var execution=new Execution(custom,"local",Allow,registry:functions,maxBatchRows:2,maxConcurrency:4);
-        using var compilation=JsonDocument.Parse(execution.CompileExpression("{\"version\":11,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}","managed.triple([id])+1L"));
+        using var compilation=JsonDocument.Parse(execution.CompileExpression("{\"version\":12,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}","managed.triple([id])+1L"));
         Require(compilation.RootElement.GetProperty("result").GetInt32()==0,"Managed function binds into Native IR");
         GC.Collect();GC.WaitForPendingFinalizers();execution.Execute();
         var values=File.ReadAllLines(destination).Select(line=>JsonDocument.Parse(line)).ToArray();
@@ -151,8 +151,8 @@ try {
         var lease=catalog.TryAcquireLease(CatalogKind.Audit,"run/sdk","dotnet-node",30000,"sdk-pool",1)!;
         Require(lease.Generation==1 && catalog.LeaseActive(CatalogKind.Audit,"run/sdk"),"Native Catalog lease projection");
         Require(catalog.TryAcquireLease(CatalogKind.Audit,"run/sdk","other-node",30000,"sdk-pool",1) is null,"Exclusive Native claim");
-        catalog.CompareExchange(CatalogKind.Audit,"run/sdk",0,"{\"version\":11,\"id\":\"run/sdk\",\"state\":\"Queued\"}",lease);
-        Throws<UniversalDataException>(()=>catalog.CompareExchange(CatalogKind.Audit,"run/sdk",0,"{\"version\":11,\"id\":\"run/sdk\"}",lease));
+        catalog.CompareExchange(CatalogKind.Audit,"run/sdk",0,"{\"version\":12,\"id\":\"run/sdk\",\"state\":\"Queued\"}",lease);
+        Throws<UniversalDataException>(()=>catalog.CompareExchange(CatalogKind.Audit,"run/sdk",0,"{\"version\":12,\"id\":\"run/sdk\"}",lease));
         catalog.RenewLease(lease);catalog.ReleaseLease(lease);
         Require(!catalog.LeaseActive(CatalogKind.Audit,"run/sdk"),"Native lease release");
         Throws<UniversalDataException>(()=>catalog.RenewLease(lease));

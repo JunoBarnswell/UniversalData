@@ -55,7 +55,7 @@ public final class Registry implements AutoCloseable {
     @FunctionalInterface public interface ComponentFactory { DataFlow create() throws Exception; }
     public record DataFlowDefinition(String id,String name,String version,String configurationSchema,int category,int inputs,int outputs,
         int synchronousInput,int errorOutput,long optionalInputs,long optionalOutputs,boolean replaySafe,boolean threadSafe,boolean stateful,
-        boolean blocking,int stateVersion,int effects,boolean handlesControlEvents,boolean finalAcknowledgement,boolean epochAcknowledgement,
+        boolean blocking,boolean continuous,boolean streamSafe,boolean ownsWatermark,int stateVersion,int effects,boolean handlesControlEvents,boolean finalAcknowledgement,boolean epochAcknowledgement,
         ComponentConfigure configure,ComponentFactory factory) {}
     public synchronized void registerComponent(DataFlowDefinition value) {
         open();java.util.Objects.requireNonNull(value.configure());java.util.Objects.requireNonNull(value.factory());
@@ -63,7 +63,7 @@ public final class Registry implements AutoCloseable {
             throw new IllegalArgumentException("Invalid Native component definition");
         nativeRegisterComponent(handle,Utf8.bytes(value.id()),Utf8.bytes(value.name()),Utf8.bytes(value.version()==null?ProductVersion.SDK:value.version()),Utf8.bytes(value.configurationSchema()),
             value.category(),value.inputs(),value.outputs(),value.synchronousInput(),value.errorOutput(),value.optionalInputs(),value.optionalOutputs(),
-            value.replaySafe(),value.threadSafe(),value.stateful(),value.blocking(),value.stateVersion(),value.effects(),value.handlesControlEvents(),value.finalAcknowledgement(),value.epochAcknowledgement(),value);
+            value.replaySafe(),value.threadSafe(),value.stateful(),value.blocking(),value.continuous(),value.streamSafe(),value.ownsWatermark(),value.stateVersion(),value.effects(),value.handlesControlEvents(),value.finalAcknowledgement(),value.epochAcknowledgement(),value);
     }
     private static byte[][] configureComponent(DataFlowDefinition definition,String config,String[] inputs) throws Exception {
         Execution.enterCallback();try { String[] schemas=definition.configure().configure(config,inputs);byte[][] result=new byte[schemas.length][];for(int j=0;j<schemas.length;j++)result[j]=Utf8.bytes(schemas[j]);return result; }
@@ -99,7 +99,7 @@ public final class Registry implements AutoCloseable {
     }
     private static native long nativeRetainComponentBatch(long batch);
     private static native void nativeRegisterComponent(long registry,byte[] id,byte[] name,byte[] version,byte[] schema,int category,int inputs,int outputs,
-        int synchronous,int error,long optionalInputs,long optionalOutputs,boolean replay,boolean threadSafe,boolean stateful,boolean blocking,
+        int synchronous,int error,long optionalInputs,long optionalOutputs,boolean replay,boolean threadSafe,boolean stateful,boolean blocking,boolean continuous,boolean streamSafe,boolean ownsWatermark,
         int stateVersion,int effects,boolean controls,boolean finalAck,boolean epochAck,DataFlowDefinition definition);
     public static final class TaskContext {
         private long activation;

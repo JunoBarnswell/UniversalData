@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 2.2.0，唯一 ABI/协议 11。Linux 与 Windows 均须验收。下列目录是 main 基线已有组件的入口与边界，不能代替 2.0 当前验收；50 项适用整改状态见 metadata/product.json 的 goals。
+SDK 4.0.0，唯一 ABI/协议 12。Linux 与 Windows 均须验收。下列目录是 main 基线已有组件的入口与边界，不能代替 2.0 当前验收；50 项适用整改状态见 metadata/product.json 的 goals。
 
 | SSIS 职责 | 实际入口/ID | 实现与边界 |
 |---|---|---|
@@ -26,6 +26,7 @@ SDK 2.2.0，唯一 ABI/协议 11。Linux 与 Windows 均须验收。下列目录
 | Expression Function | `abs`、`length`、`trim`、`upper_ascii`、`lower_ascii`、`concat`、`coalesce`、`substring` | 8 个 native pure descriptors；length/substring 按 UTF8 code point；coalesce 参数显式求值 |
 | Buffer Manager | `ud_buffer_manager` / `ud_operator` | 按真实 allocation capacity 去重计量；驻留只 retain；spill 使用唯一 wire；显式 View 和 working quota；失败文件由管理器持有并重试清理 |
 | Transaction / Checkpoint / Catalog | Journal 4、目标 receipt、immutable artifacts/history | 当前版本索引式分段 Journal、原子快照/manifest、目标 receipt、不可变 artifacts/history；不提供跨任意目标的分布式事务 |
+| Event-time streaming / Studio observation | eventTime; eventWindow; Native Catalog execution feed | One Native Pipeline/Compute/Buffer/Journal. Final tumbling/sliding/session aggregates, native Watermark policy, bounded shared working subquotas and stable window RowIds. No second stream engine or exactly-once certification. |
 
 未完成扩展：Current source limitations remain itemized under ETL-011 (qualified SQL Server participants), ETL-025/026 (complete online identity/presence proof) and ETL-038 (unsupported Avro named references/general unions). Missing Windows and independent protocol resources remain Blocked; no historical ABI 9 pass is inherited.。
 

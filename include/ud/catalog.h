@@ -107,6 +107,8 @@ UD_API ud_status ud_catalog_secure_compact(ud_catalog *);
  * Running/Draining return BUSY. Serialize with start/destroy; tenant must
  * match. Persists identifiers/fingerprints/metrics, never parameter/config/
  * row/credential values. Errors belong to the host logging policy. */
+/* Concurrent safe scalar/atomic topology snapshot, no samples/configuration. */
+UD_API ud_status ud_catalog_record_progress(ud_catalog *, const ud_execution *, uint64_t revision);
 UD_API ud_status ud_catalog_record_execution(ud_catalog *, const ud_execution *, uint64_t revision);
 /* Bounded explicit log retention. The last sequence for every execution is
  * retained so resume cannot reuse event identities. Journal/recovery facts and

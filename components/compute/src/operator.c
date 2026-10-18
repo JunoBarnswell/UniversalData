@@ -1,6 +1,7 @@
 #include "ud/operator.h"
 #include "relational.h"
 #include "window.h"
+#include "event_window.h"
 #include "advanced.h"
 #include "replay.h"
 #include "../internal.h"
@@ -23,6 +24,7 @@ typedef struct cursor {
 struct ud_operator {
     ud_relational *relational;
     ud_window *window;
+    ud_event_window *event_window;
     ud_advanced *advanced;
     ud_replay *replay;
     ud_context *ctx;
@@ -264,7 +266,7 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
         return UD_INVALID;
     if (options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    if (options->kind < UD_OPERATOR_SORT || options->kind > UD_OPERATOR_CACHE_LOOKUP ||
+    if (options->kind < UD_OPERATOR_SORT || options->kind > UD_OPERATOR_EVENT_WINDOW ||
         !options->max_batch_rows || options->max_batch_rows > 65536 || options->descending < 0 ||
         options->descending > 1 || options->partition_count > 64 ||
         (options->partition_count > 1 && !options->executor))
@@ -274,7 +276,7 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
         return UD_RESOURCE;
     o->ctx = ctx;
     o->options = *options;
-    ud_status captured = ud_replay_create(ctx, options, inputs, &o->replay);
+    ud_status captured = options->kind == UD_OPERATOR_EVENT_WINDOW ? UD_OK : ud_replay_create(ctx, options, inputs, &o->replay);
     if (captured) {
         ud_free(o);
         return captured;
@@ -286,6 +288,11 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
 
     if (!o->options.partition_count)
         o->options.partition_count = 1;
+    if (options->kind == UD_OPERATOR_EVENT_WINDOW) {
+        ud_status status = ud_event_window_create(ctx, options, inputs[0], &o->event_window);
+        if (status) { ud_free(o); return status; }
+        *out = o; return UD_OK;
+    }
     if (options->kind >= UD_OPERATOR_DEDUPLICATE && options->kind != UD_OPERATOR_ASOF_JOIN &&
         options->kind != UD_OPERATOR_TEMPORAL_JOIN && options->kind != UD_OPERATOR_DIFF_COMPARE) {
         ud_status status = ud_advanced_create(ctx, options, inputs, &o->advanced);
@@ -397,6 +404,7 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
 ud_status ud_operator_schema(const ud_operator *o, uint32_t output, ud_batch **out) {
     if (!o || !out)
         return UD_INVALID;
+    if (o->event_window) return ud_event_window_schema(o->event_window, output, out);
     if (o->advanced)
         return ud_advanced_schema(o->advanced, output, out);
     if (o->window)
@@ -527,6 +535,7 @@ static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *in
     return status;
 }
 static ud_status operator_push(ud_operator *o, uint32_t port, const ud_batch *input) {
+    if (o && o->event_window) return port ? UD_INVALID : ud_event_window_push(o->event_window, input);
     if (o && o->advanced)
         return ud_advanced_push(o->advanced, port, input);
     if (o && o->window) {
@@ -554,6 +563,7 @@ static ud_status operator_push(ud_operator *o, uint32_t port, const ud_batch *in
     return status;
 }
 static ud_status operator_end(ud_operator *o, uint32_t port) {
+    if (o && o->event_window) return port ? UD_INVALID : ud_event_window_end(o->event_window);
     if (o && o->advanced)
         return ud_advanced_end(o->advanced, port);
     if (o && o->window)
@@ -673,6 +683,7 @@ static ud_status operator_pull(ud_operator *o, ud_batch **out, uint32_t *output)
         return UD_INVALID;
     if (output)
         *output = 0;
+    if (o->event_window) return ud_event_window_pull(o->event_window, out, output);
     if (o->advanced)
         return ud_advanced_pull(o->advanced, out, output);
     if (o->window)
@@ -722,15 +733,19 @@ ud_status ud_operator_pull(ud_operator *o, ud_batch **b, uint32_t *port) {
         *port = output;
     return s;
 }
+ud_status ud_operator_watermark(ud_operator *o, int64_t watermark) {
+    return o && o->event_window ? ud_event_window_watermark(o->event_window, watermark) : UD_UNSUPPORTED;
+}
 ud_status ud_operator_checkpoint(ud_operator *o, ud_batch **out) {
     if (!o || !out)
         return UD_INVALID;
-    return ud_replay_snapshot(o->replay, out);
+    return o->event_window ? ud_event_window_checkpoint(o->event_window, out) : ud_replay_snapshot(o->replay, out);
 }
 ud_status ud_operator_restore(ud_operator **instance, const ud_batch *snapshot) {
     if (!instance || !*instance)
         return UD_INVALID;
     ud_operator *old = *instance, *restored = NULL;
+    if (old->event_window) return ud_event_window_restore(&old->event_window, snapshot);
     ud_status s = ud_replay_restore(old->replay, snapshot, &restored);
     if (!s)
         s = ud_replay_rebase(old->replay, snapshot);
@@ -747,6 +762,7 @@ ud_status ud_operator_restore(ud_operator **instance, const ud_batch *snapshot) 
 ud_status ud_operator_destroy(ud_operator *o) {
     if (!o)
         return UD_OK;
+    if (o->event_window) { ud_event_window_destroy(o->event_window); ud_free(o); return UD_OK; }
     if (o->advanced) {
         ud_advanced_destroy(o->advanced);
         ud_replay_destroy(o->replay);
@@ -802,6 +818,7 @@ ud_status ud_operator_order(const ud_operator *o, ud_sort_contract *out) {
     if (!o || !out)
         return UD_INVALID;
     memset(out, 0, sizeof(*out));
+    if (o->event_window) return UD_OK;
     if (o->advanced)
         return ud_advanced_order(o->advanced, out);
     if (o->window)
@@ -822,6 +839,7 @@ ud_status ud_operator_order(const ud_operator *o, ud_sort_contract *out) {
 uint64_t ud_operator_input_demand(const ud_operator *o) {
     if (!o)
         return 0;
+    if (o->event_window) return ud_event_window_demand(o->event_window);
     if (o->advanced)
         return ud_advanced_demand(o->advanced);
     if (o->window)
@@ -837,6 +855,7 @@ uint64_t ud_operator_input_demand(const ud_operator *o) {
 ud_status ud_operator_diagnostics(const ud_operator *o, char **json, uint32_t *length) {
     if (!o || !json || !length)
         return UD_INVALID;
+    if (o->event_window) return ud_event_window_diagnostics(o->event_window, json, length);
     if (o->advanced)
         return ud_advanced_diagnostics(o->advanced, json, length);
     if (o->relational)
@@ -865,7 +884,7 @@ ud_status ud_operator_physical_plan(const ud_operator *o, ud_physical_plan_info 
                                o->options.kind == UD_OPERATOR_MERGE_JOIN
                            ? 2
                            : 1;
-    out->output_count = o->advanced     ? ud_advanced_output_count(o->advanced)
+    out->output_count = o->event_window ? 2 : o->advanced     ? ud_advanced_output_count(o->advanced)
                         : o->relational ? ud_relational_output_count(o->relational)
                         : o->options.kind == UD_OPERATOR_SCD ? 6
                         : o->options.kind == UD_OPERATOR_PIVOT ||
@@ -955,7 +974,7 @@ ud_status ud_operator_create(ud_context *ctx, const ud_operator_options *options
                              const ud_batch *const *inputs, ud_operator **out) {
     if (!options || !options->configuration.length ||
         (options->kind != UD_OPERATOR_SORT && options->kind != UD_OPERATOR_WINDOW &&
-         options->kind != UD_OPERATOR_AGGREGATE))
+         options->kind != UD_OPERATOR_AGGREGATE && options->kind != UD_OPERATOR_EVENT_WINDOW))
         return create_bound(ctx, options, inputs, out);
     if (!ctx || !inputs || !inputs[0] || !out || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)

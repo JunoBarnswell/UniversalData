@@ -5,7 +5,7 @@ public final class Execution implements AutoCloseable {
     public static final int ACCESS_CHECKPOINT_OPEN=11,ACCESS_CHECKPOINT_READ=12,ACCESS_CHECKPOINT_WRITE=13;
     static { ProductVersion.requireNative(); }
     private static final ThreadLocal<Integer> CALLBACK=ThreadLocal.withInitial(()->0);
-    public enum State { CREATED,VALIDATING,READY,RUNNING,DRAINING,SUCCEEDED,FAILED,CANCELLED,SKIPPED,RECOVERY_REQUIRED }
+    public enum State { CREATED,VALIDATING,READY,RUNNING,DRAINING,SUCCEEDED,FAILED,CANCELLED,SKIPPED,RECOVERY_REQUIRED,STOPPED }
     @FunctionalInterface public interface Authorizer { boolean allow(String tenant,String resource,int action); }
     @FunctionalInterface public interface CredentialResolver { String resolve(String tenant,String resource,String reference); }
     public record Metrics(State state,StatusCode result,long inputRows,long outputRows,long rejectedRows,long batches,long queuedBatches,long queueHighWater,long memoryUsed,long executedTasks,long durableTasks,long recoveryTasks,long resumedTasks,long spillBytes,long pipelineTrees,long treeHighWater,long workerHighWater,long committedRows,long acknowledgedRows,long errorCount,long errorRows,long committedErrorRows,long acknowledgedErrorRows) {}
@@ -42,6 +42,7 @@ public final class Execution implements AutoCloseable {
     public void execute() { control();synchronized(controller) { lifetime.readLock().lock();try { open();nativeExecute(handle,false); }finally { lifetime.readLock().unlock(); } } }
     public void start() { control();synchronized(controller) { lifetime.readLock().lock();try { open();nativeExecute(handle,true); }finally { lifetime.readLock().unlock(); } } }
     public boolean await(int timeout) { control();if(timeout<0)throw new IllegalArgumentException("Negative timeout");synchronized(controller) { lifetime.readLock().lock();try { open();return nativeWait(handle,timeout); }finally { lifetime.readLock().unlock(); } } }
+    public void stop() { lifetime.readLock().lock();try { open();nativeStop(handle); }finally { lifetime.readLock().unlock(); } }
     public void cancel() { lifetime.readLock().lock();try { if(handle!=0)nativeCancel(handle); }finally { lifetime.readLock().unlock(); } }
     public String id() { lifetime.readLock().lock(); try { open(); return nativeId(handle); } finally { lifetime.readLock().unlock(); } }
     public Metrics metrics() {
@@ -121,6 +122,7 @@ public final class Execution implements AutoCloseable {
     private static native long nativeOpen(byte[] json,byte[] tenant,Authorizer authorize,byte[] parameters,byte[] id,CredentialResolver resolve,int capacity,int rows,long limit,long timeout,byte[] stateDirectory,boolean resume,int maxConcurrency,long registry,Observer observer,long eventSequenceStart);
     private static native void nativeExecute(long handle,boolean async);
     private static native boolean nativeWait(long handle,int timeout);
+    private static native void nativeStop(long handle);
     private static native void nativeCancel(long handle);
     private static native String nativeId(long handle);
     private static native long[] nativeMetrics(long handle);

@@ -7,11 +7,28 @@ string root = Path.GetFullPath(args[1]); bool resume = args[2] == "resume";
 Directory.CreateDirectory(root);
 using var registry = new Registry();
 new RecoveryModule().Register(registry);
-var package = JsonSerializer.Serialize(new { version=11,id = "managed-durable",controlFlow = new { tasks = new[] { new { id = "flow",kind = "dataFlow",config = new { pipeline = "rows" } } },constraints = Array.Empty<object>() },
+var package = JsonSerializer.Serialize(new { version=12,id = "managed-durable",controlFlow = new { tasks = new[] { new { id = "flow",kind = "dataFlow",config = new { pipeline = "rows" } } },constraints = Array.Empty<object>() },
     dataFlows = new[] { new { id = "rows",components = new[] { new { id = "source",component = "managed.source",config = new { root } },new { id = "transform",component = "managed.pass",config = new { root } },new { id = "target",component = "managed.destination",config = new { root } } },
         paths = new[] { new { from = "source",output = 0,to = "transform",input = 0 },new { from = "transform",output = 0,to = "target",input = 0 } } } } });
+bool windowMode = args.Length > 3 && args[3] == "window";
+if(windowMode) {
+    var document=System.Text.Json.Nodes.JsonNode.Parse(package)!;
+    var spill=Path.Combine(root,"spill");Directory.CreateDirectory(spill);
+    document["connections"]=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(new[]{new{id="spill",driver="file",resource=spill}}));
+    document["policy"]=System.Text.Json.Nodes.JsonNode.Parse("""
+      {"buffers":{"connection":"spill","residentBytes":1,"workingBytes":1048576,"spillBytes":100000000,"maxBlocks":256}}
+      """);
+    var flow=document["dataFlows"]![0]!;
+    flow["components"]!.AsArray().Insert(2,System.Text.Json.Nodes.JsonNode.Parse("""
+      {"id":"window","component":"eventWindow","config":{"timeField":"id","sizeMicros":1,"stateBytes":8192,"plan":{"version":12,"group":[],"aggregates":[{"function":"count","column":"*","name":"count"}]}}}
+      """));
+    flow["paths"]=System.Text.Json.Nodes.JsonNode.Parse("""
+      [{"from":"source","output":0,"to":"transform","input":0},{"from":"transform","output":0,"to":"window","input":0},{"from":"window","output":0,"to":"target","input":0}]
+      """);
+    package=document.ToJsonString();
+}
 string idFile = Path.Combine(root,"identity"); string id = resume ? File.ReadAllText(idFile) : "";
-using var execution = new Execution(package,"test",(_,_,_) => true,executionId:id,stateDirectory:Path.Combine(root,"journal"),resume:resume,maxConcurrency:4,maxBatchRows:2,registry:registry);
+using var execution = new Execution(package,"test",(_,_,_) => true,executionId:id,stateDirectory:Path.Combine(root,"journal"),resume:resume,maxConcurrency:4,maxBatchRows:2,registry:registry,observe:value=>{if(value.Result!=StatusCode.Ok)Console.Error.WriteLine(value.ErrorChain);});
 if (!resume) File.WriteAllText(idFile,execution.Id); else if (execution.Id != id) throw new Exception("Native identity changed on resume");
 using(var plan = JsonDocument.Parse(execution.Explain())) {
     var transform = plan.RootElement.GetProperty("pipelines").EnumerateArray().SelectMany(pipeline => pipeline.GetProperty("trees").EnumerateArray())
@@ -20,13 +37,14 @@ using(var plan = JsonDocument.Parse(execution.Explain())) {
         !transform.GetProperty("ports").EnumerateArray().Any(port => port.GetProperty("name").GetString() == "rows")) throw new Exception("Managed physical plan/ports differ from the Native plan");
 }
 execution.Execute();
+if(windowMode && execution.Metrics.SpillBytes==0)throw new Exception("Window recovery did not exercise real disk spill");
 if (execution.Metrics.State != ExecutionState.Succeeded) throw new Exception("Recovery did not succeed");
 Console.WriteLine(execution.Id); return 0;
 
 sealed class Source(string root) : IManagedComponent
 {
-    public const string Schema = "{\"version\":11,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}";
-    private const string State = "{\"version\":11,\"fields\":[{\"name\":\"position\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"epoch\",\"type\":\"int64\",\"nullable\":false}]}";
+    public const string Schema = "{\"version\":12,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}";
+    private const string State = "{\"version\":12,\"fields\":[{\"name\":\"position\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"epoch\",\"type\":\"int64\",\"nullable\":false}]}";
     private string schema = ""; private long index; private ulong epoch; private bool barrier;
     public void Open(ManagedComponentContext context,string config,string[] inputs,string[] outputs) {
         using var definition = JsonDocument.Parse(config); root = definition.RootElement.GetProperty("root").GetString()!;
@@ -39,7 +57,12 @@ sealed class Source(string root) : IManagedComponent
         if (index == 12) return StatusCode.End;
         using var batch = context.CreateBatch(schema,"[{\"id\":" + index + "}]");
         // Exercise Native-generated provenance, including its restored row counter.
-        context.Emit(0,batch); index++; barrier = true; return StatusCode.Ok;
+        context.Emit(0,batch); index++; barrier = true;
+        if(index==3 && File.Exists(Path.Combine(root,"pre-barrier")) && !File.Exists(Path.Combine(root,"continue"))) {
+            File.WriteAllText(Path.Combine(root,"kill-ready"),index.ToString());
+            while(!File.Exists(Path.Combine(root,"continue"))) Thread.Sleep(10);
+        }
+        return StatusCode.Ok;
     }
     public ManagedBatch Checkpoint(ManagedComponentContext context) => context.CreateBatch(State,$"[{{\"position\":{index},\"epoch\":{epoch}}}]");
     public void Restore(ManagedComponentContext context,ManagedBatch snapshot) {
@@ -63,7 +86,7 @@ sealed class Pass : IManagedComponent
 }
 sealed class Destination(string root) : IManagedComponent
 {
-    private const string State = "{\"version\":11,\"fields\":[{\"name\":\"count\",\"type\":\"int64\",\"nullable\":false}]}";
+    private const string State = "{\"version\":12,\"fields\":[{\"name\":\"count\",\"type\":\"int64\",\"nullable\":false}]}";
     private long count;
     public void Open(ManagedComponentContext context,string config,string[] inputs,string[] outputs) {
         using var definition = JsonDocument.Parse(config); root = definition.RootElement.GetProperty("root").GetString()!;

@@ -97,7 +97,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-cluster-') as directory:
             assert time.monotonic() < deadline, state
             time.sleep(.15)
     def enqueue(index, name):
-        package = {'version': 11, 'id': name, 'connections': [{'id': 'http', 'driver': 'http', 'resource': origin + '/effects'}],
+        package = {'version': 12, 'id': name, 'connections': [{'id': 'http', 'driver': 'http', 'resource': origin + '/effects'}],
             'controlFlow': {'tasks': [{'id': 'post', 'kind': 'http.request', 'config': {'connection': 'http', 'method': 'POST',
                 'body': name, 'timeoutMs': 30000}}], 'constraints': []}, 'dataFlows': []}
         assert request(index, '/packages/' + name + '/versions/1', 'PUT', package)[0] == 200
@@ -150,7 +150,14 @@ with tempfile.TemporaryDirectory(prefix='ud-management-cluster-') as directory:
             assert calls['uncertain'] == 1, calls
         # Native Journal remains the recovery authority and refuses the pending
         # response-confirmed write; the dispatcher cannot reinterpret it as retry.
-        status, resumed = request(standby, '/executions/' + ticket + '/resume', 'POST')
+        deadline=time.monotonic()+5
+        while True:
+            status, resumed = request(standby, '/executions/' + ticket + '/resume', 'POST')
+            if status!=400 or time.monotonic()>=deadline:break
+            # Reconciliation may have saved RecoveryRequired just before it
+            # releases its lease. The recovery guard must continue to fence it.
+            assert request(standby,'/executions/'+ticket)[1]['state']=='RecoveryRequired'
+            time.sleep(.1)
         assert status == 202 and resumed['executionId'] == native_id, (status, resumed)
         terminal = wait_state(standby, ticket, lambda state: state['state'] == 'RecoveryRequired')
         assert terminal['executionId'] == native_id, terminal

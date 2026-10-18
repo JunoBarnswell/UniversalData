@@ -114,7 +114,11 @@ def projections(model):
         advanced_trace+="| "+item["id"]+" | "+item["name"]+" | "+item["state"]+" | "+item["verification"]+" |\n"
     designer_package=json.loads((ROOT/"products/designer/package.json").read_text());designer_package["version"]=version
     designer_lock=json.loads((ROOT/"products/designer/package-lock.json").read_text());designer_lock["version"]=version;designer_lock["packages"][""]["version"]=version
+    studio_trace="# Studio 4 实施与验收追踪\n\n<!-- Generated from metadata/product.json studio4. -->\n\n实现、验收与可发布性分别记录；Planned 不计为已完成。\n\n| ID | 目标 | 实现 | 验收 | 限制 | 证据 |\n|---|---|---|---|---|---|\n"
+    for item in model.get("studio4",{}).get("items",[]):
+        studio_trace+="| "+item["id"]+" | "+item["goal"]+" | "+item["implementation"]+" | "+item["verification"]+" | "+str(item.get("blocked") or "—")+" | "+", ".join(item["evidence"])+" |\n"
     return {
+        "docs/acceptance/studio4-traceability.md":studio_trace,
         "products/designer/package.json": encoded(designer_package),
         "products/designer/package-lock.json": encoded(designer_lock),
         "products/designer/src/dataTypes.ts": "// Generated from include/ud/data.h. Native owns type semantics.\nexport const DATA_TYPES = " + json.dumps([name.lower() for name, _ in native_types]) + " as const;\n",

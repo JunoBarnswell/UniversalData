@@ -7,6 +7,7 @@ typedef struct fixture {
     ud_execution *execution;
     uint64_t sequence;
     ud_status outcome, error;
+    int progress;
 } fixture;
 static ud_string str(const char *v) {
     return (ud_string){v, (uint32_t)strlen(v)};
@@ -21,7 +22,14 @@ static ud_status allow(void *u, ud_string t, ud_string r, int32_t a) {
 static ud_status effect(void *user, const ud_component_context *c, ud_string config) {
     (void)c;
     (void)config;
-    return ((fixture *)user)->outcome;
+    fixture *f = user;
+    if (f->progress)
+        for (uint64_t revision = 2; revision <= 21; revision++) {
+            ud_status s = ud_catalog_record_progress(f->catalog, f->execution, revision);
+            if (s)
+                return s;
+        }
+    return f->outcome;
 }
 static void observe(void *user, const ud_execution_event *event) {
     fixture *f = user;
@@ -69,7 +77,7 @@ int main(int argc, char **argv) {
                                  .invoke = effect};
     OK(ud_registry_register(registry, &d));
     const char *package =
-        "{\"version\":11,\"id\":\"history-package\",\"parameters\":{\"secret\":{\"type\":\"utf8\"}}"
+        "{\"version\":12,\"id\":\"history-package\",\"parameters\":{\"secret\":{\"type\":\"utf8\"}}"
         ","
         "\"project\":{\"id\":\"project\"},\"deployment\":{\"id\":\"deployment\",\"revision\":1,"
         "\"project\":{\"id\":\"project\",\"revision\":1},\"package\":{\"id\":\"history-package\","
@@ -83,6 +91,7 @@ int main(int argc, char **argv) {
         char id[64];
         snprintf(id, sizeof(id), "history-%d", i);
         f.outcome = results[i];
+        f.progress = i == 0;
         f.error = 0;
         f.sequence = 0;
         ud_execution_options o = {
@@ -104,9 +113,10 @@ int main(int argc, char **argv) {
         OK(ud_catalog_record_execution(f.catalog, e, 1));
         CHECK(ud_execution_execute(e) == results[i]);
         CHECK(!f.error);
-        OK(ud_catalog_record_execution(f.catalog, e, 2));
-        OK(ud_catalog_record_execution(f.catalog, e, 2));
-        ud_catalog_key key = {sizeof(key), UD_ABI_VERSION, UD_CATALOG_EXECUTION, str(id), 2};
+        OK(ud_catalog_record_execution(f.catalog, e, i == 0 ? 22 : 2));
+        OK(ud_catalog_record_execution(f.catalog, e, i == 0 ? 22 : 2));
+        ud_catalog_key key = {sizeof(key), UD_ABI_VERSION, UD_CATALOG_EXECUTION, str(id),
+                              i == 0 ? 22 : 2};
         char *text = NULL;
         uint32_t n;
         OK(ud_catalog_get(f.catalog, &key, &text, &n));
@@ -136,7 +146,7 @@ int main(int argc, char **argv) {
     OK(ud_catalog_list(f.catalog, UD_CATALOG_EXECUTION, &list, &n));
     ud_json *doc = NULL;
     OK(ud_json_parse(ctx, list, n, &doc, NULL));
-    CHECK(ud_json_size(doc) == 8);
+    CHECK(ud_json_size(doc) == 16);
     ud_json_destroy(doc);
     ud_free(list);
     ud_catalog_close(f.catalog);

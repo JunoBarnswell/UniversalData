@@ -235,7 +235,7 @@ static int float_operators(ud_context *ctx) {
     OK(ud_operator_destroy(join_op));
     qo.buffers = join_buffers;
     const char *commands =
-        "{\"version\":11,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*"
+        "{\"version\":12,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*"
         "\",\"name\":\"cnt\"},{\"function\":\"min\",\"column\":\"key\",\"name\":\"lo\"},{"
         "\"function\":\"max\",\"column\":\"key\",\"name\":\"hi\"}]}";
     ud_field left_fields[2];
@@ -504,7 +504,7 @@ static int allocation_failures(void) {
             qo.buffers = buffers;
             OK(ud_batch_seal(left));
             OK(ud_batch_seal(right));
-            const char *commands = "{\"version\":11,\"group\":[\"key\"],\"aggregates\":[{"
+            const char *commands = "{\"version\":12,\"group\":[\"key\"],\"aggregates\":[{"
                                    "\"function\":\"count\",\"column\":\"*\",\"name\":\"cnt\"}]}";
             OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1,
                                      (ud_string){commands, (uint32_t)strlen(commands)}, NULL,
@@ -570,7 +570,7 @@ int main(void) {
     for (uint32_t at = 0; at < 3; at++)
         OK(ud_batch_append(moments, times + at, 1));
     OK(ud_batch_seal(moments));
-    const char *time_plan_json = "{\"version\":11,\"group\":[\"moment\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
+    const char *time_plan_json = "{\"version\":12,\"group\":[\"moment\"],\"aggregates\":[{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
     ud_plan *time_plan = NULL;
     OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &moment, 1,
                             str(time_plan_json), NULL, &time_plan));

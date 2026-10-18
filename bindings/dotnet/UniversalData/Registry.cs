@@ -203,6 +203,7 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_registry_register_owned(IntPtr registry, ref ComponentDescriptor descriptor, uint count, IntPtr owner, OwnerRetain retain, OwnerRelease release);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_registry_describe(IntPtr registry, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_registry_destroy(IntPtr registry);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_activation_stopping(IntPtr activation);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_activation_check(IntPtr activation);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_context_report(IntPtr context, int status, StringValue message);
 }

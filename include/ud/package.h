@@ -129,6 +129,8 @@ UD_API ud_status ud_execution_discover_schema(ud_execution *, ud_string connecti
 UD_API ud_status ud_execution_execute(ud_execution *);
 UD_API ud_status ud_execution_start(ud_execution *);
 UD_API ud_status ud_execution_wait(ud_execution *, uint32_t timeout_ms);
+/* Graceful source boundary, drain and final confirmation; distinct from Cancel. */
+UD_API void ud_execution_stop(ud_execution *);
 UD_API void ud_execution_cancel(ud_execution *);
 UD_API ud_status ud_execution_get_metrics(const ud_execution *, ud_execution_metrics *);
 /* One controller; Running/Draining return BUSY. Context allocation leaks are

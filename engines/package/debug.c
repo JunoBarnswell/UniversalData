@@ -143,18 +143,23 @@ ud_status ud_debug_boundary(ud_activation *activation, int32_t kind) {
             if (definition_matches(activation, ud_json_at(points, at)))
                 debug->requested = 1;
     }
-    if (debug->requested && atomic_load(&activation->execution->queued)) {
+    if (debug->requested && atomic_load(&activation->execution->queued) &&
+        !ud_activation_stopping(activation)) {
         ud_mutex_unlock(&debug->mutex);
         return UD_BUSY; /* Drain queued batches cooperatively. */
     }
     ud_status status = UD_OK;
-    while (debug->requested && !status) {
+    while (debug->requested && !status && !ud_activation_stopping(activation)) {
         debug->paused = 1;
         debug->boundary = kind;
         ud_condition_wait_ms(&debug->changed, &debug->mutex, 50);
         status = ud_activation_check(activation);
     }
     debug->paused = 0;
+    if (ud_activation_stopping(activation)) {
+        debug->requested = 0;
+        debug->steps = 0;
+    }
     ud_mutex_unlock(&debug->mutex);
     return status;
 }

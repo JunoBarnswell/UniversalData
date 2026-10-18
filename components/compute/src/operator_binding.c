@@ -55,7 +55,7 @@ ud_status ud_operator_bind_options(ud_context *ctx, const ud_operator_options *i
         UD_TRY(integer(member(*document, "partitions"), &n));
         out->partition_count = (uint32_t)n;
     }
-    if (input->kind == UD_OPERATOR_AGGREGATE) {
+    if (input->kind == UD_OPERATOR_AGGREGATE || input->kind == UD_OPERATOR_EVENT_WINDOW) {
         char *text = NULL;
         uint32_t n;
         UD_TRY(ud_json_serialize(member(*document, "plan"), &text, &n));

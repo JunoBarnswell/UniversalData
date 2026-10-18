@@ -5,7 +5,7 @@ import type { Configuration, DataField, PropertySchema } from './model';
 
 type Context = { fields: DataField[]; inputs: DataField[][] };
 const empty: DataField[] = [];
-const captions: Record<string, string> = { connection: '连接', schema: '数据结构', errorPolicy: '异常行处理', includeInput: '保留原始输入', keys: '键字段', columns: '输出字段', table: '表', batchSize: '批次行数',
+const captions: Record<string, string> = {mode:"运行模式",timeField:"事件时间字段",sizeMicros:"窗口大小（微秒）",slideMicros:"滑动步长（微秒）",gapMicros:"会话间隔（微秒）",allowedLatenessMicros:"允许迟到（微秒）",latePolicy:"迟到处理",maxWindows:"最大活动窗口数",stateBytes:"状态预算（字节）",lagMicros:"乱序容忍（微秒）", connection: '连接', schema: '数据结构', errorPolicy: '异常行处理', includeInput: '保留原始输入', keys: '键字段', columns: '输出字段', table: '表', batchSize: '批次行数',
   leftKeys: '左侧连接键', rightKeys: '右侧连接键', joinType: '连接类型', groups: '分组字段', aggregates: '聚合计算', groupBy: '分组字段', expression: '表达式', condition: '条件', branches: '分流规则',
   businessKeys: '业务键', valueColumn: '值字段', referenceKeys: '引用字段', inputKeys: '输入字段', noMatch: '未命中处理', statement: 'SQL 命令', parameters: '参数映射', rules: '质量规则',
   url: '地址', method: '请求方法', headers: '请求头', body: '请求内容', pagination: '分页', fields: '字段', nullable: '允许为空', name: '名称', type: '类型', source: '源字段', target: '目标字段',
@@ -36,6 +36,7 @@ function Property({ name, path, schema, value, required, change, context }: { na
   const id = useId();
   const label = `${captions[name] ?? schema.title ?? name}${required ? ' *' : ''}`;
   const type = Array.isArray(schema.type) ? schema.type.find(type => type !== 'null') : schema.type ?? typeOf(value);
+  if(schema['x-role']==='field-selector'&&context.fields.length) return <label htmlFor={id}>{label}<select id={id} value={typeof value==='number'?(context.fields[value]?.identity??context.fields[value]?.name??''):String(value??'')} onChange={event=>change(event.target.value||undefined)}><option value="">选择字段</option>{context.fields.map((field)=><option key={field.identity??field.name} value={field.identity??field.name}>{field.name} · {field.type}</option>)}</select></label>;
   const variants = schema.oneOf ?? schema.anyOf;
   if (variants?.length) return <fieldset className="property-group"><legend>{label}</legend><Variant name={name} path={path} choices={variants} value={value} change={change} context={context}/></fieldset>;
   if (schema.enum) return <label htmlFor={id}>{label}<select id={id} value={value === undefined ? '' : encode(value)} onChange={event => change(event.target.value ? decode(event.target.value) : undefined)}><option value="">请选择</option>{schema.enum.map(option => <option key={encode(option)} value={encode(option)}>{String(option)}</option>)}</select></label>;

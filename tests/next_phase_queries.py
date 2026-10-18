@@ -17,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix='ud-native-queries-') as folder:
     with sqlite3.connect(db) as connection:
         connection.execute('CREATE TABLE source(id INTEGER PRIMARY KEY,name TEXT NOT NULL)')
     package=root/'package.json'
-    write(package,dict(version=11,id='query-parity',connections=[dict(id='db',driver=a.sqlite,resource=str(db),credentialReference='fixture')],controlFlow=dict(tasks=[],constraints=[]),dataFlows=[]))
+    write(package,dict(version=12,id='query-parity',connections=[dict(id='db',driver=a.sqlite,resource=str(db),credentialReference='fixture')],controlFlow=dict(tasks=[],constraints=[]),dataFlows=[]))
     for round in (0,1):
         if round:
             with sqlite3.connect(db) as connection:connection.execute('ALTER TABLE source ADD COLUMN extra TEXT')
@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix='ud-native-queries-') as folder:
     result=(root/'0.diff.json').read_bytes();assert json.loads(result)['compatible']
     assert all((root/f'{i}.diff.json').read_bytes()==result for i in (1,2))
     schema=root/'wire.schema.json';rows=root/'rows.json';wire=root/'wire.udw';identified=root/'identified.udw'
-    write(schema,dict(version=11,fields=[dict(name='name',type='utf8',nullable=False)]));write(rows,[{'name':'中文\u0000identity'}])
+    write(schema,dict(version=12,fields=[dict(name='name',type='utf8',nullable=False)]));write(rows,[{'name':'中文\u0000identity'}])
     subprocess.run([a.data,str(schema),str(rows),str(root/'rows.out.json'),str(wire)],env=env,check=True)
     run(0,['--identify',wire,identified,root/'0.row.json'])
     for index in (1,2):run(index,['--row-info',identified,root/f'{index}.row.json'])

@@ -12,7 +12,7 @@ public sealed record ManagedPhysicalPlan(uint Partitions = 1, ComponentOrdering 
     ManagedSortKey[]? Sort = null, bool StableSort = false, ulong EstimatedRows = 0, ulong RowWidth = 0,
     ulong MemoryBudget = 0, ulong SpillBudget = 0, ulong EstimatedCost = 0, double Selectivity = 1,
     uint Algorithm = 0, uint StateVersion = 0, ComponentEffects Effects = ComponentEffects.None,
-    FieldIdentity[]? PartitionKeys = null, string PhysicalTree = "")
+    FieldIdentity[]? PartitionKeys = null, string PhysicalTree = "", uint Boundedness = 0)
 {
     internal Native.ComponentPlan ToNative(IntPtr memory)
     {
@@ -26,12 +26,12 @@ public sealed record ManagedPhysicalPlan(uint Partitions = 1, ComponentOrdering 
         return new() { Size = (uint)Marshal.SizeOf<Native.ComponentPlan>(), Abi = ProductVersion.Abi, Partitions = Partitions, Ordering = (int)Ordering,
             Sort = sort, EstimatedRows = EstimatedRows, RowWidth = RowWidth, MemoryBudget = MemoryBudget, SpillBudget = SpillBudget,
             EstimatedCost = EstimatedCost, Selectivity = Selectivity, Algorithm = Algorithm, StateVersion = StateVersion,
-            Effects = (uint)Effects, PartitionKeyCount = (uint)(PartitionKeys?.Length ?? 0), PartitionKeys = keys, PhysicalTree = Native.OwnedText(memory,PhysicalTree) };
+            Effects = (uint)Effects, PartitionKeyCount = (uint)(PartitionKeys?.Length ?? 0), PartitionKeys = keys, PhysicalTree = Native.OwnedText(memory,PhysicalTree), Boundedness = Boundedness };
     }
     internal static ManagedPhysicalPlan FromNative(Native.ComponentPlan plan) => new(plan.Partitions,(ComponentOrdering)plan.Ordering,
         plan.Sort.Keys.Take(checked((int)plan.Sort.Count)).Select(key => new ManagedSortKey(new(key.Field.High,key.Field.Low),key.Descending != 0,key.NullsFirst != 0)).ToArray(),
         plan.Sort.Stable != 0,plan.EstimatedRows,plan.RowWidth,plan.MemoryBudget,plan.SpillBudget,plan.EstimatedCost,plan.Selectivity,plan.Algorithm,
-        plan.StateVersion,(ComponentEffects)plan.Effects,plan.PartitionKeys.Take(checked((int)plan.PartitionKeyCount)).Select(key => new FieldIdentity(key.High,key.Low)).ToArray(),Native.Text(plan.PhysicalTree));
+        plan.StateVersion,(ComponentEffects)plan.Effects,plan.PartitionKeys.Take(checked((int)plan.PartitionKeyCount)).Select(key => new FieldIdentity(key.High,key.Low)).ToArray(),Native.Text(plan.PhysicalTree),plan.Boundedness);
 }
 internal static partial class Native
 {
@@ -54,6 +54,7 @@ internal static partial class Native
         internal uint Algorithm, StateVersion, PartitionKeyCount, Effects;
         [MarshalAs(UnmanagedType.ByValArray,SizeConst = 16)] internal FieldId[] PartitionKeys;
         internal StringValue PhysicalTree;
+        internal uint Boundedness;
     }
     [StructLayout(LayoutKind.Sequential)] internal struct ComponentPort {
         internal FieldId Id; internal StringValue Name; internal uint Direction, Index, Flags; internal IntPtr Schema;
