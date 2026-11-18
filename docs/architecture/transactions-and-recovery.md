@@ -6,6 +6,10 @@ C17 Execution、Connection Manager 和现有 Journal 是唯一执行与恢复所
 
 Task 范围整体提交。Data Flow 可显式选择 `scope: "epoch"`：每个屏障准备全部分支，先持久化共同决定，再解析分支结果，发布该 Epoch 的暂存事实，然后允许源确认，并开始下一分支。Task 范围中的 CDC 在绑定时拒绝，避免等待源确认与整体提交相互阻塞。
 
+CDC 源可配置 `microBatchRows`、`microBatchMs`。两项省略时每笔源事务发出一个屏障。配置后以第一个读到的完整提交开始计时，达到行数或时间阈值后在完整源事务边界封存。封存记录保留批内源事务的顺序、各提交后的水位以及最后一个日志位置。`maxTransactions` 仍按源事务计数。
+
+SQL 目标按输入批检查初始前像并记录收据。需要整个 epoch 在目标上原子提交时，由 Data Flow 的 `transaction.scope = "epoch"` 协调。源在目标确认和 checkpoint 持久化后推进日志位置。提交后中断时，恢复流程重放已封存数据，核对已有收据，并确认最后一个完整事务的位置。
+
 PostgreSQL 使用 PREPARE TRANSACTION，并检查 max_prepared_transactions；MySQL/MariaDB 使用 XA START/END/PREPARE/COMMIT/ROLLBACK；OCI 使用真实 XID、OCITransPrepare 和 DBMS_XA 恢复。Native 分支 ID、配置指纹和同事务的分支回执证明提交。准备列表中找不到分支本身不能证明提交。不具备参与能力的 SQL Server/ODBC 资源不能冒充全局事务参与者。
 
 Task Done、批次 Done、游标、枚举器和 Epoch 在未决事务内先存为有序暂存事实。共同提交后才发布；回滚仅退役暂存事实。持久 COMMIT 决定后禁止改为回滚。恢复没有决定的分支时先持久化回滚决定；存在决定时按决定逐个恢复，即使一个资源不可用，也尝试其他参与者。任何无法证明的提交进入 RecoveryRequired，停止源确认和自动重放。

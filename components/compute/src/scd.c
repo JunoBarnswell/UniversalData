@@ -31,6 +31,15 @@ ud_status ud_rel_scd_bind(ud_relational *r) {
         !r->inputs[1]->column[r->valid_to].field.nullable ||
         (r->version != UINT32_MAX && r->inputs[1]->column[r->version].field.type != UD_INT64))
         return UD_SCHEMA;
+    r->inferred = UINT32_MAX;
+    if (ud_rel_member(r->config, "inferredMember")) {
+        UD_TRY(ud_rel_selector(r->inputs[1], ud_rel_member(r->config, "inferredMember"),
+                               &r->inferred));
+        const ud_field *flag = &r->inputs[1]->column[r->inferred].field;
+        if (flag->type != UD_BOOL || flag->nullable || r->inferred == r->current ||
+            r->inferred == r->version || r->inferred == r->surrogate)
+            return UD_SCHEMA;
+    }
     r->value_column = UINT32_MAX;
     if (ud_rel_member(r->config, "surrogateSource"))
         UD_TRY(ud_rel_selector(r->inputs[0], ud_rel_member(r->config, "surrogateSource"),
@@ -58,6 +67,8 @@ ud_status ud_rel_scd_bind(ud_relational *r) {
     covered[r->current] = covered[r->valid_from] = covered[r->valid_to] = covered[r->surrogate] = 1;
     if (r->version != UINT32_MAX)
         covered[r->version] = 1;
+    if (r->inferred != UINT32_MAX)
+        covered[r->inferred] = 1;
     for (uint32_t i = 0; !s && i < r->attribute_count; i++) {
         const ud_json *m = ud_json_at(mapping, i);
         static const char *a[] = {"source", "target", "change"};
@@ -162,6 +173,66 @@ static ud_status scd_envelope(ud_relational *r, const ud_value *values, const ud
     ud_free(v);
     return s;
 }
+static ud_status write_dimension_change(ud_relational *r, const ud_batch *b, uint32_t row,
+                                        int64_t effective, ud_id event, const ud_value *old,
+                                        ud_value *now, int type2, ud_batch **out, uint32_t *port) {
+    ud_status s = UD_OK;
+    uint32_t n = r->inputs[1]->columns;
+    char surrogate[33];
+    int fresh = !r->current_row;
+    *port = fresh ? 1 : type2 ? 3 : 2;
+    if (type2 && effective <= old[r->valid_from].integer)
+        s = UD_SCHEMA;
+    if (!s && (fresh || type2)) {
+        now[r->current] = (ud_value){.type = UD_BOOL, .integer = 1};
+        now[r->valid_from] = (ud_value){.type = UD_TIMESTAMP, .integer = effective};
+        now[r->valid_to] = (ud_value){.type = UD_TIMESTAMP, .is_null = 1};
+        if (r->version != UINT32_MAX) {
+            if (!fresh && old[r->version].integer == INT64_MAX)
+                s = UD_OVERFLOW;
+            now[r->version] = (ud_value){.type = UD_INT64,
+                                         .integer = fresh ? 1 : old[r->version].integer + 1};
+        }
+        if (r->value_column != UINT32_MAX)
+            s = ud_batch_get(b, row, r->value_column, now + r->surrogate);
+        else {
+            ud_id_format(event, surrogate);
+            now[r->surrogate] = (ud_value){.type = UD_UTF8, .text = surrogate, .text_length = 32};
+        }
+        if (!s && !fresh && !ud_value_compare(now + r->surrogate, old + r->surrogate))
+            s = UD_SCHEMA;
+    }
+    if (!s && type2) {
+        ud_value *expired = ud_alloc(r->ctx, n * sizeof(*expired));
+        if (!expired)
+            s = UD_RESOURCE;
+        else {
+            memcpy(expired, old, n * sizeof(*expired));
+            expired[r->current] = (ud_value){.type = UD_BOOL, .integer = 0};
+            expired[r->valid_to] = (ud_value){.type = UD_TIMESTAMP, .integer = effective};
+            s = scd_envelope(r, expired, old, event, effective, 3, 3, out);
+            ud_free(expired);
+        }
+        if (!s)
+            s = scd_envelope(r, now, NULL, event, effective, 4, 4, &r->pending);
+    } else if (!s)
+        s = scd_envelope(r, now, fresh ? NULL : old, event, effective, fresh ? 1 : 2, *port,
+                         out);
+    if (!s) {
+        ud_batch *replacement = NULL;
+        s = ud_rel_clone(r->ctx, r->inputs[1], 1, &replacement);
+        if (!s)
+            s = ud_batch_append(replacement, now, n);
+        if (!s)
+            s = ud_batch_seal(replacement);
+        if (!s) {
+            ud_batch_destroy(r->current_row);
+            r->current_row = replacement;
+        } else
+            ud_batch_destroy(replacement);
+    }
+    return s;
+}
 ud_status ud_rel_scd_pull(ud_relational *r, ud_batch **out, uint32_t *port) {
     if (r->pending) {
         *out = r->pending;
@@ -169,6 +240,7 @@ ud_status ud_rel_scd_pull(ud_relational *r, ud_batch **out, uint32_t *port) {
         *port = 4;
         return UD_OK;
     }
+next_input:;
     const ud_batch *b;
     uint32_t row;
     UD_TRY(ud_rel_peek(r, 0, &b, &row));
@@ -225,18 +297,24 @@ ud_status ud_rel_scd_pull(ud_relational *r, ud_batch **out, uint32_t *port) {
         (old[r->current].is_null || !old[r->current].integer || !old[r->valid_to].is_null ||
          old[r->valid_from].is_null || time.integer < old[r->valid_from].integer))
         s = UD_SCHEMA;
+    int inferred = !s && r->current_row && r->inferred != UINT32_MAX && old[r->inferred].integer;
+    if (r->inferred != UINT32_MAX)
+        now[r->inferred] = (ud_value){.type = UD_BOOL, .integer = 0};
+    type1 = inferred; /* materializing a placeholder is one in-place, preimage-checked update */
     for (uint32_t i = 0; !s && i < r->attribute_count; i++) {
         ud_value v;
         s = ud_batch_get(b, row, r->mapping[i], &v);
         if (!s) {
             uint32_t t = r->attributes[i];
-            int changed = ud_value_compare(old + t, &v) != 0;
-            if (r->current_row && changed) {
+            int changed = ud_field_value_compare(&r->inputs[1]->column[t].field, old + t,
+                                                  &b->column[r->mapping[i]].field, &v) != 0;
+            if (r->current_row && !inferred && changed) {
                 type1 |= r->attribute_kind[i] == 1;
                 type2 |= r->attribute_kind[i] == 2;
                 fixed |= r->attribute_kind[i] == 3;
             }
-            now[t] = v;
+            if (!r->current_row || r->attribute_kind[i] != 0)
+                now[t] = v;
         }
     }
     if (!s && fixed) {
@@ -248,7 +326,7 @@ ud_status ud_rel_scd_pull(ud_relational *r, ud_batch **out, uint32_t *port) {
         if (r->policy == UD_ERROR_IGNORE) {
             r->ignored++;
             UD_TRY(ud_rel_take(r, 0));
-            return ud_rel_scd_pull(r, out, port);
+            goto next_input;
         }
         UD_TRY(ud_rel_clone(r->ctx, b, 1, out));
         UD_TRY(ud_batch_append_from(*out, b, row));
@@ -273,58 +351,7 @@ ud_status ud_rel_scd_pull(ud_relational *r, ud_batch **out, uint32_t *port) {
         *port = 0;
         s = scd_envelope(r, old, NULL, event, time.integer, 0, 0, out);
     } else if (!s) {
-        int fresh = !r->current_row;
-        *port = fresh ? 1 : type2 ? 3 : 2;
-        if (type2 && time.integer <= old[r->valid_from].integer)
-            s = UD_SCHEMA;
-        if (!s && (fresh || type2)) {
-            now[r->current] = (ud_value){.type = UD_BOOL, .integer = 1};
-            now[r->valid_from] = (ud_value){.type = UD_TIMESTAMP, .integer = time.integer};
-            now[r->valid_to] = (ud_value){.type = UD_TIMESTAMP, .is_null = 1};
-            if (r->version != UINT32_MAX) {
-                if (!fresh && old[r->version].integer == INT64_MAX)
-                    s = UD_OVERFLOW;
-                now[r->version] = (ud_value){.type = UD_INT64,
-                                             .integer = fresh ? 1 : old[r->version].integer + 1};
-            }
-            if (r->value_column != UINT32_MAX)
-                s = ud_batch_get(b, row, r->value_column, now + r->surrogate);
-            else {
-                ud_id_format(event, source);
-                now[r->surrogate] = (ud_value){.type = UD_UTF8, .text = source, .text_length = 32};
-            }
-            if (!s && !fresh && !ud_value_compare(now + r->surrogate, old + r->surrogate))
-                s = UD_SCHEMA;
-        }
-        if (!s && type2) {
-            ud_value *expired = ud_alloc(r->ctx, n * sizeof(*expired));
-            if (!expired)
-                s = UD_RESOURCE;
-            else {
-                memcpy(expired, old, n * sizeof(*expired));
-                expired[r->current] = (ud_value){.type = UD_BOOL, .integer = 0};
-                expired[r->valid_to] = (ud_value){.type = UD_TIMESTAMP, .integer = time.integer};
-                s = scd_envelope(r, expired, old, event, time.integer, 3, 3, out);
-                ud_free(expired);
-            }
-            if (!s)
-                s = scd_envelope(r, now, NULL, event, time.integer, 4, 4, &r->pending);
-        } else if (!s)
-            s = scd_envelope(r, now, fresh ? NULL : old, event, time.integer, fresh ? 1 : 2, *port,
-                             out);
-        if (!s) {
-            ud_batch *replacement = NULL;
-            s = ud_rel_clone(r->ctx, r->inputs[1], 1, &replacement);
-            if (!s)
-                s = ud_batch_append(replacement, now, n);
-            if (!s)
-                s = ud_batch_seal(replacement);
-            if (!s) {
-                ud_batch_destroy(r->current_row);
-                r->current_row = replacement;
-            } else
-                ud_batch_destroy(replacement);
-        }
+        s = write_dimension_change(r, b, row, time.integer, event, old, now, type2, out, port);
     }
     ud_free(old);
     ud_free(now);

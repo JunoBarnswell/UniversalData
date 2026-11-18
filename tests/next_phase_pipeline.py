@@ -1,4 +1,5 @@
 """R1–R5 real destinations, native snapshots, receipts, and separate-process kills."""
+from contextlib import closing
 import collections, copy, json, pathlib, sqlite3, subprocess, sys, tempfile
 VERSION=12
 DRIVER,PLUGIN=sys.argv[1:3]
@@ -24,10 +25,10 @@ def package(root,count=10003,duplicates='first'):
         if violations:errors.update(violations);continue
         if fk is None:errors['cache.miss']+=1;continue
         normal.append((1000,id,tenant,fk,int(amount),int(amount)*2,tenant,fk,f'{tenant}-{fk}'))
-    with sqlite3.connect(root/'source.db') as db:
+    with closing(sqlite3.connect(root/'source.db')) as db, db:
         db.execute('CREATE TABLE src(water INTEGER NOT NULL,id INTEGER NOT NULL,tenant TEXT NOT NULL,fk INTEGER,amount TEXT,PRIMARY KEY(water,id))')
         db.executemany('INSERT INTO src VALUES(?,?,?,?,?)',rows)
-    with sqlite3.connect(root/'target.db') as db:
+    with closing(sqlite3.connect(root/'target.db')) as db, db:
         db.execute('CREATE TABLE output(water INTEGER NOT NULL,id INTEGER NOT NULL,tenant TEXT NOT NULL,fk INTEGER,amount INTEGER NOT NULL,doubled INTEGER NOT NULL,ref_tenant TEXT NOT NULL,ref_key INTEGER NOT NULL,label TEXT NOT NULL,PRIMARY KEY(water,id))')
         db.execute('CREATE TABLE errors(executionId TEXT NOT NULL,taskId TEXT NOT NULL,pipelineId TEXT NOT NULL,componentId TEXT NOT NULL,ruleId TEXT NOT NULL,ruleVersion INTEGER NOT NULL,columnId TEXT NOT NULL,sourceRowId TEXT NOT NULL,errorCode INTEGER NOT NULL,policy TEXT NOT NULL,errorKind TEXT NOT NULL,providerCode TEXT NOT NULL,inputFormat TEXT NOT NULL,sourcePosition U64_TEXT,packageId TEXT NOT NULL,PRIMARY KEY(sourceRowId,ruleId,componentId))')
     (root/'spill').mkdir();(root/'state').mkdir()
@@ -64,7 +65,7 @@ def run(root,resume=False,kill=0,after=1,component='',expected=0,workers=4,deny=
     return facts
 
 def verify(root,normal,errors,facts):
-    with sqlite3.connect(root/'target.db') as db:
+    with closing(sqlite3.connect(root/'target.db')) as db, db:
         actual=db.execute('SELECT * FROM output ORDER BY water,id').fetchall();assert actual==normal,(len(actual),len(normal))
         actual_errors=dict(db.execute('SELECT ruleId,count(*) FROM errors GROUP BY ruleId'));assert actual_errors==dict(errors),(actual_errors,errors)
         assert db.execute('SELECT count(DISTINCT sourceRowId) FROM errors').fetchone()[0] < sum(errors.values())
@@ -88,12 +89,12 @@ if __name__=="__main__":
          root=base/name;root.mkdir();doc,normal,errors=package(root)
          if kill:
              run(root,kill=kill,after=after,component=kill_component)
-             with sqlite3.connect(root/'target.db') as db:
+             with closing(sqlite3.connect(root/'target.db')) as db, db:
                  if name=='snapshot':assert db.execute('SELECT count(*) FROM output').fetchone()[0]==0
                  else:assert db.execute('SELECT count(*) FROM ud_sdk_receipts_v11').fetchone()[0]>0
          facts=run(root,resume=bool(kill));verify(root,normal,errors,facts)
          again=run(root,resume=True)
-         with sqlite3.connect(root/'target.db') as db:assert db.execute('SELECT count(*) FROM output').fetchone()[0]==len(normal)
+         with closing(sqlite3.connect(root/'target.db')) as db, db:assert db.execute('SELECT count(*) FROM output').fetchone()[0]==len(normal)
          assert again['acknowledgedErrors']==facts['acknowledgedErrors']
      # Cached data remains subject to its actual source grant after a target commit.
      root=base/'revoked';root.mkdir();doc,normal,errors=package(root)
@@ -109,7 +110,7 @@ if __name__=="__main__":
      run(root,resume=True,expected=9)
      # Independent partition positions, different rates, one interrupted target.
      root=base/'partitions';root.mkdir();doc,_,_=package(root,count=1003)
-     with sqlite3.connect(root/'target.db') as db:
+     with closing(sqlite3.connect(root/'target.db')) as db, db:
          db.execute('CREATE TABLE partitioned(water INTEGER NOT NULL,id INTEGER NOT NULL,tenant TEXT NOT NULL,fk INTEGER,amount TEXT,PRIMARY KEY(water,id))')
      original=copy.deepcopy(doc['dataFlows'][1]['components'][0]['config'])
      nodes=[];paths=[]
@@ -122,7 +123,7 @@ if __name__=="__main__":
      (root/'package.json').write_text(json.dumps(doc))
      run(root,kill=4,after=2,component='target1',workers=1)
      facts=run(root,resume=True,workers=1)
-     with sqlite3.connect(root/'target.db') as db:
+     with closing(sqlite3.connect(root/'target.db')) as db, db:
          assert db.execute('SELECT count(*),count(DISTINCT id),min(id),max(id) FROM partitioned').fetchone()==(1003,1003,1,1003)
      flow=facts['diagnostics']['pipelines'][0]
      cursors=[n['facts']['cursor'] for tree in flow['trees'] for n in tree['nodes'] if n['id'].startswith('source')]
@@ -130,10 +131,10 @@ if __name__=="__main__":
      assert all(c['lastConfirmed']==c['lastRead'] and not c['commitUnknown'] for c in cursors)
      # Actual metadata drift rejects before target files/receipts are created.
      root=base/'drift';root.mkdir();doc,normal,errors=package(root)
-     with sqlite3.connect(root/'source.db') as db:db.execute('ALTER TABLE src ADD COLUMN extra TEXT')
+     with closing(sqlite3.connect(root/'source.db')) as db, db:db.execute('ALTER TABLE src ADD COLUMN extra TEXT')
      facts=run(root,expected=10)
      assert not (root/'normal.ndjson').exists()
-     with sqlite3.connect(root/'target.db') as db:assert db.execute('SELECT count(*) FROM output').fetchone()[0]==0
+     with closing(sqlite3.connect(root/'target.db')) as db, db:assert db.execute('SELECT count(*) FROM output').fetchone()[0]==0
      # Explicit duplicate quarantine uses the normal destination and preserves First.
      root=base/'duplicates';root.mkdir();doc,normal,errors=package(root,duplicates='error');facts=run(root)
      assert len((root/'duplicate.ndjson').read_text().splitlines())==1

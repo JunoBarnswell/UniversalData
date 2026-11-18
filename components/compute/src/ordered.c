@@ -218,7 +218,8 @@ static int same_group(ud_advanced *a) {
     for (uint32_t k = 0; k < a->key_count; k++) {
         ud_value v;
         ud_batch_get(a->pending, a->row, a->keys[k], &v);
-        if (ud_value_compare(&v, a->group_key + k))
+        const ud_field *field = &a->sorted_schema->column[a->keys[k]].field;
+        if (ud_field_value_compare(field, &v, field, a->group_key + k))
             return 0;
     }
     return 1;

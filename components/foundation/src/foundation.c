@@ -21,7 +21,7 @@ struct ud_memory_domain {
     atomic_uint children;
     struct ud_memory_domain *parent;
 };
-static ud_status domain_reserve(ud_memory_domain *domain, uint64_t bytes) {
+ud_status ud_memory_domain_charge(ud_memory_domain *domain, uint64_t bytes) {
     for (ud_memory_domain *at = domain; at; at = at->parent) {
         uint64_t used = atomic_load(&at->used);
         do {
@@ -38,7 +38,7 @@ static ud_status domain_reserve(ud_memory_domain *domain, uint64_t bytes) {
     }
     return UD_OK;
 }
-static void domain_release(ud_memory_domain *domain, uint64_t bytes) {
+void ud_memory_domain_credit(ud_memory_domain *domain, uint64_t bytes) {
     for (ud_memory_domain *at = domain; at; at = at->parent)
         atomic_fetch_sub(&at->used, bytes);
 }
@@ -169,7 +169,7 @@ ud_status ud_memory_reserve(ud_context *ctx, uint64_t bytes, ud_memory_reservati
         return UD_RESOURCE;
     ud_memory_domain *domain =
         allocation_domain && allocation_domain->ctx == ctx ? allocation_domain : NULL;
-    if (domain_reserve(domain, bytes)) {
+    if (ud_memory_domain_charge(domain, bytes)) {
         ud_free(reservation);
         return ud_fail(ctx, UD_RESOURCE, "external codec domain quota exceeded");
     }
@@ -177,7 +177,7 @@ ud_status ud_memory_reserve(ud_context *ctx, uint64_t bytes, ud_memory_reservati
     do {
         if (used > ctx->options.memory_limit || bytes > ctx->options.memory_limit - used) {
             if (domain)
-                domain_release(domain, bytes);
+                ud_memory_domain_credit(domain, bytes);
             ud_free(reservation);
             return ud_fail(ctx, UD_RESOURCE, "external codec memory quota exceeded");
         }
@@ -193,7 +193,7 @@ void ud_memory_release(ud_memory_reservation *reservation) {
         return;
     atomic_fetch_sub(&reservation->ctx->used, reservation->bytes);
     if (reservation->domain)
-        domain_release(reservation->domain, reservation->bytes);
+        ud_memory_domain_credit(reservation->domain, reservation->bytes);
     ud_free(reservation);
 }
 void *ud_alloc(ud_context *c, size_t n) {
@@ -202,7 +202,7 @@ void *ud_alloc(ud_context *c, size_t n) {
     size_t total = n + sizeof(allocation);
     ud_memory_domain *domain =
         allocation_domain && allocation_domain->ctx == c ? allocation_domain : NULL;
-    if (domain_reserve(domain, total)) {
+    if (ud_memory_domain_charge(domain, total)) {
         ud_fail(c, UD_RESOURCE, "allocation domain quota exceeded");
         return NULL;
     }
@@ -211,7 +211,7 @@ void *ud_alloc(ud_context *c, size_t n) {
         if (old > c->options.memory_limit || total > c->options.memory_limit - old) {
             ud_fail(c, UD_RESOURCE, "memory quota exceeded: requested %zu bytes", total);
             if (domain)
-                domain_release(domain, total);
+                ud_memory_domain_credit(domain, total);
             return NULL;
         }
     } while (!atomic_compare_exchange_weak(&c->used, &old, old + total));
@@ -219,7 +219,7 @@ void *ud_alloc(ud_context *c, size_t n) {
     if (!a) {
         atomic_fetch_sub(&c->used, total);
         if (domain)
-            domain_release(domain, total);
+            ud_memory_domain_credit(domain, total);
         ud_fail(c, UD_RESOURCE, "allocator rejected %zu bytes", total);
         return NULL;
     }
@@ -229,6 +229,12 @@ void *ud_alloc(ud_context *c, size_t n) {
     void *p = a + 1;
     memset(p, 0, n);
     return p;
+}
+int ud_allocation_in_domain(const void *ptr, const ud_memory_domain *domain) {
+    for (const ud_memory_domain *at = ((const allocation *)ptr - 1)->h.domain; at; at = at->parent)
+        if (at == domain)
+            return 1;
+    return 0;
 }
 size_t ud_allocation_bytes(const void *ptr) {
     return ptr ? ((const allocation *)ptr - 1)->h.bytes : 0;
@@ -243,7 +249,7 @@ void ud_free(void *p) {
     c->options.deallocate(c->options.allocator_user, a);
     atomic_fetch_sub(&c->used, n);
     if (domain)
-        domain_release(domain, n);
+        ud_memory_domain_credit(domain, n);
 }
 ud_status ud_memory_domain_create(ud_context *ctx, uint64_t limit, ud_memory_domain **out) {
     if (!ctx || !limit || !out)

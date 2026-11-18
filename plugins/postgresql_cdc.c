@@ -250,29 +250,6 @@ static ud_status preflight(ud_pg_cdc *p, const ud_cdc_options *o, int managed) {
 }
 static ud_status tuple_value(ud_pg_cdc *p, const ud_field *f, const char *data, uint32_t n,
                              ud_value *out) {
-    if (f->type == UD_TIMESTAMP) {
-        char *text = plugin_string(&p->host, data, n);
-        if (!text)
-            return UD_RESOURCE;
-        for (uint32_t i = 0; i < n; i++)
-            if (text[i] == ' ')
-                text[i] = 'T';
-        if (n >= 3 && (text[n - 3] == '+' || text[n - 3] == '-')) {
-            char *full = p->host.allocate(p->host.context, n + 4);
-            if (!full) {
-                p->host.deallocate(text);
-                return UD_RESOURCE;
-            }
-            memcpy(full, text, n);
-            memcpy(full + n, ":00", 4);
-            p->host.deallocate(text);
-            text = full;
-            n += 3;
-        }
-        ud_status s = p->host.parse_field(p->host.context, f, text, n, UD_ROUND_EXACT, out);
-        p->host.deallocate(text);
-        return s;
-    }
     if (f->type == UD_BINARY) {
         if (n < 2 || data[0] != '\\' || data[1] != 'x' || (n - 2) % 2)
             return UD_PARSE;
@@ -295,7 +272,7 @@ static ud_status tuple_value(ud_pg_cdc *p, const ud_field *f, const char *data, 
         *out = (ud_value){.type = UD_BINARY, .text = bytes, .text_length = (n - 2) / 2};
         return UD_OK;
     }
-    return p->host.parse_field(p->host.context, f, data, n, UD_ROUND_EXACT, out);
+    return ud_pg_decode_scalar(&p->host, f, data, n, out);
 }
 static ud_status column_value(ud_pg_cdc *p, uint32_t column, const ud_field *field,
                               const char *data, uint32_t n, ud_value *out) {
@@ -771,6 +748,13 @@ ud_status ud_pg_cdc_confirm(ud_pg_cdc *p, ud_string position) {
         return s;
     if (lsn < p->confirmed || lsn > p->lsn)
         return UD_FENCED;
+    /* Replaying a sealed epoch can confirm before the first call to next.
+       Start the slot connection so the final position is sent to PostgreSQL. */
+    if (!p->streaming && !p->snapshot_mode) {
+        s = start_stream(p);
+        if (s)
+            return s;
+    }
     uint8_t message[34] = {0};
     message[0] = 'r';
     uint64_t fields[] = {lsn, lsn, lsn, (uint64_t)time(NULL) * 1000000 - UINT64_C(946684800000000)};
@@ -779,8 +763,18 @@ ud_status ud_pg_cdc_confirm(ud_pg_cdc *p, ud_string position) {
             message[1 + i * 8 + k] = (uint8_t)(fields[i] >> (56 - k * 8));
     if (p->streaming && PQputCopyData(p->replication, (const char *)message, sizeof(message)) != 1)
         return UD_TRANSIENT;
-    if (p->streaming && PQflush(p->replication) < 0)
-        return UD_TRANSIENT;
+    if (p->streaming) {
+        int flushed = PQflush(p->replication);
+        if (flushed > 0) {
+            if (PQsetnonblocking(p->replication, 0))
+                return UD_TRANSIENT;
+            flushed = PQflush(p->replication);
+            if (PQsetnonblocking(p->replication, 1))
+                return UD_TRANSIENT;
+        }
+        if (flushed)
+            return UD_TRANSIENT;
+    }
     p->confirmed = lsn;
     return UD_OK;
 }

@@ -24,6 +24,8 @@ typedef struct ud_state_reader {
 ud_status ud_state_create(ud_context *, ud_buffer_manager *, const ud_batch *, uint32_t,
                           ud_state **);
 ud_status ud_state_append(ud_state *, const ud_batch *, uint32_t);
+/* For rows from an input batch whose layout is already checked against the state schema. */
+ud_status ud_state_append_bound(ud_state *, const ud_batch *, uint32_t);
 ud_status ud_state_add_batch(ud_state *, const ud_batch *);
 ud_status ud_state_seal(ud_state *);
 ud_status ud_state_row(ud_state_reader *, const ud_state *, uint64_t, const ud_batch **,

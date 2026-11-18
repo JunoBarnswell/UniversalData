@@ -176,6 +176,25 @@ int main(void) {
     }
     OK(ud_operator_destroy(o));
     OK(ud_operator_destroy(restored));
+    // Multiple keys close together; output remains ordered by typed key.
+    OK(create("tumbling", "drop", 8388608, &o));
+    OK(ud_batch_create(ctx, fields, 3, 1024, &b));
+    for (int64_t key = 1023; key >= 0; key--) {
+        ud_value row[] = {{.type = UD_INT64, .integer = 1},
+                          {.type = UD_INT64, .integer = key},
+                          {.type = UD_INT64, .integer = key}};
+        OK(ud_batch_append(b, row, 3));
+    }
+    OK(ud_batch_seal(b));
+    OK(ud_operator_push(o, 0, b));
+    ud_batch_destroy(b);
+    OK(ud_operator_watermark(o, 12));
+    for (int64_t key = 0; key < 1024; key++) {
+        CHECK(ud_operator_input_demand(o) == 0);
+        CHECK(!expect(o, 0, 10, key));
+    }
+    CHECK(ud_operator_input_demand(o) == 1);
+    OK(ud_operator_destroy(o));
     // One million actual input events. Only active window states survive checkpoints.
     OK(create("tumbling", "drop", 1048576, &o));
     uint64_t emitted = 0, latency[1000], started = wall_ns();

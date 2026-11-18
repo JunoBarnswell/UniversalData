@@ -205,12 +205,29 @@ UD_API ud_status ud_value_numeric(int32_t operation, const ud_value *, const ud_
 /* Total order for values whose bound schemas match (including Decimal scale).
  * NULL first; NaN after all numeric values, all NaNs equal, +/-0 equal. */
 UD_API int32_t ud_value_compare(const ud_value *, const ud_value *);
+/* Column ComparisonFlags use the Windows NLS bit assignments. */
+enum ud_comparison_flag {
+    UD_COMPARE_IGNORE_CASE = 0x00000001,
+    UD_COMPARE_IGNORE_NONSPACE = 0x00000002,
+    UD_COMPARE_IGNORE_SYMBOLS = 0x00000004,
+    UD_COMPARE_LINGUISTIC_IGNORE_CASE = 0x00000010,
+    UD_COMPARE_LINGUISTIC_IGNORE_DIACRITIC = 0x00000020,
+    UD_COMPARE_STRING_SORT = 0x00001000,
+    UD_COMPARE_IGNORE_KANA = 0x00010000,
+    UD_COMPARE_IGNORE_WIDTH = 0x00020000,
+    UD_COMPARE_LINGUISTIC_CASING = 0x08000000
+};
+/* Declared-field keys require matching value types and text policies.
+ * Hash uses the same text key as Compare. The value-only APIs own wire identity. */
+UD_API int32_t ud_field_value_compare(const ud_field *, const ud_value *,
+                                      const ud_field *, const ud_value *);
 /* Seeded canonical FNV-1a key hash for valid values under matching schemas.
  * Equal values have equal hashes, including all NaNs, +/-0 and NULL payloads.
  * Hash collisions require Compare. Not a security digest. Start with this seed;
  * compose ordered keys by passing each result as the seed for the next value. */
 #define UD_VALUE_HASH_SEED UINT64_C(14695981039346656037)
 UD_API uint64_t ud_value_hash(const ud_value *, uint64_t seed);
+UD_API uint64_t ud_field_value_hash(const ud_field *, const ud_value *, uint64_t seed);
 UD_API int32_t ud_truth_and(int32_t, int32_t);
 UD_API int32_t ud_truth_or(int32_t, int32_t);
 UD_API int32_t ud_truth_not(int32_t);

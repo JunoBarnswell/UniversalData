@@ -729,12 +729,15 @@ static ud_status connector_execute_command(void *state, const ud_read_options *o
 }
 static ud_status begin_transaction(void *state, int32_t isolation) {
     sqlite_state *p = state;
-    if (p->transaction || isolation != UD_ISOLATION_SERIALIZABLE)
+    if (p->transaction ||
+        (isolation != UD_ISOLATION_SERIALIZABLE && isolation != UD_ISOLATION_READ_SNAPSHOT))
         return UD_UNSUPPORTED;
     ud_status checked = control(p);
     if (checked)
         return checked;
-    int rc = sqlite3_exec(p->db, "BEGIN IMMEDIATE", NULL, NULL, NULL);
+    const char *sql = isolation == UD_ISOLATION_READ_SNAPSHOT ? "BEGIN DEFERRED"
+                                                               : "BEGIN IMMEDIATE";
+    int rc = sqlite3_exec(p->db, sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK)
         return failure(p, rc);
     p->transaction = 1;
@@ -852,7 +855,8 @@ static ud_status provision(void *state) {
 static const ud_connector_api connector = {
     .struct_size = sizeof(connector),
     .abi_version = UD_PLUGIN_ABI,
-    .capabilities = UD_CONNECT_READONLY_SCAN | UD_CONNECT_READ | UD_CONNECT_RECORD_ERRORS |
+    .capabilities = UD_CONNECT_READ_SNAPSHOT | UD_CONNECT_READONLY_SCAN | UD_CONNECT_READ |
+                    UD_CONNECT_RECORD_ERRORS |
                     UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
                     UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
                     UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |

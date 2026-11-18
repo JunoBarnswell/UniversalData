@@ -22,7 +22,7 @@ static ud_status key_hash(ud_relational *r, uint32_t p, const ud_batch *b, uint3
         ud_value v;
         UD_TRY(ud_batch_get(b, row, r->keys[p][k], &v));
         *null |= !!v.is_null;
-        *out = ud_value_hash(&v, *out);
+        *out = ud_field_value_hash(&r->inputs[p]->column[r->keys[p][k]].field, &v, *out);
     }
     return UD_OK;
 }
@@ -33,43 +33,43 @@ ud_status ud_hash_join_create(ud_relational *r) {
     ud_hash_join *h = r->hash_join;
     h->count = r->algorithm == UD_PHYSICAL_HASH ? 1 : 16;
     h->budget = r->options.memory_budget ? r->options.memory_budget : 16u * 1024u * 1024u;
-    if (r->options.buffers) {
-        ud_buffer_options limits = {.struct_size = sizeof(limits), .abi_version = UD_ABI_VERSION};
-        UD_TRY(ud_buffer_manager_limits(r->options.buffers, &limits));
-        if (h->budget > limits.working_limit / 2)
-            h->budget = limits.working_limit / 2;
-    }
     return UD_OK;
 }
 ud_status ud_hash_join_push(ud_relational *r, uint32_t p, const ud_batch *b) {
     ud_hash_join *h = r->hash_join;
-    if (p > 1 || r->in[p].ended || !b || !b->sealed || !r->options.buffers)
+    if (p > 1 || r->in[p].ended || !b || b->ctx != r->ctx || !b->sealed || !r->options.buffers)
         return UD_INVALID;
     UD_TRY(ud_rel_control(r));
-    ud_partition_options options = {.struct_size = sizeof(options),
-                                    .abi_version = UD_ABI_VERSION,
-                                    .strategy = UD_PARTITION_HASH,
-                                    .count = h->count,
-                                    .keys = r->keys[p],
-                                    .key_count = r->key_count};
-    ud_batch **parts = NULL;
-    ud_status s = ud_batch_partition(r->ctx, b, &options, &parts);
-    for (uint32_t i = 0; !s && i < h->count; i++)
-        if (parts[i]->rows) {
-            if (!h->partitions[p][i])
-                s = ud_state_create(r->ctx, r->options.buffers, r->inputs[p],
-                                    r->options.max_batch_rows, &h->partitions[p][i]);
-            if (!s)
-                s = ud_state_add_batch(h->partitions[p][i], parts[i]);
+    if (!b->rows)
+        return UD_OK;
+    if (h->count == 1) {
+        ud_state **state = &h->partitions[p][0];
+        if (!*state)
+            UD_TRY(ud_state_create(r->ctx, r->options.buffers, r->inputs[p],
+                                   r->options.max_batch_rows, state));
+        UD_TRY(ud_state_add_batch(*state, b));
+    } else {
+        const ud_batch *schema = r->inputs[p];
+        if (b->columns != schema->columns)
+            return UD_INVALID;
+        for (uint32_t i = 0; i < b->columns; i++)
+            if (!ud_field_matches(&b->column[i].field, &schema->column[i].field, UD_FIELD_PORT))
+                return UD_SCHEMA;
+        for (uint32_t row = 0; row < b->rows; row++) {
+            if (ud_is_cancelled(r->ctx))
+                return UD_CANCELLED;
+            uint64_t hash;
+            int null;
+            UD_TRY(key_hash(r, p, b, row, &hash, &null));
+            ud_state **state = &h->partitions[p][hash % h->count];
+            if (!*state)
+                UD_TRY(ud_state_create(r->ctx, r->options.buffers, schema,
+                                       r->options.max_batch_rows, state));
+            UD_TRY(ud_state_append_bound(*state, b, row));
         }
-    if (parts) {
-        for (uint32_t i = 0; i < h->count; i++)
-            ud_batch_destroy(parts[i]);
-        ud_free(parts);
     }
-    if (!s)
-        r->processed[p] += b->rows;
-    return s;
+    r->processed[p] += b->rows;
+    return UD_OK;
 }
 ud_status ud_hash_join_end(ud_relational *r, uint32_t p) {
     ud_hash_join *h = r->hash_join;
@@ -86,7 +86,6 @@ static void index_clear(ud_hash_join *h) {
     ud_state_reader_clear(&h->right_reader);
     ud_free(h->nodes);
     h->nodes = NULL;
-    ud_free(h->buckets);
     h->buckets = NULL;
     ud_operator_destroy(h->fallback);
     h->fallback = NULL;
@@ -158,34 +157,32 @@ static ud_status merge_fallback(ud_relational *r) {
             ud_state_destroy(h->partitions[p][h->partition]);
             h->partitions[p][h->partition] = NULL;
         }
+    if (!s)
+        r->hash_fallbacks++;
     return s;
 }
 static ud_status index_build(ud_relational *r) {
     ud_hash_join *h = r->hash_join;
     ud_state *right = h->partitions[1][h->partition];
     uint64_t n = right ? right->rows : 0;
+    if (n > UINT32_MAX / 2)
+        return r->algorithm == UD_PHYSICAL_GRACE_HASH ? merge_fallback(r) : UD_RESOURCE;
     uint64_t bucket_count = 16;
     while (bucket_count < n * 2 && bucket_count < UINT32_MAX / 2)
         bucket_count *= 2;
-    if (n > UINT32_MAX / 2) {
-        if (r->algorithm == UD_PHYSICAL_HASH)
-            return UD_RESOURCE;
-        return merge_fallback(r);
-    }
     uint64_t required = n * sizeof(hash_row) + bucket_count * sizeof(uint32_t);
-    ud_buffer_metrics used = {0};
-    UD_TRY(ud_buffer_manager_metrics(r->options.buffers, &used));
-    if (n > UINT32_MAX || n > UINT64_MAX / sizeof(hash_row) || required > h->budget ||
-        used.working_bytes > h->budget - required) {
-        if (r->algorithm == UD_PHYSICAL_HASH)
-            return UD_RESOURCE;
-        return merge_fallback(r);
-    }
-    if (n)
-        UD_TRY(ud_buffer_working_allocate(r->options.buffers, (size_t)n * sizeof(hash_row),
-                                          (void **)&h->nodes));
-    UD_TRY(ud_buffer_working_allocate(r->options.buffers, (size_t)bucket_count * sizeof(uint32_t),
-                                      (void **)&h->buckets));
+    void *index = NULL;
+    ud_status reservation = required > h->budget || required > SIZE_MAX
+                                ? UD_RESOURCE
+                                : ud_buffer_working_allocate(r->options.buffers, (size_t)required,
+                                                              &index);
+    if (reservation)
+        return reservation == UD_RESOURCE && r->algorithm == UD_PHYSICAL_GRACE_HASH
+                   ? merge_fallback(r)
+                   : reservation;
+    /* The row array owns the allocation. Its stride also aligns the bucket array. */
+    h->nodes = index;
+    h->buckets = (uint32_t *)(h->nodes + n);
     h->bucket_count = (uint32_t)bucket_count;
     h->node_count = (uint32_t)n;
     memset(h->buckets, 255, (size_t)bucket_count * sizeof(*h->buckets));

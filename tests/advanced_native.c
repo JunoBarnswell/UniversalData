@@ -4,6 +4,7 @@
 #include "ud/cache.h"
 #include "ud/format.h"
 #include "ud/regex.h"
+#include "../components/execution/executor.h"
 #include <string.h>
 #include <math.h>
 static ud_string text(const char *s) {
@@ -92,14 +93,16 @@ static int join_matrix(ud_context *c, ud_buffer_manager *m) {
              "[{\"rk\":null},{\"rk\":2},{\"rk\":2},{\"rk\":3}]", &r));
     const char *types[] = {"inner", "left", "right", "full", "semi", "anti"};
     uint32_t expected[] = {2, 4, 4, 6, 1, 2};
-    const char *strategies[] = {"hash", "graceHash", "merge"};
+    const char *strategies[] = {"hash", "graceHash", "merge", "graceHash"};
+    void *exchange = NULL;
+    OK(ud_buffer_working_allocate(m, 2 * 1048576, &exchange));
     ud_field lf, rf;
     OK(ud_batch_field(l, 0, &lf));
     OK(ud_batch_field(r, 0, &rf));
     ud_sort_contract orders[2] = {
         {.count = 1, .stable = 1, .keys = {{.field = lf.identity, .nulls_first = 1}}},
         {.count = 1, .stable = 1, .keys = {{.field = rf.identity, .nulls_first = 1}}}};
-    for (uint32_t a = 0; a < 3; a++)
+    for (uint32_t a = 0; a < sizeof(strategies) / sizeof(*strategies); a++)
         for (uint32_t k = 0; k < 6; k++) {
             char cfg[180];
             snprintf(cfg, sizeof(cfg),
@@ -112,7 +115,7 @@ static int join_matrix(ud_context *c, ud_buffer_manager *m) {
                                      .buffers = m,
                                      .configuration = text(cfg),
                                      .input_order = orders,
-                                     .memory_budget = 1048576,
+                                     .memory_budget = a == 3 ? 64 : 1048576,
                                      .record_state = 1};
             const ud_batch *in[] = {l, r};
             ud_operator *j = NULL;
@@ -133,10 +136,192 @@ static int join_matrix(ud_context *c, ud_buffer_manager *m) {
                 b = NULL;
             }
             CHECK(s == UD_END && rows == expected[k]);
+            char *diagnostics = NULL;
+            uint32_t length;
+            OK(ud_operator_diagnostics(j, &diagnostics, &length));
+            CHECK(!!strstr(diagnostics, "\"hashFallbacks\":0") == (a != 3));
+            ud_free(diagnostics);
             OK(ud_operator_destroy(j));
         }
+    ud_free(exchange);
     ud_batch_destroy(l);
     ud_batch_destroy(r);
+    return 0;
+}
+static int sort_text_keys(ud_context *c, ud_buffer_manager *m, ud_executor *executor,
+                          const ud_field *fields, const ud_batch *schema) {
+    const uint32_t key = 0, input_rows = 8193;
+    const ud_batch *inputs[] = {schema};
+    ud_operator_options options = {.struct_size = sizeof(options),
+                                   .abi_version = UD_ABI_VERSION,
+                                   .kind = UD_OPERATOR_SORT,
+                                   .keys = &key,
+                                   .key_count = 1,
+                                   .max_batch_rows = input_rows,
+                                   .partition_count = 3,
+                                   .executor = executor,
+                                   .buffers = m};
+    ud_operator *sort = NULL;
+    OK(ud_operator_create(c, &options, inputs, &sort));
+    const char *labels[] = {"Z", "café", "Cafe", "b", "CAFÉ", "z"};
+    for (uint32_t run = 0; run < 2; run++) {
+        ud_batch *batch = NULL;
+        OK(ud_batch_create(c, fields, 2, input_rows, &batch));
+        for (uint32_t row = 0; row < input_rows; row++) {
+            uint32_t seq = run * input_rows + row;
+            ud_string label = text(labels[seq % 6]);
+            ud_value values[] = {{.type = UD_UTF8, .text = label.data, .text_length = label.length},
+                                  {.type = UD_INT64, .integer = seq}};
+            OK(ud_batch_append(batch, values, 2));
+        }
+        OK(ud_batch_seal(batch));
+        OK(ud_operator_push(sort, 0, batch));
+        ud_batch_destroy(batch);
+    }
+    OK(ud_operator_finish_input(sort, 0));
+    const int group_by_label[] = {2, 1, 1, 0, 1, 2};
+    uint32_t counts[3] = {0};
+    int previous_group = -1;
+    int64_t previous_seq = -1;
+    ud_batch *out = NULL;
+    ud_status status;
+    while ((status = ud_operator_pull(sort, &out, NULL)) == UD_OK) {
+        for (uint32_t row = 0; row < ud_batch_rows(out); row++) {
+            ud_value seq;
+            OK(ud_batch_get(out, row, 1, &seq));
+            CHECK(seq.integer >= 0 && seq.integer < 2 * input_rows);
+            int group = group_by_label[seq.integer % 6];
+            CHECK(group > previous_group || (group == previous_group && seq.integer > previous_seq));
+            counts[group]++;
+            previous_group = group;
+            previous_seq = seq.integer;
+        }
+        ud_batch_destroy(out);
+        out = NULL;
+    }
+    CHECK(status == UD_END);
+    CHECK(counts[0] == 2731 && counts[1] == 8193 && counts[2] == 5462);
+    OK(ud_operator_destroy(sort));
+    return 0;
+}
+static int text_keys(ud_context *c, ud_buffer_manager *m) {
+    const char *schema =
+        "{\"version\":12,\"fields\":[{\"name\":\"label\",\"type\":\"utf8\",\"nullable\":false,"
+        "\"scalar\":{\"type\":\"DT_WSTR\",\"length\":16,\"localeId\":1033,\"comparisonFlags\":3}},"
+        "{\"name\":\"seq\",\"type\":\"int64\",\"nullable\":false}]}";
+    ud_batch *left = NULL, *right = NULL;
+    OK(input(c, schema, "[{\"label\":\"Z\",\"seq\":1},{\"label\":\"caf\u00e9\",\"seq\":2},"
+                        "{\"label\":\"Cafe\",\"seq\":3}]", &left));
+    OK(input(c, schema, "[{\"label\":\"b\",\"seq\":4},{\"label\":\"CAF\u00c9\",\"seq\":5},"
+                        "{\"label\":\"z\",\"seq\":6}]", &right));
+    const ud_batch *inputs[] = {left, right};
+    const uint32_t key = 0;
+    const char *aggregation = "{\"version\":12,\"group\":[\"label\"],\"aggregates\":["
+                              "{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
+    ud_field fields[2];
+    OK(ud_batch_field(left, 0, fields));
+    OK(ud_batch_field(left, 1, fields + 1));
+    ud_plan *plan = NULL;
+    OK(ud_plan_create_fields(c, UD_PLAN_VERSION, fields, 2, text(aggregation), NULL, &plan));
+    ud_executor *executor = NULL;
+    OK(ud_executor_create(c, 3, &executor));
+    OK(ud_executor_start(executor));
+    CHECK(!sort_text_keys(c, m, executor, fields, left));
+    const int kinds[] = {UD_OPERATOR_AGGREGATE, UD_OPERATOR_DEDUPLICATE, UD_OPERATOR_EVENT_WINDOW,
+                         UD_OPERATOR_JOIN, UD_OPERATOR_JOIN};
+    for (uint32_t i = 0; i < sizeof(kinds) / sizeof(*kinds); i++) {
+        ud_operator_options options = {.struct_size = sizeof(options),
+                                       .abi_version = UD_ABI_VERSION,
+                                       .kind = kinds[i],
+                                       .keys = &key,
+                                       .key_count = 1,
+                                       .max_batch_rows = 3,
+                                       .partition_count = 3,
+                                       .executor = executor,
+                                       .buffers = m,
+                                       .memory_budget = 1048576,
+                                       .spill_budget = 16777216};
+        if (i == 0)
+            options.aggregation = plan;
+        else if (i == 1)
+            options.configuration = text("{\"keys\":[\"label\"]}");
+        else if (i == 2) {
+            char window[512];
+            snprintf(window, sizeof(window),
+                     "{\"mode\":\"tumbling\",\"timeField\":\"seq\",\"sizeMicros\":10,"
+                     "\"stateBytes\":1048576,\"plan\":%s}", aggregation);
+            options.configuration = text(window);
+            /* The binder consumes the complete configuration synchronously. */
+            ud_operator *event = NULL;
+            OK(ud_operator_create(c, &options, inputs, &event));
+            OK(ud_operator_push(event, 0, left));
+            OK(ud_operator_push(event, 0, right));
+            OK(ud_operator_finish_input(event, 0));
+            ud_batch *output = NULL;
+            const uint64_t counts[] = {1, 3, 2};
+            for (uint32_t k = 0; k < 3; k++) {
+                OK(ud_operator_pull(event, &output, NULL));
+                ud_value count;
+                OK(ud_batch_get(output, 0, 3, &count));
+                CHECK(count.unsigned_integer == counts[k]);
+                ud_batch_destroy(output);
+                output = NULL;
+            }
+            CHECK(ud_operator_pull(event, &output, NULL) == UD_END);
+            OK(ud_operator_destroy(event));
+            continue;
+        } else {
+            options.keys = NULL;
+            options.key_count = 0;
+            options.configuration = text(
+                i == 3 ? "{\"leftKeys\":[0],\"rightKeys\":[0],\"strategy\":\"graceHash\"}"
+                       : "{\"leftKeys\":[0],\"rightKeys\":[0],\"strategy\":\"merge\"}");
+        }
+        ud_operator *operator = NULL;
+        OK(ud_operator_create(c, &options, inputs, &operator));
+        OK(ud_operator_push(operator, 0, left));
+        OK(ud_operator_push(operator, i > 2, right));
+        OK(ud_operator_finish_input(operator, 0));
+        if (i > 2)
+            OK(ud_operator_finish_input(operator, 1));
+        const uint32_t input_groups[] = {2, 1, 1, 0, 1, 2};
+        uint32_t counts = 0, duplicates = 0, seen = 0, port;
+        ud_batch *output = NULL;
+        ud_status s;
+        while ((s = ud_operator_pull(operator, &output, &port)) == UD_OK) {
+            for (uint32_t row = 0; row < ud_batch_rows(output); row++) {
+                ud_value value;
+                OK(ud_batch_get(output, row, 1, &value));
+                if (i == 0) {
+                    CHECK(value.unsigned_integer >= 1 && value.unsigned_integer <= 3);
+                    seen |= 1u << value.unsigned_integer;
+                } else if (i == 1) {
+                    if (port == 1) {
+                        duplicates++;
+                        continue;
+                    }
+                    CHECK(port == 0 && counts < 3 && value.integer >= 1 && value.integer <= 6);
+                    CHECK(input_groups[value.integer - 1] == counts);
+                } else {
+                    CHECK(value.integer >= 1 && value.integer <= 3);
+                    seen |= 1u << value.integer;
+                }
+                counts++;
+            }
+            ud_batch_destroy(output);
+            output = NULL;
+        }
+        CHECK(s == UD_END && counts == 3);
+        if (i != 1)
+            CHECK(seen == 14u);
+        if (i == 1)
+            CHECK(duplicates == 3);
+        OK(ud_operator_destroy(operator));
+    }
+    OK(ud_executor_destroy(executor));
+    ud_plan_destroy(plan);
+    ud_batch_destroy(right);
+    ud_batch_destroy(left);
     return 0;
 }
 static int windows(ud_context *c, ud_buffer_manager *m) {
@@ -328,6 +513,7 @@ int main(void) {
                                 &m));
     CHECK(!slice_roundtrip(c));
     CHECK(!join_matrix(c, m));
+    CHECK(!text_keys(c, m));
     CHECK(!windows(c, m));
     CHECK(!cache_state(c, m));
     CHECK(!text_and_restore(c, m));

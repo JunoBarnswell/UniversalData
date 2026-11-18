@@ -2,6 +2,7 @@
 #include "relational.h"
 #include "window.h"
 #include "event_window.h"
+#include "event_match.h"
 #include "advanced.h"
 #include "replay.h"
 #include "../internal.h"
@@ -25,6 +26,7 @@ struct ud_operator {
     ud_relational *relational;
     ud_window *window;
     ud_event_window *event_window;
+    ud_event_match *event_match;
     ud_advanced *advanced;
     ud_replay *replay;
     ud_context *ctx;
@@ -33,6 +35,7 @@ struct ud_operator {
     uint32_t *keys, ports, ended, run_count;
     uint8_t port_ended[2];
     run *runs[2], *tail[2];
+    ud_value *run_bounds;
     cursor merge[32];
     uint32_t merge_count;
     int prepared, failed, raw_aggregation;
@@ -43,6 +46,11 @@ struct ud_operator {
     ud_value *group_keys;
     int group_active, input_done, saw_group;
 };
+ud_status ud_operator_lookup_observe(ud_operator *o, const ud_batch *observations) {
+    if (!o || o->options.kind != UD_OPERATOR_CACHE_LOOKUP)
+        return UD_INVALID;
+    return ud_advanced_lookup_observe(o->advanced, observations);
+}
 static ud_status check(ud_operator *o) {
     if (o->failed)
         return UD_INVALID;
@@ -124,7 +132,8 @@ static int compare(ud_operator *o, const cursor *a, const cursor *b) {
         ud_value x, y;
         ud_batch_get(a->batch, a->row, o->keys[i], &x);
         ud_batch_get(b->batch, b->row, o->keys[i], &y);
-        int order = ud_value_compare(&x, &y);
+        const ud_field *field = &o->inputs[0]->column[o->keys[i]].field;
+        int order = ud_field_value_compare(field, &x, field, &y);
         if (order)
             return o->options.descending ? -order : order;
     }
@@ -266,7 +275,7 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
         return UD_INVALID;
     if (options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    if (options->kind < UD_OPERATOR_SORT || options->kind > UD_OPERATOR_EVENT_WINDOW ||
+    if (options->kind < UD_OPERATOR_SORT || options->kind > UD_OPERATOR_EVENT_JOIN ||
         !options->max_batch_rows || options->max_batch_rows > 65536 || options->descending < 0 ||
         options->descending > 1 || options->partition_count > 64 ||
         (options->partition_count > 1 && !options->executor))
@@ -276,7 +285,9 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
         return UD_RESOURCE;
     o->ctx = ctx;
     o->options = *options;
-    ud_status captured = options->kind == UD_OPERATOR_EVENT_WINDOW ? UD_OK : ud_replay_create(ctx, options, inputs, &o->replay);
+    ud_status captured = options->kind >= UD_OPERATOR_EVENT_WINDOW
+                           ? UD_OK
+                           : ud_replay_create(ctx, options, inputs, &o->replay);
     if (captured) {
         ud_free(o);
         return captured;
@@ -292,6 +303,15 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
         ud_status status = ud_event_window_create(ctx, options, inputs[0], &o->event_window);
         if (status) { ud_free(o); return status; }
         *out = o; return UD_OK;
+    }
+    if (options->kind == UD_OPERATOR_EVENT_DEDUPLICATE || options->kind == UD_OPERATOR_EVENT_JOIN) {
+        ud_status status = ud_event_match_create(ctx, options, inputs, &o->event_match);
+        if (status) {
+            ud_free(o);
+            return status;
+        }
+        *out = o;
+        return UD_OK;
     }
     if (options->kind >= UD_OPERATOR_DEDUPLICATE && options->kind != UD_OPERATOR_ASOF_JOIN &&
         options->kind != UD_OPERATOR_TEMPORAL_JOIN && options->kind != UD_OPERATOR_DIFF_COMPARE) {
@@ -394,6 +414,16 @@ static ud_status create_bound(ud_context *ctx, const ud_operator_options *option
         }
     }
 
+    if (!s && options->kind == UD_OPERATOR_SORT && options->buffers && options->key_count) {
+        int fixed = 1;
+        for (uint32_t i = 0; fixed && i < options->key_count; i++) {
+            const ud_field *f = &inputs[0]->column[o->keys[i]].field;
+            fixed = f->type != UD_UTF8 && f->type != UD_BINARY && f->type < UD_STRUCT;
+        }
+        if (fixed)
+            (void)ud_buffer_working_allocate(options->buffers,
+                    2 * (size_t)options->key_count * sizeof(ud_value), (void **)&o->run_bounds);
+    }
     if (s) {
         (void)ud_operator_destroy(o);
         return s;
@@ -405,6 +435,7 @@ ud_status ud_operator_schema(const ud_operator *o, uint32_t output, ud_batch **o
     if (!o || !out)
         return UD_INVALID;
     if (o->event_window) return ud_event_window_schema(o->event_window, output, out);
+    if (o->event_match) return ud_event_match_schema(o->event_match, output, out);
     if (o->advanced)
         return ud_advanced_schema(o->advanced, output, out);
     if (o->window)
@@ -476,6 +507,53 @@ static ud_status partition_quantum(void *user, uint32_t index) {
     ud_batch_destroy(piece);
     return status;
 }
+static int compare_bound(ud_operator *o, const ud_batch *batch, uint32_t row, const ud_value *bound) {
+    for (uint32_t i = 0; i < o->options.key_count; i++) {
+        ud_value value;
+        ud_batch_get(batch, row, o->keys[i], &value);
+        const ud_field *field = &batch->column[o->keys[i]].field;
+        int order = ud_field_value_compare(field, &value, field, bound + i);
+        if (order)
+            return o->options.descending ? -order : order;
+    }
+    return 0;
+}
+
+/* Concatenate disjoint sorted ranges without re-reading spill blocks. Equal
+ * boundaries may append but cannot prepend without breaking stable tie order. */
+static ud_status publish_sorted(ud_operator *o, ud_batch *batch) {
+    run *tail = o->tail[0];
+    uint32_t n = o->options.key_count;
+    int append = tail && o->run_bounds && compare_bound(o, batch, 0, o->run_bounds + n) >= 0;
+    int prepend = !append && tail && o->run_bounds &&
+                  compare_bound(o, batch, batch->rows - 1, o->run_bounds) < 0;
+    if (!append && !prepend) {
+        run *next = ud_alloc(o->ctx, sizeof(*next));
+        if (!next)
+            return UD_RESOURCE;
+        if (tail)
+            tail->next = next;
+        else
+            o->runs[0] = next;
+        tail = o->tail[0] = next;
+        o->run_count++;
+    }
+    if (prepend) {
+        run prefix = {0};
+        UD_TRY(store(o, &prefix, batch));
+        prefix.tail->next = tail->head;
+        tail->head = prefix.head;
+    } else
+        UD_TRY(store(o, tail, batch));
+    for (uint32_t i = 0; o->run_bounds && i < n; i++) {
+        if (!append)
+            UD_TRY(ud_batch_get(batch, 0, o->keys[i], o->run_bounds + i));
+        if (!prepend)
+            UD_TRY(ud_batch_get(batch, batch->rows - 1, o->keys[i], o->run_bounds + n + i));
+    }
+    return UD_OK;
+}
+
 static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *input) {
     partition_work work = {
         .operator= o, .input = input, .count = o->options.partition_count, .port = port};
@@ -512,20 +590,8 @@ static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *in
     for (uint32_t i = 0; !status && i < work.count; i++) {
         if (o->options.kind == UD_OPERATOR_AGGREGATE)
             status = ud_operator_push(o->group_sort, 0, work.results[i]);
-        else {
-            run *r = ud_alloc(o->ctx, sizeof(*r));
-            if (!r) {
-                status = UD_RESOURCE;
-                break;
-            }
-            if (o->tail[0])
-                o->tail[0]->next = r;
-            else
-                o->runs[0] = r;
-            o->tail[0] = r;
-            o->run_count++;
-            status = store(o, r, work.results[i]);
-        }
+        else
+            status = publish_sorted(o, work.results[i]);
     }
     for (uint32_t i = 0; i < work.count; i++) {
         ud_batch_destroy(work.results[i]);
@@ -536,6 +602,7 @@ static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *in
 }
 static ud_status operator_push(ud_operator *o, uint32_t port, const ud_batch *input) {
     if (o && o->event_window) return port ? UD_INVALID : ud_event_window_push(o->event_window, input);
+    if (o && o->event_match) return ud_event_match_push(o->event_match, port, input);
     if (o && o->advanced)
         return ud_advanced_push(o->advanced, port, input);
     if (o && o->window) {
@@ -564,6 +631,7 @@ static ud_status operator_push(ud_operator *o, uint32_t port, const ud_batch *in
 }
 static ud_status operator_end(ud_operator *o, uint32_t port) {
     if (o && o->event_window) return port ? UD_INVALID : ud_event_window_end(o->event_window);
+    if (o && o->event_match) return ud_event_match_end(o->event_match, port);
     if (o && o->advanced)
         return ud_advanced_end(o->advanced, port);
     if (o && o->window)
@@ -617,7 +685,8 @@ static ud_status aggregate_pull(ud_operator *o, ud_batch **out) {
                 ud_value key;
                 s = ud_batch_get(o->pending, o->pending_row, o->raw_aggregation ? p->keys[i] : i,
                                  &key);
-                if (s || ud_value_compare(&key, o->group_keys + i)) {
+                const ud_field *field = &p->output_schema->column[i].field;
+                if (s || ud_field_value_compare(field, &key, field, o->group_keys + i)) {
                     boundary = 1;
                     break;
                 }
@@ -684,6 +753,7 @@ static ud_status operator_pull(ud_operator *o, ud_batch **out, uint32_t *output)
     if (output)
         *output = 0;
     if (o->event_window) return ud_event_window_pull(o->event_window, out, output);
+    if (o->event_match) return ud_event_match_pull(o->event_match, out, output);
     if (o->advanced)
         return ud_advanced_pull(o->advanced, out, output);
     if (o->window)
@@ -734,11 +804,15 @@ ud_status ud_operator_pull(ud_operator *o, ud_batch **b, uint32_t *port) {
     return s;
 }
 ud_status ud_operator_watermark(ud_operator *o, int64_t watermark) {
+    if (o && o->event_match)
+        return ud_event_match_watermark(o->event_match, watermark);
     return o && o->event_window ? ud_event_window_watermark(o->event_window, watermark) : UD_UNSUPPORTED;
 }
 ud_status ud_operator_checkpoint(ud_operator *o, ud_batch **out) {
     if (!o || !out)
         return UD_INVALID;
+    if (o->event_match)
+        return ud_event_match_checkpoint(o->event_match, out);
     return o->event_window ? ud_event_window_checkpoint(o->event_window, out) : ud_replay_snapshot(o->replay, out);
 }
 ud_status ud_operator_restore(ud_operator **instance, const ud_batch *snapshot) {
@@ -746,6 +820,7 @@ ud_status ud_operator_restore(ud_operator **instance, const ud_batch *snapshot) 
         return UD_INVALID;
     ud_operator *old = *instance, *restored = NULL;
     if (old->event_window) return ud_event_window_restore(&old->event_window, snapshot);
+    if (old->event_match) return ud_event_match_restore(&old->event_match, snapshot);
     ud_status s = ud_replay_restore(old->replay, snapshot, &restored);
     if (!s)
         s = ud_replay_rebase(old->replay, snapshot);
@@ -763,6 +838,7 @@ ud_status ud_operator_destroy(ud_operator *o) {
     if (!o)
         return UD_OK;
     if (o->event_window) { ud_event_window_destroy(o->event_window); ud_free(o); return UD_OK; }
+    if (o->event_match) { ud_event_match_destroy(o->event_match); ud_free(o); return UD_OK; }
     if (o->advanced) {
         ud_advanced_destroy(o->advanced);
         ud_replay_destroy(o->replay);
@@ -804,6 +880,7 @@ ud_status ud_operator_destroy(ud_operator *o) {
         ud_batch_destroy(o->inputs[i]);
     ud_batch_destroy(o->schema);
     ud_plan_destroy(o->options.aggregation);
+    ud_free(o->run_bounds);
     ud_free(o->keys);
     ud_replay_destroy(o->replay);
     ud_free(o);
@@ -818,7 +895,7 @@ ud_status ud_operator_order(const ud_operator *o, ud_sort_contract *out) {
     if (!o || !out)
         return UD_INVALID;
     memset(out, 0, sizeof(*out));
-    if (o->event_window) return UD_OK;
+    if (o->event_window || o->event_match) return UD_OK;
     if (o->advanced)
         return ud_advanced_order(o->advanced, out);
     if (o->window)
@@ -840,6 +917,7 @@ uint64_t ud_operator_input_demand(const ud_operator *o) {
     if (!o)
         return 0;
     if (o->event_window) return ud_event_window_demand(o->event_window);
+    if (o->event_match) return ud_event_match_demand(o->event_match);
     if (o->advanced)
         return ud_advanced_demand(o->advanced);
     if (o->window)
@@ -856,6 +934,7 @@ ud_status ud_operator_diagnostics(const ud_operator *o, char **json, uint32_t *l
     if (!o || !json || !length)
         return UD_INVALID;
     if (o->event_window) return ud_event_window_diagnostics(o->event_window, json, length);
+    if (o->event_match) return ud_event_match_diagnostics(o->event_match, json, length);
     if (o->advanced)
         return ud_advanced_diagnostics(o->advanced, json, length);
     if (o->relational)
@@ -881,7 +960,8 @@ ud_status ud_operator_physical_plan(const ud_operator *o, ud_physical_plan_info 
     out->input_count = o->options.input_count ? o->options.input_count
                        : o->options.kind == UD_OPERATOR_JOIN ||
                                o->options.kind == UD_OPERATOR_MERGE ||
-                               o->options.kind == UD_OPERATOR_MERGE_JOIN
+                               o->options.kind == UD_OPERATOR_MERGE_JOIN ||
+                               o->options.kind == UD_OPERATOR_EVENT_JOIN
                            ? 2
                            : 1;
     out->output_count = o->event_window ? 2 : o->advanced     ? ud_advanced_output_count(o->advanced)
@@ -914,7 +994,11 @@ ud_status ud_operator_physical_plan(const ud_operator *o, ud_physical_plan_info 
     if (out->estimated_rows && out->row_width <= UINT64_MAX / out->estimated_rows)
         out->estimated_cost = out->estimated_rows * out->row_width;
     const char *decision =
-        out->algorithm == UD_PHYSICAL_JOIN_TREE ? "explicit bounded Native join tree; named inner "
+        o->options.kind == UD_OPERATOR_EVENT_JOIN
+            ? "symmetric hash probes with common watermark eviction"
+        : o->options.kind == UD_OPERATOR_EVENT_DEDUPLICATE
+            ? "first row per key with watermark-driven TTL eviction"
+        : out->algorithm == UD_PHYSICAL_JOIN_TREE ? "explicit bounded Native join tree; named inner "
                                                   "joins may reorder by available row estimates"
         : out->algorithm == UD_PHYSICAL_MERGE   ? "bound sort contracts; canonical merge comparison"
         : out->algorithm == UD_PHYSICAL_HASH    ? "right-side estimate fits declared hash budget"

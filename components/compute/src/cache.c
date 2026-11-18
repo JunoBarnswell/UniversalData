@@ -176,7 +176,8 @@ static int key_compare(ud_cache *cache, const ud_batch *input, uint32_t row,
     for (uint32_t j = 0; j < cache->options.key_count; j++) {
         ud_value value;
         ud_batch_get(input, row, columns[j], &value);
-        int cmp = ud_value_compare(&value, values + j);
+        int cmp = ud_field_value_compare(&input->column[columns[j]].field, &value,
+                                         &cache->schema->column[cache->keys[j]].field, values + j);
         if (cmp)
             return cmp;
     }
@@ -188,7 +189,8 @@ static int row_compare(ud_cache *cache, const ud_batch *input, uint32_t row,
         ud_value a, b;
         ud_batch_get(input, row, columns[j], &a);
         ud_batch_get(reference, ref, cache->keys[j], &b);
-        int cmp = ud_value_compare(&a, &b);
+        int cmp = ud_field_value_compare(&input->column[columns[j]].field, &a,
+                                         &reference->column[cache->keys[j]].field, &b);
         if (cmp)
             return cmp;
     }
@@ -628,14 +630,6 @@ ud_status ud_cache_partial_put(ud_cache *c, const ud_batch *key_batch, uint32_t 
                                   UD_FIELD_PORT))
                 return UD_SCHEMA;
     }
-    for (uint32_t vr = 0; values && vr < values->rows; vr++)
-        for (uint32_t k = 0; k < c->options.key_count; k++) {
-            ud_value probe, result;
-            UD_TRY(ud_batch_get(key_batch, row, keys[k], &probe));
-            UD_TRY(ud_batch_get(values, vr, c->keys[k], &result));
-            if (probe.is_null || result.is_null || ud_value_compare(&probe, &result))
-                return UD_SCHEMA;
-        }
     ud_value *owned = ud_alloc(c->ctx, c->options.key_count * sizeof(*owned));
     if (!owned)
         return UD_RESOURCE;
@@ -668,20 +662,23 @@ ud_status ud_cache_partial_put(ud_cache *c, const ud_batch *key_batch, uint32_t 
                 at = i;
                 break;
             }
-            if (at == UINT32_MAX || e->used < p->entries[at].used)
+            if (!ud_buffer_block_views(e->block) &&
+                (at == UINT32_MAX || e->used < p->entries[at].used))
                 at = i;
         }
     partial_entry *e = at == UINT32_MAX ? NULL : p->entries + at;
-    if (!status && !e)
-        status = UD_RESOURCE;
-    if (!status && e->block) {
+    if (!status && e && e->block) {
         status = ud_buffer_release(e->block);
-        if (status == UD_BUSY)
-            status = UD_RESOURCE;
+        if (status == UD_BUSY) {
+            /* Another reader is using this key. The observed answer remains
+             * available to the caller and does not require cache insertion. */
+            e = NULL;
+            status = UD_OK;
+        }
         else
             e->block = NULL;
     }
-    if (!status) {
+    if (!status && e) {
         if (e->occupied) {
             uint32_t prior_slot = (uint32_t)(e->hash & (p->bucket_count - 1));
             uint32_t *link = p->buckets + prior_slot;

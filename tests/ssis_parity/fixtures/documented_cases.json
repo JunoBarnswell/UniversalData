@@ -1,0 +1,773 @@
+{
+  "sources": {
+    "dataTypes": "https://learn.microsoft.com/en-us/sql/integration-services/data-flow/integration-services-data-types?view=sql-server-ver17",
+    "cast": "https://learn.microsoft.com/en-us/sql/integration-services/expressions/cast-ssis-expression?view=sql-server-ver17",
+    "expressions": "https://learn.microsoft.com/en-us/sql/integration-services/expressions/integration-services-data-types-in-expressions?view=sql-server-ver17#strings",
+    "compare": "https://learn.microsoft.com/en-us/sql/integration-services/data-flow/comparing-string-data?view=sql-server-ver17",
+    "flagBits": "https://learn.microsoft.com/en-us/openspecs/sql_data_portability/ms-dtsx2/4adbe482-3238-45e1-be44-29bbdd43dade",
+    "sortFlags": "https://learn.microsoft.com/en-us/windows/win32/api/winnls/nf-winnls-lcmapstringex"
+  },
+  "domains": [
+    {
+      "type": "DT_BOOL",
+      "input": "true",
+      "status": "ok"
+    },
+    {
+      "type": "DT_BOOL",
+      "input": "2",
+      "status": "parse"
+    },
+    {
+      "type": "DT_I1",
+      "input": "-128",
+      "status": "ok"
+    },
+    {
+      "type": "DT_I1",
+      "input": "127",
+      "status": "ok"
+    },
+    {
+      "type": "DT_I1",
+      "input": "128",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_I2",
+      "input": "-32768",
+      "status": "ok"
+    },
+    {
+      "type": "DT_I2",
+      "input": "32767",
+      "status": "ok"
+    },
+    {
+      "type": "DT_I2",
+      "input": "-32769",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_I4",
+      "input": "-2147483648",
+      "status": "ok"
+    },
+    {
+      "type": "DT_I4",
+      "input": "2147483647",
+      "status": "ok"
+    },
+    {
+      "type": "DT_I4",
+      "input": "2147483648",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_I8",
+      "input": "-9223372036854775808",
+      "status": "ok"
+    },
+    {
+      "type": "DT_I8",
+      "input": "9223372036854775807",
+      "status": "ok"
+    },
+    {
+      "type": "DT_I8",
+      "input": "9223372036854775808",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_UI1",
+      "input": "255",
+      "status": "ok"
+    },
+    {
+      "type": "DT_UI1",
+      "input": "256",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_UI2",
+      "input": "65535",
+      "status": "ok"
+    },
+    {
+      "type": "DT_UI2",
+      "input": "65536",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_UI4",
+      "input": "4294967295",
+      "status": "ok"
+    },
+    {
+      "type": "DT_UI4",
+      "input": "4294967296",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_UI8",
+      "input": "18446744073709551615",
+      "status": "ok"
+    },
+    {
+      "type": "DT_UI8",
+      "input": "18446744073709551616",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_R4",
+      "input": "3.4028234663852886e38",
+      "status": "ok"
+    },
+    {
+      "type": "DT_R4",
+      "input": "3.5e38",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_R8",
+      "input": "1.7976931348623157e308",
+      "status": "ok"
+    },
+    {
+      "type": "DT_R8",
+      "input": "1.8e308",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_CY",
+      "input": "-922337203685477.5808",
+      "status": "ok"
+    },
+    {
+      "type": "DT_CY",
+      "input": "922337203685477.5807",
+      "status": "ok"
+    },
+    {
+      "type": "DT_CY",
+      "input": "922337203685477.5808",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_DECIMAL",
+      "input": "79228162514264337593543950335",
+      "status": "ok"
+    },
+    {
+      "type": "DT_DECIMAL",
+      "input": "79228162514264337593543950336",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_DECIMAL",
+      "input": "0.0000000000000000000000000001",
+      "status": "ok",
+      "scale": 28
+    },
+    {
+      "type": "DT_DECIMAL",
+      "input": null,
+      "status": "ok",
+      "scale": 29,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_NUMERIC",
+      "input": "99999999999999999999999999999999999999",
+      "status": "ok",
+      "precision": 38
+    },
+    {
+      "type": "DT_NUMERIC",
+      "input": "100000000000000000000000000000000000000",
+      "status": "overflow",
+      "precision": 38
+    },
+    {
+      "type": "DT_NUMERIC",
+      "input": "0.00000000000000000000000000000000000001",
+      "status": "ok",
+      "precision": 38,
+      "scale": 38
+    },
+    {
+      "type": "DT_NUMERIC",
+      "input": null,
+      "status": "ok",
+      "precision": 38,
+      "scale": 39,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_NUMERIC",
+      "input": null,
+      "status": "ok",
+      "precision": 3,
+      "scale": 4,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_DATE",
+      "input": "-657434",
+      "status": "ok"
+    },
+    {
+      "type": "DT_DATE",
+      "input": "-657435",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_DATE",
+      "input": "2958465",
+      "status": "ok"
+    },
+    {
+      "type": "DT_DATE",
+      "input": "2958466",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_DBDATE",
+      "input": "0001-01-01",
+      "status": "ok"
+    },
+    {
+      "type": "DT_DBDATE",
+      "input": "9999-12-31",
+      "status": "ok"
+    },
+    {
+      "type": "DT_DBDATE",
+      "input": "2025-02-29",
+      "status": "parse"
+    },
+    {
+      "type": "DT_DBTIME",
+      "input": "23:59:59",
+      "status": "ok"
+    },
+    {
+      "type": "DT_DBTIME",
+      "input": "24:00:00",
+      "status": "parse"
+    },
+    {
+      "type": "DT_DBTIME",
+      "input": "00:00:00.001",
+      "status": "truncated"
+    },
+    {
+      "type": "DT_DBTIME2",
+      "input": "23:59:59.9999999",
+      "status": "ok",
+      "scale": 7
+    },
+    {
+      "type": "DT_DBTIME2",
+      "input": "00:00:00.0000001",
+      "status": "truncated",
+      "scale": 6
+    },
+    {
+      "type": "DT_DBTIME2",
+      "input": null,
+      "status": "ok",
+      "scale": 8,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_DBTIMESTAMP",
+      "input": "1753-01-01 00:00:00.001",
+      "status": "ok"
+    },
+    {
+      "type": "DT_DBTIMESTAMP",
+      "input": "1752-12-31 23:59:59.999",
+      "status": "overflow"
+    },
+    {
+      "type": "DT_DBTIMESTAMP",
+      "input": "1753-01-01 00:00:00.0001",
+      "status": "truncated"
+    },
+    {
+      "type": "DT_DBTIMESTAMP2",
+      "input": "0001-01-01 00:00:00.0000001",
+      "status": "ok",
+      "scale": 7
+    },
+    {
+      "type": "DT_DBTIMESTAMP2",
+      "input": "9999-12-31 23:59:59.9999999",
+      "status": "ok",
+      "scale": 7
+    },
+    {
+      "type": "DT_DBTIMESTAMPOFFSET",
+      "input": "2025-11-18 23:59:59.9999999+14:00",
+      "status": "ok",
+      "scale": 7
+    },
+    {
+      "type": "DT_DBTIMESTAMPOFFSET",
+      "input": "2025-11-18 00:00:00.0000001-14:00",
+      "status": "ok",
+      "scale": 7
+    },
+    {
+      "type": "DT_DBTIMESTAMPOFFSET",
+      "input": "2025-11-18 00:00:00-00:59",
+      "status": "ok",
+      "scale": 0
+    },
+    {
+      "type": "DT_DBTIMESTAMPOFFSET",
+      "input": "2025-11-18 00:00:00+14:01",
+      "status": "parse",
+      "scale": 7
+    },
+    {
+      "type": "DT_FILETIME",
+      "input": "0",
+      "status": "ok"
+    },
+    {
+      "type": "DT_FILETIME",
+      "input": "10000",
+      "status": "ok"
+    },
+    {
+      "type": "DT_FILETIME",
+      "input": "1",
+      "status": "truncated"
+    },
+    {
+      "type": "DT_STR",
+      "input": "A",
+      "status": "ok",
+      "length": 8000,
+      "codePage": 1252,
+      "repeat": 8000
+    },
+    {
+      "type": "DT_STR",
+      "input": "A",
+      "status": "truncated",
+      "length": 8000,
+      "codePage": 1252,
+      "repeat": 8001
+    },
+    {
+      "type": "DT_STR",
+      "input": null,
+      "status": "ok",
+      "length": 8001,
+      "codePage": 1252,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_STR",
+      "input": null,
+      "status": "ok",
+      "length": 1,
+      "codePage": 999999,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_STR",
+      "input": "中文",
+      "status": "ok",
+      "length": 4,
+      "codePage": 936
+    },
+    {
+      "type": "DT_STR",
+      "input": "中文",
+      "status": "truncated",
+      "length": 3,
+      "codePage": 936
+    },
+    {
+      "type": "DT_STR",
+      "input": "🚀",
+      "status": "ok",
+      "length": 4,
+      "codePage": 65001
+    },
+    {
+      "type": "DT_STR",
+      "input": "🚀",
+      "status": "truncated",
+      "length": 3,
+      "codePage": 65001
+    },
+    {
+      "type": "DT_STR",
+      "input": "中",
+      "status": "parse",
+      "length": 8,
+      "codePage": 1252
+    },
+    {
+      "type": "DT_STR",
+      "input": "a\u0000中文",
+      "status": "ok",
+      "length": 1,
+      "codePage": 1252,
+      "storedLength": 1
+    },
+    {
+      "type": "DT_WSTR",
+      "input": "x",
+      "status": "ok",
+      "length": 4000,
+      "repeat": 4000
+    },
+    {
+      "type": "DT_WSTR",
+      "input": "x",
+      "status": "truncated",
+      "length": 4000,
+      "repeat": 4001
+    },
+    {
+      "type": "DT_WSTR",
+      "input": null,
+      "status": "ok",
+      "length": 4001,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_WSTR",
+      "input": "🚀",
+      "status": "truncated",
+      "length": 1
+    },
+    {
+      "type": "DT_WSTR",
+      "input": "a\u0000b",
+      "status": "ok",
+      "length": 1,
+      "storedLength": 1
+    },
+    {
+      "type": "DT_TEXT",
+      "input": "a\u0000b",
+      "status": "ok",
+      "codePage": 1252,
+      "storedLength": 3
+    },
+    {
+      "type": "DT_TEXT",
+      "input": null,
+      "status": "ok",
+      "length": 2147483648,
+      "codePage": 1252,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_NTEXT",
+      "input": "a\u0000b",
+      "status": "ok",
+      "storedLength": 3
+    },
+    {
+      "type": "DT_NTEXT",
+      "input": null,
+      "status": "ok",
+      "length": 1073741824,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_BYTES",
+      "input": "x",
+      "status": "ok",
+      "length": 8000,
+      "repeat": 8000
+    },
+    {
+      "type": "DT_BYTES",
+      "input": "x",
+      "status": "truncated",
+      "length": 8000,
+      "repeat": 8001
+    },
+    {
+      "type": "DT_BYTES",
+      "input": null,
+      "status": "ok",
+      "length": 8001,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_IMAGE",
+      "input": "x",
+      "status": "ok",
+      "repeat": 9000
+    },
+    {
+      "type": "DT_IMAGE",
+      "input": null,
+      "status": "ok",
+      "length": 2147483648,
+      "schemaStatus": "schema"
+    },
+    {
+      "type": "DT_GUID",
+      "input": "0123456789ABCDEF",
+      "status": "ok"
+    },
+    {
+      "type": "DT_GUID",
+      "input": "0123456789ABCDE",
+      "status": "parse"
+    }
+  ],
+  "expressions": [
+    {
+      "source": "(DT_STR,4,936)\"中文\"",
+      "expected": "中文",
+      "type": "DT_STR"
+    },
+    {
+      "source": "(DT_STR,3,936)\"中文\"",
+      "expected": "中",
+      "type": "DT_STR"
+    },
+    {
+      "source": "NULL(DT_STR,10,1252)",
+      "expected": null,
+      "type": "DT_STR"
+    },
+    {
+      "source": "ISNULL(NULL(DT_STR,10,1252))",
+      "reject": true
+    },
+    {
+      "source": "ISNULL((DT_STR,10,1252)NULL(DT_STR,10,1252))",
+      "expected": "true",
+      "type": "DT_BOOL"
+    },
+    {
+      "source": "UPPER((DT_STR,10,1252)\"é\")",
+      "expected": "É",
+      "type": "DT_WSTR"
+    },
+    {
+      "source": "LEN((DT_STR,10,1252)\"中文\")",
+      "expected": "2",
+      "type": "DT_I4"
+    },
+    {
+      "source": "LEN((DT_STR,4,936)\"中文\")",
+      "expected": "2",
+      "type": "DT_I4"
+    },
+    {
+      "source": "(DT_STR,2,1252)(\"A\"+\"B\")",
+      "expected": "AB",
+      "type": "DT_STR"
+    },
+    {
+      "source": "(DT_STR,8,1252)\"中文\"",
+      "reject": true
+    },
+    {
+      "source": "\"ABC\" == \"abc\"",
+      "expected": "false",
+      "type": "DT_BOOL"
+    },
+    {
+      "source": "\"café\" == \"cafe\"",
+      "expected": "false",
+      "type": "DT_BOOL"
+    }
+  ],
+  "comparisons": [
+    {
+      "name": "case-insensitive",
+      "left": "ABC",
+      "right": "abc",
+      "flags": 1,
+      "locale": 1033,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "accent-insensitive",
+      "left": "café",
+      "right": "cafe",
+      "flags": 2,
+      "locale": 1033,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "accent-insensitive-retains-case",
+      "left": "Café",
+      "right": "cafe",
+      "flags": 2,
+      "locale": 1033,
+      "result": 2,
+      "repeat": 0
+    },
+    {
+      "name": "case-insensitive-retains-accent",
+      "left": "CAFÉ",
+      "right": "cafe",
+      "flags": 1,
+      "locale": 1033,
+      "result": 2,
+      "repeat": 0
+    },
+    {
+      "name": "case-and-accent",
+      "left": "CAFÉ",
+      "right": "cafe",
+      "flags": 3,
+      "locale": 1033,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "linguistic-case",
+      "left": "ABC",
+      "right": "abc",
+      "flags": 16,
+      "locale": 1033,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "linguistic-diacritic",
+      "left": "café",
+      "right": "cafe",
+      "flags": 32,
+      "locale": 1033,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "punctuation-and-symbols",
+      "left": " New*York=$",
+      "right": "NewYork",
+      "flags": 4,
+      "locale": 1033,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "punctuation-sort",
+      "left": ".ABC",
+      "right": "ABC",
+      "flags": 4096,
+      "locale": 1033,
+      "result": -1,
+      "repeat": 0
+    },
+    {
+      "name": "kana-insensitive",
+      "left": "ひらがな",
+      "right": "ヒラガナ",
+      "flags": 65536,
+      "locale": 1041,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "kana-insensitive-retains-width",
+      "left": "カ",
+      "right": "ｶ",
+      "flags": 65536,
+      "locale": 1041,
+      "result": 2,
+      "repeat": 0
+    },
+    {
+      "name": "width-insensitive",
+      "left": "カ",
+      "right": "ｶ",
+      "flags": 131072,
+      "locale": 1041,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "width-insensitive-retains-kana",
+      "left": "か",
+      "right": "カ",
+      "flags": 131072,
+      "locale": 1041,
+      "result": 2,
+      "repeat": 0
+    },
+    {
+      "name": "kana-and-width",
+      "left": "か",
+      "right": "ｶ",
+      "flags": 196608,
+      "locale": 1041,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "case-sensitive-retains-width",
+      "left": "A",
+      "right": "Ａ",
+      "flags": 1,
+      "locale": 1033,
+      "result": 2,
+      "repeat": 0
+    },
+    {
+      "name": "turkish-case",
+      "left": "I",
+      "right": "ı",
+      "flags": 134217729,
+      "locale": 1055,
+      "result": 0,
+      "repeat": 0
+    },
+    {
+      "name": "turkish-case-distinguishes-dotted-i",
+      "left": "I",
+      "right": "i",
+      "flags": 134217729,
+      "locale": 1055,
+      "result": 2,
+      "repeat": 0
+    },
+    {
+      "name": "swedish-order",
+      "left": "z",
+      "right": "ä",
+      "flags": 0,
+      "locale": 1053,
+      "result": -1,
+      "repeat": 0
+    },
+    {
+      "name": "long-keys-equal",
+      "left": "É",
+      "right": "e",
+      "flags": 3,
+      "locale": 1033,
+      "result": 0,
+      "repeat": 12000
+    },
+    {
+      "name": "long-keys-distinguish-tail",
+      "left": "A",
+      "right": "B",
+      "flags": 1,
+      "locale": 1033,
+      "result": -1,
+      "repeat": 12000
+    }
+  ]
+}

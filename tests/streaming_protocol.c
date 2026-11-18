@@ -2,6 +2,11 @@
 #include "ud/package.h"
 #include <string.h>
 #include <stdatomic.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 #define TRY(call)                                                                                  \
     do {                                                                                           \
         ud_status s_ = (call);                                                                     \
@@ -159,6 +164,16 @@ static ud_status sink_step(void *instance, const ud_component_event *event) {
     }
     return event->kind == UD_COMPONENT_INPUT_END ? UD_END : UD_OK;
 }
+static uint64_t monotonic_ms(void) {
+#ifdef _WIN32
+    return GetTickCount64();
+#else
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
+#endif
+}
+
 static ud_status allow(void *u, ud_string tenant, ud_string resource, int32_t action) {
     (void)u;
     (void)tenant;
@@ -295,19 +310,20 @@ int main(void) {
     source_descriptor.id = (ud_string){"fixture.early", 13};
     source_descriptor.user = &early;
     OK(ud_registry_register(registry, &source_descriptor));
-    for (int idle = 0; idle < 2; idle++) {
-        early.idle_on_minimum = idle;
+    for (int scenario = 0; scenario < 4; scenario++) {
+        int join = scenario >= 2;
+        early.idle_on_minimum = scenario % 2;
         f.received = 0;
         f.watermark = 0;
-        f.expected_rows = 6;
+        f.expected_rows = join ? 7 : 6;
         atomic_store(&f.minimum_seen, 0);
-        const char *multi =
+        const char *format =
             "{\"version\":12,\"id\":\"multi-input-frontier\",\"connections\":[],\"controlFlow\":{"
             "\"tasks\":[{\"id\":\"run\",\"kind\":\"dataFlow\",\"config\":{\"pipeline\":\"main\"}}],"
             "\"constraints\":[]},\"dataFlows\":[{\"id\":\"main\",\"components\":[{\"id\":\"early\","
             "\"component\":\"fixture.early\",\"config\":{}},{\"id\":\"source\",\"component\":"
             "\"fixture."
-            "continuous\",\"config\":{}},{\"id\":\"union\",\"component\":\"unionAll\",\"config\":{}"
+            "continuous\",\"config\":{}},{\"id\":\"union\",\"component\":\"%s\",\"config\":%s"
             "},{"
             "\"id\":\"sink\",\"component\":\"fixture.observe\",\"config\":{}}],\"paths\":[{"
             "\"from\":"
@@ -316,10 +332,18 @@ int main(void) {
             "\"to\":\"union\",\"input\":1},{\"from\":\"union\",\"output\":0,\"to\":\"sink\","
             "\"input\":"
             "0}]}]}";
-        OK(ud_execution_create_json((ud_string){multi, (uint32_t)strlen(multi)}, &o, &e));
+        char multi[1536];
+        int size = snprintf(multi, sizeof(multi), format, join ? "eventJoin" : "unionAll",
+                            join ? "{\"leftKeys\":[\"key\"],\"rightKeys\":[\"key\"],"
+                                   "\"leftTimeField\":\"time\",\"rightTimeField\":\"time\","
+                                   "\"withinMicros\":10}" : "{}");
+        CHECK(size > 0 && (size_t)size < sizeof(multi));
+        OK(ud_execution_create_json((ud_string){multi, (uint32_t)size}, &o, &e));
         OK(ud_execution_start(e));
-        CHECK(ud_execution_wait(e, 350) == UD_BUSY);
-        CHECK(atomic_load(&f.minimum_seen) && f.watermark && f.received == 6);
+        uint64_t deadline = monotonic_ms() + 5000;
+        while (!atomic_load(&f.watermark) && monotonic_ms() < deadline)
+            CHECK(ud_execution_wait(e, 25) == UD_BUSY);
+        CHECK(atomic_load(&f.minimum_seen) && f.watermark && f.received == f.expected_rows);
         ud_execution_stop(e);
         OK(ud_execution_wait(e, 5000));
         OK(ud_execution_destroy(e));

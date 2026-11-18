@@ -1,6 +1,14 @@
 #include "../internal.h"
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
+#include "../../foundation/thread.h"
+#include <unicode/ucol.h>
+#include <unicode/uchar.h>
+#include <unicode/unorm2.h>
+#include <unicode/utf16.h>
+#include <unicode/uloc.h>
+#include <unicode/ustring.h>
 int32_t ud_truth_and(int32_t a, int32_t b) {
     return !a || !b ? 0 : a < 0 || b < 0 ? -1 : 1;
 }
@@ -126,6 +134,283 @@ static ud_status hash_bytes(void *user, const void *bytes, size_t length) {
 uint64_t ud_value_hash(const ud_value *v, uint64_t hash) {
     ud_value_canonical(v, hash_bytes, &hash, 0);
     return hash;
+}
+
+#ifndef _WIN32
+typedef struct collation_cache {
+    struct collation_cache *next;
+    uint32_t lcid, flags;
+    UCollator *collator;
+} collation_cache;
+
+static ud_mutex collators_lock = UD_MUTEX_INITIALIZER;
+static collation_cache *collators;
+
+static const UCollator *cached_collator(uint32_t lcid, uint32_t flags) {
+    uint32_t sort = flags & UD_COMPARE_STRING_SORT;
+    ud_mutex_lock(&collators_lock);
+    collation_cache *entry = collators;
+    while (entry && (entry->lcid != lcid || entry->flags != sort))
+        entry = entry->next;
+    if (!entry) {
+        UErrorCode error = U_ZERO_ERROR;
+        char locale[ULOC_FULLNAME_CAPACITY] = "";
+        if (lcid)
+            uloc_getLocaleForLCID(lcid, locale, sizeof(locale), &error);
+        UCollator *collator = U_SUCCESS(error) ? ucol_open(locale, &error) : NULL;
+        if (collator && U_SUCCESS(error)) {
+            ucol_setAttribute(collator, UCOL_NORMALIZATION_MODE, UCOL_ON, &error);
+            ucol_setAttribute(collator, UCOL_ALTERNATE_HANDLING,
+                              sort ? UCOL_NON_IGNORABLE : UCOL_SHIFTED, &error);
+            ucol_setStrength(collator, UCOL_IDENTICAL);
+            entry = U_SUCCESS(error) ? malloc(sizeof(*entry)) : NULL;
+        }
+        if (entry) {
+            *entry = (collation_cache){collators, lcid, sort, collator};
+            collators = entry;
+        } else if (collator)
+            ucol_close(collator);
+    }
+    const UCollator *result = entry ? entry->collator : NULL;
+    ud_mutex_unlock(&collators_lock);
+    return result;
+}
+
+/* ICU's strength levels combine case, kana, and width. Fold each requested
+ * distinction explicitly so one flag cannot also discard another distinction. */
+static UChar *collation_text(const ud_scalar_metadata *policy, const ud_value *value,
+                            UChar scratch[256], int32_t *units) {
+    uint32_t flags = policy->comparison_flags;
+    if (value->text_length >= INT32_MAX)
+        return NULL;
+    int32_t capacity = (int32_t)value->text_length + 1;
+    UChar *text = capacity <= 256 ? scratch : malloc((size_t)capacity * sizeof(*text));
+    if (!text)
+        return NULL;
+    UErrorCode error = U_ZERO_ERROR;
+    u_strFromUTF8(text, capacity, units, value->text ? value->text : "",
+                  (int32_t)value->text_length, &error);
+    if (U_SUCCESS(error) && (flags & UD_COMPARE_IGNORE_WIDTH)) {
+        const UNormalizer2 *compatibility = unorm2_getNFKCInstance(&error);
+        for (int32_t i = 0; U_SUCCESS(error) && i < *units; i++) {
+            int32_t width = u_getIntPropertyValue(text[i], UCHAR_DECOMPOSITION_TYPE);
+            if (width == U_DT_NARROW || width == U_DT_WIDE) {
+                UChar equivalent[2];
+                int32_t n = unorm2_getRawDecomposition(compatibility, text[i], equivalent, 2,
+                                                        &error);
+                if (n == 1)
+                    text[i] = equivalent[0];
+            }
+        }
+    }
+    if (U_SUCCESS(error) && (flags & UD_COMPARE_IGNORE_KANA)) {
+        for (int32_t i = 0; i < *units; i++)
+            if ((text[i] >= 0x30a1 && text[i] <= 0x30f6) || text[i] == 0x30fd ||
+                text[i] == 0x30fe)
+                text[i] -= 0x60;
+    }
+    if (U_SUCCESS(error) && (flags & (UD_COMPARE_IGNORE_CASE | UD_COMPARE_LINGUISTIC_IGNORE_CASE))) {
+        char locale[ULOC_FULLNAME_CAPACITY] = "";
+        if (policy->locale_id)
+            uloc_getLocaleForLCID(policy->locale_id, locale, sizeof(locale), &error);
+        UChar local[256];
+        UChar *folded = local;
+        uint32_t turkic = !strncmp(locale, "tr", 2) || !strncmp(locale, "az", 2);
+        int32_t n = u_strFoldCase(local, 256, text, *units, turkic ? U_FOLD_CASE_EXCLUDE_SPECIAL_I
+                                                                  : U_FOLD_CASE_DEFAULT, &error);
+        if (error == U_BUFFER_OVERFLOW_ERROR && n < INT32_MAX) {
+            folded = malloc(((size_t)n + 1) * sizeof(*folded));
+            if (folded) {
+                error = U_ZERO_ERROR;
+                u_strFoldCase(folded, n + 1, text, *units, turkic ? U_FOLD_CASE_EXCLUDE_SPECIAL_I
+                                                                 : U_FOLD_CASE_DEFAULT, &error);
+            }
+        }
+        if (U_SUCCESS(error)) {
+            if (n >= capacity) {
+                if (text != scratch)
+                    free(text);
+                capacity = n + 1;
+                text = malloc((size_t)capacity * sizeof(*text));
+                if (!text)
+                    error = U_MEMORY_ALLOCATION_ERROR;
+            }
+            if (text)
+                memcpy(text, folded, (size_t)n * sizeof(*text));
+            *units = n;
+        }
+        if (folded != local)
+            free(folded);
+    }
+    if (U_SUCCESS(error) &&
+        (flags & (UD_COMPARE_IGNORE_NONSPACE | UD_COMPARE_LINGUISTIC_IGNORE_DIACRITIC))) {
+        const UNormalizer2 *canonical = unorm2_getNFDInstance(&error);
+        int32_t n = U_SUCCESS(error) ? unorm2_normalize(canonical, text, *units, NULL, 0, &error) : 0;
+        if (error == U_BUFFER_OVERFLOW_ERROR)
+            error = U_ZERO_ERROR;
+        if (U_SUCCESS(error) && n) {
+            UChar stack[256];
+            UChar *normalized = n <= 256 ? stack : malloc((size_t)n * sizeof(*normalized));
+            if (!normalized)
+                error = U_MEMORY_ALLOCATION_ERROR;
+            else {
+                unorm2_normalize(canonical, text, *units, normalized, n, &error);
+                if (n > capacity && U_SUCCESS(error)) {
+                    if (text != scratch)
+                        free(text);
+                    text = malloc((size_t)n * sizeof(*text));
+                    if (!text)
+                        error = U_MEMORY_ALLOCATION_ERROR;
+                }
+                if (U_SUCCESS(error)) {
+                    memcpy(text, normalized, (size_t)n * sizeof(*text));
+                    *units = n;
+                }
+            }
+            if (normalized != stack)
+                free(normalized);
+        }
+    }
+    if (U_FAILURE(error)) {
+        if (text != scratch)
+            free(text);
+        return NULL;
+    }
+    if (flags & (UD_COMPARE_IGNORE_NONSPACE | UD_COMPARE_LINGUISTIC_IGNORE_DIACRITIC |
+                 UD_COMPARE_IGNORE_SYMBOLS)) {
+        int32_t end = 0;
+        for (int32_t i = 0; i < *units;) {
+            UChar32 cp;
+            U16_NEXT(text, i, *units, cp);
+            uint32_t mask = U_GET_GC_MASK(cp);
+            if ((flags & UD_COMPARE_IGNORE_SYMBOLS) &&
+                (mask & (U_GC_P_MASK | U_GC_S_MASK | U_GC_Z_MASK) || u_isUWhiteSpace(cp)))
+                continue;
+            if (((flags & UD_COMPARE_IGNORE_NONSPACE) && (mask & U_GC_MN_MASK)) ||
+                ((flags & UD_COMPARE_LINGUISTIC_IGNORE_DIACRITIC) &&
+                 u_hasBinaryProperty(cp, UCHAR_DIACRITIC)))
+                continue;
+            U16_APPEND_UNSAFE(text, end, cp);
+        }
+        *units = end;
+    }
+    return text;
+}
+#endif
+
+typedef struct text_key {
+    _Alignas(uint16_t) uint8_t inline_bytes[512];
+    uint8_t *bytes;
+    uint32_t length;
+} text_key;
+
+static void field_text_key(const ud_scalar_metadata *policy, const ud_value *value, text_key *key) {
+    UChar wide_buffer[256];
+    key->bytes = key->inline_bytes;
+#ifdef _WIN32
+    UErrorCode error = U_ZERO_ERROR;
+    int32_t units = 0;
+    UChar *wide = wide_buffer;
+    if (value->text_length >= 256)
+        wide = malloc(((size_t)value->text_length + 1) * sizeof(*wide));
+    int32_t n = 0;
+    WCHAR locale[LOCALE_NAME_MAX_LENGTH] = {0};
+    if (wide && value->text_length < INT32_MAX &&
+        (!policy->locale_id || LCIDToLocaleName(policy->locale_id, locale, LOCALE_NAME_MAX_LENGTH,
+                                                LOCALE_ALLOW_NEUTRAL_NAMES))) {
+        u_strFromUTF8(wide, value->text_length < 256 ? 256 : (int32_t)value->text_length + 1,
+                      &units, value->text ? value->text : "", (int32_t)value->text_length, &error);
+        if (U_SUCCESS(error)) {
+            DWORD flags = LCMAP_SORTKEY | policy->comparison_flags;
+            n = LCMapStringEx(locale, flags, (const WCHAR *)wide, units ? units : -1,
+                              (WCHAR *)key->inline_bytes, sizeof(key->inline_bytes), NULL, NULL, 0);
+            if (!n && GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+                n = LCMapStringEx(locale, flags, (const WCHAR *)wide, units ? units : -1,
+                                  NULL, 0, NULL, NULL, 0);
+                if (n)
+                    key->bytes = malloc((size_t)n);
+                n = key->bytes ? LCMapStringEx(locale, flags, (const WCHAR *)wide, units ? units : -1,
+                                               (WCHAR *)key->bytes, n, NULL, NULL, 0) : 0;
+            }
+        }
+    }
+    if (wide != wide_buffer)
+        free(wide);
+#else
+    int32_t n = 0, units = 0;
+    UChar *wide = collation_text(policy, value, wide_buffer, &units);
+    const UCollator *collator = cached_collator(policy->locale_id, policy->comparison_flags);
+    if (wide && collator) {
+        n = ucol_getSortKey(collator, wide, units, key->inline_bytes, sizeof(key->inline_bytes));
+        if ((size_t)n > sizeof(key->inline_bytes)) {
+            key->bytes = malloc((size_t)n);
+            n = key->bytes ? ucol_getSortKey(collator, wide, units, key->bytes, n) : 0;
+        }
+    }
+    if (wide != wide_buffer)
+        free(wide);
+#endif
+    key->length = n > 0 ? (uint32_t)n : 0;
+}
+
+static void clear_text_key(text_key *key) {
+    if (key->bytes != key->inline_bytes)
+        free(key->bytes);
+}
+
+int32_t ud_field_value_compare(const ud_field *af, const ud_value *a,
+                               const ud_field *bf, const ud_value *b) {
+    if (!a->is_null && !b->is_null && af->scalar.kind == UD_DT_DATE &&
+        bf->scalar.kind == UD_DT_DATE) {
+        ud_value x = {.type = UD_DATETIME}, y = {.type = UD_DATETIME};
+        if (!ud_datetime_from_value(af, a, &x.datetime) &&
+            !ud_datetime_from_value(bf, b, &y.datetime))
+            return ud_value_compare(&x, &y);
+    }
+    if (a->is_null || b->is_null || a->type != UD_UTF8 || b->type != UD_UTF8)
+        return ud_value_compare(a, b);
+    const ud_scalar_metadata *ap = &af->scalar, *bp = &bf->scalar;
+    if (ap->locale_id != bp->locale_id)
+        return (ap->locale_id > bp->locale_id) - (ap->locale_id < bp->locale_id);
+    if (ap->comparison_flags != bp->comparison_flags)
+        return (ap->comparison_flags > bp->comparison_flags) -
+               (ap->comparison_flags < bp->comparison_flags);
+    if (!ap->locale_id && !ap->comparison_flags)
+        return ud_value_compare(a, b);
+    text_key x, y;
+    field_text_key(ap, a, &x);
+    field_text_key(bp, b, &y);
+    int cmp;
+    if (!x.length && !y.length)
+        cmp = ud_value_compare(a, b);
+    else {
+        uint32_t size = x.length < y.length ? x.length : y.length;
+        cmp = size ? memcmp(x.bytes, y.bytes, size) : 0;
+        if (!cmp)
+            cmp = (x.length > y.length) - (x.length < y.length);
+    }
+    clear_text_key(&x);
+    clear_text_key(&y);
+    return (cmp > 0) - (cmp < 0);
+}
+
+uint64_t ud_field_value_hash(const ud_field *field, const ud_value *value, uint64_t seed) {
+    if (!value->is_null && field->scalar.kind == UD_DT_DATE) {
+        ud_value date = {.type = UD_DATETIME};
+        if (!ud_datetime_from_value(field, value, &date.datetime))
+            return ud_value_hash(&date, seed);
+    }
+    if (value->is_null || value->type != UD_UTF8 ||
+        (!field->scalar.locale_id && !field->scalar.comparison_flags))
+        return ud_value_hash(value, seed);
+    text_key key;
+    field_text_key(&field->scalar, value, &key);
+    if (!key.length)
+        seed = ud_value_hash(value, seed);
+    for (uint32_t i = 0; i < key.length; i++)
+        seed = hash_byte(seed, key.bytes[i]);
+    clear_text_key(&key);
+    return seed;
 }
 
 static int numeric(const ud_field *f) {

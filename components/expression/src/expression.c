@@ -759,7 +759,7 @@ void ud_expression_destroy(ud_expression *e) {
 typedef struct sql_expression {
     ud_expression *expression;
     ud_bytes text;
-    int style;
+    int32_t dialect;
     uint32_t count;
     ud_field fields[4096];
     ud_value values[4096];
@@ -767,12 +767,18 @@ typedef struct sql_expression {
 static ud_status sql_put(sql_expression *s, const char *text) {
     return ud_bytes_put(&s->text, text, strlen(text));
 }
-static ud_status sql_node(sql_expression *s, const expression_node *n) {
+static ud_status sql_node(sql_expression *s, const expression_node *n, int predicate) {
     if (n->type != UD_BOOL && n->type != UD_INT64 && n->type != UD_UINT64)
         return UD_UNSUPPORTED;
+    int tsql = s->dialect == UD_SQL_SQLSERVER;
+    if (n->type == UD_UINT64 || (tsql && !predicate && !n->constant && n->kind == OPERATION))
+        return UD_UNSUPPORTED;
+    int bit_test = tsql && predicate && (n->kind == COLUMN || n->constant);
+    if (bit_test)
+        UD_TRY(sql_put(s, "("));
     if (n->constant) {
-        if (s->count == 4096)
-            return UD_RESOURCE;
+        if (s->count == (tsql ? 2100u : 4096u))
+            return UD_UNSUPPORTED;
         uint32_t at = s->count++;
         s->fields[at] = n->field;
         char name[24];
@@ -787,27 +793,31 @@ static ud_status sql_node(sql_expression *s, const expression_node *n) {
         if (!s->fields[at].name)
             return UD_RESOURCE;
         char marker[24];
-        int size = snprintf(marker, sizeof(marker), "$%u", at + 1);
-        return ud_bytes_put(&s->text, marker, (size_t)size);
+        int size = tsql ? snprintf(marker, sizeof(marker), "?")
+                        : snprintf(marker, sizeof(marker), "$%u", at + 1);
+        UD_TRY(ud_bytes_put(&s->text, marker, (size_t)size));
+        return bit_test ? sql_put(s, " = 1)") : UD_OK;
     }
     if (n->kind == COLUMN) {
         if (n->path_length)
             return UD_UNSUPPORTED;
         const ud_field *field = &s->expression->schema->column[n->column].field;
-        UD_TRY(sql_put(s, "\""));
+        char closing = tsql ? ']' : '"';
+        UD_TRY(sql_put(s, tsql ? "[" : "\""));
         for (uint32_t i = 0; i < field->name_length; i++) {
-            if (field->name[i] == '"')
-                UD_TRY(sql_put(s, "\""));
+            if (field->name[i] == closing)
+                UD_TRY(ud_bytes_put(&s->text, &closing, 1));
             UD_TRY(ud_bytes_put(&s->text, field->name + i, 1));
         }
-        return sql_put(s, "\"");
+        UD_TRY(ud_bytes_put(&s->text, &closing, 1));
+        return bit_test ? sql_put(s, " = 1)") : UD_OK;
     }
     if (n->kind != OPERATION || n->op < EQ)
         return UD_UNSUPPORTED;
     UD_TRY(sql_put(s, "("));
     if (n->op == NOT)
         UD_TRY(sql_put(s, "NOT "));
-    UD_TRY(sql_node(s, n->args[0]));
+    UD_TRY(sql_node(s, n->args[0], n->op == NOT || n->op == AND || n->op == OR));
     if (n->op == ISNULL)
         UD_TRY(sql_put(s, " IS NULL"));
     else if (n->op != NOT) {
@@ -815,7 +825,7 @@ static ud_status sql_node(sql_expression *s, const expression_node *n) {
         if (n->op > OR)
             return UD_UNSUPPORTED;
         UD_TRY(sql_put(s, operators[n->op - EQ]));
-        UD_TRY(sql_node(s, n->args[1]));
+        UD_TRY(sql_node(s, n->args[1], n->op == AND || n->op == OR));
     }
     return sql_put(s, ")");
 }
@@ -825,14 +835,16 @@ ud_status ud_expression_sql(ud_expression *expression, int32_t dialect, ud_strin
         return UD_INVALID;
     *text = (ud_string){0};
     *parameters = NULL;
-    if (dialect != UD_SQL_POSTGRESQL || expression->root->type != UD_BOOL)
+    if ((dialect != UD_SQL_POSTGRESQL && dialect != UD_SQL_SQLSERVER) ||
+        expression->root->type != UD_BOOL)
         return UD_UNSUPPORTED;
     sql_expression *sql = ud_alloc(expression->ctx, sizeof(*sql));
     if (!sql)
         return UD_RESOURCE;
+    sql->dialect = dialect;
     sql->expression = expression;
     sql->text = (ud_bytes){.ctx = expression->ctx};
-    ud_status status = sql_node(sql, expression->root);
+    ud_status status = sql_node(sql, expression->root, 1);
     if (!status && sql->count) {
         status = ud_batch_create(expression->ctx, sql->fields, sql->count, 1, parameters);
         if (!status)

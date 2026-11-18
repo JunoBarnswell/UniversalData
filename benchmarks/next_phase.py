@@ -1,4 +1,5 @@
 """Sealed six-workload Linux matrix. Native driver reports CPU/RSS/owner metrics."""
+from contextlib import closing
 import argparse, shutil, hashlib, json, os, pathlib, platform, sqlite3, subprocess, tempfile, time
 PROTOCOL=json.loads((pathlib.Path(__file__).resolve().parents[1]/'metadata/product.json').read_text())['product']['protocolVersion']
 
@@ -6,12 +7,23 @@ def field(name,kind='int64'): return dict(name=name,type=kind,nullable=False)
 def component(id,kind,**config): return dict(id=id,component=kind,config=config)
 def edge(a,b,output=0,input=0): return {'from':a,'to':b,'output':output,'input':input}
 def schema(fields):return dict(version=PROTOCOL,fields=fields)
-def digest(path):
-    total=0;count=0
-    with path.open() as stream:
+def digest(path, descending_ids=False):
+    total, count, previous = 0, 0, None
+    ordered = hashlib.sha256()
+    with path.open(encoding='utf-8') as stream:
         for line in stream:
-            row=json.loads(line);total^=int.from_bytes(hashlib.sha256(json.dumps(row,sort_keys=True,separators=(',',':')).encode()).digest(),'big');count+=1
-    return dict(rows=count,semanticSha256Xor=f'{total:064x}')
+            row = json.loads(line)
+            key = hashlib.sha256(json.dumps(row, sort_keys=True, separators=(',', ':')).encode()).digest()
+            ordered.update(key)
+            total ^= int.from_bytes(key, 'big')
+            if descending_ids and previous is not None and row['id'] >= previous:
+                raise AssertionError((count, previous, row['id']))
+            previous = row.get('id')
+            count += 1
+    signature = dict(rows=count, semanticSha256Xor=f'{total:064x}')
+    if descending_ids:
+        signature['orderedSha256'] = ordered.hexdigest()
+    return signature
 def run(driver,document,root,workers,resume=False,kill=False):
     package=root/'package.json';package.write_text(json.dumps(document));start=time.perf_counter()
     command=[driver,str(package),str(root/'state') if document.get('durable') else '',str(int(resume)),str(workers),'4' if kill else '0','24','output']
@@ -25,7 +37,13 @@ def run(driver,document,root,workers,resume=False,kill=False):
     facts['seconds']=time.perf_counter()-start;return facts
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('driver');parser.add_argument('sqlite');parser.add_argument('--rows',type=int,default=1000000);parser.add_argument('--references',type=int,default=100000);parser.add_argument('--output',type=pathlib.Path,required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('driver');parser.add_argument('sqlite');parser.add_argument('--rows',type=int,default=1000000);parser.add_argument('--references',type=int,default=100000);parser.add_argument('--output',type=pathlib.Path,required=True);parser.add_argument('--baseline-driver', type=pathlib.Path)
+    parser.add_argument('--trials', type=int, default=7)
+    parser.add_argument('--workloads', nargs='+', choices=['streaming','sortSpill','join','cacheLookup','errorDualSink','incrementalResume'])
+    parser.add_argument('--workers', nargs='+', type=int, choices=[1,2,4])
+    args=parser.parse_args()
+    if args.trials < 1:
+        parser.error('--trials must be positive')
     matrix=[]
     with tempfile.TemporaryDirectory(prefix='ud-r5-matrix-') as folder:
         base=pathlib.Path(folder);source=base/'facts.ndjson';reference=base/'reference.ndjson'
@@ -37,8 +55,18 @@ def main():
         widths={name:[1,2,4] for name in ('streaming','sortSpill','join','errorDualSink','incrementalResume','cacheLookup')}
         golden={}
         for workload,workers_list in widths.items():
-            for workers in workers_list:
-                root=base/f'{workload}-{workers}';root.mkdir();(root/'spill').mkdir();(root/'state').mkdir()
+            if args.workloads and workload not in args.workloads:
+                continue
+            for workers in args.workers or workers_list:
+              pairs = [('candidate', 1, args.driver)]
+              if args.baseline_driver:
+                pairs = []
+                for trial in range(args.trials + 1):
+                    order = [('baseline', args.baseline_driver), ('candidate', args.driver)]
+                    for variant, driver in order[::1 if trial % 2 == 0 else -1]:
+                        pairs.append((variant, trial, driver))
+              for variant, trial, driver in pairs:
+                root=base/f'{workload}-{workers}-{trial}-{variant}';root.mkdir();(root/'spill').mkdir();(root/'state').mkdir()
                 connections=[dict(id=id,driver='file',resource=str(path)) for id,path in [('facts',source),('reference',reference),('spill',root/'spill'),('output',root/'output.ndjson'),('errors',root/'errors.ndjson'),('second',root/'second.ndjson')]]
                 nodes=[component('source','file.ndjson.source',connection='facts',schema=sources,batchSize=256)];paths=[];caches=[];build=None
                 if workload=='streaming':
@@ -51,7 +79,7 @@ def main():
                     nodes.extend([component('quality','quality',errorPolicy='redirect',rules=[dict(id='range',kind='range',columns=['id'],maximum=max(0,args.rows-min(args.rows//10,100000)-1))]),component('output','file.ndjson.destination',connection='output'),component('errors','file.ndjson.destination',connection='errors')]);paths=[edge('source','quality'),edge('quality','output'),edge('quality','errors',1)]
                 elif workload=='incrementalResume':
                     nodes[0]['config']['incremental']=dict(mode='watermark',keys=['id'],after=[-1],unique=True,monotonic=True)
-                    with sqlite3.connect(root/'target.db') as db:db.execute('CREATE TABLE output(id INTEGER NOT NULL PRIMARY KEY,fk INTEGER NOT NULL)')
+                    with closing(sqlite3.connect(root/'target.db')) as db, db:db.execute('CREATE TABLE output(id INTEGER NOT NULL PRIMARY KEY,fk INTEGER NOT NULL)')
                     connections.append(dict(id='target',driver=args.sqlite,resource=str(root/'target.db'),credentialReference='fixture'));nodes.append(component('output','sql.destination',connection='target',table='output',mode='upsert',keys=[0],provisionReceipts=True));paths=[edge('source','output')]
                 else:
                     caches=[dict(id='ref',sourceConnection='reference',schema=refs,keys=[0],duplicates='first',scope='execution')]
@@ -60,9 +88,9 @@ def main():
                 tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='flow'))];constraints=[]
                 if build:tasks.insert(0,dict(id='build',kind='dataFlow',config=dict(pipeline='build')));constraints=[{'from':'build','to':'flow','on':'success'}]
                 doc=dict(version=PROTOCOL,id='r5',connections=connections,caches=caches,policy=dict(maxConcurrency=workers,buffers=dict(connection='spill',residentBytes=65536,workingBytes=4194304,spillBytes=1000000000,maxBlocks=50000)),controlFlow=dict(tasks=tasks,constraints=constraints),dataFlows=([build] if build else [])+[dict(id='flow',components=nodes,paths=paths)])
-                if workload=='incrementalResume':doc['durable']=True;interrupted=run(args.driver,doc,root,workers,kill=True);facts=run(args.driver,doc,root,workers,resume=True);facts['interruption']=interrupted;facts['totalSeconds']=interrupted['seconds']+facts['seconds'];db=sqlite3.connect(root/'target.db');assert db.execute('SELECT count(*),min(id),max(id) FROM output').fetchone()==(args.rows,0,args.rows-1);assert db.execute('SELECT count(*) FROM output WHERE fk != id % ?', (args.references,)).fetchone()[0]==0;db.close();signature={'rows':args.rows,'correctUpsertKeys':True,'correctForeignKeys':True}
+                if workload=='incrementalResume':doc['durable']=True;interrupted=run(driver,doc,root,workers,kill=True);facts=run(driver,doc,root,workers,resume=True);facts['interruption']=interrupted;facts['totalSeconds']=interrupted['seconds']+facts['seconds'];db=sqlite3.connect(root/'target.db');assert db.execute('SELECT count(*),min(id),max(id) FROM output').fetchone()==(args.rows,0,args.rows-1);assert db.execute('SELECT count(*) FROM output WHERE fk != id % ?', (args.references,)).fetchone()[0]==0;db.close();signature={'rows':args.rows,'correctUpsertKeys':True,'correctForeignKeys':True}
                 else:
-                    facts=run(args.driver,doc,root,workers);signature=digest(root/'output.ndjson')
+                    facts=run(driver,doc,root,workers);signature=digest(root/'output.ndjson', workload=='sortSpill')
                     if workload=='errorDualSink':assert digest(root/'errors.ndjson')['rows']==min(args.rows//10,100000);assert facts['committedErrors']==min(args.rows//10,100000)
                     if workload=='cacheLookup':assert digest(root/'second.ndjson')==signature;assert facts['diagnostics']['caches'][0]['loaded']==args.references
                 tails=[dict(pipeline=pipeline['id'],component=node['id'],**node['batchLatency'])
@@ -74,7 +102,8 @@ def main():
                 assert signature['rows']==expected_rows,(workload,signature,expected_rows)
                 if workload in golden:assert golden[workload]==signature,(workload,workers,signature,golden[workload])
                 else:golden[workload]=signature
-                matrix.append(dict(workload=workload,workers=workers,rows=args.rows,references=args.references,rowsPerSecond=args.rows/facts['seconds'],signature=signature,**facts));print(workload,workers,facts['seconds'],flush=True)
+                if trial: matrix.append(dict(variant=variant,trial=trial,workload=workload,workers=workers,rows=args.rows,references=args.references,rowsPerSecond=args.rows/facts['seconds'],signature=signature,**facts))
+                print(variant,trial,workload,workers,facts['seconds'],flush=True)
                 assert not list((root/'spill').glob('*.udw'))
                 # Raw measurements and semantic signatures are sealed above.
                 # Delete only this workload's owned temporary data before the next.

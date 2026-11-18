@@ -1,6 +1,8 @@
 #include "check.h"
 #include "ud/package.h"
+#include "ud/connection_manager.h"
 #include "../engines/package/internal.h"
+#include <stdatomic.h>
 #include <string.h>
 #ifdef _WIN32
 #include <process.h>
@@ -27,6 +29,147 @@ static void process_usage(FILE *stream) {
 }
 static ud_string str(const char *s) {
     return (ud_string){s, (uint32_t)strlen(s)};
+}
+typedef struct lookup_epoch_node {
+    ud_component_context context;
+    atomic_int *updated;
+    uint32_t phase;
+} lookup_epoch_node;
+static const ud_field lookup_epoch_fields[] = {
+    {.name = "seq", .name_length = 3, .type = UD_INT64},
+    {.name = "probe", .name_length = 5, .type = UD_UTF8}};
+static ud_status lookup_epoch_source_schema(void *user, const ud_component_context *context,
+                                            ud_string config, const ud_batch *const *input,
+                                            ud_batch **out) {
+    (void)user;
+    (void)config;
+    (void)input;
+    return ud_batch_create(context->memory, lookup_epoch_fields, 2, 0, out);
+}
+static ud_status lookup_epoch_sink_schema(void *user, const ud_component_context *context,
+                                          ud_string config, const ud_batch *const *input,
+                                          ud_batch **out) {
+    (void)user;
+    (void)context;
+    (void)config;
+    (void)input;
+    (void)out;
+    return UD_OK;
+}
+static ud_status lookup_epoch_prepare(void *user, const ud_component_context *context,
+                                      ud_string config, const ud_batch *const *in,
+                                      const ud_batch *const *out, void **instance) {
+    (void)config;
+    (void)in;
+    (void)out;
+    lookup_epoch_node *node = ud_alloc(context->memory, sizeof(*node));
+    if (!node)
+        return UD_RESOURCE;
+    node->context = *context;
+    node->updated = user;
+    *instance = node;
+    return UD_OK;
+}
+static void lookup_epoch_dispose(void *instance, ud_status status) {
+    (void)status;
+    ud_free(instance);
+}
+static ud_status lookup_epoch_confirm(void *instance, uint64_t epoch, ud_string position) {
+    (void)instance;
+    return epoch < 3 && position.length == 1 ? UD_OK : UD_SCHEMA;
+}
+static ud_status lookup_epoch_source(void *instance, const ud_component_event *event) {
+    (void)event;
+    lookup_epoch_node *node = instance;
+    ud_component_context *c = &node->context;
+    if (node->phase == 5)
+        return UD_END;
+    if (node->phase == 1 && !atomic_load(node->updated))
+        return UD_BUSY;
+    if (node->phase == 2 || node->phase == 4) {
+        ud_component_event barrier = {.struct_size = sizeof(barrier), .abi_version = UD_ABI_VERSION,
+                                      .kind = UD_COMPONENT_CHECKPOINT_BARRIER,
+                                      .epoch = node->phase / 2,
+                                      .source_position = {node->phase == 2 ? "2" : "3", 1}};
+        UD_TRY(c->emit_event(c->emit_user, 0, &barrier));
+    } else {
+        ud_value values[] = {{.type = UD_INT64, .integer = node->phase == 3 ? 2 : node->phase},
+                             {.type = UD_UTF8, .text_length = 5,
+                              .text = node->phase == 1 ? "ALICE" : "alice"}};
+        ud_batch *batch = NULL;
+        UD_TRY(ud_batch_create(c->memory, lookup_epoch_fields, 2, 1, &batch));
+        ud_status status = ud_batch_append(batch, values, 2);
+        if (!status)
+            status = ud_batch_seal(batch);
+        if (!status)
+            status = c->emit(c->emit_user, 0, batch);
+        ud_batch_destroy(batch);
+        UD_TRY(status);
+    }
+    node->phase++;
+    return UD_MORE;
+}
+static ud_status lookup_epoch_sink(void *instance, const ud_component_event *event) {
+    if (event->kind == UD_COMPONENT_POLL)
+        return UD_END;
+    if (event->kind != UD_COMPONENT_DATA)
+        return UD_OK;
+    lookup_epoch_node *node = instance;
+    if (ud_batch_rows(event->batch) != 1)
+        return UD_CORRUPT;
+    ud_value sequence, payload;
+    UD_TRY(ud_batch_get(event->batch, 0, 0, &sequence));
+    UD_TRY(ud_batch_get(event->batch, 0, 3, &payload));
+    const char *expected = node->phase < 2 ? "original" : "changed";
+    if (sequence.integer != node->phase || payload.is_null ||
+        payload.text_length != strlen(expected) || memcmp(payload.text, expected, payload.text_length))
+        return UD_CORRUPT;
+    node->phase++;
+    if (node->phase != 1)
+        return UD_OK;
+    ud_connection_lease *writer = NULL;
+    UD_TRY(ud_activation_acquire_connection(node->context.activation, str("db"),
+                                            UD_CONNECT_EXECUTE_SQL, &writer));
+    ud_read_options update = {.struct_size = sizeof(update), .abi_version = UD_ABI_VERSION,
+                              .sql = str("UPDATE reference SET payload='changed'")};
+    uint64_t changed = 0;
+    ud_status status = ud_connection_lease_execute_command(writer, &update, &changed);
+    ud_status closed = ud_connection_lease_release(writer);
+    if (!status)
+        status = closed;
+    if (!status && changed != 1)
+        status = UD_CORRUPT;
+    if (!status)
+        atomic_store(node->updated, 1);
+    return status;
+}
+static ud_status lookup_epoch_finish(void *instance) {
+    lookup_epoch_node *node = instance;
+    return node->phase == 3 || node->phase == 5 ? UD_OK : UD_CORRUPT;
+}
+static ud_status register_lookup_epoch(ud_registry *registry, atomic_int *updated) {
+    ud_component_descriptor descriptor = {
+        .struct_size = sizeof(descriptor), .abi_version = UD_ABI_VERSION,
+        .id = {"fixture.lookup.source", 21}, .name = {"Lookup epoch source", 19},
+        .version = {"1", 1}, .configuration_schema = {"{}", 2},
+        .category = UD_COMPONENT_SOURCE, .outputs = 1, .synchronous_input = -1, .error_output = -1,
+        .capabilities = UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_REPLAY_SAFE | UD_COMPONENT_CONTINUOUS,
+        .configure = lookup_epoch_source_schema, .prepare = lookup_epoch_prepare,
+        .step = lookup_epoch_source, .finish = lookup_epoch_finish, .dispose = lookup_epoch_dispose,
+        .confirm_epoch = lookup_epoch_confirm, .user = updated};
+    UD_TRY(ud_registry_register(registry, &descriptor));
+    descriptor.id = str("fixture.lookup.sink");
+    descriptor.name = str("Lookup epoch oracle");
+    descriptor.category = UD_COMPONENT_DESTINATION;
+    descriptor.inputs = 1;
+    descriptor.outputs = 0;
+    descriptor.capabilities = UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_STREAM_SAFE |
+                              UD_COMPONENT_REPLAY_SAFE;
+    descriptor.effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_IDEMPOTENT;
+    descriptor.configure = lookup_epoch_sink_schema;
+    descriptor.step = lookup_epoch_sink;
+    descriptor.confirm_epoch = NULL;
+    return ud_registry_register(registry, &descriptor);
 }
 static ud_status authorize(void *user, ud_string tenant, ud_string resource, int32_t action) {
     fixture *f = user;
@@ -117,6 +260,14 @@ int main(int argc, char **argv) {
     char *document = malloc((size_t)bytes);
     CHECK(document && fread(document, 1, (size_t)bytes, file) == (size_t)bytes);
     fclose(file);
+    ud_context *fixture_context = NULL;
+    ud_registry *registry = NULL;
+    atomic_int updated = 0;
+    if (argc > 10 && !strcmp(argv[10], "lookup-epoch")) {
+        OK(ud_context_create(NULL, &fixture_context));
+        OK(ud_registry_create(fixture_context, &registry));
+        OK(register_lookup_epoch(registry, &updated));
+    }
     ud_execution_options options = {
         .struct_size = sizeof(options),
         .abi_version = UD_ABI_VERSION,
@@ -127,6 +278,7 @@ int main(int argc, char **argv) {
         .max_batch_rows = 256,
         .max_depth = 32,
         .max_concurrency = (uint32_t)atoi(argv[4]),
+        .registry = registry,
         .tenant = {"fixture", 7},
         .execution_id = {"next-phase", 10},
         .authorize = authorize,
@@ -168,5 +320,9 @@ int main(int argc, char **argv) {
     process_usage(stdout);
     printf("}\n");
     OK(ud_execution_destroy(execution));
+    if (registry) {
+        OK(ud_registry_destroy(registry));
+        OK(ud_context_destroy(fixture_context));
+    }
     return 0;
 }

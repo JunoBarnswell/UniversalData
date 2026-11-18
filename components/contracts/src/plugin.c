@@ -385,7 +385,10 @@ static ud_status connection_enter(ud_connection *connection,int32_t action) {
         connection->lease_operation && connection->operation_depth == 1) connection->operation_depth++;
     else UD_TRY(operation_acquire(connection,connection->cleanup ? NULL : connection->options.authorize_user,
                                   connection->cleanup ? NULL : connection->options.check,connection->cleanup));
-    ud_status status = authorize_connection(connection,action);
+    ud_status status = action == UD_ACCESS_WRITE &&
+                               connection->transaction == UD_ISOLATION_READ_SNAPSHOT
+                           ? UD_UNSUPPORTED
+                           : authorize_connection(connection, action);
     if (status) { operation_release(connection); return status; }
     connection->io_action = action;
     connection->api->set_control(connection->instance->state,connection,connection_check);
@@ -437,6 +440,9 @@ static ud_status validate_driver(ud_plugin *p) {
         return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_TRANSACTION) &&
         (!api->begin || !api->commit || !api->rollback))
+        return UD_INCOMPATIBLE;
+    if ((api->capabilities & UD_CONNECT_READ_SNAPSHOT) &&
+        (!(api->capabilities & UD_CONNECT_READ) || !api->begin || !api->rollback))
         return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_TRANSACTIONAL_DML) &&
         (!(api->capabilities & UD_CONNECT_TRANSACTION) || !api->savepoint)) return UD_INCOMPATIBLE;
@@ -562,14 +568,15 @@ ud_status ud_connection_bind_lease(ud_connection *c, void *user, ud_authorize_fn
 }
 ud_status ud_connection_begin(ud_connection *c, int32_t isolation) {
     if (!c || c->transaction || c->cursor || c->cdc || isolation < UD_ISOLATION_READ_COMMITTED ||
-        isolation > UD_ISOLATION_SERIALIZABLE)
+        isolation > UD_ISOLATION_READ_SNAPSHOT)
         return UD_INVALID;
-    if (!(c->capabilities & UD_CONNECT_TRANSACTION))
+    int snapshot = isolation == UD_ISOLATION_READ_SNAPSHOT;
+    if (!(c->capabilities & (snapshot ? UD_CONNECT_READ_SNAPSHOT : UD_CONNECT_TRANSACTION)))
         return UD_UNSUPPORTED;
-    UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
+    UD_TRY(connection_enter(c, snapshot ? UD_ACCESS_READ : UD_ACCESS_WRITE));
     ud_status status = c->api->begin(c->instance->state, isolation);
     if (!status)
-        c->transaction = 1;
+        c->transaction = snapshot ? UD_ISOLATION_READ_SNAPSHOT : 1;
     connection_leave(c);
     return status;
 }

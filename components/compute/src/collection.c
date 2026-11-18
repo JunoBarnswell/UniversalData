@@ -162,6 +162,7 @@ ud_status ud_compute_sort(ud_context *c, const ud_batch *b, uint32_t key, int32_
     if (!b || !out || key >= ud_batch_columns(b) || (descending != 0 && descending != 1))
         return UD_INVALID;
     *out = NULL;
+    const ud_field *field = &b->column[key].field;
     uint32_t rows = ud_batch_rows(b), n = ud_batch_columns(b);
     uint32_t *order = ud_alloc(c, (size_t)rows * sizeof(*order) + 1),
              *scratch = ud_alloc(c, (size_t)rows * sizeof(*scratch) + 1);
@@ -180,7 +181,7 @@ ud_status ud_compute_sort(ud_context *c, const ud_batch *b, uint32_t key, int32_
                 ud_value x, y;
                 ud_batch_get(b, order[a], key, &x);
                 ud_batch_get(b, order[z], key, &y);
-                int cmp = ud_value_compare(&x, &y);
+                int cmp = ud_field_value_compare(field, &x, field, &y);
                 if (descending)
                     cmp = -cmp;
                 scratch[k++] = cmp <= 0 ? order[a++] : order[z++];

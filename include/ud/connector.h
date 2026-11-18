@@ -34,9 +34,13 @@ enum {
     UD_CONNECT_TRANSACTIONAL_DML =
         8388608, /* Accepted row DML is governed by transaction/savepoint rollback. */
     UD_CONNECT_READONLY_SCAN =
-        16777216 /* Table scans cannot execute external writes; enforced by the driver. */
+        16777216, /* Table scans cannot execute external writes; enforced by the driver. */
+    UD_CONNECT_READ_SNAPSHOT = 33554432 /* Repeatable read-only view across scans. */
 };
-enum { UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE };
+enum {
+    UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE,
+    UD_ISOLATION_READ_SNAPSHOT
+};
 enum {
     UD_TX_UNKNOWN = 0,
     UD_TX_ACTIVE = 1,

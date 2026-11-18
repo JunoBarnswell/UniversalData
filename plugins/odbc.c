@@ -1,6 +1,4 @@
-#include "common.h"
-#include <sql.h>
-#include <sqlext.h>
+#include "odbc_internal.h"
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +10,6 @@
 #endif
 /* One ODBC owner for every external Driver Manager provider. SQLGetInfo and
  * SQLGetFunctions establish actual capabilities before a lease is admitted. */
-#include "odbc_internal.h"
 ud_status ud_odbc_control(odbc_state *p) {
     if (p->resolving)
         return UD_OK;
@@ -28,6 +25,8 @@ static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
     SQLGetDiagRecA(kind, handle, 1, (SQLCHAR *)p->sqlstate, &p->native_error, message,
                    sizeof(message), &length);
     p->sqlstate[5] = 0;
+    if (p->dialect == DIALECT_MSSQL && p->native_error == 51079)
+        return p->host.report(p->host.context, UD_FENCED, "changeset preimage conflict");
     char safe[96];
     snprintf(safe, sizeof(safe), "ODBC operation failed (SQLSTATE %.5s, native %ld)", p->sqlstate,
              (long)p->native_error);
@@ -416,6 +415,7 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
     if (!statuses)
         return UD_RESOURCE;
     int array = rows > 1 && p->array_parameters;
+    int ordered_changes = write && write->mode == UD_WRITE_CHANGESET && p->dialect == DIALECT_MSSQL;
     if (!array && rows > 1) {
         p->host.deallocate(statuses);
         for (uint32_t row = 0; row < rows; row++) {
@@ -447,7 +447,7 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
     SQLRETURN rc = !s ? SQLExecute(stmt) : SQL_ERROR;
     if (!s && !SQL_SUCCEEDED(rc) && rc != SQL_NO_DATA)
         s = failure(p, SQL_HANDLE_STMT, stmt);
-    if (!s && array) {
+    if (!s && (array || ordered_changes)) {
         SQLLEN initial_count = 0;
         if (affected && SQL_SUCCEEDED(SQLRowCount(stmt, &initial_count)) && initial_count > 0)
             *affected += (uint64_t)initial_count;
@@ -467,7 +467,7 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
             if (statuses[i] != SQL_PARAM_SUCCESS && statuses[i] != SQL_PARAM_SUCCESS_WITH_INFO)
                 s = UD_IO;
     }
-    if (!s && !array) {
+    if (!s && !array && !ordered_changes) {
         SQLLEN count = 0;
         if (!SQL_SUCCEEDED(SQLRowCount(stmt, &count)))
             s = failure(p, SQL_HANDLE_STMT, stmt);
@@ -1211,13 +1211,19 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     uint32_t budget = p->host.parameter_limit(native_dialect(p));
     if (p->dialect == DIALECT_MSSQL && budget >= 4)
         budget -= 4;
+    int ordered_changes = p->dialect == DIALECT_MSSQL && o->mode == UD_WRITE_CHANGESET;
     uint32_t limit = width ? budget / width : 0;
+    if (ordered_changes && limit) {
+        /* One after value and up to two before parameters per column for
+           SQL Server's null-safe preimage predicates. */
+        limit = limit >= 3 ? limit / 3 : 1;
+    }
     if (!limit)
         s = UD_RESOURCE;
     if (limit > 1000)
         limit = 1000;
     for (uint32_t row = 0; !s && !existing && !native && row < p->host.rows(batch);) {
-        uint32_t count = o->mode == UD_WRITE_CHANGESET ? 1 : p->host.rows(batch) - row;
+        uint32_t count = o->mode == UD_WRITE_CHANGESET && !ordered_changes ? 1 : p->host.rows(batch) - row;
         if (count > limit)
             count = limit;
         ud_sql_statement plan = {0};
@@ -1231,7 +1237,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s)
             s = execute_bound(p, stmt, batch, 0, array ? count : 1, NULL, plan.parameter_count,
                               &affected, o, &plan);
-        if (!s && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT &&
+        if (!s && !ordered_changes && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT &&
             o->operations[row] != UD_CHANGE_TRUNCATE && affected != 1)
             s = p->host.report(p->host.context, UD_FENCED, "changeset preimage conflict");
         statement_release(p, stmt);

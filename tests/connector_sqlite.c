@@ -129,6 +129,36 @@ static int transfer(ud_context *ctx, ud_connection *source, ud_connection *targe
     CHECK(rows == (!strcmp(job, "full") ? 10000u : 250u));
     return 0;
 }
+static int read_snapshot_value(ud_context *ctx, ud_connection *connection, int64_t expected) {
+    ud_field field = {.name = "value", .name_length = 5, .type = UD_INT64};
+    ud_batch *schema = NULL, *batch = NULL;
+    OK(ud_batch_create(ctx, &field, 1, 0, &schema));
+    static const char sql[] = "SELECT value FROM lookup_snapshot";
+    ud_read_options options = {.struct_size = sizeof(options), .abi_version = UD_ABI_VERSION,
+                               .batch_size = 1, .sql = {sql, sizeof(sql) - 1}};
+    OK(ud_connection_read_open(connection, &options, schema));
+    OK(ud_connection_read_next(connection, &batch));
+    ud_value value;
+    OK(ud_batch_get(batch, 0, 0, &value));
+    CHECK(value.integer == expected);
+    ud_batch_destroy(batch);
+    ud_batch_destroy(schema);
+    OK(ud_connection_read_close(connection));
+    return 0;
+}
+static int snapshot_refresh(ud_context *ctx, sqlite3 *writer, ud_connection *reader) {
+    CHECK(exec_fixture(writer, "PRAGMA journal_mode=WAL; CREATE TABLE lookup_snapshot("
+                               "value INTEGER NOT NULL); INSERT INTO lookup_snapshot VALUES(1)"));
+    OK(ud_connection_begin(reader, UD_ISOLATION_READ_SNAPSHOT));
+    CHECK(read_snapshot_value(ctx, reader, 1) == 0);
+    CHECK(exec_fixture(writer, "UPDATE lookup_snapshot SET value=2"));
+    CHECK(read_snapshot_value(ctx, reader, 1) == 0);
+    OK(ud_connection_rollback(reader));
+    OK(ud_connection_begin(reader, UD_ISOLATION_READ_SNAPSHOT));
+    CHECK(read_snapshot_value(ctx, reader, 2) == 0);
+    OK(ud_connection_rollback(reader));
+    return 0;
+}
 int main(int argc, char **argv) {
     CHECK(argc == 4);
     const char *source_path = argv[2], *target_path = argv[3];
@@ -177,6 +207,7 @@ int main(int argc, char **argv) {
     CHECK((ud_connection_capabilities(dst) & UD_CONNECT_UPSERT) != 0);
     CHECK((ud_connection_capabilities(dst) & UD_CONNECT_OVERWRITE) == 0);
     OK(ud_connection_test(src));
+    CHECK(snapshot_refresh(ctx, source, src) == 0);
     ud_batch *discovery = NULL;
     OK(ud_connection_discover(src, (ud_string){"users", 5}, &discovery));
     CHECK(ud_batch_rows(discovery) == 3);

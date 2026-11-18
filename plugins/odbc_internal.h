@@ -1,6 +1,9 @@
 #ifndef UD_ODBC_INTERNAL_H
 #define UD_ODBC_INTERNAL_H
 #include "common.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <sql.h>
 #include <sqlext.h>
 #include "../components/foundation/thread.h"

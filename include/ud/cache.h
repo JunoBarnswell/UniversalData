@@ -6,7 +6,7 @@ extern "C" {
 #endif
 typedef struct ud_cache ud_cache;
 typedef struct ud_cache_reader ud_cache_reader;
-enum { UD_CACHE_FULL = 0, UD_CACHE_PARTIAL = 1 };
+enum { UD_CACHE_FULL = 0, UD_CACHE_PARTIAL = 1, UD_CACHE_NONE = 2 };
 enum { UD_CACHE_FIRST = 0, UD_CACHE_ERROR = 1, UD_CACHE_ALL = 2 };
 typedef struct ud_cache_options {
     uint32_t struct_size, abi_version, max_batch_rows;
@@ -62,6 +62,9 @@ UD_API ud_status ud_cache_next(ud_cache_reader *, const ud_batch **, uint32_t *)
 UD_API ud_status ud_cache_scan_create(ud_cache *, ud_cache_reader **);
 UD_API ud_status ud_cache_read_at(ud_cache_reader *, uint64_t, const ud_batch **, uint32_t *);
 UD_API void ud_cache_reader_destroy(ud_cache_reader *);
+/* Attach a sealed database result for the pending Lookup input. Each probe
+ * supplies one row with reference fields followed by a Boolean match flag. */
+UD_API ud_status ud_operator_lookup_observe(ud_operator *, const ud_batch *);
 #ifdef __cplusplus
 }
 #endif

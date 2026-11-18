@@ -3,6 +3,8 @@ ud_status ud_builtin_diagnostics(void *ptr, char **out, uint32_t *length) {
     builtin *b = ptr;
     if (b->kind == XLSX_SOURCE)
         return ud_xlsx_reader_metadata(b->xlsx, out, length);
+    if (b->kind == JOIN && b->operator)
+        return ud_operator_diagnostics(b->operator, out, length);
     ud_bytes json = {.ctx = b->context.memory};
     char *cursor = NULL;
     uint32_t cursor_length = 0;
@@ -19,6 +21,13 @@ ud_status ud_builtin_diagnostics(void *ptr, char **out, uint32_t *length) {
                      b->materialized ? "true" : "false");
     if (!status)
         status = ud_bytes_put(&json, head, (size_t)n);
+    if (!status && b->kind == SQL_SOURCE) {
+        const ud_batch *physical = b->scan_schema ? b->scan_schema
+                                   : b->actual_schema ? b->actual_schema : b->schema;
+        n = snprintf(head, sizeof(head), ",\"predicatePushed\":%s,\"readColumns\":%u",
+                     b->predicate_pushed ? "true" : "false", physical->columns);
+        status = ud_bytes_put(&json, head, (size_t)n);
+    }
     if (!status && cursor) {
         status = ud_bytes_put(&json, ",\"cursor\":", 10);
         if (!status)
@@ -89,6 +98,8 @@ void ud_builtin_dispose(void *ptr, ud_status result) {
     ud_rule_delivery_destroy(b->delivery);
     ud_cursor_destroy(b->cursor);
     ud_batch_destroy(b->actual_schema);
+    ud_batch_destroy(b->scan_schema);
+    ud_free(b->scan_mapping);
     ud_batch_destroy(b->write_schema);
     ud_batch_destroy(b->parameters);
     ud_operator_destroy(b->source_sort);

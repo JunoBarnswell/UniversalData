@@ -416,12 +416,13 @@ static ud_status append_core(ud_batch *b, const ud_value *v, uint32_t n, int mas
                 return s;
         }
         if (variable(v[i].type)) {
-            if ((!v[i].text && v[i].text_length) ||
-                (v[i].type == UD_UTF8 && !ud_utf8_valid(v[i].text, v[i].text_length)))
+            uint32_t length = ud_scalar_text_prefix(&c->field, v[i].text, v[i].text_length);
+            if ((!v[i].text && length) ||
+                (v[i].type == UD_UTF8 && !ud_utf8_valid(v[i].text, length)))
                 return UD_PARSE;
-            if (v[i].text_length > (size_t)INT32_MAX - c->string_bytes)
+            if (length > (size_t)INT32_MAX - c->string_bytes)
                 return UD_OVERFLOW;
-            size_t need = c->string_bytes + v[i].text_length;
+            size_t need = c->string_bytes + length;
             if (need > c->string_capacity) {
                 size_t cap = c->string_capacity ? c->string_capacity : 64;
                 while (cap < need) {
@@ -530,11 +531,13 @@ static ud_status append_core(ud_batch *b, const ud_value *v, uint32_t n, int mas
                 ((ud_decimal128 *)c->values)[r] = v[i].decimal;
                 break;
             case UD_UTF8:
-            case UD_BINARY:
-                if (v[i].text_length)
-                    memcpy(c->strings + c->string_bytes, v[i].text, v[i].text_length);
-                c->string_bytes += v[i].text_length;
+            case UD_BINARY: {
+                uint32_t length = ud_scalar_text_prefix(&c->field, v[i].text, v[i].text_length);
+                if (length)
+                    memcpy(c->strings + c->string_bytes, v[i].text, length);
+                c->string_bytes += length;
                 break;
+            }
             }
         }
         if (variable(c->field.type))

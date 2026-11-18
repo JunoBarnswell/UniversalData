@@ -8,7 +8,9 @@ typedef struct event_group {
     ud_value *keys;
     ud_accumulator *aggregate;
     ud_buffer_block *spill;
-    struct event_group *next;
+    uint32_t heap_index;
+    struct event_group *next, **link;
+    struct event_group *hash_next;
 } event_group;
 struct ud_event_window {
     ud_context *ctx;
@@ -20,6 +22,9 @@ struct ud_event_window {
     uint8_t fingerprint[32];
     ud_id output_scope;
     event_group *groups;
+    event_group **buckets, **heap;
+    uint32_t heap_capacity;
+    uint32_t bucket_count;
     uint32_t time, count, maximum, late_at;
     int mode, late_policy, ended;
     int64_t size, slide, gap, lateness, watermark;
@@ -66,6 +71,35 @@ static void destroy_group(ud_event_window *w, event_group *g) {
     ud_accumulator_destroy(g->aggregate);
     ud_buffer_release(g->spill);
     ud_free(g);
+}
+static int same_key(ud_event_window *w, event_group *g, const ud_batch *b, uint32_t row,
+                    uint64_t hash);
+static uint32_t bucket_of(const ud_event_window *w, uint64_t hash, int64_t start) {
+    if (w->mode != 3) {
+        ud_value time = {.type = UD_INT64, .integer = start};
+        hash = ud_value_hash(&time, hash);
+    }
+    return (uint32_t)(hash % w->bucket_count);
+}
+static event_group *find_group(ud_event_window *w, const ud_batch *b, uint32_t row,
+                               uint64_t hash, int64_t start) {
+    for (event_group *g = w->buckets[bucket_of(w, hash, start)]; g; g = g->hash_next)
+        if (g->start == start && same_key(w, g, b, row, hash))
+            return g;
+    return NULL;
+}
+static void index_group(ud_event_window *w, event_group *g) {
+    uint32_t bucket = bucket_of(w, g->hash, g->start);
+    g->hash_next = w->buckets[bucket];
+    w->buckets[bucket] = g;
+}
+static void unindex_group(ud_event_window *w, event_group *g) {
+    event_group **at = &w->buckets[bucket_of(w, g->hash, g->start)];
+    while (*at && *at != g)
+        at = &(*at)->hash_next;
+    if (*at == g)
+        *at = g->hash_next;
+    g->hash_next = NULL;
 }
 static ud_status load(ud_event_window *w, event_group *g) {
     if (g->aggregate)
@@ -119,10 +153,80 @@ static int same_key(ud_event_window *w, event_group *g, const ud_batch *b, uint3
         return 0;
     for (uint32_t i = 0; i < w->plan->key_n; i++) {
         ud_value v;
-        if (ud_batch_get(b, row, w->plan->keys[i], &v) || ud_value_compare(g->keys + i, &v))
+        const ud_field *field = &w->plan->output_schema->column[i].field;
+        if (ud_batch_get(b, row, w->plan->keys[i], &v) ||
+            ud_field_value_compare(field, g->keys + i, field, &v))
             return 0;
     }
     return 1;
+}
+static int precedes(const ud_event_window *w, const event_group *a, const event_group *b) {
+    if (a->end != b->end)
+        return a->end < b->end;
+    if (a->start != b->start)
+        return a->start < b->start;
+    for (uint32_t i = 0; i < w->plan->key_n; i++) {
+        const ud_field *field = &w->plan->output_schema->column[i].field;
+        int order = ud_field_value_compare(field, a->keys + i, field, b->keys + i);
+        if (order)
+            return order < 0;
+    }
+    return 0;
+}
+static void heap_set(ud_event_window *w, uint32_t at, event_group *g) {
+    w->heap[at] = g;
+    g->heap_index = at;
+}
+static void heap_fix(ud_event_window *w, event_group *g) {
+    uint32_t i = g->heap_index;
+    while (i && precedes(w, g, w->heap[(i - 1) / 2])) {
+        heap_set(w, i, w->heap[(i - 1) / 2]);
+        i = (i - 1) / 2;
+    }
+    while (2 * i + 1 < w->count) {
+        uint32_t child = 2 * i + 1;
+        if (child + 1 < w->count && precedes(w, w->heap[child + 1], w->heap[child]))
+            child++;
+        if (!precedes(w, w->heap[child], g))
+            break;
+        heap_set(w, i, w->heap[child]);
+        i = child;
+    }
+    heap_set(w, i, g);
+}
+static ud_status insert_group(ud_event_window *w, event_group *g) {
+    if (w->count == w->heap_capacity) {
+        uint32_t n = w->heap_capacity ? w->heap_capacity * 2 : 32;
+        event_group **heap = ud_alloc(w->ctx, n * sizeof(*heap));
+        if (!heap)
+            return UD_RESOURCE;
+        if (w->count)
+            memcpy(heap, w->heap, w->count * sizeof(*heap));
+        ud_free(w->heap);
+        w->heap = heap;
+        w->heap_capacity = n;
+    }
+    g->link = &w->groups;
+    g->next = w->groups;
+    if (g->next)
+        g->next->link = &g->next;
+    w->groups = g;
+    index_group(w, g);
+    heap_set(w, w->count++, g);
+    heap_fix(w, g);
+    return UD_OK;
+}
+static void remove_group(ud_event_window *w, event_group *g) {
+    *g->link = g->next;
+    if (g->next)
+        g->next->link = g->link;
+    unindex_group(w, g);
+    if (g->heap_index != --w->count) {
+        event_group *last = w->heap[w->count];
+        heap_set(w, g->heap_index, last);
+        heap_fix(w, last);
+    }
+    destroy_group(w, g);
 }
 static ud_status new_group(ud_event_window *w, const ud_batch *b, uint32_t row, uint64_t hash,
                            int64_t start, int64_t end, event_group **out) {
@@ -144,13 +248,12 @@ static ud_status new_group(ud_event_window *w, const ud_batch *b, uint32_t row, 
     }
     if (!s)
         s = load(w, g);
+    if (!s)
+        s = insert_group(w, g);
     if (s) {
         destroy_group(w, g);
         return s;
     }
-    g->next = w->groups;
-    w->groups = g;
-    w->count++;
     *out = g;
     return UD_OK;
 }
@@ -215,6 +318,10 @@ ud_status ud_event_window_create(ud_context *ctx, const ud_operator_options *o,
     w->lateness = (int64_t)late;
     w->maximum = (uint32_t)maximum;
     w->budget = budget;
+    w->bucket_count = 4096;
+    w->buckets = ud_alloc(ctx, w->bucket_count * sizeof(*w->buckets));
+    if (!w->buckets)
+        s = UD_RESOURCE;
     if (!s)
         s = o->buffers ? ud_buffer_state_domain_create(o->buffers, budget, &w->memory)
                        : ud_memory_domain_create(ctx, budget, &w->memory);
@@ -272,10 +379,7 @@ ud_status ud_event_window_schema(const ud_event_window *w, uint32_t port, ud_bat
 }
 static ud_status add(ud_event_window *w, const ud_batch *b, uint32_t row, uint64_t hash,
                      int64_t start, int64_t end) {
-    event_group *g = w->groups;
-    for (; g; g = g->next)
-        if (g->start == start && same_key(w, g, b, row, hash))
-            break;
+    event_group *g = find_group(w, b, row, hash, start);
     if (!g)
         UD_TRY(new_group(w, b, row, hash, start, end, &g));
     UD_TRY(load(w, g));
@@ -336,7 +440,7 @@ ud_status ud_event_window_push(ud_event_window *w, const ud_batch *b) {
         for (uint32_t key = 0; key < w->plan->key_n; key++) {
             ud_value v;
             UD_TRY(ud_batch_get(b, row, w->plan->keys[key], &v));
-            hash = ud_value_hash(&v, hash);
+            hash = ud_field_value_hash(&w->plan->output_schema->column[key].field, &v, hash);
         }
         if (w->mode == 3) {
             int64_t start = t, end = expiry;
@@ -345,7 +449,7 @@ ud_status ud_event_window_push(ud_event_window *w, const ud_batch *b) {
              * two prior sessions. Publish only after end+lateness, never retract. */
             for (;;) {
                 int changed = 0;
-                event_group **at = &w->groups;
+                event_group **at = &w->buckets[bucket_of(w, hash, 0)];
                 while (*at) {
                     event_group *g = *at;
                     if (g != target && same_key(w, g, b, row, hash) && g->start < end &&
@@ -373,14 +477,12 @@ ud_status ud_event_window_push(ud_event_window *w, const ud_batch *b) {
                                 start = g->start;
                             if (g->end > end)
                                 end = g->end;
-                            *at = g->next;
-                            destroy_group(w, g);
-                            w->count--;
+                            remove_group(w, g);
                             changed = 1;
                             continue;
                         }
                     }
-                    at = &(*at)->next;
+                    at = &(*at)->hash_next;
                 }
                 if (!changed)
                     break;
@@ -389,6 +491,7 @@ ud_status ud_event_window_push(ud_event_window *w, const ud_batch *b) {
                 UD_TRY(new_group(w, b, row, hash, start, end, &target));
             target->start = start;
             target->end = end;
+            heap_fix(w, target);
             UD_TRY(load(w, target));
             ud_memory_scope scope;
             ud_memory_domain_enter(w->memory, &scope);
@@ -430,22 +533,7 @@ ud_status ud_event_window_end(ud_event_window *w) {
 uint64_t ud_event_window_demand(const ud_event_window *w) {
     if (w->ended || w->late)
         return 0;
-    for (event_group *g = w->groups; g; g = g->next)
-        if (closed(w, g->end))
-            return 0;
-    return 1;
-}
-static int precedes(const ud_event_window *w, const event_group *a, const event_group *b) {
-    if (a->end != b->end)
-        return a->end < b->end;
-    if (a->start != b->start)
-        return a->start < b->start;
-    for (uint32_t i = 0; i < w->plan->key_n; i++) {
-        int order = ud_value_compare(a->keys + i, b->keys + i);
-        if (order)
-            return order < 0;
-    }
-    return 0;
+    return !w->count || !closed(w, w->heap[0]->end);
 }
 ud_status ud_event_window_pull(ud_event_window *w, ud_batch **out, uint32_t *port) {
     *out = NULL;
@@ -467,13 +555,9 @@ ud_status ud_event_window_pull(ud_event_window *w, ud_batch **out, uint32_t *por
         }
         return UD_OK;
     }
-    event_group **best = NULL;
-    for (event_group **at = &w->groups; *at; at = &(*at)->next)
-        if (closed(w, (*at)->end) && (!best || precedes(w, *at, *best)))
-            best = at;
-    if (!best)
+    if (!w->count || !closed(w, w->heap[0]->end))
         return w->ended ? UD_END : UD_BUSY;
-    event_group *g = *best;
+    event_group *g = w->heap[0];
     UD_TRY(load(w, g));
     ud_batch *result = NULL;
     UD_TRY(ud_accumulator_snapshot(g->aggregate, &result));
@@ -517,9 +601,7 @@ ud_status ud_event_window_pull(ud_event_window *w, ud_batch **out, uint32_t *por
         *out = NULL;
         return s;
     }
-    *best = g->next;
-    destroy_group(w, g);
-    w->count--;
+    remove_group(w, g);
     w->emitted++;
     return UD_OK;
 }
@@ -633,7 +715,7 @@ ud_status ud_event_window_restore(ud_event_window **instance, const ud_batch *st
             ud_value key;
             s = ud_batch_get(partial, 0, k, &key);
             if (!s) {
-                hash = ud_value_hash(&key, hash);
+                hash = ud_field_value_hash(&w->plan->output_schema->column[k].field, &key, hash);
                 s = ud_copy_value(w->ctx, &key, g->keys + k, 0);
             }
         }
@@ -648,12 +730,11 @@ ud_status ud_event_window_restore(ud_event_window **instance, const ud_batch *st
             ud_memory_domain_leave(&scope);
         }
         ud_batch_destroy(partial);
-        if (!s) {
-            g->next = w->groups;
-            w->groups = g;
-            w->count++;
+        if (!s)
+            s = insert_group(w, g);
+        if (!s)
             s = rebalance(w);
-        } else if (g)
+        else if (g)
             destroy_group(w, g);
     }
     if (s) {
@@ -691,6 +772,8 @@ void ud_event_window_destroy(ud_event_window *w) {
     ud_batch_destroy(w->late);
     ud_plan_destroy(w->plan);
     ud_memory_domain_destroy(w->memory);
+    ud_free(w->buckets);
+    ud_free(w->heap);
     ud_free(w->configuration);
     ud_free(w);
 }

@@ -111,7 +111,8 @@ typedef struct builtin {
     int mode, load_mode;
     struct ud_rule_delivery *delivery;
     ud_cursor *cursor;
-    ud_batch *actual_schema, *write_schema, *parameters;
+    ud_batch *actual_schema, *scan_schema, *write_schema, *parameters;
+    uint32_t *scan_mapping;
     ud_operator *source_sort;
     ud_buffer_block **snapshot;
     uint32_t *snapshot_ports;

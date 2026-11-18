@@ -687,6 +687,17 @@ ud_status ud_connection_lease_read_close(ud_connection_lease *l) {
     UD_TRY(ud_connection_operation_begin(l->connection, l, session_grant, NULL));
     return lease_operation_end(l, ud_connection_read_close(l->connection));
 }
+ud_status ud_connection_lease_read_snapshot(ud_connection_lease *l, int32_t begin) {
+    if (!l || !l->connection || !(l->capabilities & UD_CONNECT_READ_SNAPSHOT) || l->shared)
+        return UD_UNSUPPORTED;
+    if (begin)
+        UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
+    else
+        UD_TRY(ud_connection_operation_begin(l->connection, l, session_grant, NULL));
+    ud_status status = begin ? ud_connection_begin(l->connection, UD_ISOLATION_READ_SNAPSHOT)
+                             : ud_connection_rollback(l->connection);
+    return lease_operation_end(l, status);
+}
 ud_status ud_connection_lease_write(ud_connection_lease *l, const ud_write_options *o,
                                     const ud_batch *b) {
     if (!l || (!l->connection && !l->rest))

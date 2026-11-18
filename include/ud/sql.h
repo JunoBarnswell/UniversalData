@@ -44,9 +44,9 @@ UD_API ud_status ud_sql_compile_savepoint(ud_context *, int32_t, ud_string, int3
 UD_API ud_status ud_sql_compile_stage(ud_context *, int32_t, const ud_write_options *,
                                       const ud_batch *, ud_string stage, int32_t phase,
                                       ud_string *);
-/* Single Native write grammar for every provider. A Changeset statement covers
- * exactly one row; ordinary writes may compile bounded multi-row statements.
- * Providers bind the returned parameter references without formatting values. */
+/* One Native write grammar. SQL Server changesets can prepare an ordered batch
+ * with a cardinality assertion per effect. PostgreSQL pipelines the individual
+ * parameterized commands and checks each response before transaction commit. */
 UD_API uint32_t ud_sql_parameter_limit(int32_t dialect);
 UD_API ud_status ud_sql_compile_write(ud_context *, int32_t dialect, int32_t parameter_style,
                                       const ud_write_options *, const ud_batch *, uint32_t first,

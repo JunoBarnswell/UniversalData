@@ -46,3 +46,26 @@ ud_status ud_pg_metadata_decode(ud_host_api *h, PGresult *r, ud_batch **out) {
     }
     return s;
 }
+/* SQL result rows and pgoutput tuples share PostgreSQL's text scalar encoding. */
+ud_status ud_pg_decode_scalar(ud_host_api *host, const ud_field *field, const char *data,
+                              uint32_t length, ud_value *out) {
+    if (field->type == UD_BOOL) {
+        if (length != 1 || (data[0] != 't' && data[0] != 'f'))
+            return UD_PARSE;
+        *out = (ud_value){.type = UD_BOOL, .integer = data[0] == 't'};
+        return UD_OK;
+    }
+    if (field->type == UD_TIMESTAMP) {
+        char timestamp[64];
+        if (length < 19 || length > sizeof(timestamp) - 4 || data[10] != ' ')
+            return UD_PARSE;
+        memcpy(timestamp, data, length);
+        timestamp[10] = 'T';
+        if (timestamp[length - 3] == '+' || timestamp[length - 3] == '-') {
+            memcpy(timestamp + length, ":00", 3);
+            length += 3;
+        }
+        return host->parse_field(host->context, field, timestamp, length, UD_ROUND_EXACT, out);
+    }
+    return host->parse_field(host->context, field, data, length, UD_ROUND_EXACT, out);
+}

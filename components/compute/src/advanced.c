@@ -235,6 +235,8 @@ ud_status ud_advanced_pull(ud_advanced *a, ud_batch **out, uint32_t *output) {
     if (!a->deferred && (!a->pending || a->row >= a->pending->rows)) {
         ud_batch_destroy(a->pending);
         a->pending = NULL;
+        ud_batch_destroy(a->lookup_observations);
+        a->lookup_observations = NULL;
         a->row = 0;
         return a->ended ? UD_END : UD_BUSY;
     }
@@ -348,6 +350,8 @@ ud_status ud_advanced_pull(ud_advanced *a, ud_batch **out, uint32_t *output) {
         if (a->pending && a->row >= a->pending->rows) {
             ud_batch_destroy(a->pending);
             a->pending = NULL;
+            ud_batch_destroy(a->lookup_observations);
+            a->lookup_observations = NULL;
             a->row = 0;
         }
         return s ? s : end ? UD_END : UD_BUSY;
@@ -416,6 +420,7 @@ void ud_advanced_destroy(ud_advanced *a) {
     ud_free(a->operations);
     ud_regex_destroy(a->regex);
     ud_cache_reader_destroy(a->cache_reader);
+    ud_batch_destroy(a->lookup_observations);
     ud_cache_release(a->reference);
     ud_json_destroy(a->config);
     ud_free(a->tree_json);

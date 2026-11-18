@@ -57,11 +57,11 @@ struct ud_relational {
     uint32_t *mapping, *attributes;
     int32_t *attribute_kind;
     uint32_t attribute_count;
-    uint32_t current, valid_from, valid_to, surrogate, version, effective;
+    uint32_t current, valid_from, valid_to, surrogate, version, inferred, effective;
     ud_batch *current_row;
     ud_id current_business;
     int scd_ready;
-    uint32_t algorithm;
+    uint32_t algorithm, hash_fallbacks;
     ud_hash_join *hash_join;
     uint32_t left_time, right_time, right_end, tie_break;
     ud_batch *pending_error;

@@ -278,12 +278,21 @@ static ud_status confirm_snapshot_fence(struct ud_mssql_cdc *c) {
     ud_value value = {0};
     const char *poll = "SELECT TOP(1) [__$start_lsn] AS [value] FROM cdc.ud_sdk_cdc_fence_CT WHERE "
                        "marker=? AND [__$operation]=2 ORDER BY [__$start_lsn] DESC";
+#ifdef _WIN32
+    ULONGLONG started = GetTickCount64();
+#else
     struct timespec started;
     clock_gettime(CLOCK_MONOTONIC, &started);
+#endif
     while (!status) {
+#ifdef _WIN32
+        int expired = GetTickCount64() - started >= 30000;
+#else
         struct timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
-        if (now.tv_sec - started.tv_sec >= 30) {
+        int expired = now.tv_sec - started.tv_sec >= 30;
+#endif
+        if (expired) {
             status = UD_TIMEOUT;
             break;
         }
@@ -302,8 +311,12 @@ static ud_status confirm_snapshot_fence(struct ud_mssql_cdc *c) {
         if (status != UD_END && status != UD_OK)
             break;
         status = UD_OK;
+#ifdef _WIN32
+        Sleep(10);
+#else
         struct timespec delay = {0, 10000000};
         nanosleep(&delay, NULL);
+#endif
     }
     p->host.batch_destroy(params);
     c->fence_marker = NULL;

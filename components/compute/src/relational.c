@@ -110,7 +110,9 @@ static int compare_value(ud_relational *r, uint32_t k, const ud_value *a, const 
     if (a->is_null != b->is_null)
         return a->is_null ? (r->order[0].keys[k].nulls_first ? -1 : 1)
                           : (r->order[0].keys[k].nulls_first ? 1 : -1);
-    int c = ud_value_compare(a, b);
+    /* Key declarations are checked equal at bind time. */
+    const ud_field *field = &r->inputs[0]->column[r->keys[0][k]].field;
+    int c = ud_field_value_compare(field, a, field, b);
     return r->order[0].keys[k].descending ? -c : c;
 }
 ud_status ud_rel_peek(ud_relational *r, uint32_t p, const ud_batch **b, uint32_t *row) {
@@ -593,13 +595,13 @@ ud_status ud_relational_diagnostics(const ud_relational *r, char **out, uint32_t
         snprintf(b, sizeof(b),
                  "{\"processed\":%llu,\"rightProcessed\":%llu,\"groups\":%llu,\"duplicateCells\":%"
                  "llu,\"rejected\":%llu,\"ignored\":%llu,\"seed\":%llu,\"sampled\":%llu,"
-                 "\"complement\":%llu,\"mode\":\"%s\",\"recoverability\":\"stable-row-id and "
+                 "\"complement\":%llu,\"hashFallbacks\":%u,\"mode\":\"%s\",\"recoverability\":\"stable-row-id and "
                  "source snapshot replay\",\"outputs\":[%llu,%llu,%llu,%llu,%llu,%llu]}",
                  (unsigned long long)r->processed[0], (unsigned long long)r->processed[1],
                  (unsigned long long)r->groups, (unsigned long long)r->duplicates,
                  (unsigned long long)r->rejected, (unsigned long long)r->ignored,
                  (unsigned long long)r->seed, (unsigned long long)r->sampled,
-                 (unsigned long long)r->emitted[1],
+                 (unsigned long long)r->emitted[1], r->hash_fallbacks,
                  r->options.kind == UD_OPERATOR_ROW_SAMPLING          ? "exact-global-priority"
                  : r->options.kind == UD_OPERATOR_PERCENTAGE_SAMPLING ? "bernoulli"
                                                                       : "relational",

@@ -35,7 +35,7 @@ static ud_status bind_operator(const ud_component_context *c, int kind, ud_strin
     for (uint32_t p = 0;
          p < (kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN ||
                       kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN ||
-                      kind == UD_OPERATOR_DIFF_COMPARE
+                      kind == UD_OPERATOR_DIFF_COMPARE || kind == UD_OPERATOR_EVENT_JOIN
                   ? 2u
                   : 1u);
          p++)
@@ -78,7 +78,7 @@ static ud_status configure(void *user, const ud_component_context *c, ud_string 
     const ud_batch *bound[2] = {
         in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN ||
                        kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN ||
-                       kind == UD_OPERATOR_DIFF_COMPARE
+                       kind == UD_OPERATOR_DIFF_COMPARE || kind == UD_OPERATOR_EVENT_JOIN
                    ? in[1]
                    : NULL};
     ud_status s =
@@ -140,7 +140,7 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     const ud_batch *bound[2] = {
         in[0], r->kind == UD_OPERATOR_MERGE || r->kind == UD_OPERATOR_MERGE_JOIN ||
                        r->kind == UD_OPERATOR_ASOF_JOIN || r->kind == UD_OPERATOR_TEMPORAL_JOIN ||
-                       r->kind == UD_OPERATOR_DIFF_COMPARE
+                       r->kind == UD_OPERATOR_DIFF_COMPARE || r->kind == UD_OPERATOR_EVENT_JOIN
                    ? in[1]
                    : NULL};
     if (!s && r->kind == UD_OPERATOR_SCD) {
@@ -208,7 +208,7 @@ static ud_status step(void *ptr, const ud_component_event *event) {
         UD_TRY(ud_operator_push(r->operator, event->input, event->batch));
     else if (event->kind == UD_COMPONENT_INPUT_END)
         UD_TRY(ud_operator_finish_input(r->operator, event->input));
-    if (event->kind == UD_COMPONENT_WATERMARK && r->kind == UD_OPERATOR_EVENT_WINDOW)
+    if (event->kind == UD_COMPONENT_WATERMARK && r->kind >= UD_OPERATOR_EVENT_WINDOW)
         UD_TRY(ud_operator_watermark(r->operator, event->watermark));
     return pull(r);
 }
@@ -237,7 +237,7 @@ static ud_status describe(void *user, const ud_component_context *c, ud_string t
     const ud_batch *bound[2] = {
         in[0], kind == UD_OPERATOR_MERGE || kind == UD_OPERATOR_MERGE_JOIN ||
                        kind == UD_OPERATOR_ASOF_JOIN || kind == UD_OPERATOR_TEMPORAL_JOIN ||
-                       kind == UD_OPERATOR_DIFF_COMPARE
+                       kind == UD_OPERATOR_DIFF_COMPARE || kind == UD_OPERATOR_EVENT_JOIN
                    ? in[1]
                    : NULL};
     ud_status s =
@@ -683,32 +683,36 @@ ud_status ud_relational_register(ud_registry *registry) {
     static const struct {
         const char *id;
         int kind;
-    } entries[] = {{"eventWindow", UD_OPERATOR_EVENT_WINDOW},
-                   {"merge", UD_OPERATOR_MERGE},
-                   {"mergeJoin", UD_OPERATOR_MERGE_JOIN},
-                   {"pivot", UD_OPERATOR_PIVOT},
-                   {"unpivot", UD_OPERATOR_UNPIVOT},
-                   {"rowSampling", UD_OPERATOR_ROW_SAMPLING},
-                   {"percentageSampling", UD_OPERATOR_PERCENTAGE_SAMPLING},
-                   {"scd", UD_OPERATOR_SCD},
-                   {"asOfJoin", UD_OPERATOR_ASOF_JOIN},
-                   {"temporalJoin", UD_OPERATOR_TEMPORAL_JOIN},
-                   {"diffCompare", UD_OPERATOR_DIFF_COMPARE}};
+        const char *name;
+    } entries[] = {{"eventWindow", UD_OPERATOR_EVENT_WINDOW, NULL},
+                   {"eventDeduplicate", UD_OPERATOR_EVENT_DEDUPLICATE, "Event-Time Deduplication"},
+                   {"eventJoin", UD_OPERATOR_EVENT_JOIN, "Event-Time Inner Join"},
+                   {"merge", UD_OPERATOR_MERGE, NULL},
+                   {"mergeJoin", UD_OPERATOR_MERGE_JOIN, NULL},
+                   {"pivot", UD_OPERATOR_PIVOT, NULL},
+                   {"unpivot", UD_OPERATOR_UNPIVOT, NULL},
+                   {"rowSampling", UD_OPERATOR_ROW_SAMPLING, NULL},
+                   {"percentageSampling", UD_OPERATOR_PERCENTAGE_SAMPLING, NULL},
+                   {"scd", UD_OPERATOR_SCD, NULL},
+                   {"asOfJoin", UD_OPERATOR_ASOF_JOIN, NULL},
+                   {"temporalJoin", UD_OPERATOR_TEMPORAL_JOIN, NULL},
+                   {"diffCompare", UD_OPERATOR_DIFF_COMPARE, NULL}};
     for (uint32_t i = 0; i < sizeof(entries) / sizeof(*entries); i++) {
         int k = entries[i].kind;
         ud_string schema = {0};
         UD_TRY(ud_operator_configuration_schema(k, &schema));
+        const char *name = entries[i].name ? entries[i].name : entries[i].id;
         ud_component_descriptor d = {
             .struct_size = sizeof(d),
             .abi_version = UD_ABI_VERSION,
             .id = {entries[i].id, (uint32_t)strlen(entries[i].id)},
-            .name = {entries[i].id, (uint32_t)strlen(entries[i].id)},
+            .name = {name, (uint32_t)strlen(name)},
             .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
             .configuration_schema = schema,
             .category = UD_COMPONENT_TRANSFORM,
             .inputs = k == UD_OPERATOR_MERGE || k == UD_OPERATOR_MERGE_JOIN ||
                               k == UD_OPERATOR_ASOF_JOIN || k == UD_OPERATOR_TEMPORAL_JOIN ||
-                              k == UD_OPERATOR_DIFF_COMPARE
+                              k == UD_OPERATOR_DIFF_COMPARE || k == UD_OPERATOR_EVENT_JOIN
                           ? 2
                           : 1,
             .outputs = (uint32_t)outputs(k),
@@ -740,10 +744,10 @@ ud_status ud_relational_register(ud_registry *registry) {
             .state_version = 1,
             .checkpoint = checkpoint,
             .restore = restore_state};
-        if (k == UD_OPERATOR_EVENT_WINDOW) {
+        if (k >= UD_OPERATOR_EVENT_WINDOW)
             d.capabilities |= UD_COMPONENT_CONTROL_EVENTS | UD_COMPONENT_STREAM_SAFE;
+        if (k == UD_OPERATOR_EVENT_WINDOW)
             d.optional_outputs |= UINT64_C(2);
-        }
         UD_TRY(ud_registry_register(registry, &d));
     }
     ud_component_descriptor d = {

@@ -211,7 +211,7 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, 
         for (uint32_t k = 0; k < p->key_n; k++) {
             ud_value v;
             UD_TRY(ud_batch_get(b, r, p->keys[k], &v));
-            hash = ud_value_hash(&v, hash);
+            hash = ud_field_value_hash(&p->output_schema->column[k].field, &v, hash);
         }
         group *g = !p->key_n         ? a->head
                    : a->bucket_count ? a->buckets[hash & (a->bucket_count - 1)]
@@ -223,7 +223,8 @@ static ud_status add_rows(ud_accumulator *a, const ud_batch *b, uint32_t begin, 
             for (; k < p->key_n; k++) {
                 ud_value v;
                 ud_batch_get(b, r, p->keys[k], &v);
-                if (ud_value_compare(&v, g->values + k))
+                const ud_field *field = &p->output_schema->column[k].field;
+                if (ud_field_value_compare(field, &v, field, g->values + k))
                     break;
             }
             if (k == p->key_n)
@@ -285,7 +286,7 @@ ud_status ud_accumulator_merge_row(ud_accumulator *a, const ud_batch *b, uint32_
     for (uint32_t k = 0; k < p->key_n; k++) {
         ud_value key;
         UD_TRY(ud_batch_get(b, row, k, &key));
-        hash = ud_value_hash(&key, hash);
+        hash = ud_field_value_hash(&p->output_schema->column[k].field, &key, hash);
     }
     group *g = !p->key_n         ? a->head
                : a->bucket_count ? a->buckets[hash & (a->bucket_count - 1)]
@@ -297,7 +298,8 @@ ud_status ud_accumulator_merge_row(ud_accumulator *a, const ud_batch *b, uint32_
         for (; k < p->key_n; k++) {
             ud_value key;
             UD_TRY(ud_batch_get(b, row, k, &key));
-            if (ud_value_compare(&key, g->values + k))
+            const ud_field *field = &p->output_schema->column[k].field;
+            if (ud_field_value_compare(field, &key, field, g->values + k))
                 break;
         }
         if (k == p->key_n)
@@ -464,14 +466,15 @@ ud_status ud_accumulator_restore(ud_accumulator *a, const ud_batch *b) {
         for (uint32_t k = 0; k < p->key_n; k++) {
             ud_value v;
             UD_TRY(ud_batch_get(b, row, k, &v));
-            hash = ud_value_hash(&v, hash);
+            hash = ud_field_value_hash(&p->output_schema->column[k].field, &v, hash);
         }
         for (group *prior = a->head; prior; prior = prior->next) {
             int same = prior->hash == hash;
             for (uint32_t k = 0; same && k < p->key_n; k++) {
                 ud_value v;
                 UD_TRY(ud_batch_get(b, row, k, &v));
-                same = !ud_value_compare(&v, prior->values + k);
+                const ud_field *field = &p->output_schema->column[k].field;
+                same = !ud_field_value_compare(field, &v, field, prior->values + k);
             }
             if (same) {
                 a->failed = 1;

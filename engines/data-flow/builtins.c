@@ -647,7 +647,9 @@ ud_status ud_builtin_register(ud_registry *registry) {
             .step = step,
             .finish = finish,
             .confirm = source_kind(kind) ? ud_builtin_confirm : NULL,
-            .diagnostics = source_kind(kind) || kind == SQL_SINK ? ud_builtin_diagnostics : NULL,
+            .diagnostics = source_kind(kind) || kind == SQL_SINK || kind == JOIN
+                               ? ud_builtin_diagnostics
+                               : NULL,
             .dispose = ud_builtin_dispose};
         if (category != UD_COMPONENT_DESTINATION && kind != SQL_COMMAND && kind != REST_SOURCE)
             d.capabilities |= UD_COMPONENT_PREVIEW_SAFE;

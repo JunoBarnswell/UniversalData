@@ -184,6 +184,64 @@ static ud_status filter_rows(builtin *b, ud_batch **input) {
     ud_batch_destroy(filtered);
     return status;
 }
+/* Consume the schema owner's resolved ordinals once. The discovery snapshot still
+ * describes the entire table, including fields omitted by the physical SELECT. */
+static ud_status bind_scan(builtin *b, const ud_json *diff) {
+    if (ud_member(b->config, "sql"))
+        return UD_OK;
+    const ud_batch *actual = b->actual_schema, *expected = b->schema;
+    const ud_json *mapping = ud_member(diff, "mapping");
+    uint32_t *indices = ud_alloc(b->context.memory, expected->columns * sizeof(*indices));
+    uint8_t *selected = ud_alloc(b->context.memory, actual->columns);
+    if (!indices || !selected) {
+        ud_free(indices);
+        ud_free(selected);
+        return UD_RESOURCE;
+    }
+    ud_status s = UD_OK;
+    int direct = 1;
+    for (uint32_t i = 0; !s && i < expected->columns; i++) {
+        uint64_t index;
+        s = ud_json_uint(ud_json_at(mapping, i), &index);
+        if (!s && index >= actual->columns)
+            s = UD_SCHEMA;
+        if (!s) {
+            indices[i] = (uint32_t)index;
+            selected[index] = 1;
+            const ud_field *from = &actual->column[index].field, *to = &expected->column[i].field;
+            direct &= !from->child_count && !(from->nullable && !to->nullable) &&
+                      ud_field_matches(from, to, UD_FIELD_VALUE_TYPE);
+        }
+    }
+    int32_t dialect = ud_connection_lease_dialect(b->lease);
+    int prune = direct && actual->columns > expected->columns &&
+                (dialect == UD_SQL_SQLSERVER || dialect == UD_SQL_POSTGRESQL) &&
+                !ud_member(b->config, "includeInput");
+    for (uint32_t i = 0; prune && i < actual->columns; i++) {
+        const ud_field *f = &actual->column[i].field;
+        if (!selected[i] && (f->type != UD_INT64 && f->type != UD_BOOL))
+            prune = 0; /* decoding an omitted column might have produced a record error */
+    }
+    if (!s && prune) {
+        ud_field *fields = ud_alloc(b->context.memory, expected->columns * sizeof(*fields));
+        if (!fields)
+            s = UD_RESOURCE;
+        else {
+            for (uint32_t i = 0; i < expected->columns; i++)
+                fields[i] = actual->column[indices[i]].field;
+            s = ud_batch_create(b->context.memory, fields, expected->columns, 0, &b->scan_schema);
+            ud_free(fields);
+        }
+        for (uint32_t i = 0; i < expected->columns; i++)
+            indices[i] = i;
+    }
+    if (!s && direct)
+        b->scan_mapping = indices;
+    else
+        ud_free(indices);
+    ud_free(selected);
+    return s;
+}
 static ud_status bind_predicate(builtin *b) {
     const ud_component_context *c = &b->context;
     const ud_json *where = ud_member(b->config, "where");
@@ -205,20 +263,23 @@ static ud_status bind_predicate(builtin *b) {
         return UD_SCHEMA;
     ud_string table;
     UD_TRY(ud_json_string(ud_member(b->config, "table"), &table));
-    const ud_batch *actual = b->actual_schema ? b->actual_schema : b->schema;
+    const ud_batch *actual = b->scan_schema ? b->scan_schema : b->actual_schema;
     int32_t dialect = ud_connection_lease_dialect(b->lease);
     UD_TRY(ud_sql_compile_scan(c->memory, dialect, table, actual, &b->read_sql));
-    int proof = b->predicate && dialect == UD_SQL_POSTGRESQL &&
-                ud_connection_lease_parameter_style(b->lease) == UD_SQL_PARAMETER_NUMBERED &&
-                actual->columns == b->schema->columns;
-    /* Strong PostgreSQL primitive columns have no provider range/encoding or
-     * timestamp conversions that filtering could conceal. Other shapes retain
-     * the same Native vector predicate after full value decoding. */
+    int32_t style = ud_connection_lease_parameter_style(b->lease);
+    /* Only keyed scans can omit raw rows while preserving the source record identity.
+       Raw SQL, lossy mappings and possible conversion errors retain native filtering. */
+    int proof = b->predicate && b->cursor && b->cursor->count && b->scan_mapping &&
+                ((dialect == UD_SQL_POSTGRESQL && style == UD_SQL_PARAMETER_NUMBERED) ||
+                 (dialect == UD_SQL_SQLSERVER && style == UD_SQL_PARAMETER_QUESTION));
     for (uint32_t i = 0; proof && i < actual->columns; i++)
-        proof =
-            (actual->column[i].field.type == UD_BOOL || actual->column[i].field.type == UD_INT64) &&
-            ud_field_matches(&actual->column[i].field, &b->schema->column[i].field,
-                             UD_FIELD_VALUE_TYPE);
+        proof = actual->column[i].field.type == UD_BOOL || actual->column[i].field.type == UD_INT64;
+    for (uint32_t i = 0; proof && i < b->schema->columns; i++) {
+        const ud_field *logical = &b->schema->column[i].field;
+        const ud_field *physical = &actual->column[b->scan_mapping[i]].field;
+        proof = physical->name_length == logical->name_length &&
+                !memcmp(physical->name, logical->name, logical->name_length);
+    }
     if (proof) {
         ud_string predicate = {0};
         ud_batch *parameters = NULL;
@@ -302,7 +363,13 @@ ud_status ud_builtin_source_raw(builtin *b, ud_batch **out) {
             status = ud_batch_create(b->context.memory, b->schema->schema->fields,
                                      b->schema->columns, 0, &raw);
     }
-    if (!status && b->actual_schema) {
+    if (!status && b->scan_mapping) {
+        status = ud_batch_seal(raw);
+        if (!status)
+            status = ud_batch_project(b->context.memory, raw, b->scan_mapping,
+                                      b->schema->schema->fields, b->schema->columns, out);
+        ud_batch_destroy(raw);
+    } else if (!status && b->actual_schema) {
         status = ud_schema_map(b->context.memory, raw, b->schema, b->schema_policy, out);
         ud_batch_destroy(raw);
     } else
@@ -468,6 +535,8 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
             if (!status && (n != 4 || memcmp(p, "true", 4)))
                 status = UD_INCOMPATIBLE;
         }
+        if (!status)
+            status = bind_scan(b, diff);
         ud_json_destroy(diff);
         if (b->schema_diff) {
             ud_status recorded =
@@ -477,8 +546,6 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         }
     } else if (!status && ud_member(b->config, "schemaPolicy"))
         status = UD_SCHEMA;
-    if (!status && b->kind == SQL_SOURCE)
-        status = bind_predicate(b);
     if (!status)
         status = ud_checkpoint_schema(c->activation, c->component_id,
                                       b->actual_schema ? b->actual_schema : b->schema);
@@ -498,6 +565,8 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         if (!status && b->cursor && (ud_transaction_active(c->activation)))
             status = UD_UNSUPPORTED;
     }
+    if (!status && b->kind == SQL_SOURCE)
+        status = bind_predicate(b);
     /* The immutable snapshot and physical batching are part of the replay policy. */
     char *configuration = NULL;
     uint32_t configuration_length = 0;
@@ -648,8 +717,9 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         ud_read_options options = {
             sizeof(options), UD_ABI_VERSION, batch_rows, sql, b->parameters, 0, b, sql_record};
         if (!status)
-            status = ud_connection_lease_read_open(b->lease, &options,
-                                                   b->actual_schema ? b->actual_schema : b->schema);
+            status = ud_connection_lease_read_open(
+                b->lease, &options, b->scan_schema ? b->scan_schema :
+                                    b->actual_schema ? b->actual_schema : b->schema);
     }
     if (!status && b->cursor && b->cursor->count) {
         ud_operator_options options = {.struct_size = sizeof(options),

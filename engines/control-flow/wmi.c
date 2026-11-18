@@ -1,8 +1,10 @@
+#ifdef _WIN32
+#define COBJMACROS
+#endif
 #include "../package/internal.h"
 #include "ud/connection_manager.h"
 #include <limits.h>
 #ifdef _WIN32
-#define COBJMACROS
 #include <windows.h>
 #include <oleauto.h>
 #include <wbemidl.h>

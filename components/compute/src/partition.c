@@ -11,15 +11,17 @@ static ud_status select_partition(const ud_batch *input, const ud_partition_opti
     if (o->strategy == UD_PARTITION_HASH) {
         for (uint32_t i = 0; i < o->key_count; i++) {
             UD_TRY(ud_batch_get(input, row, o->keys[i], &value));
-            hash = ud_value_hash(&value, hash);
+            hash = ud_field_value_hash(&input->column[o->keys[i]].field, &value, hash);
         }
         *out = (uint32_t)(hash % o->count);
         return UD_OK;
     }
     UD_TRY(ud_batch_get(input, row, o->keys[0], &value));
+    const ud_field *field = &input->column[o->keys[0]].field;
     *out = 0;
     if (!value.is_null)
-        while (*out + 1 < o->count && ud_value_compare(&value, o->boundaries + *out) >= 0)
+        while (*out + 1 < o->count &&
+               ud_field_value_compare(field, &value, field, o->boundaries + *out) >= 0)
             (*out)++;
     return UD_OK;
 }
@@ -51,7 +53,8 @@ ud_status ud_batch_partition(ud_context *ctx, const ud_batch *input, const ud_pa
             if (o->boundaries[i].is_null || o->boundaries[i].type != field->type ||
                 (field->type == UD_DECIMAL128 && (o->boundaries[i].precision != field->precision ||
                                                   o->boundaries[i].scale != field->scale)) ||
-                (i && ud_value_compare(o->boundaries + i - 1, o->boundaries + i) >= 0))
+                (i && ud_field_value_compare(field, o->boundaries + i - 1,
+                                             field, o->boundaries + i) >= 0))
                 return UD_SCHEMA;
         }
     }

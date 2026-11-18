@@ -6,6 +6,7 @@
 #include "ud/text.h"
 #include "ud/cache.h"
 typedef struct ud_advanced ud_advanced;
+ud_status ud_advanced_lookup_observe(ud_advanced *, const ud_batch *);
 ud_status ud_advanced_create(ud_context *, const ud_operator_options *, const ud_batch *const *,
                              ud_advanced **);
 ud_status ud_advanced_schema(const ud_advanced *, uint32_t, ud_batch **);

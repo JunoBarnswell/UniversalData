@@ -7,6 +7,27 @@ ud_status ud_operator_configuration_schema(int32_t kind, ud_string *out) {
         return UD_INVALID;
     const char *schema = NULL;
     switch (kind) {
+    case UD_OPERATOR_EVENT_DEDUPLICATE:
+    case UD_OPERATOR_EVENT_JOIN:
+#define EVENT_FIELD "{\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":\"string\",\"minLength\":1}],\"x-role\":\"field-selector\"}"
+#define EVENT_KEYS "{\"type\":\"array\",\"minItems\":1,\"maxItems\":16,\"uniqueItems\":true,\"items\":" EVENT_FIELD "}"
+#define EVENT_BUDGET "{\"type\":\"integer\",\"minimum\":4096,\"default\":1048576}"
+#define EVENT_INTERVAL "{\"type\":\"integer\",\"minimum\":1,\"maximum\":9223372036854775807}"
+        schema = kind == UD_OPERATOR_EVENT_JOIN
+                 ? "{\"type\":\"object\",\"properties\":{\"leftKeys\":" EVENT_KEYS
+                   ",\"rightKeys\":" EVENT_KEYS ",\"leftTimeField\":" EVENT_FIELD
+                   ",\"rightTimeField\":" EVENT_FIELD ",\"withinMicros\":" EVENT_INTERVAL
+                   ",\"stateBytes\":" EVENT_BUDGET "},\"required\":[\"leftKeys\",\"rightKeys\","
+                   "\"leftTimeField\",\"rightTimeField\",\"withinMicros\"],\"additionalProperties\":false}"
+                 : "{\"type\":\"object\",\"properties\":{\"keys\":" EVENT_KEYS
+                   ",\"timeField\":" EVENT_FIELD ",\"ttlMicros\":" EVENT_INTERVAL
+                   ",\"stateBytes\":" EVENT_BUDGET "},\"required\":[\"keys\",\"timeField\","
+                   "\"ttlMicros\"],\"additionalProperties\":false}";
+#undef EVENT_INTERVAL
+#undef EVENT_BUDGET
+#undef EVENT_KEYS
+#undef EVENT_FIELD
+        break;
     case UD_OPERATOR_EVENT_WINDOW:
         schema = "{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"tumbling\",\"sliding\",\"session\"],\"default\":\"tumbling\"},\"timeField\":{\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":\"string\",\"minLength\":1}],\"x-role\":\"field-selector\"},\"sizeMicros\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9223372036854775807,\"default\":60000000},\"slideMicros\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9223372036854775807,\"default\":60000000},\"gapMicros\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9223372036854775807,\"default\":30000000},\"allowedLatenessMicros\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9223372036854775807,\"default\":0},\"maxWindows\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":1000000,\"default\":4096},\"stateBytes\":{\"type\":\"integer\",\"minimum\":4096,\"default\":1048576},\"latePolicy\":{\"enum\":[\"fail\",\"drop\",\"redirect\"],\"default\":\"fail\"},\"plan\":{\"type\":\"object\"}},\"required\":[\"timeField\",\"plan\"],\"additionalProperties\":false}";
         break;
@@ -16,6 +37,7 @@ ud_status ud_operator_configuration_schema(int32_t kind, ud_string *out) {
             "\"x-role\":\"cache-resource\"},\"keys\":{\"type\":\"array\",\"minItems\":1,"
             "\"maxItems\":16,\"uniqueItems\":true,\"items\":{\"type\":\"integer\",\"minimum\":0}},"
             "\"errorPolicy\":{\"enum\":[\"fail\",\"redirect\",\"ignore\"],\"default\":\"ignore\"},"
+            "\"noMatch\":{\"enum\":[\"ignore\",\"output\"],\"default\":\"ignore\"},"
             "\"includeInput\":{\"type\":\"boolean\",\"default\":false}},\"required\":[\"cache\","
             "\"keys\"],\"additionalProperties\":false}";
         break;
@@ -155,6 +177,8 @@ ud_status ud_operator_configuration_schema(int32_t kind, ud_string *out) {
             ",\"x-role\":\"field-selector\"},\"dimensionKeys\":{\"type\":\"array\",\"items\":{"
             "\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":\"string\",\"minLength\":1}]"
             ",\"x-role\":\"field-selector\"},\"minItems\":1,\"maxItems\":16,\"uniqueItems\":true},"
+            "\"inferredMember\":{\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":"
+            "\"string\",\"minLength\":1}],\"x-role\":\"field-selector\"},"
             "\"surrogateSource\":{\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":"
             "\"string\",\"minLength\":1}]}},\"required\":[\"cache\",\"businessKeys\","
             "\"dimensionKeys\",\"mapping\",\"current\",\"validFrom\",\"validTo\",\"surrogate\","

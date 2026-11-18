@@ -86,12 +86,7 @@ static ud_status row_bytes(const ud_batch *batch, uint32_t row, uint64_t *out) {
     *out = n;
     return UD_OK;
 }
-ud_status ud_state_append(ud_state *s, const ud_batch *b, uint32_t row) {
-    if (!s || !b || s->sealed || b->columns != s->schema->columns || row >= b->rows)
-        return UD_INVALID;
-    for (uint32_t i = 0; i < b->columns; i++)
-        if (!ud_field_matches(&b->column[i].field, &s->schema->column[i].field, UD_FIELD_PORT))
-            return UD_SCHEMA;
+ud_status ud_state_append_bound(ud_state *s, const ud_batch *b, uint32_t row) {
     if (s->rows == UINT64_MAX)
         return UD_OVERFLOW;
     uint64_t bytes = 0;
@@ -107,6 +102,14 @@ ud_status ud_state_append(ud_state *s, const ud_batch *b, uint32_t row) {
         return UD_OVERFLOW;
     s->chunk_bytes += bytes;
     return s->chunk->rows == s->batch_size || s->chunk_bytes >= s->page_limit ? flush(s) : UD_OK;
+}
+ud_status ud_state_append(ud_state *s, const ud_batch *b, uint32_t row) {
+    if (!s || !b || s->sealed || b->columns != s->schema->columns || row >= b->rows)
+        return UD_INVALID;
+    for (uint32_t i = 0; i < b->columns; i++)
+        if (!ud_field_matches(&b->column[i].field, &s->schema->column[i].field, UD_FIELD_PORT))
+            return UD_SCHEMA;
+    return ud_state_append_bound(s, b, row);
 }
 ud_status ud_state_seal(ud_state *s) {
     if (!s)
@@ -178,6 +181,8 @@ ud_status ud_state_add_batch(ud_state *s, const ud_batch *batch) {
      * sealed full chunk still shares its columns directly with Buffer. */
     uint64_t bytes = 0;
     for (uint32_t row = 0; row < batch->rows && bytes <= s->page_limit; row++) {
+        if (ud_is_cancelled(s->ctx))
+            return UD_CANCELLED;
         uint64_t n = 0;
         UD_TRY(row_bytes(batch, row, &n));
         if (n > UINT64_MAX - bytes)
@@ -185,8 +190,11 @@ ud_status ud_state_add_batch(ud_state *s, const ud_batch *batch) {
         bytes += n;
     }
     if (s->chunk || batch->rows < s->batch_size || bytes > s->page_limit) {
-        for (uint32_t row = 0; row < batch->rows; row++)
-            UD_TRY(ud_state_append(s, batch, row));
+        for (uint32_t row = 0; row < batch->rows; row++) {
+            if (ud_is_cancelled(s->ctx))
+                return UD_CANCELLED;
+            UD_TRY(ud_state_append_bound(s, batch, row));
+        }
         return UD_OK;
     }
     if (s->count == s->capacity) {

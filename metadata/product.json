@@ -1897,7 +1897,7 @@
     {
       "ssis": "Flat File / JSON / Database Source",
       "entries": "`file.csv.source`、`file.ndjson.source`、`sql.source`",
-      "contract": "唯一 typed schema；SQL 恢复需要持久 snapshot，缺少即拒绝"
+      "contract": "唯一 typed schema；SQL 恢复需要持久 snapshot，缺少即拒绝 SQL Server and PostgreSQL use typed predicates for proven keyed Bool/Int64 scans and can omit unused primitive columns from table reads."
     },
     {
       "ssis": "Flat File / JSON / Database Destination",
@@ -1922,12 +1922,17 @@
     {
       "ssis": "Sort / Aggregate / Join",
       "entries": "`sort`、`aggregate`、`join`",
-      "contract": "共用 Compute operator 和 Buffer Manager；Sort 稳定外存归并，Aggregate 有界分组，Join 有界 block nested loops"
+      "contract": "Stable external sort concatenates ordered fixed-width key ranges and merges overlapping runs within Buffer Manager limits. Aggregate and join use the declared key comparison semantics."
     },
     {
       "ssis": "Lookup",
-      "entries": "`cacheBuild`, `cacheLookup`",
-      "contract": "Execution 内只读缓存；复合 typed key，First/Error/All；默认 First + miss Ignore（inner）；显式 Redirect 走普通错误目标。旧 inline lookup 删除。"
+      "entries": "cacheBuild, cacheLookup, dbLookup",
+      "contract": "Full probes a sealed execution reference. Partial caches database observations by probe key. None issues one provider lookup per non-null probe. Match, record error and configured no-match outputs use ports 0, 1 and 2. Epoch-scoped database references use a read snapshot."
+    },
+    {
+      "ssis": "Slowly Changing Dimension",
+      "entries": "scd, scd.destination",
+      "contract": "The inferredMember Boolean identifies a current placeholder. Materialization updates mapped attributes and clears the flag in one preimage-checked update, retaining surrogate, validity and version."
     },
     {
       "ssis": "Window",
@@ -1966,8 +1971,13 @@
     },
     {
       "ssis": "Event-time streaming / Studio observation",
-      "entries": "eventTime; eventWindow; Native Catalog execution feed",
-      "contract": "One Native Pipeline/Compute/Buffer/Journal. Final tumbling/sliding/session aggregates, native Watermark policy, bounded shared working subquotas and stable window RowIds. No second stream engine or exactly-once certification."
+      "entries": "eventTime; eventWindow; eventDeduplicate; eventJoin; Native Catalog execution feed",
+      "contract": "Native Watermark and bounded shared working subquotas. Final tumbling/sliding/session aggregates with stable RowIds. eventDeduplicate keeps the first row per key until its event-time TTL reaches the Watermark; eventJoin emits inner matches within the configured inclusive time difference and bounds state on both inputs. Both drop rows at or behind the common Watermark."
+    },
+    {
+      "ssis": "Change Data Capture",
+      "entries": "CDC source, sql.destination (changeset)",
+      "contract": "microBatchRows and microBatchMs group complete source transactions. A sealed epoch stores original watermarks and the last log position. SQL Server sends bounded ordered statement batches. PostgreSQL uses bounded libpq pipelines and checks individual affected-row counts."
     }
   ],
   "deferredComponents": "Current source limitations remain itemized under ETL-011 (qualified SQL Server participants), ETL-025/026 (complete online identity/presence proof) and ETL-038 (unsupported Avro named references/general unions). Missing Windows and independent protocol resources remain Blocked; no historical ABI 9 pass is inherited.",

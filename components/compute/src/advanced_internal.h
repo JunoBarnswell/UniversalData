@@ -29,6 +29,7 @@ struct ud_advanced {
     int active, mode, policy, done;
     ud_cache *reference;
     ud_cache_reader *cache_reader;
+    ud_batch *lookup_observations;
     void *index;
     ud_expression_options expression_bindings;
     ud_value *owned_values;

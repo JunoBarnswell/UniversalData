@@ -73,6 +73,7 @@ ud_status ud_cast_value(ud_context *, const ud_field *, const ud_value *, const 
 ud_status ud_parse_field_base(ud_context *, const ud_field *, const char *, uint32_t, int32_t,
                               ud_value *);
 ud_status ud_scalar_field_validate(const ud_field *);
+uint32_t ud_scalar_text_prefix(const ud_field *, const char *, uint32_t);
 ud_status ud_scalar_text_bytes(ud_context *,const ud_field *,ud_string,uint32_t *);
 ud_status ud_scalar_text(ud_context *, const ud_field *, ud_string, int truncate, char **,
                          uint32_t *);
@@ -80,4 +81,5 @@ ud_status ud_value_canonical(const ud_value *, ud_status (*)(void *, const void 
                              uint32_t);
 ud_status ud_batch_hash_rows(const ud_batch *, ud_sha256 *);
 ud_status ud_batch_hash_tagged_rows(const ud_batch *, ud_sha256 *, uint8_t port);
+void ud_sql_lookup_ordinal_name(const ud_batch *, char name[48]);
 #endif

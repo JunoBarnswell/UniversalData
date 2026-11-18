@@ -313,6 +313,18 @@ export function LookupEditor({
           </select>
         </label>
       ) : null}
+      {schema.properties?.noMatch ? (
+        <label>
+          未匹配输出
+          <select
+            value={String(value.noMatch ?? "ignore")}
+            onChange={(event) => change({ ...value, noMatch: event.target.value })}
+          >
+            <option value="ignore">忽略</option>
+            <option value="output">输出到未匹配端口</option>
+          </select>
+        </label>
+      ) : null}
       <p className="muted">
         缓存定义与生命周期由 Package 的 Native 资源配置控制。
       </p>

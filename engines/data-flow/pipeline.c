@@ -1,6 +1,7 @@
 #include "../package/internal.h"
 #include "ud/engine.h"
 #include "ud/partition.h"
+#include "../../components/execution/state.h"
 ud_status ud_pipeline_field_namespace(const ud_component_context *c, char output[33]) {
     ud_bytes bytes = {.ctx = c->memory};
     ud_string package = {0}, project = {0};
@@ -52,7 +53,8 @@ typedef struct edge {
     uint32_t from, to, output, input;
     ud_queue *queue;
     int ended;
-    atomic_uint_fast64_t produced, consumed, high_water;
+    atomic_uint occupied;
+    atomic_uint_fast64_t produced, consumed, high_water, spill_bytes;
 } edge;
 typedef struct execution_tree {
     uint32_t offset, count;
@@ -504,6 +506,8 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
             atomic_init(&v->produced, 0);
             atomic_init(&v->consumed, 0);
             atomic_init(&v->high_water, 0);
+            atomic_init(&v->spill_bytes, 0);
+            atomic_init(&v->occupied, 0);
             if (p->nodes[b].inputs[input] != UINT32_MAX)
                 s = UD_SCHEMA;
             else {
@@ -663,7 +667,7 @@ static uint32_t recommended_rows(void *user) {
              width = n->binding.row_width ? n->binding.row_width : 64;
     uint32_t capacity = p->execution->execution->options.edge_capacity, free_slots = capacity;
     for (uint32_t i = 0; i < n->output_edges; i++) {
-        uint32_t used = ud_queue_count(p->edges[n->outputs[i]].queue),
+        uint32_t used = atomic_load(&p->edges[n->outputs[i]].occupied),
                  available = used < capacity ? capacity - used : 0;
         if (available < free_slots)
             free_slots = available;
@@ -686,6 +690,49 @@ static uint32_t recommended_rows(void *user) {
 }
 static ud_status stage_epoch(physical_plan *, node *, uint64_t);
 static ud_status epoch_component_key(physical_plan *, node *, char[65]);
+/* An edge has one publisher. A delivery retains its slot through the
+ * consumer callback, even after the frame leaves the physical queue. */
+static ud_status publish(physical_plan *p, edge *v, ud_stream_event *frame, const ud_batch *batch) {
+    ud_execution *execution = p->execution->execution;
+    if (atomic_load(&v->occupied) >= execution->options.edge_capacity)
+        return UD_BUSY;
+    if (batch)
+        UD_TRY(ud_buffer_store_exchange(execution->buffers, batch, &frame->block));
+    uint64_t spill = ud_buffer_block_spill_bytes(frame->block);
+    atomic_fetch_add(&v->occupied, 1);
+    uint64_t queued = atomic_fetch_add(&execution->queued, 1) + 1;
+    ud_status status = ud_queue_push(v->queue, frame);
+    if (status) {
+        atomic_fetch_sub(&execution->queued, 1);
+        ud_status cleanup = ud_buffer_release(frame->block);
+        atomic_fetch_sub(&v->occupied, 1);
+        return cleanup ? cleanup : status;
+    }
+    atomic_fetch_add(&v->spill_bytes, spill);
+    if (frame->kind == UD_STREAM_DATA)
+        atomic_fetch_add(&v->produced, batch->rows);
+    uint64_t size = ud_queue_count(v->queue), peak = atomic_load(&v->high_water);
+    while (size > peak && !atomic_compare_exchange_weak(&v->high_water, &peak, size)) {
+    }
+    uint64_t previous = atomic_load(&execution->high_water);
+    while (queued > previous &&
+           !atomic_compare_exchange_weak(&execution->high_water, &previous, queued)) {
+    }
+    ud_work_group_ready(p->group, p->nodes[v->to].tree);
+    return UD_OK;
+}
+static ud_status release_delivery(physical_plan *p, edge *v, ud_stream_event *event,
+                                  ud_buffer_view *view) {
+    ud_buffer_view_release(view);
+    ud_status status = ud_stream_event_clear(event);
+    if (v && status != UD_BUSY) {
+        atomic_fetch_sub(&v->occupied, 1);
+        if (!status)
+            ud_work_group_ready(p->group, p->nodes[v->from].tree);
+    }
+    return status;
+}
+
 static ud_status route_identified_full(void *user, uint32_t port, ud_batch *b) {
     emit_target *target = user;
     node *n = target->node;
@@ -704,31 +751,11 @@ static ud_status route_identified_full(void *user, uint32_t port, ud_batch *b) {
         edge *v = p->edges + n->outputs[i];
         if (v->output != port)
             continue;
-        if (ud_queue_count(v->queue) == e->execution->options.edge_capacity)
-            return UD_BUSY;
-        ud_buffer_block *block = NULL;
-        UD_TRY(ud_buffer_store(e->execution->buffers, b, &block));
-        uint64_t queued = atomic_fetch_add(&e->execution->queued, 1) + 1;
         ud_stream_event frame = {.struct_size = sizeof(frame),
                                  .abi_version = UD_ABI_VERSION,
                                  .kind = UD_STREAM_DATA,
-                                 .block = block,
                                  .epoch = atomic_load(&p->confirmed_epoch) + 1};
-        ud_status s = ud_queue_push(v->queue, &frame);
-        if (s) {
-            atomic_fetch_sub(&e->execution->queued, 1);
-            ud_status cleanup = ud_buffer_release(block);
-            return cleanup ? cleanup : s;
-        }
-        atomic_fetch_add(&v->produced, b->rows);
-        uint64_t size = ud_queue_count(v->queue), peak = atomic_load(&v->high_water);
-        while (size > peak && !atomic_compare_exchange_weak(&v->high_water, &peak, size)) {
-        }
-        ud_work_group_ready(p->group, p->nodes[v->to].tree);
-        uint64_t previous = atomic_load(&e->execution->high_water);
-        while (queued > previous &&
-               !atomic_compare_exchange_weak(&e->execution->high_water, &previous, queued)) {
-        }
+        UD_TRY(publish(p, v, &frame, b));
     }
     n->emitted[port] = 1;
     n->produced += b->rows;
@@ -825,15 +852,7 @@ static ud_status route_event(void *user, uint32_t port, const ud_component_event
                                  .schema_version = event->schema_version,
                                  .watermark = event->watermark,
                                  .source_position = event->source_position};
-        if (event->batch)
-            UD_TRY(ud_buffer_store(p->execution->execution->buffers, event->batch, &frame.block));
-        ud_status status = ud_queue_push(v->queue, &frame);
-        if (status) {
-            ud_buffer_release(frame.block);
-            return status;
-        }
-        atomic_fetch_add(&p->execution->execution->queued, 1);
-        ud_work_group_ready(p->group, p->nodes[v->to].tree);
+        UD_TRY(publish(p, v, &frame, event->batch));
     }
     if (!connected && !p->execution->execution->preview_pipeline)
         return UD_SCHEMA;
@@ -878,7 +897,8 @@ static ud_status validate_effects(physical_plan *p) {
     ud_status status = UD_OK;
     int epochs = 0;
     for (uint32_t index = 0; index < p->count; index++)
-        epochs |= p->nodes[index].descriptor.confirm_epoch != NULL;
+        epochs |= p->nodes[index].descriptor.category == UD_COMPONENT_SOURCE &&
+                  p->nodes[index].descriptor.confirm_epoch != NULL;
     for (uint32_t index = 0; !status && index < p->count; index++) {
         node *n = p->nodes + index;
         if (epochs && (n->binding.effects & UD_EFFECT_EXTERNAL_WRITE) &&
@@ -887,8 +907,8 @@ static ud_status validate_effects(physical_plan *p) {
             status = UD_UNSUPPORTED;
             break;
         }
-        if (n->descriptor.confirm_epoch && p->execution->transaction_serial &&
-            !p->execution->transaction_epoch) {
+        if (n->descriptor.category == UD_COMPONENT_SOURCE && n->descriptor.confirm_epoch &&
+            p->execution->transaction_serial && !p->execution->transaction_epoch) {
             status = UD_UNSUPPORTED;
             break;
         }
@@ -1407,7 +1427,8 @@ static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
     }
     int active = 0;
     for (uint32_t i = 0; i < p->count; i++)
-        if (p->nodes[i].descriptor.confirm_epoch && atomic_load(&p->nodes[i].staged_epoch) == epoch)
+        if (p->nodes[i].descriptor.category == UD_COMPONENT_SOURCE &&
+            p->nodes[i].descriptor.confirm_epoch && atomic_load(&p->nodes[i].staged_epoch) == epoch)
             active = 1;
     if (!active) {
         ud_mutex_unlock(&p->epoch_lock);
@@ -1650,9 +1671,11 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     if (n->barrier_mask && n->barrier_epoch <= confirmed)
         n->barrier_mask = 0;
     if (n->descriptor.confirm_epoch && n->barrier_epoch) {
-        if (n->barrier_epoch > confirmed)
+        if (n->barrier_epoch > confirmed &&
+            (n->descriptor.category == UD_COMPONENT_SOURCE ||
+             atomic_load(&n->staged_epoch) == n->barrier_epoch))
             return UD_OK;
-        if (n->acknowledged_epoch < n->barrier_epoch) {
+        if (n->barrier_epoch <= confirmed && n->acknowledged_epoch < n->barrier_epoch) {
             UD_TRY(n->descriptor.confirm_epoch(n->instance, n->barrier_epoch, n->source_position));
             n->acknowledged_epoch = n->barrier_epoch;
         }
@@ -1672,7 +1695,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
         UD_TRY(gate);
     }
     for (uint32_t i = 0; i < n->output_edges; i++)
-        if (ud_queue_count(p->edges[n->outputs[i]].queue) == e->execution->options.edge_capacity) {
+        if (atomic_load(&p->edges[n->outputs[i]].occupied) >=
+            e->execution->options.edge_capacity) {
             n->wait_capacity++;
             if (!n->blocked_ms) {
                 n->blocked_ms = ud_now_ms();
@@ -1738,7 +1762,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     }
     ud_component_event event = {sizeof(event), UD_ABI_VERSION, UD_COMPONENT_POLL, 0, NULL};
     const ud_batch *input = NULL;
-    ud_buffer_block *block = NULL;
+    edge *delivery = NULL;
     ud_stream_event received = {0};
     ud_buffer_view *view = NULL;
     int selected = n->pending || n->descriptor.category == UD_COMPONENT_SOURCE ||
@@ -1756,13 +1780,12 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
                 continue;
             if (ud_queue_count(v->queue)) {
                 UD_TRY(ud_queue_pop(v->queue, &received));
-                block = received.block;
+                delivery = v;
                 atomic_fetch_sub(&e->execution->queued, 1);
-                ud_work_group_ready(p->group, p->nodes[v->from].tree);
-                ud_status status = block ? ud_buffer_read(block, &view) : UD_OK;
+                ud_status status = received.block ? ud_buffer_read(received.block, &view) : UD_OK;
                 if (status) {
-                    ud_stream_event_clear(&received);
-                    return status;
+                    ud_status cleanup = release_delivery(p, delivery, &received, view);
+                    return cleanup ? cleanup : status;
                 }
                 input = view ? ud_buffer_view_batch(view) : NULL;
                 if (received.kind == UD_STREAM_DATA) {
@@ -1778,9 +1801,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
                 event.source_position = received.source_position;
                 if (event.kind == UD_COMPONENT_INPUT_END) {
                     if (v->ended) {
-                        ud_buffer_view_release(view);
-                        ud_stream_event_clear(&received);
-                        return UD_SCHEMA;
+                        ud_status cleanup = release_delivery(p, delivery, &received, view);
+                        return cleanup ? cleanup : UD_SCHEMA;
                     }
                     v->ended = 1;
                     n->ended++;
@@ -1898,10 +1920,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
         s = UD_INVALID;
     if (!s && event.kind == UD_COMPONENT_DATA && n->descriptor.category == UD_COMPONENT_DESTINATION)
         ud_task_rows(e, 0, input->rows, 0);
-    ud_buffer_view_release(view);
-    ud_status cleanup = ud_buffer_release(block);
-    received.block = NULL;
-    ud_stream_event_clear(&received);
+    ud_status cleanup = release_delivery(p, delivery, &received, view);
     if (cleanup && !s)
         s = cleanup;
     if (s)
@@ -2166,8 +2185,9 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
         UD_TRY(ud_bytes_put(b, ",\"to\":", sizeof(",\"to\":") - 1));
         UD_TRY(ud_json_quote(b, p->nodes[v->to].id.data, p->nodes[v->to].id.length));
         UD_TRY(ud_bytes_put(b, ",", 1));
-        const char *names[] = {"fromTree", "toTree",       "output",       "input",
-                               "capacity", "producedRows", "consumedRows", "queueHighWater"};
+        const char *names[] = {"fromTree",     "toTree",        "output",
+                               "input",        "capacity",      "producedRows",
+                               "consumedRows", "queueHighWater", "spillBytes"};
         uint64_t values[] = {p->nodes[v->from].tree,
                              p->nodes[v->to].tree,
                              v->output,
@@ -2175,8 +2195,9 @@ static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status
                              p->execution->execution->options.edge_capacity,
                              atomic_load(&v->produced),
                              atomic_load(&v->consumed),
-                             atomic_load(&v->high_water)};
-        for (uint32_t j = 0; j < (runtime ? 8u : 5u); j++) {
+                             atomic_load(&v->high_water),
+                             atomic_load(&v->spill_bytes)};
+        for (uint32_t j = 0; j < (runtime ? 9u : 5u); j++) {
             if (j)
                 UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
             UD_TRY(json_number(b, names[j], values[j]));

@@ -333,7 +333,7 @@ static ud_status fields(writer *w, const char *prefix) {
     }
     return UD_OK;
 }
-static ud_status scan_fields(writer *w) {
+static ud_status scan_fields(writer *w, const char *prefix) {
     for (uint32_t i = 0; i < w->batch->columns; i++) {
         if (i)
             UD_TRY(put(w, ","));
@@ -341,7 +341,7 @@ static ud_status scan_fields(writer *w) {
                          (w->dialect == UD_SQL_MYSQL || w->dialect == UD_SQL_MARIADB);
         if (dictionary)
             UD_TRY(put(w, "CAST("));
-        UD_TRY(column(w, i, NULL));
+        UD_TRY(column(w, i, prefix));
         if (dictionary) {
             UD_TRY(put(w, " AS UNSIGNED) AS "));
             UD_TRY(column(w, i, NULL));
@@ -613,6 +613,95 @@ uint32_t ud_sql_parameter_limit(int32_t dialect) {
         return 0;
     }
 }
+static ud_status write_action(writer *w, uint32_t first, uint32_t rows) {
+    const ud_write_options *o = w->options;
+    const ud_batch *b = w->batch;
+    int mode = o->mode, action = 0;
+    if (mode == UD_WRITE_CHANGESET) {
+        if (rows != 1 || !o->operations)
+            return UD_INVALID;
+        action = o->operations[first];
+        if (action == UD_CHANGE_UPSERT)
+            mode = UD_WRITE_UPSERT;
+        else if (action == UD_CHANGE_INSERT)
+            mode = UD_WRITE_APPEND;
+        else if (action == UD_CHANGE_DELETE)
+            mode = UD_WRITE_DELETE;
+    }
+    w->filter_absent = action == UD_CHANGE_INSERT;
+    w->presence_row = first;
+    if (o->mode != UD_WRITE_CHANGESET && ud_batch_has_absent(b))
+        return UD_INCOMPATIBLE;
+    if (action == UD_CHANGE_UPSERT && ud_batch_has_absent(b))
+        for (uint32_t i = 0; i < b->columns; i++) {
+            ud_value v;
+            UD_TRY(ud_batch_get(b, first, i, &v));
+            if (v.is_absent)
+                return UD_INCOMPATIBLE;
+        }
+    ud_status s = UD_OK;
+    if (mode == UD_WRITE_UPSERT && rows > 1)
+        s = last_rows(w, first, &rows);
+    if (!s && action == UD_CHANGE_TRUNCATE) {
+        if (!o->allow_truncate || o->current_column != UINT32_MAX)
+            s = UD_UNSUPPORTED;
+        else {
+            s = put(w, "DELETE FROM ");
+            if (!s)
+                s = table(w);
+        }
+    } else if (!s && mode == UD_WRITE_APPEND)
+        s = insert(w, first, rows, action == UD_CHANGE_INSERT && o->current_column != UINT32_MAX);
+    else if (!s && mode == UD_WRITE_UPSERT)
+        s = upsert(w, first, rows);
+    else if (!s && mode == UD_WRITE_DELETE) {
+        s = put(w, "DELETE FROM ");
+        if (!s)
+            s = table(w);
+        if (!s)
+            s = put(w, " WHERE ");
+        for (uint32_t row = 0; !s && row < rows; row++) {
+            if (row)
+                s = put(w, " OR ");
+            if (!s)
+                s = put(w, "(");
+            if (!s)
+                s = action == UD_CHANGE_DELETE ? preimage(w, first + row)
+                                               : keys_where(w, first + row, NULL, NULL);
+            if (!s)
+                s = put(w, ")");
+        }
+    } else if (!s && action == UD_CHANGE_UPDATE) {
+        s = put(w, "UPDATE ");
+        if (!s)
+            s = table(w);
+        if (!s)
+            s = put(w, " SET ");
+        uint32_t count = 0;
+        for (uint32_t i = 0; !s && i < b->columns; i++) {
+            ud_value value;
+            s = ud_batch_get(b, first, i, &value);
+            if (s || value.is_absent)
+                continue;
+            if (count++)
+                s = put(w, ",");
+            if (!s)
+                s = column(w, i, NULL);
+            if (!s)
+                s = put(w, "=");
+            if (!s)
+                s = parameter(w, first, i, UD_SQL_AFTER);
+        }
+        if (!s && !count)
+            s = UD_SCHEMA;
+        if (!s)
+            s = put(w, " WHERE ");
+        if (!s)
+            s = preimage(w, first);
+    } else if (!s)
+        s = UD_UNSUPPORTED;
+    return s;
+}
 ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
                                const ud_write_options *o, const ud_batch *b, uint32_t first,
                                uint32_t rows, ud_sql_statement *out) {
@@ -637,9 +726,11 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
         (o->before->ctx != ctx || o->before->rows != b->rows || o->before->columns != b->columns))
         return UD_SCHEMA;
     if (o->mode == UD_WRITE_CHANGESET) {
-        if (!o->operations || rows != 1 || o->operations[first] < UD_CHANGE_INSERT ||
-            o->operations[first] > UD_CHANGE_TRUNCATE)
+        if (!o->operations || !rows || (rows != 1 && dialect != UD_SQL_SQLSERVER))
             return UD_SCHEMA;
+        for (uint32_t row = first; row < first + rows; row++)
+            if (o->operations[row] < UD_CHANGE_INSERT || o->operations[row] > UD_CHANGE_TRUNCATE)
+                return UD_SCHEMA;
         if (o->current_column != UINT32_MAX &&
             (o->current_column >= b->columns || b->column[o->current_column].field.type != UD_BOOL))
             return UD_SCHEMA;
@@ -670,85 +761,20 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
                 .batch = b,
                 .dialect = dialect,
                 .style = style};
-    int mode = o->mode, action = 0;
-    if (mode == UD_WRITE_CHANGESET) {
-        if (rows != 1 || !o->operations)
-            return UD_INVALID;
-        action = o->operations[first];
-        if (action == UD_CHANGE_UPSERT)
-            mode = UD_WRITE_UPSERT;
-        else if (action == UD_CHANGE_INSERT)
-            mode = UD_WRITE_APPEND;
-        else if (action == UD_CHANGE_DELETE)
-            mode = UD_WRITE_DELETE;
-    }
-    w.filter_absent = action == UD_CHANGE_INSERT;
-    w.presence_row = first;
-    if (o->mode != UD_WRITE_CHANGESET && ud_batch_has_absent(b))
-        return UD_INCOMPATIBLE;
-    if (action == UD_CHANGE_UPSERT && ud_batch_has_absent(b))
-        return UD_INCOMPATIBLE;
     ud_status s = UD_OK;
-    if (mode == UD_WRITE_UPSERT && rows > 1)
-        s = last_rows(&w, first, &rows);
-    if (!s && action == UD_CHANGE_TRUNCATE) {
-        if (!o->allow_truncate || o->current_column != UINT32_MAX)
-            s = UD_UNSUPPORTED;
-        else {
-            s = put(&w, "DELETE FROM ");
+    if (o->mode == UD_WRITE_CHANGESET && dialect == UD_SQL_SQLSERVER) {
+        /* Keep every DML and its row-count assertion in source order, even
+           for repeated keys and primary-key changes in the same transaction. */
+        for (uint32_t row = first; !s && row < first + rows; row++) {
+            s = write_action(&w, row, 1);
             if (!s)
-                s = table(&w);
+                s = put(&w, ";");
+            if (!s && o->operations[row] != UD_CHANGE_UPSERT &&
+                o->operations[row] != UD_CHANGE_TRUNCATE)
+                s = put(&w, "IF @@ROWCOUNT<>1 THROW 51079,N'changeset preimage conflict',1;");
         }
-    } else if (!s && mode == UD_WRITE_APPEND)
-        s = insert(&w, first, rows, action == UD_CHANGE_INSERT && o->current_column != UINT32_MAX);
-    else if (!s && mode == UD_WRITE_UPSERT)
-        s = upsert(&w, first, rows);
-    else if (!s && mode == UD_WRITE_DELETE) {
-        s = put(&w, "DELETE FROM ");
-        if (!s)
-            s = table(&w);
-        if (!s)
-            s = put(&w, " WHERE ");
-        for (uint32_t row = 0; !s && row < rows; row++) {
-            if (row)
-                s = put(&w, " OR ");
-            if (!s)
-                s = put(&w, "(");
-            if (!s)
-                s = action == UD_CHANGE_DELETE ? preimage(&w, first + row)
-                                               : keys_where(&w, first + row, NULL, NULL);
-            if (!s)
-                s = put(&w, ")");
-        }
-    } else if (!s && action == UD_CHANGE_UPDATE) {
-        s = put(&w, "UPDATE ");
-        if (!s)
-            s = table(&w);
-        if (!s)
-            s = put(&w, " SET ");
-        uint32_t count = 0;
-        for (uint32_t i = 0; !s && i < b->columns; i++) {
-            ud_value value;
-            s = ud_batch_get(b, first, i, &value);
-            if (s || value.is_absent)
-                continue;
-            if (count++)
-                s = put(&w, ",");
-            if (!s)
-                s = column(&w, i, NULL);
-            if (!s)
-                s = put(&w, "=");
-            if (!s)
-                s = parameter(&w, first, i, UD_SQL_AFTER);
-        }
-        if (!s && !count)
-            s = UD_SCHEMA;
-        if (!s)
-            s = put(&w, " WHERE ");
-        if (!s)
-            s = preimage(&w, first);
-    } else if (!s)
-        s = UD_UNSUPPORTED;
+    } else
+        s = write_action(&w, first, rows);
     if (!s) {
         out->sql.length = (uint32_t)w.text.size;
         s = ud_bytes_put(&w.text, "", 1);
@@ -786,7 +812,7 @@ ud_status ud_sql_compile_preimage(ud_context *ctx, int32_t dialect, int32_t styl
                 .style = style};
     ud_status status = put(&w, "SELECT ");
     if (!status)
-        status = scan_fields(&w);
+        status = scan_fields(&w, NULL);
     if (!status)
         status = put(&w, " FROM ");
     if (!status)
@@ -930,12 +956,25 @@ void ud_cdc_event_clear(ud_cdc_event *event) {
     memset(event, 0, sizeof(*event));
 }
 
+void ud_sql_lookup_ordinal_name(const ud_batch *reference, char name[48]) {
+    uint32_t suffix = 0;
+    strcpy(name, "__ud_lookup_ordinal");
+    for (uint32_t i = 0; i < reference->columns;) {
+        const ud_field *field = &reference->column[i++].field;
+        if (strlen(name) == field->name_length && !memcmp(name, field->name, field->name_length)) {
+            snprintf(name, 48, "__ud_lookup_ordinal_%u", ++suffix);
+            i = 0;
+        }
+    }
+}
+
 ud_status ud_sql_compile_lookup(ud_context *ctx, int32_t dialect, int32_t style,
                                 ud_string table_name, const ud_batch *reference,
                                 const uint32_t *reference_keys, const ud_batch *probe,
                                 const uint32_t *keys, uint32_t key_count, uint32_t first,
                                 uint32_t rows, ud_sql_statement *out) {
     if (!ctx || !reference || !probe || !out || !reference_keys || !keys || !key_count ||
+        !table_name.data || !table_name.length ||
         first > probe->rows || rows > probe->rows - first)
         return UD_INVALID;
     memset(out, 0, sizeof(*out));
@@ -957,33 +996,76 @@ ud_status ud_sql_compile_lookup(ud_context *ctx, int32_t dialect, int32_t style,
             !ud_field_matches(&reference->column[reference_keys[i]].field,
                               &probe->column[keys[i]].field, UD_FIELD_VALUE_TYPE))
             status = UD_SCHEMA;
+    /* The ordinal identifies the probe under the reference column's actual
+       database collation. It is local to this bounded parameter request. */
+    int selects = dialect == UD_SQL_MYSQL || dialect == UD_SQL_MARIADB ||
+                  dialect == UD_SQL_ORACLE || dialect == UD_SQL_SQLSERVER;
+    int collides = table_name.length == 8;
+    for (uint32_t i = 0; collides && i < 8; i++)
+        collides = tolower((unsigned char)table_name.data[i]) == "ud_probe"[i];
+    const char *probe_name = collides ? "ud_probe_1" : "ud_probe";
     if (!status)
-        status = put(&w, "SELECT ");
+        status = put(&w, "WITH ");
     if (!status)
-        status = scan_fields(&w);
+        status = put(&w, probe_name);
+    if (!status)
+        status = put(&w, "(ord");
+    char generated[48];
+    for (uint32_t k = 0; !status && k < key_count; k++) {
+        snprintf(generated, sizeof(generated), ",k%u", k);
+        status = put(&w, generated);
+    }
+    if (!status)
+        status = put(&w, selects ? ") AS (" : ") AS (VALUES ");
+    for (uint32_t row = 0; !status && row < rows; row++) {
+        if (row)
+            status = put(&w, selects ? " UNION ALL " : ",");
+        snprintf(generated, sizeof(generated), selects ? "SELECT %u" : "(%u", row);
+        if (!status)
+            status = put(&w, generated);
+        for (uint32_t k = 0; !status && k < key_count; k++) {
+            status = put(&w, ",");
+            if (!status)
+                status = parameter(&w, first + row, keys[k], UD_SQL_AFTER);
+        }
+        if (!status && !selects)
+            status = put(&w, ")");
+        if (!status && dialect == UD_SQL_ORACLE)
+            status = put(&w, " FROM dual");
+    }
+    if (!status)
+        status = put(&w, ") SELECT ");
+    if (!status)
+        status = scan_fields(&w, "r.");
+    if (!status) {
+        const char *cast = dialect == UD_SQL_MYSQL || dialect == UD_SQL_MARIADB ? "SIGNED"
+                           : dialect == UD_SQL_ORACLE ? "NUMBER(19)" : "BIGINT";
+        snprintf(generated, sizeof(generated), ",CAST(p.ord AS %s) AS ", cast);
+        status = put(&w, generated);
+    }
+    if (!status) {
+        ud_sql_lookup_ordinal_name(reference, generated);
+        status = quote(&w, (ud_string){generated, (uint32_t)strlen(generated)});
+    }
     if (!status)
         status = put(&w, " FROM ");
     if (!status)
         status = table(&w);
     if (!status)
-        status = put(&w, " WHERE ");
-    for (uint32_t row = 0; !status && row < rows; row++) {
-        if (row)
-            status = put(&w, " OR ");
+        status = put(&w, " r JOIN ");
+    if (!status)
+        status = put(&w, probe_name);
+    if (!status)
+        status = put(&w, " p ON ");
+    for (uint32_t k = 0; !status && k < key_count; k++) {
+        if (k)
+            status = put(&w, " AND ");
         if (!status)
-            status = put(&w, "(");
-        for (uint32_t k = 0; !status && k < key_count; k++) {
-            if (k)
-                status = put(&w, " AND ");
-            if (!status)
-                status = column(&w, reference_keys[k], NULL);
-            if (!status)
-                status = put(&w, "=");
-            if (!status)
-                status = parameter(&w, first + row, keys[k], UD_SQL_AFTER);
+            status = column(&w, reference_keys[k], "r.");
+        if (!status) {
+            snprintf(generated, sizeof(generated), "=p.k%u", k);
+            status = put(&w, generated);
         }
-        if (!status)
-            status = put(&w, ")");
     }
     if (!status) {
         out->sql.length = (uint32_t)w.text.size;
@@ -1014,7 +1096,7 @@ ud_status ud_sql_compile_scan(ud_context *ctx, int32_t dialect, ud_string table_
                 .dialect = dialect};
     ud_status status = put(&w, "SELECT ");
     if (!status)
-        status = scan_fields(&w);
+        status = scan_fields(&w, NULL);
     if (!status)
         status = put(&w, " FROM ");
     if (!status)

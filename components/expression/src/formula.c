@@ -381,7 +381,6 @@ static ud_status prefix(parser *p, expression_node **out) {
                 s = prefix(p, n->args);
                 if (!s) {
                     n->span_length = p->start - start;
-                    s = ud_expr_finish(p->e, n);
                 }
             }
         }
@@ -403,7 +402,6 @@ static ud_status prefix(parser *p, expression_node **out) {
                     s = prefix(p, n->args);
                 if (!s) {
                     n->span_length = p->start - start;
-                    s = ud_expr_finish(p->e, n);
                 }
             }
         } else if (!s) {
@@ -417,6 +415,8 @@ static ud_status prefix(parser *p, expression_node **out) {
         int32_t units = 0;
         u_strFromUTF8(NULL, 0, &units, p->text.data, (int32_t)p->text.length, &error_code);
         f.scalar.length = (uint32_t)(units ? units : 1);
+        if (f.scalar.length > 4000)
+            f.scalar = (ud_scalar_metadata){0};
         ud_value value = {.type = UD_UTF8, .text = p->text.data, .text_length = p->text.length};
         expression_node *n = ud_expr_node(p->e, LITERAL, start, p->length);
         *out = n;
@@ -487,7 +487,6 @@ static ud_status prefix(parser *p, expression_node **out) {
                             s = expect(p, ')');
                         if (!s) {
                             n->span_length = p->start - start;
-                            s = ud_expr_finish(p->e, n);
                         }
                     }
                 }
@@ -580,7 +579,6 @@ static ud_status expression_inner(parser *p, int minimum, expression_node **out)
             UD_TRY(expression(p, level, n->args + 2));
         }
         n->span_length = p->start - n->span_start;
-        UD_TRY(ud_expr_finish(p->e, n));
     }
     return UD_OK;
 }
@@ -593,6 +591,27 @@ static ud_status expression(parser *p, int minimum, expression_node **out) {
     p->expression_depth--;
     return status;
 }
+static ud_status bind_formula(ud_expression *e, expression_node *node,
+                              const expression_node *parent, uint32_t depth) {
+    if (depth > 64)
+        return ud_expr_error(e, UD_SCHEMA, node->span_start, node->span_length,
+                             "Expression nesting exceeds 64");
+    if (parent && node->field.scalar.kind == UD_DT_STR) {
+        if (node->kind == LITERAL &&
+            !(parent->kind == OPERATION && parent->op == CAST && parent->field.type == UD_UTF8))
+            return ud_expr_error(e, UD_SCHEMA, node->span_start, node->span_length,
+                                 "Use NULL(DT_WSTR, ...) inside a formula");
+        uint32_t length = node->field.scalar.length;
+        node->field.scalar = length > 4000
+                                 ? (ud_scalar_metadata){0}
+                                 : (ud_scalar_metadata){.kind = UD_DT_WSTR, .length = length};
+    }
+    if (node->kind != OPERATION && node->kind != FUNCTION)
+        return UD_OK;
+    for (uint32_t j = 0; j < node->argument_count; j++)
+        UD_TRY(bind_formula(e, node->args[j], node, depth + 1));
+    return ud_expr_finish(e, node);
+}
 ud_status ud_expr_parse(ud_expression *e, ud_string source, expression_node **out) {
     parser p = {.e = e, .source = source, .decoded = {.ctx = e->ctx}};
     ud_status s = next(&p);
@@ -600,6 +619,8 @@ ud_status ud_expr_parse(ud_expression *e, ud_string source, expression_node **ou
         s = expression(&p, 1, out);
     if (!s && p.token != END)
         s = error(&p, "Unexpected trailing token");
+    if (!s)
+        s = bind_formula(e, *out, NULL, 0);
     if (s && !e->diagnostic.status)
         ud_expr_error(e, s, p.start, p.length, "Formula static binding failed");
     ud_bytes_clear(&p.decoded);

@@ -3,8 +3,29 @@
 #include <float.h>
 #include <unicode/ucnv.h>
 #include <unicode/ucnv_err.h>
+#include <unicode/uloc.h>
 #include <unicode/ustring.h>
 #include <unicode/utf16.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+static const char *code_page_name(uint32_t cp, char name[40]) {
+    if (cp == 65001)
+        return "UTF-8";
+    if (cp == 1200)
+        return "UTF-16LE";
+    if (cp == 1201)
+        return "UTF-16BE";
+    snprintf(name, 40, "windows-%u", cp);
+    UErrorCode error = U_ZERO_ERROR;
+    if (!ucnv_countAliases(name, &error)) {
+        snprintf(name, 40, "cp%u", cp);
+        error = U_ZERO_ERROR;
+        if (!ucnv_countAliases(name, &error))
+            snprintf(name, 40, "ibm-%u", cp);
+    }
+    return name;
+}
 static const char *const names[] = {"DT_BOOL",        "DT_I1",           "DT_I2",
                                     "DT_I4",          "DT_I8",           "DT_UI1",
                                     "DT_UI2",         "DT_UI4",          "DT_UI8",
@@ -84,12 +105,56 @@ ud_status ud_scalar_field_validate(const ud_field *f) {
                    : UD_OK;
     if (m->kind > 29 || storage(m->kind) != f->type || m->fractional_digits > 7)
         return UD_SCHEMA;
-    if (m->comparison_flags & ~127u)
+    const uint32_t comparison_mask =
+        UD_COMPARE_IGNORE_CASE | UD_COMPARE_IGNORE_NONSPACE | UD_COMPARE_IGNORE_SYMBOLS |
+        UD_COMPARE_LINGUISTIC_IGNORE_CASE | UD_COMPARE_LINGUISTIC_IGNORE_DIACRITIC |
+        UD_COMPARE_STRING_SORT | UD_COMPARE_IGNORE_KANA | UD_COMPARE_IGNORE_WIDTH |
+        UD_COMPARE_LINGUISTIC_CASING;
+    if ((m->comparison_flags & ~comparison_mask) || (m->comparison_flags && f->type != UD_UTF8))
+        return UD_SCHEMA;
+    if (m->locale_id) {
+#ifdef _WIN32
+        WCHAR locale[LOCALE_NAME_MAX_LENGTH];
+        if (!LCIDToLocaleName(m->locale_id, locale, LOCALE_NAME_MAX_LENGTH,
+                              LOCALE_ALLOW_NEUTRAL_NAMES))
+            return UD_SCHEMA;
+#else
+        char locale[ULOC_FULLNAME_CAPACITY];
+        UErrorCode error = U_ZERO_ERROR;
+        uloc_getLocaleForLCID(m->locale_id, locale, sizeof(locale), &error);
+        if (U_FAILURE(error))
+            return UD_SCHEMA;
+#endif
+    }
+    if (m->kind == UD_DT_DBTIMESTAMP ? m->fractional_digits > 3
+        : m->kind != UD_DT_DBTIME2 && m->kind != UD_DT_DBTIMESTAMP2 &&
+              m->kind != UD_DT_DBTIMESTAMPOFFSET && m->fractional_digits)
         return UD_SCHEMA;
     if ((m->kind == UD_DT_STR || m->kind == UD_DT_WSTR || m->kind == UD_DT_BYTES) && !m->length)
         return UD_SCHEMA;
+    /* SSIS bounded character domains have provider-defined maxima.  Keep the
+     * large text domains unbounded when length is omitted, but reject an
+     * explicitly declared size outside the public SSIS range. */
+    if (m->kind == UD_DT_STR && m->length > 8000)
+        return UD_SCHEMA;
+    if (m->kind == UD_DT_WSTR && m->length > 4000)
+        return UD_SCHEMA;
+    if (m->kind == UD_DT_NTEXT && m->length > UINT32_C(0x3fffffff))
+        return UD_SCHEMA;
+    if ((m->kind == UD_DT_TEXT || m->kind == UD_DT_IMAGE) && m->length > INT32_MAX)
+        return UD_SCHEMA;
+    if (m->kind == UD_DT_BYTES && m->length > 8000)
+        return UD_SCHEMA;
+    if (f->type != UD_UTF8 && f->type != UD_BINARY && m->length)
+        return UD_SCHEMA;
     if ((m->kind == UD_DT_STR || m->kind == UD_DT_TEXT) != !!m->code_page)
         return UD_SCHEMA;
+    if (m->code_page) {
+        char name[40];
+        UErrorCode error = U_ZERO_ERROR;
+        if (!ucnv_countAliases(code_page_name(m->code_page, name), &error))
+            return UD_SCHEMA;
+    }
     if (m->kind == UD_DT_CY && (f->precision != 19 || f->scale != 4))
         return UD_SCHEMA;
     if (m->kind == UD_DT_DECIMAL && (f->precision != 29 || f->scale < 0 || f->scale > 28))
@@ -102,8 +167,13 @@ ud_status ud_scalar_field_validate(const ud_field *f) {
     return UD_OK;
 }
 static ud_status unicode(ud_context *ctx, ud_string input, UChar **out, int32_t *count) {
-    if (input.length > INT32_MAX)
+    if (input.length >= INT32_MAX)
         return UD_RESOURCE;
+    if (!input.data) {
+        if (input.length)
+            return UD_PARSE;
+        input.data = "";
+    }
     UErrorCode error = U_ZERO_ERROR;
     u_strFromUTF8(NULL, 0, count, input.data, (int32_t)input.length, &error);
     if (error != U_BUFFER_OVERFLOW_ERROR && U_FAILURE(error))
@@ -122,22 +192,22 @@ static ud_status unicode(ud_context *ctx, ud_string input, UChar **out, int32_t 
 }
 static UConverter *code_page(uint32_t cp, UErrorCode *error) {
     char encoding[40];
-    snprintf(encoding, sizeof(encoding), "windows-%u", cp);
-    if (cp == 65001)
-        strcpy(encoding, "UTF-8");
-    else if (cp == 1200)
-        strcpy(encoding, "UTF-16LE");
-    else if (cp == 1201)
-        strcpy(encoding, "UTF-16BE");
-    UConverter *converter = ucnv_open(encoding, error);
+    UConverter *converter = ucnv_open(code_page_name(cp, encoding), error);
     if (U_SUCCESS(*error))
         ucnv_setFromUCallBack(converter, UCNV_FROM_U_CALLBACK_STOP, NULL, NULL, NULL, error);
     return converter;
+}
+uint32_t ud_scalar_text_prefix(const ud_field *field, const char *text, uint32_t length) {
+    if (!text || !length || (field->scalar.kind != UD_DT_STR && field->scalar.kind != UD_DT_WSTR))
+        return length;
+    const char *end = memchr(text, 0, length);
+    return end ? (uint32_t)(end - text) : length;
 }
 ud_status ud_scalar_text_bytes(ud_context *ctx, const ud_field *field, ud_string input,
                                uint32_t *out) {
     if (!ctx || !field || !out)
         return UD_INVALID;
+    input.length = ud_scalar_text_prefix(field, input.data, input.length);
     UChar *text = NULL;
     int32_t count = 0;
     UD_TRY(unicode(ctx, input, &text, &count));
@@ -170,6 +240,7 @@ ud_status ud_scalar_text(ud_context *ctx, const ud_field *f, ud_string input, in
         return UD_INVALID;
     *out = NULL;
     *length = 0;
+    input.length = ud_scalar_text_prefix(f, input.data, input.length);
     UChar *wide = NULL;
     int32_t count = 0;
     UD_TRY(unicode(ctx, input, &wide, &count));
@@ -286,6 +357,13 @@ ud_status ud_value_validate_field(ud_context *ctx, const ud_field *f, const ud_v
               (v->decimal.high == -1 && v->decimal.low >= UINT64_C(0x8000000000000000))))
             return UD_OVERFLOW;
     }
+    if (k >= UD_DT_DECIMAL && k <= UD_DT_CY) {
+        if (v->precision != f->precision || v->scale != f->scale)
+            return UD_SCHEMA;
+        ud_decimal128 checked;
+        UD_TRY(ud_decimal_rescale(v->decimal, f->scale, f->precision, f->scale, UD_ROUND_EXACT,
+                                  &checked));
+    }
     if (k == UD_DT_DECIMAL) {
         uint64_t low = v->decimal.low, high = (uint64_t)v->decimal.high;
         if (v->decimal.high < 0) {
@@ -299,13 +377,15 @@ ud_status ud_value_validate_field(ud_context *ctx, const ud_field *f, const ud_v
         (!isfinite((float)v->real) || (double)(float)v->real != v->real))
         return UD_OVERFLOW;
     if (f->type == UD_UTF8) {
-        char *copy = NULL;
         uint32_t n = 0;
-        ud_status s = ud_scalar_text(ctx, f, (ud_string){v->text, v->text_length}, 0, &copy, &n);
-        ud_free(copy);
-        return s;
+        UD_TRY(ud_scalar_text_bytes(ctx, f, (ud_string){v->text, v->text_length}, &n));
+        uint32_t max = f->scalar.length;
+        if (!max)
+            max = k == UD_DT_NTEXT ? UINT32_C(0x3fffffff) : INT32_MAX;
+        return (f->scalar.code_page ? n : n / 2) > max ? UD_TRUNCATED : UD_OK;
     }
-    if (f->type == UD_BINARY && f->scalar.length && v->text_length > f->scalar.length)
+    if (f->type == UD_BINARY &&
+        v->text_length > (f->scalar.length ? f->scalar.length : (uint32_t)INT32_MAX))
         return UD_TRUNCATED;
     if (k == UD_DT_GUID && v->text_length != 16)
         return UD_PARSE;
@@ -319,6 +399,8 @@ ud_status ud_value_validate_field(ud_context *ctx, const ud_field *f, const ud_v
             return UD_SCHEMA;
         if ((k == UD_DT_DBTIME || k == UD_DT_DBTIME2) && dt.ticks >= INT64_C(864000000000))
             return UD_OVERFLOW;
+        if (k == UD_DT_DBTIMESTAMP && dt.ticks < INT64_C(552877920000000000))
+            return UD_OVERFLOW;
         if (k == UD_DT_DBDATE && dt.ticks % INT64_C(864000000000))
             return UD_TRUNCATED;
         uint64_t quantum = 1;
@@ -327,7 +409,9 @@ ud_status ud_value_validate_field(ud_context *ctx, const ud_field *f, const ud_v
         if (k && k != UD_DT_DBDATE && (uint64_t)dt.ticks % quantum)
             return UD_TRUNCATED;
     }
-    if (k == UD_DT_DATE || k == UD_DT_FILETIME) {
+    if (k == UD_DT_FILETIME)
+        return v->unsigned_integer % UINT64_C(10000) ? UD_TRUNCATED : UD_OK;
+    if (k == UD_DT_DATE) {
         ud_datetime dt;
         return ud_datetime_from_value(f, v, &dt);
     }
@@ -376,6 +460,7 @@ ud_status ud_value_parse_field(ud_context *ctx, const ud_field *f, const char *s
         return UD_INVALID;
     memset(out, 0, sizeof(*out));
     out->type = f->type;
+    n = ud_scalar_text_prefix(f, s, n);
     if (f->type == UD_DATETIME) {
         UD_TRY(ud_datetime_parse((ud_string){s, n}, f, &out->datetime));
         return ud_value_validate_field(ctx, f, out);
@@ -485,6 +570,8 @@ static ud_status cast_field(ud_context *ctx, const ud_field *from, const ud_valu
             q *= 10;
         out->datetime.ticks = out->datetime.ticks / q * q;
     }
+    if (!s && to->scalar.kind == UD_DT_FILETIME && truncate)
+        out->unsigned_integer -= out->unsigned_integer % UINT64_C(10000);
     if (!s && to->type == UD_UTF8 && to->scalar.kind) {
         char *text = NULL;
         uint32_t n = 0;

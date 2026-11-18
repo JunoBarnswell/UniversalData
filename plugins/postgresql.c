@@ -1,14 +1,14 @@
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <poll.h>
+#endif
 #include "postgresql_metadata.h"
 #include "common.h"
 #include "postgresql_cdc.h"
 #include <libpq-fe.h>
 #include <stdatomic.h>
 #include "../components/foundation/thread.h"
-#ifdef _WIN32
-#include <winsock2.h>
-#else
-#include <poll.h>
-#endif
 static const ud_connector_api connector;
 typedef struct {
     ud_host_api host;
@@ -20,7 +20,7 @@ typedef struct {
     ud_batch *schema;
     uint32_t batch_size;
     ud_read_options record_options;
-    int reading, finished;
+    int reading, read_cursor_declared, finished;
     atomic_int cancelled;
     void *control_user;
     ud_status (*check)(void *);
@@ -372,9 +372,16 @@ static ud_status close_read(void *state) {
     postgres_state *p = state;
     memset(&p->record_options, 0, sizeof(p->record_options));
     p->cleaning = 1;
-    ud_status s = p->reading && !p->transaction && !p->broken ? command(p, "ROLLBACK") : UD_OK;
+    ud_status s = UD_OK;
+    if (p->reading && !p->broken) {
+        if (!p->transaction)
+            s = command(p, "ROLLBACK");
+        else if (p->read_cursor_declared)
+            s = command(p, "CLOSE ud_sdk_cursor");
+    }
     p->cleaning = 0;
     p->reading = 0;
+    p->read_cursor_declared = 0;
     p->finished = 1;
     p->host.batch_destroy(p->schema);
     p->schema = NULL;
@@ -538,6 +545,8 @@ static ud_status open_read(void *state, const ud_read_options *options, const ud
                : NULL;
         if (!s && (!prepared || PQresultStatus(prepared) != PGRES_COMMAND_OK))
             s = pg_failure(p, prepared);
+        if (!s)
+            p->read_cursor_declared = 1;
         PQclear(prepared);
         parameters_clear(p, &parameters);
         h->deallocate(sql);
@@ -610,12 +619,7 @@ static ud_status parse_row(postgres_state *p, const PGresult *r, ud_batch *batch
         }
         const char *text = PQgetvalue(r, 0, (int)j);
         uint32_t length = (uint32_t)PQgetlength(r, 0, (int)j);
-        if (field.type == UD_BOOL) {
-            if (length != 1 || (*text != 't' && *text != 'f'))
-                s = UD_PARSE;
-            else
-                v->integer = *text == 't';
-        } else if (field.type == UD_BINARY) {
+        if (field.type == UD_BINARY) {
             size_t size = 0;
             binary[j] = PQunescapeBytea((const unsigned char *)text, &size);
             if (!binary[j] || size > UINT32_MAX)
@@ -624,20 +628,8 @@ static ud_status parse_row(postgres_state *p, const PGresult *r, ud_batch *batch
                 v->text = binary[j];
                 v->text_length = (uint32_t)size;
             }
-        } else if (field.type == UD_TIMESTAMP) {
-            /* UTC session formatting has a +00 suffix; normalize only that proven offset. */
-            char utc[64];
-            if (length < 22 || length > sizeof(utc) - 1 || text[10] != ' ' ||
-                memcmp(text + length - 3, "+00", 3))
-                s = UD_PARSE;
-            else {
-                memcpy(utc, text, length - 3);
-                utc[10] = 'T';
-                utc[length - 3] = 'Z';
-                s = h->parse_field(h->context, &field, utc, length - 2, UD_ROUND_EXACT, v);
-            }
         } else
-            s = h->parse_field(h->context, &field, text, length, UD_ROUND_EXACT, v);
+            s = ud_pg_decode_scalar(h, &field, text, length, v);
         if (plugin_record_conversion(s)) {
             if (!conversion) {
                 conversion = s;
@@ -900,6 +892,83 @@ static ud_status copy_batch(postgres_state *p, const ud_write_options *options,
     }
     return status;
 }
+/* Pipeline the original ordered statements inside the receipt transaction.
+ * Each command retains its own preimage check, trigger and affected-row result. */
+static ud_status write_changes(postgres_state *p, const ud_write_options *options,
+                               const ud_batch *batch) {
+    ud_host_api *h = &p->host;
+    if (!PQenterPipelineMode(p->db))
+        return pg_failure(p, NULL);
+    ud_status status = UD_OK;
+    const uint32_t total = h->rows(batch);
+    for (uint32_t first = 0; !status && first < total;) {
+        uint32_t sent = 0;
+        size_t bytes = 0;
+        while (!status && first + sent < total && sent < 128 && bytes < 1048576) {
+            ud_sql_statement plan = {0};
+            pg_parameters params = {0};
+            status = control(p);
+            if (!status)
+                status = h->compile_write(h->context, UD_SQL_POSTGRESQL, UD_SQL_PARAMETER_NUMBERED,
+                                          options, batch, first + sent, 1, &plan);
+            if (!status)
+                status = parameters_statement(p, options, batch, &plan, &params);
+            if (!status && !PQsendQueryParams(p->db, plan.sql.data, (int)params.count, params.types,
+                                               params.values, params.lengths, params.formats, 0))
+                status = pg_failure(p, NULL);
+            if (!status) {
+                bytes += plan.sql.length;
+                for (uint32_t i = 0; i < params.count; i++)
+                    if (params.values[i])
+                        bytes += params.formats[i] ? (size_t)params.lengths[i] : strlen(params.values[i]);
+                sent++;
+            }
+            parameters_clear(p, &params);
+            h->statement_clear(&plan);
+        }
+        if (!sent)
+            break;
+        if (!PQpipelineSync(p->db)) {
+            p->broken = 1;
+            if (!status)
+                status = pg_failure(p, NULL);
+            break;
+        }
+        uint32_t received = 0;
+        int synced = 0;
+        while (!synced && wait_result(p)) {
+            PGresult *result = PQgetResult(p->db);
+            if (!result)
+                continue; /* libpq separates successive command results with NULL. */
+            ExecStatusType kind = PQresultStatus(result);
+            if (kind == PGRES_PIPELINE_SYNC)
+                synced = 1;
+            else {
+                if (!status && (received >= sent || kind != PGRES_COMMAND_OK))
+                    status = received >= sent ? UD_CORRUPT : pg_failure(p, result);
+                if (!status && options->operations[first + received] != UD_CHANGE_UPSERT &&
+                    options->operations[first + received] != UD_CHANGE_TRUNCATE &&
+                    strcmp(PQcmdTuples(result), "1"))
+                    status = h->report(h->context, UD_FENCED, "changeset preimage or current business-key conflict");
+                received++;
+            }
+            PQclear(result);
+        }
+        if (!synced || received != sent) {
+            p->broken = 1;
+            if (!status)
+                status = p->control_status ? p->control_status : UD_TRANSIENT;
+        }
+        first += sent;
+    }
+    if (!PQexitPipelineMode(p->db)) {
+        p->broken = 1;
+        if (!status)
+            status = pg_failure(p, NULL);
+    }
+    return status;
+}
+
 static ud_status write_batch(void *state, ud_string tenant, const ud_write_options *options,
                              const ud_batch *batch, const uint8_t digest[32]) {
     postgres_state *p = state;
@@ -982,11 +1051,14 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         limit = 1024;
     if (!s && !existing && bulk)
         s = copy_batch(p, options, batch, bulk);
-    int used_copy = bulk != NULL;
+    int changes = options->mode == UD_WRITE_CHANGESET;
+    if (!s && !existing && changes)
+        s = write_changes(p, options, batch);
+    int ordinary = !changes && !bulk;
     h->bulk_close(bulk);
-    for (uint32_t row = 0; !s && !existing && !used_copy && row < h->rows(batch);) {
+    for (uint32_t row = 0; !s && !existing && ordinary && row < h->rows(batch);) {
         s = control(p);
-        uint32_t count = options->mode == UD_WRITE_CHANGESET ? 1 : h->rows(batch) - row;
+        uint32_t count = h->rows(batch) - row;
         if (count > limit)
             count = limit;
         ud_sql_statement plan = {0};
@@ -1001,11 +1073,6 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
                                : NULL;
         if (!s && (!changed || PQresultStatus(changed) != PGRES_COMMAND_OK))
             s = pg_failure(p, changed);
-        if (!s && options->mode == UD_WRITE_CHANGESET &&
-            options->operations[row] != UD_CHANGE_UPSERT &&
-            options->operations[row] != UD_CHANGE_TRUNCATE && strcmp(PQcmdTuples(changed), "1"))
-            s = h->report(h->context, UD_FENCED,
-                          "changeset preimage or current business-key conflict");
         PQclear(changed);
         parameters_clear(p, &parameters);
         h->statement_clear(&plan);
@@ -1135,6 +1202,7 @@ static ud_status begin_transaction(void *state, int32_t isolation) {
         isolation == UD_ISOLATION_SERIALIZABLE      ? "BEGIN ISOLATION LEVEL SERIALIZABLE"
         : isolation == UD_ISOLATION_REPEATABLE_READ ? "BEGIN ISOLATION LEVEL REPEATABLE READ"
         : isolation == UD_ISOLATION_READ_COMMITTED  ? "BEGIN ISOLATION LEVEL READ COMMITTED"
+        : isolation == UD_ISOLATION_READ_SNAPSHOT   ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
                                                     : NULL;
     if (!sql)
         return UD_INVALID;
@@ -1460,7 +1528,8 @@ static const ud_connector_api connector = {
     .struct_size = sizeof(connector),
     .abi_version = UD_PLUGIN_ABI,
     .capabilities =
-        UD_CONNECT_READONLY_SCAN | UD_CONNECT_TRANSACTIONAL_DML | UD_CONNECT_READ |
+        UD_CONNECT_READ_SNAPSHOT | UD_CONNECT_READONLY_SCAN | UD_CONNECT_TRANSACTIONAL_DML |
+        UD_CONNECT_READ |
         UD_CONNECT_RECORD_ERRORS | UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
         UD_CONNECT_RECEIPTS | UD_CONNECT_SNAPSHOT | UD_CONNECT_EXECUTE_SQL |
         UD_CONNECT_TRANSACTION | UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |

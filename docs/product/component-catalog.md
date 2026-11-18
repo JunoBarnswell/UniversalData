@@ -12,13 +12,14 @@ SDK 4.0.0，唯一 ABI/协议 12。Linux 与 Windows 均须验收。下列目录
 | Data Flow Task / Execute Package | `dataFlow`、`executePackage` | 独立 Control Flow / Data Flow，共用根资源预算；异步边界形成可并行 Execution Tree；每组件独立 Activation |
 | Execute SQL / File System / Execute Process | `sql.execute`、`file.system`、`process.execute` | 授权先于 I/O；Windows/POSIX 原生进程管理 |
 | Data Profiling / HTTP / Native Custom Task | `data.profile`、`profile.statistics`、`http.request`、第三方 Task descriptors | HTTP 依赖可选 libcurl，关闭时 Unsupported；插件必须当前完整 ABI |
-| Flat File / JSON / Database Source | `file.csv.source`、`file.ndjson.source`、`sql.source` | 唯一 typed schema；SQL 恢复需要持久 snapshot，缺少即拒绝 |
+| Flat File / JSON / Database Source | `file.csv.source`、`file.ndjson.source`、`sql.source` | 唯一 typed schema；SQL 恢复需要持久 snapshot，缺少即拒绝 SQL Server and PostgreSQL use typed predicates for proven keyed Bool/Int64 scans and can omit unused primitive columns from table reads. |
 | Flat File / JSON / Database Destination | `file.csv.destination`、`file.ndjson.destination`、`sql.destination` | 文件 staging/hash/publish；SQL 事务+receipt，不把输入消费视为提交 |
 | Data Conversion / Derived Column | `cast`、`derive` | Data 转换和唯一 Expression AST |
 | Copy Column / Character Map | `copyColumn`、`characterMap` | 复制列保留 lineage；trim/upper_ascii/lower_ascii 保留非 ASCII UTF8 |
 | Conditional Split / Multicast / Union All | `split`、`multicast`、`unionAll`、`pass` | 多端口、有界队列、sealed 引用共享、schema 检查 |
-| Sort / Aggregate / Join | `sort`、`aggregate`、`join` | 共用 Compute operator 和 Buffer Manager；Sort 稳定外存归并，Aggregate 有界分组，Join 有界 block nested loops |
-| Lookup | `cacheBuild`, `cacheLookup` | Execution 内只读缓存；复合 typed key，First/Error/All；默认 First + miss Ignore（inner）；显式 Redirect 走普通错误目标。旧 inline lookup 删除。 |
+| Sort / Aggregate / Join | `sort`、`aggregate`、`join` | Stable external sort concatenates ordered fixed-width key ranges and merges overlapping runs within Buffer Manager limits. Aggregate and join use the declared key comparison semantics. |
+| Lookup | cacheBuild, cacheLookup, dbLookup | Full probes a sealed execution reference. Partial caches database observations by probe key. None issues one provider lookup per non-null probe. Match, record error and configured no-match outputs use ports 0, 1 and 2. Epoch-scoped database references use a read snapshot. |
+| Slowly Changing Dimension | scd, scd.destination | The inferredMember Boolean identifies a current placeholder. Materialization updates mapped attributes and clears the flag in one preimage-checked update, retaining surrogate, validity and version. |
 | Window | `window` | Row Number/Running Sum，分区及排序；BI Dataset/Query planner/并行分区待实现 |
 | Row Count / Audit | `rowCount`、`audit` | Activation 变量及根有序事件；并发任务不得写共享祖先变量 |
 | Error Output / Data Quality | `quality` 普通端口 0、错误端口 1 | Foreign Key 双输入、完整规则版本/政策、多 Violation、正规错误端口；分类与实际提交/确认分开。 |
@@ -26,7 +27,8 @@ SDK 4.0.0，唯一 ABI/协议 12。Linux 与 Windows 均须验收。下列目录
 | Expression Function | `abs`、`length`、`trim`、`upper_ascii`、`lower_ascii`、`concat`、`coalesce`、`substring` | 8 个 native pure descriptors；length/substring 按 UTF8 code point；coalesce 参数显式求值 |
 | Buffer Manager | `ud_buffer_manager` / `ud_operator` | 按真实 allocation capacity 去重计量；驻留只 retain；spill 使用唯一 wire；显式 View 和 working quota；失败文件由管理器持有并重试清理 |
 | Transaction / Checkpoint / Catalog | Journal 4、目标 receipt、immutable artifacts/history | 当前版本索引式分段 Journal、原子快照/manifest、目标 receipt、不可变 artifacts/history；不提供跨任意目标的分布式事务 |
-| Event-time streaming / Studio observation | eventTime; eventWindow; Native Catalog execution feed | One Native Pipeline/Compute/Buffer/Journal. Final tumbling/sliding/session aggregates, native Watermark policy, bounded shared working subquotas and stable window RowIds. No second stream engine or exactly-once certification. |
+| Event-time streaming / Studio observation | eventTime; eventWindow; eventDeduplicate; eventJoin; Native Catalog execution feed | Native Watermark and bounded shared working subquotas. Final tumbling/sliding/session aggregates with stable RowIds. eventDeduplicate keeps the first row per key until its event-time TTL reaches the Watermark; eventJoin emits inner matches within the configured inclusive time difference and bounds state on both inputs. Both drop rows at or behind the common Watermark. |
+| Change Data Capture | CDC source, sql.destination (changeset) | microBatchRows and microBatchMs group complete source transactions. A sealed epoch stores original watermarks and the last log position. SQL Server sends bounded ordered statement batches. PostgreSQL uses bounded libpq pipelines and checks individual affected-row counts. |
 
 未完成扩展：Current source limitations remain itemized under ETL-011 (qualified SQL Server participants), ETL-025/026 (complete online identity/presence proof) and ETL-038 (unsupported Avro named references/general unions). Missing Windows and independent protocol resources remain Blocked; no historical ABI 9 pass is inherited.。
 

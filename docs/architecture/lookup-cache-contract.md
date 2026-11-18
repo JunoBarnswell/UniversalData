@@ -10,8 +10,14 @@ Compute 内有一个有序索引：Reference 经现有 Sort/Buffer 形成 bounde
 
 Cache 定义包含 `sourceConnection`，可选 `sourceTable`，schema、keys、duplicates 和 errorPolicy。Cache Build 使用显式 ordinal `mapping` 导入 Reference；Lookup 的 probe `keys` 也是显式 ordinal。Source 与资产共享来源字段命名空间；Column ID 可显式声明。
 
-ABI 7 删除 `lookup` 与 `UD_OPERATOR_LOOKUP`；唯一产品入口为 `cacheBuild`/`cacheLookup`，默认 First 和 miss Ignore（inner），显式 Fail/Redirect 可覆盖。Error+Fail 封存时失败；Error+Redirect 隔离重复键的后续行并保留 First；All 按稳定 Reference 顺序展开全部匹配。Join 只使用相同索引的 All 模式。
+Full 使用 `cacheBuild` 和 `cacheLookup`，在执行期共享封存的引用。重复键默认取首行，`Error+Fail` 在封存时失败，`Error+Redirect` 隔离后续重复行，`All` 按稳定顺序展开。Join 使用同一索引的 All 模式。
 
-缓存的版本哈希包含 Schema、复合键、重复/错误政策和完整有序内容，不依赖入库 Batch 切分。只读资产持有参考资源的逻辑 Read 授权，撤销立即使读取失败。恢复通过正常 builder DataFlow 重建，不增加缓存水合旁路。Execution 资产只有一个 builder；事务中的 Cache Build 明确 Unsupported，不能发布未确认事务中的参考数据。
+Partial 和 None 使用 `dbLookup`，引用列必须与数据库主键一致。SQL 的引用列比较决定匹配语义，查询返回的探针序号将结果映射到原始输入。Partial 按原始探针键缓存命中和未命中，在 `maxEntries` 和执行期 `ttlMs` 范围内复用。None 对每个探针执行独立的数据库读取，重复输入与 NULL 同样发出查询。
+
+端口 0 输出匹配后的输入和引用字段。端口 1 根据 `errorPolicy=redirect` 输出记录错误。端口 2 在 `noMatch=output` 时输出原始未匹配输入。默认 `noMatch=ignore` 时，未匹配行由 `errorPolicy` 决定，默认丢弃。NULL 参与相同的未匹配分流。
+
+`scope=epoch` 为每个数据库 Lookup 设置只读事务视图。检查点周期确认后释放旧视图，下一周期重新读取引用数据并建立新的 Partial 索引。SQLite 使用延迟事务，首个查询固定快照。PostgreSQL 使用只读的 REPEATABLE READ。其他驱动会拒绝这个作用域。同周期恢复重放已持久化的探针观察，恢复后首次遇到的探针使用当前只读事务视图。
+
+Full 缓存的版本哈希包含 Schema、复合键、重复/错误政策和完整有序内容，与入库 Batch 切分无关。检查点恢复使用资产持久化的封存引用。只读资产持有参考资源的逻辑 Read 授权，撤销立即使读取失败。Execution 资产只有一个 builder，事务中的 Cache Build 会拒绝执行。
 
 资产授权来自 Builder 的真实 Source Lease，根所有者复制其已解析定义和资源，不在 Probe 时重新解析可变变量，也不额外占用物理会话。所有查询继续对这份真实资源检查 Read 授权。

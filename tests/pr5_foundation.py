@@ -1,4 +1,5 @@
 """Bound instance ports, six joins, typed SQL and durable tree concurrency."""
+from contextlib import closing
 import copy,json,pathlib,sqlite3,subprocess,sys,tempfile
 runner,plugin=sys.argv[1:3]
 def node(id,kind,**config):return dict(id=id,component=kind,config=config)
@@ -15,11 +16,11 @@ with tempfile.TemporaryDirectory(prefix='ud-pr5-foundation-') as folder:
  for kind in ('inner','left','right','full','semi','anti'):
   d=root/kind;d.mkdir();left=[dict(a=a,b=b,l=i) for i,(a,b) in enumerate([(None,1),(1,1),(1,1),(1,2),(2,1)])];right=[dict(c=a,d=b,r=i) for i,(a,b) in enumerate([(None,1),(1,1),(1,1),(3,1)])]
   (d/'left.ndjson').write_text(''.join(json.dumps(x)+'\n' for x in left));(d/'right.ndjson').write_text(''.join(json.dumps(x)+'\n' for x in right));p=dict(connections=[dict(id=id,driver='file',resource=str(d/(id+'.ndjson'))) for id in ('left','right','out')],dataFlows=[dict(id='flow',components=[node('left','file.ndjson.source',connection='left',schema=schema(['a','b','l']),batchSize=1),node('right','file.ndjson.source',connection='right',schema=schema(['c','d','r']),batchSize=3),node('join','join',leftKeys=['a','b'],rightKeys=['c','d'],joinType=kind),node('out','file.ndjson.destination',connection='out')],paths=[edge('left','join'),edge('right','join',input=1),edge('join','out')])]);run(d,p)
-  with sqlite3.connect(':memory:') as db:
+  with closing(sqlite3.connect(':memory:')) as db, db:
    db.executescript('CREATE TABLE l(a,b,l);CREATE TABLE r(c,d,r);');db.executemany('INSERT INTO l VALUES(?,?,?)',[(v['a'],v['b'],v['l']) for v in left]);db.executemany('INSERT INTO r VALUES(?,?,?)',[(v['c'],v['d'],v['r']) for v in right]);query=('SELECT * FROM l '+kind.upper()+' JOIN r ON l.a=r.c AND l.b=r.d') if kind not in ('semi','anti') else ('SELECT l.* FROM l WHERE '+('NOT ' if kind=='anti' else '')+'EXISTS(SELECT 1 FROM r WHERE l.a=r.c AND l.b=r.d)');expected=db.execute(query).fetchall()
   actual=[tuple(row.values()) for row in map(json.loads,(d/'out.ndjson').read_text().splitlines())];assert sorted(map(repr,actual))==sorted(map(repr,expected)),(kind,actual,expected);print(kind+' composite join passed',flush=True)
  d=root/'prepared';d.mkdir();db=d/'data.db'
- with sqlite3.connect(db) as c:c.execute('CREATE TABLE src(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)');c.executemany('INSERT INTO src VALUES(?,?)',[(i,'中文'+str(i)) for i in range(100)]);c.execute('CREATE TABLE target(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)')
+ with closing(sqlite3.connect(db)) as c, c:c.execute('CREATE TABLE src(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)');c.executemany('INSERT INTO src VALUES(?,?)',[(i,'中文'+str(i)) for i in range(100)]);c.execute('CREATE TABLE target(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)')
  p=dict(connections=[dict(id='db',driver=plugin,resource=str(db),credentialReference='fixture')],dataFlows=[dict(id='flow',components=[node('source','sql.source',connection='db',table='src',sql='SELECT id,label FROM src WHERE id>?1 AND id<?2',schema=dict(version=12,fields=[dict(name='id',type='int64',nullable=False,keyOrder=1),dict(name='label',type='utf8',nullable=False)]),parameters=dict(schema=dict(version=12,fields=[dict(name='lower',type='int64',nullable=False),dict(name='upper',type='int64',nullable=False)]),rows=[dict(lower=20,upper=30)])),node('target','sql.destination',connection='db',table='target',mode='upsert',keys=[0],provisionReceipts=True)],paths=[edge('source','target')])]);run(d,p)
- with sqlite3.connect(db) as c:assert c.execute('SELECT id FROM target ORDER BY id').fetchall()==[(i,) for i in range(21,30)]
+ with closing(sqlite3.connect(db)) as c, c:assert c.execute('SELECT id FROM target ORDER BY id').fetchall()==[(i,) for i in range(21,30)]
  print('Prepared typed SQL and receipt passed',flush=True)

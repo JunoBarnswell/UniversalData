@@ -5,13 +5,14 @@
 
 typedef struct allocation_owner {
     const void *address;
-    uint64_t bytes;
+    uint64_t bytes, working_charge;
     uint32_t references;
+    int exchange;
     struct allocation_owner *next;
 } allocation_owner;
 typedef struct storage_part {
     const void *address;
-    uint64_t bytes;
+    uint64_t bytes, working_charge;
     allocation_owner *owner;
     int created;
 } storage_part;
@@ -46,7 +47,7 @@ struct ud_buffer_manager {
     uint32_t capacity, allocations;
     char *directory;
     void *writer;
-    uint64_t sequence;
+    uint64_t sequence, exchange_bytes;
     ud_buffer_block *retired;
 };
 static ud_status check(const ud_buffer_manager *manager) {
@@ -131,14 +132,14 @@ static ud_status ownership(const ud_batch *batch, storage_list *list) {
     return UD_OK;
 }
 static ud_status retain_storage(ud_buffer_manager *manager, ud_buffer_block *block,
-                                const ud_batch *batch, storage_list *list, uint64_t additional) {
+                                const ud_batch *batch, storage_list *list, uint64_t additional,
+                                int exchange, int in_working) {
     if (list->count > UINT32_MAX - manager->allocations)
         return UD_RESOURCE;
     UD_TRY(reserve_index(manager, manager->allocations + list->count));
     ud_status status = UD_OK;
     for (uint32_t i = 0; !status && i < list->count; i++) {
         storage_part *part = list->parts + i;
-        part->owner = find(manager, part->address);
         if (!part->owner) {
             part->owner = ud_alloc(manager->ctx, sizeof(*part->owner));
             if (!part->owner) {
@@ -148,6 +149,8 @@ static ud_status retain_storage(ud_buffer_manager *manager, ud_buffer_block *blo
             part->created = 1;
             part->owner->address = part->address;
             part->owner->bytes = part->bytes;
+            part->owner->exchange = in_working;
+            part->owner->working_charge = in_working ? part->working_charge : 0;
         } else if (part->owner->references == UINT32_MAX)
             status = UD_RESOURCE;
     }
@@ -168,13 +171,22 @@ static ud_status retain_storage(ud_buffer_manager *manager, ud_buffer_block *blo
             manager->index[slot] = owner;
             manager->allocations++;
         }
+        if (!exchange && owner->exchange) {
+            manager->exchange_bytes -= owner->bytes;
+            ud_memory_domain_credit(manager->working, owner->working_charge);
+            owner->exchange = 0;
+            owner->working_charge = 0;
+        }
         owner->references++;
     }
     block->batch = (ud_batch *)batch;
     block->parts = list->parts;
     block->part_count = list->count;
     list->parts = NULL;
-    manager->metrics.resident_bytes += additional;
+    if (in_working)
+        manager->exchange_bytes += additional;
+    else
+        manager->metrics.resident_bytes += additional;
     if (manager->metrics.resident_bytes > manager->metrics.resident_high_water)
         manager->metrics.resident_high_water = manager->metrics.resident_bytes;
     return UD_OK;
@@ -189,7 +201,11 @@ static void release_storage(ud_buffer_manager *manager, const ud_buffer_block *b
         while (*link != owner)
             link = &(*link)->next;
         *link = owner->next;
-        manager->metrics.resident_bytes -= owner->bytes;
+        if (owner->exchange) {
+            manager->exchange_bytes -= owner->bytes;
+            ud_memory_domain_credit(manager->working, owner->working_charge);
+        } else
+            manager->metrics.resident_bytes -= owner->bytes;
         manager->allocations--;
         ud_free(owner);
     }
@@ -277,8 +293,8 @@ ud_status ud_buffer_manager_create(ud_context *ctx, const ud_buffer_options *opt
     *out = manager;
     return UD_OK;
 }
-ud_status ud_buffer_store(ud_buffer_manager *manager, const ud_batch *batch,
-                          ud_buffer_block **out) {
+static ud_status store(ud_buffer_manager *manager, const ud_batch *batch, int exchange,
+                       ud_buffer_block **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
@@ -303,17 +319,33 @@ ud_status ud_buffer_store(ud_buffer_manager *manager, const ud_batch *batch,
     }
     ud_mutex_lock(&manager->mutex);
     status = manager->metrics.blocks >= manager->options.max_blocks ? UD_RESOURCE : UD_OK;
-    uint64_t additional = 0;
-    for (uint32_t i = 0; !status && i < list.count; i++)
-        if (!find(manager, list.parts[i].address)) {
-            if (list.parts[i].bytes > UINT64_MAX - additional)
-                status = UD_RESOURCE;
-            else
-                additional += list.parts[i].bytes;
+    uint64_t additional = 0, charge = 0;
+    for (uint32_t i = 0; !status && i < list.count; i++) {
+        storage_part *part = list.parts + i;
+        part->owner = find(manager, part->address);
+        if (part->owner && (exchange || !part->owner->exchange))
+            continue;
+        if (part->bytes > UINT64_MAX - additional)
+            status = UD_RESOURCE;
+        else {
+            additional += part->bytes;
+            if (exchange && !ud_allocation_in_domain(part->address, manager->working)) {
+                part->working_charge = part->bytes;
+                charge += part->bytes;
+            }
         }
-    if (!status && additional <= manager->options.resident_limit - manager->metrics.resident_bytes)
-        status = retain_storage(manager, block, batch, &list, additional);
-    else if (!status) {
+    }
+    /* Queued frames cycle through Working; long-lived pages may not use its
+     * exchange allowance. Leave three quarters for indexes, views and codecs. */
+    int in_working = !status && exchange && additional &&
+                     additional <= manager->options.working_limit / 4 - manager->exchange_bytes &&
+                     !ud_memory_domain_charge(manager->working, charge);
+    if (!status && (in_working ||
+                    additional <= manager->options.resident_limit - manager->metrics.resident_bytes)) {
+        status = retain_storage(manager, block, batch, &list, additional, exchange, in_working);
+        if (status && in_working)
+            ud_memory_domain_credit(manager->working, charge);
+    } else if (!status) {
         if (!manager->directory)
             status = UD_RESOURCE;
         uint8_t *wire = NULL;
@@ -385,6 +417,14 @@ ud_status ud_buffer_store(ud_buffer_manager *manager, const ud_batch *batch,
     }
     *out = block;
     return UD_OK;
+}
+ud_status ud_buffer_store(ud_buffer_manager *manager, const ud_batch *batch,
+                           ud_buffer_block **out) {
+    return store(manager, batch, 0, out);
+}
+ud_status ud_buffer_store_exchange(ud_buffer_manager *manager, const ud_batch *batch,
+                                    ud_buffer_block **out) {
+    return store(manager, batch, 1, out);
 }
 ud_status ud_buffer_read(ud_buffer_block *block, ud_buffer_view **out) {
     if (!out)
@@ -626,6 +666,9 @@ uint64_t ud_buffer_block_bytes(const ud_buffer_block *block) {
     }
     ud_mutex_unlock(&block->manager->mutex);
     return bytes;
+}
+uint64_t ud_buffer_block_spill_bytes(const ud_buffer_block *block) {
+    return block ? block->wire_bytes : 0;
 }
 uint32_t ud_buffer_block_rows(const ud_buffer_block *block) {
     return block ? block->rows : 0;

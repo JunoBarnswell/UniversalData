@@ -149,6 +149,84 @@ static int record_commands(ud_connection *connection,int dialect,const ud_batch 
     puts("row commands: committed/rejected/applied, savepoint isolation and outer rollback verified against real business rows");
     return 0;
 }
+static int changeset(ud_connection *c, uint32_t count) {
+    CHECK(count && count <= 50000 && count % 5 == 0);
+    OK(command(c, "DROP TABLE IF EXISTS ud_ordered_changes"));
+    OK(command(c, "CREATE TABLE ud_ordered_changes(id BIGINT PRIMARY KEY, rev BIGINT NULL)"));
+    ud_batch *schema = NULL, *after = NULL, *before = NULL;
+    OK(ud_connection_schema(c, str("ud_ordered_changes"), str("changes"), &schema));
+    ud_field fields[2];
+    OK(ud_batch_field(schema, 0, fields));
+    OK(ud_batch_field(schema, 1, fields + 1));
+    OK(ud_batch_create(ctx, fields, 2, count, &after));
+    OK(ud_batch_create(ctx, fields, 2, count, &before));
+    int32_t *actions = calloc(count, sizeof(*actions));
+    CHECK(actions);
+    const int32_t sequence[] = {UD_CHANGE_INSERT, UD_CHANGE_UPDATE, UD_CHANGE_UPDATE,
+                                UD_CHANGE_DELETE, UD_CHANGE_INSERT};
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t at = i % 5, base = 2 * (i / 5) + 1;
+        actions[i] = sequence[at];
+        ud_value old[] = {{.type=UD_INT64,.integer=base + (at>=2)},
+                          {.type=UD_INT64,.integer=at==1 ? 7 : 8,.is_null=at==3}};
+        ud_value now[] = {{.type=UD_INT64,.integer=base + (at!=0)},
+                          {.type=UD_INT64,.integer=at==0 ? 7 : at==1 ? 8 : base,.is_null=at==2 || at==3}};
+        if (at==2) now[0] = (ud_value){.type=UD_INT64,.is_null=1,.is_absent=1};
+        OK(ud_batch_append(before, old, 2));
+        OK(ud_batch_append(after, now, 2));
+    }
+    OK(ud_batch_seal(before));
+    OK(ud_batch_seal(after));
+    uint32_t key = 0;
+    ud_write_options w = {.struct_size=sizeof(w),.abi_version=UD_ABI_VERSION,.mode=UD_WRITE_CHANGESET,
+        .table=str("ud_ordered_changes"),.before=before,.operations=actions,.key_count=1,.keys=&key,
+        .current_column=UINT32_MAX,.job=str("ordered"),
+        .batch_id=str(count==5000 ? "changes-5k" : "changes-50k"),.source_position=str("done")};
+    OK(ud_connection_provision(c));
+    OK(command(c,"DELETE FROM ud_sdk_receipts_v11 WHERE tenant='advanced' AND job='ordered'"));
+    OK(ud_connection_write(c,&w,after));
+    OK(ud_connection_write(c,&w,after));
+    ud_batch *failed_after = NULL, *failed_before = NULL;
+    OK(ud_batch_create(ctx, fields, 2, 2, &failed_after));
+    OK(ud_batch_create(ctx, fields, 2, 2, &failed_before));
+    ud_value insert[] = {{.type=UD_INT64,.integer=-1},{.type=UD_INT64,.integer=10}};
+    ud_value stale[] = {{.type=UD_INT64,.integer=2},{.type=UD_INT64,.integer=-999}};
+    ud_value revision[] = {{.type=UD_INT64,.integer=2},{.type=UD_INT64,.integer=11}};
+    OK(ud_batch_append(failed_after, insert, 2));
+    OK(ud_batch_append(failed_after, revision, 2));
+    OK(ud_batch_append(failed_before, insert, 2));
+    OK(ud_batch_append(failed_before, stale, 2));
+    OK(ud_batch_seal(failed_after));
+    OK(ud_batch_seal(failed_before));
+    const int32_t bad[] = {UD_CHANGE_INSERT,UD_CHANGE_UPDATE};
+    w.before = failed_before;
+    w.operations = bad;
+    w.batch_id = str("ordered-stale-preimage");
+    CHECK(ud_connection_write(c,&w,failed_after)==UD_FENCED);
+    ud_batch_destroy(failed_before);
+    ud_batch_destroy(failed_after);
+    ud_read_options read = {.struct_size=sizeof(read),.abi_version=UD_ABI_VERSION,.batch_size=127,
+                            .sql=str("SELECT id,rev FROM ud_ordered_changes ORDER BY id")};
+    OK(ud_connection_read_open(c,&read,schema));
+    uint32_t seen = 0;
+    ud_batch *page = NULL;
+    ud_status s;
+    while ((s=ud_connection_read_next(c,&page))==UD_OK) {
+        for (uint32_t i=0;i<ud_batch_rows(page);i++) {
+            ud_value id,rev;
+            OK(ud_batch_get(page,i,0,&id));
+            OK(ud_batch_get(page,i,1,&rev));
+            CHECK(id.integer==2*(int64_t)seen+2 && !rev.is_null && rev.integer==id.integer-1);
+            seen++;
+        }
+        ud_batch_destroy(page);
+    }
+    CHECK(s==UD_END && seen==count/5);
+    OK(ud_connection_read_close(c));
+    ud_batch_destroy(schema); ud_batch_destroy(before); ud_batch_destroy(after); free(actions);
+    printf("{\"changes\":%u,\"rowsVerified\":%u,\"receiptReplay\":true,\"preimageRollback\":true}\n",count,seen);
+    return 0;
+}
 int main(int argc, char **argv) {
     CHECK(argc >= 3);
     int resume = argc > 3 && !strcmp(argv[3], "resume"),
@@ -170,6 +248,13 @@ int main(int argc, char **argv) {
     ud_connection *c = NULL;
     OK(ud_connection_open(p, &co, &c));
     OK(ud_connection_test(c));
+    if (argc == 5 && !strcmp(argv[3], "changeset")) {
+        CHECK(!changeset(c, (uint32_t)strtoul(argv[4], NULL, 10)));
+        OK(ud_connection_close(c));
+        OK(ud_plugin_unload(p));
+        OK(ud_context_destroy(ctx));
+        return 0;
+    }
     int dialect = ud_connection_dialect(c);
     const char *drop =
         dialect == UD_SQL_ORACLE

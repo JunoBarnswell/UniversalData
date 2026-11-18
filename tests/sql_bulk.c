@@ -17,6 +17,44 @@ static int stream(ud_context *ctx, ud_batch *batch, int dialect, const char *exp
     ud_sql_bulk_close(r);
     return 0;
 }
+static int ordered_changes(ud_context *ctx) {
+    ud_field fields[] = {{.name="id",.name_length=2,.type=UD_INT64},
+                         {.name="label",.name_length=5,.type=UD_UTF8,.nullable=1}};
+    ud_batch *after = NULL, *before = NULL;
+    OK(ud_batch_create(ctx, fields, 2, 3, &after));
+    OK(ud_batch_create(ctx, fields, 2, 3, &before));
+    for (int i = 0; i < 3; i++) {
+        ud_value v[] = {{.type=UD_INT64,.integer=i==0 ? 1 : 2},
+                        {.type=UD_UTF8,.text="v",.text_length=1}};
+        OK(ud_batch_append(after, v, 2));
+        if (i == 1) v[0].integer = 1;
+        OK(ud_batch_append(before, v, 2));
+    }
+    OK(ud_batch_seal(after));
+    OK(ud_batch_seal(before));
+    uint32_t key = 0;
+    int32_t actions[] = {UD_CHANGE_INSERT, UD_CHANGE_UPDATE, UD_CHANGE_DELETE};
+    ud_write_options options = {.struct_size=sizeof(options),.abi_version=UD_ABI_VERSION,
+        .mode=UD_WRITE_CHANGESET,.table={"target",6},.keys=&key,.key_count=1,
+        .current_column=UINT32_MAX,.operations=actions,.before=before};
+    ud_sql_statement sql = {0};
+    OK(ud_sql_compile_write(ctx, UD_SQL_SQLSERVER, UD_SQL_PARAMETER_QUESTION,
+                            &options, after, 0, 3, &sql));
+    const char *ins = strstr(sql.sql.data,"INSERT"), *upd = strstr(sql.sql.data,"UPDATE"),
+               *del = strstr(sql.sql.data,"DELETE");
+    CHECK(ins && upd && del && ins < upd && upd < del);
+    CHECK(strstr(ins,"@@ROWCOUNT") < upd && strstr(upd,"@@ROWCOUNT") < del && strstr(del,"@@ROWCOUNT"));
+    int observed_before = 0;
+    for (uint32_t i = 0; i < sql.parameter_count; i++) {
+        CHECK(!i || sql.parameters[i-1].row <= sql.parameters[i].row);
+        observed_before |= sql.parameters[i].row==1 && sql.parameters[i].source==UD_SQL_BEFORE;
+    }
+    CHECK(observed_before);
+    ud_sql_statement_clear(&sql);
+    ud_batch_destroy(after);
+    ud_batch_destroy(before);
+    return 0;
+}
 int main(void) {
     const char *valid_commands[] = {
         "INSERT INTO target(a,b) VALUES(?1,?2)",
@@ -38,6 +76,7 @@ int main(void) {
         CHECK(ud_sql_validate_record_command((ud_string){unsafe_commands[at],(uint32_t)strlen(unsafe_commands[at])}) != UD_OK);
     ud_context *ctx = NULL;
     OK(ud_context_create(NULL, &ctx));
+    CHECK(!ordered_changes(ctx));
     const char *target_commands[]={"INSERT INTO `schema`.`ta``ble`(x) VALUES(?)", "UPDATE target SET x=ABS(?) WHERE id=?", "DELETE FROM target WHERE id=?"};
     for (uint32_t at=0; at<sizeof(target_commands)/sizeof(*target_commands); at++) {
         ud_string schema={0},table={0};

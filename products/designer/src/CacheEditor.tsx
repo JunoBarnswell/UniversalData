@@ -42,7 +42,8 @@ export function CacheEditor({
       setBusy(false);
     }
   }
-  const fields = (cache?.schema as DataSchema | undefined)?.fields ?? [],
+  const mode = cache?.mode ?? "full",
+    fields = (cache?.schema as DataSchema | undefined)?.fields ?? [],
     keys = Array.isArray(cache?.keys) ? cache.keys : [];
   return (
     <section className="cache-editor">
@@ -130,25 +131,44 @@ export function CacheEditor({
           <label>
             加载方式
             <select
-              value={String(cache.mode ?? "partial")}
-              onChange={(event) => update({ mode: event.target.value })}
+              value={String(mode)}
+              onChange={(event) =>
+                update({
+                  mode: event.target.value,
+                  ...(event.target.value === "full" ? { scope: "execution" } : {}),
+                })
+              }
             >
               <option value="partial">按需数据库 Lookup</option>
+              <option value="none">数据库 Lookup（不缓存）</option>
               <option value="full">完整缓存（配置缓存构建数据流）</option>
             </select>
           </label>
-          <label>
-            重复引用键
-            <select
-              value={String(cache.duplicates ?? "first")}
-              onChange={(event) => update({ duplicates: event.target.value })}
-            >
-              <option value="first">首个结果</option>
-              <option value="all">全部结果</option>
-              <option value="error">报错</option>
-            </select>
-          </label>
-          {cache.mode === "partial" ? (
+          {mode === "full" ? (
+            <label>
+              重复引用键
+              <select
+                value={String(cache.duplicates ?? "first")}
+                onChange={(event) => update({ duplicates: event.target.value })}
+              >
+                <option value="first">首个结果</option>
+                <option value="all">全部结果</option>
+                <option value="error">报错</option>
+              </select>
+            </label>
+          ) : (
+            <label>
+              引用视图
+              <select
+                value={String(cache.scope ?? "execution")}
+                onChange={(event) => update({ scope: event.target.value })}
+              >
+                <option value="execution">使用数据库当前视图</option>
+                <option value="epoch">每个检查点周期固定视图（SQLite、PostgreSQL）</option>
+              </select>
+            </label>
+          )}
+          {mode === "partial" ? (
             <>
               <label>
                 最大缓存条目
@@ -162,17 +182,19 @@ export function CacheEditor({
                   }
                 />
               </label>
-              <label>
-                有效期（毫秒）
-                <input
-                  type="number"
-                  min={1}
-                  value={Number(cache.ttlMs ?? 60000)}
-                  onChange={(event) =>
-                    update({ ttlMs: Number(event.target.value) })
-                  }
-                />
-              </label>
+              {cache.scope !== "epoch" ? (
+                <label>
+                  有效期（毫秒）
+                  <input
+                    type="number"
+                    min={1}
+                    value={Number(cache.ttlMs ?? 60000)}
+                    onChange={(event) =>
+                      update({ ttlMs: Number(event.target.value) })
+                    }
+                  />
+                </label>
+              ) : null}
             </>
           ) : null}
           <p className="muted">

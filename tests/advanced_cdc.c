@@ -3,6 +3,17 @@
 #include "advanced_sql.c"
 #undef main
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+static void wait_for_log(void) {
+#ifdef _WIN32
+    Sleep(10);
+#else
+    struct timespec delay = {0, 10000000};
+    nanosleep(&delay, NULL);
+#endif
+}
 static ud_status collect(ud_connection *c, uint32_t expected_rows, int snapshot,
                          ud_string *position) {
     uint32_t rows = 0, begins = 0;
@@ -11,8 +22,7 @@ static ud_status collect(ud_connection *c, uint32_t expected_rows, int snapshot,
         ud_cdc_event event = {.struct_size = sizeof(event), .abi_version = UD_ABI_VERSION};
         ud_status s = ud_connection_cdc_next(c, &event);
         if (s == UD_BUSY) {
-            struct timespec delay = {0, 10000000};
-            nanosleep(&delay, NULL);
+            wait_for_log();
             continue;
         }
         if (s)
@@ -172,8 +182,7 @@ int main(int argc, char **argv) {
         for (uint32_t turn = 0; turn < 1000 && !changed; turn++) {
             ud_status s = ud_connection_cdc_next(c, &event);
             if (s == UD_BUSY) {
-                struct timespec delay = {0, 10000000};
-                nanosleep(&delay, NULL);
+                wait_for_log();
                 continue;
             }
             OK(s);
