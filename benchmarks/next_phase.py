@@ -7,7 +7,7 @@ def field(name,kind='int64'): return dict(name=name,type=kind,nullable=False)
 def component(id,kind,**config): return dict(id=id,component=kind,config=config)
 def edge(a,b,output=0,input=0): return {'from':a,'to':b,'output':output,'input':input}
 def schema(fields):return dict(version=PROTOCOL,fields=fields)
-def digest(path, descending_ids=False):
+def digest(path, descending_ids=False, ordered_output=False):
     total, count, previous = 0, 0, None
     ordered = hashlib.sha256()
     with path.open(encoding='utf-8') as stream:
@@ -21,7 +21,7 @@ def digest(path, descending_ids=False):
             previous = row.get('id')
             count += 1
     signature = dict(rows=count, semanticSha256Xor=f'{total:064x}')
-    if descending_ids:
+    if descending_ids or ordered_output:
         signature['orderedSha256'] = ordered.hexdigest()
     return signature
 def run(driver,document,root,workers,resume=False,kill=False):
@@ -90,7 +90,7 @@ def main():
                 doc=dict(version=PROTOCOL,id='r5',connections=connections,caches=caches,policy=dict(maxConcurrency=workers,buffers=dict(connection='spill',residentBytes=65536,workingBytes=4194304,spillBytes=1000000000,maxBlocks=50000)),controlFlow=dict(tasks=tasks,constraints=constraints),dataFlows=([build] if build else [])+[dict(id='flow',components=nodes,paths=paths)])
                 if workload=='incrementalResume':doc['durable']=True;interrupted=run(driver,doc,root,workers,kill=True);facts=run(driver,doc,root,workers,resume=True);facts['interruption']=interrupted;facts['totalSeconds']=interrupted['seconds']+facts['seconds'];db=sqlite3.connect(root/'target.db');assert db.execute('SELECT count(*),min(id),max(id) FROM output').fetchone()==(args.rows,0,args.rows-1);assert db.execute('SELECT count(*) FROM output WHERE fk != id % ?', (args.references,)).fetchone()[0]==0;db.close();signature={'rows':args.rows,'correctUpsertKeys':True,'correctForeignKeys':True}
                 else:
-                    facts=run(driver,doc,root,workers);signature=digest(root/'output.ndjson', workload=='sortSpill')
+                    facts=run(driver,doc,root,workers);signature=digest(root/'output.ndjson', descending_ids=workload=='sortSpill', ordered_output=workload=='join')
                     if workload=='errorDualSink':assert digest(root/'errors.ndjson')['rows']==min(args.rows//10,100000);assert facts['committedErrors']==min(args.rows//10,100000)
                     if workload=='cacheLookup':assert digest(root/'second.ndjson')==signature;assert facts['diagnostics']['caches'][0]['loaded']==args.references
                 tails=[dict(pipeline=pipeline['id'],component=node['id'],**node['batchLatency'])

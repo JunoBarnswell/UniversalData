@@ -14,7 +14,7 @@ Compute 持有唯一 Sort/Join/Aggregate/Lookup/Window 算法。分区调度调�
 
 ## Buffer、连接、恢复
 
-Data 是 Schema/Value/存储清单唯一 owner。sealed Batch 驻留按唯一真实分配 retain/去重；仅 spill、交换和持久化编码 Wire。所有 Path、算子、分区共享同一个 Buffer Manager 和根内存/working/spill 配额，第三方不可计量 RSS 明确标注。
+Data 是 Schema、Value 和存储清单的唯一所有者。Buffer Manager 按真实分配去重计量封存批次。Path 槽位覆盖发布、排队和消费，消费方释放视图和 block 后归还槽位。短时交换优先使用现有 working 配额的四分之一，余量供算子状态、读取视图和编解码使用。长时算子状态从 resident 配额驻留。驻留不足的 block 使用同一个 Wire 格式和 spill 配额。运行诊断中的路径 `spillBytes` 记录交换写量，执行级 `totalSpill` 汇总交换和算子状态等全部写量。
 
 Connection Manager 解析 Package 优先于 Project 的逻辑定义，绑定配置、能力、授权和 Secret，获得独占物理 Session 租约。根 manager 维护活动租约与可复用健康 Session；池键包含 driver/resource/tenant/credential identity 与策略，获取重新授权、解析凭据，凭据改变不能命中旧项。取消通过活动租约转发物理 I/O cancel。资源释放不因授权撤销或取消被阻止。
 

@@ -33,6 +33,12 @@ ud_status ud_hash_join_create(ud_relational *r) {
     ud_hash_join *h = r->hash_join;
     h->count = r->algorithm == UD_PHYSICAL_HASH ? 1 : 16;
     h->budget = r->options.memory_budget ? r->options.memory_budget : 16u * 1024u * 1024u;
+    if (r->options.buffers) {
+        ud_buffer_options limits = {0};
+        UD_TRY(ud_buffer_manager_limits(r->options.buffers, &limits));
+        if (h->budget > limits.working_limit / 2)
+            h->budget = limits.working_limit / 2;
+    }
     return UD_OK;
 }
 ud_status ud_hash_join_push(ud_relational *r, uint32_t p, const ud_batch *b) {

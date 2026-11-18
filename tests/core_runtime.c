@@ -1,6 +1,7 @@
 #include "check.h"
 #include "ud/package.h"
 #include "ud/operator.h"
+#include "../components/execution/state.h"
 #include <stdatomic.h>
 #include <string.h>
 #ifdef _WIN32
@@ -23,6 +24,53 @@ static void pause_ms(void) {
 static ud_status grant(void *user) {
     return *(ud_status *)user;
 }
+static int exchange_admission(const char *directory) {
+    ud_context *ctx = NULL;
+    OK(ud_context_create(NULL, &ctx));
+    ud_field field = {.name = "x", .name_length = 1, .type = UD_INT64};
+    ud_value value = {.type = UD_INT64, .integer = 42};
+    ud_batch *batch = NULL;
+    OK(ud_batch_create(ctx, &field, 1, 1, &batch));
+    OK(ud_batch_append(batch, &value, 1));
+    OK(ud_batch_seal(batch));
+    ud_status permission = UD_OK;
+    ud_buffer_options options = {.struct_size = sizeof(options), .abi_version = UD_ABI_VERSION,
+        .resident_limit = 1, .working_limit = 1000000, .spill_limit = 10000000,
+        .max_blocks = 4, .directory = text(directory), .check = grant, .user = &permission};
+    ud_buffer_manager *manager = NULL;
+    ud_buffer_block *frame = NULL, *fanout = NULL, *state = NULL;
+    ud_buffer_metrics metrics;
+    OK(ud_buffer_manager_create(ctx, &options, &manager));
+    OK(ud_buffer_store_exchange(manager, batch, &frame));
+    uint64_t bytes = ud_buffer_block_bytes(frame);
+    CHECK(bytes > 1 && !ud_buffer_block_spill_bytes(frame));
+    OK(ud_buffer_store_exchange(manager, batch, &fanout));
+    OK(ud_buffer_manager_metrics(manager, &metrics));
+    CHECK(metrics.working_bytes == bytes && !metrics.resident_bytes && !metrics.total_spill_bytes);
+    OK(ud_buffer_store(manager, batch, &state));
+    CHECK(ud_buffer_block_spill_bytes(state) > 0);
+    OK(ud_buffer_release(state));
+    OK(ud_buffer_release(fanout));
+    OK(ud_buffer_release(frame));
+    OK(ud_buffer_manager_metrics(manager, &metrics));
+    CHECK(!metrics.working_bytes && !metrics.resident_bytes && !metrics.spill_bytes);
+    OK(ud_buffer_manager_destroy(manager));
+
+    options.resident_limit = bytes;
+    OK(ud_buffer_manager_create(ctx, &options, &manager));
+    OK(ud_buffer_store_exchange(manager, batch, &frame));
+    OK(ud_buffer_store(manager, batch, &state));
+    OK(ud_buffer_release(frame));
+    OK(ud_buffer_manager_metrics(manager, &metrics));
+    CHECK(!metrics.working_bytes && metrics.resident_bytes == bytes && !metrics.total_spill_bytes);
+    OK(ud_buffer_release(state));
+    OK(ud_buffer_manager_destroy(manager));
+    ud_batch_destroy(batch);
+    CHECK(!ud_memory_used(ctx));
+    OK(ud_context_destroy(ctx));
+    return 0;
+}
+
 static int buffers_and_operators(const char *directory) {
     ud_context *ctx = NULL;
     OK(ud_context_create(NULL, &ctx));
@@ -341,6 +389,7 @@ static int functions(void) {
 }
 int main(int argc, char **argv) {
     CHECK(argc == 2);
+    CHECK(!exchange_admission(argv[1]));
     CHECK(!buffers_and_operators(argv[1]));
     CHECK(!activations());
     CHECK(!functions());
