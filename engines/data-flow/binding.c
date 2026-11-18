@@ -551,3 +551,51 @@ ud_status ud_builtin_builtin_ports(void *user, const ud_component_context *c, ud
 uint64_t ud_builtin_builtin_demand(void *ptr) {
     return ud_operator_input_demand(((builtin *)ptr)->operator);
 }
+
+ud_status ud_pipeline_field_namespace(const ud_component_context *c, char output[33]) {
+    ud_bytes bytes = {.ctx = c->memory};
+    ud_string package = {0}, project = {0};
+    ud_status s = ud_json_string(ud_member(c->activation->package->document, "id"), &package);
+    const ud_json *p = ud_member(c->activation->package->document, "project");
+    if (!s && p)
+        s = ud_json_string(ud_member(p, "id"), &project);
+    ud_string parts[] = {c->execution->options.tenant, project, package, c->pipeline_id,
+                         c->component_id};
+    for (uint32_t j = 0; !s && j < 5; j++)
+        s = ud_put_string(&bytes, parts[j].data, parts[j].length);
+    if (!s) {
+        uint8_t hash[32];
+        ud_hash(bytes.data, bytes.size, hash);
+        ud_id id = {0};
+        for (uint32_t j = 0; j < 8; j++) {
+            id.high = (id.high << 8) | hash[j];
+            id.low = (id.low << 8) | hash[j + 8];
+        }
+        ud_id_format(id, output);
+    }
+    ud_bytes_clear(&bytes);
+    return s;
+}
+ud_status ud_component_port_identity(const ud_component_context *c, uint32_t direction,
+                                     ud_string logical, ud_id *out) {
+    /* Ports identify the Package graph, including before deployment binding.
+     * Tenant/project scope belongs to physical fields and rows, never to the
+     * references stored in that graph. */
+    ud_string package = {0};
+    UD_TRY(ud_json_string(ud_member(c->activation->package->document, "id"), &package));
+    ud_bytes symbol = {.ctx = c->memory};
+    ud_string parts[] = {package, c->pipeline_id, c->component_id, logical};
+    ud_status s = ud_put_u64(&symbol, direction);
+    for (uint32_t i = 0; !s && i < 4; i++)
+        s = ud_put_string(&symbol, parts[i].data, parts[i].length);
+    uint8_t digest[32];
+    if (!s)
+        ud_hash(symbol.data, symbol.size, digest);
+    ud_bytes_clear(&symbol);
+    char hex[65];
+    for (uint32_t j = 0; !s && j < 32; j++)
+        snprintf(hex + j * 2, 3, "%02x", digest[j]);
+    if (!s)
+        s = ud_id_make(c->memory, (ud_string){"component.port.v1", 17}, (ud_string){hex, 64}, out);
+    return s;
+}

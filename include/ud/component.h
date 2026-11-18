@@ -129,7 +129,9 @@ enum {
     UD_EFFECT_RECEIPTED = 8,
     UD_EFFECT_COMMIT_UNKNOWN = 16,
     UD_EFFECT_IDEMPOTENT = 32,
-    UD_EFFECT_KEYED_REPLACE = 64 /* Bound output guarantees replacement by its declared keys. */
+    UD_EFFECT_KEYED_REPLACE = 64, /* Bound output guarantees replacement by its declared keys. */
+    UD_EFFECT_SOURCE_ACK = 128,
+    UD_EFFECT_REPLAYABLE_PUBLISH = 256 /* Broker publication accepts duplicates after interrupted replay. */
 };
 typedef struct ud_component_descriptor {
     uint32_t struct_size, abi_version;

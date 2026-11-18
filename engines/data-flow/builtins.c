@@ -1,4 +1,6 @@
 #include "builtins_internal.h"
+ud_status ud_mq_source_register(ud_registry *);
+ud_status ud_mq_destination_register(ud_registry *);
 
 /* Destination binding uses the same native comparison and cast as Source.
  * Storage fields belong to the target namespace; row identity remains the source's. */
@@ -574,6 +576,8 @@ static const char *configuration_schema(int kind) {
 ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_relational_register(registry));
     UD_TRY(ud_cdc_register(registry));
+    UD_TRY(ud_mq_source_register(registry));
+    UD_TRY(ud_mq_destination_register(registry));
     UD_TRY(ud_advanced_register(registry));
     static const struct {
         const char *id, *name;

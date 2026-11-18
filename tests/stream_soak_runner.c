@@ -9,7 +9,7 @@ static const ud_field fields[] = {{.name = "time", .name_length = 4, .type = UD_
 static const char configuration[] =
     "{\"timeField\":\"time\",\"sizeMicros\":64,\"allowedLatenessMicros\":4,"
     "\"maxWindows\":4096,\"stateBytes\":8388608,\"latePolicy\":\"drop\",\"plan\":{"
-    "\"version\":12,\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\","
+    "\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"key\"],\"aggregates\":[{\"function\":\"sum\","
     "\"column\":\"value\",\"name\":\"total\"}]}}";
 
 static int read_checkpoint(ud_context *ctx, ud_operator **op, const char *path) {

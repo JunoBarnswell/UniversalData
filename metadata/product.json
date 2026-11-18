@@ -2,15 +2,15 @@
   "modelVersion": 2,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "4.0.0",
-    "abiVersion": 12,
-    "protocolVersion": 12,
-    "checkpointRevision": 2,
-    "state": "Studio 4 / Streaming foundation candidate: single Native lifecycle, event-time windows, bounded state/observation, workspace tabs and Native Catalog feed. Portable verification passed; full production release remains gated.",
-    "acceptanceResources": "This session verified local Linux C/.NET/Java/Chromium, isolated SQLite and HTTP fixtures. Current external CDC, Windows/SSIS and complete vendor-driver resources are unavailable; prior external acceptance is historical.",
+    "sdkVersion": "5.0.0",
+    "abiVersion": 13,
+    "protocolVersion": 13,
+    "checkpointRevision": 3,
+    "state": "ABI 13 candidate: Native broker transport, bounded hash join and Worker process budgets. Current integrated verification is pending; prior acceptance evidence is historical.",
+    "acceptanceResources": "Windows Release CORE and focused host acceptance use local evidence. Real MQ, Registry, multi-host and complete PRODUCT resources remain separately gated.",
     "dataLayoutRevision": 1,
     "catalogRevision": 1,
-    "workerRevision": 2
+    "workerRevision": 3
   },
   "scope": {
     "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",
@@ -25,12 +25,12 @@
     "abiVersion": 11
   },
   "candidate": {
-    "branch": "codex/studio4-stream-batch",
-    "state": "Draft PR #10; local portable checks passed. Remote CI could not start because of GitHub billing/spending limits; production and extension gates remain explicit.",
-    "sourceCommit": "9d0630980cafb34170f9fb8d1d1d1f2cae6f4e7d",
-    "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
+    "branch": "main",
+    "state": "SDK 5 messaging and worker execution candidate under verification",
+    "sourceCommit": null,
+    "sourceFingerprint": null,
     "mergeEvidence": null,
-    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/10"
+    "pullRequest": null
   },
   "goals": [
     {
@@ -1552,282 +1552,79 @@
   "gates": [
     {
       "id": "linux-full-build",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "CORE build only; full PRODUCT driver dependency closure unverified.",
-      "reason": "CORE build only; full PRODUCT driver dependency closure unverified.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "windows-full-build",
-      "status": "Blocked",
+      "status": "NotRun",
       "scope": "Windows toolchain/SSIS resources unavailable.",
-      "reason": "Windows toolchain/SSIS resources unavailable.",
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "correctness",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "75 portable cases passed; full inherited SSIS and vendor semantics remain unverified.",
-      "reason": "75 portable cases passed; full inherited SSIS and vendor semantics remain unverified.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "recovery",
-      "status": "Passed",
+      "status": "NotRun",
       "scope": "Portable Native Journal, process kill, window state, disk spill and same-ID recovery passed.",
-      "reason": "Portable Native Journal, process kill, window state, disk spill and same-ID recovery passed.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "external-integration",
-      "status": "Blocked",
+      "status": "NotRun",
       "scope": "No current external CDC/driver acceptance resources.",
-      "reason": "No current external CDC/driver acceptance resources.",
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "language-parity",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "Current Native/C#/Java ABI and lifecycle tests passed; complete streaming cross-host UAT remains partial.",
-      "reason": "Current Native/C#/Java ABI and lifecycle tests passed; complete streaming cross-host UAT remains partial.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "web",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "Actual browser core journey and 200/500/1000-node scaling passed; full UI/a11y/probe matrix partial.",
-      "reason": "Actual browser core journey and 200/500/1000-node scaling passed; full UI/a11y/probe matrix partial.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "performance",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "One million events and observed batch latency/RSS recorded; one-hour soak NotRun.",
-      "reason": "One million events and observed batch latency/RSS recorded; one-hour soak NotRun.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "installed-consumers",
       "status": "NotRun",
       "scope": "No current distributable archive or independent installed SDK consumer run.",
-      "reason": "No current distributable archive or independent installed SDK consumer run.",
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "source-contracts",
-      "status": "Passed",
+      "status": "NotRun",
       "scope": "Product projections, whitespace, epoch migration and C/.NET/Java compilation verified.",
-      "reason": "Product projections, whitespace, epoch migration and C/.NET/Java compilation verified.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "release-integrity",
       "status": "NotRun",
       "scope": "Review branch only; no release archive or release certification.",
-      "reason": "Review branch only; no release archive or release certification.",
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
       "evidence": []
     }
   ],
@@ -1978,6 +1775,11 @@
       "ssis": "Change Data Capture",
       "entries": "CDC source, sql.destination (changeset)",
       "contract": "microBatchRows and microBatchMs group complete source transactions. A sealed epoch stores original watermarks and the last log position. SQL Server sends bounded ordered statement batches. PostgreSQL uses bounded libpq pipelines and checks individual affected-row counts."
+    },
+    {
+      "ssis": "消息发布、订阅与消费",
+      "entries": "mq.source、mq.destination",
+      "contract": "ActiveMQ AMQP 1.0、RabbitMQ AMQP 0-9-1、RocketMQ 5 gRPC、Kafka。使用实时发布与确认结果，真实 broker 及完整跨主机验收另行记录。"
     }
   ],
   "deferredComponents": "Current source limitations remain itemized under ETL-011 (qualified SQL Server participants), ETL-025/026 (complete online identity/presence proof) and ETL-038 (unsupported Avro named references/general unions). Missing Windows and independent protocol resources remain Blocked; no historical ABI 9 pass is inherited.",

@@ -30,7 +30,9 @@ public sealed class Execution : IDisposable
 
     public Execution(string packageJson, string tenant, PackageAuthorizer? authorize, string parametersJson = "{}", string executionId = "", PackageCredentialResolver? resolve = null,
         uint edgeCapacity = 2, uint maxBatchRows = 4096, ulong memoryLimit = 268435456, ulong timeoutMilliseconds = 0, string? stateDirectory = null, bool resume = false, uint maxConcurrency = 1,
-        Registry? registry = null, Action<ExecutionEvent>? observe = null, ulong eventSequenceStart = 0)
+        Registry? registry = null, Action<ExecutionEvent>? observe = null, ulong eventSequenceStart = 0,
+        uint workerMember = 0, uint workerMembers = 0, uint consumerLanes = 0,
+        bool brokerRestore = false)
     {
         bool ownedRegistry = false;
         using (var document = System.Text.Json.JsonDocument.Parse(packageJson))
@@ -94,6 +96,10 @@ public sealed class Execution : IDisposable
                 Resume = resume ? 1 : 0,
                 MaxConcurrency = maxConcurrency,
                 EventSequenceStart = eventSequenceStart,
+                WorkerMember = workerMember,
+                WorkerMembers = workerMembers,
+                ConsumerLanes = consumerLanes,
+                BrokerRestore = brokerRestore ? 1 : 0,
                 Authorize = grant is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(grant),
                 Resolve = resolver is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(resolver)
                 , Observe = observer is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(observer)
@@ -156,6 +162,18 @@ public sealed class Execution : IDisposable
     public string Metadata(string connection, int kind, string parent = "", ulong offset = 0)
     { Control(); lock(controller) { Open();WorkbenchContract(); using var strings=new NativeStrings(connection,parent);
         Check(Native.ud_execution_metadata(execution,strings[0],kind,strings[1],offset,out var text,out var length));return DataOwnership.Text(text,length); } }
+    public (ulong Capabilities, ulong ElapsedMs) TestMessageConnection(string connection)
+    {
+        Control();
+        lock (controller)
+        {
+            Open();
+            using var strings = new NativeStrings(connection);
+            Check(Native.ud_execution_test_message_connection(execution, strings[0],
+                out var capabilities, out var elapsedMs));
+            return (capabilities, elapsedMs);
+        }
+    }
     public string InspectFile(string connection, string configuration)
     { Control(); lock(controller) { Open();WorkbenchContract(); using var strings=new NativeStrings(connection,configuration);
         Check(Native.ud_execution_inspect_file(execution,strings[0],strings[1],out var text,out var length)); return DataOwnership.Text(text,length); } }
@@ -271,6 +289,7 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_configure(ExecutionHandle execution, StringValue configuration);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_debug_control(ExecutionHandle execution, StringValue command);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_metadata(ExecutionHandle execution, StringValue connection, int kind, StringValue parent, ulong offset, out IntPtr text, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_test_message_connection(ExecutionHandle execution, StringValue connection, out ulong capabilities, out ulong elapsedMs);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_connector_catalog(ExecutionHandle execution, StringValue paths, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_reidentify_package(ExecutionHandle execution, StringValue id, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_inspect_file(ExecutionHandle execution, StringValue connection, StringValue config, out IntPtr text, out uint length);
@@ -293,6 +312,8 @@ internal static partial class Native
     {
         internal uint Size, Abi; internal ContextOptions Context; internal uint Capacity, MaxRows, Depth; internal ulong Timeout;
         internal StringValue Parameters, Tenant, ExecutionId; internal IntPtr Registry, Authorize, AuthorizeUser, Resolve, ResolveUser, Observe, ObserveUser; internal StringValue StateDirectory; internal int Resume; internal uint MaxConcurrency; internal ulong EventSequenceStart;
+        internal uint WorkerMember, WorkerMembers, ConsumerLanes;
+        internal int BrokerRestore;
     }
 
     [StructLayout(LayoutKind.Sequential)]

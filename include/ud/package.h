@@ -53,6 +53,8 @@ typedef struct ud_execution_options {
     int32_t resume;
     uint32_t max_concurrency;      /* 0 selects 1; shared Control/Tree native worker budget. */
     uint64_t event_sequence_start; /* Persisted host/Catalog sequence when resuming the same ID. */
+    uint32_t worker_member, worker_members, consumer_lanes; /* Frozen host dispatch; zero means direct execution. */
+    int32_t broker_restore; /* Requires verified committed Kafka state before processing. */
 } ud_execution_options;
 typedef struct ud_execution_metrics {
     uint32_t struct_size, abi_version;
@@ -85,6 +87,8 @@ UD_API ud_status ud_component_schema_namespace(const ud_component_context *, cha
 UD_API ud_status ud_execution_compile_expression(ud_execution *, ud_string schema, ud_string source,
                                                  char **, uint32_t *);
 UD_API ud_status ud_execution_component_catalog(ud_execution *, char **, uint32_t *);
+UD_API ud_status ud_execution_test_message_connection(ud_execution *, ud_string connection,
+                                                       uint64_t *capabilities, uint64_t *elapsed_ms);
 /* Pure metadata binding for designer ports; uses the same pipeline binder. */
 UD_API ud_status ud_execution_component_ports(ud_execution *, ud_string pipeline_id,
                                               ud_string component_id, ud_string kind,

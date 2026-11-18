@@ -13,6 +13,7 @@ import zlib
 import avro.datafile
 import avro.io
 import avro.schema
+from product_version import PROTOCOL_VERSION
 
 runner, library = sys.argv[1:3]
 native = ctypes.CDLL(library)
@@ -79,7 +80,7 @@ with tempfile.TemporaryDirectory(prefix='ud-apache-avro-') as directory:
         config = dict(connection='input', schema=native_schema)
         if reader_schema is not None:
             config['readerSchema'] = reader_schema
-        package = dict(version=12, id=name, connections=[dict(id='input', driver='file', resource=str(source)), dict(id='output', driver='file', resource=str(target))],
+        package = dict(version=PROTOCOL_VERSION, id=name, connections=[dict(id='input', driver='file', resource=str(source)), dict(id='output', driver='file', resource=str(target))],
             controlFlow=dict(tasks=[dict(id='copy', kind='dataFlow', config=dict(pipeline='flow'))], constraints=[]),
             dataFlows=[dict(id='flow', components=[dict(id='source', component='file.avro.source', config=config),
                 dict(id='sink', component='file.avro.sink', config=dict(connection='output', writerSchema=output_schema, codec='deflate', fileMode='overwrite'))],

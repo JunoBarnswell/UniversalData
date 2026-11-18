@@ -595,13 +595,23 @@ ud_status ud_relational_diagnostics(const ud_relational *r, char **out, uint32_t
         snprintf(b, sizeof(b),
                  "{\"processed\":%llu,\"rightProcessed\":%llu,\"groups\":%llu,\"duplicateCells\":%"
                  "llu,\"rejected\":%llu,\"ignored\":%llu,\"seed\":%llu,\"sampled\":%llu,"
-                 "\"complement\":%llu,\"hashFallbacks\":%u,\"mode\":\"%s\",\"recoverability\":\"stable-row-id and "
+                 "\"complement\":%llu,\"hashFallbacks\":%u,"
+                 "\"hashStateIo\":{\"leftWriteBytes\":%llu,\"rightWriteBytes\":%llu,"
+                 "\"leftReadBytes\":%llu,\"rightBuildReadBytes\":%llu,"
+                 "\"rightProbeReadBytes\":%llu,\"rightTailReadBytes\":%llu},"
+                 "\"mode\":\"%s\",\"recoverability\":\"stable-row-id and "
                  "source snapshot replay\",\"outputs\":[%llu,%llu,%llu,%llu,%llu,%llu]}",
                  (unsigned long long)r->processed[0], (unsigned long long)r->processed[1],
                  (unsigned long long)r->groups, (unsigned long long)r->duplicates,
                  (unsigned long long)r->rejected, (unsigned long long)r->ignored,
                  (unsigned long long)r->seed, (unsigned long long)r->sampled,
                  (unsigned long long)r->emitted[1], r->hash_fallbacks,
+                 (unsigned long long)r->hash_write_bytes[0],
+                 (unsigned long long)r->hash_write_bytes[1],
+                 (unsigned long long)r->hash_left_read_bytes,
+                 (unsigned long long)r->hash_right_build_bytes,
+                 (unsigned long long)r->hash_right_probe_bytes,
+                 (unsigned long long)r->hash_right_tail_bytes,
                  r->options.kind == UD_OPERATOR_ROW_SAMPLING          ? "exact-global-priority"
                  : r->options.kind == UD_OPERATOR_PERCENTAGE_SAMPLING ? "bernoulli"
                                                                       : "relational",

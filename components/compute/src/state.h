@@ -13,13 +13,14 @@ typedef struct ud_state {
     ud_batch *schema, *chunk;
     ud_state_page *pages;
     uint32_t count, capacity, batch_size;
-    uint64_t rows, page_limit, chunk_bytes;
+    uint64_t rows, page_limit, chunk_bytes, written_bytes;
     int sealed;
 } ud_state;
 typedef struct ud_state_reader {
     const ud_state *state;
     ud_buffer_view *view;
     uint32_t page;
+    uint64_t read_bytes;
 } ud_state_reader;
 ud_status ud_state_create(ud_context *, ud_buffer_manager *, const ud_batch *, uint32_t,
                           ud_state **);
@@ -28,6 +29,7 @@ ud_status ud_state_append(ud_state *, const ud_batch *, uint32_t);
 ud_status ud_state_append_bound(ud_state *, const ud_batch *, uint32_t);
 ud_status ud_state_add_batch(ud_state *, const ud_batch *);
 ud_status ud_state_seal(ud_state *);
+ud_status ud_state_read_page(ud_state_reader *, const ud_state *, uint32_t, const ud_batch **);
 ud_status ud_state_row(ud_state_reader *, const ud_state *, uint64_t, const ud_batch **,
                        uint32_t *);
 void ud_state_reader_clear(ud_state_reader *);

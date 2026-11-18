@@ -98,7 +98,7 @@ public static class DesignerWorkspace
         var destinations=targets.Select(target=>target.Node).ToArray();
         if(destinations.Length==0||destinations.Any(node=>node!["component"]!.GetValue<string>()!="sql.destination"))throw new ArgumentException("Isolated tests require SQL destinations");
         foreach(var node in package["dataFlows"]!.AsArray().SelectMany(flow=>flow!["components"]!.AsArray()))
-            if(node!["component"]!.GetValue<string>() is "sql.command" or "importColumn" or "exportColumn" or "cacheBuild")throw new ArgumentException("Unsupported test side effect");
+            if(node!["component"]!.GetValue<string>() is "sql.command" or "importColumn" or "exportColumn" or "cacheBuild" or "mq.source" or "mq.destination")throw new ArgumentException("Unsupported test side effect");
         var targetIds=destinations.Select(node=>node!["config"]!["connection"]!.GetValue<string>()).ToHashSet(StringComparer.Ordinal);
         var otherReaders=package["dataFlows"]!.AsArray().SelectMany(flow=>flow!["components"]!.AsArray()).Where(node=>!destinations.Contains(node));
         if(otherReaders.Any(node=>node!["config"]?["connection"] is JsonValue connection && targetIds.Contains(connection.GetValue<string>())))

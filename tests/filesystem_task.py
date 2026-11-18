@@ -5,6 +5,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from product_version import PROTOCOL_VERSION
 
 with tempfile.TemporaryDirectory(prefix="ud-file-task-") as temporary:
     root = pathlib.Path(temporary)
@@ -15,7 +16,7 @@ with tempfile.TemporaryDirectory(prefix="ud-file-task-") as temporary:
         folder = root / name
         folder.mkdir()
         target = folder / "目标.bin"
-        doc = {"version": 12, "id": "filesystem", "connections": [{"id": "source", "driver": "file", "resource": str(source_path)}, {"id": "target", "driver": "file", "resource": str(target)}], "controlFlow": {"tasks": [{"id": "operation", "kind": "file.system", "config": {"operation": operation, **({"source": "source"} if operation != "mkdir" else {}), **({"target": "target"} if operation != "delete" else {})}}], "constraints": []}, "dataFlows": []}
+        doc = {"version": PROTOCOL_VERSION, "id": "filesystem", "connections": [{"id": "source", "driver": "file", "resource": str(source_path)}, {"id": "target", "driver": "file", "resource": str(target)}], "controlFlow": {"tasks": [{"id": "operation", "kind": "file.system", "config": {"operation": operation, **({"source": "source"} if operation != "mkdir" else {}), **({"target": "target"} if operation != "delete" else {})}}], "constraints": []}, "dataFlows": []}
         return folder, target, doc
     def run(folder, doc, mode=0, resume=0, status=0, tasks=1, exit=0):
         path = folder / "package.json"

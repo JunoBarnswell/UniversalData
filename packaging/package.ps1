@@ -76,9 +76,9 @@ try {
     $header = Get-Content -LiteralPath (Join-Path $sdk 'include/ud/version.h') -Raw
     if ($header -notmatch "#define UD_ABI_VERSION $($abi)u") { throw 'The installed SDK ABI differs from the product model.' }
     $capabilities = [ordered]@{}
-    foreach ($feature in @('sqlite','postgresql','odbc','mysql','mariadb','oracle_oci','arrow_files','http','xml','network')) { $capabilities[$feature] = ($cache['UD_WITH_' + $feature.ToUpperInvariant()] -eq 'ON') }
+    foreach ($feature in @('sqlite','postgresql','odbc','mysql','mariadb','oracle_oci','arrow_files','http','xml','network','activemq','rabbitmq','rocketmq','kafka')) { $capabilities[$feature] = ($cache['UD_WITH_' + $feature.ToUpperInvariant()] -eq 'ON') }
     if ($cache['UD_BUILD_PROFILE'] -eq 'PRODUCT' -and $capabilities.Values -contains $false) { throw 'Complete product dependencies cannot silently downgrade.' }
-    foreach ($driver in @('sqlite','postgresql','odbc','mysql','mariadb','oracle_oci')) {
+    foreach ($driver in @('sqlite','postgresql','odbc','mysql','mariadb','oracle_oci','activemq','rabbitmq','rocketmq','kafka')) {
         if ($capabilities[$driver]) {
             $plugin = "ud_connector_$driver" + $(if ($IsWindows) { '.dll' } else { '.so' })
             if (!(Test-Path -LiteralPath (Join-Path $sdk "lib/UniversalData/plugins/$plugin") -PathType Leaf)) { throw "Missing enabled connector: $plugin" }

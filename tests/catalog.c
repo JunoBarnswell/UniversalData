@@ -30,13 +30,13 @@ int main(int argc, char **argv) {
         o.abi_version = UD_ABI_VERSION;
         OK(ud_catalog_open(ctx, &o, &c));
         CHECK(ud_catalog_get(c, &key, &json, &length) == UD_END && !json);
-        const char *package = "{\"version\":12,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
+        const char *package = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
                               "\"constraints\":[]},\"dataFlows\":[]}";
         OK(ud_catalog_put(c, &key, str(package)));
         OK(ud_catalog_put(c, &key, str(package)));
         CHECK(ud_catalog_put(
                   c, &key,
-                  str("{\"version\":12,\"id\":\"test\",\"parameters\":{},\"controlFlow\":"
+                  str("{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"test\",\"parameters\":{},\"controlFlow\":"
                       "{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}")) == UD_CORRUPT);
         OK(ud_catalog_get(c, &key, &json, &length));
         CHECK(length == strlen(package) && !strcmp(json, package));
@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
             CHECK(ud_catalog_list(c, UD_CATALOG_PACKAGE, &json, &length) == UD_CORRUPT && !json);
         } else if (!strcmp(argv[2], "busy")) {
             key.revision = 3;
-            const char *package = "{\"version\":12,\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
+            const char *package = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"test\",\"controlFlow\":{\"tasks\":[],"
                                   "\"constraints\":[]},\"dataFlows\":[]}";
             CHECK(ud_catalog_put(c, &key, str(package)) == UD_BUSY);
         } else if (!strcmp(argv[2], "race")) {
@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
             for (uint64_t i = 1; i <= 100; i++) {
                 key.revision = i;
                 OK(ud_catalog_put(c, &key,
-                                  str("{\"version\":12,\"id\":\"race\",\"timestampMs\":42}")));
+                                  str("{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"race\",\"timestampMs\":42}")));
             }
         } else if (!strcmp(argv[2], "raceRead")) {
             OK(ud_catalog_query(c,

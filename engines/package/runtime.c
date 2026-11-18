@@ -247,11 +247,16 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         options->max_batch_rows > 65536 || !options->max_depth || options->max_depth > 64 ||
         options->resume < 0 || options->resume > 1 ||
         (options->resume && (!options->state_directory.length || !options->execution_id.length)) ||
+        options->broker_restore < 0 || options->broker_restore > 1 ||
+        (options->broker_restore && (options->resume || !options->execution_id.length)) ||
         options->execution_id.length > 255 ||
         (options->execution_id.length &&
          (!options->execution_id.data ||
           !ud_utf8_valid(options->execution_id.data, options->execution_id.length))) ||
-        options->max_concurrency > 64)
+        options->max_concurrency > 64 || options->worker_members > 64 ||
+        (options->worker_members && options->worker_member >= options->worker_members) ||
+        (!options->worker_members && options->worker_member) ||
+        options->consumer_lanes > options->max_concurrency)
         return UD_INVALID;
     for (uint32_t i = 0; i < options->execution_id.length; i++)
         if ((unsigned char)options->execution_id.data[i] < 32 ||

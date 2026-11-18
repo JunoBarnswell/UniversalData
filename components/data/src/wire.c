@@ -2,6 +2,7 @@
 /* Outside the valid legacy column-count domain, so old/new payloads cannot
  * accidentally parse as each other despite retaining protocol family 10. */
 #define WIRE_LAYOUT (UINT64_C(0x5544574952450000) | UD_DATA_LAYOUT_REVISION)
+#define SPILL_LAYOUT (UINT64_C(0x55445350494c0000) | UD_DATA_LAYOUT_REVISION)
 static ud_status put_field(ud_bytes *b, const ud_field *f, uint32_t depth) {
     if (depth > 32)
         return UD_SCHEMA;
@@ -150,11 +151,16 @@ static ud_status get_field(ud_bytes *b, ud_field *f, uint32_t depth) {
     }
     return UD_OK;
 }
-static ud_status put_value(ud_bytes *b, const ud_value *v, uint32_t depth) {
+static ud_status put_value(ud_bytes *b, const ud_value *v, uint32_t depth, int spill) {
     if (depth > 32)
         return UD_SCHEMA;
-    UD_TRY(ud_put_u64(b, (uint64_t)v->is_absent));
-    UD_TRY(ud_put_u64(b, (uint64_t)v->is_null));
+    if (spill) {
+        uint8_t flags = (uint8_t)(v->is_null | (v->is_absent << 1));
+        UD_TRY(ud_bytes_put(b, &flags, sizeof(flags)));
+    } else {
+        UD_TRY(ud_put_u64(b, (uint64_t)v->is_absent));
+        UD_TRY(ud_put_u64(b, (uint64_t)v->is_null));
+    }
     if (v->is_null)
         return UD_OK;
     if (v->type == UD_UTF8 || v->type == UD_BINARY)
@@ -178,7 +184,7 @@ static ud_status put_value(ud_bytes *b, const ud_value *v, uint32_t depth) {
     if (v->type >= UD_STRUCT) {
         UD_TRY(ud_put_u64(b, v->child_count));
         for (uint32_t j = 0; j < v->child_count; j++)
-            UD_TRY(put_value(b, v->children + j, depth + 1));
+            UD_TRY(put_value(b, v->children + j, depth + 1, spill));
         return UD_OK;
     }
     uint64_t bits;
@@ -188,20 +194,25 @@ static ud_status put_value(ud_bytes *b, const ud_value *v, uint32_t depth) {
         bits = (uint64_t)v->integer;
     return ud_put_u64(b, bits);
 }
-static ud_status get_value(ud_bytes *b, const ud_field *f, ud_value *v, uint32_t depth) {
+static ud_status get_value(ud_bytes *b, const ud_field *f, ud_value *v, uint32_t depth, int spill) {
     if (depth > 32)
         return UD_SCHEMA;
     v->type = f->type;
     v->precision = f->precision;
     v->scale = f->scale;
     uint64_t null, absent;
-    UD_TRY(ud_get_u64(b, &absent));
-    if (absent > 1)
+    if (spill) {
+        uint8_t flags;
+        UD_TRY(ud_bytes_get(b, &flags, sizeof(flags)));
+        null = flags & 1u;
+        absent = flags >> 1;
+    } else {
+        UD_TRY(ud_get_u64(b, &absent));
+        UD_TRY(ud_get_u64(b, &null));
+    }
+    if (absent > 1 || null > 1 || (absent && !null))
         return UD_CORRUPT;
     v->is_absent = (int32_t)absent;
-    UD_TRY(ud_get_u64(b, &null));
-    if (null > 1 || (absent && !null))
-        return UD_CORRUPT;
     v->is_null = (int32_t)null;
     if (null)
         return UD_OK;
@@ -260,7 +271,7 @@ static ud_status get_value(ud_bytes *b, const ud_field *f, ud_value *v, uint32_t
             v->child_count = (uint32_t)count;
             for (uint32_t j = 0; j < count; j++)
                 UD_TRY(get_value(b, f->children + (f->type == UD_STRUCT ? j : 0),
-                                 (ud_value *)v->children + j, depth + 1));
+                                 (ud_value *)v->children + j, depth + 1, spill));
         }
     } else {
         uint64_t bits;
@@ -272,11 +283,11 @@ static ud_status get_value(ud_bytes *b, const ud_field *f, ud_value *v, uint32_t
     }
     return UD_OK;
 }
-ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
+static ud_status encode_batch(ud_bytes *b, const ud_batch *table, int spill) {
     if (!b || !table)
         return UD_INVALID;
     UD_TRY(ud_put_u64(b, UD_WIRE_VERSION));
-    UD_TRY(ud_put_u64(b,WIRE_LAYOUT));
+    UD_TRY(ud_put_u64(b, spill ? SPILL_LAYOUT : WIRE_LAYOUT));
     UD_TRY(ud_put_u64(b, table->columns));
     UD_TRY(ud_put_u64(b, table->rows));
     for (uint32_t j = 0; j < table->columns; j++)
@@ -285,7 +296,7 @@ ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
         for (uint32_t j = 0; j < table->columns; j++) {
             ud_value value;
             UD_TRY(ud_batch_get(table, r, j, &value));
-            UD_TRY(put_value(b, &value, 0));
+            UD_TRY(put_value(b, &value, 0, spill));
         }
     int present = table->row_info != NULL;
     for (const ud_batch *parent = table->data_owner; parent && !present;
@@ -320,7 +331,7 @@ ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
     }
     return UD_OK;
 }
-ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
+static ud_status decode_batch(ud_bytes *b, ud_batch **out, int spill) {
     if (!b || !out)
         return UD_INVALID;
     *out = NULL;
@@ -328,8 +339,9 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
     UD_TRY(ud_get_u64(b, &version));
     if (version != UD_WIRE_VERSION)
         return UD_INCOMPATIBLE;
-    UD_TRY(ud_get_u64(b,&layout));
-    if (layout!=WIRE_LAYOUT) return UD_INCOMPATIBLE;
+    UD_TRY(ud_get_u64(b, &layout));
+    if (layout != (spill ? SPILL_LAYOUT : WIRE_LAYOUT))
+        return UD_INCOMPATIBLE;
     UD_TRY(ud_get_u64(b, &columns));
     UD_TRY(ud_get_u64(b, &rows));
     if (!columns || columns > 65536 || rows > INT32_MAX)
@@ -349,7 +361,7 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
     for (uint32_t r = 0; !s && r < rows; r++) {
         memset(values, 0, (size_t)columns * sizeof(*values));
         for (uint32_t j = 0; !s && j < columns; j++)
-            s = get_value(b, fields + j, values + j, 0);
+            s = get_value(b, fields + j, values + j, 0, spill);
         if (!s)
             s = ud_batch_append(*out, values, (uint32_t)columns);
         for (uint32_t j = 0; j < columns; j++)
@@ -425,13 +437,20 @@ ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
     }
     return s;
 }
-ud_status ud_batch_serialize(const ud_batch *batch, uint8_t **data, uint64_t *length) {
+ud_status ud_encode_batch(ud_bytes *b, const ud_batch *table) {
+    return encode_batch(b, table, 0);
+}
+ud_status ud_decode_batch(ud_bytes *b, ud_batch **out) {
+    return decode_batch(b, out, 0);
+}
+static ud_status serialize_batch(const ud_batch *batch, uint8_t **data, uint64_t *length,
+                                 int spill) {
     if (!batch || !data || !length)
         return UD_INVALID;
     *data = NULL;
     *length = 0;
     ud_bytes wire = {.ctx = batch->ctx};
-    ud_status s = ud_encode_batch(&wire, batch);
+    ud_status s = encode_batch(&wire, batch, spill);
     if (s) {
         ud_bytes_clear(&wire);
         return s;
@@ -440,16 +459,30 @@ ud_status ud_batch_serialize(const ud_batch *batch, uint8_t **data, uint64_t *le
     *length = wire.size;
     return UD_OK;
 }
-ud_status ud_batch_deserialize(ud_context *ctx, const uint8_t *data, uint64_t length,
-                               ud_batch **out) {
+static ud_status deserialize_batch(ud_context *ctx, const uint8_t *data, uint64_t length,
+                                    ud_batch **out, int spill) {
     if (!ctx || !data || !out || length > SIZE_MAX)
         return UD_INVALID;
     ud_bytes wire = {.ctx = ctx, .data = (uint8_t *)data, .size = (size_t)length};
-    ud_status s = ud_decode_batch(&wire, out);
+    ud_status s = decode_batch(&wire, out, spill);
     if (!s && wire.pos != wire.size) {
         ud_batch_destroy(*out);
         *out = NULL;
         return UD_CORRUPT;
     }
     return s;
+}
+ud_status ud_batch_serialize(const ud_batch *batch, uint8_t **data, uint64_t *length) {
+    return serialize_batch(batch, data, length, 0);
+}
+ud_status ud_batch_deserialize(ud_context *ctx, const uint8_t *data, uint64_t length,
+                               ud_batch **out) {
+    return deserialize_batch(ctx, data, length, out, 0);
+}
+ud_status ud_batch_serialize_spill(const ud_batch *batch, uint8_t **data, uint64_t *length) {
+    return serialize_batch(batch, data, length, 1);
+}
+ud_status ud_batch_deserialize_spill(ud_context *ctx, const uint8_t *data, uint64_t length,
+                                     ud_batch **out) {
+    return deserialize_batch(ctx, data, length, out, 1);
 }

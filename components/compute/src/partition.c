@@ -1,21 +1,26 @@
 #include "ud/partition.h"
 #include "../internal.h"
+ud_status ud_partition_hash_row(const ud_batch *input, uint32_t row, const uint32_t *keys,
+                                uint32_t key_count, uint32_t partitions, uint32_t *partition) {
+    uint64_t hash = UD_VALUE_HASH_SEED;
+    for (uint32_t i = 0; i < key_count; i++) {
+        ud_value value;
+        UD_TRY(ud_batch_get(input, row, keys[i], &value));
+        hash = ud_field_value_hash(input->schema->fields + keys[i], &value, hash);
+    }
+    *partition = (uint32_t)(hash % partitions);
+    return UD_OK;
+}
+
 static ud_status select_partition(const ud_batch *input, const ud_partition_options *o,
                                   uint32_t row, uint32_t *out) {
     if (o->strategy == UD_PARTITION_ROUND_ROBIN) {
         *out = (uint32_t)((o->row_offset + row) % o->count);
         return UD_OK;
     }
-    uint64_t hash = UD_VALUE_HASH_SEED;
+    if (o->strategy == UD_PARTITION_HASH)
+        return ud_partition_hash_row(input, row, o->keys, o->key_count, o->count, out);
     ud_value value = {0};
-    if (o->strategy == UD_PARTITION_HASH) {
-        for (uint32_t i = 0; i < o->key_count; i++) {
-            UD_TRY(ud_batch_get(input, row, o->keys[i], &value));
-            hash = ud_field_value_hash(&input->column[o->keys[i]].field, &value, hash);
-        }
-        *out = (uint32_t)(hash % o->count);
-        return UD_OK;
-    }
     UD_TRY(ud_batch_get(input, row, o->keys[0], &value));
     const ud_field *field = &input->column[o->keys[0]].field;
     *out = 0;

@@ -183,7 +183,7 @@ static int buffers_and_operators(const char *directory) {
     CHECK(ud_operator_pull(op, &batch, NULL) == UD_END);
     OK(ud_operator_destroy(op));
     ud_plan *plan = NULL;
-    const char *definition = "{\"version\":12,\"aggregates\":[{\"function\":\"count\",\"column\":"
+    const char *definition = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"aggregates\":[{\"function\":\"count\",\"column\":"
                              "\"*\",\"name\":\"n\"}]}";
     OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, &field, 1, text(definition), NULL, &plan));
     spec.kind = UD_OPERATOR_AGGREGATE;
@@ -212,6 +212,11 @@ static int buffers_and_operators(const char *directory) {
     OK(ud_batch_seal(batch));
     ud_buffer_block *block = NULL, *extra = NULL;
     OK(ud_buffer_store(manager, batch, &block));
+    uint8_t *public_wire = NULL;
+    uint64_t public_bytes = 0;
+    OK(ud_batch_serialize(batch, &public_wire, &public_bytes));
+    CHECK(ud_buffer_block_spill_bytes(block) + 15 == public_bytes);
+    ud_free(public_wire);
     CHECK(ud_buffer_store(manager, batch, &extra) == UD_RESOURCE && !extra);
     ud_buffer_view *read = NULL;
     permission = UD_AUTH;
@@ -234,6 +239,25 @@ static int buffers_and_operators(const char *directory) {
     read = NULL;
     OK(ud_buffer_manager_metrics(manager, &metrics));
     CHECK(!metrics.views && !metrics.working_bytes);
+    ud_memory_domain *state_domain = NULL;
+    OK(ud_buffer_state_domain_create(manager, working - 1, &state_domain));
+    CHECK(ud_buffer_read_in_domain(block, state_domain, &read) == UD_RESOURCE && !read);
+    CHECK(ud_memory_domain_peak(state_domain) > 0 && !ud_memory_domain_used(state_domain));
+    OK(ud_buffer_manager_metrics(manager, &metrics));
+    CHECK(!metrics.views && !metrics.working_bytes && metrics.blocks == 1);
+    OK(ud_memory_domain_destroy(state_domain));
+    OK(ud_buffer_state_domain_create(manager, buffers.working_limit / 2, &state_domain));
+    OK(ud_buffer_read_in_domain(block, state_domain, &read));
+    OK(ud_batch_get(ud_buffer_view_batch(read), 0, 0, &restored));
+    CHECK(restored.integer == 7);
+    CHECK(ud_memory_domain_used(state_domain) == working);
+    CHECK(ud_memory_domain_destroy(state_domain) == UD_BUSY);
+    OK(ud_buffer_manager_metrics(manager, &metrics));
+    CHECK(metrics.views == 1 && metrics.working_bytes == working);
+    ud_buffer_view_release(read);
+    read = NULL;
+    CHECK(!ud_memory_domain_used(state_domain));
+    OK(ud_memory_domain_destroy(state_domain));
     char path[4096];
     snprintf(path, sizeof(path), "%s/ud-buffer-%020llu.udw", directory, 1ULL);
     FILE *file = fopen(path, "r+b");
@@ -334,7 +358,7 @@ static int activations(void) {
                               .observe = observe,
                               .observe_user = &f};
     const char *package =
-        "{\"version\":12,\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
+        "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"concurrent\",\"controlFlow\":{\"tasks\":["
         "{\"id\":\"deadline\",\"kind\":\"test.delay\",\"timeoutMs\":1000,\"config\":{}},"
         "{\"id\":\"sibling\",\"kind\":\"test.delay\",\"config\":{}}],\"constraints\":[]},"
         "\"dataFlows\":[]}";
@@ -351,7 +375,7 @@ static int activations(void) {
     o.max_concurrency = 1;
     f.sequence = 0;
     package =
-        "{\"version\":12,\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\","
+        "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"sequential\",\"variables\":{\"n\":{\"type\":\"int64\","
         "\"default\":"
         "0}},"
         "\"eventHandlers\":{\"after\":{\"tasks\":[{\"id\":\"after\",\"kind\":\"set\",\"config\":{"

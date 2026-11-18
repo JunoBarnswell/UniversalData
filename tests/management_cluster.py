@@ -5,6 +5,7 @@ never cause another node to replay an uncertain POST, including manual resume.
 """
 import base64
 import collections
+import contextlib
 import hashlib
 import http.cookiejar
 import http.server
@@ -19,6 +20,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from product_version import PROTOCOL_VERSION
 
 dotnet, management, worker = sys.argv[1:4]
 lock = threading.Lock()
@@ -45,7 +47,7 @@ class Endpoint(http.server.BaseHTTPRequestHandler):
             self.send_header('Content-Length', '2')
             self.end_headers()
             self.wfile.write(b'{}')
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass
         finally:
             with lock:
@@ -97,7 +99,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-cluster-') as directory:
             assert time.monotonic() < deadline, state
             time.sleep(.15)
     def enqueue(index, name):
-        package = {'version': 12, 'id': name, 'connections': [{'id': 'http', 'driver': 'http', 'resource': origin + '/effects'}],
+        package = {'version': PROTOCOL_VERSION, 'id': name, 'connections': [{'id': 'http', 'driver': 'http', 'resource': origin + '/effects'}],
             'controlFlow': {'tasks': [{'id': 'post', 'kind': 'http.request', 'config': {'connection': 'http', 'method': 'POST',
                 'body': name, 'timeoutMs': 30000}}], 'constraints': []}, 'dataFlows': []}
         assert request(index, '/packages/' + name + '/versions/1', 'PUT', package)[0] == 200
@@ -161,7 +163,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-cluster-') as directory:
         assert status == 202 and resumed['executionId'] == native_id, (status, resumed)
         terminal = wait_state(standby, ticket, lambda state: state['state'] == 'RecoveryRequired')
         assert terminal['executionId'] == native_id, terminal
-        with sqlite3.connect(root / 'product' / 'tenants' / 'cluster' / 'catalog' / 'catalog.sqlite3') as native_catalog:
+        with contextlib.closing(sqlite3.connect(root / 'product' / 'tenants' / 'cluster' / 'catalog' / 'catalog.sqlite3')) as native_catalog:
             snapshots = [json.loads(row[0]) for row in native_catalog.execute(
                 'SELECT document FROM documents WHERE tenant=? AND kind=5 AND id=? ORDER BY revision', ('cluster', native_id))]
         # A host preflight failure retaining RecoveryRequired cannot satisfy this:

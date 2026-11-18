@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from product_version import PROTOCOL_VERSION
 
 runner, plugin = (str(pathlib.Path(value).resolve()) for value in sys.argv[1:])
 with tempfile.TemporaryDirectory(prefix="ud-row-command-") as directory:
@@ -19,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix="ud-row-command-") as directory:
             connection.execute("CREATE TABLE commands(id INTEGER PRIMARY KEY, mirrored INTEGER NOT NULL CHECK(id=mirrored))")
         source = folder / "source.jsonl"
         source.write_text(''.join(json.dumps({"id": value}) + '\n' for value in [1, 2, 2, 3]))
-        package = {"version": 12, "id": "row-command", "connections": [
+        package = {"version": PROTOCOL_VERSION, "id": "row-command", "connections": [
             {"id": "source", "driver": "file", "resource": str(source)},
             {"id": "db", "driver": plugin, "resource": str(database), "credentialReference": "fixture"},
             {"id": "good", "driver": "file", "resource": str(folder / "good.jsonl")},
@@ -27,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix="ud-row-command-") as directory:
             "controlFlow": {"tasks": [{"id": "run", "kind": "dataFlow", "config": {"pipeline": "rows"}}], "constraints": []},
             "dataFlows": [{"id": "rows", "components": [
                 {"id": "source", "component": "file.ndjson.source", "config": {"connection": "source", "batchSize": 2,
-                    "schema": {"version": 12, "fields": [{"name": "id", "type": "int64", "nullable": False}]}}},
+                    "schema": {"version": PROTOCOL_VERSION, "fields": [{"name": "id", "type": "int64", "nullable": False}]}}},
                 {"id": "command", "component": "sql.command", "config": {"connection": "db",
                     "statement": "INSERT INTO commands(id,mirrored) VALUES(?1,?2)", "parameters": [0, 0], "errorPolicy": policy, "includeInput": True}},
                 {"id": "accept", "component": "file.ndjson.destination", "config": {"connection": "good"}},

@@ -4,6 +4,25 @@
 #include "ud/xlsx.h"
 #include "ud/plugin.h"
 
+ud_status ud_execution_test_message_connection(ud_execution *e, ud_string connection,
+                                               uint64_t *capabilities, uint64_t *elapsed_ms) {
+    if (!e || !connection.data || !connection.length || !capabilities || !elapsed_ms)
+        return UD_INVALID;
+    *capabilities = *elapsed_ms = 0;
+    if (atomic_load(&e->state) != UD_EXEC_READY)
+        return UD_BUSY;
+    uint64_t started = ud_now_ms();
+    ud_connection_lease *lease = NULL;
+    uint64_t needed = UD_CONNECT_MESSAGE_SUBSCRIBE | UD_CONNECT_MESSAGE_PUBLISH;
+    ud_status status = ud_activation_acquire_connection(&e->root, connection, needed, &lease);
+    if (!status) {
+        *capabilities = ud_connection_lease_capabilities(lease);
+        status = ud_connection_lease_release(lease);
+    }
+    *elapsed_ms = ud_now_ms() - started;
+    return status;
+}
+
 ud_status ud_execution_connector_catalog(ud_execution *e, ud_string paths, char **out,
                                          uint32_t *length) {
     if (!e || !out || !length)

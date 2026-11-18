@@ -1,5 +1,6 @@
 #include "check.h"
 #include "ud/package.h"
+#include "../engines/data-flow/pipeline_frontier.h"
 #include <string.h>
 #include <stdatomic.h>
 #ifdef _WIN32
@@ -181,9 +182,42 @@ static ud_status allow(void *u, ud_string tenant, ud_string resource, int32_t ac
     (void)action;
     return UD_OK;
 }
+static int recover_frontier(ud_context *ctx) {
+    ud_pipeline_frontier frontier = {.emitted = INT64_MIN};
+    int64_t watermark;
+    OK(ud_pipeline_frontier_observe(&frontier, 0, UD_COMPONENT_WATERMARK, -5));
+    CHECK(!ud_pipeline_frontier_reduce(&frontier, 3, &watermark));
+    OK(ud_pipeline_frontier_observe(&frontier, 1, UD_COMPONENT_WATERMARK, 20));
+    CHECK(ud_pipeline_frontier_reduce(&frontier, 3, &watermark) && watermark == -5);
+    OK(ud_pipeline_frontier_observe(&frontier, 0, UD_COMPONENT_IDLE, 0));
+    CHECK(ud_pipeline_frontier_reduce(&frontier, 3, &watermark) && watermark == 20);
+    OK(ud_pipeline_frontier_observe(&frontier, 1, UD_COMPONENT_IDLE, 0));
+    CHECK(!ud_pipeline_frontier_reduce(&frontier, 3, &watermark));
+
+    ud_bytes manifest = {.ctx = ctx};
+    OK(ud_pipeline_frontier_write(&manifest, &frontier, 3));
+    ud_json *document = NULL;
+    OK(ud_json_parse(ctx, (const char *)manifest.data, (uint32_t)manifest.size, &document, NULL));
+    ud_pipeline_frontier restored = {0};
+    OK(ud_pipeline_frontier_read(ctx, document, 3, 3, &restored));
+    CHECK(restored.idle == 3 && restored.observed == 3 && restored.emitted == 20);
+    CHECK(ud_pipeline_frontier_read(ctx, document, 3, 1, &restored) == UD_CORRUPT);
+    ud_json_destroy(document);
+    ud_bytes_clear(&manifest);
+
+    OK(ud_pipeline_frontier_observe(&restored, 0, UD_COMPONENT_ACTIVE, 0));
+    CHECK(!ud_pipeline_frontier_reduce(&restored, 3, &watermark));
+    CHECK(ud_pipeline_frontier_observe(&restored, 0, UD_COMPONENT_WATERMARK, -6) == UD_FENCED);
+    OK(ud_pipeline_frontier_observe(&restored, 1, UD_COMPONENT_WATERMARK, 40));
+    CHECK(!ud_pipeline_frontier_reduce(&restored, 3, &watermark));
+    CHECK(ud_pipeline_frontier_reduce(&restored, 2, &watermark) && watermark == 40);
+    return 0;
+}
+
 int main(void) {
     ud_context *ctx = NULL;
     OK(ud_context_create(NULL, &ctx));
+    CHECK(recover_frontier(ctx) == 0);
     ud_registry *registry = NULL;
     OK(ud_registry_create(ctx, &registry));
     fixture f = {0};
@@ -229,11 +263,11 @@ int main(void) {
                                     .user = &f};
     OK(ud_registry_register(registry, &sink));
     const char *json =
-        "{\"version\":12,\"id\":\"stream-contract\",\"connections\":[],\"variables\":{},"
+        "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"stream-contract\",\"connections\":[],\"variables\":{},"
         "\"parameters\":{},\"dataFlows\":[{\"id\":\"main\",\"components\":[{\"id\":\"source\","
         "\"component\":\"fixture.continuous\",\"config\":{}},{\"id\":\"window\",\"component\":"
         "\"eventWindow\",\"config\":{\"mode\":\"tumbling\",\"timeField\":\"time\",\"sizeMicros\":"
-        "10,\"latePolicy\":\"fail\",\"plan\":{\"version\":12,\"group\":[\"key\"],\"aggregates\":[{"
+        "10,\"latePolicy\":\"fail\",\"plan\":{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"key\"],\"aggregates\":[{"
         "\"function\":\"sum\",\"column\":\"value\",\"name\":\"total\"}]}}},{\"id\":\"sink\","
         "\"component\":\"fixture.observe\",\"config\":{}}],\"paths\":[{\"from\":\"source\","
         "\"output\":0,\"to\":\"window\",\"input\":0},{\"from\":\"window\",\"output\":0,\"to\":"
@@ -284,12 +318,12 @@ int main(void) {
     f.watermark = 0;
     atomic_store(&f.last_watermark, INT64_MIN);
     const char *policy =
-        "{\"version\":12,\"id\":\"stream-contract\",\"connections\":[],\"variables\":{},"
+        "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"stream-contract\",\"connections\":[],\"variables\":{},"
         "\"parameters\":{},\"dataFlows\":[{\"id\":\"main\",\"components\":[{\"id\":\"source\","
         "\"component\":\"fixture.continuous\",\"config\":{}},{\"id\":\"clock\",\"component\":"
         "\"eventTime\",\"config\":{\"field\":\"time\",\"lagMicros\":0}},{\"id\":\"window\","
         "\"component\":\"eventWindow\",\"config\":{\"mode\":\"tumbling\",\"timeField\":\"time\","
-        "\"sizeMicros\":10,\"latePolicy\":\"fail\",\"plan\":{\"version\":12,\"group\":[\"key\"],"
+        "\"sizeMicros\":10,\"latePolicy\":\"fail\",\"plan\":{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"key\"],"
         "\"aggregates\":[{\"function\":\"sum\",\"column\":\"value\",\"name\":\"total\"}]}}},{"
         "\"id\":\"sink\",\"component\":\"fixture.observe\",\"config\":{}}],\"paths\":[{\"from\":"
         "\"source\",\"output\":0,\"to\":\"clock\",\"input\":0},{\"from\":\"clock\",\"output\":0,"
@@ -318,7 +352,7 @@ int main(void) {
         f.expected_rows = join ? 7 : 6;
         atomic_store(&f.minimum_seen, 0);
         const char *format =
-            "{\"version\":12,\"id\":\"multi-input-frontier\",\"connections\":[],\"controlFlow\":{"
+            "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"id\":\"multi-input-frontier\",\"connections\":[],\"controlFlow\":{"
             "\"tasks\":[{\"id\":\"run\",\"kind\":\"dataFlow\",\"config\":{\"pipeline\":\"main\"}}],"
             "\"constraints\":[]},\"dataFlows\":[{\"id\":\"main\",\"components\":[{\"id\":\"early\","
             "\"component\":\"fixture.early\",\"config\":{}},{\"id\":\"source\",\"component\":"

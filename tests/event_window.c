@@ -32,7 +32,7 @@ static ud_status create(const char *mode, const char *late, uint64_t budget, ud_
         snprintf(json, sizeof(json),
                  "{\"mode\":\"%s\",\"timeField\":\"time\",\"sizeMicros\":10,\"slideMicros\":5,"
                  "\"gapMicros\":5,\"allowedLatenessMicros\":2,\"stateBytes\":%llu,\"latePolicy\":"
-                 "\"%s\",\"plan\":{\"version\":12,\"group\":[\"key\"],\"aggregates\":[{"
+                 "\"%s\",\"plan\":{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"key\"],\"aggregates\":[{"
                  "\"function\":\"sum\",\"column\":\"value\",\"name\":\"total\"}]}}",
                  mode, (unsigned long long)budget, late);
     ud_batch *schema = NULL;

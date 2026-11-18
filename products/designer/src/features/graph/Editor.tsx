@@ -49,6 +49,7 @@ import {
   controlGraph,
   controlScopes,
   updateControl,
+  messagePreviewBlock,
   type CatalogDocument,
   type Component,
   type Configuration,
@@ -63,19 +64,12 @@ import {
 } from "../../model";
 import { useHistory } from "../../useHistory";
 import { FlowNode, type FlowNodeValue } from "../../FlowNode";
-import { PropertyForm } from "../../PropertyForm";
-import { FileSourceEditor } from "../../FileSourceEditor";
-import { FieldMapping } from "../../FieldMapping";
-import { SSISColumnEditor, SSISSplitEditor } from "../../SSISColumnEditor";
+import { ComponentInspector } from "./ComponentInspector";
+import { DataFlowSettings } from "./DataFlowSettings";
+import { Button } from "../../shared/design-system/Controls";
 import { PreviewPanel } from "../../PreviewPanel";
 import { ConnectionCenter } from "../../ConnectionCenter";
 import { SourceWizard } from "../../SourceWizard";
-import { SqlEditor, ConnectionSelect } from "../../SqlEditors";
-import {
-  AggregateEditor,
-  JoinEditor,
-  LookupEditor,
-} from "../../RelationalEditors";
 import { ResizeHandle } from "../../ResizeHandle";
 import { ExecutionConfirmation } from "../../ReleaseDialog";
 import { TestDialog } from "../../TestDialog";
@@ -266,7 +260,8 @@ function EditorCanvas({
     [components],
   );
   const item = items.find((node) => node.id === selected),
-    descriptor = item && catalog.get(item.component);
+    descriptor = item && catalog.get(item.component),
+    previewBlock = messagePreviewBlock(graph, item?.id);
   const effectivePlan =
     preview?.text === dataText && preview.flow === flow
       ? (preview.value.diagnostics as unknown as NativePlan)
@@ -1118,6 +1113,10 @@ function EditorCanvas({
   }
   async function readPreview() {
     if (!item || control) return;
+    if (previewBlock) {
+      setMessage(previewBlock);
+      return;
+    }
     const snapshot = document,
       snapshotText = executionText(snapshot),
       selectedId = item.id;
@@ -1320,23 +1319,24 @@ function EditorCanvas({
             <CircleCheck size={16} />
             校验
           </button>
-          <button
+          <Button
             disabled={
               !item ||
               control ||
               previewBusy ||
+              !!previewBlock ||
               (descriptor?.category !== 4 && descriptor?.previewSafe === false)
             }
             title={
-              descriptor?.previewSafe === false && descriptor.category !== 4
+              previewBlock ?? (descriptor?.previewSafe === false && descriptor.category !== 4
                 ? "此 Native 组件未声明只读预览能力"
-                : undefined
+                : undefined)
             }
             onClick={() => void readPreview()}
           >
             <Eye size={16} />
             预览
-          </button>
+          </Button>
           <button disabled={busy} onClick={() => setTestOpen(true)}>
             完整测试
           </button>
@@ -1631,7 +1631,7 @@ function EditorCanvas({
             ) : null}
             <div hidden={showMonitor}>
               <PreviewPanel
-                value={preview?.value}
+                value={previewBlock ? undefined : preview?.value}
                 node={boundNode}
                 item={item}
                 input={
@@ -1641,6 +1641,7 @@ function EditorCanvas({
                 }
                 busy={previewBusy}
                 stale={stale}
+                blockedReason={previewBlock}
                 refresh={() => void readPreview()}
                 sourceRows={sourceRows}
                 setSourceRows={setSourceRows}
@@ -1682,207 +1683,46 @@ function EditorCanvas({
               <X size={16} />
             </button>
           </h2>
+          {graph && (graph.parallelism || graph.delivery ||
+            graph.components.some((node) => node.component === "mq.source" || node.component === "mq.destination")) ? (
+            <DataFlowSettings graph={graph} change={(settings) => edit((current) => ({
+              ...current,
+              dataFlows: current.dataFlows.map((value) => value.id === flow ? { ...value, ...settings } : value),
+            }))} />
+          ) : null}
           {item && descriptor ? (
-            <>
-              <label>
-                显示名称
-                <input
-                  aria-label="组件显示名称"
-                  value={label(item.id)}
-                  onChange={(event) =>
-                    edit((current) =>
-                      withPosition(
-                        current,
-                        item.id,
-                        document.layout?.nodes.find(
-                          (node) => node.flow === flow && node.id === item.id,
-                        ) ?? { x: 70, y: 140 },
-                        event.target.value,
-                      ),
-                    )
-                  }
-                />
-              </label>
-              <div className="inspector-actions">
-                <strong>{descriptor.name}</strong>
-                <button aria-label="删除组件" onClick={remove}>
-                  <Trash2 size={15} />
-                </button>
-              </div>
-              {item.component === "derive" ? (
-                <SSISColumnEditor
-                  value={item.config}
-                  change={configure}
-                  schema={inputSchema ?? undefined}
-                  functions={components.filter(
-                    (component) => component.category === 5,
-                  )}
-                  document={document}
-                  before={before}
-                  after={after}
-                  preview={() => void readPreview()}
-                  busy={previewBusy}
-                />
-              ) : item.component === "split" &&
-                item.config.condition === undefined ? (
-                <SSISSplitEditor
-                  value={item.config}
-                  change={configure}
-                  schema={inputSchema ?? undefined}
-                  functions={components.filter(
-                    (component) => component.category === 5,
-                  )}
-                  document={document}
-                  samples={
-                    stale
-                      ? undefined
-                      : preview?.value.snapshot.preview.filter(
-                          (edge) => edge.component === item.id,
-                        )
-                  }
-                  destinations={splitDestinations}
-                  preview={() => void readPreview()}
-                />
-              ) : item.component === "eventWindow" ? (
-                <>
-                  <p className="muted">
-                    事件时间采用微秒；窗口 [start, end) 在 Watermark ≥ end +
-                    允许迟到后输出最终结果。迟到输出必须连接端口 1。
-                  </p>
-                  <PropertyForm
-                    schema={{
-                      ...descriptor.configurationSchema,
-                      properties: Object.fromEntries(
-                        Object.entries(
-                          descriptor.configurationSchema.properties ?? {},
-                        ).filter(([key]) => key !== "plan"),
-                      ),
-                    }}
-                    value={Object.fromEntries(
-                      Object.entries(item.config).filter(
-                        ([key]) => key !== "plan",
-                      ),
-                    )}
-                    change={(value) =>
-                      configure({ ...value, plan: item.config.plan })
-                    }
-                    fields={inputSchema?.fields}
-                  />
-                  <AggregateEditor
-                    value={item.config}
-                    change={configure}
-                    fields={inputSchema?.fields ?? []}
-                  />
-                </>
-              ) : item.component === "aggregate" ? (
-                <AggregateEditor
-                  value={item.config}
-                  change={configure}
-                  fields={inputSchema?.fields ?? []}
-                />
-              ) : item.component === "join" ? (
-                <JoinEditor
-                  value={item.config}
-                  change={configure}
-                  inputs={
-                    boundNode?.inputs.map((schema) => schema?.fields ?? []) ?? [
-                      inputSchema?.fields ?? [],
-                    ]
-                  }
-                />
-              ) : item.component === "file.csv.source" ||
-                item.component === "file.xlsx.source" ? (
-                <FileSourceEditor
-                  document={document}
-                  value={item.config}
-                  change={configure}
-                  xlsx={item.component === "file.xlsx.source"}
-                  schema={descriptor.configurationSchema}
-                />
-              ) : item.component === "cacheLookup" ||
-                item.component === "dbLookup" ? (
-                <LookupEditor
-                  value={item.config}
-                  change={configure}
-                  fields={inputSchema?.fields ?? []}
-                  schema={descriptor.configurationSchema}
-                  document={document}
-                />
-              ) : item.component === "sql.destination" ||
-                item.component === "sql.source" ? (
-                <SqlEditor
-                  key={item.id}
-                  document={document}
-                  value={item.config}
-                  change={configure}
-                  input={inputSchema ?? undefined}
-                  source={item.component === "sql.source"}
-                  configurationSchema={descriptor.configurationSchema}
-                />
-              ) : (
-                <>
-                  {Object.hasOwn(
-                    descriptor.configurationSchema.properties ?? {},
-                    "connection",
-                  ) ? (
-                    <ConnectionSelect
-                      document={document}
-                      value={String(item.config.connection ?? "")}
-                      change={(connection) =>
-                        configure({ ...item.config, connection })
-                      }
-                    />
-                  ) : null}
-                  <PropertyForm
-                    key={item.id}
-                    schema={{
-                      ...descriptor.configurationSchema,
-                      properties: Object.fromEntries(
-                        Object.entries(
-                          descriptor.configurationSchema.properties ?? {},
-                        ).filter(([key]) => key !== "connection"),
-                      ),
-                    }}
-                    value={Object.fromEntries(
-                      Object.entries(item.config).filter(
-                        ([key]) => key !== "connection",
-                      ),
-                    )}
-                    change={(value) =>
-                      configure({
-                        ...value,
-                        ...(item.config.connection !== undefined
-                          ? { connection: item.config.connection }
-                          : {}),
-                      })
-                    }
-                    fields={inputSchema?.fields}
-                    inputs={boundNode?.inputs.map(
-                      (schema) => schema?.fields ?? [],
-                    )}
-                  />
-                </>
-              )}
-              {item.component === "copyColumn" && inputSchema ? (
-                <FieldMapping
-                  fields={inputSchema.fields}
-                  value={item.config}
-                  change={configure}
-                />
-              ) : null}
-              {descriptor.continuous ? (
-                <p className="muted">
-                  Native 持续源 ·
-                  结束由源模式和停止策略决定；空闲不等于完成。位点与确认沿用
-                  Native Journal。
-                </p>
-              ) : null}
-              <details>
-                <summary>组件身份与专业信息</summary>
-                <code>{item.id}</code>
-                {boundNode ? <pre>{encode(boundNode, 2)}</pre> : null}
-              </details>
-            </>
+            <ComponentInspector
+              item={item}
+              descriptor={descriptor}
+              document={document}
+              components={components}
+              label={label(item.id)}
+              rename={(value) =>
+                edit((current) =>
+                  withPosition(
+                    current,
+                    item.id,
+                    document.layout?.nodes.find(
+                      (node) => node.flow === flow && node.id === item.id,
+                    ) ?? { x: 70, y: 140 },
+                    value,
+                  ),
+                )
+              }
+              configure={configure}
+              remove={remove}
+              boundNode={boundNode}
+              inputSchema={inputSchema}
+              before={before}
+              after={after}
+              preview={() => void readPreview()}
+              previewBusy={previewBusy}
+              previewBlocked={previewBlock}
+              kafkaTransaction={graph?.delivery?.mode === "kafkaTransaction"}
+              stale={stale}
+              samples={preview?.value.snapshot.preview.filter((edge) => edge.component === item.id)}
+              splitDestinations={splitDestinations}
+            />
           ) : activeConstraint ? (
             <label>
               前置条件

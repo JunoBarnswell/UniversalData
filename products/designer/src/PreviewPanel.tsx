@@ -1,3 +1,4 @@
+import { Button, Select } from "./shared/design-system/Controls";
 import { useState } from "react";
 import { Eye, RefreshCw } from "lucide-react";
 import { encode } from "./api";
@@ -10,6 +11,7 @@ export function PreviewPanel({
   input,
   busy,
   stale,
+  blockedReason,
   refresh,
   sourceRows,
   setSourceRows,
@@ -20,6 +22,7 @@ export function PreviewPanel({
   input?: { from: string; output: number };
   busy: boolean;
   stale: boolean;
+  blockedReason?: string;
   refresh: () => void;
   sourceRows: number;
   setSourceRows: (value: number) => void;
@@ -83,36 +86,37 @@ export function PreviewPanel({
           ["schema", "Schema"],
           ["plan", "执行计划"],
         ].map(([id, label]) => (
-          <button
+          <Button
             key={id}
             className={tab === id ? "active" : ""}
             onClick={() => setTab(id)}
           >
             {label}
-          </button>
+          </Button>
         ))}
-        <button
+        <Button
           className="preview-refresh"
-          disabled={busy || !item}
+          disabled={busy || !item || !!blockedReason}
+          title={blockedReason}
           onClick={refresh}
         >
           <RefreshCw size={14} />
           {busy ? "读取中…" : "只读预览"}
-        </button>
+        </Button>
       </header>
       <div className="preview-status">
         <span className={stale ? "warning" : value?.result ? "error" : ""}>
-          {stale
+          {blockedReason ?? (stale
             ? "草稿已更改，样本已过期"
             : value
               ? value.result
                 ? `Native 预览失败 · 状态码 ${value.result}`
                 : "Native 真实样本 · 目标未执行"
-              : "预览会限制源读取并跳过所有目标写入"}
+              : "预览会限制源读取并跳过所有目标写入")}
         </span>
         <label>
           每源读取上限
-          <select
+          <Select
             aria-label="预览读取上限"
             value={sourceRows}
             onChange={(event) => setSourceRows(Number(event.target.value))}
@@ -122,12 +126,12 @@ export function PreviewPanel({
                 {count.toLocaleString()} 行
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {outputs.length > 0 ? (
           <label>
             输出端口
-            <select
+            <Select
               aria-label="预览输出端口"
               value={selected?.port ?? 0}
               onChange={(event) => setPort(Number(event.target.value))}
@@ -143,7 +147,7 @@ export function PreviewPanel({
                   · {edge.totalRows.toLocaleString()} 行
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         ) : null}
       </div>

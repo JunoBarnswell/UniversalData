@@ -2,9 +2,9 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 4.0.0 / ABI 12；Draft PR #10; local portable checks passed. Remote CI could not start because of GitHub billing/spending limits; production and extension gates remain explicit.。
+SDK 5.0.0 / ABI 13；SDK 5 messaging and worker execution candidate under verification。
 
-门禁通过 2/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
+门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
 | 整改 | 当前状态 |
 |---|---|

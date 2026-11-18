@@ -355,7 +355,7 @@ static ud_status store(ud_buffer_manager *manager, const ud_batch *batch, int ex
             ud_memory_domain_enter(manager->working, &scope);
             manager->metrics.wire_encodes++;
             uint64_t cpu = ud_thread_cpu_ns();
-            status = ud_batch_serialize(batch, &wire, &length);
+            status = ud_batch_serialize_spill(batch, &wire, &length);
             manager->metrics.encode_cpu_ns += ud_thread_cpu_ns() - cpu;
             if (!status)
                 manager->metrics.encoded_bytes += length;
@@ -426,13 +426,51 @@ ud_status ud_buffer_store_exchange(ud_buffer_manager *manager, const ud_batch *b
                                     ud_buffer_block **out) {
     return store(manager, batch, 1, out);
 }
-ud_status ud_buffer_read(ud_buffer_block *block, ud_buffer_view **out) {
+static ud_status read_spill(ud_buffer_block *block, ud_memory_domain *domain, ud_batch **out) {
+    ud_buffer_manager *manager = block->manager;
+    ud_memory_scope scope;
+    ud_memory_domain_enter(manager->working, &scope);
+    ud_status status = ud_path_no_symlinks(manager->ctx, block->path);
+    ud_bytes wire = {.ctx = manager->ctx, .limit = (size_t)block->wire_bytes};
+    if (!status) {
+        uint64_t started = ud_now_ms();
+        status = ud_read_file(manager->ctx, block->path, &wire);
+        ud_mutex_lock(&manager->mutex);
+        manager->metrics.read_ms += ud_now_ms() - started;
+        if (!status)
+            manager->metrics.read_bytes += wire.size;
+        ud_mutex_unlock(&manager->mutex);
+    }
+    ud_memory_domain_leave(&scope);
+    if (!status) {
+        uint8_t digest[32];
+        ud_hash(wire.data, wire.size, digest);
+        if (wire.size != block->wire_bytes || memcmp(digest, block->digest, sizeof(digest)))
+            status = UD_CORRUPT;
+    }
+    if (!status) {
+        ud_memory_domain_enter(domain, &scope);
+        uint64_t cpu = ud_thread_cpu_ns();
+        status = ud_batch_deserialize_spill(manager->ctx, wire.data, wire.size, out);
+        ud_memory_domain_leave(&scope);
+        ud_mutex_lock(&manager->mutex);
+        manager->metrics.wire_decodes++;
+        manager->metrics.decode_cpu_ns += ud_thread_cpu_ns() - cpu;
+        ud_mutex_unlock(&manager->mutex);
+    }
+    ud_bytes_clear(&wire);
+    return status;
+}
+ud_status ud_buffer_read_in_domain(ud_buffer_block *block, ud_memory_domain *domain,
+                                   ud_buffer_view **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
     if (!block)
         return UD_INVALID;
     ud_buffer_manager *manager = block->manager;
+    if (!domain)
+        domain = manager->working;
     ud_mutex_lock(&manager->mutex);
     if (block->closing || block->readers == UINT32_MAX || manager->metrics.views == UINT32_MAX) {
         ud_mutex_unlock(&manager->mutex);
@@ -443,50 +481,20 @@ ud_status ud_buffer_read(ud_buffer_block *block, ud_buffer_view **out) {
     ud_mutex_unlock(&manager->mutex);
     ud_status status = check(manager);
     ud_buffer_view *view = NULL;
-    ud_memory_scope scope;
-    ud_memory_domain_enter(manager->working, &scope);
     if (!status) {
+        ud_memory_scope scope;
+        ud_memory_domain_enter(domain, &scope);
         view = ud_alloc(manager->ctx, sizeof(*view));
+        ud_memory_domain_leave(&scope);
         if (!view)
             status = UD_RESOURCE;
     }
     if (!status) {
         view->block = block;
-        if (block->batch)
-            view->batch = block->batch;
-        else {
-            status = ud_path_no_symlinks(manager->ctx, block->path);
-            ud_bytes wire = {.ctx = manager->ctx, .limit = (size_t)block->wire_bytes};
-            if (!status) {
-                uint64_t started = ud_now_ms();
-                status = ud_read_file(manager->ctx, block->path, &wire);
-                ud_mutex_lock(&manager->mutex);
-                manager->metrics.read_ms += ud_now_ms() - started;
-                if (!status)
-                    manager->metrics.read_bytes += wire.size;
-                ud_mutex_unlock(&manager->mutex);
-            }
-            uint8_t digest[32];
-            if (!status) {
-                ud_hash(wire.data, wire.size, digest);
-                if (wire.size != block->wire_bytes || memcmp(digest, block->digest, 32))
-                    status = UD_CORRUPT;
-            }
-            if (!status) {
-                uint64_t cpu = ud_thread_cpu_ns();
-                status = ud_batch_deserialize(manager->ctx, wire.data, wire.size, &view->owned);
-                ud_mutex_lock(&manager->mutex);
-                manager->metrics.wire_decodes++;
-                manager->metrics.decode_cpu_ns += ud_thread_cpu_ns() - cpu;
-                ud_mutex_unlock(&manager->mutex);
-            }
-            if (!status)
-                status = ud_batch_seal(view->owned);
-            ud_bytes_clear(&wire);
-            view->batch = view->owned;
-        }
+        if (!block->batch)
+            status = read_spill(block, domain, &view->owned);
+        view->batch = block->batch ? block->batch : view->owned;
     }
-    ud_memory_domain_leave(&scope);
     if (status) {
         if (view) {
             ud_batch_destroy(view->owned);
@@ -500,6 +508,9 @@ ud_status ud_buffer_read(ud_buffer_block *block, ud_buffer_view **out) {
     }
     *out = view;
     return UD_OK;
+}
+ud_status ud_buffer_read(ud_buffer_block *block, ud_buffer_view **out) {
+    return ud_buffer_read_in_domain(block, NULL, out);
 }
 const ud_batch *ud_buffer_view_batch(const ud_buffer_view *view) {
     return view ? view->batch : NULL;

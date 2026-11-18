@@ -12,6 +12,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from product_version import PROTOCOL_VERSION
 
 dotnet, management, worker = sys.argv[1:4]
 
@@ -75,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
             status, result = request(name, '/auth/login', 'POST', {'subject': name, 'password': 'password-for-' + name})
             assert status == 200, (status, result)
             clients[name] = (clients[name][0], result['csrf'])
-        package = {'version': 12, 'id': 'protected-package', 'parameters': {'password': {'type': 'utf8'}},
+        package = {'version': PROTOCOL_VERSION, 'id': 'protected-package', 'parameters': {'password': {'type': 'utf8'}},
             'variables': {'counter': {'type': 'int64', 'default': 0}},
             'controlFlow': {'tasks': [{'id': 'set', 'kind': 'set', 'config': {'name': 'counter', 'value': {'literal': 1, 'type': 'int64'}}}], 'constraints': []}, 'dataFlows': []}
         assert request('reader-a', '/packages/protected-package/versions/1', 'PUT', package)[0] == 403
@@ -116,6 +117,9 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
             return frames
         frames=feed();assert frames and frames[-1][1]['terminal'],frames
         assert frames[-1][1]['source']=='native-catalog' and frames[-1][1]['run']['executionId']==state['executionId']
+        public_run=frames[-1][1]['run']
+        assert public_run.keys()==state.keys(), (public_run.keys(),state.keys())
+        assert not {'subjectStamp','controlReference','parametersReference','journalTicket'}.intersection(public_run)
         resumed=feed(frames[-1][0]);assert resumed[-1][1]['events']==[] and not resumed[-1][1]['gap'],resumed
         reset=feed('999999999999999.999999999999999.999999999999999');assert reset[0][1]['gap'],reset
         assert request('admin-b', '/executions/' + ticket)[0] == 404
@@ -133,7 +137,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         assert status == 200, (status, imported)
         target = resource / 'a' / 'never-written.csv'
         target.write_text('untouched\n')
-        draft_package = {'version': 12, 'id': 'designer-draft', 'connections': [
+        draft_package = {'version': PROTOCOL_VERSION, 'id': 'designer-draft', 'connections': [
             dict(id='input', driver='file', resource=imported['resource']), dict(id='output', driver='file', resource=str(target))],
             'controlFlow': {'tasks': [dict(id='run',kind='dataFlow',config=dict(pipeline='main'))], 'constraints': []}, 'dataFlows': []}
         inspect = dict(package=draft_package,connection='input',format='csv',options=dict(header=True))

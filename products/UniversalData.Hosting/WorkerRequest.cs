@@ -7,4 +7,4 @@ public sealed record WorkerRequest(int Version, string Ticket, string Mode, Host
     string Package = "", string ParametersReference = "", string ExecutionId = "", bool Resume = false,
     ulong Revision = 0, ulong EventSequence = 0, JsonElement? Debug = null, JsonElement? Payload = null,
     string ControlReference = "", bool Isolated = false, JsonElement? BindingSnapshot = null, string? DeploymentId = null, ulong DeploymentRevision = 0,
-    int ContractRevision = ProductInfo.WorkerRevision);
+    int ContractRevision = ProductInfo.WorkerRevision, WorkerBudget? Budget = null, WorkerShard? Shard = null, bool BrokerRestore = false, string? JournalTicket = null);

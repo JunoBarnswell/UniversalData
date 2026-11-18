@@ -50,7 +50,9 @@ struct ud_activation {
     uint32_t depth;
     atomic_int cancelled;
     int parallel;
+    uint32_t consumer_lane, consumer_lane_count;
     struct ud_activation *scope_authority;
+    struct ud_kafka_checkpoint *kafka_checkpoint;
     int stepping;
     ud_status pipeline_result;
     struct ud_transaction *transaction;

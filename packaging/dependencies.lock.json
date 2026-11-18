@@ -23,5 +23,11 @@
   "node": {
     "minimumMajor": 22,
     "dependencyLock": "products/designer/package-lock.json"
+  },
+  "messaging": {
+    "qpid-proton": { "version": "0.40.0", "license": "Apache-2.0" },
+    "rabbitmq-c": { "version": "0.18.1", "features": ["TLS"], "license": "MIT" },
+    "librdkafka": { "version": "2.12.1", "features": ["TLS", "SASL"], "license": "BSD-2-Clause" },
+    "rocketmq-apis": { "version": "2.0.3", "protoRoot": "apache/rocketmq/v2", "license": "Apache-2.0" }
   }
 }

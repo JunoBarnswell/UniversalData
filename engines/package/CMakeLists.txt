@@ -8,6 +8,12 @@ endif()
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/debug.c ${CMAKE_CURRENT_SOURCE_DIR}/preview.c ${CMAKE_CURRENT_SOURCE_DIR}/file_inspection.c ${CMAKE_CURRENT_SOURCE_DIR}/definition.c ${CMAKE_CURRENT_SOURCE_DIR}/file_generation.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/network.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/wmi.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/sqlserver.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/column_file.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/avro.c ${PROJECT_SOURCE_DIR}/connectors/avro.c)
+list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_diagnostics.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_frontier.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_kafka.c ${CMAKE_CURRENT_SOURCE_DIR}/kafka_checkpoint.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_parallel.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_lanes.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/mq_payload.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/mq_source.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/mq_destination.c ${PROJECT_SOURCE_DIR}/connectors/schema_registry.c)
 if(UD_WITH_XML)
   list(APPEND src ${PROJECT_SOURCE_DIR}/connectors/xml.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/xml.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/xml.c)
 endif()

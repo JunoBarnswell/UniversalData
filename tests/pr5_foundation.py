@@ -1,13 +1,14 @@
 """Bound instance ports, six joins, typed SQL and durable tree concurrency."""
 from contextlib import closing
 import copy,json,pathlib,sqlite3,subprocess,sys,tempfile
+from product_version import PROTOCOL_VERSION
 runner,plugin=sys.argv[1:3]
 def node(id,kind,**config):return dict(id=id,component=kind,config=config)
 def edge(a,b,output=0,input=0):return dict(**{'from':a,'to':b,'output':output,'input':input})
 def run(root,p,expected=0,workers=8):
- (root/'spill').mkdir(exist_ok=True);(root/'state').mkdir(exist_ok=True);p.update(version=12,id='pr5-foundation');p['policy']=dict(maxConcurrency=8,buffers=dict(connection='spill',residentBytes=8192,workingBytes=8388608,spillBytes=200000000,maxBlocks=20000));p['connections'].append(dict(id='spill',driver='file',resource=str(root/'spill')))
+ (root/'spill').mkdir(exist_ok=True);(root/'state').mkdir(exist_ok=True);p.update(version=PROTOCOL_VERSION,id='pr5-foundation');p['policy']=dict(maxConcurrency=8,buffers=dict(connection='spill',residentBytes=8192,workingBytes=8388608,spillBytes=200000000,maxBlocks=20000));p['connections'].append(dict(id='spill',driver='file',resource=str(root/'spill')))
  p['controlFlow']=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='flow'))],constraints=[]);(root/'package.json').write_text(json.dumps(p));r=subprocess.run([runner,str(root/'package.json'),str(root/'state'),'0',str(workers),'0','1','','67108864'],capture_output=True,text=True,timeout=180);assert r.returncode==0,(r.stdout,r.stderr);facts=json.loads(r.stdout);assert facts['result']==expected,(facts,r.stderr);return facts
-def schema(names):return dict(version=12,fields=[dict(name=name,type='int64',nullable=True) for name in names])
+def schema(names):return dict(version=PROTOCOL_VERSION,fields=[dict(name=name,type='int64',nullable=True) for name in names])
 with tempfile.TemporaryDirectory(prefix='ud-pr5-foundation-') as folder:
  root=pathlib.Path(folder)
  for width in (3,8,32):
@@ -21,6 +22,6 @@ with tempfile.TemporaryDirectory(prefix='ud-pr5-foundation-') as folder:
   actual=[tuple(row.values()) for row in map(json.loads,(d/'out.ndjson').read_text().splitlines())];assert sorted(map(repr,actual))==sorted(map(repr,expected)),(kind,actual,expected);print(kind+' composite join passed',flush=True)
  d=root/'prepared';d.mkdir();db=d/'data.db'
  with closing(sqlite3.connect(db)) as c, c:c.execute('CREATE TABLE src(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)');c.executemany('INSERT INTO src VALUES(?,?)',[(i,'中文'+str(i)) for i in range(100)]);c.execute('CREATE TABLE target(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)')
- p=dict(connections=[dict(id='db',driver=plugin,resource=str(db),credentialReference='fixture')],dataFlows=[dict(id='flow',components=[node('source','sql.source',connection='db',table='src',sql='SELECT id,label FROM src WHERE id>?1 AND id<?2',schema=dict(version=12,fields=[dict(name='id',type='int64',nullable=False,keyOrder=1),dict(name='label',type='utf8',nullable=False)]),parameters=dict(schema=dict(version=12,fields=[dict(name='lower',type='int64',nullable=False),dict(name='upper',type='int64',nullable=False)]),rows=[dict(lower=20,upper=30)])),node('target','sql.destination',connection='db',table='target',mode='upsert',keys=[0],provisionReceipts=True)],paths=[edge('source','target')])]);run(d,p)
+ p=dict(connections=[dict(id='db',driver=plugin,resource=str(db),credentialReference='fixture')],dataFlows=[dict(id='flow',components=[node('source','sql.source',connection='db',table='src',sql='SELECT id,label FROM src WHERE id>?1 AND id<?2',schema=dict(version=PROTOCOL_VERSION,fields=[dict(name='id',type='int64',nullable=False,keyOrder=1),dict(name='label',type='utf8',nullable=False)]),parameters=dict(schema=dict(version=PROTOCOL_VERSION,fields=[dict(name='lower',type='int64',nullable=False),dict(name='upper',type='int64',nullable=False)]),rows=[dict(lower=20,upper=30)])),node('target','sql.destination',connection='db',table='target',mode='upsert',keys=[0],provisionReceipts=True)],paths=[edge('source','target')])]);run(d,p)
  with closing(sqlite3.connect(db)) as c, c:assert c.execute('SELECT id FROM target ORDER BY id').fetchall()==[(i,) for i in range(21,30)]
  print('Prepared typed SQL and receipt passed',flush=True)

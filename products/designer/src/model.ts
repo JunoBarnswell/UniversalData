@@ -46,6 +46,21 @@ export interface FlowPath {
   to: string;
   input: number | string;
 }
+export interface DataFlowParallelism {
+  workerProcesses?: number;
+  consumerLanesPerWorker?: number;
+  threadsPerWorker?: number;
+}
+export type DataFlowDelivery =
+  | { mode: "atLeastOnce" }
+  | { mode: "kafkaTransaction"; checkpointTopic: string; checkpointPartition?: number };
+export interface DataFlow {
+  id: string;
+  components: FlowComponent[];
+  paths: FlowPath[];
+  parallelism?: DataFlowParallelism;
+  delivery?: DataFlowDelivery;
+}
 export interface TaskDefinition {
   id: string;
   kind: string;
@@ -75,7 +90,7 @@ export interface PackageDocument {
   id: string;
   connections?: Connection[];
   controlFlow: ControlGraph;
-  dataFlows: { id: string; components: FlowComponent[]; paths: FlowPath[] }[];
+  dataFlows: DataFlow[];
   layout?: {
     label?: string;
     version: number;
@@ -311,6 +326,47 @@ export interface ConnectorDescriptor {
   version: string;
   result: number;
   capabilities: number;
+}
+export const MESSAGE_SUBSCRIBE = 2 ** 26;
+export const MESSAGE_PUBLISH = 2 ** 27;
+export const MESSAGE_TRANSACTION = 2 ** 28;
+export interface ConnectionTestResult {
+  capabilities: number;
+  elapsedMs: number;
+}
+export function nativeConnector(
+  connection: Connection,
+  descriptors: ConnectorDescriptor[],
+) {
+  return descriptors.find(
+    (descriptor) =>
+      descriptor.path === connection.driver || descriptor.id === connection.driver,
+  );
+}
+export function messagePreviewBlock(flow?: DataFlow, selected?: string) {
+  if (!flow || !selected) return undefined;
+  const upstream = new Map<string, string[]>();
+  for (const path of flow.paths) {
+    const incoming = upstream.get(path.to) ?? [];
+    incoming.push(path.from);
+    upstream.set(path.to, incoming);
+  }
+  const sources = new Set(
+    flow.components.filter((node) => node.component === "mq.source").map((node) => node.id),
+  );
+  const queue = [selected];
+  const visited = new Set(queue);
+  for (const node of queue) {
+    if (sources.has(node))
+      return "此路径会订阅并读取消息。请在正式执行中确认消费与位点影响。";
+    for (const input of upstream.get(node) ?? []) {
+      if (!visited.has(input)) {
+        visited.add(input);
+        queue.push(input);
+      }
+    }
+  }
+  return undefined;
 }
 export interface FileInspection {
   schema: DataSchema;

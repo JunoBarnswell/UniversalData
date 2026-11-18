@@ -64,6 +64,9 @@ ud_status ud_batch_join_row_info(ud_batch *, uint32_t, const ud_batch *, uint32_
 ud_status ud_batch_clone(const ud_batch *, ud_batch **);
 ud_status ud_encode_batch(ud_bytes *, const ud_batch *);
 ud_status ud_decode_batch(ud_bytes *, ud_batch **);
+/* Temporary Buffer Manager pages use a private Wire layout. */
+ud_status ud_batch_serialize_spill(const ud_batch *, uint8_t **, uint64_t *);
+ud_status ud_batch_deserialize_spill(ud_context *, const uint8_t *, uint64_t, ud_batch **);
 ud_status ud_copy_value(ud_context *, const ud_value *, ud_value *, uint32_t depth);
 void ud_clear_value(ud_value *);
 ud_status ud_cast_value_base(ud_context *, const ud_field *, const ud_value *, const ud_field *,

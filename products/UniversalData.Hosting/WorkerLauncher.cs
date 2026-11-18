@@ -15,15 +15,28 @@ public static class WorkerLauncher
             ? current : Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
         bool isolated = request.Isolated;
         if (isolated && !OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Untrusted modules require an available OS sandbox; this host has none configured");
-        var start = new ProcessStartInfo(isolated ? "/usr/bin/systemd-run" : dotnet) { RedirectStandardInput = true, RedirectStandardOutput = true,
+        var budget = request.Budget;
+        if (budget is not null) WorkerProcessLimits.Validate(request, budget);
+        bool systemd = isolated || (budget is not null && OperatingSystem.IsLinux());
+        var start = new ProcessStartInfo(systemd ? "/usr/bin/systemd-run" : dotnet) { RedirectStandardInput = true, RedirectStandardOutput = true,
             RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+        if (systemd) {
+            if (isolated && !Path.IsPathFullyQualified(dotnet)) throw new InvalidOperationException("An absolute dotnet host is required for isolation");
+            if (!File.Exists("/usr/bin/systemd-run") || (isolated && !File.Exists("/usr/bin/bwrap")))
+                throw new PlatformNotSupportedException("Worker resource control requires systemd and untrusted modules also require bubblewrap");
+            foreach (string option in new[] { "--user", "--quiet", "--wait", "--pipe", "--collect", "--unit=ud-worker-" + request.Ticket,
+                "--property=RuntimeMaxSec=" + request.Policy.ExecutionTimeoutSeconds, "--property=KillMode=control-group" })
+                start.ArgumentList.Add(option);
+            if (budget is null) {
+                start.ArgumentList.Add("--property=MemoryMax=" + checked(request.Policy.MemoryLimit + 268435456UL));
+                start.ArgumentList.Add("--property=TasksMax=64");
+                start.ArgumentList.Add("--property=CPUQuota=100%");
+            } else WorkerProcessLimits.AddLinuxProperties(start, budget);
+            if (!isolated) start.ArgumentList.Add("--working-directory=" + Environment.CurrentDirectory);
+            start.ArgumentList.Add("--");
+        }
         if (isolated) {
-            if (!Path.IsPathFullyQualified(dotnet)) throw new InvalidOperationException("An absolute dotnet host is required for isolation");
-            if (!File.Exists("/usr/bin/systemd-run") || !File.Exists("/usr/bin/bwrap")) throw new PlatformNotSupportedException("Untrusted modules require systemd user resource control and bubblewrap");
-            // A transient service owns the cgroup before any script runs. No unenforced memory/CPU fallback.
-            foreach(string option in new[] { "--user", "--quiet", "--wait", "--pipe", "--collect", "--unit=ud-worker-" + request.Ticket, "--property=MemoryMax=" + checked(request.Policy.MemoryLimit + 268435456UL),
-                "--property=TasksMax=64", "--property=CPUQuota=100%", "--property=RuntimeMaxSec=" + request.Policy.ExecutionTimeoutSeconds,
-                "--property=KillMode=control-group", "--", "/usr/bin/bwrap" }) start.ArgumentList.Add(option);
+            start.ArgumentList.Add("/usr/bin/bwrap");
             foreach (string option in new[] { "--die-with-parent", "--new-session", "--unshare-all", "--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "LANG", "C.UTF-8", "--cap-drop", "ALL", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp" }) start.ArgumentList.Add(option);
             foreach(string variable in new[] { "DOTNET_ROOT", "DOTNET_ROOT_X64", "LD_LIBRARY_PATH" })
                 if (Environment.GetEnvironmentVariable(variable) is { } value) { start.ArgumentList.Add("--setenv"); start.ArgumentList.Add(variable); start.ArgumentList.Add(value); }
@@ -50,21 +63,31 @@ public static class WorkerLauncher
             foreach (string path in request.Policy.CredentialFiles.Values) Mount(path,false);
             var vault = new ParameterVault(request.Policy);
             foreach (string reference in new[] { request.ParametersReference,request.ControlReference }.Where(value => value.Length != 0)) Mount(vault.DirectoryFor(reference),false);
-            var directory = request.Policy.ExecutionDirectory(request.Ticket); Directory.CreateDirectory(directory); Mount(directory,true);
+            var directory = request.Policy.ExecutionDirectory(request.JournalTicket ?? request.Ticket); Directory.CreateDirectory(directory); Mount(directory,true);
             var controls = request.Policy.ControlDirectory(request.Ticket); Directory.CreateDirectory(controls);
             File.SetUnixFileMode(controls,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); Mount(controls,true);
             var assemblies = Path.Combine(request.Policy.DataDirectory,"assemblies");
             Directory.CreateDirectory(assemblies); Mount(assemblies,request.Mode == "compile");
             start.ArgumentList.Add("--chdir"); start.ArgumentList.Add(directory); start.ArgumentList.Add("--"); start.ArgumentList.Add(dotnet);
         }
-        start.ArgumentList.Add(workerPath);
         // Do not inherit unrelated application/cloud credentials into an extension process.
         var allowed = new[] { "PATH", "DOTNET_ROOT", "DOTNET_ROOT_X64", "LD_LIBRARY_PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS" };
         foreach (string key in start.Environment.Keys.ToArray()) if (!allowed.Contains(key,StringComparer.OrdinalIgnoreCase)) start.Environment.Remove(key);
+        if (systemd && !isolated) {
+            start.ArgumentList.Add("/usr/bin/env");
+            start.ArgumentList.Add("-i");
+            foreach (var variable in start.Environment)
+                if (variable.Value is { } value)
+                    start.ArgumentList.Add(variable.Key + "=" + value.Replace("$", "$$", StringComparison.Ordinal));
+            start.ArgumentList.Add(dotnet.Replace("$", "$$", StringComparison.Ordinal));
+        }
+        start.ArgumentList.Add(systemd ? workerPath.Replace("$", "$$", StringComparison.Ordinal) : workerPath);
+        if (budget is not null && OperatingSystem.IsWindows())
+            return WorkerProcessLimits.StartWindows(start, budget);
         return Process.Start(start) ?? throw new InvalidOperationException("Worker failed to start");
     }
     public static async Task Terminate(Process process,string ticket,bool isolated) {
-        if (isolated && OperatingSystem.IsLinux()) {
+        if (OperatingSystem.IsLinux() && (isolated || process.StartInfo.FileName == "/usr/bin/systemd-run")) {
             if (!Guid.TryParseExact(ticket,"N",out _)) throw new ArgumentException("Invalid Worker ticket");
             var command = new ProcessStartInfo("/usr/bin/systemctl") { UseShellExecute = false,RedirectStandardOutput = true,RedirectStandardError = true };
             foreach(string argument in new[] { "--user", "kill", "--signal=KILL", "--kill-whom=all", "ud-worker-" + ticket + ".service" }) command.ArgumentList.Add(argument);

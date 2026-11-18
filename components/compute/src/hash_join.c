@@ -1,8 +1,9 @@
 #include "relational_internal.h"
 #include "state.h"
+#include "../../execution/state.h"
 typedef struct hash_row {
-    uint64_t hash, position;
-    uint32_t next;
+    uint64_t hash;
+    uint32_t page, row, next;
     uint8_t matched;
 } hash_row;
 struct ud_hash_join {
@@ -10,6 +11,9 @@ struct ud_hash_join {
     uint32_t count, partition, bucket_count, node_count, *buckets, candidate;
     hash_row *nodes;
     ud_state_reader left_reader, right_reader;
+    ud_memory_domain *right_domain;
+    ud_buffer_view **right_pages;
+    uint32_t right_pages_retained;
     ud_operator *fallback;
     uint64_t left_position, right_position, left_hash, budget;
     int initialized, have_left, left_matched, left_null, phase;
@@ -38,6 +42,13 @@ ud_status ud_hash_join_create(ud_relational *r) {
         UD_TRY(ud_buffer_manager_limits(r->options.buffers, &limits));
         if (h->budget > limits.working_limit / 2)
             h->budget = limits.working_limit / 2;
+        if (limits.working_limit / 4) {
+            ud_status status = ud_buffer_state_domain_create(r->options.buffers,
+                                                            limits.working_limit / 4,
+                                                            &h->right_domain);
+            if (status && status != UD_RESOURCE)
+                return status;
+        }
     }
     return UD_OK;
 }
@@ -81,15 +92,29 @@ ud_status ud_hash_join_end(ud_relational *r, uint32_t p) {
     ud_hash_join *h = r->hash_join;
     if (p > 1 || r->in[p].ended)
         return UD_INVALID;
-    for (uint32_t i = 0; i < h->count; i++)
-        if (h->partitions[p][i])
-            UD_TRY(ud_state_seal(h->partitions[p][i]));
+    for (uint32_t i = 0; i < h->count; i++) {
+        ud_state *state = h->partitions[p][i];
+        if (state) {
+            UD_TRY(ud_state_seal(state));
+            r->hash_write_bytes[p] += state->written_bytes;
+        }
+    }
     r->in[p].ended = 1;
     return UD_OK;
 }
-static void index_clear(ud_hash_join *h) {
+static void right_pages_release(ud_hash_join *h) {
+    for (uint32_t page = 0; page < h->right_pages_retained; page++)
+        ud_buffer_view_release(h->right_pages[page]);
+    ud_free(h->right_pages);
+    h->right_pages = NULL;
+    h->right_pages_retained = 0;
+}
+static void index_clear(ud_relational *r) {
+    ud_hash_join *h = r->hash_join;
+    r->hash_left_read_bytes += h->left_reader.read_bytes;
     ud_state_reader_clear(&h->left_reader);
     ud_state_reader_clear(&h->right_reader);
+    right_pages_release(h);
     ud_free(h->nodes);
     h->nodes = NULL;
     h->buckets = NULL;
@@ -99,8 +124,9 @@ static void index_clear(ud_hash_join *h) {
     h->left_position = h->right_position = 0;
     h->initialized = h->have_left = h->left_matched = h->phase = 0;
 }
-static void partition_clear(ud_hash_join *h) {
-    index_clear(h);
+static void partition_clear(ud_relational *r) {
+    ud_hash_join *h = r->hash_join;
+    index_clear(r);
     for (uint32_t p = 0; p < 2; p++) {
         ud_state_destroy(h->partitions[p][h->partition]);
         h->partitions[p][h->partition] = NULL;
@@ -149,8 +175,7 @@ static ud_status merge_fallback(ud_relational *r) {
         ud_state_reader reader = {0};
         for (uint32_t i = 0; state && !s && i < state->count; i++) {
             const ud_batch *b;
-            uint32_t row;
-            s = ud_state_row(&reader, state, state->pages[i].first, &b, &row);
+            s = ud_state_read_page(&reader, state, i, &b);
             if (!s)
                 s = ud_operator_push(h->fallback, p, b);
         }
@@ -166,6 +191,31 @@ static ud_status merge_fallback(ud_relational *r) {
     if (!s)
         r->hash_fallbacks++;
     return s;
+}
+static ud_status read_right(ud_hash_join *h, const ud_state *right, uint32_t page,
+                           const ud_batch **batch, uint64_t *read_bytes) {
+    if (h->right_pages) {
+        if (page == h->right_pages_retained) {
+            ud_status status = ud_buffer_read_in_domain(right->pages[page].block, h->right_domain,
+                                                        h->right_pages + page);
+            if (status == UD_RESOURCE)
+                right_pages_release(h);
+            else if (status)
+                return status;
+            else {
+                *read_bytes += ud_buffer_block_spill_bytes(right->pages[page].block);
+                h->right_pages_retained++;
+            }
+        }
+        if (h->right_pages) {
+            *batch = ud_buffer_view_batch(h->right_pages[page]);
+            return UD_OK;
+        }
+    }
+    uint64_t previous = h->right_reader.read_bytes;
+    UD_TRY(ud_state_read_page(&h->right_reader, right, page, batch));
+    *read_bytes += h->right_reader.read_bytes - previous;
+    return UD_OK;
 }
 static ud_status index_build(ud_relational *r) {
     ud_hash_join *h = r->hash_join;
@@ -192,19 +242,26 @@ static ud_status index_build(ud_relational *r) {
     h->bucket_count = (uint32_t)bucket_count;
     h->node_count = (uint32_t)n;
     memset(h->buckets, 255, (size_t)bucket_count * sizeof(*h->buckets));
-    for (uint32_t i = 0; i < h->node_count; i++) {
-        UD_TRY(ud_rel_control(r));
-        const ud_batch *b;
-        uint32_t row;
-        UD_TRY(ud_state_row(&h->right_reader, right, i, &b, &row));
-        uint64_t hash;
-        int null;
-        UD_TRY(key_hash(r, 1, b, row, &hash, &null));
-        uint32_t bucket = (uint32_t)(hash & (h->bucket_count - 1));
-        h->nodes[i] = (hash_row){hash, i, h->buckets[bucket], 0};
-        h->buckets[bucket] = i;
+    if (h->right_domain && right && right->count > 1) {
+        ud_memory_scope scope;
+        ud_memory_domain_enter(h->right_domain, &scope);
+        h->right_pages = ud_alloc(r->ctx, (size_t)right->count * sizeof(*h->right_pages));
+        ud_memory_domain_leave(&scope);
     }
-    ud_state_reader_clear(&h->right_reader);
+    uint32_t index_row = 0;
+    for (uint32_t page = 0; right && page < right->count; page++) {
+        const ud_batch *b;
+        UD_TRY(read_right(h, right, page, &b, &r->hash_right_build_bytes));
+        for (uint32_t row = 0; row < right->pages[page].rows; row++, index_row++) {
+            UD_TRY(ud_rel_control(r));
+            uint64_t hash;
+            int null;
+            UD_TRY(key_hash(r, 1, b, row, &hash, &null));
+            uint32_t bucket = (uint32_t)(hash & (h->bucket_count - 1));
+            h->nodes[index_row] = (hash_row){hash, page, row, h->buckets[bucket], 0};
+            h->buckets[bucket] = index_row;
+        }
+    }
     return UD_OK;
 }
 ud_status ud_hash_join_pull(ud_relational *r, ud_batch **out) {
@@ -231,7 +288,7 @@ ud_status ud_hash_join_pull(ud_relational *r, ud_batch **out) {
             s = ud_operator_pull(h->fallback, &next, NULL);
             if (s == UD_END) {
                 s = UD_OK;
-                partition_clear(h);
+                partition_clear(r);
                 h->partition++;
                 continue;
             }
@@ -252,10 +309,9 @@ ud_status ud_hash_join_pull(ud_relational *r, ud_batch **out) {
                     if (node->matched)
                         continue;
                     const ud_batch *b;
-                    uint32_t row;
-                    s = ud_state_row(&h->right_reader, right, node->position, &b, &row);
+                    s = read_right(h, right, node->page, &b, &r->hash_right_tail_bytes);
                     if (!s)
-                        s = ud_rel_join_row(r, *out, NULL, 0, b, row);
+                        s = ud_rel_join_row(r, *out, NULL, 0, b, node->row);
                     if (s)
                         break;
                 }
@@ -264,13 +320,17 @@ ud_status ud_hash_join_pull(ud_relational *r, ud_batch **out) {
                 if (h->right_position < h->node_count)
                     continue;
             }
-            partition_clear(h);
+            partition_clear(r);
             h->partition++;
             continue;
         }
         const ud_batch *a;
         uint32_t ar;
         s = ud_state_row(&h->left_reader, left, h->left_position, &a, &ar);
+        if (s == UD_RESOURCE && h->right_pages) {
+            right_pages_release(h);
+            s = ud_state_row(&h->left_reader, left, h->left_position, &a, &ar);
+        }
         if (s)
             break;
         if (!h->have_left) {
@@ -289,12 +349,11 @@ ud_status ud_hash_join_pull(ud_relational *r, ud_batch **out) {
             if (node->hash != h->left_hash)
                 continue;
             const ud_batch *b;
-            uint32_t br;
-            s = ud_state_row(&h->right_reader, right, node->position, &b, &br);
+            s = read_right(h, right, node->page, &b, &r->hash_right_probe_bytes);
             if (s)
                 break;
             int null = 0;
-            if (ud_rel_compare_rows(r, a, ar, b, br, &null) || null)
+            if (ud_rel_compare_rows(r, a, ar, b, node->row, &null) || null)
                 continue;
             node->matched = 1;
             h->left_matched = 1;
@@ -304,7 +363,7 @@ ud_status ud_hash_join_pull(ud_relational *r, ud_batch **out) {
             } else if (r->join_type == 5)
                 h->candidate = UINT32_MAX;
             else
-                s = ud_rel_join_row(r, *out, a, ar, b, br);
+                s = ud_rel_join_row(r, *out, a, ar, b, node->row);
             continue;
         }
         if (!h->left_matched) {
@@ -327,10 +386,12 @@ void ud_hash_join_destroy(ud_relational *r) {
     ud_hash_join *h = r->hash_join;
     if (!h)
         return;
-    index_clear(h);
+    index_clear(r);
     for (uint32_t p = 0; p < 2; p++)
         for (uint32_t i = 0; i < h->count; i++)
             ud_state_destroy(h->partitions[p][i]);
+    if (h->right_domain)
+        ud_memory_domain_destroy(h->right_domain);
     ud_free(h);
     r->hash_join = NULL;
 }

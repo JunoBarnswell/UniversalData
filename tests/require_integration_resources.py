@@ -4,6 +4,8 @@ import pathlib
 import sys
 
 required = ["UD_TEST_" + driver + "_CONFIG" for driver in ("POSTGRESQL", "MYSQL", "MARIADB", "ODBC", "ORACLE_OCI")]
+required += ["UD_TEST_" + broker + "_CONFIG" for broker in (
+    "ACTIVEMQ_CLASSIC", "ACTIVEMQ_ARTEMIS", "RABBITMQ", "ROCKETMQ", "KAFKA", "KAFKA_REGISTRY", "KAFKA_TAKEOVER")]
 required += ["UD_TEST_" + feature + "_CONFIG" for feature in ("FTP", "SFTP", "SMTP", "S3", "AZURE_BLOB", "ADLS", "SSAS")]
 required += ["UD_SSIS_GOLDEN_MANIFEST", "UD_SSIS_NATIVE_OBSERVATIONS"]
 if sys.platform == "win32":

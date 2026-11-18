@@ -1,4 +1,5 @@
 #include "ud/avro.h"
+#include "avro_record.h"
 #include "../components/data/internal.h"
 #include <zlib.h>
 /* OCF framing and physical value encoding are format concerns. Validation,
@@ -891,29 +892,33 @@ static ud_status decode_value(avro_file *file, ud_bytes *bytes, const ud_field *
     }
     return UD_OK;
 }
+static void types_clear(avro_type *types, uint32_t columns) {
+    if (types)
+        for (uint32_t at = 0; at < columns; at++)
+            type_clear(types + at);
+    ud_free(types);
+}
+
 static void close_file(avro_file *file) {
     if (file->file)
         fclose(file->file);
-    if (file->types)
-        for (uint32_t at = 0; at < ud_batch_columns(file->schema); at++)
-            type_clear(file->types + at);
-    ud_free(file->types);
+    types_clear(file->types, ud_batch_columns(file->schema));
     while (file->defaults) { avro_default *next = file->defaults->next; type_clear(&file->defaults->type); ud_bytes_clear(&file->defaults->wire); ud_free(file->defaults); file->defaults = next; }
     ud_json_destroy(file->writer_schema); ud_json_destroy(file->reader_schema); ud_batch_destroy(file->projection);
     ud_batch_destroy(file->schema);
     ud_bytes_clear(&file->block);
 }
-static ud_status schema_bind(avro_file *file, const ud_json *json) {
+static ud_status schema_bind(avro_file *file, const ud_json *json, const ud_batch *schema) {
     const ud_json *fields = member(json, "fields");
     if (!named(member(json, "type"), "record") || ud_json_kind(fields) != UD_JSON_ARRAY ||
-        ud_json_size(fields) != ud_batch_columns(file->schema))
+        ud_json_size(fields) != ud_batch_columns(schema))
         return UD_INCOMPATIBLE;
     file->types = ud_alloc(file->memory, ud_json_size(fields) * sizeof(*file->types));
     if (!file->types)
         return UD_RESOURCE;
     for (uint32_t at = 0; at < ud_json_size(fields); at++) {
         ud_field field;
-        UD_TRY(ud_batch_field(file->schema, at, &field));
+        UD_TRY(ud_batch_field(schema, at, &field));
         const char *name;
         uint32_t size;
         UD_TRY(ud_json_text(member(ud_json_at(fields, at), "name"), &name, &size));
@@ -1055,6 +1060,107 @@ static void infer_clear(ud_field *field) {
 }
 #include "avro_resolution.h"
 
+static ud_status record_schema(ud_context *memory, ud_string schema, ud_json **out) {
+    ud_json *document = NULL;
+    ud_status status = ud_json_parse(memory, schema.data, schema.length, &document, NULL);
+    if (!status)
+        status = resolve_names(memory, document, out);
+    ud_json_destroy(document);
+    return status;
+}
+
+ud_status ud_avro_record_decode(ud_context *memory, ud_string writer_schema, ud_string reader_schema,
+                                ud_string bytes, ud_batch *target) {
+    if (!memory || !writer_schema.data || !writer_schema.length || !bytes.data || !target ||
+        (reader_schema.length && !reader_schema.data))
+        return UD_INVALID;
+    avro_file file = {.memory = memory};
+    ud_bytes input = {.data = (uint8_t *)bytes.data, .size = bytes.length};
+    ud_status status = check(&file);
+    if (!status)
+        status = record_schema(memory, writer_schema, &file.writer_schema);
+    ud_field writer = {0};
+    if (!status)
+        status = infer_field(memory, file.writer_schema, &writer, 0);
+    if (!status && writer.type != UD_STRUCT)
+        status = UD_SCHEMA;
+    if (!status)
+        status = ud_batch_create(memory, writer.children, writer.child_count, 0, &file.schema);
+    infer_clear(&writer);
+    if (!status)
+        status = schema_bind(&file, file.writer_schema, file.schema);
+    if (!status)
+        status = bind_resolution(&file, file.writer_schema,
+                                 reader_schema.length ? reader_schema : writer_schema, target,
+                                 (ud_string){0});
+    uint32_t columns = file.schema ? file.schema->columns : 0;
+    ud_value *values = !status ? ud_alloc(memory, columns * sizeof(*values)) : NULL;
+    if (!status && !values)
+        status = UD_RESOURCE;
+    for (uint32_t column = 0; !status && column < columns; column++)
+        status = decode_value(&file, &input, &file.schema->column[column].field,
+                              file.types + column, values + column, 0);
+    if (!status && input.pos != input.size)
+        status = UD_CORRUPT;
+    ud_value resolved = {0};
+    if (!status) {
+        ud_field source = {.type = UD_STRUCT, .children = file.schema->schema->fields,
+                           .child_count = columns};
+        ud_field destination = {.type = UD_STRUCT, .children = target->schema->fields,
+                                .child_count = target->columns};
+        ud_value record = {.type = UD_STRUCT, .children = values, .child_count = columns};
+        status = resolve_value(&file, file.writer_schema, file.reader_schema, &source,
+                               &destination, &record, &resolved, 0);
+    }
+    if (!status)
+        status = ud_batch_append(target, resolved.children, target->columns);
+    value_release(&resolved);
+    if (values) {
+        for (uint32_t i = 0; i < columns; i++)
+            value_release(values + i);
+        ud_free(values);
+    }
+    close_file(&file);
+    return status;
+}
+
+ud_status ud_avro_record_encode(const ud_batch *batch, uint32_t row, ud_string writer_schema,
+                                ud_string *out) {
+    if (!out)
+        return UD_INVALID;
+    *out = (ud_string){0};
+    if (!batch || row >= batch->rows || !writer_schema.data || !writer_schema.length)
+        return UD_INVALID;
+    avro_file file = {.memory = batch->ctx};
+    ud_bytes record = {.ctx = file.memory, .limit = UINT32_MAX};
+    ud_status status = check(&file);
+    if (!status)
+        status = record_schema(file.memory, writer_schema, &file.writer_schema);
+    if (!status)
+        status = schema_bind(&file, file.writer_schema, batch);
+    for (uint32_t column = 0; !status && column < batch->columns; column++) {
+        ud_value value;
+        status = ud_batch_get(batch, row, column, &value);
+        if (!status)
+            status = encode_value(&record, &batch->column[column].field, file.types + column,
+                                  &value, 0);
+    }
+    if (!status && !record.data) {
+        /* A legal zero-byte record must remain distinct from a tombstone. */
+        record.data = ud_alloc(file.memory, 1);
+        if (!record.data)
+            status = UD_RESOURCE;
+    }
+    if (!status) {
+        *out = (ud_string){(const char *)record.data, (uint32_t)record.size};
+        record.data = NULL;
+    }
+    ud_bytes_clear(&record);
+    types_clear(file.types, batch->columns);
+    ud_json_destroy(file.writer_schema);
+    return status;
+}
+
 static ud_status header_read(avro_file *file, const ud_batch *expected, ud_string scope, ud_string reader_schema) {
     uint8_t magic[4];
     if (fread(magic, 1, 4, file->file) != 4 || memcmp(magic, "Obj\1", 4))
@@ -1150,7 +1256,7 @@ static ud_status header_read(avro_file *file, const ud_batch *expected, ud_strin
                                            &file->schema);
         infer_clear(&root);
     }
-    if (!status) status = schema_bind(file,schema);
+    if (!status) status = schema_bind(file,schema,file->schema);
     if (!status && reader_schema.length) status = bind_resolution(file,schema,reader_schema,expected,scope);
     if (!status && reader_schema.length) { file->writer_schema = schema; schema = NULL; }
     ud_batch_destroy(embedded);
@@ -1448,7 +1554,7 @@ ud_status ud_avro_writer_open_schema(ud_context *memory, const char *path, const
             ud_json_parse(memory, (const char *)avro.data, (uint32_t)avro.size, &document, NULL);
     if (!status) {
         ud_json *resolved = NULL; status = resolve_names(memory,document,&resolved);
-        if (!status) status = schema_bind(file,resolved);
+        if (!status) status = schema_bind(file,resolved,file->schema);
         ud_json_destroy(resolved);
     }
     if (!status)

@@ -1,10 +1,13 @@
+import { Button, Input, Select } from "./shared/design-system/Controls";
 import { useEffect, useState } from "react";
 import { Database, FileSpreadsheet, Plus, Trash2, X } from "lucide-react";
 import { CacheEditor } from "./CacheEditor";
 import type { Configuration } from "./model";
 import { api, post, encode } from "./api";
+import { MESSAGE_PUBLISH, MESSAGE_SUBSCRIBE, nativeConnector } from "./model";
 import type {
   Connection,
+  ConnectionTestResult,
   ConnectorDescriptor,
   PackageDocument,
   Resources,
@@ -22,26 +25,29 @@ export function ConnectionCenter({
 }) {
   const [selected, select] = useState(document.connections?.[0]?.id ?? ""),
     [resources, setResources] = useState<Resources>(),
-    [connectors, setConnectors] = useState<ConnectorDescriptor[]>([]),
+    [loadedConnectors, setConnectors] = useState<ConnectorDescriptor[]>(),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     const c = new AbortController();
-    Promise.all([
+    void Promise.allSettled([
       api<Resources>("/resources", { signal: c.signal }),
       api<ConnectorDescriptor[]>("/connectors", { signal: c.signal }),
-    ])
-      .then(([resources, connectors]) => {
-        setResources(resources);
-        setConnectors(connectors);
-      })
-      .catch((error) => {
-        if (!c.signal.aborted) setMessage(String(error));
-      });
+    ]).then(([resources, connectors]) => {
+      if (c.signal.aborted) return;
+      if (resources.status === "fulfilled") setResources(resources.value);
+      else setMessage(String(resources.reason));
+      setConnectors(connectors.status === "fulfilled" ? connectors.value : []);
+      if (connectors.status === "rejected") setMessage(String(connectors.reason));
+    });
     return () => c.abort();
   }, []);
-  const connections = document.connections ?? [],
-    current = connections.find((value) => value.id === selected);
+  const connectors = loadedConnectors ?? [],
+    connections = document.connections ?? [],
+    current = connections.find((value) => value.id === selected),
+    descriptor = current && nativeConnector(current, connectors),
+    messageConnector = !!(descriptor?.result === 0 &&
+      (descriptor.capabilities & (MESSAGE_SUBSCRIBE | MESSAGE_PUBLISH)));
   function edit(update: Partial<Connection>) {
     change(
       connections.map((value) =>
@@ -56,6 +62,18 @@ export function ConnectionCenter({
     try {
       if (current.driver === "file")
         throw new Error("请在文件向导中发现字段与预览内容");
+      if (messageConnector) {
+        const { capabilities, elapsedMs } = await post<ConnectionTestResult>("/connections/test", {
+          package: document,
+          connection: current.id,
+        });
+        const operations = [
+          capabilities & MESSAGE_SUBSCRIBE ? "订阅" : "",
+          capabilities & MESSAGE_PUBLISH ? "发布" : "",
+        ].filter(Boolean);
+        setMessage(`${current.id} 连接成功 · ${elapsedMs} ms${operations.length ? ` · ${operations.join(" / ")}` : ""}`);
+        return;
+      }
       const rows = await post<unknown[]>("/metadata", {
         package: document,
         connection: current.id,
@@ -78,15 +96,15 @@ export function ConnectionCenter({
       >
         <header className="dialog-heading">
           <h2>连接中心</h2>
-          <button aria-label="关闭连接中心" onClick={close}>
+          <Button aria-label="关闭连接中心" onClick={close}>
             <X size={18} />
-          </button>
+          </Button>
         </header>
         <p>凭据保留在宿主中，包只保存授权引用。</p>
         <div className="connection-layout">
           <aside>
             {connections.map((connection) => (
-              <button
+              <Button
                 className={selected === connection.id ? "selected" : ""}
                 key={connection.id}
                 onClick={() => select(connection.id)}
@@ -100,9 +118,9 @@ export function ConnectionCenter({
                   {connection.id}
                   <small>{connection.driver}</small>
                 </span>
-              </button>
+              </Button>
             ))}
-            <button
+            <Button
               onClick={() => {
                 const id = `connection-${crypto.randomUUID()}`;
                 change([
@@ -120,14 +138,14 @@ export function ConnectionCenter({
             >
               <Plus size={15} />
               新建连接
-            </button>
+            </Button>
           </aside>
           <div>
             {current ? (
               <>
                 <label>
                   连接名称
-                  <input
+                  <Input
                     aria-label="连接名称"
                     value={current.id}
                     readOnly
@@ -136,7 +154,7 @@ export function ConnectionCenter({
                 </label>
                 <label>
                   数据源类型
-                  <select
+                  <Select
                     aria-label="数据源类型"
                     value={current.driver}
                     onChange={(event) => edit({ driver: event.target.value })}
@@ -166,11 +184,11 @@ export function ConnectionCenter({
                           : `· 不可用 (${value.result})`}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   授权资源
-                  <input
+                  <Input
                     aria-label="授权资源"
                     list="authorized-resources"
                     value={current.resource}
@@ -185,7 +203,7 @@ export function ConnectionCenter({
                 </label>
                 <label>
                   凭据引用
-                  <select
+                  <Select
                     aria-label="凭据引用"
                     value={current.credentialReference ?? ""}
                     onChange={(event) =>
@@ -200,16 +218,17 @@ export function ConnectionCenter({
                         {reference}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <div className="inline-actions">
-                  <button
-                    disabled={busy || current.driver === "file"}
+                  <Button
+                    disabled={busy || !loadedConnectors || current.driver === "file" ||
+                      (descriptor !== undefined && descriptor.result !== 0)}
                     onClick={() => void test()}
                   >
-                    测试连接 / 列出表
-                  </button>
-                  <button
+                    {messageConnector ? "测试消息连接" : "测试连接 / 列出表"}
+                  </Button>
+                  <Button
                     onClick={() => {
                       const used = document.dataFlows.some((flow) =>
                         flow.components.some(
@@ -228,10 +247,12 @@ export function ConnectionCenter({
                   >
                     <Trash2 size={15} />
                     移除
-                  </button>
+                  </Button>
                 </div>
                 <small>
-                  支持的驱动及资源权限由宿主决定。测试只请求 Native 元数据。
+                  {messageConnector
+                    ? "Native 验证 broker 连接。测试期间不订阅或发布消息。"
+                    : "支持的驱动及资源权限由宿主决定。测试只请求 Native 元数据。"}
                 </small>
               </>
             ) : (
@@ -246,9 +267,9 @@ export function ConnectionCenter({
           <pre>{encode(connections, 2)}</pre>
         </details>
         <footer>
-          <button className="primary" onClick={close}>
+          <Button className="primary" onClick={close}>
             完成
-          </button>
+          </Button>
         </footer>
       </section>
     </div>

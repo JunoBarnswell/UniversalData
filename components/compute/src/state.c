@@ -1,4 +1,5 @@
 #include "state.h"
+#include "../../execution/state.h"
 static ud_status schema_copy(ud_context *ctx, const ud_batch *source, uint32_t capacity,
                              ud_batch **out) {
     return ud_batch_create(ctx, source->schema->fields, source->columns, capacity, out);
@@ -37,9 +38,7 @@ ud_status ud_state_create(ud_context *ctx, ud_buffer_manager *buffers, const ud_
     }
     return s;
 }
-static ud_status flush(ud_state *state) {
-    if (!state->chunk || !state->chunk->rows)
-        return UD_OK;
+static ud_status retain_page(ud_state *state, const ud_batch *batch, uint64_t first) {
     if (state->count == state->capacity) {
         uint32_t capacity = state->capacity ? state->capacity * 2 : 16;
         if (capacity < state->capacity)
@@ -53,11 +52,17 @@ static ud_status flush(ud_state *state) {
         state->pages = pages;
         state->capacity = capacity;
     }
-    UD_TRY(ud_batch_seal(state->chunk));
     ud_buffer_block *block = NULL;
-    UD_TRY(ud_buffer_store(state->buffers, state->chunk, &block));
-    state->pages[state->count++] =
-        (ud_state_page){block, state->rows - state->chunk->rows, state->chunk->rows};
+    UD_TRY(ud_buffer_store(state->buffers, batch, &block));
+    state->pages[state->count++] = (ud_state_page){block, first, batch->rows};
+    state->written_bytes += ud_buffer_block_spill_bytes(block);
+    return UD_OK;
+}
+static ud_status flush(ud_state *state) {
+    if (!state->chunk || !state->chunk->rows)
+        return UD_OK;
+    UD_TRY(ud_batch_seal(state->chunk));
+    UD_TRY(retain_page(state, state->chunk, state->rows - state->chunk->rows));
     ud_batch_destroy(state->chunk);
     state->chunk = NULL;
     state->chunk_bytes = 0;
@@ -126,6 +131,19 @@ void ud_state_reader_clear(ud_state_reader *r) {
     ud_buffer_view_release(r->view);
     memset(r, 0, sizeof(*r));
 }
+ud_status ud_state_read_page(ud_state_reader *r, const ud_state *s, uint32_t page,
+                             const ud_batch **batch) {
+    if (r->state != s || !r->view || r->page != page) {
+        ud_buffer_view_release(r->view);
+        r->view = NULL;
+        UD_TRY(ud_buffer_read(s->pages[page].block, &r->view));
+        r->read_bytes += ud_buffer_block_spill_bytes(s->pages[page].block);
+        r->state = s;
+        r->page = page;
+    }
+    *batch = ud_buffer_view_batch(r->view);
+    return UD_OK;
+}
 ud_status ud_state_row(ud_state_reader *r, const ud_state *s, uint64_t position,
                        const ud_batch **batch, uint32_t *row) {
     if (!r || !s || !batch || !row)
@@ -133,12 +151,25 @@ ud_status ud_state_row(ud_state_reader *r, const ud_state *s, uint64_t position,
     if (position >= s->rows)
         return UD_END;
     if (s->chunk && position >= s->rows - s->chunk->rows) {
-        ud_state_reader_clear(r);
+        ud_buffer_view_release(r->view);
+        r->view = NULL;
         *batch = s->chunk;
         *row = (uint32_t)(position - (s->rows - s->chunk->rows));
         return UD_OK;
     }
     uint32_t low = 0, high = s->count;
+    if (r->state == s && r->view) {
+        const ud_state_page *current = s->pages + r->page;
+        if (position >= current->first && position - current->first < current->rows) {
+            *batch = ud_buffer_view_batch(r->view);
+            *row = (uint32_t)(position - current->first);
+            return UD_OK;
+        }
+        if (position >= current->first)
+            low = r->page + 1;
+        else
+            high = r->page;
+    }
     while (low < high) {
         uint32_t mid = low + (high - low) / 2;
         if (s->pages[mid].first + s->pages[mid].rows <= position)
@@ -148,13 +179,7 @@ ud_status ud_state_row(ud_state_reader *r, const ud_state *s, uint64_t position,
     }
     if (low == s->count)
         return UD_CORRUPT;
-    if (r->state != s || !r->view || r->page != low) {
-        ud_state_reader_clear(r);
-        UD_TRY(ud_buffer_read(s->pages[low].block, &r->view));
-        r->state = s;
-        r->page = low;
-    }
-    *batch = ud_buffer_view_batch(r->view);
+    UD_TRY(ud_state_read_page(r, s, low, batch));
     *row = (uint32_t)(position - s->pages[low].first);
     return UD_OK;
 }
@@ -197,24 +222,9 @@ ud_status ud_state_add_batch(ud_state *s, const ud_batch *batch) {
         }
         return UD_OK;
     }
-    if (s->count == s->capacity) {
-        uint32_t cap = s->capacity ? s->capacity * 2 : 16;
-        if (cap < s->capacity)
-            return UD_RESOURCE;
-        ud_state_page *pages = ud_alloc(s->ctx, (size_t)cap * sizeof(*pages));
-        if (!pages)
-            return UD_RESOURCE;
-        if (s->count)
-            memcpy(pages, s->pages, (size_t)s->count * sizeof(*pages));
-        ud_free(s->pages);
-        s->pages = pages;
-        s->capacity = cap;
-    }
     if (batch->rows > UINT64_MAX - s->rows)
         return UD_OVERFLOW;
-    ud_buffer_block *block = NULL;
-    UD_TRY(ud_buffer_store(s->buffers, batch, &block));
-    s->pages[s->count++] = (ud_state_page){block, s->rows, batch->rows};
+    UD_TRY(retain_page(s, batch, s->rows));
     s->rows += batch->rows;
     return UD_OK;
 }

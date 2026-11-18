@@ -122,7 +122,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     }
     public Execution CreateExecution(string packageJson, string parametersJson = "{}", string executionId = "",
         string? stateDirectory = null, bool resume = false, Registry? registry = null, Action<ExecutionEvent>? observe = null,
-        ulong eventSequenceStart = 0)
+        ulong eventSequenceStart = 0, WorkerShard? shard = null, bool brokerRestore = false)
     {
         if ((Registry.Features & RegistryFeatures.ScopedJournal) == 0)
             throw new UniversalDataException((int)StatusCode.Incompatible,"Native runtime does not distinguish internal recovery storage");
@@ -130,6 +130,8 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
         var scoped = this with { StateDirectory = stateDirectory };
         return new(packageJson, Tenant, scoped.Authorize, parametersJson, executionId, scoped.Resolve, stateDirectory: stateDirectory,
             resume: resume, maxConcurrency: MaxConcurrency, memoryLimit: MemoryLimit, registry: registry, observe: observe,
-            timeoutMilliseconds: checked(ExecutionTimeoutSeconds * 1000UL), eventSequenceStart: eventSequenceStart);
+            timeoutMilliseconds: checked(ExecutionTimeoutSeconds * 1000UL), eventSequenceStart: eventSequenceStart,
+            workerMember: shard?.Member ?? 0, workerMembers: shard?.Members ?? 0,
+            consumerLanes: shard?.Lanes ?? 0, brokerRestore: brokerRestore);
     }
 }

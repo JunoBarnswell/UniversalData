@@ -75,6 +75,9 @@ typedef struct ud_host_api {
                                       ud_batch **);
     ud_status (*record_target)(ud_context *,ud_string,ud_string *,ud_string *);
     ud_string resource_namespace; /* Borrowed stable tenant/resource identity, independent of Package. */
+    ud_string connection_resource;
+    /* A message driver calls this before opening each advertised or explicit endpoint. */
+    ud_status (*authorize_endpoint)(void *control_user, ud_string endpoint);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;
@@ -82,6 +85,7 @@ typedef struct ud_plugin_api {
     uint64_t roles, capabilities;
     /* Connection factories are used only by Connection Manager. Component-only
      * modules omit them; functions are registered as component descriptors. */
+    /* The host callback table remains valid through instance destruction. */
     ud_status (*initialize)(const ud_host_api *, const char *configuration, uint32_t length,
                             void **instance);
     void (*destroy)(void *instance);

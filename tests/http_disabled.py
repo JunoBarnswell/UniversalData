@@ -5,12 +5,13 @@ import socket
 import subprocess
 import sys
 import tempfile
+from product_version import PROTOCOL_VERSION
 
 with socket.socket() as server, tempfile.TemporaryDirectory(prefix="ud-http-disabled-") as folder:
     server.bind(("127.0.0.1", 0))
     server.listen()
     port = server.getsockname()[1]
-    doc = {"version": 12, "id": "disabled", "connections": [
+    doc = {"version": PROTOCOL_VERSION, "id": "disabled", "connections": [
         {"id": "endpoint", "driver": "http", "resource": f"http://127.0.0.1:{port}/"}],
         "controlFlow": {"tasks": [{"id": "request", "kind": "http.request",
                                   "config": {"connection": "endpoint"}}], "constraints": []},

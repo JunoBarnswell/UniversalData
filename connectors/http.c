@@ -3,7 +3,6 @@
 #include "network.h"
 #ifdef UD_WITH_HTTP
 #include <curl/curl.h>
-#include <strings.h>
 #endif
 static int body_method(ud_string method) {
     return ud_named(method, "POST") || ud_named(method, "PUT") || ud_named(method, "PATCH");
@@ -134,7 +133,7 @@ static size_t header(char *ptr, size_t size, size_t count, void *user) {
     t->status = ud_bytes_put(&t->header_bytes, ptr, n);
     if (t->status)
         return 0;
-    if (n > 12 && !strncasecmp(ptr, "Retry-After:", 12)) {
+    if (n > 12 && curl_strnequal(ptr, "Retry-After:", 12)) {
         uint64_t seconds = 0;
         uint32_t i = 12;
         while (i < n && (ptr[i] == ' ' || ptr[i] == '\t'))

@@ -111,7 +111,7 @@ int main(void) {
     ud_batch_destroy(converted);
     /* Typed plan owns its schema and nested aggregate keys after producer destruction. */
     ud_plan *plan = NULL;
-    const char *commands = "{\"version\":12,\"group\":[\"person\"],\"aggregates\":[{\"function\":"
+    const char *commands = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"person\"],\"aggregates\":[{\"function\":"
                            "\"count\",\"column\":\"*\",\"name\":\"rows\"}]}";
     OK(ud_plan_create_fields(ctx, UD_PLAN_VERSION, fields, 3,
                              (ud_string){commands, (uint32_t)strlen(commands)}, NULL, &plan));

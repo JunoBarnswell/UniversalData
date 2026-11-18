@@ -5,6 +5,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from product_version import PROTOCOL_VERSION
 
 with tempfile.TemporaryDirectory(prefix="ud-history-") as temporary:
     root = pathlib.Path(temporary) / "catalog"
@@ -21,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix="ud-history-") as temporary:
         if kind != 5:
             continue
         record = json.loads(document)
-        assert record["version"] == 12
+        assert record["version"] == PROTOCOL_VERSION
         assert record["parametersHash"] == expected_hash
         assert len(record["definitionHash"]) == 64
         assert record["projectId"] == "project"

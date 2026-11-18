@@ -62,6 +62,8 @@ struct ud_relational {
     ud_id current_business;
     int scd_ready;
     uint32_t algorithm, hash_fallbacks;
+    uint64_t hash_write_bytes[2], hash_left_read_bytes;
+    uint64_t hash_right_build_bytes, hash_right_probe_bytes, hash_right_tail_bytes;
     ud_hash_join *hash_join;
     uint32_t left_time, right_time, right_end, tie_break;
     ud_batch *pending_error;

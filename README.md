@@ -1,8 +1,8 @@
 # UniversalData
 
-当前候选版本为 **Studio 4.0 / SDK 4.0.0 / ABI 12**，基于 `main@09118e27f6cab45524c8bbeab581c1fa805a0529`。C17 继续拥有唯一 Package / Execution / Activation / Component / Connector 执行体系。Package、Schema、Plan、Wire、Plugin、Checkpoint、Worker 协议族统一为 12；旧插件须重新构建，旧包须重新生成，旧恢复状态明确拒绝，原始数据和旧产物保留。
+当前候选版本为 **SDK 5.0.0 / ABI 13**。C17 继续拥有唯一 Package / Execution / Activation / Component / Connector 执行体系。Package、Schema、Plan、Wire、Plugin、Checkpoint 和 Worker 协议族统一为 13，Worker 私有请求修订为 3。旧插件须重新构建，旧包须重新生成，旧恢复状态明确拒绝。当前候选的集成验收待完成。
 
-本次增加事件时间与 Tumbling/Sliding/Session 聚合、原生状态快照与 Spill、持续源空闲停放、优雅停止、Catalog 事实订阅，以及多标签工作台、命令面板和主题。具体契约见 [Studio 4 PRD](docs/product/studio4-prd.md) 与 [流批统一设计](docs/architecture/stream-batch-unification.md)；逐项实现和验收见 [Studio 4 追踪表](docs/acceptance/studio4-traceability.md)。刷新维表、流间 Join、TTL 去重、微批触发与滚动热探针尚未实现；该候选不宣称生产持续流或 exactly-once 保证。
+Studio 4 引入事件时间与 Tumbling/Sliding/Session 聚合、原生状态快照与 Spill、持续源空闲停放、优雅停止、Catalog 事实订阅，以及多标签工作台、命令面板和主题。契约及该版本的验收记录见 [Studio 4 PRD](docs/product/studio4-prd.md)、[流批统一设计](docs/architecture/stream-batch-unification.md) 和 [Studio 4 追踪表](docs/acceptance/studio4-traceability.md)。
 
 现有产品模型继续追踪 52 项审查，并纳入本次 SSIS 的 30 项 Derived Column、23 个运算符、39 个函数、29 个类型域、31 类转换和 20 个业务验收条目。[逐项源码与缺口](docs/acceptance/ssis-strict-parity.md)由同一产品模型生成。Linux 的 Native、数据库、语言和浏览器结果只证明其中列明的行为；**没有真实 Windows SSIS Golden 的条目均不声明微软等价**。Windows 与独立供应商资源缺失单独记录受阻，代码缺口保持 Partial。
 

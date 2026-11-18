@@ -38,7 +38,7 @@ static ud_status op(ud_context *c, ud_buffer_manager *m, int kind, const char *c
     return ud_operator_create(c, &o, in, out);
 }
 static int slice_roundtrip(ud_context *c) {
-    const char *schema = "{\"version\":12,\"fields\":[{\"name\":\"k\",\"type\":\"int64\","
+    const char *schema = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"k\",\"type\":\"int64\","
                          "\"nullable\":false},{\"name\":\"s\",\"type\":\"utf8\",\"nullable\":true},"
                          "{\"name\":\"xs\",\"type\":\"list\",\"children\":[{\"name\":\"item\","
                          "\"type\":\"int64\",\"nullable\":true}],\"nullable\":false}]}";
@@ -86,10 +86,10 @@ static int slice_roundtrip(ud_context *c) {
 static int join_matrix(ud_context *c, ud_buffer_manager *m) {
     ud_batch *l = NULL, *r = NULL;
     OK(input(c,
-             "{\"version\":12,\"fields\":[{\"name\":\"lk\",\"type\":\"int64\",\"nullable\":true}]}",
+             "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"lk\",\"type\":\"int64\",\"nullable\":true}]}",
              "[{\"lk\":null},{\"lk\":1},{\"lk\":2}]", &l));
     OK(input(c,
-             "{\"version\":12,\"fields\":[{\"name\":\"rk\",\"type\":\"int64\",\"nullable\":true}]}",
+             "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"rk\",\"type\":\"int64\",\"nullable\":true}]}",
              "[{\"rk\":null},{\"rk\":2},{\"rk\":2},{\"rk\":3}]", &r));
     const char *types[] = {"inner", "left", "right", "full", "semi", "anti"};
     uint32_t expected[] = {2, 4, 4, 6, 1, 2};
@@ -111,7 +111,7 @@ static int join_matrix(ud_context *c, ud_buffer_manager *m) {
             ud_operator_options o = {.struct_size = sizeof(o),
                                      .abi_version = UD_ABI_VERSION,
                                      .kind = UD_OPERATOR_JOIN,
-                                     .max_batch_rows = 8,
+                                     .max_batch_rows = a == 2 ? 8 : 1,
                                      .buffers = m,
                                      .configuration = text(cfg),
                                      .input_order = orders,
@@ -120,10 +120,19 @@ static int join_matrix(ud_context *c, ud_buffer_manager *m) {
             const ud_batch *in[] = {l, r};
             ud_operator *j = NULL;
             OK(ud_operator_create(c, &o, in, &j));
-            OK(ud_operator_push(j, 1, r));
-            OK(ud_operator_finish_input(j, 1));
-            OK(ud_operator_push(j, 0, l));
-            OK(ud_operator_finish_input(j, 0));
+            for (int32_t port = 1; port >= 0; port--) {
+                if (a == 2)
+                    OK(ud_operator_push(j, (uint32_t)port, in[port]));
+                else {
+                    for (uint32_t row = 0; row < ud_batch_rows(in[port]); row++) {
+                        ud_batch *slice = NULL;
+                        OK(ud_batch_slice(c, in[port], row, 1, &slice));
+                        OK(ud_operator_push(j, (uint32_t)port, slice));
+                        ud_batch_destroy(slice);
+                    }
+                }
+                OK(ud_operator_finish_input(j, (uint32_t)port));
+            }
             uint32_t rows = 0;
             ud_batch *b = NULL;
             ud_status s;
@@ -206,7 +215,7 @@ static int sort_text_keys(ud_context *c, ud_buffer_manager *m, ud_executor *exec
 }
 static int text_keys(ud_context *c, ud_buffer_manager *m) {
     const char *schema =
-        "{\"version\":12,\"fields\":[{\"name\":\"label\",\"type\":\"utf8\",\"nullable\":false,"
+        "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"label\",\"type\":\"utf8\",\"nullable\":false,"
         "\"scalar\":{\"type\":\"DT_WSTR\",\"length\":16,\"localeId\":1033,\"comparisonFlags\":3}},"
         "{\"name\":\"seq\",\"type\":\"int64\",\"nullable\":false}]}";
     ud_batch *left = NULL, *right = NULL;
@@ -216,7 +225,7 @@ static int text_keys(ud_context *c, ud_buffer_manager *m) {
                         "{\"label\":\"z\",\"seq\":6}]", &right));
     const ud_batch *inputs[] = {left, right};
     const uint32_t key = 0;
-    const char *aggregation = "{\"version\":12,\"group\":[\"label\"],\"aggregates\":["
+    const char *aggregation = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"label\"],\"aggregates\":["
                               "{\"function\":\"count\",\"column\":\"*\",\"name\":\"n\"}]}";
     ud_field fields[2];
     OK(ud_batch_field(left, 0, fields));
@@ -328,7 +337,7 @@ static int windows(ud_context *c, ud_buffer_manager *m) {
     ud_batch *b = NULL;
     OK(input(
         c,
-        "{\"version\":12,\"fields\":[{\"name\":\"g\",\"type\":\"int64\",\"nullable\":false},{"
+        "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"g\",\"type\":\"int64\",\"nullable\":false},{"
         "\"name\":\"t\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"x\",\"type\":\"int64\","
         "\"nullable\":true}]}",
         "[{\"g\":1,\"t\":1,\"x\":10},{\"g\":1,\"t\":2,\"x\":null},{\"g\":1,\"t\":2,\"x\":null},{"
@@ -384,11 +393,11 @@ static int windows(ud_context *c, ud_buffer_manager *m) {
 static int cache_state(ud_context *c, ud_buffer_manager *m) {
     ud_batch *reference = NULL, *probe = NULL, *state = NULL;
     OK(input(c,
-             "{\"version\":12,\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{"
+             "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{"
              "\"name\":\"name\",\"type\":\"utf8\",\"nullable\":false}]}",
              "[{\"k\":1,\"name\":\"汉😀\"}]", &reference));
     OK(input(c,
-             "{\"version\":12,\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false}]}",
+             "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false}]}",
              "[{\"k\":1},{\"k\":2},{\"k\":3}]", &probe));
     uint32_t key = 0;
     ud_cache_options o = {.struct_size = sizeof(o),
@@ -434,7 +443,7 @@ static int cache_state(ud_context *c, ud_buffer_manager *m) {
 static int text_and_restore(ud_context *c, ud_buffer_manager *m) {
     ud_batch *b = NULL;
     OK(input(c,
-             "{\"version\":12,\"fields\":[{\"name\":\"txt\",\"type\":\"utf8\",\"nullable\":true}]}",
+             "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"txt\",\"type\":\"utf8\",\"nullable\":true}]}",
              "[{\"txt\":\"  Ａé汉😀  \"},{\"txt\":null}]", &b));
     const ud_batch *in[] = {b};
     ud_operator *x = NULL;
@@ -469,11 +478,11 @@ static int text_and_restore(ud_context *c, ud_buffer_manager *m) {
 static int multiway_identity(ud_context *c, ud_buffer_manager *m) {
     ud_batch *left=NULL,*right=NULL;
     OK(input(c,
-             "{\"version\":12,\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{"
+             "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{"
              "\"name\":\"v\",\"type\":\"int64\",\"nullable\":false}]}",
              "[{\"k\":1,\"v\":0}]", &left));
     OK(input(c,
-             "{\"version\":12,\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{"
+             "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"fields\":[{\"name\":\"k\",\"type\":\"int64\",\"nullable\":false},{"
              "\"name\":\"v\",\"type\":\"int64\",\"nullable\":false}]}",
              "[{\"k\":1,\"v\":1},{\"k\":1,\"v\":2}]", &right));
     const char *cfg="{\"inputs\":[\"a\",\"b\",\"c\"],\"joins\":[{\"input\":\"b\",\"leftKeys\":[\"k\"],\"rightKeys\":[\"k\"],\"rightAliases\":{\"k\":\"bk\",\"v\":\"bv\"}},{\"input\":\"c\",\"leftKeys\":[\"k\"],\"rightKeys\":[\"k\"],\"rightAliases\":{\"k\":\"ck\",\"v\":\"cv\"}}]}";

@@ -27,6 +27,7 @@ typedef struct ud_plugin_instance ud_plugin_instance;
 struct ud_plugin_instance {
     ud_plugin *plugin;
     void *state;
+    ud_host_api host;
     atomic_int busy;
     /* One physical connection owns one operation at a time. Composite record
      * commands retain this gate across their complete transaction protocol. */
@@ -229,7 +230,9 @@ ud_status ud_plugin_register_components(ud_plugin *p, ud_registry *registry) {
 }
 static ud_status connection_instance_create(ud_plugin *p, const char *config, uint32_t n,
                                             ud_plugin_instance **out, void *control_user,
-                                            ud_status (*check)(void *),ud_string resource_namespace) {
+                                            ud_status (*check)(void *),ud_string resource_namespace,
+                                            ud_string resource,
+                                            ud_status (*authorize_endpoint)(void *, ud_string)) {
     if (!p || !out || (!config && n))
         return UD_INVALID;
     *out = NULL;
@@ -239,11 +242,13 @@ static ud_status connection_instance_create(ud_plugin *p, const char *config, ui
     if (!instance)
         return UD_RESOURCE;
     atomic_fetch_add(&p->active, 1);
-    ud_host_api host = p->host;
-    host.control_user = control_user;
-    host.check_io = check;
-    host.resource_namespace=resource_namespace;
-    ud_status s = p->api.initialize(&host, config ? config : "", n, &instance->state);
+    instance->host = p->host;
+    instance->host.control_user = control_user;
+    instance->host.check_io = check;
+    instance->host.resource_namespace = resource_namespace;
+    instance->host.connection_resource = resource;
+    instance->host.authorize_endpoint = authorize_endpoint;
+    ud_status s = p->api.initialize(&instance->host, config ? config : "", n, &instance->state);
     atomic_fetch_sub(&p->active, 1);
     if (s) {
         if (instance->state)
@@ -308,6 +313,9 @@ struct ud_connection {
     const ud_connector_api *api;
     uint64_t capabilities;
     int cursor, transaction, cdc, cdc_transaction, io_action, cleanup;
+    ud_string message_source, message_confirmation;
+    void *endpoint_user;
+    ud_authorize_fn endpoint_grant;
     char resource_namespace[33];
     char transaction_branch[65];
     uint8_t transaction_digest[32];
@@ -326,18 +334,30 @@ static int valid_string(ud_string s, int required) {
     return (!required || s.length) && (!s.length || (s.data && !memchr(s.data, 0, s.length) &&
                                                      ud_utf8_valid(s.data, s.length)));
 }
-static ud_status authorize_connection(ud_connection *c, int32_t action) {
+static ud_status authorize_resource(ud_connection *c, ud_string resource, int32_t action) {
     if (!c || !c->options.authorize)
         return UD_AUTH;
     if (!c->cleanup && c->options.check)
         UD_TRY(c->options.check(c->options.authorize_user));
-    ud_status grant = c->options.authorize(c->options.authorize_user, c->options.tenant,
-                                           c->options.resource, action);
+    ud_status grant = c->options.authorize(c->options.authorize_user, c->options.tenant, resource,
+                                           action);
     if (grant == UD_OK)
         return UD_OK;
     if (!c->cleanup && c->options.check)
         UD_TRY(c->options.check(c->options.authorize_user));
     return ud_fail(c->ctx, UD_AUTH, "connector operation denied by authorization callback");
+}
+static ud_status authorize_connection(ud_connection *c, int32_t action) {
+    return c ? authorize_resource(c, c->options.resource, action) : UD_AUTH;
+}
+static ud_status authorize_endpoint(void *user, ud_string endpoint) {
+    ud_connection *c = user;
+    if (!c->endpoint_grant || !valid_string(endpoint, 1))
+        return UD_AUTH;
+    return c->endpoint_grant(c->endpoint_user, c->options.tenant, endpoint, UD_ACCESS_NETWORK) ==
+                   UD_OK
+               ? UD_OK
+               : UD_AUTH;
 }
 static ud_status connection_check(void *user) {
     ud_connection *c = user;
@@ -430,10 +450,10 @@ static ud_status validate_driver(ud_plugin *p) {
     if (!api)
         return UD_UNSUPPORTED;
     if (api->struct_size != sizeof(*api) || api->abi_version != UD_PLUGIN_ABI || !api->test ||
-        !api->discover || !api->cancel || !api->set_control)
+        !api->cancel || !api->set_control)
         return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_READ) &&
-        (!api->read_open || !api->read_next || !api->read_close))
+        (!api->discover || !api->read_open || !api->read_next || !api->read_close))
         return UD_INCOMPATIBLE;
     if ((api->capabilities & (UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE)) &&
         (!api->write || !api->receipt || !(api->capabilities & UD_CONNECT_RECEIPTS)))
@@ -457,6 +477,24 @@ static ud_status validate_driver(ud_plugin *p) {
         return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_POOL) && !api->reset_session)
         return UD_INCOMPATIBLE;
+    uint64_t messaging = api->capabilities & (UD_CONNECT_MESSAGE_SUBSCRIBE | UD_CONNECT_MESSAGE_PUBLISH);
+    if (messaging) {
+        const ud_message_api *message = api->message;
+        if (!message || message->struct_size != sizeof(*message) ||
+            message->abi_version != UD_PLUGIN_ABI || (api->capabilities & UD_CONNECT_POOL))
+            return UD_INCOMPATIBLE;
+        if ((messaging & UD_CONNECT_MESSAGE_SUBSCRIBE) &&
+            (!message->subscribe || !message->receive || !message->acknowledge || !message->unsubscribe))
+            return UD_INCOMPATIBLE;
+        if ((messaging & UD_CONNECT_MESSAGE_PUBLISH) && !message->publish)
+            return UD_INCOMPATIBLE;
+        if ((api->capabilities & UD_CONNECT_MESSAGE_TRANSACTION) &&
+            (messaging != (UD_CONNECT_MESSAGE_SUBSCRIBE | UD_CONNECT_MESSAGE_PUBLISH) ||
+             !message->capture_epoch || !message->begin_epoch || !message->commit_epoch ||
+             !message->abort_epoch || !message->release_epoch || !message->visit_committed ||
+             !message->verify_epoch))
+            return UD_INCOMPATIBLE;
+    }
     return UD_OK;
 }
 ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options *options,
@@ -484,6 +522,8 @@ ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options 
         return UD_RESOURCE;
     c->options = *options;
     c->ctx = p->ctx;
+    c->endpoint_user = options->authorize_user;
+    c->endpoint_grant = options->authorize;
     c->io_action = UD_ACCESS_OPEN;
     c->options.tenant.data = ud_strdup_n(p->ctx, options->tenant.data, options->tenant.length);
     c->options.resource.data =
@@ -496,7 +536,7 @@ ud_status ud_connection_open_resolved(ud_plugin *p, const ud_connection_options 
     if (!status) {
         ud_id_format(physical,c->resource_namespace);
         status=connection_instance_create(p,configuration.data,configuration.length,&c->instance,c,connection_check,
-            (ud_string){c->resource_namespace,32});
+            (ud_string){c->resource_namespace,32}, c->options.resource, authorize_endpoint);
     }
     if (status) {
         ud_free((void *)c->options.tenant.data);
@@ -749,7 +789,7 @@ uint64_t ud_connection_capabilities(const ud_connection *c) {
     return c ? c->capabilities : 0;
 }
 ud_status ud_connection_test(ud_connection *c) {
-    if (c && c->cdc)
+    if (c && (c->cdc || c->message_source.data))
         return UD_BUSY;
     UD_TRY(connection_enter(c, UD_ACCESS_OPEN));
     ud_status s = c->api->test(c->instance->state);
@@ -762,6 +802,8 @@ ud_status ud_connection_discover(ud_connection *c, ud_string table, ud_batch **o
     if (!out || !valid_string(table, 1))
         return UD_INVALID;
     *out = NULL;
+    if (!c || !c->api->discover)
+        return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c, UD_ACCESS_DISCOVER));
     ud_status s = c->api->discover(c->instance->state, table, out);
     connection_leave(c);
@@ -894,6 +936,7 @@ ud_status ud_connection_close(ud_connection *c) {
     if (!c)
         return UD_OK;
     UD_TRY(ud_connection_read_close(c));
+    UD_TRY(ud_connection_message_unsubscribe(c));
     if (c->transaction)
         UD_TRY(ud_connection_rollback(c));
     c->cleanup = 1;
@@ -907,6 +950,265 @@ ud_status ud_connection_close(ud_connection *c) {
     ud_batch_destroy(c->cdc_schema);
     ud_free(c);
     return UD_OK;
+}
+
+void ud_message_clear(ud_message *message) {
+    if (!message)
+        return;
+    ud_free((void *)message->payload.data);
+    ud_free((void *)message->key.data);
+    ud_free((void *)message->id.data);
+    ud_free((void *)message->address.data);
+    for (uint32_t i = 0; i < message->header_count; i++) {
+        ud_free((void *)message->headers[i].name.data);
+        ud_free((void *)message->headers[i].value.data);
+    }
+    ud_free(message->headers);
+    memset(message, 0, sizeof(*message));
+}
+
+void ud_message_epoch_clear(ud_message_epoch *epoch) {
+    if (!epoch)
+        return;
+    ud_free((void *)epoch->cluster_id.data);
+    ud_free((void *)epoch->group_metadata.data);
+    for (uint32_t i = 0; i < epoch->offset_count; i++)
+        ud_free((void *)epoch->offsets[i].topic.data);
+    ud_free(epoch->offsets);
+    memset(epoch, 0, sizeof(*epoch));
+}
+
+static int message_target_valid(const ud_message_target *target) {
+    return target && target->kind >= UD_MESSAGE_QUEUE && target->kind <= UD_MESSAGE_EXCHANGE &&
+           valid_string(target->name, target->kind != UD_MESSAGE_EXCHANGE) &&
+           valid_string(target->routing_key, 0);
+}
+
+static ud_status message_resource(ud_connection *c, const char *kind, ud_string name,
+                                  ud_string *out) {
+    ud_bytes resource = {.ctx = c->ctx};
+    ud_string base = c->options.resource;
+    ud_status status = ud_bytes_put(&resource, base.data, base.length);
+    if (!status)
+        status = ud_bytes_put(&resource, kind, strlen(kind));
+    if (!status)
+        status = ud_bytes_put(&resource, name.data, name.length);
+    if (status || resource.size > UINT32_MAX) {
+        ud_bytes_clear(&resource);
+        return status ? status : UD_OVERFLOW;
+    }
+    *out = (ud_string){(const char *)resource.data, (uint32_t)resource.size};
+    return UD_OK;
+}
+
+static const char *message_target_path(const ud_message_target *target) {
+    return target->kind == UD_MESSAGE_QUEUE ? "/queue/" :
+           target->kind == UD_MESSAGE_TOPIC ? "/topic/" : "/exchange/";
+}
+
+ud_status ud_connection_message_subscribe(ud_connection *c, const ud_message_subscription *options) {
+    if (!c || !options || options->struct_size != sizeof(*options) ||
+        options->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    if (!(c->capabilities & UD_CONNECT_MESSAGE_SUBSCRIBE))
+        return UD_UNSUPPORTED;
+    if (c->message_source.data || c->cursor || c->transaction || c->cdc)
+        return UD_BUSY;
+    if (!message_target_valid(&options->source) || !options->prefetch ||
+        !options->max_message_bytes || options->max_in_flight_bytes < options->max_message_bytes ||
+        options->initial_position < UD_MESSAGE_POSITION_REQUIRE ||
+        options->initial_position > UD_MESSAGE_POSITION_LATEST ||
+        (options->end_offset_count && (!options->end_offsets ||
+                                       !(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))) ||
+        (options->fixed_partition && (!(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION) ||
+                                      options->source.kind != UD_MESSAGE_TOPIC || !options->group.length)) ||
+        !valid_string(options->group, 0) || !valid_string(options->subscription, 0) ||
+        !valid_string(options->filter, 0))
+        return UD_INVALID;
+    UD_TRY(connection_enter(c, UD_ACCESS_READ));
+    ud_string source = {0}, confirmation = {0};
+    ud_status status = message_resource(c, message_target_path(&options->source),
+                                        options->source.name, &source);
+    if (!status)
+        status = authorize_resource(c, source, UD_ACCESS_READ);
+    if (!status)
+        status = options->group.length
+                     ? message_resource(c, "/group/", options->group, &confirmation)
+                     : message_resource(c, message_target_path(&options->source),
+                                        options->source.name, &confirmation);
+    if (!status)
+        status = authorize_resource(c, confirmation, UD_ACCESS_WRITE);
+    if (!status)
+        status = c->api->message->subscribe(c->instance->state, options);
+    if (!status) {
+        c->message_source = source;
+        c->message_confirmation = confirmation;
+    } else {
+        ud_free((void *)source.data);
+        ud_free((void *)confirmation.data);
+    }
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_receive(ud_connection *c, uint32_t timeout_ms, ud_message *out) {
+    if (!c || !c->message_source.data || !out)
+        return UD_INVALID;
+    *out = (ud_message){.partition = -1, .offset = -1, .timestamp_ms = -1};
+    UD_TRY(connection_enter(c, UD_ACCESS_READ));
+    ud_status status = authorize_resource(c, c->message_source, UD_ACCESS_READ);
+    if (!status)
+        status = c->api->message->receive(c->instance->state, timeout_ms, out);
+    if (status)
+        ud_message_clear(out);
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_acknowledge(ud_connection *c, const uint64_t *deliveries,
+                                            uint32_t count) {
+    if (!c || !c->message_source.data || !count || !deliveries)
+        return UD_INVALID;
+    UD_TRY(connection_enter(c, UD_ACCESS_READ));
+    ud_status status = authorize_resource(c, c->message_confirmation, UD_ACCESS_WRITE);
+    if (!status)
+        status = c->api->message->acknowledge(c->instance->state, deliveries, count);
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_unsubscribe(ud_connection *c) {
+    if (!c)
+        return UD_INVALID;
+    if (!c->message_source.data)
+        return UD_OK;
+    UD_TRY(connection_cleanup_enter(c));
+    ud_status status = c->api->message->unsubscribe(c->instance->state);
+    if (!status) {
+        ud_free((void *)c->message_source.data);
+        ud_free((void *)c->message_confirmation.data);
+        c->message_source = (ud_string){0};
+        c->message_confirmation = (ud_string){0};
+    }
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_publish(ud_connection *c, const ud_message_target *target,
+                                        const ud_message *messages, uint32_t count,
+                                        ud_message_result *results) {
+    if (!c || !message_target_valid(target) || !messages || !count || !results)
+        return UD_INVALID;
+    if (!(c->capabilities & UD_CONNECT_MESSAGE_PUBLISH))
+        return UD_UNSUPPORTED;
+    if (c->message_source.data || c->cursor || c->transaction || c->cdc)
+        return UD_BUSY;
+    for (uint32_t i = 0; i < count; i++)
+        results[i] = (ud_message_result){UD_MESSAGE_NOT_SENT, UD_OK};
+    UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
+    ud_string resource = {0};
+    ud_status status = message_resource(c, message_target_path(target), target->name, &resource);
+    if (!status)
+        status = authorize_resource(c, resource, UD_ACCESS_WRITE);
+    if (!status)
+        status = c->api->message->publish(c->instance->state, target, messages, count, results);
+    ud_free((void *)resource.data);
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_capture_epoch(ud_connection *c, const uint64_t *ids,
+                                              uint32_t count, ud_message_epoch *out) {
+    if (!c || !c->message_source.data || (count && !ids) || !out)
+        return UD_INVALID;
+    *out = (ud_message_epoch){0};
+    if (!(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))
+        return UD_UNSUPPORTED;
+    UD_TRY(connection_enter(c, UD_ACCESS_READ));
+    ud_status status = authorize_resource(c, c->message_confirmation, UD_ACCESS_WRITE);
+    if (!status)
+        status = c->api->message->capture_epoch(c->instance->state, ids, count, out);
+    if (status)
+        ud_message_epoch_clear(out);
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_begin_epoch(ud_connection *c, ud_string id, ud_string cluster) {
+    if (!c || !valid_string(id, 1) || !valid_string(cluster, 0))
+        return UD_INVALID;
+    if (!(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))
+        return UD_UNSUPPORTED;
+    UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
+    ud_status status = c->api->message->begin_epoch(c->instance->state, id, cluster);
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_commit_epoch(ud_connection *c, const ud_message_epoch *epoch) {
+    if (!c || !epoch || !epoch->cluster_id.length || !epoch->group_metadata.length ||
+        (epoch->offset_count && !epoch->offsets))
+        return UD_INVALID;
+    if (!(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))
+        return UD_UNSUPPORTED;
+    UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
+    ud_status status = c->api->message->commit_epoch(c->instance->state, epoch);
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_abort_epoch(ud_connection *c) {
+    if (!c || !(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))
+        return UD_UNSUPPORTED;
+    UD_TRY(connection_cleanup_enter(c));
+    ud_status status = c->api->message->abort_epoch(c->instance->state);
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_release_epoch(ud_connection *c, const uint64_t *ids,
+                                              uint32_t count) {
+    if (!c || !ids || !count || !c->message_source.data)
+        return UD_INVALID;
+    if (!(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))
+        return UD_UNSUPPORTED;
+    UD_TRY(connection_cleanup_enter(c));
+    ud_status status = c->api->message->release_epoch(c->instance->state, ids, count);
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_visit_committed(ud_connection *c, ud_string topic,
+                                                int32_t partition, void *user,
+                                                ud_message_visit visit) {
+    if (!c || !valid_string(topic, 1) || partition < 0 || !visit)
+        return UD_INVALID;
+    if (!(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))
+        return UD_UNSUPPORTED;
+    UD_TRY(connection_enter(c, UD_ACCESS_READ));
+    ud_string resource = {0};
+    ud_status status = message_resource(c, "/topic/", topic, &resource);
+    if (!status)
+        status = authorize_resource(c, resource, UD_ACCESS_READ);
+    if (!status)
+        status = c->api->message->visit_committed(c->instance->state, topic, partition, user, visit);
+    ud_free((void *)resource.data);
+    connection_leave(c);
+    return status;
+}
+
+ud_status ud_connection_message_verify_epoch(ud_connection *c, const ud_message_epoch *epoch) {
+    if (!c || !c->message_source.data || !epoch || !epoch->cluster_id.length ||
+        (epoch->offset_count && !epoch->offsets))
+        return UD_INVALID;
+    if (!(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))
+        return UD_UNSUPPORTED;
+    UD_TRY(connection_enter(c, UD_ACCESS_READ));
+    ud_status status = authorize_resource(c, c->message_source, UD_ACCESS_READ);
+    if (!status)
+        status = c->api->message->verify_epoch(c->instance->state, epoch);
+    connection_leave(c);
+    return status;
 }
 
 ud_status ud_connection_execute_command(ud_connection *c, const ud_read_options *options,

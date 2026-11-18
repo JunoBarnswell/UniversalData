@@ -8,7 +8,7 @@
 
 Native Journal 使用单独的 `CheckpointOpen/Read/Write` 授权目的。普通文件连接不能借用这些权限访问当前执行的状态目录。产品宿主通过 Native Registry feature 位协商此契约，缺失时明确拒绝执行。
 
-协议族仍为 10，当前检查点格式修订为 3，头记录明确保存协议、修订和执行指纹。没有此修订的恢复记录明确拒绝；原始文件不会被删除或改写。Epoch 中每个组件都必须包含产出和处理行计数，以保持恢复后的来源行身份稳定。目标和行命令共用 Native Journal 的类型化写入意图与结果，明确区分已应用、已提交、已拒绝和提交未知。
+当前 Package 协议为 13，检查点格式修订为 3。头记录保存协议、修订和执行指纹，不匹配即拒绝恢复。Epoch 中每个组件保存产出和处理行计数、输入水位线与 idle 状态，用于恢复行身份和事件时间前沿。目标和行命令共用 Native Journal 的类型化写入意图与结果，区分已应用、已提交、已拒绝和提交未知。
 
 Web 登录使用 HttpOnly、SameSite=Strict 会话 Cookie；修改操作还校验内存中的 CSRF 令牌。会话撤销持久化在租户 Native Catalog。审计仅记录主体、租户、路由模板、状态和时间，不保存请求正文、SQL、参数或编译源代码。
 
@@ -22,4 +22,10 @@ Management 不加载业务程序集。组件检查、Native 校验、Schema 发�
 
 Worker 在同步绑定本次控制端口后才发送带 `controlReady=true` 的 ready 帧；管理服务持久化原生执行 ID 后才发布 Running 并授权 start。开始执行前的 EOF 或拒绝仍会取消并关闭控制端口。没有控制就绪声明的旧 Worker 明确拒绝。控制通道连接失败统一为 I/O 故障，管理 API 返回不可用状态。
 
-Worker 私有协议修订为 2，旧请求在加载包前拒绝。事件先写入 Worker 私有 Native Catalog，再以规范 Native 记录回传；恢复时先分页补齐管理端遗漏的事实，执行版本与事件序号从持久化记录继续。管理服务只有在历史同步与控制端点均就绪后才允许启动。多进程派发使用 Native Catalog 条件写入和租约；未知提交与租约过期均不触发自动重放。跨机器代理仍未实现。
+Worker 私有协议修订为 3，旧请求在加载包前拒绝。事件先写入 Worker 私有 Native Catalog，再以规范 Native 记录回传。恢复时先分页补齐管理端遗漏的事实，执行版本与事件序号从持久化记录继续。多进程派发使用 Native Catalog 条件写入和租约，未知提交与租约过期进入人工恢复。
+
+在 Management 的 HTTPS 配置中，为每个远程 Worker 设置 `WorkerNodes:<nodeId>:CertificateSha256` 及 `Tenants`。在执行节点运行 `ud_worker agent CONFIG_FILE`，配置 `managementUrl`、`nodeId`、`certificatePath`、`managementCertificateSha256`、`policyPath`、`maxCpu`、`maxProcesses`、`maxMemoryBytes`、`tenants`。节点证书由管理端信任的 CA 签发，PFX 密码可从 `certificatePasswordFile` 读取。注册容量及租户范围取管理端与执行端策略的交集，实际消息 Broker 和文件资源由执行节点授权并直接访问。
+
+在执行节点的租户 `resources` 中为 MQ 配置逻辑连接和具体地址。连接的 `Open`、`Read`、`Write` 按实际操作授予，Broker 使用的网络端点持有 `Network`。例如，逻辑连接 `orders-broker` 下的 Kafka 源主题 `orders-broker/topic/orders-in` 需要 `Read`，消费组 `orders-broker/group/etl-orders` 需要 `Write`，目标主题需要 `Write`。同时授权 Broker 实际返回的端点，例如 `kafka://broker.example:9092`。MQ 凭据仍通过 `credentialFiles` 引用。
+
+执行详情与事件流共用相同的对外运行模型。Management 负责租约、预算和成员状态。单成员 Kafka 事务能通过 `POST /api/executions/{ticket}/resume?brokerRestore=true` 在符合授权的节点从 Broker 检查点恢复。旧租约必须先失效，恢复需核对原不可变包和 Kafka 位点。

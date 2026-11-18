@@ -1,99 +1,8 @@
-#include "../package/internal.h"
+#include "pipeline_state.h"
 #include "ud/engine.h"
 #include "ud/partition.h"
 #include "../../components/execution/state.h"
-ud_status ud_pipeline_field_namespace(const ud_component_context *c, char output[33]) {
-    ud_bytes bytes = {.ctx = c->memory};
-    ud_string package = {0}, project = {0};
-    ud_status s = ud_json_string(ud_member(c->activation->package->document, "id"), &package);
-    const ud_json *p = ud_member(c->activation->package->document, "project");
-    if (!s && p)
-        s = ud_json_string(ud_member(p, "id"), &project);
-    ud_string parts[] = {c->execution->options.tenant, project, package, c->pipeline_id,
-                         c->component_id};
-    for (uint32_t j = 0; !s && j < 5; j++)
-        s = ud_put_string(&bytes, parts[j].data, parts[j].length);
-    if (!s) {
-        uint8_t hash[32];
-        ud_hash(bytes.data, bytes.size, hash);
-        ud_id id = {0};
-        for (uint32_t j = 0; j < 8; j++) {
-            id.high = (id.high << 8) | hash[j];
-            id.low = (id.low << 8) | hash[j + 8];
-        }
-        ud_id_format(id, output);
-    }
-    ud_bytes_clear(&bytes);
-    return s;
-}
-ud_status ud_component_port_identity(const ud_component_context *c, uint32_t direction,
-                                     ud_string logical, ud_id *out) {
-    /* Ports identify the Package graph, including before deployment binding.
-     * Tenant/project scope belongs to physical fields and rows, never to the
-     * references stored in that graph. */
-    ud_string package = {0};
-    UD_TRY(ud_json_string(ud_member(c->activation->package->document, "id"), &package));
-    ud_bytes symbol = {.ctx = c->memory};
-    ud_string parts[] = {package, c->pipeline_id, c->component_id, logical};
-    ud_status s = ud_put_u64(&symbol, direction);
-    for (uint32_t i = 0; !s && i < 4; i++)
-        s = ud_put_string(&symbol, parts[i].data, parts[i].length);
-    uint8_t digest[32];
-    if (!s)
-        ud_hash(symbol.data, symbol.size, digest);
-    ud_bytes_clear(&symbol);
-    char hex[65];
-    for (uint32_t j = 0; !s && j < 32; j++)
-        snprintf(hex + j * 2, 3, "%02x", digest[j]);
-    if (!s)
-        s = ud_id_make(c->memory, (ud_string){"component.port.v1", 17}, (ud_string){hex, 64}, out);
-    return s;
-}
-typedef struct edge {
-    uint32_t from, to, output, input;
-    ud_queue *queue;
-    int ended;
-    atomic_uint occupied;
-    atomic_uint_fast64_t produced, consumed, high_water, spill_bytes;
-} edge;
-typedef struct execution_tree {
-    uint32_t offset, count;
-    uint64_t ready_ms, first_ms, end_ms, quanta, busy, callback_ms, cpu_ns;
-} execution_tree;
-typedef struct node {
-    ud_string id;
-    ud_component_descriptor descriptor;
-    ud_json *configuration;
-    char *json;
-    uint32_t json_length;
-    ud_batch **schemas;
-    uint32_t *inputs, *outputs, output_edges, ended, next_port, tree;
-    uint8_t *emitted;
-    void *instance;
-    int opened, emit_allowed, pending, control_pending, watermark_refresh;
-    uint32_t watermark_refresh_input;
-    ud_component_event deferred_control;
-    uint64_t idle_mask, idle_started, idle_ms, sampled_rows;
-    atomic_uint_fast64_t live_idle_ms;
-    atomic_int idle;
-    atomic_int_fast64_t live_watermark;
-    atomic_int state, result;
-    ud_activation activation;
-    ud_component_context context;
-    ud_component_plan binding, *input_plans;
-    ud_component_ports ports;
-    uint64_t steps, processed, produced, rejected, wait_input, wait_capacity, callback_ms, cpu_ns,
-        first_ms, end_ms, ready_ms, prepare_ms, prepare_cpu_ns, finish_ms, finish_cpu_ns,
-        blocked_ms, input_wait_ms, capacity_wait_ms;
-    int blocked_kind;
-    uint64_t batch_latency[64], batch_samples, batch_max_ns, batch_sum_ns;
-    uint64_t barrier_mask, barrier_epoch, acknowledged_epoch, watermark_mask, schema_version;
-    atomic_uint_fast64_t staged_epoch;
-    atomic_uint_fast64_t live_processed, live_produced, live_rejected, live_callback_ms;
-    atomic_uint_fast64_t *port_rows;
-    int64_t watermarks[64], last_watermark;
-    ud_string source_position;
-} node;
+#include "../package/kafka_checkpoint.h"
 static ud_status node_failed(node *n, ud_status result, const char *stage) {
     atomic_store(&n->result, result);
     atomic_store(&n->state, UD_EXEC_FAILED);
@@ -113,34 +22,6 @@ static void batch_observe(node *n, uint64_t nanoseconds) {
         n->batch_max_ns = nanoseconds;
     n->batch_sum_ns += nanoseconds;
 }
-static uint64_t batch_p95(const node *n) {
-    uint64_t rank = n->batch_samples - n->batch_samples / 20, seen = 0;
-    if (!rank)
-        return 0;
-    for (uint32_t bucket = 0; bucket < 64; bucket++) {
-        seen += n->batch_latency[bucket];
-        if (seen >= rank)
-            return bucket == 63 ? UINT64_MAX : UINT64_C(1) << bucket;
-    }
-    return UINT64_MAX;
-}
-typedef struct physical_plan {
-    ud_activation *execution;
-    node *nodes;
-    edge *edges;
-    uint32_t count, paths, *order, *tree_order, tree_count, concurrency;
-    execution_tree *trees;
-    ud_string id;
-    ud_work_group *group;
-    atomic_uint_fast64_t confirmed_epoch;
-    ud_mutex epoch_lock;
-    int epoch_lock_ready;
-    ud_json *epoch_record;
-    struct physical_plan *progress_next;
-    int progress_registered;
-    uint64_t sampled_ms;
-} physical_plan;
-static ud_status plan_json(physical_plan *, ud_bytes *, int, ud_status);
 static int index_of(const physical_plan *p, ud_string id) {
     for (uint32_t i = 0; i < p->count; i++)
         if (ud_same(p->nodes[i].id, id))
@@ -197,6 +78,7 @@ static ud_status clear(physical_plan *p, ud_status result) {
         }
     ud_free(p->order);
     ud_json_destroy(p->epoch_record);
+    ud_kafka_checkpoint_close(p->kafka);
     if (p->epoch_lock_ready)
         ud_mutex_destroy(&p->epoch_lock);
     ud_free(p->nodes);
@@ -403,8 +285,8 @@ static ud_status port_index(const node *n, int output, const ud_json *json, uint
 }
 static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan *p) {
     p->execution = e;
-    static const char *keys[] = {"id", "components", "paths"};
-    UD_TRY(ud_json_keys(definition, keys, 3));
+    static const char *keys[] = {"id", "components", "paths", "delivery", "parallelism"};
+    UD_TRY(ud_json_keys(definition, keys, 5));
     UD_TRY(ud_json_string(ud_member(definition, "id"), &p->id));
     const ud_json *nodes = ud_member(definition, "components"),
                   *paths = ud_member(definition, "paths");
@@ -437,9 +319,6 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
              (n->descriptor.effects & UD_EFFECT_EXTERNAL_WRITE)))
             return UD_AUTH;
         if (e->parallel && !(n->descriptor.capabilities & UD_COMPONENT_THREAD_SAFE))
-            return UD_UNSUPPORTED;
-        if (e->execution->options.state_directory.length &&
-            !(n->descriptor.capabilities & UD_COMPONENT_REPLAY_SAFE))
             return UD_UNSUPPORTED;
         if (n->descriptor.category < UD_COMPONENT_SOURCE ||
             n->descriptor.category > UD_COMPONENT_DESTINATION)
@@ -814,9 +693,7 @@ static ud_status route_event(void *user, uint32_t port, const ud_component_event
         event->kind != UD_COMPONENT_IDLE && event->kind != UD_COMPONENT_ACTIVE)
         return UD_SCHEMA;
     if (event->kind == UD_COMPONENT_WATERMARK) {
-        if (event->watermark < n->last_watermark)
-            return UD_FENCED;
-        n->last_watermark = event->watermark;
+        UD_TRY(ud_pipeline_frontier_emit(&n->frontier, event->watermark));
         atomic_store(&n->live_watermark, event->watermark);
     }
     if (event->kind == UD_COMPONENT_SCHEMA_CHANGE ||
@@ -890,20 +767,33 @@ static ud_status route(void *user, uint32_t port, ud_batch *batch) {
     ud_batch_destroy(identified);
     return status;
 }
+static int epoch_target_supported(const physical_plan *p, const node *n) {
+    uint32_t effects = n->binding.effects;
+    return !(effects & UD_EFFECT_EXTERNAL_WRITE) ||
+           (effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT)) ||
+           (p->execution->transaction_epoch && (effects & UD_EFFECT_TRANSACTIONAL)) ||
+           (p->allow_replayable_publish && (effects & UD_EFFECT_REPLAYABLE_PUBLISH));
+}
 static ud_status validate_effects(physical_plan *p) {
     uint8_t *reachable = ud_alloc(p->execution->execution->ctx, p->count);
     if (!reachable)
         return UD_RESOURCE;
     ud_status status = UD_OK;
-    int epochs = 0;
-    for (uint32_t index = 0; index < p->count; index++)
-        epochs |= p->nodes[index].descriptor.category == UD_COMPONENT_SOURCE &&
-                  p->nodes[index].descriptor.confirm_epoch != NULL;
+    int epochs = 0, other_confirming_sources = 0;
+    for (uint32_t index = 0; index < p->count; index++) {
+        const node *n = p->nodes + index;
+        if (n->descriptor.category == UD_COMPONENT_SOURCE && n->descriptor.confirm_epoch) {
+            epochs = 1;
+            other_confirming_sources |= (n->binding.effects & UD_EFFECT_SOURCE_ACK) == 0;
+        }
+    }
+    p->allow_replayable_publish = !other_confirming_sources;
     for (uint32_t index = 0; !status && index < p->count; index++) {
         node *n = p->nodes + index;
-        if (epochs && (n->binding.effects & UD_EFFECT_EXTERNAL_WRITE) &&
-            !(n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT)) &&
-            !(p->execution->transaction_epoch && (n->binding.effects & UD_EFFECT_TRANSACTIONAL))) {
+        int publish = p->allow_replayable_publish && (n->binding.effects & UD_EFFECT_REPLAYABLE_PUBLISH);
+        if ((p->execution->execution->options.state_directory.length &&
+             !(n->descriptor.capabilities & UD_COMPONENT_REPLAY_SAFE) && !publish) ||
+            (epochs && !epoch_target_supported(p, n))) {
             status = UD_UNSUPPORTED;
             break;
         }
@@ -1109,7 +999,7 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                                                : (UINT64_C(1) << n->descriptor.outputs) - 1;
         n->context.emit_event = route_event;
         n->context.input_count = n->descriptor.inputs;
-        n->last_watermark = INT64_MIN;
+        n->frontier.emitted = INT64_MIN;
         atomic_init(&n->staged_epoch, 0);
         atomic_init(&n->idle, 0);
         atomic_init(&n->live_idle_ms, 0);
@@ -1190,7 +1080,8 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                 !e->execution->preview_pipeline)
                 return node_failed(n, UD_SCHEMA, "late redirect requires connected output 1");
         }
-        if (e->execution->preview_pipeline && (n->binding.effects & UD_EFFECT_EXTERNAL_WRITE))
+        if (e->execution->preview_pipeline &&
+            (n->binding.effects & (UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_SOURCE_ACK)))
             return UD_AUTH;
         n->binding.state_version = n->descriptor.state_version;
         for (uint32_t j = 0; j < n->descriptor.outputs; j++) {
@@ -1207,6 +1098,8 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
             if (!n->schemas[j] || n->schemas[j]->ctx != e->execution->ctx || n->schemas[j]->rows)
                 return UD_SCHEMA;
     }
+    UD_TRY(ud_pipeline_kafka_bind(p, definition));
+    UD_TRY(ud_pipeline_parallel_bind(p, definition));
     return validate_effects(p);
 }
 ud_status ud_pipeline_bind_validate(ud_activation *e, const ud_json *definition) {
@@ -1222,7 +1115,7 @@ ud_status ud_pipeline_bind_validate(ud_activation *e, const ud_json *definition)
         s = configure_plan(&p, definition, targets);
     if (!s) {
         ud_bytes report = {.ctx = e->execution->ctx};
-        s = plan_json(&p, &report, 0, UD_OK);
+        s = ud_pipeline_plan_json(&p, &report, 0, UD_OK);
         if (!s) {
             ud_mutex_lock(&e->execution->diagnostics_lock);
             if (e->execution->bound_plans.size)
@@ -1237,15 +1130,39 @@ ud_status ud_pipeline_bind_validate(ud_activation *e, const ud_json *definition)
     ud_free(targets);
     return s;
 }
+static uint64_t input_mask(const physical_plan *p, const node *n, int unfinished) {
+    uint64_t mask = 0;
+    for (uint32_t port = 0; port < n->descriptor.inputs; port++)
+        if (n->inputs[port] != UINT32_MAX && (!unfinished || !p->edges[n->inputs[port]].ended))
+            mask |= UINT64_C(1) << port;
+    return mask;
+}
+
 static ud_status prepare(physical_plan *p, const ud_json *definition, emit_target *targets) {
     ud_activation *e = p->execution;
     UD_TRY(configure_plan(p, definition, targets));
     ud_mutex_init(&p->epoch_lock);
     p->epoch_lock_ready = 1;
     atomic_init(&p->confirmed_epoch, 0);
+    UD_TRY(ud_pipeline_kafka_open(p));
+    if (e->execution->options.broker_restore && !p->kafka)
+        return UD_UNSUPPORTED;
     char *epoch_json = NULL;
     uint32_t epoch_length = 0;
-    ud_status saved = ud_checkpoint_epoch_info(e, p->id, &epoch_json, &epoch_length);
+    ud_status saved;
+    if (p->kafka) {
+        ud_string manifest = {0};
+        saved = ud_kafka_checkpoint_manifest(p->kafka, &manifest);
+        if (saved == UD_END && e->execution->options.broker_restore)
+            return UD_COMMIT_UNKNOWN;
+        if (!saved) {
+            epoch_json = ud_strdup_n(e->execution->ctx, manifest.data, manifest.length);
+            if (!epoch_json)
+                return UD_RESOURCE;
+            epoch_length = manifest.length;
+        }
+    } else
+        saved = ud_checkpoint_epoch_info(e, p->id, &epoch_json, &epoch_length);
     if (saved != UD_END && saved)
         return saved;
     if (!saved) {
@@ -1266,6 +1183,7 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
             node *n = p->nodes + p->order[i];
             if ((n->descriptor.category == UD_COMPONENT_SOURCE) != (pass == 0))
                 continue;
+            n->activation.kafka_checkpoint = p->kafka;
             n->context.recovery_epoch = atomic_load(&p->confirmed_epoch);
             const ud_json *saved_components = ud_member(p->epoch_record, "components");
             for (uint32_t k = 0; k < ud_json_size(saved_components); k++) {
@@ -1321,6 +1239,8 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
             if (s)
                 return node_failed(n, s, "prepare");
             n->opened = 1;
+            if (p->kafka && p->epoch_record && n == p->nodes + p->kafka_source)
+                UD_TRY(ud_pipeline_kafka_verify(p));
             if (atomic_load(&p->confirmed_epoch)) {
                 const ud_json *components = ud_member(p->epoch_record, "components"), *entry = NULL;
                 for (uint32_t k = 0; k < ud_json_size(components); k++) {
@@ -1342,13 +1262,19 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
                     return UD_INCOMPATIBLE;
                 UD_TRY(ud_json_uint(ud_member(entry, "producedRows"), &n->produced));
                 UD_TRY(ud_json_uint(ud_member(entry, "processedRows"), &n->processed));
+                UD_TRY(ud_pipeline_frontier_read(e->execution->ctx, ud_member(entry, "frontier"),
+                                                n->descriptor.inputs, input_mask(p, n, 0),
+                                                &n->frontier));
+                atomic_store(&n->live_watermark, n->frontier.emitted);
                 if (n->descriptor.restore) {
                     char key[65];
                     UD_TRY(epoch_component_key(p, n, key));
                     ud_batch *state = NULL;
-                    ud_status restored =
-                        ud_checkpoint_snapshot_read(p->execution, (ud_string){key, 64},
-                                                    atomic_load(&p->confirmed_epoch), &state);
+                    uint64_t checkpoint_epoch = atomic_load(&p->confirmed_epoch);
+                    ud_status restored = p->kafka ? ud_kafka_checkpoint_restore(
+                        p->kafka, (uint32_t)(n - p->nodes), checkpoint_epoch, &state)
+                        : ud_checkpoint_snapshot_read(p->execution, (ud_string){key, 64},
+                                                      checkpoint_epoch, &state);
                     if (!restored)
                         restored = n->descriptor.restore(n->instance, state);
                     ud_batch_destroy(state);
@@ -1389,9 +1315,7 @@ static ud_status stage_epoch(physical_plan *p, node *n, uint64_t epoch) {
         return UD_OK;
     if (ud_transaction_active(&n->activation) && !n->activation.transaction_epoch)
         return UD_UNSUPPORTED;
-    if ((n->binding.effects & UD_EFFECT_EXTERNAL_WRITE) &&
-        !(n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT)) &&
-        !(n->activation.transaction_epoch && (n->binding.effects & UD_EFFECT_TRANSACTIONAL)))
+    if (!epoch_target_supported(p, n))
         return UD_UNSUPPORTED;
     if ((n->descriptor.capabilities & UD_COMPONENT_STATEFUL) && !n->descriptor.checkpoint)
         return UD_UNSUPPORTED;
@@ -1412,21 +1336,22 @@ static ud_status stage_epoch(physical_plan *p, node *n, uint64_t epoch) {
     if (!status)
         status = epoch_component_key(p, n, key);
     if (!status)
-        status = ud_checkpoint_snapshot_write(p->execution, (ud_string){key, 64}, epoch, state);
+        status = p->kafka ? ud_kafka_checkpoint_stage(p->kafka, (uint32_t)(n - p->nodes), epoch, state)
+                          : ud_checkpoint_snapshot_write(p->execution, (ud_string){key, 64}, epoch, state);
     ud_batch_destroy(state);
     if (!status)
         atomic_store(&n->staged_epoch, epoch);
     return status;
 }
-static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
+static ud_status commit_epoch(physical_plan *p, uint64_t epoch, int terminal) {
     ud_mutex_lock(&p->epoch_lock);
     ud_status status = UD_OK;
     if (epoch <= atomic_load(&p->confirmed_epoch)) {
         ud_mutex_unlock(&p->epoch_lock);
         return UD_OK;
     }
-    int active = 0;
-    for (uint32_t i = 0; i < p->count; i++)
+    int active = terminal;
+    for (uint32_t i = 0; !active && i < p->count; i++)
         if (p->nodes[i].descriptor.category == UD_COMPONENT_SOURCE &&
             p->nodes[i].descriptor.confirm_epoch && atomic_load(&p->nodes[i].staged_epoch) == epoch)
             active = 1;
@@ -1490,31 +1415,35 @@ static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
         if (!status)
             status = ud_json_quote(&payload, component->id.data, component->id.length);
         char metadata[320];
-        uint64_t ended = 0;
-        for (uint32_t port = 0; port < component->descriptor.inputs; port++)
-            if (component->inputs[port] == UINT32_MAX || p->edges[component->inputs[port]].ended)
-                ended |= UINT64_C(1) << port;
+        uint32_t ports = component->descriptor.inputs;
+        uint64_t declared = ports == 64 ? UINT64_MAX : (UINT64_C(1) << ports) - 1;
+        uint64_t ended = declared & ~input_mask(p, component, 1);
         int length = snprintf(
             metadata, sizeof(metadata),
             ",\"stateVersion\":%u,\"endedInputs\":%llu,\"terminal\":%s,\"producedRows\":%llu,"
-            "\"processedRows\":%llu}",
+            "\"processedRows\":%llu,\"frontier\":",
             component->descriptor.state_version, (unsigned long long)ended,
             atomic_load(&component->state) == UD_EXEC_SUCCEEDED ? "true" : "false",
             (unsigned long long)component->produced, (unsigned long long)component->processed);
         if (!status)
             status = ud_bytes_put(&payload, metadata, (size_t)length);
+        if (!status)
+            status = ud_pipeline_frontier_write(&payload, &component->frontier, ports);
+        if (!status)
+            status = ud_bytes_put(&payload, "}", 1);
     }
     if (!status)
         status = ud_bytes_put(&payload, "]}", 2);
+    ud_string manifest = {(char *)payload.data, (uint32_t)payload.size};
     if (!status)
-        status = ud_checkpoint_epoch_commit(
-            p->execution, p->id, (ud_string){(char *)payload.data, (uint32_t)payload.size});
-    if (!status && ud_transaction_active(p->execution))
+        status = p->kafka ? ud_pipeline_kafka_commit(p, epoch, manifest)
+                          : ud_checkpoint_epoch_commit(p->execution, p->id, manifest);
+    if (!status && !p->kafka && ud_transaction_active(p->execution))
         status = ud_transaction_commit_epoch(p->execution);
     if (!status) {
         uint64_t previous = atomic_load(&p->confirmed_epoch);
         atomic_store(&p->confirmed_epoch, epoch);
-        if (previous)
+        if (previous && !p->kafka)
             for (uint32_t i = 0; !status && i < p->count; i++)
                 if (p->nodes[i].descriptor.checkpoint) {
                     char key[65];
@@ -1523,8 +1452,9 @@ static ud_status commit_epoch(physical_plan *p, uint64_t epoch) {
                         status = ud_checkpoint_snapshot_forget(p->execution, (ud_string){key, 64},
                                                                previous, 1);
                 }
-        for (uint32_t i = 0; i < p->tree_count; i++)
-            ud_work_group_ready(p->group, i);
+        if (p->group)
+            for (uint32_t i = 0; i < p->tree_count; i++)
+                ud_work_group_ready(p->group, i);
     }
     ud_bytes_clear(&payload);
     ud_mutex_unlock(&p->epoch_lock);
@@ -1564,10 +1494,7 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
             return UD_FENCED;
         n->barrier_epoch = event->epoch;
         n->barrier_mask |= bit;
-        uint64_t required = 0;
-        for (uint32_t i = 0; i < n->descriptor.inputs; i++)
-            if (n->inputs[i] != UINT32_MAX && !p->edges[n->inputs[i]].ended)
-                required |= UINT64_C(1) << i;
+        uint64_t required = input_mask(p, n, 1);
         if ((n->barrier_mask & required) != required)
             return UD_OK;
         n->deferred_control = *event;
@@ -1576,38 +1503,21 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
         n->control_pending = 1;
         return notify_control(n, event);
     }
-    if (event->kind == UD_COMPONENT_IDLE || event->kind == UD_COMPONENT_ACTIVE) {
-        if (event->kind == UD_COMPONENT_IDLE)
-            n->idle_mask |= bit;
-        else
-            n->idle_mask &= ~bit;
-        uint64_t required =
-            n->descriptor.inputs == 64 ? UINT64_MAX : (UINT64_C(1) << n->descriptor.inputs) - 1;
-        if (event->kind == UD_COMPONENT_ACTIVE || n->idle_mask == required)
+    if (event->kind == UD_COMPONENT_WATERMARK || event->kind == UD_COMPONENT_IDLE ||
+        event->kind == UD_COMPONENT_ACTIVE) {
+        uint64_t live = input_mask(p, n, 1);
+        if (live & bit)
+            UD_TRY(ud_pipeline_frontier_observe(&n->frontier, event->input, event->kind,
+                                                event->watermark));
+        if (event->kind == UD_COMPONENT_WATERMARK &&
+            (n->descriptor.capabilities & UD_COMPONENT_WATERMARK_POLICY))
+            return notify_control(n, event);
+        if (event->kind == UD_COMPONENT_ACTIVE ||
+            (event->kind == UD_COMPONENT_IDLE && live && !(live & ~n->frontier.idle)))
             return forward_control(p, n, event);
-    }
-    if (event->kind == UD_COMPONENT_WATERMARK || event->kind == UD_COMPONENT_IDLE) {
-        if (event->kind == UD_COMPONENT_WATERMARK) {
-            n->idle_mask &= ~bit;
-            if ((n->watermark_mask & bit) && event->watermark < n->watermarks[event->input])
-                return UD_FENCED;
-            n->watermarks[event->input] = event->watermark;
-            n->watermark_mask |= bit;
-            if (n->descriptor.capabilities & UD_COMPONENT_WATERMARK_POLICY)
-                return notify_control(n, event);
-        }
-        uint64_t required = 0;
-        int64_t minimum = INT64_MAX;
-        for (uint32_t i = 0; i < n->descriptor.inputs; i++)
-            if (n->inputs[i] != UINT32_MAX && !p->edges[n->inputs[i]].ended &&
-                !(n->idle_mask & (UINT64_C(1) << i))) {
-                required |= UINT64_C(1) << i;
-                if (n->watermarks[i] < minimum)
-                    minimum = n->watermarks[i];
-            }
-        if (!required || (n->watermark_mask & required) != required || minimum <= n->last_watermark)
+        int64_t minimum;
+        if (!ud_pipeline_frontier_reduce(&n->frontier, live, &minimum))
             return UD_OK;
-        n->last_watermark = minimum;
         ud_component_event output = *event;
         output.kind = UD_COMPONENT_WATERMARK;
         output.watermark = minimum;
@@ -1714,7 +1624,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
             status = forward_control(p, n, &n->deferred_control);
         n->emit_allowed = 0;
         if (!status && n->deferred_control.kind == UD_COMPONENT_CHECKPOINT_BARRIER)
-            status = commit_epoch(p, n->deferred_control.epoch);
+            status = commit_epoch(p, n->deferred_control.epoch, 0);
         if (!status) {
             n->control_pending = 0;
             *progress = 1;
@@ -1738,10 +1648,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
         return status == UD_MORE ? UD_OK : status;
     }
     if (n->barrier_mask && !n->pending && atomic_load(&n->staged_epoch) != n->barrier_epoch) {
-        uint64_t required = 0;
-        for (uint32_t port = 0; port < n->descriptor.inputs; port++)
-            if (n->inputs[port] != UINT32_MAX && !p->edges[n->inputs[port]].ended)
-                required |= UINT64_C(1) << port;
+        uint64_t required = input_mask(p, n, 1);
         if ((n->barrier_mask & required) == required) {
             memset(n->emitted, 0, n->descriptor.outputs);
             n->emit_allowed = 1;
@@ -1754,7 +1661,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
                 status = forward_control(p, n, &barrier);
             n->emit_allowed = 0;
             if (!status)
-                status = commit_epoch(p, n->barrier_epoch);
+                status = commit_epoch(p, n->barrier_epoch, 0);
             if (!status)
                 *progress = 1;
             return status;
@@ -1789,7 +1696,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
                 }
                 input = view ? ud_buffer_view_batch(view) : NULL;
                 if (received.kind == UD_STREAM_DATA) {
-                    n->idle_mask &= ~(UINT64_C(1) << port);
+                    if (n->frontier.idle)
+                        (void)ud_pipeline_frontier_observe(&n->frontier, port, UD_COMPONENT_DATA, 0);
                     atomic_fetch_add(&v->consumed, input->rows);
                 }
                 event.kind = received.kind;
@@ -1846,8 +1754,13 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     }
     ud_task_cancel_register(&n->activation, n->instance, n->descriptor.cancel);
     ud_status s = ud_activation_check(&n->activation);
+    /* A requested stop drains acknowledged messages while keeping the last
+     * committed operator state open. Only reaching a Kafka cut ends input. */
+    int suspending = p->kafka && event.kind == UD_COMPONENT_INPUT_END &&
+        !ud_pipeline_kafka_exhausted(p);
     if (!s)
-        s = atomic_load(&e->execution->stop_requested) &&
+        s = suspending ? (n->ended == n->descriptor.inputs ? UD_END : UD_OK)
+            : atomic_load(&e->execution->stop_requested) &&
                     n->descriptor.category == UD_COMPONENT_SOURCE &&
                     !(n->descriptor.capabilities & UD_COMPONENT_CONTINUOUS)
                 ? UD_END
@@ -1879,7 +1792,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     }
     atomic_store(&n->live_idle_ms, n->idle_ms);
     atomic_store(&n->idle, 0);
-    if ((s == UD_OK || s == UD_MORE) && event.kind == UD_COMPONENT_INPUT_END &&
+    if (!suspending && (s == UD_OK || s == UD_MORE) && event.kind == UD_COMPONENT_INPUT_END &&
         n->ended < n->descriptor.inputs) {
         n->watermark_refresh = 1;
         n->watermark_refresh_input = event.input;
@@ -1912,7 +1825,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
             if (!s)
                 atomic_store(&n->state, UD_EXEC_SUCCEEDED);
             if (!s)
-                s = commit_epoch(p, atomic_load(&p->confirmed_epoch) + 1);
+                s = commit_epoch(p, atomic_load(&p->confirmed_epoch) + 1, 0);
             for (uint32_t i = 0; i < n->output_edges; i++)
                 ud_work_group_ready(p->group, p->nodes[p->edges[n->outputs[i]].to].tree);
         }
@@ -1962,256 +1875,7 @@ static ud_status tree_quantum(void *user, uint32_t index) {
     atomic_fetch_sub(&execution->tree_active, 1);
     return status ? status : complete == tree->count ? UD_OK : progress ? UD_MORE : UD_BUSY;
 }
-static ud_status json_number(ud_bytes *b, const char *name, uint64_t value) {
-    char text[128];
-    int n = snprintf(text, sizeof(text), "\"%s\":%llu", name, (unsigned long long)value);
-    return ud_bytes_put(b, text, (size_t)n);
-}
-static ud_status plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_status outcome) {
-    UD_TRY(ud_bytes_put(b, "{\"id\":", sizeof("{\"id\":") - 1));
-    UD_TRY(ud_json_quote(b, p->id.data, p->id.length));
-    UD_TRY(ud_bytes_put(b, ",\"task\":", sizeof(",\"task\":") - 1));
-    UD_TRY(ud_json_quote(b, p->execution->task_id.data, p->execution->task_id.length));
-    UD_TRY(ud_bytes_put(b, ",", 1));
-    UD_TRY(json_number(b, "treeConcurrency", p->concurrency));
-    UD_TRY(ud_bytes_put(b, ",", 1));
-    UD_TRY(json_number(b, "confirmedEpoch", atomic_load(&p->confirmed_epoch)));
-    if (p->execution->execution->options.state_directory.length)
-        UD_TRY(ud_bytes_put(
-            b, ",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"",
-            sizeof(",\"recoveryOrdering\":\"concurrent-trees-and-serialized-journal-frames\"") -
-                1));
-    UD_TRY(ud_bytes_put(b, ",\"trees\":[", sizeof(",\"trees\":[") - 1));
-    for (uint32_t t = 0; t < p->tree_count; t++) {
-        if (t)
-            UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
-        UD_TRY(ud_bytes_put(b, "{", sizeof("{") - 1));
-        UD_TRY(json_number(b, "id", t));
-        UD_TRY(ud_bytes_put(b, ",\"nodes\":[", sizeof(",\"nodes\":[") - 1));
-        execution_tree *tree = p->trees + t;
-        for (uint32_t i = 0; i < tree->count; i++) {
-            if (i)
-                UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
-            node *n = p->nodes + p->tree_order[tree->offset + i];
-            UD_TRY(ud_bytes_put(b, "{\"id\":", sizeof("{\"id\":") - 1));
-            UD_TRY(ud_json_quote(b, n->id.data, n->id.length));
-            UD_TRY(ud_bytes_put(b, ",\"component\":", sizeof(",\"component\":") - 1));
-            UD_TRY(ud_json_quote(b, n->descriptor.id.data, n->descriptor.id.length));
-            UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
-            UD_TRY(json_number(b, "capabilities", n->descriptor.capabilities));
-            UD_TRY(ud_bytes_put(b, ",", 1));
-            UD_TRY(json_number(b, "boundedness", n->binding.boundedness));
-            const char *mode = n->descriptor.capabilities & UD_COMPONENT_BLOCKING ? "blocking"
-                               : n->descriptor.capabilities & UD_COMPONENT_PARTIALLY_BLOCKING
-                                   ? "partiallyBlocking"
-                                   : "streaming";
-            UD_TRY(ud_bytes_put(b, ",\"stateMode\":", sizeof(",\"stateMode\":") - 1));
-            UD_TRY(ud_json_quote(b, mode, (uint32_t)strlen(mode)));
-            UD_TRY(ud_bytes_put(b, ",\"ports\":[", 10));
-            for (uint32_t direction = 0, at = 0; direction < 2; direction++)
-                for (uint32_t k = 0; k < (direction ? n->ports.output_count : n->ports.input_count);
-                     k++) {
-                    const ud_component_port *port =
-                        (direction ? n->ports.outputs : n->ports.inputs) + k;
-                    if (at++)
-                        UD_TRY(ud_bytes_put(b, ",", 1));
-                    char id[33];
-                    ud_id_format(port->id, id);
-                    UD_TRY(ud_bytes_put(b, "{\"id\":", 6));
-                    UD_TRY(ud_json_quote(b, id, 32));
-                    UD_TRY(ud_bytes_put(b, ",\"name\":", 8));
-                    UD_TRY(ud_json_quote(b, port->name.data, port->name.length));
-                    UD_TRY(ud_bytes_put(b, ",", 1));
-                    UD_TRY(json_number(b, "direction", port->direction));
-                    UD_TRY(ud_bytes_put(b, ",", 1));
-                    UD_TRY(json_number(b, "index", port->index));
-                    UD_TRY(ud_bytes_put(b, ",", 1));
-                    UD_TRY(json_number(b, "flags", port->flags));
-                    if (runtime && direction) {
-                        UD_TRY(ud_bytes_put(b, ",", 1));
-                        UD_TRY(json_number(b, "rows", atomic_load(n->port_rows + k)));
-                    }
-                    UD_TRY(ud_bytes_put(b, "}", 1));
-                }
-            UD_TRY(ud_bytes_put(b, "],", 2));
-            UD_TRY(json_number(b, "inputCount", n->descriptor.inputs));
-            UD_TRY(ud_bytes_put(b, ",", 1));
-            UD_TRY(json_number(b, "outputCount", n->descriptor.outputs));
-            UD_TRY(ud_bytes_put(b, ",", 1));
-            UD_TRY(json_number(b, "optionalOutputs", n->descriptor.optional_outputs));
-            uint64_t partitions = n->binding.partitions;
-            UD_TRY(ud_bytes_put(b, ",", 1));
-            UD_TRY(json_number(b, "partitions", partitions));
-            UD_TRY(ud_bytes_put(b, ",", 1));
-            UD_TRY(json_number(b, "ordering", n->binding.ordering));
-            const char *physical_names[] = {"algorithm",    "estimatedRows", "rowWidthEstimate",
-                                            "memoryBudget", "spillBudget",   "estimatedCost",
-                                            "stateVersion", "effects"};
-            const uint64_t physical_values[] = {n->binding.algorithm,     n->binding.estimated_rows,
-                                                n->binding.row_width,     n->binding.memory_budget,
-                                                n->binding.spill_budget,  n->binding.estimated_cost,
-                                                n->binding.state_version, n->binding.effects};
-            for (uint32_t field = 0; field < 8; field++) {
-                UD_TRY(ud_bytes_put(b, ",", 1));
-                UD_TRY(json_number(b, physical_names[field], physical_values[field]));
-            }
-            if (n->binding.physical_tree.length) {
-                UD_TRY(ud_bytes_put(b, ",\"physicalPlan\":", 16));
-                UD_TRY(ud_bytes_put(b, n->binding.physical_tree.data,
-                                    n->binding.physical_tree.length));
-            }
-            UD_TRY(ud_bytes_put(b, ",\"sortKeys\":[", 13));
-            for (uint32_t k = 0; k < n->binding.sort.count; k++) {
-                char id[33];
-                ud_id_format(n->binding.sort.keys[k].field, id);
-                if (k)
-                    UD_TRY(ud_bytes_put(b, ",", 1));
-                UD_TRY(ud_json_quote(b, id, 32));
-            }
-            UD_TRY(ud_bytes_put(b, "]", 1));
-            UD_TRY(ud_bytes_put(b, ",\"inputs\":[", sizeof(",\"inputs\":[") - 1));
-            for (uint32_t at = 0; at < n->ports.input_count; at++) {
-                if (at)
-                    UD_TRY(ud_bytes_put(b, ",", 1));
-                const ud_batch *schema = n->ports.inputs[at].schema;
-                if (!schema) {
-                    UD_TRY(ud_bytes_put(b, "null", 4));
-                    continue;
-                }
-                char *text = NULL;
-                uint32_t size = 0;
-                ud_status status = ud_schema_to_json(schema, &text, &size);
-                if (!status)
-                    status = ud_bytes_put(b, text, size);
-                ud_free(text);
-                if (status)
-                    return status;
-            }
-            UD_TRY(ud_bytes_put(b, "]", 1));
-            UD_TRY(ud_bytes_put(b, ",\"outputs\":[", sizeof(",\"outputs\":[") - 1));
-            for (uint32_t j = 0; j < n->descriptor.outputs; j++) {
-                if (j)
-                    UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
-                char *schema = NULL;
-                uint32_t size = 0;
-                ud_status status = ud_schema_to_json(n->schemas[j], &schema, &size);
-                if (!status)
-                    status = ud_bytes_put(b, schema, size);
-                ud_free(schema);
-                if (status)
-                    return status;
-            }
-            UD_TRY(ud_bytes_put(b, "]", sizeof("]") - 1));
-            if (runtime) {
-                UD_TRY(ud_bytes_put(b, ",", 1));
-                UD_TRY(json_number(b, "result", (uint64_t)atomic_load(&n->result)));
-                const char *names[] = {"state",          "steps",        "processedRows",
-                                       "producedRows",   "rejectedRows", "inputWaits",
-                                       "capacityWaits",  "callbackMs",   "cpuNs",
-                                       "firstMs",        "endMs",        "readyMs",
-                                       "prepareMs",      "prepareCpuNs", "inputWaitMs",
-                                       "capacityWaitMs", "finishMs",     "finishCpuNs"};
-                uint64_t values[] = {atomic_load(&n->state),
-                                     n->steps,
-                                     n->processed,
-                                     n->produced,
-                                     n->rejected,
-                                     n->wait_input,
-                                     n->wait_capacity,
-                                     n->callback_ms,
-                                     n->cpu_ns,
-                                     n->first_ms,
-                                     n->end_ms,
-                                     n->ready_ms,
-                                     n->prepare_ms,
-                                     n->prepare_cpu_ns,
-                                     n->input_wait_ms,
-                                     n->capacity_wait_ms,
-                                     n->finish_ms,
-                                     n->finish_cpu_ns};
-                for (uint32_t k = 0; k < 18; k++) {
-                    UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
-                    UD_TRY(json_number(b, names[k], values[k]));
-                }
-                UD_TRY(ud_bytes_put(b, ",\"batchLatency\":{", sizeof(",\"batchLatency\":{") - 1));
-                UD_TRY(json_number(b, "samples", n->batch_samples));
-                UD_TRY(ud_bytes_put(b, ",", 1));
-                UD_TRY(json_number(b, "p95UpperNs", batch_p95(n)));
-                UD_TRY(ud_bytes_put(b, ",", 1));
-                UD_TRY(json_number(b, "maxNs", n->batch_max_ns));
-                UD_TRY(ud_bytes_put(b, ",", 1));
-                UD_TRY(json_number(b, "sumNs", n->batch_sum_ns));
-                UD_TRY(ud_bytes_put(b,
-                                    ",\"method\":\"log2-nanoseconds-upper-bound\",\"scope\":"
-                                    "\"component-batch-callback\"}",
-                                    sizeof(",\"method\":\"log2-nanoseconds-upper-bound\",\"scope\":"
-                                           "\"component-batch-callback\"}") -
-                                        1));
-                if (n->opened && n->descriptor.diagnostics) {
-                    char *facts = NULL;
-                    uint32_t length = 0;
-                    ud_status status = n->descriptor.diagnostics(n->instance, &facts, &length);
-                    if (!status)
-                        status = ud_bytes_put(b, ",\"facts\":", 9);
-                    if (!status)
-                        status = ud_bytes_put(b, facts, length);
-                    ud_free(facts);
-                    if (status)
-                        return status;
-                }
-            }
-            UD_TRY(ud_bytes_put(b, "}", sizeof("}") - 1));
-        }
-        UD_TRY(ud_bytes_put(b, "]", 1));
-        if (runtime) {
-            const char *names[] = {"readyMs",    "firstMs",    "endMs", "quanta",
-                                   "busyQuanta", "callbackMs", "cpuNs"};
-            uint64_t values[] = {tree->ready_ms, tree->first_ms,    tree->end_ms, tree->quanta,
-                                 tree->busy,     tree->callback_ms, tree->cpu_ns};
-            for (uint32_t k = 0; k < 7; k++) {
-                UD_TRY(ud_bytes_put(b, ",", 1));
-                UD_TRY(json_number(b, names[k], values[k]));
-            }
-        }
-        UD_TRY(ud_bytes_put(b, "}", 1));
-    }
-    UD_TRY(ud_bytes_put(b, "],\"paths\":[", sizeof("],\"paths\":[") - 1));
-    for (uint32_t i = 0; i < p->paths; i++) {
-        edge *v = p->edges + i;
-        if (i)
-            UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
-        UD_TRY(ud_bytes_put(b, "{\"from\":", sizeof("{\"from\":") - 1));
-        UD_TRY(ud_json_quote(b, p->nodes[v->from].id.data, p->nodes[v->from].id.length));
-        UD_TRY(ud_bytes_put(b, ",\"to\":", sizeof(",\"to\":") - 1));
-        UD_TRY(ud_json_quote(b, p->nodes[v->to].id.data, p->nodes[v->to].id.length));
-        UD_TRY(ud_bytes_put(b, ",", 1));
-        const char *names[] = {"fromTree",     "toTree",        "output",
-                               "input",        "capacity",      "producedRows",
-                               "consumedRows", "queueHighWater", "spillBytes"};
-        uint64_t values[] = {p->nodes[v->from].tree,
-                             p->nodes[v->to].tree,
-                             v->output,
-                             v->input,
-                             p->execution->execution->options.edge_capacity,
-                             atomic_load(&v->produced),
-                             atomic_load(&v->consumed),
-                             atomic_load(&v->high_water),
-                             atomic_load(&v->spill_bytes)};
-        for (uint32_t j = 0; j < (runtime ? 9u : 5u); j++) {
-            if (j)
-                UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
-            UD_TRY(json_number(b, names[j], values[j]));
-        }
-        UD_TRY(ud_bytes_put(b, "}", sizeof("}") - 1));
-    }
-    UD_TRY(ud_bytes_put(b, "]", sizeof("]") - 1));
-    if (runtime) {
-        UD_TRY(ud_bytes_put(b, ",", sizeof(",") - 1));
-        UD_TRY(json_number(b, "outcome", outcome));
-    }
-    return ud_bytes_put(b, "}", sizeof("}") - 1);
-}
-ud_status ud_pipeline_execute(ud_activation *activation, const ud_json *definition) {
+static ud_status execute_lane(ud_activation *activation, const ud_json *definition) {
     physical_plan plan_value = {0};
     ud_status status = plan(activation, definition, &plan_value);
     emit_target *targets = NULL;
@@ -2266,6 +1930,9 @@ ud_status ud_pipeline_execute(ud_activation *activation, const ud_json *definiti
         if (status)
             status = node_failed(component, status, "finish");
     }
+    if (!status && ud_pipeline_kafka_exhausted(&plan_value) &&
+        !plan_value.nodes[plan_value.kafka_source].context.recovery_terminal)
+        status = commit_epoch(&plan_value, atomic_load(&plan_value.confirmed_epoch) + 1, 1);
     for (uint32_t i = 0; !status && i < plan_value.count; i++) {
         node *component = plan_value.nodes + plan_value.order[i];
         if (!activation->execution->preview_pipeline && component->descriptor.confirm)
@@ -2283,7 +1950,7 @@ ud_status ud_pipeline_execute(ud_activation *activation, const ud_json *definiti
             for (uint32_t i = 0; i < plan_value.count; i++)
                 plan_value.nodes[i].activation.pipeline_result = status;
             ud_bytes report = {.ctx = e->ctx};
-            ud_status recorded = plan_json(&plan_value, &report, 1, status);
+            ud_status recorded = ud_pipeline_plan_json(&plan_value, &report, 1, status);
             ud_mutex_lock(&e->diagnostics_lock);
             e->pipeline_record_count++;
             if (e->pipeline_record_count > 256)
@@ -2306,121 +1973,8 @@ ud_status ud_pipeline_execute(ud_activation *activation, const ud_json *definiti
     return status;
 }
 
-ud_status ud_execution_progress(ud_execution *e, char **out, uint32_t *length) {
-    if (!e || !out || !length)
-        return UD_INVALID;
-    *out = NULL;
-    *length = 0;
-    ud_bytes b = {.ctx = e->ctx, .limit = 4194304};
-    ud_status s = ud_bytes_put(&b, "{\"pipelines\":[", sizeof("{\"pipelines\":[") - 1);
-    ud_mutex_lock(&e->diagnostics_lock);
-    uint64_t sampled_at = ud_now_ms();
-    uint32_t count = 0;
-    for (physical_plan *p = e->active_progress; !s && p; p = p->progress_next) {
-        if (count++)
-            s = ud_bytes_put(&b, ",", 1);
-        if (!s)
-            s = ud_bytes_put(&b, "{\"id\":", sizeof("{\"id\":") - 1);
-        if (!s)
-            s = ud_json_quote(&b, p->id.data, p->id.length);
-        if (!s) {
-            char facts[256];
-            int n = snprintf(
-                facts, sizeof(facts),
-                ",\"sampledAtMs\":%llu,\"sampleWindowMs\":%llu,\"confirmedEpoch\":%llu,\"nodes\":[",
-                (unsigned long long)sampled_at,
-                (unsigned long long)(p->sampled_ms ? sampled_at - p->sampled_ms : 0),
-                (unsigned long long)atomic_load(&p->confirmed_epoch));
-            s = ud_bytes_put(&b, facts, (size_t)n);
-        }
-        for (uint32_t i = 0; !s && i < p->count; i++) {
-            node *n = p->nodes + i;
-            if (i)
-                s = ud_bytes_put(&b, ",", 1);
-            if (!s)
-                s = ud_bytes_put(&b, "{\"id\":", sizeof("{\"id\":") - 1);
-            if (!s)
-                s = ud_json_quote(&b, n->id.data, n->id.length);
-            const char *names[] = {"state",        "result",       "processedRows",
-                                   "producedRows", "rejectedRows", "callbackMs"};
-            uint64_t values[] = {
-                (uint64_t)atomic_load(&n->state), (uint64_t)atomic_load(&n->result),
-                atomic_load(&n->live_processed),  atomic_load(&n->live_produced),
-                atomic_load(&n->live_rejected),   atomic_load(&n->live_callback_ms)};
-            for (uint32_t k = 0; !s && k < 6; k++) {
-                s = ud_bytes_put(&b, ",", 1);
-                if (!s)
-                    s = json_number(&b, names[k], values[k]);
-            }
-            if (!s) {
-                uint64_t rows = atomic_load(&n->live_produced),
-                         elapsed = p->sampled_ms ? sampled_at - p->sampled_ms : 0;
-                char facts[384];
-                int size = snprintf(
-                    facts, sizeof(facts),
-                    ",\"boundedness\":%u,\"idle\":%s,\"idleMs\":%llu,\"watermark\":%lld,"
-                    "\"rateRowsPerSecond\":%.3f,\"stagedEpoch\":%llu",
-                    n->binding.boundedness, atomic_load(&n->idle) ? "true" : "false",
-                    (unsigned long long)atomic_load(&n->live_idle_ms),
-                    (long long)atomic_load(&n->live_watermark),
-                    elapsed ? (double)(rows - n->sampled_rows) * 1000.0 / (double)elapsed : 0.0,
-                    (unsigned long long)atomic_load(&n->staged_epoch));
-                s = ud_bytes_put(&b, facts, (size_t)size);
-                n->sampled_rows = rows;
-            }
-            if (!s)
-                s = ud_bytes_put(&b, ",\"ports\":[", sizeof(",\"ports\":[") - 1);
-            for (uint32_t k = 0; !s && k < n->descriptor.outputs; k++) {
-                if (k)
-                    s = ud_bytes_put(&b, ",", 1);
-                if (!s)
-                    s = ud_bytes_put(&b, "{", 1);
-                if (!s)
-                    s = json_number(&b, "index", k);
-                if (!s)
-                    s = ud_bytes_put(&b, ",", 1);
-                if (!s)
-                    s = json_number(&b, "rows", atomic_load(n->port_rows + k));
-                if (!s)
-                    s = ud_bytes_put(&b, "}", 1);
-            }
-            if (!s)
-                s = ud_bytes_put(&b, "]}", 2);
-        }
-        if (!s)
-            s = ud_bytes_put(&b, "],\"paths\":[", 11);
-        for (uint32_t k = 0; !s && k < p->paths; k++) {
-            edge *path = p->edges + k;
-            ud_queue_metrics queue = {0};
-            s = ud_queue_snapshot(path->queue, &queue);
-            char facts[384];
-            int size = snprintf(facts, sizeof(facts),
-                                "%s{\"from\":%u,\"to\":%u,\"output\":%u,\"input\":%u,"
-                                "\"queueBatches\":%llu,\"queueRows\":%llu,\"referencedBytes\":%llu,"
-                                "\"capacity\":%llu,\"producedRows\":%llu,\"consumedRows\":%llu}",
-                                k ? "," : "", path->from, path->to, path->output, path->input,
-                                (unsigned long long)queue.batches, (unsigned long long)queue.rows,
-                                (unsigned long long)queue.referenced_bytes,
-                                (unsigned long long)queue.capacity,
-                                (unsigned long long)atomic_load(&path->produced),
-                                (unsigned long long)atomic_load(&path->consumed));
-            if (!s)
-                s = ud_bytes_put(&b, facts, (size_t)size);
-        }
-        p->sampled_ms = sampled_at;
-        if (!s)
-            s = ud_bytes_put(&b, "]}", 2);
-    }
-    ud_mutex_unlock(&e->diagnostics_lock);
-    if (!s)
-        s = ud_bytes_put(&b, "]}", 2);
-    if (!s) {
-        *out = ud_strdup_n(e->ctx, (char *)b.data, b.size);
-        if (!*out)
-            s = UD_RESOURCE;
-        else
-            *length = (uint32_t)b.size;
-    }
-    ud_bytes_clear(&b);
-    return s;
+ud_status ud_pipeline_execute(ud_activation *activation, const ud_json *definition) {
+    if (!ud_member(definition, "parallelism"))
+        return execute_lane(activation, definition);
+    return ud_pipeline_parallel_run(activation, definition, execute_lane);
 }

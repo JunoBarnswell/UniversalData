@@ -7,7 +7,7 @@ string root = Path.GetFullPath(args[1]); bool resume = args[2] == "resume";
 Directory.CreateDirectory(root);
 using var registry = new Registry();
 new RecoveryModule().Register(registry);
-var package = JsonSerializer.Serialize(new { version=12,id = "managed-durable",controlFlow = new { tasks = new[] { new { id = "flow",kind = "dataFlow",config = new { pipeline = "rows" } } },constraints = Array.Empty<object>() },
+var package = JsonSerializer.Serialize(new { version=ProductInfo.Protocol,id = "managed-durable",controlFlow = new { tasks = new[] { new { id = "flow",kind = "dataFlow",config = new { pipeline = "rows" } } },constraints = Array.Empty<object>() },
     dataFlows = new[] { new { id = "rows",components = new[] { new { id = "source",component = "managed.source",config = new { root } },new { id = "transform",component = "managed.pass",config = new { root } },new { id = "target",component = "managed.destination",config = new { root } } },
         paths = new[] { new { from = "source",output = 0,to = "transform",input = 0 },new { from = "transform",output = 0,to = "target",input = 0 } } } } });
 bool windowMode = args.Length > 3 && args[3] == "window";
@@ -19,8 +19,8 @@ if(windowMode) {
       {"buffers":{"connection":"spill","residentBytes":1,"workingBytes":1048576,"spillBytes":100000000,"maxBlocks":256}}
       """);
     var flow=document["dataFlows"]![0]!;
-    flow["components"]!.AsArray().Insert(2,System.Text.Json.Nodes.JsonNode.Parse("""
-      {"id":"window","component":"eventWindow","config":{"timeField":"id","sizeMicros":1,"stateBytes":8192,"plan":{"version":12,"group":[],"aggregates":[{"function":"count","column":"*","name":"count"}]}}}
+    flow["components"]!.AsArray().Insert(2,System.Text.Json.Nodes.JsonNode.Parse($$$$"""
+      {"id":"window","component":"eventWindow","config":{"timeField":"id","sizeMicros":1,"stateBytes":8192,"plan":{"version":{{{{ProductInfo.Protocol}}}},"group":[],"aggregates":[{"function":"count","column":"*","name":"count"}]}}}
       """));
     flow["paths"]=System.Text.Json.Nodes.JsonNode.Parse("""
       [{"from":"source","output":0,"to":"transform","input":0},{"from":"transform","output":0,"to":"window","input":0},{"from":"window","output":0,"to":"target","input":0}]
@@ -43,8 +43,8 @@ Console.WriteLine(execution.Id); return 0;
 
 sealed class Source(string root) : IManagedComponent
 {
-    public const string Schema = "{\"version\":12,\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}";
-    private const string State = "{\"version\":12,\"fields\":[{\"name\":\"position\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"epoch\",\"type\":\"int64\",\"nullable\":false}]}";
+    public static readonly string Schema = "{\"version\":" + ProductInfo.Protocol + ",\"fields\":[{\"name\":\"id\",\"type\":\"int64\",\"nullable\":false}]}";
+    private static readonly string State = "{\"version\":" + ProductInfo.Protocol + ",\"fields\":[{\"name\":\"position\",\"type\":\"int64\",\"nullable\":false},{\"name\":\"epoch\",\"type\":\"int64\",\"nullable\":false}]}";
     private string schema = ""; private long index; private ulong epoch; private bool barrier;
     public void Open(ManagedComponentContext context,string config,string[] inputs,string[] outputs) {
         using var definition = JsonDocument.Parse(config); root = definition.RootElement.GetProperty("root").GetString()!;
@@ -86,7 +86,7 @@ sealed class Pass : IManagedComponent
 }
 sealed class Destination(string root) : IManagedComponent
 {
-    private const string State = "{\"version\":12,\"fields\":[{\"name\":\"count\",\"type\":\"int64\",\"nullable\":false}]}";
+    private static readonly string State = "{\"version\":" + ProductInfo.Protocol + ",\"fields\":[{\"name\":\"count\",\"type\":\"int64\",\"nullable\":false}]}";
     private long count;
     public void Open(ManagedComponentContext context,string config,string[] inputs,string[] outputs) {
         using var definition = JsonDocument.Parse(config); root = definition.RootElement.GetProperty("root").GetString()!;

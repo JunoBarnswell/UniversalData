@@ -1,7 +1,7 @@
 """R1–R5 real destinations, native snapshots, receipts, and separate-process kills."""
 from contextlib import closing
 import collections, copy, json, pathlib, sqlite3, subprocess, sys, tempfile
-VERSION=12
+from product_version import PROTOCOL_VERSION as VERSION
 DRIVER,PLUGIN=sys.argv[1:3]
 def schema(fields): return dict(version=VERSION,fields=fields)
 def field(name,kind='int64',nullable=False,**extra): return dict(name=name,type=kind,nullable=nullable,**extra)

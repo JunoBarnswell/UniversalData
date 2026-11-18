@@ -2,6 +2,7 @@ using System.Text.Json;
 using UniversalData;
 using UniversalData.Hosting;
 
+if (args is ["agent", var configPath]) return await UniversalData.Worker.WorkerNodeAgent.RunAsync(configPath);
 if (args.Length != 0) throw new ArgumentException("Worker uses the private inherited-pipe request protocol");
 var input = await WorkerProtocol.ReadLine(Console.In,67108864) ?? throw new InvalidDataException("Missing Worker request");
 using(var envelope=JsonDocument.Parse(input))
@@ -10,10 +11,14 @@ using(var envelope=JsonDocument.Parse(input))
 var request = JsonSerializer.Deserialize<WorkerRequest>(input,HostPolicy.JsonOptions) ?? throw new InvalidDataException("Invalid Worker request");
 if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket,"N",out _) || request.Policy is null ||
     request.Identity is null || request.Identity.Grants is null || !HostIdentity.ValidId(request.Identity.Tenant) ||
-    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "schemaCompare"))
+    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare"))
     throw new InvalidDataException("Incompatible Worker request");
 var policy = request.Policy with { Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated };
-var directory = policy.ExecutionDirectory(request.Ticket);
+if (request.JournalTicket is { } journal && (request.Mode != "execute" || !Guid.TryParseExact(journal, "N", out _)) ||
+    request.BrokerRestore && (request.Resume || request.ExecutionId.Length == 0 || request.JournalTicket is null ||
+        request.JournalTicket == request.Ticket))
+    throw new InvalidDataException("Incompatible Worker recovery request");
+var directory = policy.ExecutionDirectory(request.JournalTicket ?? request.Ticket);
 var parameters = request.ParametersReference.Length == 0 ? "{}" : new ParameterVault(policy).Resolve(request.ParametersReference);
 var output = new object();
 void Reply(object value) { lock (output) { Console.WriteLine(JsonSerializer.Serialize(value,HostPolicy.JsonOptions)); } }
@@ -38,6 +43,7 @@ if (request.Mode != "execute") {
                 "schemaCompare" => Schema.Compare(request.Payload!.Value.GetProperty("expected").GetRawText(),request.Payload.Value.GetProperty("actual").GetRawText(),request.Payload.Value.GetProperty("policy").GetRawText(),policy.MemoryLimit),
                 "file" => execution.InspectFile(request.Payload!.Value.GetProperty("connection").GetString()!,request.Payload.Value.GetProperty("configuration").GetRawText()),
                 "metadata" => execution.Metadata(request.Payload!.Value.GetProperty("connection").GetString()!,request.Payload.Value.GetProperty("kind").GetInt32(),request.Payload.Value.GetProperty("parent").GetString()!,request.Payload.Value.GetProperty("offset").GetUInt64()),
+                "messageConnection" => ProbeMessageConnection(execution, request.Payload!.Value.GetProperty("connection").GetString()!),
                 "expression" => execution.CompileExpression(request.Payload!.Value.GetProperty("schema").GetRawText(),request.Payload.Value.GetProperty("source").GetString()!),
                 "validate" => execution.Explain(),
                 "ports" => execution.ComponentPorts(request.Payload!.Value.GetProperty("pipelineId").GetString()!,request.Payload.Value.GetProperty("componentId").GetString()!,
@@ -53,9 +59,19 @@ if (request.Mode != "execute") {
     finally {if(validationState is not null&&Directory.Exists(directory))Directory.Delete(directory,true);}
     Reply(new { version = ProductInfo.Protocol, ticket = request.Ticket, kind = "inspection", result = status, value }); return status == 0 ? 0 : 1;
 }
+static string ProbeMessageConnection(Execution execution, string connection) {
+    var (capabilities, elapsedMs) = execution.TestMessageConnection(connection);
+    return JsonSerializer.Serialize(new MessageConnectionTestResult(capabilities, elapsedMs), HostPolicy.JsonOptions);
+}
 string phase="worker.catalog";
 try {
 // The worker only sees its own Native Catalog. Management imports Native records over the authenticated dispatch pipe.
+if (request.BrokerRestore)
+{
+    HostFiles.NoLinks(directory);
+    if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
+        throw new UniversalDataException((int)StatusCode.Fenced, "Broker recovery requires a new local journal");
+}
 Directory.CreateDirectory(directory);
 var workerPolicy = policy with { DataDirectory = directory };
 using var catalog = workerPolicy.OpenCatalog();
@@ -100,7 +116,7 @@ void Observe(ExecutionEvent value) {
         document=JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Event,value.ExecutionId,value.Sequence)!) } });
 }
 phase="native.create";
-using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,directory,request.Resume,observe:Observe,eventSequenceStart:eventSequence);
+using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,directory,request.Resume,observe:Observe,eventSequenceStart:eventSequence,shard:request.Shard,brokerRestore:request.BrokerRestore);
 phase="native.debug";
 if (request.Debug is { } debug) executionRun.ConfigureDebug(debug.GetRawText());
 using var controls = new CancellationTokenSource();

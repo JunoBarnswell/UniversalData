@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from product_version import PROTOCOL_VERSION
 
 with tempfile.TemporaryDirectory(prefix="ud-sql-records-") as directory:
     root = pathlib.Path(directory)
@@ -14,8 +15,8 @@ with tempfile.TemporaryDirectory(prefix="ud-sql-records-") as directory:
         connection.execute("CREATE TABLE source(value TEXT, label TEXT)")
         connection.executemany("INSERT INTO source VALUES(?,?)", [("18446744073709551615", "max"), ("-1", "negative"), ("3", "normal"), ("18446744073709551616", "overflow")])
     good, errors = root / "good.jsonl", root / "errors.jsonl"
-    schema = {"version": 12, "fields": [{"name": "value", "type": "uint64", "nullable": False}, {"name": "label", "type": "utf8", "nullable": False}]}
-    package = {"version": 12, "id": "sql-records", "connections": [
+    schema = {"version": PROTOCOL_VERSION, "fields": [{"name": "value", "type": "uint64", "nullable": False}, {"name": "label", "type": "utf8", "nullable": False}]}
+    package = {"version": PROTOCOL_VERSION, "id": "sql-records", "connections": [
         {"id": "input", "driver": str(pathlib.Path(sys.argv[2]).resolve()), "resource": str(database), "credentialReference": "fixture"},
         {"id": "good", "driver": "file", "resource": str(good)}, {"id": "errors", "driver": "file", "resource": str(errors)}],
         "controlFlow": {"tasks": [{"id": "copy", "kind": "dataFlow", "config": {"pipeline": "rows"}}], "constraints": []},

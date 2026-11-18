@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 4.0.0，唯一 ABI/协议 12。Linux 与 Windows 均须验收。下列目录是 main 基线已有组件的入口与边界，不能代替 2.0 当前验收；50 项适用整改状态见 metadata/product.json 的 goals。
+SDK 5.0.0，唯一 ABI/协议 13。Linux 与 Windows 均须验收。下列目录是 main 基线已有组件的入口与边界，不能代替 2.0 当前验收；50 项适用整改状态见 metadata/product.json 的 goals。
 
 | SSIS 职责 | 实际入口/ID | 实现与边界 |
 |---|---|---|
@@ -29,6 +29,7 @@ SDK 4.0.0，唯一 ABI/协议 12。Linux 与 Windows 均须验收。下列目录
 | Transaction / Checkpoint / Catalog | Journal 4、目标 receipt、immutable artifacts/history | 当前版本索引式分段 Journal、原子快照/manifest、目标 receipt、不可变 artifacts/history；不提供跨任意目标的分布式事务 |
 | Event-time streaming / Studio observation | eventTime; eventWindow; eventDeduplicate; eventJoin; Native Catalog execution feed | Native Watermark and bounded shared working subquotas. Final tumbling/sliding/session aggregates with stable RowIds. eventDeduplicate keeps the first row per key until its event-time TTL reaches the Watermark; eventJoin emits inner matches within the configured inclusive time difference and bounds state on both inputs. Both drop rows at or behind the common Watermark. |
 | Change Data Capture | CDC source, sql.destination (changeset) | microBatchRows and microBatchMs group complete source transactions. A sealed epoch stores original watermarks and the last log position. SQL Server sends bounded ordered statement batches. PostgreSQL uses bounded libpq pipelines and checks individual affected-row counts. |
+| 消息发布、订阅与消费 | mq.source、mq.destination | ActiveMQ AMQP 1.0、RabbitMQ AMQP 0-9-1、RocketMQ 5 gRPC、Kafka。使用实时发布与确认结果，真实 broker 及完整跨主机验收另行记录。 |
 
 未完成扩展：Current source limitations remain itemized under ETL-011 (qualified SQL Server participants), ETL-025/026 (complete online identity/presence proof) and ETL-038 (unsupported Avro named references/general unions). Missing Windows and independent protocol resources remain Blocked; no historical ABI 9 pass is inherited.。
 

@@ -4,6 +4,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from product_version import PROTOCOL_VERSION
 
 
 def node(identity, kind, **config):
@@ -23,10 +24,10 @@ with tempfile.TemporaryDirectory(prefix="ud-component-product-") as folder:
         connections = [dict(id="source", driver="file", resource=str(source)), *extra]
         for output in ("left", "right", "errors"):
             connections.append(dict(id=output, driver="file", resource=str(root / (name + "-" + output))))
-        document = dict(version=12, id=name, connections=connections,
+        document = dict(version=PROTOCOL_VERSION, id=name, connections=connections,
             controlFlow=dict(tasks=[dict(id="flow", kind="dataFlow", config=dict(pipeline="flow"))], constraints=[]),
             dataFlows=[dict(id="flow", components=[node("source", "file.ndjson.source", connection="source",
-                schema=dict(version=12, fields=fields), batchSize=7), *components], paths=paths)])
+                schema=dict(version=PROTOCOL_VERSION, fields=fields), batchSize=7), *components], paths=paths)])
         package = root / (name + ".json")
         package.write_text(json.dumps(document))
         result = subprocess.run([sys.argv[1], str(package), "0"], capture_output=True, text=True, timeout=40)

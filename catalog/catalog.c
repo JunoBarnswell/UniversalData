@@ -6,6 +6,7 @@
 /* Protocol family 10, storage revision 2. Older binaries reject this version;
  * Native upgrades existing documents intact under the SQLite writer lock. */
 #define CATALOG_STORAGE_VERSION ((UD_CONFIG_VERSION << 16) | UD_CATALOG_FORMAT_REVISION)
+#define CATALOG_ABI12_STORAGE ((12u << 16) | 1u)
 static int kind_valid(int32_t kind) {
     return kind >= UD_CATALOG_PROJECT && kind <= UD_CATALOG_AUDIT;
 }
@@ -227,7 +228,8 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
         status = pragma_integer(c, "PRAGMA user_version", &version);
     if (!status && (application || version) &&
         (application != CATALOG_APPLICATION_ID ||
-         (version != UD_CONFIG_VERSION && version != CATALOG_STORAGE_VERSION)))
+         (version != UD_CONFIG_VERSION && version != CATALOG_STORAGE_VERSION &&
+          version != CATALOG_ABI12_STORAGE)))
         status = UD_INCOMPATIBLE;
     if (!status && !application && !version) {
         status = sql(c, "BEGIN IMMEDIATE");
@@ -240,7 +242,8 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
             status = pragma_integer(c, "PRAGMA user_version", &version);
         if (!status && (application || version) &&
             (application != CATALOG_APPLICATION_ID ||
-             (version != UD_CONFIG_VERSION && version != CATALOG_STORAGE_VERSION)))
+             (version != UD_CONFIG_VERSION && version != CATALOG_STORAGE_VERSION &&
+              version != CATALOG_ABI12_STORAGE)))
             status = UD_INCOMPATIBLE;
         int tables = 0;
         if (!status && !application)
@@ -272,6 +275,14 @@ ud_status ud_catalog_open(ud_context *ctx, const ud_catalog_options *o, ud_catal
     if (!status && version != CATALOG_STORAGE_VERSION) {
         status = sql(c, "BEGIN IMMEDIATE");
         int transaction = !status;
+        if (!status && version == CATALOG_ABI12_STORAGE) {
+            int active = 0;
+            status = pragma_integer(c,
+                "SELECT count(*) FROM leases WHERE until_ms>CAST(unixepoch('subsec')*1000 AS INTEGER)",
+                &active);
+            if (!status && active)
+                status = UD_BUSY;
+        }
         if (!status)
             status = sql(c,
                 "CREATE TABLE IF NOT EXISTS catalog_clock(id INTEGER PRIMARY KEY CHECK(id=1),"

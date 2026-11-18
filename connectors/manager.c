@@ -53,13 +53,16 @@ struct ud_connection_lease {
     ud_connection *connection;
     uint64_t capabilities;
     uint32_t pins;
-    int cancelled, shared, read_only, cleanup;
+    int cancelled, shared, read_only, cleanup, messaging;
     struct ud_connection_lease *next;
 };
 static int network_driver(ud_string driver) {
     return ud_named(driver, "http") || ud_named(driver, "ftp") || ud_named(driver, "sftp") ||
            ud_named(driver, "smtp") || ud_named(driver, "azureBlob") ||
            ud_named(driver, "adlsGen2") || ud_named(driver, "s3");
+}
+uint64_t ud_connection_lease_capabilities(const ud_connection_lease *lease) {
+    return lease ? lease->capabilities : 0;
 }
 static ud_status check_lease(void *user) {
     ud_connection_lease *l = user;
@@ -92,10 +95,24 @@ ud_status ud_connection_lease_authorize_uri(ud_connection_lease *l, ud_string ur
 }
 static ud_status session_grant(void *user, ud_string tenant, ud_string resource, int32_t action) {
     ud_connection_lease *l = user;
-    if (!l || !ud_same(tenant, l->activation->execution->options.tenant) ||
-        !ud_same(resource, l->resource))
+    if (!l || !ud_same(tenant, l->activation->execution->options.tenant))
         return UD_AUTH;
-    return ud_connection_lease_authorize(l, action);
+    if (ud_same(resource, l->resource))
+        return ud_connection_lease_authorize(l, action);
+    if (!l->messaging || l->read_only)
+        return UD_AUTH;
+    if (action == UD_ACCESS_NETWORK)
+        return ud_connection_lease_authorize_uri(l, resource);
+    if ((action != UD_ACCESS_READ && action != UD_ACCESS_WRITE) ||
+        resource.length <= l->resource.length || resource.data[l->resource.length] != '/' ||
+        memcmp(resource.data, l->resource.data, l->resource.length))
+        return UD_AUTH;
+    UD_TRY(check_lease(l));
+    ud_execution *e = l->activation->execution;
+    return e->options.authorize &&
+                   e->options.authorize(e->options.authorize_user, tenant, resource, action) == UD_OK
+               ? UD_OK
+               : UD_AUTH;
 }
 ud_status ud_connections_create(ud_execution *e) {
     if (!e)
@@ -340,6 +357,9 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
             chosen->plugin_capabilities = info.capabilities;
         if (!status && !info.connector)
             status = UD_UNSUPPORTED;
+        if (!status)
+            l->messaging = (info.connector->capabilities &
+                            (UD_CONNECT_MESSAGE_SUBSCRIBE | UD_CONNECT_MESSAGE_PUBLISH)) != 0;
         if (!status && (info.connector->capabilities & caps) != caps)
             status = UD_UNSUPPORTED;
         if (!status && l->activation->parallel &&
@@ -680,6 +700,86 @@ ud_status ud_connection_lease_read_next(ud_connection_lease *l, ud_batch **out) 
         return UD_UNSUPPORTED;
     UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
     return lease_operation_end(l, ud_connection_read_next(l->connection, out));
+}
+ud_status ud_connection_lease_message_subscribe(ud_connection_lease *l,
+                                                const ud_message_subscription *options) {
+    if (!l || !l->connection || !l->messaging || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
+    return lease_operation_end(l, ud_connection_message_subscribe(l->connection, options));
+}
+ud_status ud_connection_lease_message_receive(ud_connection_lease *l, uint32_t timeout_ms,
+                                              ud_message *out) {
+    if (!l || !l->connection || !l->messaging || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
+    return lease_operation_end(l, ud_connection_message_receive(l->connection, timeout_ms, out));
+}
+ud_status ud_connection_lease_message_acknowledge(ud_connection_lease *l, const uint64_t *deliveries,
+                                                  uint32_t count) {
+    if (!l || !l->connection || !l->messaging || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
+    return lease_operation_end(l, ud_connection_message_acknowledge(l->connection, deliveries, count));
+}
+ud_status ud_connection_lease_message_publish(ud_connection_lease *l, const ud_message_target *target,
+                                              const ud_message *messages, uint32_t count,
+                                              ud_message_result *results) {
+    if (!l || !l->connection || !l->messaging || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_WRITE));
+    return lease_operation_end(l, ud_connection_message_publish(l->connection, target, messages,
+                                                                 count, results));
+}
+ud_status ud_connection_lease_message_capture_epoch(ud_connection_lease *l, const uint64_t *ids,
+                                                      uint32_t count, ud_message_epoch *out) {
+    if (!l || !(l->capabilities & UD_CONNECT_MESSAGE_TRANSACTION) || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
+    return lease_operation_end(l, ud_connection_message_capture_epoch(l->connection, ids, count, out));
+}
+ud_status ud_connection_lease_message_begin_epoch(ud_connection_lease *l, ud_string id,
+                                                   ud_string cluster) {
+    if (!l || !(l->capabilities & UD_CONNECT_MESSAGE_TRANSACTION) || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_WRITE));
+    return lease_operation_end(l, ud_connection_message_begin_epoch(l->connection, id, cluster));
+}
+ud_status ud_connection_lease_message_commit_epoch(ud_connection_lease *l,
+                                                    const ud_message_epoch *epoch) {
+    if (!l || !(l->capabilities & UD_CONNECT_MESSAGE_TRANSACTION) || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_WRITE));
+    return lease_operation_end(l, ud_connection_message_commit_epoch(l->connection, epoch));
+}
+ud_status ud_connection_lease_message_abort_epoch(ud_connection_lease *l) {
+    if (!l || !(l->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))
+        return UD_UNSUPPORTED;
+    UD_TRY(ud_connection_operation_begin(l->connection, l, session_grant, NULL));
+    return lease_operation_end(l, ud_connection_message_abort_epoch(l->connection));
+}
+ud_status ud_connection_lease_message_release_epoch(ud_connection_lease *l, const uint64_t *ids,
+                                                     uint32_t count) {
+    if (!l || !(l->capabilities & UD_CONNECT_MESSAGE_TRANSACTION))
+        return UD_UNSUPPORTED;
+    UD_TRY(ud_connection_operation_begin(l->connection, l, session_grant, NULL));
+    return lease_operation_end(l, ud_connection_message_release_epoch(l->connection, ids, count));
+}
+ud_status ud_connection_lease_message_visit_committed(ud_connection_lease *l, ud_string topic,
+                                                       int32_t partition, void *user,
+                                                       ud_message_visit visit) {
+    if (!l || !(l->capabilities & UD_CONNECT_MESSAGE_TRANSACTION) || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
+    return lease_operation_end(l, ud_connection_message_visit_committed(l->connection, topic,
+                                                                         partition, user, visit));
+}
+ud_status ud_connection_lease_message_verify_epoch(ud_connection_lease *l,
+                                                    const ud_message_epoch *epoch) {
+    if (!l || !(l->capabilities & UD_CONNECT_MESSAGE_TRANSACTION) || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
+    return lease_operation_end(l, ud_connection_message_verify_epoch(l->connection, epoch));
 }
 ud_status ud_connection_lease_read_close(ud_connection_lease *l) {
     if (!l || !l->connection)

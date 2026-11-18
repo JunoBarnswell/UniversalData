@@ -3,13 +3,14 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from product_version import PROTOCOL_VERSION
 for index in range(1,4):
     sys.argv[index]=str(pathlib.Path(sys.argv[index]).resolve())
 with tempfile.TemporaryDirectory(prefix="ud-native-custom-") as temporary:
     root=pathlib.Path(temporary)
     def fixture(name,extra=None):
         folder=root/name;folder.mkdir()
-        doc={"version":12,"id":"custom","variables":{"n":{"type":"int64","default":0}},
+        doc={"version":PROTOCOL_VERSION,"id":"custom","variables":{"n":{"type":"int64","default":0}},
              "connections":[{"id":"target","driver":"file","resource":str(folder/"marker")}],
              "controlFlow":{"tasks":[{"id":"custom","kind":"sample.custom","config":{"connection":"target","variable":"n","expression":{"op":"add","args":[{"ref":"n"},{"literal":5,"type":"int64"}]},**(extra or {})}}],"constraints":[]},"dataFlows":[]}
         return folder,doc

@@ -1,290 +1,87 @@
 {
   "generatedFrom": "metadata/product.json",
-  "version": 12,
-  "sdkVersion": "4.0.0",
-  "abi": 12,
-  "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
+  "version": 13,
+  "sdkVersion": "5.0.0",
+  "abi": 13,
+  "sourceFingerprint": null,
   "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
   "windows": "Required — complete driver build, native/language/install and platform acceptance",
   "gates": [
     {
       "id": "linux-full-build",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "CORE build only; full PRODUCT driver dependency closure unverified.",
-      "reason": "CORE build only; full PRODUCT driver dependency closure unverified.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "windows-full-build",
-      "status": "Blocked",
+      "status": "NotRun",
       "scope": "Windows toolchain/SSIS resources unavailable.",
-      "reason": "Windows toolchain/SSIS resources unavailable.",
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "correctness",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "75 portable cases passed; full inherited SSIS and vendor semantics remain unverified.",
-      "reason": "75 portable cases passed; full inherited SSIS and vendor semantics remain unverified.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "recovery",
-      "status": "Passed",
+      "status": "NotRun",
       "scope": "Portable Native Journal, process kill, window state, disk spill and same-ID recovery passed.",
-      "reason": "Portable Native Journal, process kill, window state, disk spill and same-ID recovery passed.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "external-integration",
-      "status": "Blocked",
+      "status": "NotRun",
       "scope": "No current external CDC/driver acceptance resources.",
-      "reason": "No current external CDC/driver acceptance resources.",
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "language-parity",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "Current Native/C#/Java ABI and lifecycle tests passed; complete streaming cross-host UAT remains partial.",
-      "reason": "Current Native/C#/Java ABI and lifecycle tests passed; complete streaming cross-host UAT remains partial.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "web",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "Actual browser core journey and 200/500/1000-node scaling passed; full UI/a11y/probe matrix partial.",
-      "reason": "Actual browser core journey and 200/500/1000-node scaling passed; full UI/a11y/probe matrix partial.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "performance",
-      "status": "Partial",
+      "status": "NotRun",
       "scope": "One million events and observed batch latency/RSS recorded; one-hour soak NotRun.",
-      "reason": "One million events and observed batch latency/RSS recorded; one-hour soak NotRun.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "installed-consumers",
       "status": "NotRun",
       "scope": "No current distributable archive or independent installed SDK consumer run.",
-      "reason": "No current distributable archive or independent installed SDK consumer run.",
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "source-contracts",
-      "status": "Passed",
+      "status": "NotRun",
       "scope": "Product projections, whitespace, epoch migration and C/.NET/Java compilation verified.",
-      "reason": "Product projections, whitespace, epoch migration and C/.NET/Java compilation verified.",
-      "evidence": [
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/build.log",
-          "sha256": "5875ba103c4bb41c40dbb40d277e7b838bdb076b0974a940fe5db5b8bbc29645"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/ctest.xml",
-          "sha256": "0ea3df315c99e6f3d3e19d2ae7915a9238f6743c249a8a45a6e68cbf18f184df"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/asan-ubsan.log",
-          "sha256": "24af5294cf56891a8e1708119288720c4aacccd1abb74dd87072ff4831bc69f2"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/browser.json",
-          "sha256": "f44bdee5135e0bb252d49039b717b9f6ba1a907ce1ce26c562efe0d3873e2461"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/studio4-scale.json",
-          "sha256": "889b36a2c74d3e1e6f74be52683c7afb75cbfbd308c54a5ffaafd87c13abfac3"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/window-performance.json",
-          "sha256": "d99ee3ebc1a78441bf1e68e9c2b5bd83f558f158269f121f511556686519b85e"
-        },
-        {
-          "path": "docs/acceptance/evidence/studio4-linux/validation.json",
-          "sha256": "3618e0927562682d8da37493d3528d27698c45a59b988996efce50385f5ed281"
-        }
-      ]
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "evidence": []
     },
     {
       "id": "release-integrity",
       "status": "NotRun",
       "scope": "Review branch only; no release archive or release certification.",
-      "reason": "Review branch only; no release archive or release certification.",
+      "reason": "Awaiting current ABI 13 acceptance evidence.",
       "evidence": []
     }
   ],

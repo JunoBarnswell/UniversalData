@@ -513,3 +513,29 @@ if(Python3_EXECUTABLE)
   set_tests_properties(ssis_microsoft_golden PROPERTIES SKIP_RETURN_CODE 77
     LABELS "ssis-golden;windows-resource")
 endif()
+if(TARGET ud_package)
+  add_executable(test_message_brokers message_brokers.c)
+  target_link_libraries(test_message_brokers PRIVATE ud_package)
+  foreach(broker IN ITEMS activemq_classic activemq_artemis rabbitmq rocketmq kafka)
+    string(REGEX REPLACE "_(classic|artemis)$" "" driver "${broker}")
+    if(TARGET ud_connector_${driver} AND Python3_Interpreter_FOUND)
+      string(TOUPPER "${broker}" resource)
+      add_test(NAME integration_${broker} COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py "UD_TEST_${resource}_CONFIG"
+        $<TARGET_FILE:test_message_brokers> $<TARGET_FILE:ud_connector_${driver}>)
+      set_tests_properties(integration_${broker} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS "real-integration;mq")
+    endif()
+  endforeach()
+  if(TARGET ud_connector_kafka AND Python3_Interpreter_FOUND)
+    add_test(NAME integration_kafka_schema_registry COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration_resource.py UD_TEST_KAFKA_REGISTRY_CONFIG
+      $<TARGET_FILE:test_message_brokers> $<TARGET_FILE:ud_connector_kafka> --registry)
+    set_tests_properties(integration_kafka_schema_registry PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600
+      LABELS "real-integration;mq;kafka;schema-registry")
+    add_test(NAME integration_kafka_process_takeover COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/kafka_process_takeover.py
+      $<TARGET_FILE:test_message_brokers> $<TARGET_FILE:ud_connector_kafka>)
+    set_tests_properties(integration_kafka_process_takeover PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 240
+      LABELS "real-integration;mq;kafka;recovery")
+  endif()
+endif()

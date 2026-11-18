@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using UniversalData;
@@ -20,11 +21,22 @@ foreach (string address in urls.Split(';')) {
         throw new InvalidDataException("Remote management endpoints require HTTPS");
 }
 builder.WebHost.UseUrls(urls);
-builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 67108864);
+var workerNodeTrust = builder.Configuration.GetSection("WorkerNodes").Get<Dictionary<string, WorkerNodeTrust>>()
+    ?? new Dictionary<string, WorkerNodeTrust>(StringComparer.Ordinal);
+if (workerNodeTrust.Any(pair => !HostIdentity.ValidId(pair.Key) || !WorkerNodeCertificate.ValidPin(pair.Value.CertificateSha256) ||
+    pair.Value.Tenants is not { Length: > 0 } || pair.Value.Tenants.Any(tenant => !HostIdentity.ValidId(tenant) || !policy.Tenants.ContainsKey(tenant))) ||
+    workerNodeTrust.Values.Select(entry => entry.CertificateSha256).Distinct(StringComparer.OrdinalIgnoreCase).Count() != workerNodeTrust.Count)
+    throw new InvalidDataException("Invalid Worker node trust configuration");
+builder.WebHost.ConfigureKestrel(options => {
+    options.Limits.MaxRequestBodySize = 67108864;
+    if (workerNodeTrust.Count != 0)
+        options.ConfigureHttpsDefaults(https => https.ClientCertificateMode = ClientCertificateMode.AllowCertificate);
+});
 string nodeId=builder.Configuration["node"] ?? Guid.NewGuid().ToString("N");
 if (!HostIdentity.ValidId(nodeId)) throw new InvalidDataException("Invalid dispatcher node identity");
 var configuration = new ProductConfiguration(Path.GetFullPath(builder.Configuration["worker"] ?? Path.Combine(AppContext.BaseDirectory,"worker","ud_worker.dll")),nodeId);
 builder.Services.AddSingleton(policy); builder.Services.AddSingleton(configuration); builder.Services.AddSingleton(identities);
+builder.Services.AddSingleton<WorkerNodeDirectory>();
 builder.Services.AddSingleton<RunDispatcher>(); builder.Services.AddHostedService(services => services.GetRequiredService<RunDispatcher>());
 ManagementSecurity.Configure(builder,policy,identities);
 var app = builder.Build();
@@ -38,6 +50,7 @@ app.Use(async (context,next) => {
         if (context.Response.HasStarted) throw; context.Response.StatusCode = 503; await context.Response.WriteAsJsonAsync(new { error = "Host operation is unavailable" }); }
 });
 ManagementSecurity.Install(app,policy,identities);
+WorkerNodeEndpoint.Map(app, workerNodeTrust);
 app.UseDefaultFiles(); app.UseStaticFiles();
 var api = app.MapGroup("/api").RequireAuthorization();
 HostIdentity Identity(HttpContext context) => context.Identity(identities);
@@ -96,6 +109,11 @@ api.MapPost("/metadata",async (MetadataRequest request,HttpContext context) => {
     using var package=JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
     return await Inspect(context,"metadata",package.RootElement,JsonSerializer.SerializeToElement(new {request.Connection,request.Kind,request.Parent,request.Offset},HostPolicy.JsonOptions),"package.discover");
 });
+api.MapPost("/connections/test", async (MessageConnectionTestRequest request, HttpContext context) => {
+    using var package = JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
+    return await Inspect(context, "messageConnection", package.RootElement,
+        JsonSerializer.SerializeToElement(new { request.Connection }, HostPolicy.JsonOptions), "package.discover");
+});
 api.MapPost("/schema/compare",async (SchemaComparisonRequest request,HttpContext context) => {
     using var package=JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
     return await Inspect(context,"schemaCompare",package.RootElement,JsonSerializer.SerializeToElement(new {request.Expected,request.Actual,request.Policy},HostPolicy.JsonOptions),"package.discover");
@@ -120,7 +138,7 @@ api.MapPost("/tests",async (TestRequest request,HttpContext context,RunDispatche
     foreach(var pipeline in plan.GetProperty("pipelines").EnumerateArray())foreach(var tree in pipeline.GetProperty("trees").EnumerateArray())foreach(var node in tree.GetProperty("nodes").EnumerateArray())
         if((node.GetProperty("effects").GetUInt32()&2)!=0&&node.GetProperty("component").GetString()!="sql.destination")return Results.BadRequest(new {error="Test contains an external side effect outside approved SQL destinations"});
     var saved=DesignerWorkspace.SaveVersion(Scope(context),identity,doc.RootElement,"0");
-    string id=doc.RootElement.GetProperty("id").GetString()!;return Results.Accepted(value:RunView(dispatcher.For(identity).Enqueue(identity,new(id,"1"))));
+    string id=doc.RootElement.GetProperty("id").GetString()!;return Results.Accepted(value:RunStateView.From(dispatcher.For(identity).Enqueue(identity,new(id,"1"))));
 });
 api.MapPost("/scripts/compile",async (ScriptRequest request,HttpContext context) => {
     var identity = Identity(context); identity.Require("script.compile","*"); var scoped = Scope(context);
@@ -148,17 +166,19 @@ api.MapPut("/packages/{id}/versions/{revision}",(string id,string revision,JsonE
     var scoped = Scope(context); string text = package.ToJson();
     using var catalog = scoped.OpenCatalog(); catalog.Put(CatalogKind.Package,id,ulong.Parse(revision),text); return Results.Ok(new { id,revision });
 });
-api.MapGet("/executions",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).List(Identity(context)).Select(RunView));
+api.MapGet("/executions",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).List(Identity(context)).Select(RunStateView.From));
 api.MapGet("/deployments",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Deployments(Identity(context)));
 api.MapPost("/deployments",(DeploymentRequest request,HttpContext context,RunDispatcher dispatcher) => Results.Ok(dispatcher.For(Identity(context)).Deploy(Identity(context),request)));
 api.MapPost("/deployments/{id}/start",async (string id,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).ActivateDeployment(Identity(context),id,true)));
 api.MapPost("/deployments/{id}/stop",async (string id,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).ActivateDeployment(Identity(context),id,false)));
-api.MapPost("/executions",(RunRequest request,HttpContext context,RunDispatcher dispatcher) => Results.Accepted(value:RunView(dispatcher.For(Identity(context)).Enqueue(Identity(context),request))));
-api.MapGet("/executions/{ticket}",(string ticket,HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Get(Identity(context),ticket) is { } run ? Results.Ok(RunView(run)) : Results.NotFound());
+api.MapPost("/executions",(RunRequest request,HttpContext context,RunDispatcher dispatcher) => Results.Accepted(value:RunStateView.From(dispatcher.For(Identity(context)).Enqueue(Identity(context),request))));
+api.MapGet("/executions/{ticket}",(string ticket,HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Get(Identity(context),ticket) is { } run ? Results.Ok(RunStateView.From(run)) : Results.NotFound());
+api.MapGet("/executions/{ticket}/members", (string ticket, HttpContext context, RunDispatcher dispatcher) =>
+    dispatcher.For(Identity(context)).Members(Identity(context), ticket).Select(RunStateView.From));
 api.MapPost("/executions/{ticket}/stop",async (string ticket,HttpContext context,RunDispatcher dispatcher) => { await dispatcher.For(Identity(context)).Stop(Identity(context),ticket); return Results.Accepted(); });
 api.MapGet("/executions/{ticket}/events",async (string ticket,HttpContext context,RunDispatcher dispatcher) => await ExecutionFeed.Stream(context,ticket,dispatcher,policy,identities));
 api.MapPost("/executions/{ticket}/cancel",async (string ticket,HttpContext context,RunDispatcher dispatcher) => { await dispatcher.For(Identity(context)).Cancel(Identity(context),ticket); return Results.Accepted(); });
-api.MapPost("/executions/{ticket}/resume",(string ticket,HttpContext context,RunDispatcher dispatcher) => Results.Accepted(value:RunView(dispatcher.For(Identity(context)).Resume(Identity(context),ticket))));
+api.MapPost("/executions/{ticket}/resume",(string ticket,bool? brokerRestore,HttpContext context,RunDispatcher dispatcher) => Results.Accepted(value:RunStateView.From(dispatcher.For(Identity(context)).Resume(Identity(context),ticket,brokerRestore ?? false))));
 api.MapGet("/executions/{ticket}/metrics",async (string ticket,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).Metrics(Identity(context),ticket)));
 api.MapGet("/executions/{ticket}/debug",async (string ticket,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).Debug(Identity(context),ticket)));
 api.MapPost("/executions/{ticket}/debug",async (string ticket,JsonElement command,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).Debug(Identity(context),ticket,command)));
@@ -184,8 +204,6 @@ api.MapGet("/resources",(HttpContext context) => { var scope = Scope(context); s
 api.MapGet("/health",() => new { sdk = ProductInfo.Sdk,protocol = ProductInfo.Protocol });
 app.MapFallbackToFile("index.html"); app.Run();
 
-static object RunView(RunState value) => new { value.Version,value.Id,value.PackageId,value.PackageRevision,value.State,value.ExecutionId,value.Resume,value.Result,value.Failure,
-    value.TimestampMs,value.Revision,value.JobId,value.Attempt,value.NotBeforeMs,value.Debug,value.DeploymentId,value.DeploymentRevision,value.Subject,value.ProcessId,workerNode=value.Owner };
 static object JobView(JobState value) => new { value.Version,value.Id,value.PackageId,value.PackageRevision,value.ParametersReference,value.Enabled,value.EverySeconds,
     value.NextDueMs,value.MaxConcurrency,value.MaxAttempts,value.RetryDelaySeconds,value.Revision,value.DeploymentId,value.DeploymentRevision,value.Subject };
 static string Query(CatalogKind kind,string? afterId = null,string? afterRevision = null) {

@@ -2,6 +2,7 @@
 #define UD_CONNECTOR_H
 #include "data.h"
 #include "cdc.h"
+#include "message.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -35,7 +36,10 @@ enum {
         8388608, /* Accepted row DML is governed by transaction/savepoint rollback. */
     UD_CONNECT_READONLY_SCAN =
         16777216, /* Table scans cannot execute external writes; enforced by the driver. */
-    UD_CONNECT_READ_SNAPSHOT = 33554432 /* Repeatable read-only view across scans. */
+    UD_CONNECT_READ_SNAPSHOT = 33554432, /* Repeatable read-only view across scans. */
+    UD_CONNECT_MESSAGE_SUBSCRIBE = 67108864,
+    UD_CONNECT_MESSAGE_PUBLISH = 134217728,
+    UD_CONNECT_MESSAGE_TRANSACTION = 268435456
 };
 enum {
     UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE,
@@ -220,6 +224,7 @@ typedef struct ud_connector_api {
     ud_status (*savepoint)(void *, ud_string native_statement);
     /* Optional provider proof inside the row transaction, before business mutation. */
     ud_status (*record_validate)(void *, const ud_read_options *);
+    const ud_message_api *message;
 } ud_connector_api;
 UD_API ud_status ud_connection_savepoint(ud_connection *, ud_string, int32_t);
 UD_API ud_status ud_connection_record_diagnostic(ud_connection *, ud_string *);

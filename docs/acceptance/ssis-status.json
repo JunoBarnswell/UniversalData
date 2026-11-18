@@ -1,7 +1,7 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "4.0.0",
-  "abi": 12,
+  "sdkVersion": "5.0.0",
+  "abi": 13,
   "scope": {
     "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",
     "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
@@ -15,12 +15,12 @@
     "abiVersion": 11
   },
   "candidate": {
-    "branch": "codex/studio4-stream-batch",
-    "state": "Draft PR #10; local portable checks passed. Remote CI could not start because of GitHub billing/spending limits; production and extension gates remain explicit.",
-    "sourceCommit": "9d0630980cafb34170f9fb8d1d1d1f2cae6f4e7d",
-    "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
+    "branch": "main",
+    "state": "SDK 5 messaging and worker execution candidate under verification",
+    "sourceCommit": null,
+    "sourceFingerprint": null,
     "mergeEvidence": null,
-    "pullRequest": "https://github.com/JunoBarnswell/UniversalData/pull/10"
+    "pullRequest": null
   },
   "remoteCI": {
     "state": "VerificationBlocked",

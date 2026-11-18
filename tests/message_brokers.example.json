@@ -1,0 +1,35 @@
+{
+  "broker": "kafka",
+  "endpoints": [
+    "kafka://127.0.0.1:9092"
+  ],
+  "credentials": {
+    "bootstrapServers": "127.0.0.1:9092",
+    "tls": false
+  },
+  "group": "ud-fixture-unique-group",
+  "scratchDirectory": "/absolute/path/to/empty-fixture-directory",
+  "binarySource": "ud-fixture-binary-source",
+  "binaryTarget": "ud-fixture-binary-target",
+  "jsonSource": "ud-fixture-json-source",
+  "jsonTarget": "ud-fixture-json-target",
+  "redeliverySource": "ud-fixture-redelivery-source",
+  "invalidSource": "ud-fixture-invalid-source",
+  "transactionSource": "ud-fixture-transaction-source",
+  "transactionTarget": "ud-fixture-transaction-target",
+  "checkpointTopic": "ud-fixture-transaction-checkpoint",
+  "registry": {
+    "source": "ud-fixture-registry-source",
+    "target": "ud-fixture-registry-target",
+    "url": "http://127.0.0.1:8081",
+    "credentialReference": "fixture-registry",
+    "credentials": {
+      "headers": {}
+    },
+    "subject": "ud-fixture-registry-value",
+    "readerVersion": 2,
+    "writerId": 1,
+    "readerId": 2,
+    "unknownId": 2147483647
+  }
+}

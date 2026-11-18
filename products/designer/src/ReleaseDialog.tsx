@@ -1,3 +1,4 @@
+import { Button, Input } from "./shared/design-system/Controls";
 import { useState } from "react";
 import { post } from "./api";
 import type {
@@ -27,16 +28,19 @@ export function ExecutionConfirmation({
       .filter(
         (node) =>
           node.component.includes("destination") ||
+          node.component === "mq.source" ||
           node.component === "sql.command",
       )
       .map((node) => ({
         flow: flow.id,
+        delivery: flow.delivery,
         node,
         connection: document.connections?.find(
           (connection) => connection.id === node.config.connection,
         ),
       })),
   );
+  const consumesMessages = targets.some(({ node }) => node.component === "mq.source");
   async function run() {
     setBusy(true);
     try {
@@ -86,23 +90,48 @@ export function ExecutionConfirmation({
         <table>
           <thead>
             <tr>
-              <th>目标环境 / 资源</th>
-              <th>目标表 / 组件</th>
-              <th>写入方式</th>
+              <th>连接 / 资源</th>
+              <th>表 / 消息地址</th>
+              <th>执行影响</th>
             </tr>
           </thead>
           <tbody>
-            {targets.map(({ flow, node, connection }) => (
+            {targets.map(({ flow, node, connection, delivery }) => (
               <tr key={flow + "/" + node.id}>
                 <td>
                   {connection?.id}
                   <small>{connection?.resource ?? "组件内部资源"}</small>
                 </td>
-                <td>{String(node.config.table ?? node.component)}</td>
                 <td>
-                  {String(
-                    node.config.mode ?? node.config.fileMode ?? "外部写入",
-                  )}
+                  {node.component === "mq.source" || node.component === "mq.destination" ? (
+                    <>
+                      {node.config.targetType === "queue" ? "队列" :
+                        node.config.targetType === "topic" ? "主题" :
+                        node.config.targetType === "exchange" ? "交换机" : "消息地址"}
+                      {" · "}{String(node.config.address ?? "未配置")}
+                      {typeof node.config.group === "string" && node.config.group ? (
+                        <small>消费组 {node.config.group}</small>
+                      ) : null}
+                      {typeof node.config.subscription === "string" && node.config.subscription ? (
+                        <small>订阅 {node.config.subscription}</small>
+                      ) : null}
+                      {typeof node.config.routingKey === "string" && node.config.routingKey ? (
+                        <small>路由键 {node.config.routingKey}</small>
+                      ) : null}
+                    </>
+                  ) : String(node.config.table ?? node.component)}
+                </td>
+                <td>
+                  {node.component === "mq.source" ? (
+                    delivery?.mode === "kafkaTransaction" ? (
+                      <>
+                        事务提交时推进消费组位点
+                        <small>检查点 {delivery.checkpointTopic} / 分区 {delivery.checkpointPartition ?? 0}</small>
+                      </>
+                    ) : "检查点完成后确认消费，可能移除队列消息或推进消费组位点"
+                  ) : node.component === "mq.destination" ? (
+                    delivery?.mode === "kafkaTransaction" ? "在 Kafka 事务中发布消息" : "向 broker 发布消息"
+                  ) : String(node.config.mode ?? node.config.fileMode ?? "外部写入")}
                 </td>
               </tr>
             ))}
@@ -110,7 +139,7 @@ export function ExecutionConfirmation({
         </table>
         <p>执行将使用这一已发布版本；后续草稿更改将进入下一个版本。</p>
         <label className="checkbox">
-          <input
+          <Input
             type="checkbox"
             checked={debug}
             onChange={(event) => setDebug(event.target.checked)}
@@ -122,7 +151,7 @@ export function ExecutionConfirmation({
             <legend>任务断点</legend>
             {tasks.map((task) => (
               <label className="checkbox" key={JSON.stringify(task.path)}>
-                <input
+                <Input
                   type="checkbox"
                   checked={breakpoints.some(
                     (path) =>
@@ -150,24 +179,26 @@ export function ExecutionConfirmation({
           </fieldset>
         ) : null}
         <label className="checkbox">
-          <input
+          <Input
             aria-label="确认正式业务写入"
             type="checkbox"
             checked={confirmed}
             onChange={(event) => setConfirmed(event.target.checked)}
           />
-          我已核对版本、环境、目标表及写入模式，确认执行
+          {consumesMessages
+            ? "我已核对版本、目标资源和消费确认影响，确认执行"
+            : "我已核对版本、环境和写入目标，确认执行"}
         </label>
         {error ? <p role="alert">{error}</p> : null}
         <footer>
-          <button onClick={close}>取消</button>
-          <button
+          <Button onClick={close}>取消</Button>
+          <Button
             className="primary"
             disabled={!confirmed || busy}
             onClick={() => void run()}
           >
             {busy ? "提交中…" : "确认正式执行"}
-          </button>
+          </Button>
         </footer>
       </section>
     </div>

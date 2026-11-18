@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import tempfile
+from product_version import PROTOCOL_VERSION
 
 
 def field(name, type_="utf8", nullable=False, **metadata):
@@ -13,7 +14,7 @@ def field(name, type_="utf8", nullable=False, **metadata):
 
 
 def schema(*fields):
-    return dict(version=12, fields=fields)
+    return dict(version=PROTOCOL_VERSION, fields=fields)
 
 
 def component(id_, kind, **config):
@@ -71,7 +72,7 @@ def fixture(root, plugin, mode, probes, no_match="output", batch=3, limit=4, sco
             component("build", "cacheBuild", cache="reference", mapping=[0, 1]),
         ], paths=[edge("reference", "build")]))
     document = dict(
-        version=12, id="sqlite-lookup", connections=connections, dataFlows=flows,
+        version=PROTOCOL_VERSION, id="sqlite-lookup", connections=connections, dataFlows=flows,
         controlFlow=dict(tasks=tasks, constraints=constraints),
         policy=dict(buffers=dict(connection="spill", residentBytes=8192,
                                  workingBytes=4194304, spillBytes=16777216, maxBlocks=64)),

@@ -127,9 +127,16 @@ for path in sorted((native / 'UniversalData/plugins').glob('*.so')):
 fingerprint = subprocess.check_output([sys.executable, str(ROOT / 'scripts/release_guard.py'), '--fingerprint'], text=True).strip()
 files = [dict(path=p.relative_to(output).as_posix(), bytes=p.stat().st_size, sha256=digest(p))
          for p in sorted(output.rglob('*')) if p.is_file()]
-features = {key: ('UD_WITH_' + key.upper() + ':BOOL=ON') in cache for key in ('sqlite', 'postgresql', 'odbc', 'mysql', 'mariadb', 'oracle_oci', 'arrow_files', 'http', 'xml', 'network')}
+drivers = ('sqlite', 'postgresql', 'odbc', 'mysql', 'mariadb', 'oracle_oci',
+           'activemq', 'rabbitmq', 'rocketmq', 'kafka')
+features = {key: ('UD_WITH_' + key.upper() + ':BOOL=ON') in cache
+            for key in (*drivers, 'arrow_files', 'http', 'xml', 'network')}
 if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache:
     assert all(features.values()), 'Complete product dependencies cannot silently downgrade'
+for driver in drivers:
+    if features[driver]:
+        expected = native / 'UniversalData/plugins' / f'ud_connector_{driver}.so'
+        assert expected.is_file(), f'Missing enabled connector: {expected.name}'
 manifest = dict(schemaVersion=product['protocolVersion'],protocolVersion=product['protocolVersion'], buildProfile='PRODUCT' if 'UD_BUILD_PROFILE:STRING=PRODUCT' in cache else 'CORE', sdkVersion=version, abiVersion=product['abiVersion'],
                 configuration='Release', runtimeIdentifier='linux-x64', sourceFingerprint=fingerprint,
                 capabilities=features, managedRuntime='Microsoft.AspNetCore.App 10', hosts=['cli','worker','management','designer'],

@@ -5,6 +5,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from product_version import PROTOCOL_VERSION
 
 with tempfile.TemporaryDirectory(prefix="ud-xml-product-") as folder:
     root = pathlib.Path(folder)
@@ -14,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix="ud-xml-product-") as folder:
         result = subprocess.run([sys.argv[1], str(package), str(status)], capture_output=True, text=True, timeout=40)
         assert result.returncode == 0, (result.stdout, result.stderr)
     def document(connections, tasks, flows=None):
-        return dict(version=12, id="xml-product", connections=[dict(id=k, driver="file", resource=str(v)) for k,v in connections.items()],
+        return dict(version=PROTOCOL_VERSION, id="xml-product", connections=[dict(id=k, driver="file", resource=str(v)) for k,v in connections.items()],
                     controlFlow=dict(tasks=tasks, constraints=[]), dataFlows=flows or [])
     source = root / "source.xml"
     raw = b'<r xmlns="urn:records"><row><id>18446744073709551615</id><text>first</text></row><row><id>bad</id><text>error</text></row><row><id>2</id><text>last</text></row></r>'
@@ -22,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix="ud-xml-product-") as folder:
     good = root / "good.ndjson"; errors = root / "errors.ndjson"
     fields = [dict(name="id", type="uint64", nullable=False), dict(name="text", type="utf8", nullable=False)]
     flow = dict(id="xml", components=[
-        dict(id="source", component="file.xml.source", config=dict(connection="source", schema=dict(version=12, fields=fields),
+        dict(id="source", component="file.xml.source", config=dict(connection="source", schema=dict(version=PROTOCOL_VERSION, fields=fields),
             recordPath="/r/row", fields=dict(id="n:id", text="n:text"), namespaces=dict(n="urn:records"), errorPolicy="redirect", includeInput=True)),
         dict(id="good", component="file.ndjson.destination", config=dict(connection="good")),
         dict(id="error", component="file.ndjson.destination", config=dict(connection="error"))],

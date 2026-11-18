@@ -16,6 +16,7 @@ import urllib.request
 import uuid
 from playwright.sync_api import sync_playwright, expect
 from browser_canvas import connect as connect_nodes
+from product_version import PROTOCOL_VERSION
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--url', required=True)
@@ -212,7 +213,7 @@ with sync_playwright() as playwright:
         page.set_viewport_size(dict(width=1600,height=1050))
         for count in [200,500,1000]:
             name=identity+'-scale-'+str(count)
-            scale=dict(version=12,id=name,variables=dict(counter=dict(type='int64',default=0)),dataFlows=[],
+            scale=dict(version=PROTOCOL_VERSION,id=name,variables=dict(counter=dict(type='int64',default=0)),dataFlows=[],
                 controlFlow=dict(tasks=[dict(id='step-'+str(index),kind='set',config=dict(name='counter',value=dict(literal=index,type='int64'))) for index in range(count)],constraints=[]))
             api('PUT','/packages/'+name+'/versions/1',scale)
             page.get_by_role('button',name='项目',exact=True).click()
