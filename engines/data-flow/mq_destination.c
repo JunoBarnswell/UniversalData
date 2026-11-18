@@ -1,4 +1,5 @@
 #include "mq_payload.h"
+#include "kafka_stage.h"
 #include "../package/kafka_checkpoint.h"
 #include "../../components/compute/internal.h"
 
@@ -13,6 +14,8 @@ typedef struct mq_destination {
     struct ud_kafka_checkpoint *checkpoint;
     atomic_uint_fast64_t pending_committed;
     uint32_t partition_count, partition_key_count, partition_keys[MQ_PARTITION_KEYS];
+    uint32_t stage_partitions;
+    uint8_t stage_identity[32];
 } mq_destination;
 
 static ud_status bind_partition_keys(const ud_json *config, const ud_mq_settings *settings,
@@ -87,6 +90,15 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
     if (!status)
         status = bind_partition_keys(destination->config, settings, inputs[0],
             &destination->partition_count, &destination->partition_key_count, destination->partition_keys);
+    if (!status && ud_kafka_stage_enabled(ud_member(destination->config, "publishStage"))) {
+        uint32_t members = context->execution->options.worker_members;
+        destination->stage_partitions = settings->fixed_partition && !settings->partition_by_worker ? 1 : members;
+        if (!destination->checkpoint || !context->execution->options.worker_run_id.length ||
+            (destination->partition_count != members && !settings->partition_by_worker && settings->fixed_partition != 1))
+            status = UD_SCHEMA;
+        else
+            ud_kafka_stage_identity(context, context->pipeline_id, destination->stage_identity);
+    }
     if (!status && settings->format == UD_MQ_AVRO)
         status = ud_schema_registry_open(context, settings->registry_connection, settings->subject,
                                          settings->schema_version, &destination->registry);
@@ -125,6 +137,10 @@ static ud_status publish(mq_destination *destination, const ud_batch *batch) {
             status = UD_TRUNCATED;
         if (!status)
             status = ud_mq_encode_metadata(batch, row, messages + row);
+        if (!status && destination->stage_partitions)
+            status = ud_kafka_stage_tag(ctx, messages + row, destination->stage_identity,
+                                        destination->context.execution->options.worker_member,
+                                        UD_COMPONENT_DATA, 0);
         if (!status && destination->settings.fixed_partition)
             messages[row].partition = (int32_t)(destination->settings.fixed_partition - 1);
         if (!status && destination->partition_count) {
@@ -171,9 +187,39 @@ void ud_mq_destination_confirm(void *instance) {
         ud_target_rows(destination->context.activation, accepted, 0, 0);
 }
 
+static ud_status publish_stage_control(mq_destination *destination, const ud_component_event *event) {
+    ud_message messages[MQ_PARTITIONS] = {{0}};
+    ud_message_result results[MQ_PARTITIONS] = {{0}};
+    ud_context *ctx = destination->context.memory;
+    ud_status status = UD_OK;
+    for (uint32_t i = 0; !status && i < destination->stage_partitions; i++) {
+        messages[i].partition = (int32_t)i;
+        messages[i].offset = messages[i].timestamp_ms = -1;
+        status = ud_kafka_stage_tag(ctx, messages + i, destination->stage_identity,
+                                   destination->context.execution->options.worker_member,
+                                   event->kind, event->watermark);
+    }
+    if (!status)
+        status = ud_kafka_checkpoint_begin(destination->checkpoint);
+    if (!status)
+        status = ud_connection_lease_message_publish(destination->lease, &destination->settings.target,
+                                                      messages, destination->stage_partitions, results);
+    for (uint32_t i = 0; i < destination->stage_partitions; i++) {
+        if (!status && results[i].state != UD_MESSAGE_ACCEPTED)
+            status = results[i].result ? results[i].result : UD_IO;
+        ud_message_clear(messages + i);
+    }
+    return status;
+}
+
 static ud_status step(void *instance, const ud_component_event *event) {
+    mq_destination *destination = instance;
     if (event->kind == UD_COMPONENT_DATA)
-        return publish(instance, event->batch);
+        return publish(destination, event->batch);
+    if (destination->stage_partitions && (event->kind == UD_COMPONENT_INPUT_END ||
+        event->kind == UD_COMPONENT_WATERMARK || event->kind == UD_COMPONENT_IDLE ||
+        event->kind == UD_COMPONENT_ACTIVE))
+        return publish_stage_control(destination, event);
     return event->kind == UD_COMPONENT_POLL ? UD_END : UD_OK;
 }
 
@@ -185,6 +231,7 @@ static ud_status finish(void *instance) {
 ud_status ud_mq_destination_register(ud_registry *registry) {
     static const char schema[] = "{\"type\":\"object\",\"additionalProperties\":false,"
         "\"required\":[\"connection\",\"targetType\",\"address\"],\"properties\":{" UD_MQ_PAYLOAD_PROPERTIES ","
+        "\"publishStage\":{\"type\":\"boolean\",\"default\":false},"
         "\"repartition\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"partitions\",\"keys\"],"
         "\"properties\":{\"partitions\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":64},"
         "\"keys\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":16,\"items\":{\"anyOf\":[{\"type\":\"string\"},"
@@ -195,7 +242,7 @@ ud_status ud_mq_destination_register(ud_registry *registry) {
         .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
         .configuration_schema = {schema, sizeof(schema) - 1}, .category = UD_COMPONENT_DESTINATION,
         .inputs = 1, .synchronous_input = -1, .error_output = -1,
-        .capabilities = UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_STREAM_SAFE,
+        .capabilities = UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_STREAM_SAFE | UD_COMPONENT_CONTROL_EVENTS,
         .effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_REPLAYABLE_PUBLISH | UD_EFFECT_COMMIT_UNKNOWN,
         .configure = configure, .prepare = prepare, .step = step, .finish = finish, .dispose = dispose,
     };

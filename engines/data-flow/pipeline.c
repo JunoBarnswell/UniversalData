@@ -1,4 +1,5 @@
 #include "pipeline_state.h"
+#include "builtins_internal.h"
 #include "ud/engine.h"
 #include "ud/partition.h"
 #include "../../components/execution/state.h"
@@ -567,8 +568,6 @@ static uint32_t recommended_rows(void *user) {
     }
     return rows ? (uint32_t)rows : 1;
 }
-static ud_status stage_epoch(physical_plan *, node *, uint64_t);
-static ud_status epoch_component_key(physical_plan *, node *, char[65]);
 /* An edge has one publisher. A delivery retains its slot through the
  * consumer callback, even after the frame leaves the physical queue. */
 static ud_status publish(physical_plan *p, edge *v, ud_stream_event *frame, const ud_batch *batch) {
@@ -713,7 +712,7 @@ static ud_status route_event(void *user, uint32_t port, const ud_component_event
             if (!n->source_position.data)
                 return UD_RESOURCE;
             n->barrier_epoch = event->epoch;
-            UD_TRY(stage_epoch(p, n, event->epoch));
+            UD_TRY(ud_pipeline_stage_epoch(p, n, event->epoch));
         }
     }
     int connected = 0;
@@ -767,13 +766,6 @@ static ud_status route(void *user, uint32_t port, ud_batch *batch) {
     ud_batch_destroy(identified);
     return status;
 }
-static int epoch_target_supported(const physical_plan *p, const node *n) {
-    uint32_t effects = n->binding.effects;
-    return !(effects & UD_EFFECT_EXTERNAL_WRITE) ||
-           (effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT)) ||
-           (p->execution->transaction_epoch && (effects & UD_EFFECT_TRANSACTIONAL)) ||
-           (p->allow_replayable_publish && (effects & UD_EFFECT_REPLAYABLE_PUBLISH));
-}
 static ud_status validate_effects(physical_plan *p) {
     uint8_t *reachable = ud_alloc(p->execution->execution->ctx, p->count);
     if (!reachable)
@@ -793,7 +785,7 @@ static ud_status validate_effects(physical_plan *p) {
         int publish = p->allow_replayable_publish && (n->binding.effects & UD_EFFECT_REPLAYABLE_PUBLISH);
         if ((p->execution->execution->options.state_directory.length &&
              !(n->descriptor.capabilities & UD_COMPONENT_REPLAY_SAFE) && !publish) ||
-            (epochs && !epoch_target_supported(p, n))) {
+            (epochs && !ud_pipeline_epoch_target_supported(p, n))) {
             status = UD_UNSUPPORTED;
             break;
         }
@@ -1130,7 +1122,7 @@ ud_status ud_pipeline_bind_validate(ud_activation *e, const ud_json *definition)
     ud_free(targets);
     return s;
 }
-static uint64_t input_mask(const physical_plan *p, const node *n, int unfinished) {
+uint64_t ud_pipeline_input_mask(const physical_plan *p, const node *n, int unfinished) {
     uint64_t mask = 0;
     for (uint32_t port = 0; port < n->descriptor.inputs; port++)
         if (n->inputs[port] != UINT32_MAX && (!unfinished || !p->edges[n->inputs[port]].ended))
@@ -1184,6 +1176,7 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
             if ((n->descriptor.category == UD_COMPONENT_SOURCE) != (pass == 0))
                 continue;
             n->activation.kafka_checkpoint = p->kafka;
+            n->activation.deferred_kafka_input_commit = p->kafka_merge && n->descriptor.category == UD_COMPONENT_SOURCE;
             n->context.recovery_epoch = atomic_load(&p->confirmed_epoch);
             const ud_json *saved_components = ud_member(p->epoch_record, "components");
             for (uint32_t k = 0; k < ud_json_size(saved_components); k++) {
@@ -1239,8 +1232,8 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
             if (s)
                 return node_failed(n, s, "prepare");
             n->opened = 1;
-            if (p->kafka && p->epoch_record && n == p->nodes + p->kafka_source)
-                UD_TRY(ud_pipeline_kafka_verify(p));
+            if (p->kafka && p->epoch_record && n->descriptor.category == UD_COMPONENT_SOURCE)
+                UD_TRY(ud_pipeline_kafka_verify(p, n));
             if (atomic_load(&p->confirmed_epoch)) {
                 const ud_json *components = ud_member(p->epoch_record, "components"), *entry = NULL;
                 for (uint32_t k = 0; k < ud_json_size(components); k++) {
@@ -1262,13 +1255,21 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
                     return UD_INCOMPATIBLE;
                 UD_TRY(ud_json_uint(ud_member(entry, "producedRows"), &n->produced));
                 UD_TRY(ud_json_uint(ud_member(entry, "processedRows"), &n->processed));
+                const ud_json *merge_base = ud_member(entry, "mergeBaseRows");
+                if (merge_base) {
+                    UD_TRY(ud_json_uint(merge_base, &n->merge_base_rows));
+                    if (!p->kafka_merge || n != p->nodes + p->kafka_merge_sort ||
+                        n->merge_base_rows > n->produced || !ended)
+                        return UD_CORRUPT;
+                    n->merge_base_sealed = 1;
+                }
                 UD_TRY(ud_pipeline_frontier_read(e->execution->ctx, ud_member(entry, "frontier"),
-                                                n->descriptor.inputs, input_mask(p, n, 0),
+                                                n->descriptor.inputs, ud_pipeline_input_mask(p, n, 0),
                                                 &n->frontier));
                 atomic_store(&n->live_watermark, n->frontier.emitted);
                 if (n->descriptor.restore) {
                     char key[65];
-                    UD_TRY(epoch_component_key(p, n, key));
+                    UD_TRY(ud_pipeline_epoch_component_key(p, n, key));
                     ud_batch *state = NULL;
                     uint64_t checkpoint_epoch = atomic_load(&p->confirmed_epoch);
                     ud_status restored = p->kafka ? ud_kafka_checkpoint_restore(
@@ -1278,6 +1279,8 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
                     if (!restored)
                         restored = n->descriptor.restore(n->instance, state);
                     ud_batch_destroy(state);
+                    if (!restored && n->merge_base_sealed && !n->context.recovery_terminal)
+                        restored = ud_builtin_seek_output(n->instance, n->produced - n->merge_base_rows);
                     if (restored)
                         return node_failed(n, restored, "restore");
                 }
@@ -1295,170 +1298,6 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
             }
         }
     return UD_OK;
-}
-static ud_status epoch_component_key(physical_plan *p, node *n, char out[65]) {
-    ud_bytes b = {.ctx = p->execution->execution->ctx};
-    ud_status s = ud_put_string(&b, p->id.data, p->id.length);
-    if (!s)
-        s = ud_put_string(&b, n->id.data, n->id.length);
-    uint8_t hash[32];
-    if (!s) {
-        ud_hash(b.data, b.size, hash);
-        for (uint32_t i = 0; i < 32; i++)
-            snprintf(out + 2 * i, 3, "%02x", hash[i]);
-    }
-    ud_bytes_clear(&b);
-    return s;
-}
-static ud_status stage_epoch(physical_plan *p, node *n, uint64_t epoch) {
-    if (atomic_load(&n->staged_epoch) == epoch)
-        return UD_OK;
-    if (ud_transaction_active(&n->activation) && !n->activation.transaction_epoch)
-        return UD_UNSUPPORTED;
-    if (!epoch_target_supported(p, n))
-        return UD_UNSUPPORTED;
-    if ((n->descriptor.capabilities & UD_COMPONENT_STATEFUL) && !n->descriptor.checkpoint)
-        return UD_UNSUPPORTED;
-    ud_batch *state = NULL;
-    ud_status status = UD_OK;
-    if (n->descriptor.checkpoint)
-        status = n->descriptor.checkpoint(n->instance, &state);
-    else {
-        ud_field field = {.name = "stateless", .name_length = 9, .type = UD_INT64};
-        ud_value value = {.type = UD_INT64};
-        status = ud_batch_create(p->execution->execution->ctx, &field, 1, 1, &state);
-        if (!status)
-            status = ud_batch_append(state, &value, 1);
-        if (!status)
-            status = ud_batch_seal(state);
-    }
-    char key[65];
-    if (!status)
-        status = epoch_component_key(p, n, key);
-    if (!status)
-        status = p->kafka ? ud_kafka_checkpoint_stage(p->kafka, (uint32_t)(n - p->nodes), epoch, state)
-                          : ud_checkpoint_snapshot_write(p->execution, (ud_string){key, 64}, epoch, state);
-    ud_batch_destroy(state);
-    if (!status)
-        atomic_store(&n->staged_epoch, epoch);
-    return status;
-}
-static ud_status commit_epoch(physical_plan *p, uint64_t epoch, int terminal) {
-    ud_mutex_lock(&p->epoch_lock);
-    ud_status status = UD_OK;
-    if (epoch <= atomic_load(&p->confirmed_epoch)) {
-        ud_mutex_unlock(&p->epoch_lock);
-        return UD_OK;
-    }
-    int active = terminal;
-    for (uint32_t i = 0; !active && i < p->count; i++)
-        if (p->nodes[i].descriptor.category == UD_COMPONENT_SOURCE &&
-            p->nodes[i].descriptor.confirm_epoch && atomic_load(&p->nodes[i].staged_epoch) == epoch)
-            active = 1;
-    if (!active) {
-        ud_mutex_unlock(&p->epoch_lock);
-        return UD_OK;
-    }
-    for (uint32_t i = 0; !status && i < p->count; i++)
-        if (atomic_load(&p->nodes[i].state) == UD_EXEC_SUCCEEDED &&
-            atomic_load(&p->nodes[i].staged_epoch) != epoch)
-            status = stage_epoch(p, p->nodes + i, epoch);
-    if (status) {
-        ud_mutex_unlock(&p->epoch_lock);
-        return status;
-    }
-
-    for (uint32_t i = 0; i < p->count; i++)
-        if (atomic_load(&p->nodes[i].staged_epoch) != epoch) {
-            ud_mutex_unlock(&p->epoch_lock);
-            return UD_OK;
-        }
-    ud_bytes payload = {.ctx = p->execution->execution->ctx, .limit = 16u * 1024u * 1024u};
-    char header[96];
-    int n = snprintf(header, sizeof(header), "{\"epoch\":%llu,\"sources\":[",
-                     (unsigned long long)epoch);
-    status = ud_bytes_put(&payload, header, (size_t)n);
-    uint32_t sources = 0;
-    for (uint32_t i = 0; !status && i < p->count; i++) {
-        node *source = p->nodes + i;
-        if (source->descriptor.category != UD_COMPONENT_SOURCE)
-            continue;
-        if (sources++)
-            status = ud_bytes_put(&payload, ",", 1);
-        if (!status)
-            status = ud_bytes_put(&payload, "{\"id\":", 6);
-        if (!status)
-            status = ud_json_quote(&payload, source->id.data, source->id.length);
-        if (!status)
-            status = ud_bytes_put(&payload, ",\"position\":", 12);
-        if (!status)
-            status = ud_json_quote(&payload, source->source_position.data,
-                                   source->source_position.length);
-        char schema_version[64];
-        int schema_size =
-            snprintf(schema_version, sizeof(schema_version), ",\"schemaVersion\":%llu",
-                     (unsigned long long)source->schema_version);
-        if (!status)
-            status = ud_bytes_put(&payload, schema_version, (size_t)schema_size);
-        if (!status)
-            status = ud_bytes_put(&payload, "}", 1);
-    }
-    const char *next = "],\"components\":[";
-    if (!status)
-        status = ud_bytes_put(&payload, next, strlen(next));
-    for (uint32_t i = 0; !status && i < p->count; i++) {
-        node *component = p->nodes + i;
-        if (i)
-            status = ud_bytes_put(&payload, ",", 1);
-        if (!status)
-            status = ud_bytes_put(&payload, "{\"id\":", 6);
-        if (!status)
-            status = ud_json_quote(&payload, component->id.data, component->id.length);
-        char metadata[320];
-        uint32_t ports = component->descriptor.inputs;
-        uint64_t declared = ports == 64 ? UINT64_MAX : (UINT64_C(1) << ports) - 1;
-        uint64_t ended = declared & ~input_mask(p, component, 1);
-        int length = snprintf(
-            metadata, sizeof(metadata),
-            ",\"stateVersion\":%u,\"endedInputs\":%llu,\"terminal\":%s,\"producedRows\":%llu,"
-            "\"processedRows\":%llu,\"frontier\":",
-            component->descriptor.state_version, (unsigned long long)ended,
-            atomic_load(&component->state) == UD_EXEC_SUCCEEDED ? "true" : "false",
-            (unsigned long long)component->produced, (unsigned long long)component->processed);
-        if (!status)
-            status = ud_bytes_put(&payload, metadata, (size_t)length);
-        if (!status)
-            status = ud_pipeline_frontier_write(&payload, &component->frontier, ports);
-        if (!status)
-            status = ud_bytes_put(&payload, "}", 1);
-    }
-    if (!status)
-        status = ud_bytes_put(&payload, "]}", 2);
-    ud_string manifest = {(char *)payload.data, (uint32_t)payload.size};
-    if (!status)
-        status = p->kafka ? ud_pipeline_kafka_commit(p, epoch, manifest)
-                          : ud_checkpoint_epoch_commit(p->execution, p->id, manifest);
-    if (!status && !p->kafka && ud_transaction_active(p->execution))
-        status = ud_transaction_commit_epoch(p->execution);
-    if (!status) {
-        uint64_t previous = atomic_load(&p->confirmed_epoch);
-        atomic_store(&p->confirmed_epoch, epoch);
-        if (previous && !p->kafka)
-            for (uint32_t i = 0; !status && i < p->count; i++)
-                if (p->nodes[i].descriptor.checkpoint) {
-                    char key[65];
-                    status = epoch_component_key(p, p->nodes + i, key);
-                    if (!status)
-                        status = ud_checkpoint_snapshot_forget(p->execution, (ud_string){key, 64},
-                                                               previous, 1);
-                }
-        if (p->group)
-            for (uint32_t i = 0; i < p->tree_count; i++)
-                ud_work_group_ready(p->group, i);
-    }
-    ud_bytes_clear(&payload);
-    ud_mutex_unlock(&p->epoch_lock);
-    return status;
 }
 static ud_status forward_control(physical_plan *p, node *n, const ud_component_event *event) {
     emit_target target = {p, n};
@@ -1494,7 +1333,7 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
             return UD_FENCED;
         n->barrier_epoch = event->epoch;
         n->barrier_mask |= bit;
-        uint64_t required = input_mask(p, n, 1);
+        uint64_t required = ud_pipeline_input_mask(p, n, 1);
         if ((n->barrier_mask & required) != required)
             return UD_OK;
         n->deferred_control = *event;
@@ -1505,7 +1344,7 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
     }
     if (event->kind == UD_COMPONENT_WATERMARK || event->kind == UD_COMPONENT_IDLE ||
         event->kind == UD_COMPONENT_ACTIVE) {
-        uint64_t live = input_mask(p, n, 1);
+        uint64_t live = ud_pipeline_input_mask(p, n, 1);
         if (live & bit)
             UD_TRY(ud_pipeline_frontier_observe(&n->frontier, event->input, event->kind,
                                                 event->watermark));
@@ -1513,8 +1352,10 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
             (n->descriptor.capabilities & UD_COMPONENT_WATERMARK_POLICY))
             return notify_control(n, event);
         if (event->kind == UD_COMPONENT_ACTIVE ||
-            (event->kind == UD_COMPONENT_IDLE && live && !(live & ~n->frontier.idle)))
+            (event->kind == UD_COMPONENT_IDLE && live && !(live & ~n->frontier.idle))) {
+            UD_TRY(notify_control(n, event));
             return forward_control(p, n, event);
+        }
         int64_t minimum;
         if (!ud_pipeline_frontier_reduce(&n->frontier, live, &minimum))
             return UD_OK;
@@ -1578,6 +1419,9 @@ static ud_status stream_control(physical_plan *p, node *n, const ud_component_ev
 }
 static ud_status step(physical_plan *p, node *n, int *progress) {
     uint64_t confirmed = atomic_load(&p->confirmed_epoch);
+    int merge_sort = p->kafka_merge && n == p->nodes + p->kafka_merge_sort;
+    if (merge_sort && n->barrier_epoch > confirmed && !n->control_pending)
+        return UD_OK;
     if (n->barrier_mask && n->barrier_epoch <= confirmed)
         n->barrier_mask = 0;
     if (n->descriptor.confirm_epoch && n->barrier_epoch) {
@@ -1619,12 +1463,12 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
         n->emit_allowed = 1;
         ud_status status = UD_OK;
         if (n->deferred_control.kind == UD_COMPONENT_CHECKPOINT_BARRIER)
-            status = stage_epoch(p, n, n->deferred_control.epoch);
+            status = ud_pipeline_stage_epoch(p, n, n->deferred_control.epoch);
         if (!status)
             status = forward_control(p, n, &n->deferred_control);
         n->emit_allowed = 0;
         if (!status && n->deferred_control.kind == UD_COMPONENT_CHECKPOINT_BARRIER)
-            status = commit_epoch(p, n->deferred_control.epoch, 0);
+            status = ud_pipeline_commit_epoch(p, n->deferred_control.epoch, 0);
         if (!status) {
             n->control_pending = 0;
             *progress = 1;
@@ -1648,7 +1492,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
         return status == UD_MORE ? UD_OK : status;
     }
     if (n->barrier_mask && !n->pending && atomic_load(&n->staged_epoch) != n->barrier_epoch) {
-        uint64_t required = input_mask(p, n, 1);
+        uint64_t required = ud_pipeline_input_mask(p, n, 1);
         if ((n->barrier_mask & required) == required) {
             memset(n->emitted, 0, n->descriptor.outputs);
             n->emit_allowed = 1;
@@ -1656,12 +1500,12 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
                                           .abi_version = UD_ABI_VERSION,
                                           .kind = UD_COMPONENT_CHECKPOINT_BARRIER,
                                           .epoch = n->barrier_epoch};
-            ud_status status = stage_epoch(p, n, n->barrier_epoch);
+            ud_status status = ud_pipeline_stage_epoch(p, n, n->barrier_epoch);
             if (!status)
                 status = forward_control(p, n, &barrier);
             n->emit_allowed = 0;
             if (!status)
-                status = commit_epoch(p, n->barrier_epoch, 0);
+                status = ud_pipeline_commit_epoch(p, n->barrier_epoch, 0);
             if (!status)
                 *progress = 1;
             return status;
@@ -1757,6 +1601,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     /* A requested stop drains acknowledged messages while keeping the last
      * committed operator state open. Only reaching a Kafka cut ends input. */
     int suspending = p->kafka && event.kind == UD_COMPONENT_INPUT_END &&
+        atomic_load(&e->execution->stop_requested) &&
         !ud_pipeline_kafka_exhausted(p);
     if (!s)
         s = suspending ? (n->ended == n->descriptor.inputs ? UD_END : UD_OK)
@@ -1804,6 +1649,13 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     uint32_t emitted = 0;
     for (uint32_t j = 0; j < n->descriptor.outputs; j++)
         emitted += n->emitted[j];
+    if (!s && emitted && merge_sort && n->ended == n->descriptor.inputs) {
+        n->barrier_epoch = confirmed + 1;
+        n->deferred_control = (ud_component_event){.struct_size = sizeof(ud_component_event),
+            .abi_version = UD_ABI_VERSION, .kind = UD_COMPONENT_CHECKPOINT_BARRIER, .epoch = n->barrier_epoch};
+        n->control_pending = 1;
+        n->pending = 0;
+    }
     if (emitted && n->descriptor.category == UD_COMPONENT_SOURCE &&
         !ud_transaction_active(&n->activation))
         ud_debug_advance(&n->activation);
@@ -1825,7 +1677,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
             if (!s)
                 atomic_store(&n->state, UD_EXEC_SUCCEEDED);
             if (!s)
-                s = commit_epoch(p, atomic_load(&p->confirmed_epoch) + 1, 0);
+                s = ud_pipeline_commit_epoch(p, atomic_load(&p->confirmed_epoch) + 1, 0);
             for (uint32_t i = 0; i < n->output_edges; i++)
                 ud_work_group_ready(p->group, p->nodes[p->edges[n->outputs[i]].to].tree);
         }
@@ -1930,9 +1782,8 @@ static ud_status execute_lane(ud_activation *activation, const ud_json *definiti
         if (status)
             status = node_failed(component, status, "finish");
     }
-    if (!status && ud_pipeline_kafka_exhausted(&plan_value) &&
-        !plan_value.nodes[plan_value.kafka_source].context.recovery_terminal)
-        status = commit_epoch(&plan_value, atomic_load(&plan_value.confirmed_epoch) + 1, 1);
+    if (!status && ud_pipeline_kafka_terminal_pending(&plan_value))
+        status = ud_pipeline_commit_epoch(&plan_value, atomic_load(&plan_value.confirmed_epoch) + 1, 1);
     for (uint32_t i = 0; !status && i < plan_value.count; i++) {
         node *component = plan_value.nodes + plan_value.order[i];
         if (!activation->execution->preview_pipeline && component->descriptor.confirm)

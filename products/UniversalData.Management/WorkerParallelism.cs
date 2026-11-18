@@ -12,6 +12,8 @@ public sealed record WorkerParallelism(uint WorkerProcesses = 1, uint ConsumerLa
         var root = document.RootElement;
         if (!root.TryGetProperty("dataFlows", out var flows))
             return null;
+        if (flows.EnumerateArray().Any(IsKafkaStage))
+            return ReadStageParallelism(flows, limit);
         var configured = flows.EnumerateArray().Where(flow => flow.TryGetProperty("parallelism", out _)).ToArray();
         if (configured.Length == 0)
             return null;
@@ -32,6 +34,32 @@ public sealed record WorkerParallelism(uint WorkerProcesses = 1, uint ConsumerLa
             throw new ArgumentException("Sharded execution requires one direct Data Flow task");
         return plan;
     }
+
+    private static WorkerParallelism ReadStageParallelism(JsonElement flows, uint limit)
+    {
+        WorkerParallelism? expected = null;
+        foreach (var flow in flows.EnumerateArray()) {
+            if (!IsKafkaStage(flow) || !flow.TryGetProperty("parallelism", out var settings))
+                throw new ArgumentException("Every staged Data Flow requires declared parallelism");
+            var plan = settings.Deserialize<WorkerParallelism>(UniversalData.Hosting.HostPolicy.JsonOptions);
+            if (plan is null || plan.WorkerProcesses < 2 || plan.WorkerProcesses > limit ||
+                plan.ConsumerLanesPerWorker != 1 || plan.ThreadsPerWorker == 0 || plan.ThreadsPerWorker > limit ||
+                expected is not null && expected != plan)
+                throw new ArgumentException("Staged Data Flows require identical Worker parallelism with multiple Workers and one lane each");
+            expected = plan;
+        }
+        return expected!;
+    }
+
+    internal static bool UsesKafkaStages(string package)
+    {
+        using var document = JsonDocument.Parse(package);
+        return document.RootElement.TryGetProperty("dataFlows", out var flows) && flows.EnumerateArray().Any(IsKafkaStage);
+    }
+
+    private static bool IsKafkaStage(JsonElement flow) =>
+        flow.TryGetProperty("delivery", out var delivery) && delivery.ValueKind == JsonValueKind.Object &&
+        delivery.TryGetProperty("kafkaStage", out var stage) && stage.ValueKind == JsonValueKind.True;
 
     internal static bool UsesBrokerRecovery(string package)
     {

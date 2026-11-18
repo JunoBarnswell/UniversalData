@@ -406,6 +406,8 @@ ud_status ud_checkpoint_open(ud_execution *e) {
         s = ud_put_u64(&identity, e->options.worker_members);
     if (!s)
         s = ud_put_u64(&identity, e->options.consumer_lanes);
+    if (!s && e->options.worker_run_id.length)
+        s = ud_put_string(&identity, e->options.worker_run_id.data, e->options.worker_run_id.length);
     uint8_t digest[32];
     char encoded[65], payload[160]; int payload_length = 0;
     if (!s) {

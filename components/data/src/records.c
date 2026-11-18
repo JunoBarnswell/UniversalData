@@ -20,8 +20,9 @@ ud_status ud_batch_row_info(const ud_batch *batch, uint32_t row, ud_row_info *ou
 }
 ud_status ud_batch_set_row_info(ud_batch *batch, uint32_t row, const ud_row_info *info) {
     if (!batch || !info || row >= batch->rows || batch->sealed || batch->data_owner ||
-        (info->flags & ~(UD_ROW_ERROR | UD_ROW_JOINED)) || info->operation > 4 ||
+        (info->flags & ~(UD_ROW_ERROR | UD_ROW_JOINED | UD_ROW_STAGE_ORDERED)) || info->operation > 4 ||
         info->has_source_position > 1 || (!info->has_source_position && info->source_position) ||
+        ((info->flags & UD_ROW_STAGE_ORDERED) && !info->has_source_position) ||
         ((!info->id.high && !info->id.low) && (info->flags || info->operation)))
         return UD_INVALID;
     UD_TRY(metadata(batch));
@@ -109,7 +110,7 @@ ud_status ud_batch_identify(ud_context *ctx, const ud_batch *input, ud_id scope,
         info.source_position = begin + row;
         info.has_source_position = 1;
         info.origins = (ud_id){0};
-        info.flags &= ~UD_ROW_JOINED;
+        info.flags &= ~(UD_ROW_JOINED | UD_ROW_STAGE_ORDERED);
         (*out)->row_info[row] = info;
     }
     ud_free(indices);
@@ -150,7 +151,7 @@ ud_status ud_row_info_join(ud_context *ctx, const ud_row_info *a, const ud_row_i
     ud_sha256_update(&hash, "native.join.origins.9", 21);
     ud_sha256_update(&hash, bytes, sizeof(bytes));
     ud_sha256_finish(&hash, digest);
-    ud_row_info info = {.flags = a->flags | b->flags | UD_ROW_JOINED,
+    ud_row_info info = {.flags = ((a->flags | b->flags) & ~UD_ROW_STAGE_ORDERED) | UD_ROW_JOINED,
                         .rule = a->flags & UD_ROW_ERROR ? a->rule : b->rule,
                         .operation = a->operation ? a->operation : b->operation,
                         .origins = origins};

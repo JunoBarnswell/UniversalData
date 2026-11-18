@@ -218,6 +218,7 @@ ud_status ud_activation_validate_definition(ud_activation *e, uint32_t depth) {
     UD_TRY(ud_transaction_enter(
         e, ud_member(ud_member(e->package->document, "policy"), "transaction"), 1));
     const ud_json *flows = ud_member(e->package->document, "dataFlows");
+    UD_TRY(ud_pipeline_validate_stages(e->package));
     for (uint32_t i = 0; i < ud_json_size(flows); i++)
         UD_TRY(ud_pipeline_validate(e, ud_json_at(flows, i)));
     UD_TRY(ud_control_validate(e, ud_member(e->package->document, "controlFlow"), depth));
@@ -256,6 +257,10 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         options->max_concurrency > 64 || options->worker_members > 64 ||
         (options->worker_members && options->worker_member >= options->worker_members) ||
         (!options->worker_members && options->worker_member) ||
+        (options->worker_run_id.length && (!options->worker_run_id.data ||
+         options->worker_run_id.length > 255 || options->worker_members < 2 ||
+         memchr(options->worker_run_id.data, 0, options->worker_run_id.length) ||
+         !ud_utf8_valid(options->worker_run_id.data, options->worker_run_id.length))) ||
         options->consumer_lanes > options->max_concurrency)
         return UD_INVALID;
     for (uint32_t i = 0; i < options->execution_id.length; i++)
@@ -304,6 +309,7 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     e->options.tenant = (ud_string){0};
     e->options.execution_id = (ud_string){0};
     e->options.state_directory = (ud_string){0};
+    e->options.worker_run_id = (ud_string){0};
     atomic_init(&e->state, UD_EXEC_CREATED);
     atomic_init(&e->result, UD_BUSY);
     atomic_init(&e->input_rows, 0);
@@ -351,6 +357,8 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     }
     if (!s)
         s = copy_string(ctx, options->state_directory, &e->options.state_directory);
+    if (!s && options->worker_run_id.length)
+        s = copy_string(ctx, options->worker_run_id, &e->options.worker_run_id);
     if (!s)
         s = ud_package_create(ctx, json, &e->package);
     e->root.package = e->package;
@@ -681,6 +689,8 @@ ud_status ud_execution_destroy(ud_execution *e) {
         e->options.execution_id = (ud_string){0};
         ud_free((void *)e->options.state_directory.data);
         e->options.state_directory = (ud_string){0};
+        ud_free((void *)e->options.worker_run_id.data);
+        e->options.worker_run_id = (ud_string){0};
         ud_bytes_clear(&e->pipeline_reports);
         ud_bytes_clear(&e->schema_reports);
         ud_bytes_clear(&e->bound_plans);

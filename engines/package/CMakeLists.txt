@@ -10,6 +10,8 @@ list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/network.c ${CMAKE_CU
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/column_file.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/avro.c ${PROJECT_SOURCE_DIR}/connectors/avro.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_diagnostics.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_frontier.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_epoch.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/kafka_stage.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_kafka.c ${CMAKE_CURRENT_SOURCE_DIR}/kafka_checkpoint.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_parallel.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_lanes.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/mq_payload.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/mq_source.c

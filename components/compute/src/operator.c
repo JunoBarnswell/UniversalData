@@ -38,7 +38,7 @@ struct ud_operator {
     ud_value *run_bounds;
     cursor merge[32];
     uint32_t merge_count;
-    int prepared, failed, raw_aggregation;
+    int prepared, failed, raw_aggregation, stage_ordered;
     ud_operator *group_sort;
     ud_accumulator *group;
     ud_batch *pending;
@@ -137,7 +137,7 @@ static int compare(ud_operator *o, const cursor *a, const cursor *b) {
         if (order)
             return o->options.descending ? -order : order;
     }
-    return 0;
+    return o->stage_ordered ? ud_compute_stage_order(a->batch, a->row, b->batch, b->row) : 0;
 }
 static int heap_less(ud_operator *o, cursor *streams, uint32_t a, uint32_t b) {
     int order = compare(o, streams + a, streams + b);
@@ -486,6 +486,10 @@ static ud_status partition_quantum(void *user, uint32_t index) {
     } else if (!status) {
         ud_batch *sorted = NULL;
         const ud_batch *current = piece;
+        if (o->stage_ordered) {
+            status = ud_compute_sort_stage_order(o->ctx, piece, &sorted);
+            current = sorted;
+        }
         for (uint32_t i = o->options.key_count; !status && i; i--) {
             ud_batch *next = NULL;
             status = ud_compute_sort(o->ctx, current, o->keys[i - 1], o->options.descending, &next);
@@ -524,9 +528,12 @@ static int compare_bound(ud_operator *o, const ud_batch *batch, uint32_t row, co
 static ud_status publish_sorted(ud_operator *o, ud_batch *batch) {
     run *tail = o->tail[0];
     uint32_t n = o->options.key_count;
-    int append = tail && o->run_bounds && compare_bound(o, batch, 0, o->run_bounds + n) >= 0;
-    int prepend = !append && tail && o->run_bounds &&
-                  compare_bound(o, batch, batch->rows - 1, o->run_bounds) < 0;
+    int append = 0, prepend = 0;
+    if (tail && o->run_bounds) {
+        int boundary = compare_bound(o, batch, 0, o->run_bounds + n);
+        append = boundary > 0 || (!boundary && !o->stage_ordered);
+        prepend = !append && compare_bound(o, batch, batch->rows - 1, o->run_bounds) < 0;
+    }
     if (!append && !prepend) {
         run *next = ud_alloc(o->ctx, sizeof(*next));
         if (!next)
@@ -562,6 +569,11 @@ static ud_status parallel_push(ud_operator *o, uint32_t port, const ud_batch *in
 
     if (!input->rows)
         return UD_OK;
+    if (o->options.kind == UD_OPERATOR_SORT && !o->stage_ordered) {
+        ud_row_info info;
+        UD_TRY(ud_batch_row_info(input, 0, &info));
+        o->stage_ordered = !!(info.flags & UD_ROW_STAGE_ORDERED);
+    }
     work.results = ud_alloc(o->ctx, (size_t)work.count * sizeof(*work.results));
     if (!work.results)
         return UD_RESOURCE;

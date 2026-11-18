@@ -41,6 +41,18 @@ ud_status ud_mq_settings_parse(const ud_component_context *context, const ud_jso
         (settings->target.routing_key.length && settings->target.kind != UD_MESSAGE_EXCHANGE))
         return UD_SCHEMA;
     const ud_json *fixed = ud_member(config, "partition");
+    const ud_json *worker = ud_member(config, "partitionByWorker");
+    if (worker) {
+        const char *value;
+        uint32_t length;
+        UD_TRY(ud_json_text(worker, &value, &length));
+        settings->partition_by_worker = length == 4 && !memcmp(value, "true", 4);
+    }
+    if (settings->partition_by_worker) {
+        if (fixed || settings->target.kind != UD_MESSAGE_TOPIC)
+            return UD_SCHEMA;
+        settings->fixed_partition = context->execution->options.worker_member + 1;
+    }
     if (fixed) {
         uint64_t partition;
         UD_TRY(ud_json_uint(fixed, &partition));

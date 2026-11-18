@@ -1049,6 +1049,41 @@ ud_status RocketMqSession::unsubscribe() {
     return UD_OK;
 }
 
+ud_status settle_publish(const mq::SendMessageResponse &response,
+                         const std::map<std::string, uint32_t> &indexes,
+                         ud_message_result *results, uint32_t count) {
+    const auto top = send_result(response.status().code());
+    bool accepted_request = false;
+    if (response.status().code() == mq::OK && response.entries_size() == 1) {
+        const auto &receipt = response.entries(0);
+        // The Proxy returns one receipt for an atomic batch, using the batch ID.
+        // An ID matching an item in a multi-item request only confirms that item.
+        accepted_request = receipt.status().code() == mq::OK && !receipt.message_id().empty() &&
+                           (indexes.size() == 1 || indexes.find(receipt.message_id()) == indexes.end());
+    }
+    const auto initial = accepted_request || top.state == UD_MESSAGE_REJECTED
+                             ? top
+                             : ud_message_result{UD_MESSAGE_UNCERTAIN, UD_COMMIT_UNKNOWN};
+    for (const auto &item : indexes)
+        results[item.second] = initial;
+    if (!accepted_request) {
+        std::map<std::string, bool> seen;
+        for (const auto &receipt : response.entries()) {
+            const auto item = indexes.find(receipt.message_id());
+            if (item == indexes.end())
+                continue;
+            results[item->second] = seen.emplace(receipt.message_id(), true).second
+                                        ? send_result(receipt.status().code())
+                                        : ud_message_result{UD_MESSAGE_UNCERTAIN, UD_COMMIT_UNKNOWN};
+        }
+    }
+    ud_status overall = UD_OK;
+    for (uint32_t i = 0; i < count; ++i)
+        if (results[i].result == UD_COMMIT_UNKNOWN || (!overall && results[i].result))
+            overall = results[i].result;
+    return overall;
+}
+
 ud_status RocketMqSession::publish(const ud_message_target &target, const ud_message *messages,
                                    uint32_t count, ud_message_result *results) {
     const std::lock_guard<std::mutex> lock(operations_);
@@ -1143,26 +1178,7 @@ ud_status RocketMqSession::publish(const ud_message_target &target, const ud_mes
         return started ? fail(UD_COMMIT_UNKNOWN, UD_MESSAGE_UNCERTAIN)
                        : fail(status, UD_MESSAGE_NOT_SENT);
     }
-    const auto top = send_result(response.status().code());
-    for (const auto &entry : indexes)
-        results[entry.second] = top.state == UD_MESSAGE_REJECTED
-                                    ? top
-                                    : ud_message_result{UD_MESSAGE_UNCERTAIN, UD_COMMIT_UNKNOWN};
-    std::map<std::string, bool> seen;
-    for (const auto &entry : response.entries()) {
-        const auto index = indexes.find(entry.message_id());
-        if (index == indexes.end())
-            continue;
-        const auto result = seen.emplace(entry.message_id(), true).second
-                                ? send_result(entry.status().code())
-                                : ud_message_result{UD_MESSAGE_UNCERTAIN, UD_COMMIT_UNKNOWN};
-        results[index->second] = result;
-    }
-    ud_status overall = UD_OK;
-    for (uint32_t i = 0; i < count; ++i)
-        if (results[i].result == UD_COMMIT_UNKNOWN || (!overall && results[i].result))
-            overall = results[i].result;
-    return overall;
+    return settle_publish(response, indexes, results, count);
 }
 
 template <typename Operation> ud_status invoke(void *session, Operation operation) {

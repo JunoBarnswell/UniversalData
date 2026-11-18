@@ -132,6 +132,6 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
             resume: resume, maxConcurrency: MaxConcurrency, memoryLimit: MemoryLimit, registry: registry, observe: observe,
             timeoutMilliseconds: checked(ExecutionTimeoutSeconds * 1000UL), eventSequenceStart: eventSequenceStart,
             workerMember: shard?.Member ?? 0, workerMembers: shard?.Members ?? 0,
-            consumerLanes: shard?.Lanes ?? 0, brokerRestore: brokerRestore);
+            consumerLanes: shard?.Lanes ?? 0, brokerRestore: brokerRestore, workerRunId: shard?.RunId);
     }
 }

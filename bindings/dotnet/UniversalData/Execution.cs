@@ -32,7 +32,7 @@ public sealed class Execution : IDisposable
         uint edgeCapacity = 2, uint maxBatchRows = 4096, ulong memoryLimit = 268435456, ulong timeoutMilliseconds = 0, string? stateDirectory = null, bool resume = false, uint maxConcurrency = 1,
         Registry? registry = null, Action<ExecutionEvent>? observe = null, ulong eventSequenceStart = 0,
         uint workerMember = 0, uint workerMembers = 0, uint consumerLanes = 0,
-        bool brokerRestore = false)
+        bool brokerRestore = false, string? workerRunId = null)
     {
         bool ownedRegistry = false;
         using (var document = System.Text.Json.JsonDocument.Parse(packageJson))
@@ -100,6 +100,7 @@ public sealed class Execution : IDisposable
                 WorkerMembers = workerMembers,
                 ConsumerLanes = consumerLanes,
                 BrokerRestore = brokerRestore ? 1 : 0,
+                WorkerRunId = workerRunId is null ? default : Pin(workerRunId),
                 Authorize = grant is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(grant),
                 Resolve = resolver is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(resolver)
                 , Observe = observer is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(observer)
@@ -314,6 +315,7 @@ internal static partial class Native
         internal StringValue Parameters, Tenant, ExecutionId; internal IntPtr Registry, Authorize, AuthorizeUser, Resolve, ResolveUser, Observe, ObserveUser; internal StringValue StateDirectory; internal int Resume; internal uint MaxConcurrency; internal ulong EventSequenceStart;
         internal uint WorkerMember, WorkerMembers, ConsumerLanes;
         internal int BrokerRestore;
+        internal StringValue WorkerRunId;
     }
 
     [StructLayout(LayoutKind.Sequential)]

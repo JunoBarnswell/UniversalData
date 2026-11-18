@@ -165,6 +165,7 @@ ud_status ud_builtin_parameters(const ud_component_context *c, const ud_json *co
 ud_status ud_builtin_parse(const ud_component_context *c, ud_string config, ud_json **out);
 ud_status ud_builtin_sink_delivery(int kind, const ud_json *config, int32_t *delivery);
 ud_status ud_builtin_restore_state(void *ptr, const ud_batch *state);
+ud_status ud_builtin_seek_output(void *, uint64_t rows);
 ud_status ud_builtin_schema_config(const ud_component_context *c, const ud_json *config,
                                    ud_batch **out);
 ud_status ud_builtin_sink_batch(builtin *b, const ud_batch *input, ud_batch **out,

@@ -8,13 +8,14 @@ typedef struct ud_mq_settings {
     ud_string connection, registry_connection, subject;
     ud_message_target target;
     uint32_t schema_version, maximum_bytes, fixed_partition;
-    int format;
+    int format, partition_by_worker;
 } ud_mq_settings;
 
 #define UD_MQ_PAYLOAD_PROPERTIES                                                                   \
     "\"connection\":{\"type\":\"string\",\"minLength\":1,\"x-role\":\"resource-reference\"},"                 \
     "\"targetType\":{\"enum\":[\"queue\",\"topic\",\"exchange\"]},\"address\":{\"type\":\"string\"},"             \
     "\"routingKey\":{\"type\":\"string\"},\"partition\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":65535}," \
+    "\"partitionByWorker\":{\"type\":\"boolean\",\"default\":false}," \
     "\"format\":{\"enum\":[\"binary\",\"json\",\"avro\"],"                                                       \
     "\"default\":\"binary\"},\"maxMessageBytes\":{\"type\":\"integer\",\"minimum\":1,"                        \
     "\"maximum\":16777216,\"default\":1048576},\"registryConnection\":{\"type\":\"string\","                 \

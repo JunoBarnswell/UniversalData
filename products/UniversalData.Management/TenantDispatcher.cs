@@ -155,19 +155,24 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
                     states.TryGetValue(member, out var prior) && Alive(prior)))
                 throw new ArgumentException("Execution is not ready for recovery on this node");
             if (brokerRestore) {
-                if (state.MemberIds is not null || state.Parallelism is not { WorkerProcesses: 1 } ||
-                    state.Placement is null || !state.Placement.Remote && !state.BrokerRestore || state.ExecutionId.Length == 0 ||
-                    state.ParametersReference.Length != 0 || state.Debug is not null ||
-                    !WorkerParallelism.UsesBrokerRecovery(Package(state.PackageId,state.PackageRevision)))
+                string package = Package(state.PackageId, state.PackageRevision);
+                bool stages = state.MemberIds is not null && WorkerParallelism.UsesKafkaStages(package);
+                bool single = state.MemberIds is null && state.Parallelism is { WorkerProcesses: 1 } &&
+                    state.Placement is { } placement && (placement.Remote || state.BrokerRestore) &&
+                    state.ExecutionId.Length != 0 && WorkerParallelism.UsesBrokerRecovery(package);
+                if (!(stages || single) || state.ParametersReference.Length != 0 || state.Debug is not null)
                     throw new ArgumentException("Execution does not support Kafka Broker recovery");
             } else if (state.BrokerRestore || state.HomeNodeId is { } home && home != owner) {
                 throw new ArgumentException("Execution requires recovery on its journal node or an eligible Broker recovery");
             }
             var executionRevision = state.ExecutionId.Length == 0 ? 0 : catalog.LatestRevision(CatalogKind.Execution,state.ExecutionId);
+            long safeAfter = state.MemberIds is { } group
+                ? group.Select(member => states.GetValueOrDefault(member)?.RecoverySafeAfterMs ?? 0).DefaultIfEmpty().Max()
+                : state.RecoverySafeAfterMs;
             state = state with { State = "Queued",Failure=null,Resume = true,ExecutionRevision = executionRevision,
                 BrokerRestore=brokerRestore, JournalTicket=brokerRestore ? Guid.NewGuid().ToString("N") : state.JournalTicket,
                 HomeNodeId=brokerRestore ? null : state.HomeNodeId,
-                NotBeforeMs=Math.Max(Now,state.RecoverySafeAfterMs),
+                NotBeforeMs=Math.Max(Now,safeAfter),
                 Subject = identity.Subject,SubjectStamp = identity.Stamp,Owner = null,ProcessId = null,Attempt=checked(state.Attempt+1),Revision = checked(state.Revision + 1),TimestampMs = Now };
             Save(state); return state;
         }
@@ -355,7 +360,7 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
                 !states.TryGetValue(memberIds[index], out var prior) || prior.State != "Succeeded").ToArray();
         }
         WorkerPlacement?[] pins;
-        lock (gate) pins = pending.Select(index => states.GetValueOrDefault(memberIds[index])?.Placement).ToArray();
+        lock (gate) pins = pending.Select(index => run.BrokerRestore ? null : states.GetValueOrDefault(memberIds[index])?.Placement).ToArray();
         using var reservation = reservations.TryReserve(policy.Tenant, plan, allowRemote, pending.Length, pins);
         if (reservation is null)
             return;
@@ -469,6 +474,7 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
     private RunState PrepareMembers(Catalog catalog, CatalogLease lease, RunState run, WorkerParallelism plan,
         string[] memberIds, int[] pending, WorkerPlacement[] placements)
     {
+        string? stageRunId = WorkerParallelism.UsesKafkaStages(Package(run.PackageId, run.PackageRevision)) ? run.Id : null;
         run = run with { State = "Claimed", Owner = owner, HomeNodeId = owner, MemberIds = memberIds,
             Revision = checked(run.Revision + 1), TimestampMs = Now };
         Save(run, lease);
@@ -478,17 +484,20 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
             string id = memberIds[index];
             var placement = placements[slot];
             var previous = states.GetValueOrDefault(id);
+            var shard = new WorkerShard((uint)index, plan.WorkerProcesses, plan.ConsumerLanesPerWorker, stageRunId);
             var member = previous is null
                 ? new RunState(ProductInfo.Protocol, id, run.PackageId, run.PackageRevision, run.ParametersReference,
                     "Queued", run.Subject, run.SubjectStamp, ControlReference(), TimestampMs: Now,
                     DeploymentId: run.DeploymentId, DeploymentRevision: run.DeploymentRevision,
                     Attempt: run.Attempt, Parallelism: plan, ParentId: run.Id,
-                    Shard: new WorkerShard((uint)index, plan.WorkerProcesses, plan.ConsumerLanesPerWorker),
-                    Placement: placement, HomeNodeId: owner)
+                    Shard: shard, Placement: placement, HomeNodeId: owner)
                 : previous with { State = "Queued", Subject = run.Subject, SubjectStamp = run.SubjectStamp,
                     Attempt = run.Attempt, Resume = previous.ExecutionId.Length != 0, Failure = null,
+                    BrokerRestore = run.BrokerRestore && previous.ExecutionId.Length != 0,
+                    JournalTicket = run.BrokerRestore && previous.ExecutionId.Length != 0
+                        ? Guid.NewGuid().ToString("N") : previous.JournalTicket,
                     ExecutionRevision = previous.ExecutionId.Length == 0 ? 0 : catalog.LatestRevision(CatalogKind.Execution, previous.ExecutionId),
-                    Owner = null, ProcessId = null, Placement = placement, Revision = checked(previous.Revision + 1),
+                    Owner = null, ProcessId = null, Shard = shard, Placement = placement, Revision = checked(previous.Revision + 1),
                     TimestampMs = Now };
             Save(member);
         }
@@ -514,6 +523,7 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
             _ => 0
         };
         var outcome = parent with { State = final, Result = result, Failure = uncertain?.Failure ?? failed?.Failure,
+            BrokerRestore = parent.BrokerRestore && final != "Succeeded",
             Revision = checked(parent.Revision + 1), TimestampMs = Now };
         if (final == "Failed" && parent.JobId is { } jobId && jobs.TryGetValue(jobId, out var job) &&
             job.Enabled && parent.Attempt < job.MaxAttempts)

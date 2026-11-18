@@ -53,6 +53,7 @@ struct ud_activation {
     uint32_t consumer_lane, consumer_lane_count;
     struct ud_activation *scope_authority;
     struct ud_kafka_checkpoint *kafka_checkpoint;
+    int deferred_kafka_input_commit;
     int stepping;
     ud_status pipeline_result;
     struct ud_transaction *transaction;
@@ -139,6 +140,7 @@ ud_status ud_control_iteration(ud_activation *, const ud_json *, uint64_t);
 ud_status ud_checkpoint_enumerator(ud_activation *, const uint8_t digest[32]);
 ud_status ud_control_execute(ud_activation *, const ud_json *);
 ud_status ud_pipeline_validate(ud_activation *, const ud_json *);
+ud_status ud_pipeline_validate_stages(const ud_package *);
 ud_status ud_pipeline_bind_validate(ud_activation *, const ud_json *);
 ud_status ud_control_catalog(ud_bytes *);
 ud_status ud_control_explain(ud_activation *, const ud_json *, ud_bytes *);

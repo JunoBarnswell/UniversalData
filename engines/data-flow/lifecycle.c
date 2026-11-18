@@ -148,3 +148,19 @@ ud_status ud_builtin_restore_state(void *ptr, const ud_batch *state) {
     b->number = value.unsigned_integer;
     return UD_OK;
 }
+
+ud_status ud_builtin_seek_output(void *ptr, uint64_t rows) {
+    builtin *b = ptr;
+    while (rows) {
+        ud_batch *batch = NULL;
+        ud_status status = ud_operator_pull(b->operator, &batch, NULL);
+        uint32_t count = batch ? batch->rows : 0;
+        ud_batch_destroy(batch);
+        if (status)
+            return status == UD_END ? UD_CORRUPT : status;
+        if (!count || rows < count)
+            return UD_CORRUPT;
+        rows -= count;
+    }
+    return UD_OK;
+}

@@ -41,6 +41,14 @@ Kafka 配置还运行独立的有界事务 Case。工具向分区 1 写入一条
 
 `integration_kafka_process_takeover` 使用独立的 `UD_TEST_KAFKA_TAKEOVER_CONFIG` 和三个新建的事务主题。测试在原生目标报告 Broker 事务已提交后强制终止原进程，并用相同执行 ID 和新 Journal 启动新进程。新进程从 Broker 恢复后，窗口结果、两个分区的输入以及重复输出均按上述规则核对。
 
+## Kafka 多 Worker 阶段验收
+
+在一台机器上启动 Management、至少两个独立 Worker 进程和真实 Kafka。为每个用例创建独占主题和新的阶段消费组。原始输入及按键交换的主题各准备两个分区，最终聚集和输出使用分区 0，检查点主题使用两个压缩分区。配置每个 Worker 对其实际用到的源主题、消费组、目标主题和检查点主题的相应权限。包内的 `kafkaStage`、`partitionByWorker`、`fromStage` 和 `kafkaMerge` 声明见 [阶段执行契约](../docs/architecture/etl-four-engine-target.md)。
+
+将同一个窗口或 Join 键的原始数据写到不同 Kafka 分区，记录每个分区的排他终点并作为包的 `endOffsets`。通过 Management 运行包，检查两个成员的 Worker 进程标识。使用独立的 `read_committed` 消费者核对中间主题的重分区、水位线和完成标记，再逐行比较目标数据。窗口用例覆盖较快生产者先推进、较慢生产者仍有数据的情况。Join 用例覆盖两路结束顺序不同、一侧分区为空和两侧重复键。Sort 用例将来自不同成员的数据设为相等排序键，核对最终顺序在业务键相同时按上游成员号和 Kafka 位点确定。
+
+接管用例在独立消费者观察到第一批归并输出已提交后终止该逻辑成员的 Worker。Management 进入 `RecoveryRequired` 后，使用原租户中有执行权限的身份调用 `POST /api/executions/{ticket}/resume?brokerRestore=true`。核对接替成员沿用逻辑分片号和原生执行 ID，使用不同进程和新 Journal，已完成的同组成员维持终态。再次读取目标分区，最终完整序列应和预期逐行相同，每个输入只贡献预期次数。Broker 检查点中，后续归并 Epoch 的游标应递增，并继续引用冻结时的计算快照。
+
 ## Kafka 与 Confluent Schema Registry
 
 `integration_kafka_schema_registry` 使用独立的 `UD_TEST_KAFKA_REGISTRY_CONFIG`。配置沿用样例中的 `broker`、`endpoints`、`credentials`、`group` 和 `scratchDirectory`，另填写 `registry` 对象。为 `registry.source` 与 `registry.target` 创建两个单分区、未压缩的空 Topic，并指定一个全新消费组。该模式只使用 `registry` 内的消息地址。

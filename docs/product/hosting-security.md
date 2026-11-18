@@ -8,7 +8,7 @@
 
 Native Journal 使用单独的 `CheckpointOpen/Read/Write` 授权目的。普通文件连接不能借用这些权限访问当前执行的状态目录。产品宿主通过 Native Registry feature 位协商此契约，缺失时明确拒绝执行。
 
-当前 Package 协议为 13，检查点格式修订为 3。头记录保存协议、修订和执行指纹，不匹配即拒绝恢复。Epoch 中每个组件保存产出和处理行计数、输入水位线与 idle 状态，用于恢复行身份和事件时间前沿。目标和行命令共用 Native Journal 的类型化写入意图与结果，区分已应用、已提交、已拒绝和提交未知。
+当前 Package 协议为 13，检查点格式修订为 4。头记录保存协议、修订和执行指纹，不匹配即拒绝恢复。Epoch 中每个组件保存产出和处理行计数、输入水位线与 idle 状态，用于恢复行身份和事件时间前沿。Kafka 归并 Epoch 可引用已提交的计算快照版本，并和输出一并提交归并游标。目标和行命令共用 Native Journal 的类型化写入意图与结果，区分已应用、已提交、已拒绝和提交未知。
 
 Web 登录使用 HttpOnly、SameSite=Strict 会话 Cookie；修改操作还校验内存中的 CSRF 令牌。会话撤销持久化在租户 Native Catalog。审计仅记录主体、租户、路由模板、状态和时间，不保存请求正文、SQL、参数或编译源代码。
 
@@ -28,4 +28,4 @@ Worker 私有协议修订为 3，旧请求在加载包前拒绝。事件先写�
 
 在执行节点的租户 `resources` 中为 MQ 配置逻辑连接和具体地址。连接的 `Open`、`Read`、`Write` 按实际操作授予，Broker 使用的网络端点持有 `Network`。例如，逻辑连接 `orders-broker` 下的 Kafka 源主题 `orders-broker/topic/orders-in` 需要 `Read`，消费组 `orders-broker/group/etl-orders` 需要 `Write`，目标主题需要 `Write`。同时授权 Broker 实际返回的端点，例如 `kafka://broker.example:9092`。MQ 凭据仍通过 `credentialFiles` 引用。
 
-执行详情与事件流共用相同的对外运行模型。Management 负责租约、预算和成员状态。单成员 Kafka 事务能通过 `POST /api/executions/{ticket}/resume?brokerRestore=true` 在符合授权的节点从 Broker 检查点恢复。旧租约必须先失效，恢复需核对原不可变包和 Kafka 位点。
+执行详情与事件流共用相同的对外运行模型。Management 负责租约、预算和成员状态。Kafka 事务通过 `POST /api/executions/{ticket}/resume?brokerRestore=true` 在符合授权的节点从 Broker 检查点恢复。阶段包按原父运行和逻辑分片恢复未完成的成员，并保留已成功的成员。旧租约必须先失效，恢复需核对原不可变包和 Kafka 位点。

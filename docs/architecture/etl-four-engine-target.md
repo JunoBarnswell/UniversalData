@@ -28,15 +28,21 @@ RocketMQ 的会话和 RPC 按连接关闭，gRPC 的原生模块及依赖由统�
 
 普通消息流处理一个有界批次并发出 Barrier。Pipeline 确认目标效果并提交本地 Epoch 后，由消息源确认对应会话的交付。未知发布结果进入 `RecoveryRequired`。Broker 可能再次交付，依照目的地接收回执或业务键做幂等。MQ 资源授权包括连接本身、实际网络端点及对应的 `/topic/`、`/queue/`、`/exchange/` 或 `/group/` 资源。生产消息体、凭据和会话交付句柄均由已有资源策略保护。
 
-Data Flow 的 `parallelism` 指定 `workerProcesses`、`consumerLanesPerWorker` 和 `threadsPerWorker`。独立消费者在同一 Worker 内共享根 Executor 和 Buffer，各有会话、组件状态及 Epoch 位置。Management 通过现有 Worker 进程和租约协调成员，按节点累计 CPU、进程和内存配额。远程 `ud_worker agent` 使用双向 TLS，Runtime 仍在实际节点直连 Broker 和目的地。产品会报告请求并行数与实际成员。需要共享状态的并行图由 Binder 拒绝，跨主机全局窗口、Sort 和 Join 的重分区、阶段调度与归并仍待实现。
+Data Flow 的 `parallelism` 指定 `workerProcesses`、`consumerLanesPerWorker` 和 `threadsPerWorker`。独立消费者在同一 Worker 内共享根 Executor 和 Buffer，各有会话、组件状态及 Epoch 位置。Management 通过现有 Worker 进程和租约协调成员，按节点累计 CPU、进程和内存配额。远程 `ud_worker agent` 使用双向 TLS，Runtime 在实际节点直连 Broker 和目的地。产品报告请求并行数与实际成员。
 
 `delivery.mode` 为 `kafkaTransaction` 时，业务目的地和提交位点位于同一 Kafka 集群。每次事务包含输出、组件状态块、Epoch 清单与消费者位点。状态主题需要日志压缩并授予对应 Topic 操作权限。单成员事务消费组由当前 Data Flow 独占，实际分配须覆盖整个输入主题。累积位点包括本次没有新记录的分区，恢复时须核对清单指纹、块摘要和当前消费组的完整位点。并行无状态成员各使用独立状态分区，允许其他成员推进已转移分区的位点。
 
 消费到达有界切面后，原生算子消化输入结束事件并排空输出，同一事务提交最后输出和终态快照。主动停止时排空已经读取的消息并保留最后提交的开放窗口。跨节点恢复只有在旧租约失效、Broker 状态可证明及节点有权限时才能继续。
 
-Kafka 源可用 `partition` 固定读取一个物理分区，并使用该分区专用消费组。`endOffsets` 只声明所选分区。Kafka 目标可以固定分区，或配置 `repartition` 的 `partitions` 与 `keys`，使用 Compute 的类型化哈希把等值键写入同一分区。阶段调度仍需冻结各分片的生产者集合、输入切面和完成证明。
+Kafka 源可用 `partition` 固定读取一个物理分区，并使用该分区专用消费组。`endOffsets` 只声明所选分区。Kafka 目标可以固定分区，或配置 `repartition` 的 `partitions` 与 `keys`，使用 Compute 的类型化哈希把等值键写入同一分区。
 
 Native Journal 和 Kafka 的组件 Epoch 都记录已连接输入的观测水位、idle 状态和已发出的水位线。恢复后沿已提交前沿继续归并。未观测且活跃的输入阻塞推进，所有输入 idle 时保持原水位线。
+
+有界 Kafka 阶段包在每个 Data Flow 的 `delivery` 中声明 `mode: "kafkaTransaction"` 和 `kafkaStage: true`。所有阶段使用同一组 Worker，每成员一个消费通道。Control Flow 使用与 `dataFlows` 同序的一对一任务，并用成功约束形成阶段链。入口 `mq.source` 配置 `partitionByWorker: true`，按分区编号升序为每个成员声明排他的 `endOffsets`。阶段间 Topic 为专用未压缩 Topic。分片阶段主题至少有 Worker 数量个分区，状态主题每个成员使用一个压缩分区。
+
+上游 `mq.destination` 声明 `publishStage: true`，按 `repartition` 的类型化键重分区，或用 `partitionByWorker: true` 保持分片。目标和上游的 Watermark、Idle、Active、完成标记进入同一 Kafka 提交协议。下游 `mq.source` 通过 `fromStage` 绑定上游 Data Flow ID，使用 `partitionByWorker: true`，在同一逻辑分片读入所有固定生产者的记录。按键窗口和 Join 直接接收阶段来源，由 Native Binder 核对分组键或等值 Join 键与上游分区契约。Join 的两个输入使用同一事务消费组和两个不同的主题，两路 Kafka 位点随同一个 Epoch 提交。事件时间窗口的上游在交换前生成 Watermark。
+
+每个下游分片按父运行、包指纹、生产阶段和成员核对记录。全局水位线取仍活跃成员的最小观测值，全员完成后把收到的结束标记和实际 Kafka 消费位点提交为输入切面。最终 `kafkaMerge: true` 阶段固定由逻辑成员 0 执行，上游把结果汇集到主题分区 0。该阶段由 `mq.source → sort → mq.destination` 组成。相等排序键按生产者成员号与成员内的 Kafka 位点稳定归并。归并一批输出就提交一次游标，后续 Epoch 引用已保存的计算快照。新 Worker 恢复原归并状态，略过已提交行再继续输出。
 
 真实验证指令、预置资源和样例配置见 [MQ 验收](../../tests/message_brokers.md)。
 

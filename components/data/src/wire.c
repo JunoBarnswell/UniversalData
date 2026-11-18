@@ -407,7 +407,7 @@ static ud_status decode_batch(ud_bytes *b, ud_batch **out, int spill) {
             s = ud_get_u64(b, &info.rule.low);
         if (!s)
             s = ud_get_u64(b, &flags);
-        if (!s && (flags & ~((uint64_t)(UD_ROW_ERROR | UD_ROW_JOINED))))
+        if (!s && (flags & ~((uint64_t)(UD_ROW_ERROR | UD_ROW_JOINED | UD_ROW_STAGE_ORDERED))))
             s = UD_CORRUPT;
         if (!s)
             s = ud_get_u64(b, &operation);

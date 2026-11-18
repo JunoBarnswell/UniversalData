@@ -264,7 +264,7 @@ UD_API ud_status ud_schema_compare_json(ud_context *, ud_string, ud_string, ud_s
 UD_API ud_status ud_schema_map(ud_context *, const ud_batch *actual, const ud_batch *expected,
                                ud_string, ud_batch **);
 
-enum { UD_ROW_ERROR = 1, UD_ROW_JOINED = 2 };
+enum { UD_ROW_ERROR = 1, UD_ROW_JOINED = 2, UD_ROW_STAGE_ORDERED = 4 };
 enum { UD_ERROR_FAIL = 0, UD_ERROR_REDIRECT = 1, UD_ERROR_IGNORE = 2 };
 typedef struct ud_row_info {
     ud_id id, rule, origins;   /* Associative source-identity accumulator for Join. */

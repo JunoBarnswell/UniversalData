@@ -35,4 +35,6 @@ ud_status ud_accumulator_merge_row(ud_accumulator *,const ud_batch *,uint32_t);
 ud_status ud_plan_retain(ud_plan *);
 ud_status ud_partition_hash_row(const ud_batch *, uint32_t row, const uint32_t *keys,
                                 uint32_t key_count, uint32_t partitions, uint32_t *partition);
+int ud_compute_stage_order(const ud_batch *, uint32_t, const ud_batch *, uint32_t);
+ud_status ud_compute_sort_stage_order(ud_context *, const ud_batch *, ud_batch **);
 #endif

@@ -13,12 +13,12 @@ enum {
     STATE_KEY_CHUNK = 1,
 };
 
-static const char manifest_magic[] = "UDKafkaCheckpoint\2";
+static const char manifest_magic[] = "UDKafkaCheckpoint\3";
 static const char epoch_header[] = "ud-state-epoch";
 
 typedef struct checkpoint_proof {
     uint32_t chunks;
-    uint64_t bytes;
+    uint64_t bytes, epoch;
     uint8_t digest[32];
 } checkpoint_proof;
 
@@ -49,12 +49,13 @@ struct ud_kafka_checkpoint {
     ud_connection_lease *lease;
     ud_message_target target;
     char transaction_id[STATE_TRANSACTION_ID_BYTES + 1];
+    char checkpoint_id[STATE_TRANSACTION_ID_BYTES];
     ud_mutex mutex;
     int32_t partition;
     int64_t manifest_offset;
     int active, commit_unknown;
     ud_status failed;
-    uint64_t committed_epoch, loaded_epoch, staged_epoch, wire_limit;
+    uint64_t committed_epoch, staged_epoch, wire_limit;
     uint32_t count, loaded_slots, staged_chunks;
     int fingerprint_matches;
     ud_string manifest;
@@ -104,6 +105,18 @@ static ud_status transaction_identity(ud_kafka_checkpoint *state, ud_string pipe
         state->transaction_id[sizeof(prefix) + 2 * i] = hex[digest[i] & 15];
     }
     state->transaction_id[STATE_TRANSACTION_ID_BYTES] = 0;
+    memcpy(state->checkpoint_id, state->transaction_id, STATE_TRANSACTION_ID_BYTES);
+    ud_string run = a->execution->options.worker_run_id;
+    if (run.length) {
+        ud_sha256_init(&hash);
+        ud_sha256_update(&hash, digest, sizeof(digest));
+        ud_sha256_update(&hash, run.data, run.length);
+        ud_sha256_finish(&hash, digest);
+        for (uint32_t i = 0; i < sizeof(digest); i++) {
+            state->checkpoint_id[sizeof(prefix) - 1 + 2 * i] = hex[digest[i] >> 4];
+            state->checkpoint_id[sizeof(prefix) + 2 * i] = hex[digest[i] & 15];
+        }
+    }
     return UD_OK;
 }
 
@@ -118,15 +131,13 @@ static void release_loaded(ud_kafka_checkpoint *state) {
         component->capacity = 0;
     }
     state->loaded_slots = 0;
-    state->loaded_epoch = 0;
 }
 
 static ud_status store_chunk(ud_kafka_checkpoint *state, uint32_t component, uint32_t ordinal,
-                             ud_string payload, uint64_t epoch) {
-    if (!epoch || !payload.length || payload.length > STATE_CHUNK_BYTES ||
+                             ud_string payload) {
+    if (!payload.length || payload.length > STATE_CHUNK_BYTES ||
         component >= state->count || ordinal >= STATE_MAX_CHUNKS)
         return UD_CORRUPT;
-    state->loaded_epoch = epoch;
     checkpoint_component *owner = state->components + component;
     if (ordinal >= owner->capacity) {
         uint32_t next = owner->capacity ? owner->capacity * 2 : 1;
@@ -193,8 +204,9 @@ static ud_status manifest_read(ud_kafka_checkpoint *state, ud_string payload) {
         uint64_t chunks;
         UD_TRY(ud_get_u64(&wire, &chunks));
         UD_TRY(ud_get_u64(&wire, &proof->bytes));
+        UD_TRY(ud_get_u64(&wire, &proof->epoch));
         UD_TRY(ud_bytes_get(&wire, proof->digest, sizeof(proof->digest)));
-        if (!chunks || chunks > STATE_MAX_CHUNKS - chunks_total || !proof->bytes ||
+        if (!proof->epoch || proof->epoch > epoch || !chunks || chunks > STATE_MAX_CHUNKS - chunks_total || !proof->bytes ||
             proof->bytes > chunks * STATE_CHUNK_BYTES ||
             proof->bytes <= (chunks - 1) * STATE_CHUNK_BYTES)
             return UD_CORRUPT;
@@ -218,7 +230,7 @@ static ud_status manifest_read(ud_kafka_checkpoint *state, ud_string payload) {
 
 static const char *checkpoint_key(const ud_kafka_checkpoint *state, ud_string key) {
     return key.length > STATE_TRANSACTION_ID_BYTES && key.data &&
-                   !memcmp(key.data, state->transaction_id, STATE_TRANSACTION_ID_BYTES)
+                   !memcmp(key.data, state->checkpoint_id, STATE_TRANSACTION_ID_BYTES)
                ? key.data + STATE_TRANSACTION_ID_BYTES
                : NULL;
 }
@@ -267,16 +279,17 @@ static ud_status visit_state(void *user, const ud_message *message) {
     uint32_t component = (uint32_t)unpack_uint(suffix + 1, 4);
     uint32_t ordinal = (uint32_t)unpack_uint(suffix + 5, 4);
     uint64_t epoch = unpack_uint(message->headers[0].value.data, 8);
-    if (epoch < state->committed_epoch)
+    if (component >= state->count)
+        return UD_CORRUPT;
+    uint64_t expected = state->components[component].committed.epoch;
+    if (epoch < expected)
         return UD_OK;
-    if (epoch > state->committed_epoch)
+    if (epoch > expected)
         return UD_FENCED;
-    return store_chunk(state, component, ordinal, message->payload, epoch);
+    return store_chunk(state, component, ordinal, message->payload);
 }
 
 static ud_status validate_scan(ud_kafka_checkpoint *state) {
-    if (state->committed_epoch != state->loaded_epoch)
-        return UD_CORRUPT;
     if (!state->committed_epoch)
         return UD_OK;
     if (!state->fingerprint_matches)
@@ -443,7 +456,7 @@ ud_status ud_kafka_checkpoint_restore(ud_kafka_checkpoint *state, uint32_t index
     ud_status status = UD_OK;
     checkpoint_component *component = state->components + index;
     const checkpoint_proof *proof = &component->committed;
-    if (epoch != state->committed_epoch || epoch != state->loaded_epoch)
+    if (epoch != state->committed_epoch)
         status = UD_END;
     else if (proof->bytes > SIZE_MAX || proof->bytes > state->wire_limit)
         status = UD_RESOURCE;
@@ -489,7 +502,7 @@ ud_connection_lease *ud_kafka_checkpoint_producer(ud_kafka_checkpoint *state) {
 static ud_status publish_record(ud_kafka_checkpoint *state, uint32_t component, uint32_t ordinal,
                                  uint64_t epoch, ud_string payload) {
     char key[STATE_KEY_BYTES], epoch_bytes[8];
-    memcpy(key, state->transaction_id, STATE_TRANSACTION_ID_BYTES);
+    memcpy(key, state->checkpoint_id, STATE_TRANSACTION_ID_BYTES);
     uint32_t key_length = STATE_TRANSACTION_ID_BYTES + 1;
     if (component == UINT32_MAX) {
         key[STATE_TRANSACTION_ID_BYTES] = STATE_KEY_MANIFEST;
@@ -524,7 +537,7 @@ static ud_status stage_wire(ud_kafka_checkpoint *state, uint32_t index, uint64_t
     uint64_t chunks = wire.size ? ((uint64_t)wire.size - 1) / STATE_CHUNK_BYTES + 1 : 0;
     if (!status && (!chunks || chunks > STATE_MAX_CHUNKS - state->staged_chunks))
         status = UD_RESOURCE;
-    checkpoint_proof proof = {.bytes = wire.size, .chunks = (uint32_t)chunks};
+    checkpoint_proof proof = {.bytes = wire.size, .epoch = epoch, .chunks = (uint32_t)chunks};
     ud_sha256 hash;
     ud_sha256_init(&hash);
     uint64_t cursor = 0;
@@ -571,6 +584,25 @@ ud_status ud_kafka_checkpoint_stage(ud_kafka_checkpoint *state, uint32_t index, 
     return status;
 }
 
+ud_status ud_kafka_checkpoint_reuse(ud_kafka_checkpoint *state, uint32_t index, uint64_t epoch) {
+    ud_mutex_lock(&state->mutex);
+    checkpoint_component *component = state->components + index;
+    ud_status status = state->failed;
+    if (!status && (epoch <= state->committed_epoch || !component->committed.chunks ||
+                    (state->staged_epoch && state->staged_epoch != epoch) || component->staged.chunks ||
+                    component->committed.chunks > STATE_MAX_CHUNKS - state->staged_chunks))
+        status = UD_INVALID;
+    if (!status)
+        status = begin_transaction(state);
+    if (!status) {
+        state->staged_epoch = epoch;
+        component->staged = component->committed;
+        state->staged_chunks += component->staged.chunks;
+    }
+    ud_mutex_unlock(&state->mutex);
+    return status;
+}
+
 static ud_status manifest_write(ud_kafka_checkpoint *state, uint64_t epoch, ud_string manifest,
                                  ud_bytes *wire) {
     UD_TRY(validate_manifest_json(state, manifest, epoch));
@@ -587,6 +619,7 @@ static ud_status manifest_write(ud_kafka_checkpoint *state, uint64_t epoch, ud_s
             return UD_INVALID;
         UD_TRY(ud_put_u64(wire, proof->chunks));
         UD_TRY(ud_put_u64(wire, proof->bytes));
+        UD_TRY(ud_put_u64(wire, proof->epoch));
         UD_TRY(ud_bytes_put(wire, proof->digest, sizeof(proof->digest)));
     }
     return ud_put_string(wire, manifest.data, manifest.length);

@@ -55,6 +55,7 @@ typedef struct ud_execution_options {
     uint64_t event_sequence_start; /* Persisted host/Catalog sequence when resuming the same ID. */
     uint32_t worker_member, worker_members, consumer_lanes; /* Frozen host dispatch; zero means direct execution. */
     int32_t broker_restore; /* Requires verified committed Kafka state before processing. */
+    ud_string worker_run_id; /* Frozen parent run identity shared by Kafka stage members. */
 } ud_execution_options;
 typedef struct ud_execution_metrics {
     uint32_t struct_size, abi_version;

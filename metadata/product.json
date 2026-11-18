@@ -5,7 +5,7 @@
     "sdkVersion": "5.0.0",
     "abiVersion": 13,
     "protocolVersion": 13,
-    "checkpointRevision": 3,
+    "checkpointRevision": 4,
     "state": "ABI 13 candidate: Native broker transport, bounded hash join and Worker process budgets. Current integrated verification is pending; prior acceptance evidence is historical.",
     "acceptanceResources": "Windows Release CORE and focused host acceptance use local evidence. Real MQ, Registry, multi-host and complete PRODUCT resources remain separately gated.",
     "dataLayoutRevision": 1,
