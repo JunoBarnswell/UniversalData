@@ -567,19 +567,31 @@ ud_status RocketMqSession::register_client(Stub &remote, const mq::Resource &top
         return status;
     const auto guard = guard_rpc(context);
     const auto stream = remote.Telemetry(&context);
-    stream->Write(command);
-    stream->WritesDone();
     mq::TelemetryCommand answer;
-    ud_status status = UD_IO;
-    while (stream->Read(&answer)) {
-        if (answer.has_settings() || answer.has_status()) {
+    ud_status status = UD_OK;
+    bool closed = false;
+    if (stream->Write(command)) {
+        while (stream->Read(&answer)) {
+            if (!answer.has_settings() && !answer.has_status())
+                continue;
             status = answer.has_status() ? broker_status(answer.status().code()) : UD_OK;
-            if (consumer && answer.settings().subscription().fifo())
+            if (!status && consumer && answer.has_settings() &&
+                answer.settings().subscription().fifo())
                 status = UD_UNSUPPORTED;
+            // The Proxy processes Settings asynchronously. Close the write side
+            // after the reply so the Proxy can register the client's settings.
+            closed = stream->WritesDone();
+            while (stream->Read(&answer)) {
+            }
+            break;
         }
     }
     const auto transport = stream->Finish();
-    return transport.ok() ? status : transport_status(transport);
+    if (status)
+        return status;
+    if (!transport.ok())
+        return transport_status(transport);
+    return closed ? UD_OK : UD_IO;
 }
 
 ud_status RocketMqSession::heartbeat(Stub &remote, bool consumer, Clock::time_point deadline) {
@@ -1222,10 +1234,10 @@ extern "C" UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plu
             "org.universaldata.connector.rocketmq",
             UD_SDK_VERSION,
             UD_PLUGIN_CONNECTOR,
-            UD_CAP_READ | UD_CAP_WRITE | UD_CAP_THREAD_SAFE,
+            UD_CAP_READ | UD_CAP_WRITE | UD_CAP_THREAD_SAFE | UD_CAP_PROCESS_LIFETIME,
             initialize,
             [](void *s) { delete static_cast<RocketMqSession *>(s); },
-            [] {},
+            nullptr,
             &connector_api,
             nullptr,
             sizeof(ud_field),

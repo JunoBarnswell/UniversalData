@@ -17,7 +17,6 @@ static ud_mutex modules_lock = UD_MUTEX_INITIALIZER;
 static module_record *modules;
 struct ud_plugin {
     ud_context *ctx;
-    void *library;
     module_record *module;
     ud_plugin_api api;
     ud_host_api host;
@@ -67,6 +66,7 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
     atomic_init(&p->live, 0);
     atomic_init(&p->active, 0);
     atomic_init(&p->registrations, 0);
+    void *library = NULL;
     ud_plugin_entry_fn entry = NULL;
     unsigned long loader_error = 0;
 #ifdef _WIN32
@@ -79,32 +79,32 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
         for (int i = 0; i < len; i++)
             if (wide[i] == L'/')
                 wide[i] = L'\\';
-        p->library = LoadLibraryExW(
+        library = LoadLibraryExW(
             wide, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
         ud_free(wide);
     }
-    if (p->library) {
-        FARPROC symbol = GetProcAddress((HMODULE)p->library, "ud_plugin_get_api");
+    if (library) {
+        FARPROC symbol = GetProcAddress((HMODULE)library, "ud_plugin_get_api");
         memcpy(&entry, &symbol, sizeof(entry));
     }
     if (!entry)
         loader_error = GetLastError();
 #else
-    p->library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-    if (p->library) {
-        void *symbol = dlsym(p->library, "ud_plugin_get_api");
+    library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (library) {
+        void *symbol = dlsym(library, "ud_plugin_get_api");
         memcpy(&entry, &symbol, sizeof(entry));
     }
 #endif
     if (!entry) {
-        close_library(p->library);
+        close_library(library);
         ud_free(p);
         return ud_fail(ctx, UD_IO, "plugin library or entry point missing (OS error %lu): %s",
                        loader_error, path);
     }
     ud_mutex_lock(&modules_lock);
     module_record *shared = modules;
-    while (shared && shared->library != p->library)
+    while (shared && shared->library != library)
         shared = shared->next;
     p->api.struct_size = sizeof(p->api);
     p->api.abi_version = UD_PLUGIN_ABI;
@@ -128,8 +128,9 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
         if (!shared)
             s = UD_RESOURCE;
         else {
-            *shared = (module_record){.library = p->library, .api = p->api, .next = modules};
+            *shared = (module_record){.library = library, .api = p->api, .next = modules};
             modules = shared;
+            library = NULL;
         }
     }
     if (!s) {
@@ -137,8 +138,8 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
         p->module = shared;
     }
     ud_mutex_unlock(&modules_lock);
+    close_library(library);
     if (s) {
-        close_library(p->library);
         ud_free(p);
         return ud_fail(ctx, s, "plugin ABI/capabilities incompatible: %s", path);
     }
@@ -288,7 +289,7 @@ ud_status ud_plugin_unload(ud_plugin *p) {
         return ud_fail(p->ctx, UD_BUSY, "plugin has live instances or callbacks");
     ud_mutex_lock(&modules_lock);
     module_record *module = p->module;
-    if (!--module->references) {
+    if (!--module->references && !(module->api.capabilities & UD_CAP_PROCESS_LIFETIME)) {
         module_record **at = &modules;
         while (*at && *at != module)
             at = &(*at)->next;
@@ -298,10 +299,9 @@ ud_status ud_plugin_unload(ud_plugin *p) {
          * load/unload. This is never the scheduler, Journal or event lock. */
         if (module->api.shutdown)
             module->api.shutdown();
-        close_library(p->library);
+        close_library(module->library);
         free(module);
-    } else
-        close_library(p->library);
+    }
     ud_mutex_unlock(&modules_lock);
     ud_free(p);
     return UD_OK;

@@ -20,6 +20,8 @@ Grace Hash Join 逐分区构建索引和输出。索引行定位到原分区页�
 
 ## 消息源、目标与执行成员
 
+RocketMQ 的会话和 RPC 按连接关闭，gRPC 的原生模块及依赖由统一插件加载器保留到进程退出。替换 RocketMQ 模块或其 gRPC 依赖时重启持有模块的进程。
+
 `mq.source` 和 `mq.destination` 通过 Connection Manager 调原生协议驱动。ActiveMQ Classic 与 Artemis 使用 AMQP 1.0，RabbitMQ 使用 AMQP 0-9-1，RocketMQ 5 使用官方 v2 gRPC，Kafka 使用 librdkafka。包中配置连接引用、`targetType`、`address` 和目标所需的 `routingKey`。消费端可按协议选择 `group`、`subscription`、`filter`、`initialPosition`。Kafka 单消费者可用 `endOffsets` 声明逐分区的排他结束位置。所有生产队列、主题、绑定及消费组由宿主预置。
 
 消息体可用 `binary`、`json` 或 Kafka `avro`。源的 `_message` 结构保留地址、标识、键、Header、分区、位点、时间及重投标志。目标可发布键和 Header。Avro 通过授权 Registry 连接访问已注册的 `schemaSubject` 和 `schemaVersion`，以已注册 reader schema 读取，以固定 writer schema 发布。源数据错误使用现有错误端口，Registry 一时不可用会阻止源确认。

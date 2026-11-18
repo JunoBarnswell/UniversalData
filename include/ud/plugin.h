@@ -15,7 +15,10 @@ enum {
     UD_CAP_SQL = 8,
     UD_CAP_TRANSACTION = 32,
     UD_CAP_THREAD_SAFE = 64,
-    UD_CAP_THREAD_AFFINE = 128
+    UD_CAP_THREAD_AFFINE = 128,
+    /* The module and its runtime dependencies stay loaded until process exit.
+     * Connection and registry handles still release their resources normally. */
+    UD_CAP_PROCESS_LIFETIME = 256
 };
 typedef struct ud_host_api {
     uint32_t struct_size, abi_version;
@@ -115,6 +118,8 @@ UD_API ud_status ud_plugin_info(const ud_plugin *, ud_plugin_api *);
  * native code; the host authorizes loading, and callbacks use common SDK grants
  * for resources. Missing table is Unsupported, not a no-op success. */
 UD_API ud_status ud_plugin_register_components(ud_plugin *, ud_registry *);
+/* Releases a host reference. The shutdown callback runs before physical unload
+ * of unloadable modules. Process-lifetime modules keep their loader reference. */
 UD_API ud_status ud_plugin_unload(ud_plugin *);
 #ifdef __cplusplus
 }
