@@ -9,8 +9,15 @@ import tempfile
 runner, plugin, initdb, pg_ctl = map(lambda p: str(pathlib.Path(p).resolve()), sys.argv[1:5])
 with tempfile.TemporaryDirectory(prefix="ud-pg-cancel-") as folder:
     root = pathlib.Path(folder)
+    if os.name == "nt":
+        # initdb uses a restricted Windows token. Grant this account access to the
+        # per-test directory without relying on its Administrators group membership.
+        account = subprocess.check_output(["whoami.exe"], text=True, timeout=10).strip()
+        subprocess.run(["icacls.exe", str(root), "/grant", f"{account}:(OI)(CI)M", "/Q"],
+                       check=True, timeout=10)
     data = root / "data"
-    result = subprocess.run([initdb, "-D", str(data), "-A", "trust", "-U", "fixture", "--no-locale"],
+    # This disposable cluster tests cursor cancellation, so setup can skip the initial disk sync.
+    result = subprocess.run([initdb, "-D", str(data), "-A", "trust", "-U", "fixture", "--no-locale", "--no-sync"],
                             capture_output=True, text=True, timeout=30)
     if result.returncode:
         raise RuntimeError(result.stdout + result.stderr)

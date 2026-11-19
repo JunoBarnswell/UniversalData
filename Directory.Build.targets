@@ -1,6 +1,8 @@
 <Project>
   <ItemGroup Condition="'$(UniversalDataVsSolution)' == 'true'">
     <None Include="$(UniversalDataVsNativeLibrary)" Link="ud_data.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" Pack="false" />
+    <None Include="$(MSBuildThisFileDirectory)build\vs2026\windows-runtime\$(Configuration)\ud_core_windows_runtime\*.dll"
+          Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" Pack="false" />
   </ItemGroup>
   <Target Name="ValidateUniversalDataVsNativeLibrary" BeforeTargets="GetCopyToOutputDirectoryItems;CopyFilesToOutputDirectory" Condition="'$(UniversalDataVsSolution)' == 'true' And '$(DesignTimeBuild)' != 'true'">
     <Error Condition="'$(Platform)' != 'x64'" Text="UniversalData.sln requires the x64 platform." />

@@ -79,7 +79,8 @@ with tempfile.TemporaryDirectory(prefix="ud-component-product-") as folder:
     files = root / "columns"
     files.mkdir()
     payload = "column 中文\nsecond line"
-    (files / "input.txt").write_text(payload)
+    payload_bytes = payload.encode("utf-8")
+    (files / "input.txt").write_bytes(payload_bytes)
     actual = run("column-files", [dict(name="sourcePath", type="utf8", nullable=False),
         dict(name="targetPath", type="utf8", nullable=False)],
         [dict(sourcePath="input.txt", targetPath="output.txt")],
@@ -88,6 +89,6 @@ with tempfile.TemporaryDirectory(prefix="ud-component-product-") as folder:
          node("left", "file.ndjson.destination", connection="left")],
         [edge("source", "import"), edge("import", "export"), edge("export", "left")],
         [dict(id="files", driver="file", resource=str(files))])
-    assert (files / "output.txt").read_text() == payload and actual["left"][0]["body"] == payload
+    assert (files / "output.txt").read_bytes() == payload_bytes and actual["left"][0]["body"] == payload
 
 print("Whole-batch balanced dispatch, multicast copies, mixed expression errors and Import/Export Column passed")

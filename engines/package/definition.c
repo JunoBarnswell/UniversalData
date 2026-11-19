@@ -1,5 +1,109 @@
 #include "internal.h"
 
+static int named(ud_string value, const char *literal) {
+    size_t length = strlen(literal);
+    return value.length == length && !memcmp(value.data, literal, length);
+}
+
+static int component_suffix(ud_string value, const char *suffix) {
+    size_t length = strlen(suffix);
+    return value.length >= length && !memcmp(value.data + value.length - length, suffix, length);
+}
+
+/* A stream-only SQL flow has no replay boundary: the live provider cursor is
+ * the source of truth and the SQL response sink does not need a receipt table.
+ * Every other package keeps the existing Journal contract.  This is deliberately
+ * conservative; returning true selects recovery, while returning false is only
+ * allowed for the narrow, validated stream shape. */
+ud_status ud_package_requires_journal(const ud_package *package, int32_t *required) {
+    if (!package || !package->document || !required)
+        return UD_INVALID;
+    *required = 1;
+    const ud_json *flows = ud_member(package->document, "dataFlows");
+    if (ud_json_kind(flows) != UD_JSON_ARRAY || !ud_json_size(flows))
+        return UD_OK;
+    int stream_source = 0;
+    for (uint32_t flow_index = 0; flow_index < ud_json_size(flows); flow_index++) {
+        const ud_json *flow = ud_json_at(flows, flow_index);
+        const ud_json *components = ud_member(flow, "components");
+        if (ud_json_kind(components) != UD_JSON_ARRAY)
+            return UD_SCHEMA;
+        if (ud_member(flow, "transaction"))
+            return UD_OK;
+        const ud_json *delivery = ud_member(flow, "delivery");
+        if (delivery)
+            return UD_OK; /* Kafka stage/transaction delivery is durable by definition. */
+        int flow_source = 0;
+        for (uint32_t component_index = 0; component_index < ud_json_size(components);
+             component_index++) {
+            const ud_json *component = ud_json_at(components, component_index);
+            ud_string kind = {0};
+            UD_TRY(ud_json_string(ud_member(component, "component"), &kind));
+            const ud_json *config = ud_member(component, "config");
+            if (ud_json_kind(config) != UD_JSON_OBJECT)
+                return UD_SCHEMA;
+            if (named(kind, "sql.source")) {
+                ud_string mode = {"snapshot", 8};
+                if (ud_member(config, "readMode"))
+                    UD_TRY(ud_json_string(ud_member(config, "readMode"), &mode));
+                if (!named(mode, "stream"))
+                    return UD_OK;
+                if (ud_member(config, "incremental") || ud_member(config, "partitionCount") ||
+                    ud_member(config, "partitionId") || ud_member(config, "partitionBegin") ||
+                    ud_member(config, "partitionEnd"))
+                    return UD_OK;
+                stream_source = 1;
+                flow_source = 1;
+                continue;
+            }
+            if (component_suffix(kind, ".source"))
+                return UD_OK;
+            if (named(kind, "sql.destination")) {
+                const ud_json *delivery_setting = ud_member(config, "delivery");
+                if (delivery_setting) {
+                    ud_string delivery_mode = {0};
+                    UD_TRY(ud_json_string(delivery_setting, &delivery_mode));
+                    if (!named(delivery_mode, "response"))
+                        return UD_OK;
+                } else {
+                    const ud_json *provision = ud_member(config, "provisionReceipts");
+                    const char *boolean = NULL;
+                    uint32_t length = 0;
+                    if (ud_json_kind(provision) == UD_JSON_BOOL &&
+                        !ud_json_text(provision, &boolean, &length) && length == 4)
+                        return UD_OK;
+                }
+                continue;
+            }
+            if (component_suffix(kind, ".destination") || named(kind, "sort") ||
+                named(kind, "join") || named(kind, "aggregate") || named(kind, "window"))
+                return UD_OK;
+            /* The actual Registry descriptor in the Native binding step decides
+             * whether a named transform is stateless and free of external effects. */
+        }
+        if (!flow_source)
+            return UD_OK;
+    }
+    const ud_json *policy = ud_member(package->document, "policy");
+    if (policy && (ud_member(policy, "transaction") || ud_member(policy, "transactions") ||
+                   ud_member(policy, "recovery") || ud_member(policy, "durable")))
+        return UD_OK;
+    const ud_json *control = ud_member(package->document, "controlFlow");
+    const ud_json *tasks = ud_member(control, "tasks");
+    if (ud_json_kind(tasks) == UD_JSON_ARRAY) {
+        for (uint32_t index = 0; index < ud_json_size(tasks); index++) {
+            const ud_json *task = ud_json_at(tasks, index);
+            ud_string kind = {0};
+            UD_TRY(ud_json_string(ud_member(task, "kind"), &kind));
+            if (!named(kind, "dataFlow") || ud_member(task, "children") ||
+                ud_member(task, "transaction"))
+                return UD_OK;
+        }
+    }
+    *required = stream_source ? 0 : 1;
+    return UD_OK;
+}
+
 static ud_status append(ud_bytes *b, const ud_json *value) {
     char *text = NULL;
     uint32_t length = 0;

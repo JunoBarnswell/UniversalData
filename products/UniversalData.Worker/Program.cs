@@ -14,6 +14,12 @@ if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticke
     request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare"))
     throw new InvalidDataException("Incompatible Worker request");
 var policy = request.Policy with { Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated };
+using var nativePackage = request.Mode == "execute"
+    ? new Package(request.Package, policy.MemoryLimit)
+    : null;
+bool requiresJournal = nativePackage?.RequiresJournal ?? true;
+if (!requiresJournal && (request.Resume || request.JournalTicket is not null))
+    throw new InvalidDataException("A stream execution cannot use recovery or a Journal ticket");
 if (request.JournalTicket is { } journal && (request.Mode != "execute" || !Guid.TryParseExact(journal, "N", out _)) ||
     request.BrokerRestore && (request.Resume || request.ExecutionId.Length == 0 || request.JournalTicket is null ||
         request.JournalTicket == request.Ticket))
@@ -116,7 +122,8 @@ void Observe(ExecutionEvent value) {
         document=JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Event,value.ExecutionId,value.Sequence)!) } });
 }
 phase="native.create";
-using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,directory,request.Resume,observe:Observe,eventSequenceStart:eventSequence,shard:request.Shard,brokerRestore:request.BrokerRestore);
+string? journalDirectory = requiresJournal ? directory : null;
+using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,journalDirectory,request.Resume,observe:Observe,eventSequenceStart:eventSequence,shard:request.Shard,brokerRestore:request.BrokerRestore);
 phase="native.debug";
 if (request.Debug is { } debug) executionRun.ConfigureDebug(debug.GetRawText());
 using var controls = new CancellationTokenSource();

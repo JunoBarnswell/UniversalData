@@ -109,6 +109,7 @@ typedef struct builtin {
     uint32_t source_partitions, source_partition;
     uint32_t *keys, key_count, *write_indices, before_column;
     int mode, load_mode;
+    int32_t delivery_mode;
     struct ud_rule_delivery *delivery;
     ud_cursor *cursor;
     ud_batch *actual_schema, *scan_schema, *write_schema, *parameters;
@@ -120,6 +121,7 @@ typedef struct builtin {
     uint64_t snapshot_count, snapshot_at, snapshot_rows, snapshot_error_rows, source_identified,
         snapshot_read_ms;
     int materialized;
+    int stream_read;
     uint8_t file_fingerprint[32];
     uint64_t file_hash_ms;
     ud_sha256 snapshot_hash;
@@ -163,11 +165,14 @@ ud_status ud_builtin_operator_check(void *user);
 ud_status ud_builtin_parameters(const ud_component_context *c, const ud_json *config,
                                 ud_batch **out);
 ud_status ud_builtin_parse(const ud_component_context *c, ud_string config, ud_json **out);
-ud_status ud_builtin_sink_delivery(int kind, const ud_json *config, int32_t *delivery);
+ud_status ud_builtin_sink_delivery(const ud_component_context *, int kind, const ud_json *config,
+                                   int32_t *delivery);
 ud_status ud_builtin_restore_state(void *ptr, const ud_batch *state);
 ud_status ud_builtin_seek_output(void *, uint64_t rows);
 ud_status ud_builtin_schema_config(const ud_component_context *c, const ud_json *config,
                                    ud_batch **out);
+ud_status ud_builtin_source_read_mode(const ud_component_context *c, const ud_json *config,
+                                      int *stream);
 ud_status ud_builtin_sink_batch(builtin *b, const ud_batch *input, ud_batch **out,
                                 ud_batch **before);
 ud_status ud_builtin_sink_schema(builtin *b);

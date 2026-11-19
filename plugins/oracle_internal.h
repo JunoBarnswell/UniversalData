@@ -1,9 +1,9 @@
 #ifndef UD_ORACLE_INTERNAL_H
 #define UD_ORACLE_INTERNAL_H
 #include "common.h"
+#include "../components/foundation/thread.h"
 #include <oci.h>
 #include <xa.h>
-#include "../components/foundation/thread.h"
 #include <stdatomic.h>
 typedef struct cell {
     OCIBind *bind;
@@ -32,7 +32,7 @@ typedef struct oracle {
     uint32_t count, batch, write_count;
     ud_read_options record_options;
     ub2 *write_types;
-    int utc, transaction, broken;
+    int utc, transaction, broken, scalar, scalar_done;
     int cleanup, participant_enabled, branch_state;
     char branch_id[65];
     sb4 record_code;

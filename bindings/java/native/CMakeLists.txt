@@ -1,4 +1,4 @@
-find_package(JNI REQUIRED)
+find_package(JNI REQUIRED COMPONENTS JVM)
 add_library(ud_java SHARED bridge.c)
 target_include_directories(ud_java PRIVATE ${JNI_INCLUDE_DIRS})
 target_link_libraries(ud_java PRIVATE ud_data)

@@ -150,20 +150,55 @@ ud_status ud_builtin_create_operator(const ud_component_context *c, int kind, co
     return status;
 }
 
-ud_status ud_builtin_sink_delivery(int kind, const ud_json *config, int32_t *delivery) {
+ud_status ud_builtin_sink_delivery(const ud_component_context *c, int kind, const ud_json *config,
+                                   int32_t *delivery) {
     if (kind == REST_SINK)
         return ud_rest_delivery(config, delivery);
     if (kind != SQL_SINK)
         return UD_INVALID;
-    ud_string value = {"receipt", 7};
-    if (ud_member(config, "delivery"))
-        UD_TRY(ud_json_string(ud_member(config, "delivery"), &value));
+    const ud_json *setting = ud_member(config, "delivery");
+    if (!setting) {
+        int32_t requires_journal;
+        UD_TRY(ud_package_requires_journal(c->activation->package, &requires_journal));
+        *delivery = requires_journal ? UD_DELIVERY_RECEIPT : UD_DELIVERY_RESPONSE;
+        return UD_OK;
+    }
+    ud_string value = {0};
+    UD_TRY(ud_json_string(setting, &value));
     if (ud_named(value, "receipt"))
         *delivery = UD_DELIVERY_RECEIPT;
     else if (ud_named(value, "response"))
         *delivery = UD_DELIVERY_RESPONSE;
     else
         return UD_SCHEMA;
+    return UD_OK;
+}
+
+ud_status ud_builtin_source_read_mode(const ud_component_context *c, const ud_json *config,
+                                      int *stream) {
+    if (!c || !config || !stream)
+        return UD_INVALID;
+    *stream = 0;
+    ud_string mode = {"snapshot", 8};
+    if (ud_member(config, "readMode"))
+        UD_TRY(ud_json_string(ud_member(config, "readMode"), &mode));
+    if (ud_named(mode, "snapshot"))
+        return UD_OK;
+    if (!ud_named(mode, "stream"))
+        return UD_SCHEMA;
+    /* Stream reads are deliberately outside the replay contract.  The host may
+     * still create an ordinary execution directory for its catalog, but Native
+     * must never bind a Journal, resume cursor facts, or share a transaction
+     * with a source cursor. */
+    if (c->execution->options.state_directory.length || c->execution->options.resume ||
+        c->execution->journal || c->activation->transaction_serial ||
+        ud_transaction_active(c->activation))
+        return UD_UNSUPPORTED;
+    if (ud_member(config, "incremental") || ud_member(config, "partitionCount") ||
+        ud_member(config, "partitionId") || ud_member(config, "partitionBegin") ||
+        ud_member(config, "partitionEnd"))
+        return UD_UNSUPPORTED;
+    *stream = 1;
     return UD_OK;
 }
 
@@ -179,7 +214,7 @@ ud_status ud_builtin_describe_sink(void *user, const ud_component_context *c, ud
         status = ud_json_string(ud_member(config, "mode"), &mode);
     int32_t delivery = UD_DELIVERY_RECEIPT;
     if (!status)
-        status = ud_builtin_sink_delivery(kind, config, &delivery);
+        status = ud_builtin_sink_delivery(c, kind, config, &delivery);
     out->effects = UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_COMMIT_UNKNOWN;
     if (kind == SQL_SINK)
         out->effects |= UD_EFFECT_TRANSACTIONAL;
@@ -228,6 +263,10 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
     int kind = (int)(intptr_t)user;
     ud_json *config = NULL;
     ud_status s = ud_builtin_parse(c, text, &config);
+    if (!s && kind == SQL_SOURCE) {
+        int stream = 0;
+        s = ud_builtin_source_read_mode(c, config, &stream);
+    }
     if (!s && source_kind(kind)) {
         uint64_t count = 1, id = 0, begin = 0, end = UINT64_MAX;
         if (ud_member(config, "partitionCount"))
@@ -250,7 +289,7 @@ ud_status ud_builtin_configure(void *user, const ud_component_context *c, ud_str
     else if (!s && kind == SQL_SINK) {
         int32_t delivery = UD_DELIVERY_RECEIPT;
         int policy;
-        s = ud_builtin_sink_delivery(kind, config, &delivery);
+        s = ud_builtin_sink_delivery(c, kind, config, &delivery);
         if (!s)
             s = ud_error_policy(config, "errorPolicy", UD_ERROR_FAIL, &policy);
         if (!s && policy != UD_ERROR_FAIL && !c->activation->transaction_serial)

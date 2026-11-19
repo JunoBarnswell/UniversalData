@@ -7,6 +7,7 @@ import pathlib
 import sqlite3
 import subprocess
 import tempfile
+from contextlib import closing
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser()
@@ -24,7 +25,10 @@ if a.dotnet:
 def invoke(index, mode, package, output, succeed=True):
     env = dict(os.environ)
     if a.native and index != 1:
-        env['LD_LIBRARY_PATH'] = a.native
+        if os.name == 'nt':
+            env['PATH'] = a.native + os.pathsep + env.get('PATH', '')
+        else:
+            env['LD_LIBRARY_PATH'] = a.native
     if index == 1:
         env.pop('LD_LIBRARY_PATH', None)
     result = subprocess.run(commands[index] + [mode, str(package), str(output)],
@@ -39,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='ud-advanced-metadata-') as folder:
     doc['connections'][0].update(driver=str(pathlib.Path(a.sqlite).resolve()),
                                  resource=str(database), credentialReference='fixture')
     doc.pop('parameters')
-    with sqlite3.connect(database) as db:
+    with closing(sqlite3.connect(database)) as db, db:
         for i in range(10):
             # Explicit TEXT storage proves lossless Decimal parsing in the
             # parameterized cursor; no SQLite NUMERIC affinity is involved.

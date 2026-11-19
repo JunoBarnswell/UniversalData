@@ -1,10 +1,15 @@
 """Installed C/.NET/Java query parity for the one native Schema/RowInfo owner."""
 import argparse, copy, json, os, pathlib, sqlite3, subprocess, tempfile
+from contextlib import closing
 from product_version import PROTOCOL_VERSION
 p=argparse.ArgumentParser()
 for name in ('query','data','dotnet','data-dll','java','classes','jar','native','sqlite'):
     p.add_argument('--'+name,required=True)
-a=p.parse_args();env=dict(os.environ);env['LD_LIBRARY_PATH']=a.native
+a=p.parse_args();env=dict(os.environ)
+if os.name == 'nt':
+    env['PATH'] = a.native + os.pathsep + env.get('PATH', '')
+else:
+    env['LD_LIBRARY_PATH'] = a.native
 commands=[[a.query],[a.dotnet,a.data_dll],[a.java,'-Djava.library.path='+a.native,'-cp',a.classes+os.pathsep+a.jar,'DataConsumer']]
 def run(index,args):
     # The NuGet consumer must use the native asset delivered by NuGet itself.
@@ -15,13 +20,14 @@ def write(path,value):path.write_text(json.dumps(value,ensure_ascii=False))
 with tempfile.TemporaryDirectory(prefix='ud-native-queries-') as folder:
     root=pathlib.Path(folder)
     db=root/'source.db'
-    with sqlite3.connect(db) as connection:
+    with closing(sqlite3.connect(db)) as connection, connection:
         connection.execute('CREATE TABLE source(id INTEGER PRIMARY KEY,name TEXT NOT NULL)')
     package=root/'package.json'
     write(package,dict(version=PROTOCOL_VERSION,id='query-parity',connections=[dict(id='db',driver=a.sqlite,resource=str(db),credentialReference='fixture')],controlFlow=dict(tasks=[],constraints=[]),dataFlows=[]))
     for round in (0,1):
         if round:
-            with sqlite3.connect(db) as connection:connection.execute('ALTER TABLE source ADD COLUMN extra TEXT')
+            with closing(sqlite3.connect(db)) as connection, connection:
+                connection.execute('ALTER TABLE source ADD COLUMN extra TEXT')
         for index in range(3):run(index,['--discover',package,'db','source',root/f'{index}.schema.json'])
         canonical=(root/'0.schema.json').read_bytes()
         assert all((root/f'{i}.schema.json').read_bytes()==canonical for i in (1,2))

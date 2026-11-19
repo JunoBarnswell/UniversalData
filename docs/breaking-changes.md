@@ -1,3 +1,19 @@
+# SDK 6.0.0 / ABI 14
+
+C 公共 ABI、插件、Package、Schema、Wire、Worker 和检查点协议同步升级到 14。按 `metadata/product.json` 生成 C、C#、Java 和 Studio 版本。重建宿主、插件和消费者后一起发布。
+
+将 v13 的 Package 定义离线写入新文件，再由 v14 校验和部署：
+
+```powershell
+python scripts/migrate_package_v13_to_v14.py source-v13.json copy-v14.json
+```
+
+迁移工具只升级 Package 和识别到的 Schema 信封。业务行及其 `version` 字段保留原值。旧检查点、运行中的作业及二进制 Wire 由其 ABI 13 运行环境处理，升级前完成这些作业并保留对应记录。
+
+为 ABI 14 宿主配置独立的数据目录，并在新目录部署迁移后的 Package。保留 ABI 13 的 Catalog 与检查点目录，使用对应版本查看旧运行记录和处理未结作业。
+
+### 历史版本
+
 # Breaking Changes：SDK 1.2.0 / ABI 6
 
 本轮采用 Clean-break。旧 ABI 4 以及此前对象、定义、插件、检查点需要从源数据重新生成并重新编译宿主；没有 ABI 别名、旧 Journal reader 或兼容执行链。

@@ -62,7 +62,11 @@ static async Task WorkerHandshake(string worker)
             "{\"version\":" + ProductInfo.Protocol + ",\"id\":\"worker\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}",
             Debug:JsonSerializer.SerializeToElement(new { previewRows = 1,breakpoints = Array.Empty<string>() }),
             ControlReference:new ParameterVault(policy).Store("{\"token\":\"test-control-capability-294871439\"}"));
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeout = new CancellationTokenSource();
+        System.Diagnostics.Process Launch() {
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            return WorkerLauncher.Launch(worker,request);
+        }
         async Task<JsonElement> Read(System.Diagnostics.Process process,string kind) {
             while(true) {
                 string line = await WorkerProtocol.ReadLine(process.StandardOutput,67108864,timeout.Token) ?? throw new Exception("Worker closed its pipe");
@@ -77,7 +81,7 @@ static async Task WorkerHandshake(string worker)
             await process.StandardInput.FlushAsync(timeout.Token);
         }
         foreach (int? staleRevision in new int?[] { null, 2 }) {
-            using var legacy=WorkerLauncher.Launch(worker,request);
+            using var legacy=Launch();
             var output=legacy.StandardOutput.ReadToEndAsync(timeout.Token);
             var errors=legacy.StandardError.ReadToEndAsync(timeout.Token);
             var envelope=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(request,HostPolicy.JsonOptions))!.AsObject();
@@ -88,7 +92,7 @@ static async Task WorkerHandshake(string worker)
             Require(legacy.ExitCode!=0 && (await output).Length==0,"Legacy Worker request was admitted");
             _=await errors;
         }
-        using(var process = WorkerLauncher.Launch(worker,request)) {
+        using(var process = Launch()) {
             var errors = process.StandardError.ReadToEndAsync(timeout.Token);
             try {
                 await Send(process,request); var ready = await Read(process,"ready");
@@ -116,7 +120,7 @@ static async Task WorkerHandshake(string worker)
         // file lease. Internal checkpoint grants still allow Native recovery.
         var validDebug=request.Debug;
         request=request with {Ticket=Guid.NewGuid().ToString("N"),Debug=JsonSerializer.SerializeToElement(new {previewRows=999999,breakpoints=new[]{"startup-secret-849821"}})};
-        using(var process=WorkerLauncher.Launch(worker,request)) {
+        using(var process=Launch()) {
             var errors=process.StandardError.ReadToEndAsync(timeout.Token);
             await Send(process,request);var failed=await Read(process,"failed");
             Require(failed.GetProperty("result").GetInt32()==(int)StatusCode.Schema && failed.GetProperty("phase").GetString()=="native.debug","Worker startup lost its Native status or lifecycle phase");
@@ -135,7 +139,7 @@ static async Task WorkerHandshake(string worker)
                 new { id = "count",component = "profile.statistics",config = new { statistics = new[] { new { kind = "rows",variable = "rows" } } } } },
                 paths = new[] { new { from = "source",output = 0,to = "count",input = 0 } } } } });
         request = request with { Package = probe };
-        using(var process = WorkerLauncher.Launch(worker,request)) {
+        using(var process = Launch()) {
             try {
                 var errors = process.StandardError.ReadToEndAsync(timeout.Token);
                 await Send(process,request); _ = await Read(process,"ready");
@@ -146,14 +150,14 @@ static async Task WorkerHandshake(string worker)
             } finally { if (!process.HasExited) await WorkerLauncher.Terminate(process,request.Ticket,false); }
         }
         request = request with { Ticket = Guid.NewGuid().ToString("N"),Package = "{\"version\":" + ProductInfo.Protocol + ",\"id\":\"worker\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}" };
-        using(var process = WorkerLauncher.Launch(worker,request)) {
+        using(var process = Launch()) {
             try {
                 await Send(process,request); _ = await Read(process,"ready"); process.StandardInput.Close();
                 await process.WaitForExitAsync(timeout.Token); Require(process.ExitCode == 2,"Pipe loss authorized an execution");
             } finally { if (!process.HasExited) await WorkerLauncher.Terminate(process,request.Ticket,false); }
         }
         request = request with { Version = 12,Ticket = Guid.NewGuid().ToString("N") };
-        using(var process = WorkerLauncher.Launch(worker,request)) {
+        using(var process = Launch()) {
             try {
                 var errors = process.StandardError.ReadToEndAsync(timeout.Token);
                 await Send(process,request); process.StandardInput.Close();

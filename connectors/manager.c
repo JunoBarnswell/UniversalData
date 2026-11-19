@@ -1007,6 +1007,40 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
     ud_free(l);
     return status;
 }
+
+ud_status ud_connection_lease_sql_transaction(ud_connection_lease *lease, int32_t operation,
+                                              int32_t isolation) {
+    if (!lease || !lease->connection || lease->shared)
+        return UD_UNSUPPORTED;
+    if (operation == UD_SQL_SESSION_ROLLBACK) {
+        UD_TRY(ud_connection_operation_begin(lease->connection, lease, session_grant, NULL));
+        return lease_operation_end(lease, ud_connection_rollback(lease->connection));
+    }
+    UD_TRY(lease_operation_begin(lease, UD_ACCESS_WRITE));
+    ud_status status = operation == UD_SQL_SESSION_BEGIN
+                       ? ud_connection_begin(lease->connection, isolation)
+                       : ud_connection_commit(lease->connection);
+    return lease_operation_end(lease, status);
+}
+
+void ud_connection_lease_cancel(ud_connection_lease *lease) {
+    if (!lease || !lease->connection || lease->shared)
+        return;
+    struct ud_connection_manager *manager = lease->activation->execution->connections;
+    ud_mutex_lock(&manager->mutex);
+    if (lease->cancelled) {
+        ud_mutex_unlock(&manager->mutex);
+        return;
+    }
+    lease->cancelled = 1;
+    lease->pins++;
+    ud_mutex_unlock(&manager->mutex);
+    ud_connection_cancel(lease->connection);
+    ud_mutex_lock(&manager->mutex);
+    lease->pins--;
+    ud_condition_wake(&manager->changed);
+    ud_mutex_unlock(&manager->mutex);
+}
 void ud_connections_cancel(ud_execution *e) {
     if (!e || !e->connections)
         return;

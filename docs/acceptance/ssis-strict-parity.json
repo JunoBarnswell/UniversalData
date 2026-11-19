@@ -1,7 +1,7 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "5.0.0",
-  "abi": 13,
+  "sdkVersion": "6.0.0",
+  "abi": 14,
   "specification": "UniversalData_SSIS_Strict_Parity_Codex.md",
   "baseline": "867228797e6f2433cedff684f59ca1d28d3b4b29",
   "referenceVersion": "SSIS 2025 / Microsoft Learn sql-server-ver17",

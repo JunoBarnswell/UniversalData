@@ -14,7 +14,7 @@ const captions: Record<string, string> = {mode:"运行模式",timeField:"事件�
   targetType: '消息目标类型', address: '地址', group: '组', subscription: '订阅',
   routingKey: '路由键', filter: '订阅筛选', initialPosition: '起始位点', prefetch: '预取消息数',
   maxMessageBytes: '单条消息上限（字节）', maxInFlightBytes: '未确认消息上限（字节）',
-  registryConnection: 'Schema Registry 连接', schemaSubject: 'Schema Subject', schemaVersion: 'Schema 版本' };
+  registryConnection: 'Schema Registry 连接', schemaSubject: 'Schema Subject', schemaVersion: 'Schema 版本', readMode: '读取方式', delivery: '交付方式' };
 export function PropertyForm({ schema, value, change, fields = empty, inputs = [] }: { schema: PropertySchema; value: Configuration; change: (value: Configuration) => void; fields?: DataField[]; inputs?: DataField[][] }) {
   return <ObjectProperties schema={schema} value={value} change={change} context={{ fields, inputs }} path=""/>;
 }
@@ -45,7 +45,15 @@ function Property({ name, path, schema, value, required, change, context }: { na
   if(schema['x-role']==='field-selector'&&available.length) return <label htmlFor={id}>{label}<Select id={id} value={typeof value==='number'?(available[value]?.identity??available[value]?.name??''):String(value??'')} onChange={event=>change(event.target.value||undefined)}><option value="">选择字段</option>{available.map((field)=><option key={field.identity??field.name} value={field.identity??field.name}>{field.name} · {field.type}</option>)}</Select></label>;
   const variants = schema.oneOf ?? schema.anyOf;
   if (variants?.length) return <fieldset className="property-group"><legend>{label}</legend><Variant name={name} path={path} choices={variants} value={value} change={change} context={context}/></fieldset>;
-  if (schema.enum) return <label htmlFor={id}>{label}<Select id={id} value={value === undefined ? '' : encode(value)} onChange={event => change(event.target.value ? decode(event.target.value) : undefined)}><option value="">请选择</option>{schema.enum.map(option => <option key={encode(option)} value={encode(option)}>{String(option)}</option>)}</Select></label>;
+  if (schema.enum) {
+    const selected = value === undefined ? schema.default : value;
+    return <label htmlFor={id}>{label}<Select id={id}
+      value={selected === undefined ? '' : encode(selected)}
+      onChange={event => change(event.target.value ? decode(event.target.value) : undefined)}>
+      <option value="">{name === 'delivery' && schema.enum.includes('receipt') ? '随作业模式' : '请选择'}</option>
+      {schema.enum.map(option => <option key={encode(option)} value={encode(option)}>{String(option)}</option>)}
+    </Select></label>;
+  }
   if (type === 'boolean') return <label className="checkbox" htmlFor={id}><Input id={id} type="checkbox" checked={value === true} onChange={event => change(event.target.checked)}/>{label}</label>;
   if (['expression', 'condition', 'predicate'].includes(name) || value && typeof value === 'object' && !Array.isArray(value) && ['op', 'literal', 'ref', 'column', 'function'].some(key => Object.hasOwn(value, key)))
     return <fieldset className="property-group"><legend>{label}</legend><Expression value={value as Configuration | undefined} change={change} context={context}/></fieldset>;

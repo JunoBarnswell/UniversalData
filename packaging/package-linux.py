@@ -87,6 +87,7 @@ with tempfile.TemporaryDirectory(prefix='ud-nuget-native-', dir=output.parent) a
     subprocess.run(['dotnet', 'pack', str(ROOT / 'bindings/dotnet/UniversalData/UniversalData.csproj'),
                     '-c', 'Release', '-o', str(packages), '-p:NativeLibraryDirectory=' + str(native),
                     '-p:NativeDependencyDirectory=' + str(staging),
+                    '-p:NativePluginDirectory=' + str(native / 'UniversalData/plugins'),
                     '-p:NativeLicenseDirectory=' + str(sdk / 'share/UniversalData/licenses'),
                     '-p:NativeRuntimeIdentifier=linux-x64', '--nologo'], check=True)
 subprocess.run(['dotnet', 'restore', str(ROOT / 'examples/dotnet/Consumer.csproj'), '--nologo'], check=True)

@@ -104,6 +104,7 @@ export interface RunState {
   packageId: string;
   packageRevision: string;
   state: string;
+  requiresJournal?: boolean;
   executionId: string;
   result: number;
   failure?: { result: number; phase: string; errorType: string };
@@ -153,6 +154,12 @@ export const stateName = (state: string) =>
     Stopped: "已停止（排空完成）",
     RecoveryRequired: "需要恢复",
   })[state] ?? state;
+export const executionStateName = (
+  run: Pick<RunState, "state" | "requiresJournal">,
+) =>
+  run.state === "RecoveryRequired" && run.requiresJournal === false
+    ? "流式执行已停止（不可恢复）"
+    : stateName(run.state);
 export function defaults(schema: PropertySchema): Configuration {
   return Object.fromEntries(
     Object.entries(schema.properties ?? {})

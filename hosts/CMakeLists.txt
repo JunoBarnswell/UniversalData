@@ -36,6 +36,10 @@ set(UD_HOST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/product)
 if(WIN32)
   set(UD_HOST_SUFFIX .exe)
   set(UD_HOST_NATIVE_NAME ud_data.dll)
+  set(UD_HOST_RUNTIME_COPY
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${ud_core_windows_runtime_DIRECTORY}" "${UD_HOST_OUTPUT}/cli"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${ud_core_windows_runtime_DIRECTORY}" "${UD_HOST_OUTPUT}/worker"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${ud_core_windows_runtime_DIRECTORY}" "${UD_HOST_OUTPUT}/management")
 else()
   set(UD_HOST_SUFFIX "")
   set(UD_HOST_NATIVE_NAME libud_data.so)
@@ -47,9 +51,13 @@ add_custom_target(ud_product_hosts ALL
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ud_data> ${UD_HOST_OUTPUT}/cli/${UD_HOST_NATIVE_NAME}
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ud_data> ${UD_HOST_OUTPUT}/worker/${UD_HOST_NATIVE_NAME}
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ud_data> ${UD_HOST_OUTPUT}/management/${UD_HOST_NATIVE_NAME}
+  ${UD_HOST_RUNTIME_COPY}
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${UD_HOST_OUTPUT}/worker ${UD_HOST_OUTPUT}/management/worker
   DEPENDS ud_data ud_product_designer
   VERBATIM)
+if(WIN32)
+  add_dependencies(ud_product_hosts ud_core_windows_runtime)
+endif()
 add_executable(ud_cli IMPORTED GLOBAL)
 set_target_properties(ud_cli PROPERTIES IMPORTED_LOCATION ${UD_HOST_OUTPUT}/cli/ud_cli${UD_HOST_SUFFIX})
 add_dependencies(ud_cli ud_product_hosts)

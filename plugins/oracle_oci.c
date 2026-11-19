@@ -1,7 +1,4 @@
-#include "common.h"
-#include <oci.h>
-#include "../components/foundation/thread.h"
-#include <stdatomic.h>
+#include "oracle_internal.h"
 #include <stdio.h>
 #define OCI_TRY(call)                                                                              \
     do {                                                                                           \
@@ -11,7 +8,6 @@
     } while (0)
 /* Independent OCI driver; every external handle belongs to the existing leased
  * connection. Values use OCI binds/defines, never SQL literal interpolation. */
-#include "oracle_internal.h"
 static const ud_connector_api api;
 ud_status ud_oci_control(oracle *p) {
     if (p->cleanup)
@@ -72,20 +68,23 @@ static ud_status record_diagnostic(void *state, ud_string *out) {
     p->record_code = 0;
     return UD_OK;
 }
+static void descriptor_clear(oracle *p, ub2 type, void *descriptor) {
+    if (!descriptor)
+        return;
+    if (type == SQLT_BLOB || type == SQLT_CLOB) {
+        boolean temporary = FALSE;
+        OCILobIsTemporary(p->env, p->error, descriptor, &temporary);
+        if (temporary)
+            OCILobFreeTemporary(p->service, p->error, descriptor);
+        OCIDescriptorFree(descriptor, OCI_DTYPE_LOB);
+    } else
+        OCIDescriptorFree(descriptor, OCI_DTYPE_TIMESTAMP_TZ);
+}
 static void cells_clear(oracle *p, cell *v, uint32_t n) {
     if (!v)
         return;
     for (uint32_t i = 0; i < n; i++) {
-        if (v[i].descriptor) {
-            if (v[i].type == SQLT_BLOB || v[i].type == SQLT_CLOB) {
-                boolean temporary = FALSE;
-                OCILobIsTemporary(p->env, p->error, v[i].descriptor, &temporary);
-                if (temporary)
-                    OCILobFreeTemporary(p->service, p->error, v[i].descriptor);
-                OCIDescriptorFree(v[i].descriptor, OCI_DTYPE_LOB);
-            } else
-                OCIDescriptorFree(v[i].descriptor, OCI_DTYPE_TIMESTAMP_TZ);
-        }
+        descriptor_clear(p, v[i].type, v[i].descriptor);
         p->host.deallocate(v[i].data);
     }
     p->host.deallocate(v);
@@ -100,7 +99,7 @@ static void release(oracle *p, OCIStmt *s) {
     if (s)
         OCIStmtRelease(s, p->error, NULL, 0, OCI_DEFAULT);
 }
-static ud_status bind_value(oracle *p, OCIStmt *stmt, uint32_t at, const ud_value *v, cell *c) {
+static ud_status prepare_value(oracle *p, const ud_value *v, cell *c) {
     c->indicator = v->is_null ? -1 : 0;
     c->field.type = v->type;
     c->length = 0;
@@ -189,8 +188,30 @@ static ud_status bind_value(oracle *p, OCIStmt *stmt, uint32_t at, const ud_valu
         data = c->data;
     } else
         return UD_UNSUPPORTED;
-    return failure(p, OCIBindByPos2(stmt, &c->bind, p->error, at + 1, data, size, c->type,
-                                    &c->indicator, &c->length, &c->code, 0, NULL, OCI_DEFAULT));
+    c->data = data == &c->integer || data == &c->real || data == &c->descriptor ? NULL : data;
+    return UD_OK;
+}
+static ud_status bind_value(oracle *p, OCIStmt *stmt, uint32_t at, const ud_value *v, cell *c) {
+    ud_status s = prepare_value(p, v, c);
+    if (!s) {
+        void *data = c->descriptor ? &c->descriptor
+                                   : c->data ? c->data
+                                             : c->type == SQLT_BDOUBLE ? (void *)&c->real
+                                                                        : (void *)&c->integer;
+        sb8 size = c->descriptor ? (sb8)sizeof(void *)
+                                  : c->data ? (sb8)(c->length ? c->length : 1)
+                                            : c->type == SQLT_BDOUBLE ? (sb8)sizeof(c->real)
+                                                                       : (sb8)sizeof(c->integer);
+        s = failure(p, OCIBindByPos2(stmt, &c->bind, p->error, at + 1, data, size, c->type,
+                                     &c->indicator, &c->length, &c->code, 0, NULL, OCI_DEFAULT));
+    }
+    if (s) {
+        descriptor_clear(p, c->type, c->descriptor);
+        c->descriptor = NULL;
+        p->host.deallocate(c->data);
+        c->data = NULL;
+    }
+    return s;
 }
 static ud_status bind(oracle *p, OCIStmt *stmt, const ud_batch *b, uint32_t row,
                       const ud_write_options *options, const ud_sql_statement *plan, cell **out) {
@@ -225,6 +246,217 @@ static ud_status bind(oracle *p, OCIStmt *stmt, const ud_batch *b, uint32_t row,
     *out = c;
     return UD_OK;
 }
+static ud_status execute_statement(oracle *p, OCIStmt *stmt, ub4 iterations, uint64_t *affected);
+typedef struct oracle_array_bind {
+    OCIBind *bind;
+    ub2 type;
+    sb8 value_size;
+    void *values;
+    sb2 *indicators;
+    ub4 *lengths;
+    ub2 *codes;
+} oracle_array_bind;
+/* Response delivery uses OCI's column-wise array interface: the compiler emits
+ * one-row DML, OCIBindByPos2 receives one array per placeholder, and a single
+ * OCIStmtExecute iteration count drives the whole physical chunk. */
+static ub2 array_bind_type(ud_type logical, ub2 target, const ud_value *values, uint32_t rows) {
+    if (logical == UD_BOOL || logical == UD_INT64)
+        return SQLT_INT;
+    if (logical == UD_UINT64)
+        return SQLT_UIN;
+    if (logical == UD_FLOAT64)
+        return SQLT_BDOUBLE;
+    if (logical == UD_DATE32 || logical == UD_TIMESTAMP)
+        return SQLT_TIMESTAMP_TZ;
+    if (logical == UD_DECIMAL128)
+        return SQLT_CHR;
+    if (logical == UD_UTF8)
+        return target == SQLT_CLOB ? SQLT_CLOB : SQLT_CHR;
+    if (logical == UD_BINARY) {
+        if (target == SQLT_BLOB)
+            return SQLT_BLOB;
+        for (uint32_t row = 0; row < rows; row++)
+            if (!values[row].is_null && values[row].text_length > 32767)
+                return SQLT_BLOB;
+        return SQLT_BIN;
+    }
+    return 0;
+}
+static void oracle_array_clear(oracle *p, oracle_array_bind *binds, uint32_t count,
+                               uint32_t rows) {
+    if (!binds)
+        return;
+    for (uint32_t i = 0; i < count; i++) {
+        if ((binds[i].type == SQLT_BLOB || binds[i].type == SQLT_CLOB ||
+             binds[i].type == SQLT_TIMESTAMP_TZ) && binds[i].values) {
+            void **descriptors = binds[i].values;
+            for (uint32_t row = 0; row < rows; row++)
+                descriptor_clear(p, binds[i].type, descriptors[row]);
+        }
+        p->host.deallocate(binds[i].values);
+        p->host.deallocate(binds[i].indicators);
+        p->host.deallocate(binds[i].lengths);
+        p->host.deallocate(binds[i].codes);
+    }
+    p->host.deallocate(binds);
+}
+static ud_status prepare_array_parameter(oracle *p, const ud_write_options *options,
+                                         const ud_batch *batch, const ud_sql_statement *plan,
+                                         uint32_t parameter, uint32_t rows, ud_value *inputs,
+                                         cell *prepared, ub2 *type_out) {
+    ud_sql_parameter ref = plan->parameters[parameter];
+    const ud_batch *source = ref.source == UD_SQL_BEFORE ? options->before : batch;
+    if (!source || ref.column >= p->host.columns(source))
+        return UD_SCHEMA;
+    for (uint32_t row = 0; row < rows; row++) {
+        ud_status status = p->host.get(source, ref.row + row, ref.column, inputs + row);
+        if (status)
+            return status;
+        if (inputs[row].is_absent)
+            return UD_INCOMPATIBLE;
+    }
+    ud_field field = {0};
+    ud_status status = p->host.field(source, ref.column, &field);
+    ub2 target = ref.column < p->write_count ? p->write_types[ref.column] : 0;
+    ub2 type = !status ? array_bind_type(field.type, target, inputs, rows) : 0;
+    if (!status && !type)
+        status = UD_UNSUPPORTED;
+    for (uint32_t row = 0; !status && row < rows; row++) {
+        prepared[row].type = type;
+        status = prepare_value(p, inputs + row, prepared + row);
+        if (!status && prepared[row].type != type)
+            status = UD_SCHEMA;
+    }
+    if (!status)
+        *type_out = type;
+    return status;
+}
+static ud_status allocate_array_storage(oracle *p, oracle_array_bind *array, cell *prepared,
+                                        uint32_t rows) {
+    array->indicators = p->host.allocate(p->host.context, (size_t)rows * sizeof(*array->indicators));
+    array->lengths = p->host.allocate(p->host.context, (size_t)rows * sizeof(*array->lengths));
+    array->codes = p->host.allocate(p->host.context, (size_t)rows * sizeof(*array->codes));
+    if (!array->indicators || !array->lengths || !array->codes)
+        return UD_RESOURCE;
+    for (uint32_t row = 0; row < rows; row++) {
+        array->indicators[row] = prepared[row].indicator;
+        array->lengths[row] = prepared[row].length;
+        array->codes[row] = 0;
+    }
+    if (array->type == SQLT_INT || array->type == SQLT_UIN) {
+        array->value_size = sizeof(int64_t);
+        array->values = p->host.allocate(p->host.context, (size_t)rows * sizeof(int64_t));
+        if (!array->values)
+            return UD_RESOURCE;
+        for (uint32_t row = 0; row < rows; row++)
+            ((int64_t *)array->values)[row] = prepared[row].integer;
+    } else if (array->type == SQLT_BDOUBLE) {
+        array->value_size = sizeof(double);
+        array->values = p->host.allocate(p->host.context, (size_t)rows * sizeof(double));
+        if (!array->values)
+            return UD_RESOURCE;
+        for (uint32_t row = 0; row < rows; row++)
+            ((double *)array->values)[row] = prepared[row].real;
+    } else if (array->type == SQLT_TIMESTAMP_TZ || array->type == SQLT_BLOB ||
+               array->type == SQLT_CLOB) {
+        array->value_size = sizeof(void *);
+        array->values = p->host.allocate(p->host.context, (size_t)rows * sizeof(void *));
+        if (!array->values)
+            return UD_RESOURCE;
+        memset(array->values, 0, (size_t)rows * sizeof(void *));
+        for (uint32_t row = 0; row < rows; row++) {
+            ((void **)array->values)[row] = prepared[row].descriptor;
+            prepared[row].descriptor = NULL;
+        }
+    } else {
+        uint32_t maximum = 1;
+        for (uint32_t row = 0; row < rows; row++)
+            if (prepared[row].length > maximum)
+                maximum = prepared[row].length;
+        if (rows > SIZE_MAX / maximum)
+            return UD_RESOURCE;
+        array->value_size = maximum;
+        array->values = p->host.allocate(p->host.context, (size_t)rows * maximum);
+        if (!array->values)
+            return UD_RESOURCE;
+        memset(array->values, 0, (size_t)rows * maximum);
+        for (uint32_t row = 0; row < rows; row++)
+            if (prepared[row].length)
+                memcpy((char *)array->values + (size_t)row * maximum, prepared[row].data,
+                       prepared[row].length);
+    }
+    return UD_OK;
+}
+static ud_status bind_array_values(oracle *p, OCIStmt *stmt, const ud_write_options *options,
+                                   const ud_batch *batch, uint32_t rows,
+                                   const ud_sql_statement *plan, oracle_array_bind **out) {
+    *out = NULL;
+    uint32_t count = plan->parameter_count;
+    if (!rows || !count)
+        return UD_SCHEMA;
+    if (rows > UINT32_MAX / count || (size_t)rows * count > SIZE_MAX / sizeof(ud_value) ||
+        (size_t)rows * count > SIZE_MAX / sizeof(cell))
+        return UD_RESOURCE;
+    oracle_array_bind *binds =
+        p->host.allocate(p->host.context, (size_t)count * sizeof(*binds));
+    ud_value *inputs =
+        p->host.allocate(p->host.context, (size_t)rows * count * sizeof(*inputs));
+    cell *prepared = p->host.allocate(p->host.context, (size_t)rows * count * sizeof(*prepared));
+    if (!binds || !inputs || !prepared) {
+        p->host.deallocate(binds);
+        p->host.deallocate(inputs);
+        p->host.deallocate(prepared);
+        return UD_RESOURCE;
+    }
+    memset(binds, 0, (size_t)count * sizeof(*binds));
+    memset(prepared, 0, (size_t)rows * count * sizeof(*prepared));
+    ud_status status = UD_OK;
+    for (uint32_t parameter = 0; !status && parameter < count; parameter++) {
+        ud_value *parameter_inputs = inputs + (size_t)parameter * rows;
+        cell *parameter_cells = prepared + (size_t)parameter * rows;
+        ub2 type = 0;
+        status = prepare_array_parameter(p, options, batch, plan, parameter, rows,
+                                         parameter_inputs, parameter_cells, &type);
+        if (status)
+            break;
+        oracle_array_bind *array = binds + parameter;
+        array->type = type;
+        status = allocate_array_storage(p, array, parameter_cells, rows);
+        if (!status)
+            status = failure(p, OCIBindByPos2(stmt, &array->bind, p->error, parameter + 1,
+                                              array->values, array->value_size, array->type,
+                                              array->indicators, array->lengths, array->codes,
+                                              0, NULL, OCI_DEFAULT));
+    }
+    cells_clear(p, prepared, (uint32_t)((size_t)rows * count));
+    p->host.deallocate(inputs);
+    if (status) {
+        oracle_array_clear(p, binds, count, rows);
+        return status;
+    }
+    *out = binds;
+    return UD_OK;
+}
+static ud_status execute_array_write(oracle *p, const ud_write_options *options,
+                                      const ud_batch *batch, uint32_t first, uint32_t rows,
+                                      uint64_t *affected) {
+    ud_sql_statement plan = {0};
+    OCIStmt *stmt = NULL;
+    oracle_array_bind *binds = NULL;
+    ud_status status = p->host.compile_write(p->host.context, UD_SQL_ORACLE,
+                                             UD_SQL_PARAMETER_NAMED, options, batch, first, 1,
+                                             &plan);
+    if (!status)
+        status = statement(p, plan.sql, &stmt);
+    if (!status)
+        status = bind_array_values(p, stmt, options, batch, rows, &plan, &binds);
+    if (!status)
+        status = execute_statement(p, stmt, (ub4)rows, affected);
+    release(p, stmt);
+    oracle_array_clear(p, binds, plan.parameter_count, rows);
+    p->host.statement_clear(&plan);
+    return status;
+}
 static ud_status execute_statement(oracle *p, OCIStmt *stmt, ub4 iterations, uint64_t *affected) {
     OCI_TRY(ud_oci_control(p));
     ud_status s = failure(
@@ -250,12 +482,48 @@ ud_status ud_oci_read_close(void *state) {
     memset(&p->record_options, 0, sizeof(p->record_options));
     release(p, p->cursor);
     p->cursor = NULL;
+    p->scalar = 0;
+    p->scalar_done = 0;
     cells_clear(p, p->columns, p->count);
     p->columns = NULL;
     p->count = 0;
     p->host.batch_destroy(p->schema);
     p->schema = NULL;
     return UD_OK;
+}
+static ud_type oracle_result_type(ub2 native) {
+    switch (native) {
+    case SQLT_BOL:
+        return UD_BOOL;
+    case SQLT_INT:
+        return UD_INT64;
+    case SQLT_UIN:
+        return UD_UINT64;
+    case SQLT_FLT:
+    case SQLT_BFLOAT:
+    case SQLT_BDOUBLE:
+        return UD_FLOAT64;
+    case SQLT_NUM:
+        return UD_DECIMAL128;
+    case SQLT_DAT:
+        return UD_DATE32;
+    case SQLT_TIMESTAMP:
+    case SQLT_TIMESTAMP_TZ:
+    case SQLT_TIMESTAMP_LTZ:
+        return UD_TIMESTAMP;
+    case SQLT_INTERVAL_DS:
+        return UD_DURATION;
+    case SQLT_INTERVAL_YM:
+        return UD_INTERVAL;
+    case SQLT_BLOB:
+        return UD_BINARY;
+    case SQLT_BIN:
+    case SQLT_LBI:
+    case SQLT_LVB:
+        return UD_BINARY;
+    default:
+        return UD_UTF8;
+    }
 }
 ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch *schema) {
     oracle *p = state;
@@ -278,19 +546,60 @@ ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch
     if (!s)
         s = failure(
             p, OCIAttrGet(p->cursor, OCI_HTYPE_STMT, &count, NULL, OCI_ATTR_PARAM_COUNT, p->error));
-    if (!s && count != p->host.columns(schema))
+    if (!s && schema && count != p->host.columns(schema))
         s = UD_SCHEMA;
-    p->batch = o->batch_size;
-    p->record_options = *o;
     p->count = count;
+    ud_field *fields = NULL;
+    char **owned_names = NULL;
     if (!s) {
         p->host.batch_destroy(p->schema);
         p->schema = NULL;
-        ud_field *f = NULL;
-        s = plugin_fields(&p->host, schema, &f);
+        if (schema)
+            s = plugin_fields(&p->host, schema, &fields);
+        else {
+            fields = p->host.allocate(p->host.context, (size_t)count * sizeof(*fields));
+            owned_names = p->host.allocate(p->host.context, (size_t)count * sizeof(*owned_names));
+            if ((!fields || !owned_names) && count)
+                s = UD_RESOURCE;
+            if (!s)
+                memset(owned_names, 0, (size_t)count * sizeof(*owned_names));
+            for (uint32_t i = 0; !s && i < count; i++) {
+                OCIParam *param = NULL;
+                OraText *name = NULL;
+                ub4 length = 0;
+                ub2 native = 0;
+                s = failure(p, OCIParamGet(p->cursor, OCI_HTYPE_STMT, p->error,
+                                           (void **)&param, i + 1));
+                if (!s)
+                    s = failure(p, OCIAttrGet(param, OCI_DTYPE_PARAM, &name, &length,
+                                              OCI_ATTR_NAME, p->error));
+                if (!s && (!name || length > UINT32_MAX))
+                    s = UD_SCHEMA;
+                if (!s) {
+                    owned_names[i] = plugin_string(&p->host, (const char *)name, length);
+                    if (!owned_names[i])
+                        s = UD_RESOURCE;
+                }
+                if (!s)
+                    s = failure(p, OCIAttrGet(param, OCI_DTYPE_PARAM, &native, NULL,
+                                              OCI_ATTR_DATA_TYPE, p->error));
+                if (!s)
+                    fields[i] = (ud_field){.name = owned_names[i],
+                                           .name_length = length,
+                                           .type = oracle_result_type(native),
+                                           .nullable = 1};
+                if (param)
+                    OCIDescriptorFree(param, OCI_DTYPE_PARAM);
+            }
+        }
+        if (!s && o->result_mode == UD_READ_SCALAR && count != 1)
+            s = UD_SCHEMA;
         if (!s)
-            s = p->host.batch_create(p->host.context, f, count, 0, &p->schema);
-        p->host.deallocate(f);
+            s = plugin_schema_outputs(&p->host, fields, count, &p->schema, o->result_schema);
+        for (uint32_t i = 0; owned_names && i < count; i++)
+            p->host.deallocate(owned_names[i]);
+        p->host.deallocate(owned_names);
+        p->host.deallocate(fields);
     }
     if (!s) {
         p->columns = p->host.allocate(p->host.context, count * sizeof(*p->columns));
@@ -299,7 +608,7 @@ ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch
     }
     for (uint32_t i = 0; !s && i < count; i++) {
         cell *c = p->columns + i;
-        s = p->host.field(schema, i, &c->field);
+        s = p->host.field(p->schema, i, &c->field);
         OCIParam *param = NULL;
         OraText *name = NULL;
         ub4 length = 0;
@@ -355,6 +664,12 @@ ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch
                         OCIDefineByPos2(p->cursor, &c->define, p->error, i + 1, data, size, c->type,
                                         &c->indicator, &c->length, &c->code, OCI_DEFAULT));
     }
+    if (!s) {
+        p->scalar = o->result_mode == UD_READ_SCALAR;
+        p->scalar_done = 0;
+        p->batch = p->scalar ? 1 : o->batch_size;
+        p->record_options = *o;
+    }
     if (s)
         ud_oci_read_close(p);
     return s;
@@ -393,6 +708,8 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
     oracle *p = state;
     *out = NULL;
     if (!p->cursor)
+        return UD_END;
+    if (p->scalar && p->scalar_done)
         return UD_END;
     ud_field *f = NULL;
     ud_status s = plugin_fields(&p->host, p->schema, &f);
@@ -513,6 +830,8 @@ ud_status ud_oci_read_next(void *state, ud_batch **out) {
     p->host.deallocate(formatted);
     p->host.deallocate(f);
     p->host.deallocate(owned);
+    if (p->scalar)
+        p->scalar_done = 1;
     if (s || (!p->host.rows(*out) && end && !fetched)) {
         p->host.batch_destroy(*out);
         *out = NULL;
@@ -1080,6 +1399,9 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     oracle *p = state;
     if (p->cursor)
         return UD_BUSY;
+    int receipted = o->delivery != UD_DELIVERY_RESPONSE;
+    if (receipted && !digest)
+        return UD_INVALID;
     int own = !p->transaction;
     ud_status s = own ? begin(p, UD_ISOLATION_SERIALIZABLE) : UD_OK;
     if (!s && o->mode == UD_WRITE_CHANGESET && o->current_column != UINT32_MAX) {
@@ -1098,7 +1420,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (!s)
         s = validate_target(p, o, b);
     ud_commit_receipt previous = {0};
-    if (!s)
+    if (!s && receipted)
         s = receipt(p, tenant, o->job, o->batch_id, &previous);
     int exists = previous.committed;
     if (!s && exists &&
@@ -1110,6 +1432,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     p->host.deallocate((void *)previous.source_position.data);
     oracle *bulk = NULL;
     ud_string stage = {0};
+    uint64_t affected = 0;
     int native = !s && !exists && o->mode == UD_WRITE_APPEND && o->load_mode != UD_LOAD_PARAMETERS;
     if (native) {
         s = ud_oci_bulk_stage(p, o, b, &bulk, &stage);
@@ -1121,27 +1444,38 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s && native)
             s = p->host.compile_stage(p->host.context, UD_SQL_ORACLE, o, b, stage,
                                       UD_SQL_STAGE_APPLY, &apply);
-        uint64_t affected = 0;
+        uint64_t physical = 0;
         if (!s && native)
             s = execute(p,
                         &(ud_read_options){.struct_size = sizeof(ud_read_options),
                                            .abi_version = UD_ABI_VERSION,
                                            .sql = apply},
-                        &affected);
-        if (!s && native && affected != p->host.rows(b))
+                        &physical);
+        if (!s && native && physical != p->host.rows(b))
             s = UD_FENCED;
+        if (!s && native)
+            affected += physical;
         p->host.deallocate((void *)apply.data);
     }
-    uint32_t limit =
-        p->host.columns(b) ? p->host.parameter_limit(UD_SQL_ORACLE) / p->host.columns(b) : 0;
+    uint32_t width = o->mode == UD_WRITE_DELETE ? o->key_count : p->host.columns(b);
+    uint32_t limit = plugin_write_chunk_rows(&p->host, UD_SQL_ORACLE, o, b, width, 128);
     if (!limit)
         s = UD_RESOURCE;
     if (limit > 128)
         limit = 128;
+    int array_response = !receipted && !native && o->mode != UD_WRITE_CHANGESET;
     for (uint32_t row = 0; !s && !exists && !native && row < p->host.rows(b);) {
         uint32_t count = o->mode == UD_WRITE_CHANGESET ? 1 : p->host.rows(b) - row;
         if (count > limit)
             count = limit;
+        if (array_response) {
+            uint64_t physical = 0;
+            s = execute_array_write(p, o, b, row, count, &physical);
+            if (!s)
+                affected += physical;
+            row += count;
+            continue;
+        }
         ud_sql_statement plan = {0};
         OCIStmt *stmt = NULL;
         cell *values = NULL;
@@ -1168,18 +1502,20 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
             s = statement(p, plan.sql, &stmt);
         if (!s)
             s = bind(p, stmt, b, 0, o, &plan, &values);
-        uint64_t affected = 0;
+        uint64_t physical = 0;
         if (!s)
-            s = execute_statement(p, stmt, 1, &affected);
+            s = execute_statement(p, stmt, 1, &physical);
         if (!s && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT &&
-            o->operations[row] != UD_CHANGE_TRUNCATE && affected != 1)
+            o->operations[row] != UD_CHANGE_TRUNCATE && physical != 1)
             s = UD_FENCED;
+        if (!s)
+            affected += physical;
         release(p, stmt);
         cells_clear(p, values, plan.parameter_count);
         p->host.statement_clear(&plan);
         row += count;
     }
-    if (!s && !exists) {
+    if (!s && !exists && receipted) {
         ud_field fields[] = {
             {.name = "tenant", .name_length = 6, .type = UD_UTF8},
             {.name = "job", .name_length = 3, .type = UD_UTF8},
@@ -1229,6 +1565,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
             s = disposed;
     }
     p->host.deallocate((void *)stage.data);
+    if (!s && o->affected_rows)
+        *o->affected_rows = affected;
     return s;
 }
 static ud_status test(void *state) {

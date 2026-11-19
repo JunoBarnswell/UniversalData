@@ -258,9 +258,6 @@ if(TARGET ud_data AND TARGET ud_package)
   target_link_libraries(test_custom_task PRIVATE ud_data)
   add_test(NAME native_custom_task COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/custom_task.py $<TARGET_FILE:test_custom_task> $<TARGET_FILE:sample_custom_task> $<TARGET_FILE:sample_custom_bad>)
   set_tests_properties(native_custom_task PROPERTIES TIMEOUT 120)
-  if(WIN32)
-    set_tests_properties(native_custom_task PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
-  endif()
 endif()
 
 if(TARGET ud_connector_postgresql)
@@ -538,4 +535,84 @@ if(TARGET ud_package)
     set_tests_properties(integration_kafka_process_takeover PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 240
       LABELS "real-integration;mq;kafka;recovery")
   endif()
+endif()
+
+# ABI 14: the same sealed Native batches feed SQL Source, direct SQL sessions and managed callers.
+if(TARGET ud_package)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME sql_etl_package_migration COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/package_v13_migration.py)
+  set_tests_properties(sql_etl_package_migration PROPERTIES LABELS "sql-etl" TIMEOUT 20)
+  if(TARGET ud_connector_sqlite)
+    add_executable(test_native_sql_batch native_sql_batch.c)
+    target_link_libraries(test_native_sql_batch PRIVATE ud_plugins SQLite::SQLite3)
+    add_test(NAME sql_etl_native_batch COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/sql_etl_fixture.py
+      --native-test $<TARGET_FILE:test_native_sql_batch>
+      --plugin $<TARGET_FILE:ud_connector_sqlite>)
+    set_tests_properties(sql_etl_native_batch PROPERTIES LABELS "sql-etl;sqlite" TIMEOUT 120)
+    if(TARGET ud_cli)
+      add_test(NAME sql_etl_streaming_and_snapshot COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/sql_streaming_etl.py
+        --cli $<TARGET_FILE:ud_cli> --sqlite $<TARGET_FILE:ud_connector_sqlite>)
+      set_tests_properties(sql_etl_streaming_and_snapshot PROPERTIES LABELS "sql-etl;sqlite" TIMEOUT 180)
+    endif()
+  endif()
+  if(UD_BUILD_HOSTS)
+    add_custom_target(ud_managed_sql_test ALL
+      COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_sql/ManagedSql.csproj -c Release
+        -o ${CMAKE_CURRENT_BINARY_DIR}/managed-sql
+      DEPENDS ud_managed_product_test VERBATIM)
+    foreach(driver sqlite postgresql mysql mariadb odbc oracle_oci)
+      if(NOT TARGET ud_connector_${driver})
+        continue()
+      endif()
+      set(provider ${driver})
+      set(resource)
+      set(labels "sql-etl;${driver}")
+      if(NOT driver STREQUAL "sqlite")
+        string(TOUPPER "${driver}" fixture)
+        set(resource --resource "UD_TEST_${fixture}_CONFIG")
+        list(APPEND labels "real-integration")
+      endif()
+      if(driver STREQUAL "odbc")
+        set(provider sqlserver)
+      elseif(driver STREQUAL "oracle_oci")
+        set(provider oracle)
+      endif()
+      add_test(NAME sql_etl_managed_${driver} COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/sql_etl_fixture.py
+        --dotnet ${UD_DOTNET} --assembly ${CMAKE_CURRENT_BINARY_DIR}/managed-sql/ManagedSql.dll
+        --plugin $<TARGET_FILE:ud_connector_${driver}> --provider ${provider} ${resource})
+      set_tests_properties(sql_etl_managed_${driver} PROPERTIES
+        LABELS "${labels}" SKIP_RETURN_CODE 77 TIMEOUT 240 RESOURCE_LOCK ud_integration_${driver})
+      if(NOT WIN32)
+        set_tests_properties(sql_etl_managed_${driver} PROPERTIES
+          ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+      endif()
+    endforeach()
+  endif()
+endif()
+
+if(WIN32 AND TARGET ud_data)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  set(runtime_plugins)
+  foreach(driver sqlite postgresql odbc mysql mariadb oracle_oci)
+    if(TARGET ud_connector_${driver})
+      list(APPEND runtime_plugins "$<TARGET_FILE:ud_connector_${driver}>")
+    endif()
+  endforeach()
+  set(runtime_library "$<TARGET_FILE:ud_data>")
+  if(TARGET ud_cli)
+    list(APPEND runtime_library "$<TARGET_FILE_DIR:ud_cli>/ud_data.dll"
+      "$<TARGET_FILE_DIR:ud_worker>/ud_data.dll" "$<TARGET_FILE_DIR:ud_cli>/../management/ud_data.dll"
+      "$<TARGET_FILE_DIR:ud_cli>/../management/worker/ud_data.dll")
+  endif()
+  get_property(windows_tests DIRECTORY PROPERTY TESTS)
+  set_property(TEST ${windows_tests} APPEND PROPERTY
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+  add_test(NAME sql_etl_windows_runtime COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/windows_sql_runtime.py --library ${runtime_library}
+    --version "${UD_SDK_VERSION}" --plugins ${runtime_plugins})
+  set_tests_properties(sql_etl_windows_runtime PROPERTIES LABELS "sql-etl;windows-runtime" TIMEOUT 30)
 endif()

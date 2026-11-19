@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 5.0.0 / ABI 13；SDK 5 messaging and worker execution candidate under verification。
+SDK 6.0.0 / ABI 14；SDK 6 native SQL and ETL candidate under verification。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 

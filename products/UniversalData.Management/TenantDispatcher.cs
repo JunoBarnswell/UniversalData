@@ -128,7 +128,10 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
     public RunState Enqueue(HostIdentity identity,RunRequest request)
     {
         identity.Require("package.execute",request.PackageId);
-        var parallelism = WorkerParallelism.Read(Package(request.PackageId,request.PackageRevision), policy.MaxConcurrency);
+        string packageText = Package(request.PackageId,request.PackageRevision);
+        using var nativePackage = new UniversalData.Package(packageText, policy.MemoryLimit);
+        bool requiresJournal = nativePackage.RequiresJournal;
+        var parallelism = WorkerParallelism.Read(packageText, policy.MaxConcurrency);
         if (request.Debug is not null && parallelism is { } plan &&
             (plan.WorkerProcesses != 1 || plan.ConsumerLanesPerWorker != 1 || plan.ThreadsPerWorker != 1))
             throw new ArgumentException("Debug requires a single Worker and consumer lane");
@@ -139,7 +142,8 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
             Refresh();
             CheckDeployment(request.DeploymentId,request.DeploymentRevision,request.PackageId,request.PackageRevision);
             var state = new RunState(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),request.PackageId,request.PackageRevision,reference,"Queued",identity.Subject,identity.Stamp,ControlReference(),
-                TimestampMs:Now,Debug:request.Debug?.Clone(),DeploymentId:request.DeploymentId,DeploymentRevision:request.DeploymentRevision, Parallelism: parallelism); Save(state); return state;
+                TimestampMs:Now,Debug:request.Debug?.Clone(),DeploymentId:request.DeploymentId,DeploymentRevision:request.DeploymentRevision,
+                Parallelism: parallelism, RequiresJournal: requiresJournal); Save(state); return state;
         }
     }
     public RunState Resume(HostIdentity identity,string id,bool brokerRestore = false)
@@ -148,6 +152,10 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
         lock(gate) {
             var state = Get(id); identity.Require("package.execute",state.PackageId);
             using var catalog = policy.OpenCatalog();
+            string packageText = Package(state.PackageId, state.PackageRevision);
+            using (var nativePackage = new UniversalData.Package(packageText, policy.MemoryLimit))
+                if (!nativePackage.RequiresJournal)
+                    throw new ArgumentException("This stream execution has no Native Journal and cannot be resumed");
             if (state.ParentId is not null || state.State != "RecoveryRequired" || workers.ContainsKey(id) || remoteWorkers.ContainsKey(id) || Alive(state) ||
                 catalog.LeaseActive(CatalogKind.Audit,"run/"+id) ||
                 state.MemberIds is null && state.ExecutionId.Length == 0 ||
@@ -155,11 +163,10 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
                     states.TryGetValue(member, out var prior) && Alive(prior)))
                 throw new ArgumentException("Execution is not ready for recovery on this node");
             if (brokerRestore) {
-                string package = Package(state.PackageId, state.PackageRevision);
-                bool stages = state.MemberIds is not null && WorkerParallelism.UsesKafkaStages(package);
+                bool stages = state.MemberIds is not null && WorkerParallelism.UsesKafkaStages(packageText);
                 bool single = state.MemberIds is null && state.Parallelism is { WorkerProcesses: 1 } &&
                     state.Placement is { } placement && (placement.Remote || state.BrokerRestore) &&
-                    state.ExecutionId.Length != 0 && WorkerParallelism.UsesBrokerRecovery(package);
+                    state.ExecutionId.Length != 0 && WorkerParallelism.UsesBrokerRecovery(packageText);
                 if (!(stages || single) || state.ParametersReference.Length != 0 || state.Debug is not null)
                     throw new ArgumentException("Execution does not support Kafka Broker recovery");
             } else if (state.BrokerRestore || state.HomeNodeId is { } home && home != owner) {
@@ -304,9 +311,13 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
             if (job.DeploymentId is not null && (!deployments.TryGetValue(job.DeploymentId,out var deployment) || !deployment.Enabled || deployment.DeploymentRevision != job.DeploymentRevision)) continue;
             var digest = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{policy.Tenant}/{job.Id}/{job.Revision}/{job.NextDueMs}"));
             var id = Convert.ToHexString(digest.AsSpan(0,16)).ToLowerInvariant();
-            if (!states.ContainsKey(id)) Save(new RunState(ProductInfo.Protocol,id,job.PackageId,job.PackageRevision,job.ParametersReference,"Queued",job.Subject,job.SubjectStamp,ControlReference(),
-                TimestampMs:job.NextDueMs,JobId:job.Id,DeploymentId:job.DeploymentId,DeploymentRevision:job.DeploymentRevision,
-                Parallelism:WorkerParallelism.Read(Package(job.PackageId,job.PackageRevision),policy.MaxConcurrency)));
+            if (!states.ContainsKey(id)) {
+                string packageText = Package(job.PackageId,job.PackageRevision);
+                using var nativePackage = new UniversalData.Package(packageText, policy.MemoryLimit);
+                Save(new RunState(ProductInfo.Protocol,id,job.PackageId,job.PackageRevision,job.ParametersReference,"Queued",job.Subject,job.SubjectStamp,ControlReference(),
+                    TimestampMs:job.NextDueMs,JobId:job.Id,DeploymentId:job.DeploymentId,DeploymentRevision:job.DeploymentRevision,
+                    Parallelism:WorkerParallelism.Read(packageText,policy.MaxConcurrency),RequiresJournal:nativePackage.RequiresJournal));
+            }
             Save(job with { NextDueMs = checked(Now + job.EverySeconds * 1000L),TimestampMs = Now,Revision = checked(job.Revision + 1) });
             } finally { leases.TryRemove(lease.Id,out _);catalog.ReleaseLease(lease); }
         }
@@ -490,14 +501,16 @@ public sealed class TenantDispatcher(HostPolicy policy, HostPolicy root, Product
                     "Queued", run.Subject, run.SubjectStamp, ControlReference(), TimestampMs: Now,
                     DeploymentId: run.DeploymentId, DeploymentRevision: run.DeploymentRevision,
                     Attempt: run.Attempt, Parallelism: plan, ParentId: run.Id,
-                    Shard: shard, Placement: placement, HomeNodeId: owner)
+                    Shard: shard, Placement: placement, HomeNodeId: owner,
+                    RequiresJournal: run.RequiresJournal)
                 : previous with { State = "Queued", Subject = run.Subject, SubjectStamp = run.SubjectStamp,
                     Attempt = run.Attempt, Resume = previous.ExecutionId.Length != 0, Failure = null,
                     BrokerRestore = run.BrokerRestore && previous.ExecutionId.Length != 0,
                     JournalTicket = run.BrokerRestore && previous.ExecutionId.Length != 0
                         ? Guid.NewGuid().ToString("N") : previous.JournalTicket,
                     ExecutionRevision = previous.ExecutionId.Length == 0 ? 0 : catalog.LatestRevision(CatalogKind.Execution, previous.ExecutionId),
-                    Owner = null, ProcessId = null, Shard = shard, Placement = placement, Revision = checked(previous.Revision + 1),
+                    Owner = null, ProcessId = null, Shard = shard, Placement = placement,
+                    RequiresJournal = run.RequiresJournal, Revision = checked(previous.Revision + 1),
                     TimestampMs = Now };
             Save(member);
         }

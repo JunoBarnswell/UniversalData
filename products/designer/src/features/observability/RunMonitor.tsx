@@ -4,7 +4,7 @@ import { executionFeed, type FeedMode } from "./executionFeed";
 import { api, post } from "../../api";
 import { DataGrid } from "../../DataGrid";
 import {
-  stateName,
+  executionStateName,
   failurePhase,
   type NativePlan,
   type PreviewEdge,
@@ -148,7 +148,7 @@ export function RunMonitor({
       <header>
         <h3>
           {run
-            ? `${caption ?? `${run.packageId} v${run.packageRevision}`} · ${stateName(run.state)}`
+            ? `${caption ?? `${run.packageId} v${run.packageRevision}`} · ${executionStateName(run)}`
             : "读取 Native 执行事实…"}
         </h3>
         {run?.state === "Running" ? (
@@ -213,8 +213,9 @@ export function RunMonitor({
       </div>
       {run?.state === "RecoveryRequired" ? (
         <p className="warning">
-          提交状态未确认。等待 Native 回执与 Journal
-          恢复，不能将重试视为已提交。
+          {run.requiresJournal === false
+            ? "这是普通流式执行，未建立 Native Journal；已知提交量保留在历史中，不能恢复或重放。"
+            : "提交状态未确认。等待 Native 回执与 Journal 恢复，不能将重试视为已提交。"}
         </p>
       ) : null}
       <div className="data-grid-scroll">

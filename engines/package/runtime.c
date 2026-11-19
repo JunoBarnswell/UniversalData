@@ -276,6 +276,7 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     }
     e->ctx = ctx;
     atomic_init(&e->observer_fault, UD_OK);
+    e->sql_sessions = 0;
     e->root.execution = e;
     e->root.definition = &e->root;
     atomic_init(&e->root.cancelled, 0);
@@ -523,7 +524,11 @@ ud_status ud_execution_execute(ud_execution *e) {
     if (!e)
         return UD_INVALID;
     int expected = UD_EXEC_READY;
-    if (!atomic_compare_exchange_strong(&e->state, &expected, UD_EXEC_RUNNING))
+    ud_mutex_lock(&e->events_lock);
+    int started = !e->sql_sessions &&
+                  atomic_compare_exchange_strong(&e->state, &expected, UD_EXEC_RUNNING);
+    ud_mutex_unlock(&e->events_lock);
+    if (!started)
         return UD_BUSY;
     return execute(e);
 }
@@ -542,7 +547,11 @@ ud_status ud_execution_start(ud_execution *e) {
     if (!e)
         return UD_INVALID;
     int expected = UD_EXEC_READY;
-    if (!atomic_compare_exchange_strong(&e->state, &expected, UD_EXEC_RUNNING))
+    ud_mutex_lock(&e->events_lock);
+    int started = !e->sql_sessions &&
+                  atomic_compare_exchange_strong(&e->state, &expected, UD_EXEC_RUNNING);
+    ud_mutex_unlock(&e->events_lock);
+    if (!started)
         return UD_BUSY;
 #ifdef _WIN32
     e->thread = (HANDLE)_beginthreadex(NULL, 0, execution_thread, e, 0, NULL);
@@ -635,8 +644,11 @@ ud_status ud_execution_get_metrics(const ud_execution *e, ud_execution_metrics *
 ud_status ud_execution_destroy(ud_execution *e) {
     if (!e)
         return UD_OK;
+    ud_mutex_lock(&e->events_lock);
     int state = atomic_load(&e->state);
-    if (state == UD_EXEC_RUNNING || state == UD_EXEC_DRAINING)
+    int busy = e->sql_sessions || state == UD_EXEC_RUNNING || state == UD_EXEC_DRAINING;
+    ud_mutex_unlock(&e->events_lock);
+    if (busy)
         return UD_BUSY;
     ud_context *ctx = e->ctx;
     if (e->threaded) {

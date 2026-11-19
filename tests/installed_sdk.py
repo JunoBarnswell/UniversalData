@@ -124,14 +124,14 @@ print(f"ZIP integrity: {len(listed)} files; native version {version}; current AB
 c_source = work / "c-source"
 c_source.mkdir()
 for origin, filename in [("examples/c-package/main.c", "package.c"), ("tests/typed_data_runner.c", "data.c"), ("tests/wire_decode.c", "wire_decode.c"),
-                         ("tests/core_runtime.c", "resources.c"), ("tests/package_sql.c", "sql.c"),
+                         ("tests/package_execution.c", "execution.c"), ("tests/package_sql.c", "sql.c"),
                          ("tests/next_phase_queries.c", "query.c"),
                          ("tests/check.h", "check.h")]:
     shutil.copyfile(ROOT / origin, c_source / filename)
 (c_source / "CMakeLists.txt").write_text(
     "cmake_minimum_required(VERSION 3.24)\nproject(InstalledSDK C)\n"
     "find_package(UniversalData " + version + " EXACT CONFIG REQUIRED COMPONENTS Data)\n"
-    "foreach(name package data resources sql query wire_decode)\n"
+    "foreach(name package data execution sql query wire_decode)\n"
     "  add_executable(consumer_\u0024{name} \u0024{name}.c)\n"
     "  target_link_libraries(consumer_\u0024{name} PRIVATE UniversalData::Data)\n"
     "  if(MSVC)\n    target_compile_options(consumer_\u0024{name} PRIVATE /utf-8 /experimental:c11atomics)\n"
@@ -145,7 +145,7 @@ executable = ".exe" if os.name == "nt" else ""
 native_environment = dict(environment)
 native_environment["PATH"] = str(native) + os.pathsep + environment["PATH"]
 native_environment["LD_LIBRARY_PATH"] = str(native)
-run("c-dynamic-resources", [sys.executable, ROOT / "tests/core_runtime.py", c_output / ("consumer_resources" + executable)], native_environment)
+run("c-package-execution", [sys.executable, ROOT / "tests/package_execution.py", c_output / ("consumer_execution" + executable)], native_environment)
 run("installed-host-pipeline", [sys.executable, ROOT / "tests/core_pipeline.py", sdk / "bin/universaldata/cli" / ("ud_cli" + executable), c_output / ("consumer_wire_decode" + executable)], native_environment)
 if manifest["capabilities"]["sqlite"]:
     connector = sdk / "lib/UniversalData/plugins" / ("ud_connector_sqlite.dll" if os.name == "nt" else "ud_connector_sqlite.so")
@@ -156,11 +156,12 @@ with zipfile.ZipFile(nupkg) as archive:
     runtime_path = "runtimes/" + manifest["runtimeIdentifier"] + "/native/" + native_name
     assert hashlib.sha256(archive.read(runtime_path)).hexdigest() == digest(library), "NuGet contains a different native DLL."
 dotnet_outputs = []
-for name, source, assembly in [("package", "examples/dotnet/Program.cs", "Consumer"),
-                               ("data", "examples/dotnet-data/Program.cs", "DataConsumer")]:
+for name, source, assembly in [("package", "examples/dotnet", "Consumer"),
+                               ("data", "examples/dotnet-data", "DataConsumer")]:
     client = work / ("dotnet-" + name)
     client.mkdir()
-    shutil.copyfile(ROOT / source, client / "Program.cs")
+    for source_file in sorted((ROOT / source).glob("*.cs")):
+        shutil.copyfile(source_file, client / source_file.name)
     project = client / (assembly + ".csproj")
     project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType>'
                        '<TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>'

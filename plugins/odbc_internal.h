@@ -23,7 +23,8 @@ typedef struct odbc_state {
     uint32_t batch_size;
     ud_read_options record_options;
     uint64_t capabilities;
-    int dialect, ansi, utc, transaction, broken, array_parameters, bulk_session;
+    int dialect, ansi, utc, transaction, broken, array_parameters, bulk_session, scalar,
+        scalar_done;
     atomic_int cancelled;
     void *check_user;
     ud_status (*check)(void *);

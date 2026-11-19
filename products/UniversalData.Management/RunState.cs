@@ -10,4 +10,5 @@ public sealed record RunState(int Version, string Id, string PackageId, string P
     JsonElement? Debug = null, string? DeploymentId = null, string? DeploymentRevision = null, int RecordVersion = 2, RunFailure? Failure = null,
     WorkerParallelism? Parallelism = null, string? ParentId = null, string[]? MemberIds = null,
     WorkerShard? Shard = null, WorkerPlacement? Placement = null, string? HomeNodeId = null,
-    bool BrokerRestore = false, string? JournalTicket = null, long RecoverySafeAfterMs = 0);
+    bool BrokerRestore = false, string? JournalTicket = null, long RecoverySafeAfterMs = 0,
+    bool RequiresJournal = true);

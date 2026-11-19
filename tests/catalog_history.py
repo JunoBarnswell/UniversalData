@@ -1,3 +1,4 @@
+from contextlib import closing
 import hashlib
 import json
 import sqlite3
@@ -11,7 +12,7 @@ with tempfile.TemporaryDirectory(prefix="ud-history-") as temporary:
     root = pathlib.Path(temporary) / "catalog"
     subprocess.run([sys.argv[1], str(root)], check=True)
     database = root / "catalog.sqlite3"
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         rows = connection.execute("SELECT kind,document FROM documents ORDER BY kind,id,revision").fetchall()
     assert sum(kind == 5 for kind, _ in rows) == 16
     assert sum(kind == 5 and "progress" in json.loads(document) for kind, document in rows)==8

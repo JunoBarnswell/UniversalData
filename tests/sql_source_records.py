@@ -6,12 +6,13 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from contextlib import closing
 from product_version import PROTOCOL_VERSION
 
 with tempfile.TemporaryDirectory(prefix="ud-sql-records-") as directory:
     root = pathlib.Path(directory)
     database = root / "records.sqlite3"
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("CREATE TABLE source(value TEXT, label TEXT)")
         connection.executemany("INSERT INTO source VALUES(?,?)", [("18446744073709551615", "max"), ("-1", "negative"), ("3", "normal"), ("18446744073709551616", "overflow")])
     good, errors = root / "good.jsonl", root / "errors.jsonl"
@@ -36,5 +37,5 @@ with tempfile.TemporaryDirectory(prefix="ud-sql-records-") as directory:
     assert [int(row["value"]) for row in accepted] == [18446744073709551615, 3]
     assert len(rejected) == 2 and len({row["sourceRowId"] for row in rejected}) == 2
     for row in rejected:
-        assert row["componentId"] == "read" and row["columnId"] and row["inputFormat"] == "SQLRawCells/Wire12"
+        assert row["componentId"] == "read" and row["columnId"] and row["inputFormat"] == f"SQLRawCells/Wire{PROTOCOL_VERSION}"
         assert base64.b64decode(row["input"])

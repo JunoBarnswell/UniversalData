@@ -61,7 +61,8 @@ def run(root,resume=False,kill=0,after=1,component='',expected=0,workers=4,deny=
     result=subprocess.run([DRIVER,str(root/'package.json'),str(root/'state'),str(int(resume)),str(workers),str(kill),str(after),component,str(memory),str(deny)],capture_output=True,text=True,timeout=180)
     if kill and after>0: assert result.returncode==91,(result.stdout,result.stderr);return
     assert result.returncode==0,(result.stdout,result.stderr)
-    facts=json.loads(result.stdout);assert facts['result']==expected,facts
+    facts=json.loads(result.stdout)
+    assert facts['result']==expected,(root.name,resume,expected,facts['result'],result.stderr)
     return facts
 
 def verify(root,normal,errors,facts):

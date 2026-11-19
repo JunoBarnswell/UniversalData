@@ -296,6 +296,8 @@ UD_API uint64_t ud_batch_error_rows(const ud_batch *);
 UD_API ud_status ud_batch_create(ud_context *ctx, const ud_field *fields, uint32_t columns,
                                  uint32_t capacity, ud_batch **out);
 /* A failed append does not add a partially initialized row. */
+UD_API ud_status ud_batch_create_like(ud_context *, const ud_batch *, uint32_t capacity,
+                                       ud_batch **);
 UD_API ud_status ud_batch_append(ud_batch *batch, const ud_value *values, uint32_t columns);
 UD_API void ud_batch_destroy(ud_batch *batch);
 /* Sealed batches are immutable. retain requires sealing; destroy releases one

@@ -1,4 +1,5 @@
 """Real SQLite row transactions, Native error identities and killed-process recovery."""
+from contextlib import closing
 import copy
 import json
 import pathlib
@@ -16,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix="ud-row-command-") as directory:
         folder = root / name
         folder.mkdir()
         database = folder / "business.sqlite3"
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection, connection:
             connection.execute("CREATE TABLE commands(id INTEGER PRIMARY KEY, mirrored INTEGER NOT NULL CHECK(id=mirrored))")
         source = folder / "source.jsonl"
         source.write_text(''.join(json.dumps({"id": value}) + '\n' for value in [1, 2, 2, 3]))
@@ -47,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix="ud-row-command-") as directory:
         return json.loads(completed.stdout) if completed.stdout else None
 
     def business(item):
-        with sqlite3.connect(item[0] / "business.sqlite3") as connection:
+        with closing(sqlite3.connect(item[0] / "business.sqlite3")) as connection:
             return connection.execute("SELECT id,mirrored FROM commands ORDER BY id").fetchall()
 
     def verify(item, policy="redirect"):
@@ -82,13 +83,13 @@ with tempfile.TemporaryDirectory(prefix="ud-row-command-") as directory:
     item = fixture("known-rollback-explicit-resume", "fail")
     folder = item[0]
     (folder / "source.jsonl").write_text(''.join(json.dumps({"id": value}) + '\n' for value in [1, 2, 3]))
-    with sqlite3.connect(folder / "business.sqlite3") as connection:
+    with closing(sqlite3.connect(folder / "business.sqlite3")) as connection, connection:
         connection.execute("CREATE TABLE permit(id INTEGER PRIMARY KEY)")
         connection.executemany("INSERT INTO permit VALUES(?)", [(1,), (3,)])
         connection.execute("CREATE TRIGGER check_permit BEFORE INSERT ON commands WHEN NOT EXISTS(SELECT 1 FROM permit WHERE id=NEW.id) BEGIN SELECT RAISE(ABORT,'record rejected'); END")
     run(item, result=14)
     assert business(item) == [(1, 1)]
-    with sqlite3.connect(folder / "business.sqlite3") as connection:
+    with closing(sqlite3.connect(folder / "business.sqlite3")) as connection, connection:
         connection.execute("INSERT INTO permit VALUES(2)")
     run(item, resume=True)
     verify(item, "fail")

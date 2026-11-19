@@ -37,13 +37,17 @@ try {
     var document = File.ReadAllText(args[2]); var parameters = args.Length > 3 ? args[3] : "{}";
     var id = args.Length > 4 ? args[4] : ""; bool resume = args.Length > 5 && args[5] == "resume";
     if (resume && id.Length == 0) throw new ArgumentException("Recovery requires the original Native ID");
+    using var nativePackage = new Package(document, policy.MemoryLimit);
+    bool requiresJournal = nativePackage.RequiresJournal;
+    if (resume && !requiresJournal)
+        throw new ArgumentException("This stream execution has no Native Journal and cannot be resumed");
     using var catalog = policy.OpenCatalog();
-    string directory;
+    string? directory = null;
     if (resume) {
         using var record = JsonDocument.Parse(catalog.Get(CatalogKind.Audit, "cli/" + id, 1) ?? throw new ArgumentException("Original CLI state not found"));
         directory = record.RootElement.GetProperty("stateDirectory").GetString()!;
-    } else directory = Path.Combine(policy.DataDirectory, "cli-executions", Guid.NewGuid().ToString("N"));
-    Directory.CreateDirectory(directory);
+    } else if (requiresJournal) directory = Path.Combine(policy.DataDirectory, "cli-executions", Guid.NewGuid().ToString("N"));
+    if (directory is not null) Directory.CreateDirectory(directory);
     using var execution = policy.CreateExecution(document, parameters, id, directory, resume,
         observe: catalog.Record, eventSequenceStart: id.Length == 0 ? 0 : catalog.LatestRevision(CatalogKind.Event, id));
     if (args[0] == "inspect") { Console.WriteLine(execution.Explain()); return 0; }
@@ -53,7 +57,7 @@ try {
         Console.WriteLine(execution.DiscoverSchema(args[6], args.Length > 7 ? args[7] : "")); return 0;
     }
     if (!resume) catalog.Put(CatalogKind.Audit, "cli/" + execution.Id, 1,
-        JsonSerializer.Serialize(new { version = ProductInfo.Protocol, id = "cli/" + execution.Id, stateDirectory = directory }, HostPolicy.JsonOptions));
+        JsonSerializer.Serialize(new { version = ProductInfo.Protocol, id = "cli/" + execution.Id, stateDirectory = directory ?? "" }, HostPolicy.JsonOptions));
     ulong revision = catalog.LatestRevision(CatalogKind.Execution, execution.Id);
     catalog.Record(execution, checked(revision + 1));
     Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; execution.Cancel(); };

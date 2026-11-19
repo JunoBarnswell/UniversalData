@@ -1,5 +1,6 @@
 """Repository-specific contract and packaging checks; never invokes a compiler."""
 import json
+import os
 import pathlib
 import re
 import sys
@@ -8,11 +9,20 @@ import ast
 from product_model import generate
 
 root = pathlib.Path(__file__).resolve().parents[1]
+ignored = {".git", "build", "bin", "obj", "target", "artifacts", "_deps", "work", "output", "node_modules", "wwwroot"}
+
+
+def source_files(directory):
+    for folder, subdirectories, filenames in os.walk(directory):
+        subdirectories[:] = [name for name in subdirectories if name not in ignored]
+        for name in filenames:
+            if name not in ignored:
+                yield pathlib.Path(folder) / name
+
+
 errors = []
 errors.extend("Product projection differs: " + name for name in generate(True))
-for path in root.rglob("*"):
-    if not path.is_file() or any(p in {".git", "build", "bin", "obj", "target", "artifacts", "_deps", "work", "output", "node_modules", "wwwroot"} for p in path.relative_to(root).parts):
-        continue
+for path in source_files(root):
     if path.suffix in {".json"}: json.loads(path.read_text(encoding="utf-8"))
     if path.suffix in {".xml", ".csproj"}: ET.parse(path)
     if path.suffix == ".py": ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -30,14 +40,14 @@ for path in root.rglob("*"):
             errors.append(f"foundation reverse dependency: {path}")
         if "examples" in path.parts and re.search(r'#include.*(internal|components/)', content):
             errors.append(f"example uses private API: {path}")
-sources = "\n".join(p.read_text(encoding="utf-8") for folder in ("components", "engines", "connectors", "catalog") for p in (root / folder).rglob("*") if p.is_file() and p.suffix in {".c", ".cpp"})
+sources = "\n".join(p.read_text(encoding="utf-8") for folder in ("components", "engines", "connectors", "catalog") for p in source_files(root / folder) if p.suffix in {".c", ".cpp"})
 for header in (root / "include" / "ud").glob("*.h"):
     for symbol in re.findall(r'UD_API\s+[^;]*?\b(ud_\w+)\s*\(', header.read_text(encoding="utf-8")):
         if not re.search(r'\b' + symbol + r'\s*\([^;]*?\)\s*\{', sources, re.S): errors.append(f"missing implementation: {symbol}")
 forbidden = re.compile(r'\bud_(?:job|dag|run)_\w+|\bud_snapshot_latest\b')
 for folder in ('include', 'components', 'engines', 'connectors', 'hosts', 'bindings'):
-    for path in (root / folder).rglob('*'):
-        if path.is_file() and path.suffix in {'.c', '.h', '.cs', '.java'} and not set(path.parts) & {'bin','obj','target','build'}:
+    for path in source_files(root / folder):
+        if path.suffix in {'.c', '.h', '.cs', '.java'}:
             if forbidden.search(path.read_text(encoding='utf-8')): errors.append(f'removed execution API present: {path}')
 if not (root / "licenses" / "Apache-2.0.txt").is_file(): errors.append("missing Arrow license")
 if errors:

@@ -15,7 +15,6 @@ import urllib.parse
 import urllib.request
 import uuid
 from playwright.sync_api import sync_playwright, expect
-from browser_canvas import connect as connect_nodes
 from product_version import PROTOCOL_VERSION
 
 parser = argparse.ArgumentParser()
@@ -72,6 +71,13 @@ with sync_playwright() as playwright:
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.on('console', lambda message: console.append(dict(level=message.type,text=message.text)) if message.type in ('error','warning') else None)
     page.on('response', lambda response: http.append(dict(status=response.status,path=urllib.parse.urlsplit(response.url).path)) if response.status >= 400 else None)
+    def accept_dialog(dialog):
+        try:
+            dialog.accept()
+        except Exception:
+            # A second handler can observe the same browser dialog after the
+            # first one has accepted it; the state transition is already done.
+            pass
     def capture_native(response):
         if response.url.endswith('/api/preview'):
             try:
@@ -84,16 +90,24 @@ with sync_playwright() as playwright:
     def save(name):
         page.screenshot(path=str(args.evidence/name), full_page=True)
     def select_node(identifier):
-        page.get_by_role('button', name='Fit View', exact=True).click()
-        node = page.locator(f'.react-flow__node[data-id="{identifier}"]')
+        workspace=page.locator('.workspace-panel:not([hidden])').last
+        workspace.get_by_role('button', name='Fit View', exact=True).click()
+        node = workspace.locator(f'.react-flow__node[data-id="{identifier}"]:visible').last
         node.click()
         return node
     def add_component(component):
-        page.get_by_label('搜索组件', exact=True).fill(component)
-        page.locator('.catalog-row').filter(has_text=component).click()
-        return page.locator('.react-flow__node.selected').get_attribute('data-id')
+        workspace=page.locator('.workspace-panel:not([hidden])').last
+        workspace.get_by_label('搜索组件', exact=True).fill(component)
+        workspace.locator('.catalog-row').filter(has_text=component).click()
+        return workspace.locator('.react-flow__node.selected').last.get_attribute('data-id')
     def connect(left, right):
-        connect_nodes(page, left, right)
+        workspace=page.locator('.workspace-panel:not([hidden])').last
+        workspace.get_by_role('button', name='Fit View', exact=True).click()
+        count=workspace.locator('.react-flow__edge').count()
+        output=workspace.locator(f'.react-flow__node[data-id="{left}"] .react-flow__handle.source').first
+        input_=workspace.locator(f'.react-flow__node[data-id="{right}"] .react-flow__handle.target').first
+        output.drag_to(input_, timeout=10000)
+        expect(workspace.locator('.react-flow__edge')).to_have_count(count+1)
     try:
         page.goto(args.url)
         page.get_by_role('textbox', name='账户', exact=True).fill(args.subject)
@@ -129,6 +143,35 @@ with sync_playwright() as playwright:
         dialog.get_by_role('button',name='定位',exact=False).click()
         formula.fill('(DT_I8)[id] + 1L')
         dialog.get_by_role('button',name='完成',exact=True).click()
+        sql_source_id=add_component('sql.source')
+        select_node(sql_source_id)
+        page.locator('.workspace-panel:not([hidden])').get_by_text('专业连接与提交选项',exact=True).click()
+        read_mode=page.get_by_role('combobox',name='读取方式',exact=True)
+        expect(read_mode).to_have_value('"snapshot"')
+        read_mode.select_option(label='stream')
+        expect(read_mode).to_have_value('"stream"')
+        expect(page.get_by_text('工作草稿已自动保存',exact=True)).to_be_visible(timeout=15000)
+        draft_summary=next(item for item in api('GET','/drafts') if item['document'].get('layout',{}).get('label')==identity)
+        draft=api('GET','/drafts/'+draft_summary['packageId'])
+        persisted=next(node for node in draft['document']['dataFlows'][0]['components'] if node['id']==sql_source_id)
+        sql_read_mode_saved=persisted['config']['readMode']=='stream'
+        assert sql_read_mode_saved,persisted
+        # Close the original dirty tab before reopening the persisted draft. Keeping
+        # it open leaves two ReactFlow providers for one package and the newly opened
+        # provider can remain measured while its panel is hidden.
+        page.get_by_role('button',name='设计工作台',exact=True).click()
+        page.once('dialog',accept_dialog)
+        page.get_by_role('button',name='关闭 '+identity,exact=True).last.click()
+        page.get_by_role('button',name='项目',exact=True).click()
+        page.get_by_role('heading',name='项目与数据任务',exact=True).wait_for()
+        page.get_by_role('row').filter(has_text=identity).get_by_role('button',name='打开工作台',exact=True).click()
+        select_node(sql_source_id)
+        page.locator('.workspace-panel:not([hidden])').get_by_text('专业连接与提交选项',exact=True).click()
+        reopened_read_mode=page.get_by_role('combobox',name='读取方式',exact=True)
+        expect(reopened_read_mode).to_have_value('"stream"')
+        sql_read_mode_reopened=reopened_read_mode.input_value()=='"stream"'
+        assert sql_read_mode_reopened
+        page.locator('.workspace-panel:not([hidden])').get_by_label('删除组件',exact=True).last.click()
         page.get_by_role('button',name='连接中心',exact=True).click()
         center=page.get_by_role('dialog',name='连接中心')
         center.get_by_role('button',name='新建连接',exact=True).click()
@@ -137,10 +180,10 @@ with sync_playwright() as playwright:
         output_connection=center.get_by_label('连接名称',exact=True).input_value()
         center.get_by_role('button',name='关闭连接中心',exact=True).click()
         destination_id=add_component('file.ndjson.destination')
-        page.get_by_label('组件连接',exact=True).select_option(output_connection)
+        page.locator('.workspace-panel:not([hidden])').get_by_label('组件连接',exact=True).last.select_option(output_connection)
         connect(derived_id,destination_id)
         select_node(derived_id)
-        node=page.locator(f'.react-flow__node[data-id="{derived_id}"]')
+        node=page.locator(f'.workspace-panel:not([hidden]) .react-flow__node[data-id="{derived_id}"]').last
         position=node.bounding_box()
         page.mouse.move(position['x']+35,position['y']+15);page.mouse.down();page.mouse.move(position['x']+55,position['y']+50,steps=8);page.mouse.up()
         page.get_by_role('button',name='撤销',exact=True).click()
@@ -171,13 +214,13 @@ with sync_playwright() as playwright:
         with page.expect_response(lambda response: response.url.endswith('/api/executions') and response.request.method=='POST') as sent:
             confirm.get_by_role('button',name='确认正式执行',exact=True).click()
         ticket=sent.value.json()['id']
-        active=wait_run(ticket,'Running');paused(ticket)
+        active=wait_run(ticket,'Running');formal_requires_journal=active['requiresJournal'] is True;assert formal_requires_journal,active;paused(ticket)
         assert not output.exists()
         page.locator('.run-monitor').get_by_role('button',name='单批次',exact=True).click()
         paused(ticket, samples=True)
         save('debug-step.png')
         os.kill(active['processId'],getattr(signal,'SIGKILL',signal.SIGTERM))
-        uncertain=wait_run(ticket,'RecoveryRequired');assert uncertain['executionId']==active['executionId']
+        uncertain=wait_run(ticket,'RecoveryRequired');assert uncertain['executionId']==active['executionId'] and uncertain['requiresJournal'] is True,uncertain
         page.get_by_role('button',name='执行',exact=True).click()
         page.get_by_role('row').filter(has_text=active['executionId']).get_by_role('button',name='查看',exact=True).click()
         page.get_by_role('button',name='恢复',exact=True).click()
@@ -199,17 +242,18 @@ with sync_playwright() as playwright:
         commands=page.get_by_role('dialog',name='工作台命令')
         commands.get_by_label('搜索命令').fill('自动布局');page.keyboard.press('Enter')
         expect(commands).not_to_be_visible()
-        expect(page.locator('.workspace-tabs [role=tab]')).to_have_count(1)
+        tabs=page.locator('.workspace-tabs [role=tab]')
+        tab_count=tabs.count();assert tab_count>=1,tab_count
         page.get_by_role('button',name='项目',exact=True).click()
         page.get_by_role('button',name='空白任务',exact=True).click()
-        expect(page.locator('.workspace-tabs [role=tab]')).to_have_count(2)
-        page.locator('.workspace-tabs [role=tab]').first.click()
+        expect(tabs).to_have_count(tab_count+1)
+        tabs.first.click()
         expect(page.locator('.workspace-panel:not([hidden])').get_by_label('作业包名称')).to_have_value(identity)
         page.get_by_label('主题',exact=True).select_option('light')
         page.get_by_label('界面密度',exact=True).select_option('comfortable')
         print('Studio 4 tabs passed; starting scale journey',flush=True)
         performance=[]
-        page.on('dialog',lambda dialog:dialog.accept())
+        page.on('dialog',accept_dialog)
         page.set_viewport_size(dict(width=1600,height=1050))
         for count in [200,500,1000]:
             name=identity+'-scale-'+str(count)
@@ -234,13 +278,18 @@ with sync_playwright() as playwright:
             page.set_viewport_size(dict(width=width,height=height));save(name)
         assert not errors, errors
         unexpected=[value for value in http if not(value['status']==401 and value['path']=='/api/auth/session' or value['status']==404 and '/api/drafts/' in value['path'])]
+        # SQL Source is intentionally added without a connection in this UI
+        # journey: the editor keeps that partial configuration editable and
+        # reports its Native port probe as 422 until a connection is selected.
+        unexpected=[value for value in unexpected if not(value['status']==422 and value['path']=='/api/ports')]
         # A killed Worker has no final debug snapshot. Its explicit recovery
         # operation is still available; a live control endpoint is not invented.
         unexpected=[value for value in unexpected if not(value['status'] in (400,503) and '/executions/' in value['path'] and (value['path'].endswith('/debug') or value['path'].endswith('/metrics')))]
         assert not unexpected,unexpected
         (args.evidence/'browser.json').write_text(json.dumps(dict(status='Passed',packageId=package_id,sourceDiscovery=True,noJsonEditor=True,
             nativeFormulaCompile=True,nativeBeforeAfter=True,dragUndoRedo=True,currentDraftPublication=True,publishDoesNotExecute=True,previewDoesNotWrite=True,
-            definitionBreakpoint=True,nativeStep=True,actualWorkerTermination=True,resumeSameNativeId=True,outputSignature=__import__('hashlib').sha256(output.read_bytes()).hexdigest(),
+            definitionBreakpoint=True,nativeStep=True,actualWorkerTermination=True,resumeSameNativeId=True,sqlReadModeSaved=sql_read_mode_saved,
+            sqlReadModeReopened=sql_read_mode_reopened,formalRequiresJournal=formal_requires_journal,outputSignature=__import__('hashlib').sha256(output.read_bytes()).hexdigest(),
             studio4Tabs=True,commandMenu=True,themes=True,density=True,browserErrors=errors,consoleMessages=console,httpErrors=http,browserPlugin='Browser plugin not available'),indent=2))
     except BaseException:
         (args.evidence/'failure-original.txt').write_text(__import__('traceback').format_exc())

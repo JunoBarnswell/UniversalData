@@ -449,13 +449,23 @@ static ud_status execute_bound(odbc_state *p, SQLHSTMT stmt, const ud_batch *par
         s = failure(p, SQL_HANDLE_STMT, stmt);
     if (!s && (array || ordered_changes)) {
         SQLLEN initial_count = 0;
-        if (affected && SQL_SUCCEEDED(SQLRowCount(stmt, &initial_count)) && initial_count > 0)
+        SQLRETURN row_status = SQLRowCount(stmt, &initial_count);
+        if (affected && SQL_SUCCEEDED(row_status) && initial_count >= 0)
             *affected += (uint64_t)initial_count;
+        else if (affected && array && write &&
+                 (write->mode == UD_WRITE_APPEND || write->mode == UD_WRITE_UPSERT))
+            *affected += rows;
+        else if (affected && (row_status != SQL_SUCCESS && row_status != SQL_SUCCESS_WITH_INFO ||
+                              initial_count < 0))
+            s = UD_UNSUPPORTED;
         SQLRETURN more;
         while (SQL_SUCCEEDED(more = SQLMoreResults(stmt))) {
             SQLLEN count = 0;
-            if (affected && SQL_SUCCEEDED(SQLRowCount(stmt, &count)) && count > 0)
-                *affected += (uint64_t)count;
+            /* SQLMoreResults commonly exposes trigger/procedure effects. They
+             * are not direct effects of this batch and must not be added to
+             * the row count; the initial SQLRowCount is authoritative. The
+             * call is still drained before the statement is reused. */
+            SQLRowCount(stmt, &count);
         }
         if (more != SQL_NO_DATA)
             s = failure(p, SQL_HANDLE_STMT, stmt);
@@ -599,6 +609,8 @@ ud_status ud_odbc_read_close(void *state) {
     if (p->cursor)
         statement_release(p, p->cursor);
     p->cursor = SQL_NULL_HSTMT;
+    p->scalar = 0;
+    p->scalar_done = 0;
     p->host.batch_destroy(p->schema);
     p->schema = NULL;
     return UD_OK;
@@ -614,8 +626,18 @@ ud_status ud_odbc_read_open(void *state, const ud_read_options *o, const ud_batc
     SQLSMALLINT columns = 0;
     if (!s && !SQL_SUCCEEDED(SQLNumResultCols(p->cursor, &columns)))
         s = failure(p, SQL_HANDLE_STMT, p->cursor);
-    if (!s && (uint32_t)columns != p->host.columns(schema))
+    if (!s && schema && (uint32_t)columns != p->host.columns(schema))
         s = UD_SCHEMA;
+    ud_field *fields = NULL;
+    char **owned_names = NULL;
+    if (!s && !schema) {
+        fields = p->host.allocate(p->host.context, (size_t)columns * sizeof(*fields));
+        owned_names = p->host.allocate(p->host.context, (size_t)columns * sizeof(*owned_names));
+        if ((!fields || !owned_names) && columns)
+            s = UD_RESOURCE;
+        if (!s)
+            memset(owned_names, 0, (size_t)columns * sizeof(*owned_names));
+    }
     for (SQLSMALLINT i = 0; !s && i < columns; i++) {
         SQLWCHAR name[512];
         SQLSMALLINT length, type, scale, nullable;
@@ -628,21 +650,56 @@ ud_status ud_odbc_read_open(void *state, const ud_read_options *o, const ud_batc
             char *utf = NULL;
             uint32_t n = 0;
             s = utf8(p, name, (uint32_t)length, &utf, &n);
-            ud_field expected;
-            if (!s)
-                s = p->host.field(schema, (uint32_t)i, &expected);
-            if (!s && (expected.name_length != n || memcmp(expected.name, utf, n)))
-                s = UD_SCHEMA;
-            p->host.deallocate(utf);
+            if (schema) {
+                ud_field expected;
+                if (!s)
+                    s = p->host.field(schema, (uint32_t)i, &expected);
+                if (!s && (expected.name_length != n || memcmp(expected.name, utf, n)))
+                    s = UD_SCHEMA;
+                p->host.deallocate(utf);
+            } else if (!s) {
+                ud_type result_type = type == SQL_BIT ? UD_BOOL
+                                   : type == SQL_TINYINT || type == SQL_SMALLINT ||
+                                             type == SQL_INTEGER || type == SQL_BIGINT
+                                       ? UD_INT64
+                                   : type == SQL_REAL || type == SQL_FLOAT || type == SQL_DOUBLE
+                                       ? UD_FLOAT64
+                                   : type == SQL_DECIMAL || type == SQL_NUMERIC
+                                       ? UD_DECIMAL128
+                                   : type == SQL_TYPE_DATE || type == SQL_DATE
+                                       ? UD_DATE32
+                                   : type == SQL_TYPE_TIME || type == SQL_TIME
+                                       ? UD_TIME64
+                                   : type == SQL_TYPE_TIMESTAMP || type == SQL_TIMESTAMP
+                                       ? UD_TIMESTAMP
+                                   : type == SQL_BINARY || type == SQL_VARBINARY ||
+                                             type == SQL_LONGVARBINARY
+                                       ? UD_BINARY
+                                       : UD_UTF8;
+                owned_names[i] = utf;
+                fields[i] = (ud_field){.name = owned_names[i],
+                                       .name_length = n,
+                                       .type = result_type,
+                                       .nullable = nullable != SQL_NO_NULLS,
+                                       .precision = result_type == UD_DECIMAL128 ? (int32_t)precision : 0,
+                                       .scale = result_type == UD_DECIMAL128 ? (int32_t)scale : 0};
+            }
         }
     }
-    ud_field *fields = NULL;
-    if (!s)
+    if (!s && schema)
         s = plugin_fields(&p->host, schema, &fields);
+    if (!s && o->result_mode == UD_READ_SCALAR && columns != 1)
+        s = UD_SCHEMA;
     if (!s)
-        s = p->host.batch_create(p->host.context, fields, (uint32_t)columns, 0, &p->schema);
+        s = plugin_schema_outputs(&p->host, fields, (uint32_t)columns, &p->schema,
+                                   o->result_schema);
+    for (SQLSMALLINT i = 0; owned_names && i < columns; i++)
+        p->host.deallocate(owned_names[i]);
+    p->host.deallocate(owned_names);
     p->host.deallocate(fields);
-    p->batch_size = o->batch_size;
+    p->batch_size = o->result_mode == UD_READ_SCALAR ? 1 : o->batch_size;
+    p->scalar = o->result_mode == UD_READ_SCALAR;
+    p->scalar_done = 0;
     p->record_options = *o;
     if (s)
         ud_odbc_read_close(p);
@@ -653,6 +710,8 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
     *out = NULL;
     if (!p->cursor)
         return UD_INVALID;
+    if (p->scalar && p->scalar_done)
+        return UD_END;
     ud_field *fields = NULL;
     ud_status s = plugin_fields(&p->host, p->schema, &fields);
     uint32_t columns = p->host.columns(p->schema);
@@ -745,6 +804,8 @@ ud_status ud_odbc_read_next(void *state, ud_batch **out) {
     p->host.deallocate(values);
     p->host.deallocate(raw);
     p->host.deallocate(owned);
+    if (p->scalar)
+        p->scalar_done = 1;
     if (s || (!p->host.rows(*out) && !fetched)) {
         p->host.batch_destroy(*out);
         *out = NULL;
@@ -1167,8 +1228,12 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     odbc_state *p = state;
     if (p->cursor)
         return UD_BUSY;
+    int receipted = o->delivery != UD_DELIVERY_RESPONSE;
+    if (receipted && !digest)
+        return UD_INVALID;
+    if (receipted && !(p->capabilities & UD_CONNECT_RECEIPTS))
+        return UD_UNSUPPORTED;
     int own = !p->transaction;
-    int receipted = (p->capabilities & UD_CONNECT_RECEIPTS) != 0;
     ud_status s =
         own ? ud_odbc_begin(p, receipted ? UD_ISOLATION_SERIALIZABLE : UD_ISOLATION_READ_COMMITTED)
             : UD_OK;
@@ -1179,11 +1244,14 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (!s && existing &&
         (memcmp(previous.digest, digest, 32) ||
          previous.source_position.length != o->source_position.length ||
-         memcmp(previous.source_position.data, o->source_position.data, o->source_position.length)))
+         (o->source_position.length &&
+          memcmp(previous.source_position.data, o->source_position.data,
+                 o->source_position.length))))
         s = UD_CORRUPT;
     p->host.deallocate((void *)previous.source_position.data);
     odbc_state *bulk = NULL;
     ud_string stage = {0};
+    uint64_t affected = 0;
     int native = !s && !existing && o->mode == UD_WRITE_APPEND &&
                  o->load_mode != UD_LOAD_PARAMETERS && (p->capabilities & UD_CONNECT_NATIVE_BULK);
 #ifdef UD_WITH_MSSQL_BCP
@@ -1197,11 +1265,13 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         if (!s && native)
             s = p->host.compile_stage(p->host.context, UD_SQL_SQLSERVER, o, batch, stage,
                                       UD_SQL_STAGE_APPLY, &apply);
-        uint64_t affected = 0;
+        uint64_t physical = 0;
         if (!s && native)
-            s = command(p, apply, NULL, &affected);
-        if (!s && native && affected != p->host.rows(batch))
+            s = command(p, apply, NULL, &physical);
+        if (!s && native && physical != p->host.rows(batch))
             s = UD_FENCED;
+        if (!s && native)
+            affected += physical;
         p->host.deallocate((void *)apply.data);
     }
 #endif
@@ -1212,7 +1282,10 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (p->dialect == DIALECT_MSSQL && budget >= 4)
         budget -= 4;
     int ordered_changes = p->dialect == DIALECT_MSSQL && o->mode == UD_WRITE_CHANGESET;
-    uint32_t limit = width ? budget / width : 0;
+    uint32_t limit = plugin_write_chunk_rows(&p->host, native_dialect(p), o, batch, width, 1000);
+    uint32_t parameter_limit = width ? budget / width : 0;
+    if (parameter_limit && (!limit || parameter_limit < limit))
+        limit = parameter_limit;
     if (ordered_changes && limit) {
         /* One after value and up to two before parameters per column for
            SQL Server's null-safe preimage predicates. */
@@ -1228,17 +1301,19 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
             count = limit;
         ud_sql_statement plan = {0};
         SQLHSTMT stmt = SQL_NULL_HSTMT;
-        int array = p->array_parameters && o->mode == UD_WRITE_APPEND;
+        int array = p->array_parameters && o->mode != UD_WRITE_CHANGESET;
         s = p->host.compile_write(p->host.context, native_dialect(p), UD_SQL_PARAMETER_QUESTION, o,
                                   batch, row, array ? 1 : count, &plan);
         if (!s)
             s = prepare(p, plan.sql, &stmt);
-        uint64_t affected = 0;
+        uint64_t physical = 0;
         if (!s)
             s = execute_bound(p, stmt, batch, 0, array ? count : 1, NULL, plan.parameter_count,
-                              &affected, o, &plan);
+                              &physical, o, &plan);
+        if (!s)
+            affected += physical;
         if (!s && !ordered_changes && o->mode == UD_WRITE_CHANGESET && o->operations[row] != UD_CHANGE_UPSERT &&
-            o->operations[row] != UD_CHANGE_TRUNCATE && affected != 1)
+            o->operations[row] != UD_CHANGE_TRUNCATE && physical != 1)
             s = p->host.report(p->host.context, UD_FENCED, "changeset preimage conflict");
         statement_release(p, stmt);
         p->host.statement_clear(&plan);
@@ -1284,6 +1359,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     } else if (bulk)
         ud_odbc_destroy(bulk);
     p->host.deallocate((void *)stage.data);
+    if (!s && o->affected_rows)
+        *o->affected_rows = affected;
     return s;
 }
 static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **out) {

@@ -32,6 +32,46 @@ static inline ud_status plugin_fields(const ud_host_api *h, const ud_batch *b, u
         h->field(b, i, *out + i);
     return UD_OK;
 }
+/* A discovered result shape is owned twice: the driver keeps one copy for
+ * cursor conversion and the caller receives an independent zero-row copy. */
+static inline ud_status plugin_schema_outputs(const ud_host_api *h, const ud_field *fields,
+                                              uint32_t columns, ud_batch **internal,
+                                              ud_batch **published) {
+    *internal = NULL;
+    if (published)
+        *published = NULL;
+    ud_status status = h->batch_create(h->context, fields, columns, 0, internal);
+    if (!status && published)
+        status = h->batch_create(h->context, fields, columns, 0, published);
+    if (status) {
+        h->batch_destroy(*internal);
+        *internal = NULL;
+        if (published) {
+            h->batch_destroy(*published);
+            *published = NULL;
+        }
+    }
+    return status;
+}
+/* Every SQL driver uses the same chunk contract. The compiler owns dialect
+ * limits; the driver only applies its parameter-width and local hard bound.
+ * A zero callback result means that the host has no stricter limit. */
+static inline uint32_t plugin_write_chunk_rows(const ud_host_api *h, int32_t dialect,
+                                               const ud_write_options *options,
+                                               const ud_batch *batch, uint32_t width,
+                                               uint32_t hard_limit) {
+    uint32_t limit = width ? h->parameter_limit(dialect) / width : 0;
+    if (h->write_chunk_rows) {
+        uint32_t compiled = h->write_chunk_rows(dialect, options, batch);
+        if (compiled && (!limit || compiled < limit))
+            limit = compiled;
+    }
+    if (options->chunk_rows && (!limit || options->chunk_rows < limit))
+        limit = options->chunk_rows;
+    if (hard_limit && (!limit || hard_limit < limit))
+        limit = hard_limit;
+    return limit;
+}
 static inline int plugin_record_conversion(ud_status status) {
     return status == UD_PARSE || status == UD_OVERFLOW || status == UD_TRUNCATED ||
            status == UD_QUALITY;

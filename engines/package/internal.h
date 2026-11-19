@@ -110,6 +110,7 @@ struct ud_execution {
     ud_activation *cancellable;
     ud_mutex events_lock, journal_lock, serial_tasks_lock;
     uint64_t event_sequence;
+    uint32_t sql_sessions; /* Protected by events_lock with the execution controller. */
     struct ud_debug *debug;
     ud_json *preview_pipeline;
     uint32_t preview_source_rows;
@@ -302,4 +303,8 @@ ud_status ud_rule_token(const ud_component_context *, ud_string, uint32_t, ud_id
 ud_status ud_rule_statistics(ud_execution *, ud_id, uint64_t *, uint64_t *, uint64_t *);
 ud_status ud_source_version(ud_activation *, ud_id, const uint8_t[32]);
 void ud_source_versions_destroy(ud_execution *);
+
+ud_status ud_connection_lease_sql_transaction(struct ud_connection_lease *, int32_t, int32_t);
+void ud_connection_lease_cancel(struct ud_connection_lease *);
+
 #endif

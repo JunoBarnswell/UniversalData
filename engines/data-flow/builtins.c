@@ -88,11 +88,11 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
                    : b->mode == UD_WRITE_DELETE ? UD_CONNECT_DELETE
                                                 : UD_CONNECT_CHANGESET;
         if (kind == SQL_SINK) {
-            int32_t delivery = UD_DELIVERY_RECEIPT;
+            b->delivery_mode = UD_DELIVERY_RECEIPT;
             if (!s)
-                s = ud_builtin_sink_delivery(kind, b->config, &delivery);
+                s = ud_builtin_sink_delivery(c, kind, b->config, &b->delivery_mode);
             caps |= UD_CONNECT_METADATA;
-            if (delivery == UD_DELIVERY_RECEIPT)
+            if (b->delivery_mode == UD_DELIVERY_RECEIPT)
                 caps |= UD_CONNECT_RECEIPTS;
             if (b->load_mode == UD_LOAD_NATIVE)
                 caps |= UD_CONNECT_NATIVE_BULK;
@@ -221,7 +221,8 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     if (!s && file_sink(kind) && kind != XLSX_SINK && b->generation->mode == UD_FILE_APPEND &&
         b->generation->base_exists && !b->generation->prepared)
         s = ud_builtin_sink_append_original(b);
-    if (!s && kind == SQL_SINK && ud_member(b->config, "provisionReceipts")) {
+    if (!s && kind == SQL_SINK && b->delivery_mode == UD_DELIVERY_RECEIPT &&
+        ud_member(b->config, "provisionReceipts")) {
         const char *flag = NULL;
         uint32_t n = 0;
         s = ud_json_text(ud_member(b->config, "provisionReceipts"), &flag, &n);
@@ -461,7 +462,7 @@ static const char *configuration_schema(int kind) {
                "\"type\":\"integer\",\"minimum\":1,\"maximum\":64},\"partitionId\":{\"type\":"
                "\"integer\",\"minimum\":0},\"partitionBegin\":{\"type\":\"integer\",\"minimum\":0},"
                "\"partitionEnd\":{\"type\":\"integer\",\"minimum\":0},\"incremental\":{\"type\":"
-               "\"object\"},\"schemaPolicy\":{\"type\":\"object\"},\"table\":{\"type\":\"string\","
+               "\"object\"},\"schemaPolicy\":{\"type\":\"object\"},\"readMode\":{\"type\":\"string\",\"enum\":[\"snapshot\",\"stream\"],\"default\":\"snapshot\"},\"table\":{\"type\":\"string\","
                "\"minLength\":1},\"sql\":{\"type\":\"string\",\"minLength\":1},\"parameters\":{"
                "\"type\":\"object\"},\"ordering\":{\"type\":\"object\"},\"where\":{},"
                "\"errorPolicy\":{\"enum\":[\"fail\",\"redirect\",\"ignore\"]},\"includeInput\":{"
@@ -488,8 +489,7 @@ static const char *configuration_schema(int kind) {
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
     case SQL_SINK:
         return "{\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
-               "\"delivery\":{\"type\":\"string\",\"enum\":[\"response\",\"receipt\"],"
-               "\"default\":\"receipt\"},"
+               "\"delivery\":{\"type\":\"string\",\"enum\":[\"response\",\"receipt\"]},"
                "\"mapping\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
                "\"source\":{\"type\":\"string\"},\"target\":{\"type\":\"string\"}},\"required\":["
                "\"source\",\"target\"],\"additionalProperties\":false}},\"table\":{\"type\":"

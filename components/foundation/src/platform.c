@@ -232,7 +232,7 @@ ud_status ud_flush(ud_context *c, FILE *f) {
 }
 ud_status ud_sync_parent(ud_context *c, const char *path) {
 #ifdef _WIN32
-    /* Publication uses MoveFileExW(MOVEFILE_WRITE_THROUGH). */
+    /* Windows publication uses a write-through rename handle. */
     (void)c;
     (void)path;
     return UD_OK;
@@ -257,14 +257,65 @@ ud_status ud_sync_parent(ud_context *c, const char *path) {
     return failed ? ud_fail(c, UD_IO, "publication directory sync failed") : UD_OK;
 #endif
 }
+#ifdef _WIN32
+static ud_status publish_windows_file(ud_context *ctx, const char *from, const char *to,
+                                      int replace) {
+    wchar_t *source = wide(from), *target = wide(to);
+    DWORD capacity = target ? GetFullPathNameW(target, 0, NULL, NULL) : 0;
+    if (!source || !capacity) {
+        free(source);
+        free(target);
+        return ud_fail(ctx, UD_INVALID, "invalid atomic publication path");
+    }
+    size_t bytes = sizeof(FILE_RENAME_INFO) + (size_t)capacity * sizeof(wchar_t);
+    FILE_RENAME_INFO *rename = ud_alloc(ctx, bytes);
+    if (!rename) {
+        free(source);
+        free(target);
+        return UD_RESOURCE;
+    }
+    DWORD length = GetFullPathNameW(target, capacity, rename->FileName, NULL);
+    free(target);
+    if (!length || length >= capacity) {
+        ud_free(rename);
+        free(source);
+        return ud_fail(ctx, UD_INVALID, "invalid atomic publication destination");
+    }
+    rename->FileNameLength = length * sizeof(wchar_t);
+    rename->Flags = replace ? FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS : 0;
+    rename->RootDirectory = NULL;
+
+    const ULONGLONG deadline = GetTickCount64() + 1000;
+    DWORD error;
+    for (;;) {
+        HANDLE handle = CreateFileW(source, DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    NULL, OPEN_EXISTING,
+                                    FILE_FLAG_WRITE_THROUGH | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+        if (handle != INVALID_HANDLE_VALUE) {
+            /* Readers sharing deletion keep their old generation handle.
+             * Write-through makes the rename itself durable after the caller
+             * has synced the staged file. */
+            BOOL published = SetFileInformationByHandle(handle, FileRenameInfoEx, rename, (DWORD)bytes);
+            error = published ? ERROR_SUCCESS : GetLastError();
+            CloseHandle(handle);
+        } else
+            error = GetLastError();
+        /* A sharing violation precedes publication. Allow the interfering
+         * handle to close and preserve genuine permission and I/O failures. */
+        if ((error != ERROR_SHARING_VIOLATION && error != ERROR_LOCK_VIOLATION) ||
+            GetTickCount64() >= deadline)
+            break;
+        Sleep(5);
+    }
+    ud_free(rename);
+    free(source);
+    return error == ERROR_SUCCESS ? UD_OK : ud_fail(ctx, UD_IO,
+        "atomic publication failed (Win32 %lu): %s", (unsigned long)error, to);
+}
+#endif
 ud_status ud_replace_file(ud_context *c, const char *from, const char *to) {
 #ifdef _WIN32
-    wchar_t *source = wide(from), *target = wide(to);
-    BOOL ok = source && target &&
-              MoveFileExW(source, target, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
-    free(source);
-    free(target);
-    return ok ? UD_OK : ud_fail(c, UD_IO, "atomic replacement failed: %s", to);
+    return publish_windows_file(c, from, to, 1);
 #else
     if (rename(from, to))
         return ud_fail(c, UD_IO, "atomic replacement failed: %s", to);
@@ -273,12 +324,7 @@ ud_status ud_replace_file(ud_context *c, const char *from, const char *to) {
 }
 ud_status ud_publish(ud_context *c, const char *from, const char *to) {
 #ifdef _WIN32
-    wchar_t *a = wide(from), *b = wide(to);
-    BOOL ok = a && b && MoveFileExW(a, b, MOVEFILE_WRITE_THROUGH);
-    free(a);
-    free(b);
-    if (ok)
-        return UD_OK;
+    return publish_windows_file(c, from, to, 0);
 #else
     /* link() atomically creates a name without replacing an existing generation. */
     if (!link(from, to)) {
@@ -287,8 +333,8 @@ ud_status ud_publish(ud_context *c, const char *from, const char *to) {
             return ud_fail(c, UD_IO, "published but temporary unlink failed: %s", from);
         return ud_sync_parent(c, from);
     }
-#endif
     return ud_fail(c, UD_IO, "atomic publish failed or destination exists: %s", to);
+#endif
 }
 ud_status ud_lock(ud_context *c, const char *path, void **out) {
     *out = NULL;

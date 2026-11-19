@@ -773,7 +773,7 @@ function EditorCanvas({
         },
       };
     if (component.id === "sql.destination")
-      config = { mode: "append", loadMode: "auto", delivery: "receipt" };
+      config = { mode: "append", loadMode: "auto" };
     edit((current) => {
       let next = control
         ? updateControl(current, flow, (graph) => ({

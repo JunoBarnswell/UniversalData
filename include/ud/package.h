@@ -7,6 +7,29 @@
 extern "C" {
 #endif
 typedef struct ud_package ud_package;
+typedef struct ud_sql_session ud_sql_session;
+UD_API ud_status ud_package_requires_journal(const ud_package *, int32_t *);
+UD_API ud_status ud_execution_sql_session_open(ud_execution *, ud_string connection,
+                                                 ud_sql_session **);
+UD_API ud_status ud_sql_session_open(int32_t dialect, ud_string plugin_path,
+                                      ud_string connection_string, ud_sql_session **);
+UD_API ud_context *ud_sql_session_context(ud_sql_session *);
+UD_API int32_t ud_sql_session_dialect(const ud_sql_session *);
+UD_API ud_status ud_sql_session_set_auto_close(ud_sql_session *, int32_t enabled);
+/* Supply SQL text or a structured table query; schema is optional for discovery and scalar reads. */
+UD_API ud_status ud_sql_session_read_open(ud_sql_session *, ud_string sql, ud_string query_json,
+                                         ud_string schema_json, const ud_batch *parameters,
+                                         uint32_t batch_rows, int32_t result_mode, ud_batch **);
+UD_API ud_status ud_sql_session_read_next(ud_sql_session *, ud_batch **);
+UD_API ud_status ud_sql_session_read_close(ud_sql_session *);
+UD_API ud_status ud_sql_session_execute(ud_sql_session *, ud_string sql, const ud_batch *, uint64_t *);
+UD_API ud_status ud_sql_session_write(ud_sql_session *, int32_t mode, int32_t load_mode,
+                                       ud_string table, const uint32_t *keys, uint32_t key_count,
+                                       uint32_t chunk_rows, const ud_batch *, uint64_t *);
+enum { UD_SQL_SESSION_BEGIN = 1, UD_SQL_SESSION_COMMIT = 2, UD_SQL_SESSION_ROLLBACK = 3 };
+UD_API ud_status ud_sql_session_transaction(ud_sql_session *, int32_t operation, int32_t isolation);
+UD_API void ud_sql_session_cancel(ud_sql_session *);
+UD_API ud_status ud_sql_session_close(ud_sql_session *);
 /* Pure Native template expansion; $template substitutes typed JSON values. */
 UD_API ud_status ud_package_instantiate(ud_context *, ud_string, char **, uint32_t *);
 enum {

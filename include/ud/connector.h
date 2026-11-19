@@ -76,7 +76,8 @@ typedef struct ud_metadata_options {
     uint64_t offset;
     uint32_t limit;
 } ud_metadata_options;
-enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3, UD_WRITE_CHANGESET = 4 };
+enum { UD_WRITE_APPEND = 1, UD_WRITE_UPSERT = 2, UD_WRITE_DELETE = 3, UD_WRITE_CHANGESET = 4,
+       UD_WRITE_UPDATE = 5 };
 enum { UD_LOAD_AUTO = 0, UD_LOAD_PARAMETERS = 1, UD_LOAD_NATIVE = 2 };
 enum { UD_DELIVERY_RESPONSE = 1, UD_DELIVERY_IDEMPOTENT = 2, UD_DELIVERY_RECEIPT = 3 };
 enum {
@@ -125,6 +126,7 @@ typedef struct ud_connection_options {
 typedef ud_status (*ud_read_record_fn)(void *, ud_batch *, ud_status, uint32_t column,
                                        const ud_field *, const ud_value *decoded,
                                        const ud_value *raw_cells, uint32_t count);
+enum { UD_READ_TYPED = 0, UD_READ_DISCOVER = 1, UD_READ_SCALAR = 2 };
 typedef struct ud_read_options {
     uint32_t struct_size, abi_version, batch_size;
     ud_string sql;              /* Prepared SQL text; no value interpolation. */
@@ -132,6 +134,8 @@ typedef struct ud_read_options {
     uint32_t parameter_row;     /* Read selects one row; execute applies all supplied rows. */
     void *record_user;
     ud_read_record_fn record;
+    int32_t result_mode;
+    ud_batch **result_schema; /* Optional owned zero-row result shape. */
 } ud_read_options;
 enum {
     UD_COMMAND_NOT_EXECUTED = 0,
@@ -167,6 +171,9 @@ typedef struct ud_write_options {
     int32_t
         load_mode; /* AUTO selects a proven native transport; explicit NATIVE never falls back. */
     int32_t allow_truncate; /* Explicit whole-table data reset; compiled as transactional DELETE. */
+    int32_t delivery; /* Zero declares the default receipted SQL delivery. */
+    uint32_t chunk_rows; /* Optional upper bound per physical execution. */
+    uint64_t *affected_rows; /* Optional directly affected rows, published on success. */
 } ud_write_options;
 typedef struct ud_commit_receipt {
     int32_t committed;

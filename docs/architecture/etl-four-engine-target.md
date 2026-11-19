@@ -52,4 +52,4 @@ Connection Manager 解析 Package 优先于 Project 的逻辑定义，绑定配�
 
 ## 验收边界
 
-完整产品在 Linux 和 Windows 验证 Native、JNI、.NET、真实数据源、并发与背压、故障恢复和安装消费。当前 ABI 13 的验收状态以 `metadata/product.json` 为准。SSIS 职责依据见 `etl-ssis-official-evidence.json` 与 `ssis-reference-matrix.md`。
+完整产品在 Linux 和 Windows 验证 Native、JNI、.NET、真实数据源、并发与背压、故障恢复和安装消费。当前 ABI 14 的验收状态以 `metadata/product.json` 为准。SSIS 职责依据见 `etl-ssis-official-evidence.json` 与 `ssis-reference-matrix.md`。

@@ -4,6 +4,7 @@ import { api, post, encode } from "./api";
 import { ExecutionConfirmation } from "./ReleaseDialog";
 import { RunMonitor } from "./features/observability/RunMonitor";
 import {
+  executionStateName,
   stateName,
   failurePhase,
   type Deployment,
@@ -168,7 +169,7 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
                       <td>
                         {run.packageId} v{run.packageRevision}
                       </td>
-                      <td>{stateName(run.state)}</td>
+                      <td>{executionStateName(run)}</td>
                       <td>{new Date(run.timestampMs).toLocaleString()}</td>
                       <td>
                         <button
@@ -201,7 +202,7 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
                   {run.packageId} v{run.packageRevision}
                 </dd>
                 <dt>状态</dt>
-                <dd>{stateName(run.state)}</dd>
+                <dd>{executionStateName(run)}</dd>
                 <dt>Native 结果</dt>
                 <dd>{run.result === 16 ? "提交状态不明" : run.result}</dd>
                 {run.failure ? (
@@ -215,18 +216,23 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
                 ) : null}
               </dl>
               {run.state === "RecoveryRequired" ? (
-                <p>等待目标回执确认后恢复。</p>
+                <p>
+                  {run.requiresJournal === false
+                    ? "这是普通流式执行，未建立 Native Journal；已知提交量保留在历史中，不能恢复或重放。"
+                    : "等待目标回执确认后恢复。"}
+                </p>
               ) : null}
               <div className="detail-actions">
-                <button
-                  className="primary"
-                  disabled={
-                    run.state !== "RecoveryRequired" || !run.executionId
-                  }
-                  onClick={() => void control("resume")}
-                >
-                  恢复
-                </button>
+                {run.state === "RecoveryRequired" &&
+                run.requiresJournal !== false ? (
+                  <button
+                    className="primary"
+                    disabled={!run.executionId}
+                    onClick={() => void control("resume")}
+                  >
+                    恢复
+                  </button>
+                ) : null}
                 <button
                   disabled={
                     !["Queued", "Claimed", "Running"].includes(run.state)

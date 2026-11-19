@@ -1,0 +1,70 @@
+cmake_minimum_required(VERSION 3.24)
+
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM windows+pe)
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL "@UD_WINDOWS_DEPENDENCY_TOOL@")
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_COMMAND [=[@UD_WINDOWS_DEPENDENCY_COMMAND@]=])
+set(staged_directory [=[@staged_directory@]=])
+set(build_directory [=[@runtime_BUILD_DIRECTORY@]=])
+set(runtime_dirs [=[@runtime_dirs@]=])
+set(LIBRARIES [=[@LIBRARIES@]=])
+set(MODULES [=[@MODULES@]=])
+set(data_dlls [=[@runtime_DATA_DLLS@]=])
+set(external_dlls [=[@runtime_EXTERNAL_DLLS@]=])
+
+# Inspect the linked binaries in a directory containing only those binaries.
+# Previously staged app-local DLLs must not override the current SDK paths.
+set(images "${staged_directory}-pe")
+file(MAKE_DIRECTORY "${images}" "${staged_directory}" "${build_directory}")
+foreach(kind LIBRARIES MODULES)
+  set(inputs ${${kind}})
+  set(${kind})
+  foreach(input IN LISTS inputs)
+    get_filename_component(filename "${input}" NAME)
+    file(COPY_FILE "${input}" "${images}/${filename}" ONLY_IF_DIFFERENT)
+    list(APPEND ${kind} "${images}/${filename}")
+  endforeach()
+endforeach()
+
+file(GET_RUNTIME_DEPENDENCIES
+  LIBRARIES ${LIBRARIES}
+  MODULES ${MODULES} ${data_dlls}
+  DIRECTORIES ${runtime_dirs}
+  RESOLVED_DEPENDENCIES_VAR resolved
+  UNRESOLVED_DEPENDENCIES_VAR missing
+  CONFLICTING_DEPENDENCIES_PREFIX conflicts
+  # Windows API sets, the installed VC++ Redistributable and the registered
+  # Microsoft SQL Server ODBC driver are operating-system prerequisites.
+  PRE_EXCLUDE_REGEXES "^(api|ext)-ms-win-" "^(msvcp|vcruntime|concrt)[0-9]+(_[a-z0-9_]+)?[.]dll$"
+    "^msodbcsql[0-9]+[.]dll$"
+  POST_EXCLUDE_REGEXES "[/\\\\]([Ss][Yy][Ss][Tt][Ee][Mm]32|[Ss][Yy][Ss][Ww][Oo][Ww]64|[Ww][Ii][Nn][Ss][Xx][Ss])[/\\\\]")
+if(missing)
+  message(FATAL_ERROR "@name@: missing Windows runtime DLLs: ${missing}. Point UD_WINDOWS_RUNTIME_DIRS at the matching SDK runtime directories.")
+endif()
+foreach(filename IN LISTS conflicts_FILENAMES)
+  set(candidates ${conflicts_${filename}})
+  list(GET candidates 0 library)
+  file(SHA256 "${library}" digest)
+  foreach(candidate IN LISTS candidates)
+    file(SHA256 "${candidate}" candidate_digest)
+    if(NOT candidate_digest STREQUAL digest)
+      message(FATAL_ERROR "@name@: conflicting Windows runtime DLL ${filename}: ${candidates}")
+    endif()
+  endforeach()
+  list(APPEND resolved "${library}")
+endforeach()
+
+file(GLOB previous "${staged_directory}/*.dll")
+foreach(library IN LISTS resolved data_dlls)
+  get_filename_component(filename "${library}" NAME)
+  string(TOLOWER "${filename}" filename)
+  file(COPY_FILE "${library}" "${build_directory}/${filename}" ONLY_IF_DIFFERENT)
+  if(NOT filename IN_LIST external_dlls)
+    set(staged "${staged_directory}/${filename}")
+    file(COPY_FILE "${library}" "${staged}" ONLY_IF_DIFFERENT)
+    list(REMOVE_ITEM previous "${staged}")
+  endif()
+endforeach()
+foreach(stale IN LISTS previous)
+  get_filename_component(filename "${stale}" NAME)
+  file(REMOVE "${stale}" "${build_directory}/${filename}")
+endforeach()

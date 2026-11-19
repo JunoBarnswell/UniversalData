@@ -1,3 +1,32 @@
+# ABI 14 原生 SQL 与 ETL 验收
+
+使用 Windows 和 Linux 的 Release 构建，记录运行平台、源码、数据规模、命令和校验结果。完整构建使用已配置的 SQL 实例。`UD_TEST_POSTGRESQL_CONFIG`、`UD_TEST_MYSQL_CONFIG`、`UD_TEST_MARIADB_CONFIG`、`UD_TEST_ODBC_CONFIG`、`UD_TEST_ORACLE_OCI_CONFIG` 均引用隔离资源的本地配置文件。SQLite 用例创建自己的数据库。
+
+```powershell
+cmake --build build/core --config Release --parallel 4
+ctest --test-dir build/core -C Release --output-on-failure --no-tests=error -L sql-etl
+npm --prefix products/designer run typecheck
+python scripts/static_check.py
+```
+
+发布验证还运行完整 PRODUCT CTest 和性能矩阵。性能脚本在同一事务模型和数据形状下交替运行逐条写和原生批量写，比对完整结果、影响行数和读回签名。它收集冷连接、首批延迟、读写吞吐、峰值内存、CPU、拉取 P95 和 SDK 批次调用次数。
+
+```powershell
+python benchmarks/etl_sql.py --native <benchmark-executable> --plugins <plugin-directory> --output <report-json>
+```
+
+SQLite 的端到端对照用同一份数据分别运行快照和流式作业，从目标库观察首次提交，并记录总耗时、队列峰值及回读校验值。
+
+```powershell
+python tests/sql_streaming_etl.py --cli <ud_cli> --sqlite <sqlite-plugin> --performance-json <report-json>
+```
+
+测试通过记为 Pass，断言或已运行的性能门槛不满足记为 Fail，缺独立驱动或验收库记为 Blocked。结果以具体构建和报告为证。
+
+Windows 运行库专项使用只含 Windows 系统目录的 `PATH`，逐进程加载原生库、各宿主目录中的同一原生库，并通过原生插件入口装载已启用的 SQL 连接器。对应命令为 `ctest --test-dir build/core -C Release -R sql_etl_windows_runtime --output-on-failure --no-tests=error`。数据库连接和读写以各自的实库用例验收。
+
+### 历史 Windows 验收
+
 # Windows 集中验收
 
 本轮在统一架构及核心源码完成后集中编译和验收；失败后只重跑受影响范围，修复涉及共享运行边界时执行完整门禁。Linux 按用户最新决定免测，核心算子和 POSIX 实现继续支持。

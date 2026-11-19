@@ -1,9 +1,11 @@
 """Exercise the actual native indexed Catalog across processes and crashes."""
+from contextlib import closing
 import pathlib
 import sqlite3
 import subprocess
 import sys
 import tempfile
+from product_version import CATALOG_REVISION, PROTOCOL_VERSION
 
 
 def run(folder, mode):
@@ -19,24 +21,24 @@ with tempfile.TemporaryDirectory(prefix="ud-catalog-") as temporary:
     run(root, "read")
     run(root, "oldVersion")
     database = root / "catalog.sqlite3"
-    with sqlite3.connect(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == (12 << 16) | 1
+    with closing(sqlite3.connect(database)) as connection, connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == (PROTOCOL_VERSION << 16) | CATALOG_REVISION
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         original = connection.execute("SELECT digest FROM documents WHERE tenant='tenant-a' AND kind=2 AND id='test' AND revision='00000000000000000001'").fetchone()[0]
         connection.execute("UPDATE documents SET digest=zeroblob(32) WHERE tenant='tenant-a' AND kind=2 AND id='test' AND revision='00000000000000000001'")
     run(root, "corrupt")
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("UPDATE documents SET digest=? WHERE tenant='tenant-a' AND kind=2 AND id='test' AND revision='00000000000000000001'", (original,))
         connection.execute("UPDATE documents SET id='tampered' WHERE tenant='tenant-a' AND kind=2 AND id='test' AND revision='00000000000000000001'")
     run(root, "renamed")
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("UPDATE documents SET id='test' WHERE tenant='tenant-a' AND kind=2 AND id='tampered' AND revision='00000000000000000001'")
     run(root, "read")
     # Independent native handles/processes write the same immutable revisions.
     workers = [subprocess.Popen([sys.argv[1], str(root), "race"]) for _ in range(2)]
     assert all(worker.wait(timeout=30) == 0 for worker in workers)
     run(root, "raceRead")
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("SELECT count(*) FROM documents WHERE tenant='tenant-a' AND kind=7 AND id='race'").fetchone()[0] == 100
         connection.execute("BEGIN IMMEDIATE")
         run(root, "busy")

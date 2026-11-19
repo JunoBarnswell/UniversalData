@@ -766,7 +766,48 @@ static ud_status route(void *user, uint32_t port, ud_batch *batch) {
     ud_batch_destroy(identified);
     return status;
 }
+static ud_status validate_live_sql_effects(physical_plan *p) {
+    int live_sql = 0;
+    for (uint32_t index = 0; index < p->count; index++) {
+        const node *n = p->nodes + index;
+        ud_string mode = {0};
+        if (ud_named(n->descriptor.id, "sql.source") &&
+            !ud_json_string(ud_member(n->configuration, "readMode"), &mode) &&
+            ud_named(mode, "stream"))
+            live_sql = 1;
+    }
+    if (!live_sql)
+        return UD_OK;
+    for (uint32_t index = 0; index < p->count; index++) {
+        node *n = p->nodes + index;
+        int category = n->descriptor.category;
+        uint32_t effects = n->descriptor.effects;
+        /* A synchronous transform can inherit its input plan, including the
+         * source's read effect. Only the transform's own effects apply here. */
+        if (n->descriptor.describe_plan)
+            effects |= n->binding.effects;
+        if ((category == UD_COMPONENT_SOURCE && !ud_named(n->descriptor.id, "sql.source")) ||
+            (category == UD_COMPONENT_DESTINATION && !ud_named(n->descriptor.id, "sql.destination")))
+            return node_failed(n, UD_UNSUPPORTED, "streaming SQL requires SQL input and output");
+        if (category == UD_COMPONENT_DESTINATION && (effects & UD_EFFECT_RECEIPTED))
+            return node_failed(n, UD_UNSUPPORTED, "a live SQL source cannot request recovery receipts");
+        /* SQL Command owns its per-record database transaction and can deliver
+         * its result without a Journal. The transform restriction applies to
+         * other components that could retain state or write outside this path. */
+        if (category == UD_COMPONENT_TRANSFORM && !ud_named(n->descriptor.id, "sql.command") &&
+            ((n->descriptor.capabilities &
+              (UD_COMPONENT_STATEFUL | UD_COMPONENT_BLOCKING | UD_COMPONENT_PARTIALLY_BLOCKING)) ||
+             (effects &
+              (UD_EFFECT_EXTERNAL_READ | UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_TRANSACTIONAL |
+               UD_EFFECT_RECEIPTED | UD_EFFECT_SOURCE_ACK))))
+            return node_failed(n, UD_UNSUPPORTED,
+                               "streaming SQL requires stateless transforms without external effects");
+    }
+    return UD_OK;
+}
+
 static ud_status validate_effects(physical_plan *p) {
+    UD_TRY(validate_live_sql_effects(p));
     uint8_t *reachable = ud_alloc(p->execution->execution->ctx, p->count);
     if (!reachable)
         return UD_RESOURCE;

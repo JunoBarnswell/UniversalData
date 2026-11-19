@@ -64,6 +64,8 @@ static ud_status command_next(ud_string sql,uint32_t *position,command_token *ou
                 }
             }
             if (!closed) return UD_SCHEMA;
+        } else if (c==':' && at < sql.length && sql.data[at]==':') {
+            at++;
         } else if ((c==':' || c=='@' || c=='$') && at < sql.length &&
                    (isalnum((unsigned char)sql.data[at]) || sql.data[at]=='_')) {
             kind=COMMAND_PARAMETER;
@@ -79,6 +81,53 @@ static ud_status command_next(ud_string sql,uint32_t *position,command_token *ou
     }
     *position=at; return UD_OK;
 }
+ud_status ud_sql_validate_read_query(ud_string sql) {
+    if (!sql.data || !sql.length || sql.length > 16777216 ||
+        memchr(sql.data, 0, sql.length) || !ud_utf8_valid(sql.data, sql.length))
+        return UD_INVALID;
+    uint32_t position = 0, depth = 0;
+    int started = 0, select = 0, terminated = 0;
+    const char *forbidden[] = {"INSERT", "UPDATE", "DELETE", "MERGE", "INTO",
+                               "OUTFILE", "DUMPFILE", "EXEC", "EXECUTE", "CALL",
+                               "COPY", "LOCK", "ALTER", "CREATE", "DROP",
+                               "TRUNCATE", "COMMIT", "ROLLBACK", "SAVEPOINT",
+                               "SET", "NEXTVAL", "SETVAL", "UPDLOCK", "XLOCK"};
+    for (;;) {
+        command_token token;
+        UD_TRY(command_next(sql, &position, &token));
+        if (!token.kind)
+            break;
+        if (terminated)
+            return UD_UNSUPPORTED;
+        if (!started) {
+            select = token_word(token, "SELECT");
+            if (!select && !token_word(token, "WITH"))
+                return UD_UNSUPPORTED;
+            started = 1;
+            continue;
+        }
+        if (token.kind == ';') {
+            if (depth)
+                return UD_UNSUPPORTED;
+            terminated = 1;
+        } else if (token.kind == '(') {
+            if (++depth > 128)
+                return UD_RESOURCE;
+        } else if (token.kind == ')') {
+            if (!depth)
+                return UD_SCHEMA;
+            depth--;
+        } else if (token.kind == COMMAND_WORD) {
+            for (uint32_t i = 0; i < sizeof(forbidden) / sizeof(*forbidden); i++)
+                if (token_word(token, forbidden[i]))
+                    return UD_UNSUPPORTED;
+            if (!depth && token_word(token, "SELECT"))
+                select = 1;
+        }
+    }
+    return select && !depth ? UD_OK : UD_UNSUPPORTED;
+}
+
 ud_status ud_sql_validate_record_command(ud_string sql) {
     if (!sql.data || !sql.length || sql.length > 16777216 || memchr(sql.data,0,sql.length) ||
         !ud_utf8_valid(sql.data,sql.length)) return UD_INVALID;
@@ -104,6 +153,41 @@ ud_status ud_sql_validate_record_command(ud_string sql) {
     }
     return dml && !depth ? UD_OK : UD_UNSUPPORTED;
 }
+ud_status ud_sql_validate_session_command(ud_string sql, int in_transaction) {
+    if (!sql.data || !sql.length || sql.length > 16777216 ||
+        memchr(sql.data, 0, sql.length) || !ud_utf8_valid(sql.data, sql.length))
+        return UD_INVALID;
+    command_token token;
+    uint32_t position = 0, depth = 0;
+    UD_TRY(command_next(sql, &position, &token));
+    int ddl = token_word(token, "CREATE") || token_word(token, "ALTER") ||
+              token_word(token, "DROP") || token_word(token, "TRUNCATE");
+    if (!ddl)
+        return ud_sql_validate_record_command(sql);
+    if (in_transaction)
+        return UD_UNSUPPORTED;
+    int terminated = 0;
+    for (;;) {
+        UD_TRY(command_next(sql, &position, &token));
+        if (!token.kind)
+            return depth ? UD_SCHEMA : UD_OK;
+        if (terminated)
+            return UD_UNSUPPORTED;
+        if (token.kind == '(') {
+            if (++depth > 128)
+                return UD_RESOURCE;
+        } else if (token.kind == ')') {
+            if (!depth)
+                return UD_SCHEMA;
+            depth--;
+        } else if (token.kind == ';') {
+            if (depth)
+                return UD_UNSUPPORTED;
+            terminated = 1;
+        }
+    }
+}
+
 static ud_status command_identifier(ud_context *ctx,command_token token,ud_string *out) {
     /* MySQL's double-quote interpretation depends on SQL_MODE. Backticks are
      * unambiguous and decoded here, without parsing identifiers in the driver. */
@@ -613,6 +697,74 @@ uint32_t ud_sql_parameter_limit(int32_t dialect) {
         return 0;
     }
 }
+uint32_t ud_sql_write_chunk_rows(int32_t dialect, const ud_write_options *options,
+                                  const ud_batch *batch) {
+    if (!options || !batch || !batch->columns)
+        return 0;
+    uint32_t columns = batch->columns, keys = options->key_count;
+    uint32_t budget = ud_sql_parameter_limit(dialect);
+    if (!budget || (options->mode == UD_WRITE_UPDATE && (!keys || keys >= columns)))
+        return 0;
+    uint32_t limit = options->chunk_rows ? options->chunk_rows : 512;
+    if (limit > 512)
+        limit = 512; /* Bounds expression depth and statement size, including composite keys. */
+    uint64_t width = options->mode == UD_WRITE_DELETE ? keys : columns;
+    if (options->mode == UD_WRITE_UPDATE) {
+        width = (uint64_t)(columns - keys) * (keys + 1u) + keys;
+        if (width > budget)
+            return columns <= budget ? 1 : 0;
+    }
+    if (!width)
+        return 0;
+    uint32_t by_parameters = (uint32_t)(budget / width);
+    return limit < by_parameters ? limit : by_parameters;
+}
+
+static ud_status keyed_filter(writer *w, uint32_t first, uint32_t rows) {
+    for (uint32_t row = 0; row < rows; row++) {
+        if (row)
+            UD_TRY(put(w, " OR "));
+        UD_TRY(put(w, "("));
+        UD_TRY(keys_where(w, first + row, NULL, NULL));
+        UD_TRY(put(w, ")"));
+    }
+    return UD_OK;
+}
+
+static ud_status update_rows(writer *w, uint32_t first, uint32_t rows) {
+    if (!rows || w->options->key_count == w->batch->columns)
+        return UD_SCHEMA;
+    UD_TRY(put(w, "UPDATE "));
+    UD_TRY(table(w));
+    UD_TRY(put(w, " SET "));
+    uint32_t change_count = 0;
+    for (uint32_t col = 0; col < w->batch->columns; col++) {
+        if (is_key(w, col))
+            continue;
+        if (change_count++)
+            UD_TRY(put(w, ","));
+        UD_TRY(column(w, col, NULL));
+        UD_TRY(put(w, "="));
+        if (rows == 1) {
+            UD_TRY(parameter(w, first, col, UD_SQL_AFTER));
+            continue;
+        }
+        UD_TRY(put(w, "CASE"));
+        for (uint32_t row = rows; row > 0; row--) {
+            uint32_t source_row = first + row - 1;
+            UD_TRY(put(w, " WHEN "));
+            UD_TRY(keys_where(w, source_row, NULL, NULL));
+            UD_TRY(put(w, " THEN "));
+            UD_TRY(parameter(w, source_row, col, UD_SQL_AFTER));
+        }
+        UD_TRY(put(w, " ELSE "));
+        UD_TRY(column(w, col, NULL));
+        UD_TRY(put(w, " END"));
+    }
+    UD_TRY(put(w, " WHERE "));
+    return keyed_filter(w, first, rows);
+}
+
 static ud_status write_action(writer *w, uint32_t first, uint32_t rows) {
     const ud_write_options *o = w->options;
     const ud_batch *b = w->batch;
@@ -654,6 +806,8 @@ static ud_status write_action(writer *w, uint32_t first, uint32_t rows) {
         s = insert(w, first, rows, action == UD_CHANGE_INSERT && o->current_column != UINT32_MAX);
     else if (!s && mode == UD_WRITE_UPSERT)
         s = upsert(w, first, rows);
+    else if (!s && mode == UD_WRITE_UPDATE)
+        s = update_rows(w, first, rows);
     else if (!s && mode == UD_WRITE_DELETE) {
         s = put(w, "DELETE FROM ");
         if (!s)
@@ -710,7 +864,7 @@ ud_status ud_sql_compile_write(ud_context *ctx, int32_t dialect, int32_t style,
         dialect < UD_SQL_SQLITE || dialect > UD_SQL_DUCKDB || style < 1 || style > 3)
         return UD_INVALID;
     memset(out, 0, sizeof(*out));
-    if (o->mode < UD_WRITE_APPEND || o->mode > UD_WRITE_CHANGESET || !o->table.data ||
+    if (o->mode < UD_WRITE_APPEND || o->mode > UD_WRITE_UPDATE || !o->table.data ||
         !o->table.length || o->key_count > b->columns || (o->key_count && !o->keys))
         return UD_SCHEMA;
     if (o->mode != UD_WRITE_APPEND && !o->key_count)
@@ -849,12 +1003,16 @@ ud_status ud_sql_compile_preimage(ud_context *ctx, int32_t dialect, int32_t styl
 ud_status ud_write_validate(const ud_write_options *o, const ud_batch *b) {
     if (!o || !b || o->struct_size != sizeof(*o) || o->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
-    if (!b->sealed || !o->table.data || !o->table.length || !o->job.data || !o->job.length ||
-        !o->batch_id.data || !o->batch_id.length ||
-        (o->source_position.length && !o->source_position.data) || o->mode < UD_WRITE_APPEND ||
-        o->mode > UD_WRITE_CHANGESET || o->load_mode < UD_LOAD_AUTO ||
+    int response = o->delivery == UD_DELIVERY_RESPONSE;
+    if (!b->sealed || !o->table.data || !o->table.length ||
+        (!response && (!o->job.data || !o->job.length || !o->batch_id.data || !o->batch_id.length)) ||
+        (o->source_position.length && !o->source_position.data) ||
+        (o->delivery && o->delivery != UD_DELIVERY_RESPONSE && o->delivery != UD_DELIVERY_RECEIPT) ||
+        o->mode < UD_WRITE_APPEND || o->mode > UD_WRITE_UPDATE || o->load_mode < UD_LOAD_AUTO ||
         o->load_mode > UD_LOAD_NATIVE || o->key_count > b->columns || (o->key_count && !o->keys))
         return UD_INVALID;
+    if (o->mode == UD_WRITE_UPDATE && o->key_count == b->columns)
+        return UD_SCHEMA;
     if (o->mode != UD_WRITE_APPEND && !o->key_count)
         return UD_SCHEMA;
     for (uint32_t i = 0; i < o->key_count; i++) {
@@ -1329,4 +1487,316 @@ ud_status ud_sql_compile_savepoint(ud_context *ctx, int32_t dialect, ud_string n
     }
     ud_bytes_clear(&w.text);
     return status;
+}
+
+/* Named SQL arguments and structured queries both use the write compiler's
+ * identifier and typed placeholder rules. The driver sees only its grammar. */
+static ud_status bound_parameters(writer *w, const ud_batch *arguments, ud_batch **out) {
+    uint32_t count = w->statement->parameter_count;
+    if (!count)
+        return UD_OK;
+    ud_field *fields = ud_alloc(w->ctx, (size_t)count * sizeof(*fields));
+    ud_value *values = ud_alloc(w->ctx, (size_t)count * sizeof(*values));
+    char (*names)[24] = ud_alloc(w->ctx, (size_t)count * sizeof(*names));
+    ud_status status = fields && values && names ? UD_OK : UD_RESOURCE;
+    for (uint32_t i = 0; !status && i < count; i++) {
+        uint32_t source = w->statement->parameters[i].column;
+        status = ud_batch_field(arguments, source, fields + i);
+        if (!status)
+            status = ud_batch_get(arguments, 0, source, values + i);
+        int n = snprintf(names[i], sizeof(names[i]), "p%u", i + 1);
+        fields[i].name = names[i];
+        fields[i].name_length = (uint32_t)n;
+        fields[i].identity = (ud_id){0};
+        fields[i].lineage = NULL;
+        fields[i].lineage_count = 0;
+        fields[i].key_order = 0;
+    }
+    if (!status)
+        status = ud_batch_create(w->ctx, fields, count, 1, out);
+    if (!status)
+        status = ud_batch_append(*out, values, count);
+    if (!status)
+        status = ud_batch_seal(*out);
+    ud_free(names);
+    ud_free(values);
+    ud_free(fields);
+    return status;
+}
+
+static ud_status bound_statement(writer *w, const ud_batch *parameters, ud_status status,
+                                 ud_string *sql, ud_batch **arguments) {
+    if (!status)
+        status = bound_parameters(w, parameters, arguments);
+    uint32_t length = (uint32_t)w->text.size;
+    if (!status)
+        status = ud_bytes_put(&w->text, "", 1);
+    if (!status) {
+        *sql = (ud_string){(const char *)w->text.data, length};
+        w->text.data = NULL;
+    } else {
+        ud_batch_destroy(*arguments);
+        *arguments = NULL;
+    }
+    ud_bytes_clear(&w->text);
+    ud_sql_statement_clear(w->statement);
+    return status;
+}
+
+static int same_name(ud_string a, ud_string b) {
+    return a.length == b.length && (!a.length || !memcmp(a.data, b.data, a.length));
+}
+
+static ud_status sql_number(ud_string text, uint32_t *out) {
+    uint32_t n = 0;
+    if (!text.length)
+        return UD_SCHEMA;
+    for (uint32_t i = 0; i < text.length; i++) {
+        int digit = text.data[i] - '0';
+        if (digit < 0 || digit > 9 || n > (UINT32_MAX - (unsigned)digit) / 10)
+            return UD_SCHEMA;
+        n = n * 10 + (unsigned)digit;
+    }
+    *out = n;
+    return UD_OK;
+}
+
+static ud_status argument_index(command_token token, const ud_batch *arguments,
+                                uint32_t *positional, uint32_t *index) {
+    if (token.kind == '?') {
+        *index = (*positional)++;
+        return *index < arguments->columns ? UD_OK : UD_SCHEMA;
+    }
+    ud_string name = {token.text + 1, token.length - 1};
+    if (*token.text == '$') {
+        uint32_t number = 0;
+        if (!sql_number(name, &number)) {
+            if (!number || number > arguments->columns)
+                return UD_SCHEMA;
+            *index = number - 1;
+            return UD_OK;
+        }
+    }
+    for (uint32_t i = 0; i < arguments->columns; i++) {
+        const ud_field *f = &arguments->column[i].field;
+        ud_string field = {f->name, f->name_length};
+        if (field.length && (*field.data == '@' || *field.data == ':' || *field.data == '$')) {
+            field.data++;
+            field.length--;
+        }
+        if (same_name(name, field)) {
+            *index = i;
+            return UD_OK;
+        }
+    }
+    return UD_SCHEMA;
+}
+
+ud_status ud_sql_bind_command(ud_context *ctx, int32_t dialect, int32_t style, ud_string input,
+                              const ud_batch *parameters, ud_string *sql, ud_batch **arguments) {
+    *sql = (ud_string){0};
+    *arguments = NULL;
+    if (!ctx || !input.data || !input.length || input.length > 16777216 ||
+        memchr(input.data, 0, input.length) || !ud_utf8_valid(input.data, input.length) ||
+        (parameters && (parameters->ctx != ctx || !parameters->sealed || parameters->rows != 1)))
+        return UD_INVALID;
+    ud_sql_statement statement = {0};
+    writer w = {.ctx = ctx, .text = {.ctx = ctx, .limit = 16777216},
+                .statement = &statement, .parameter_batch = parameters,
+                .dialect = dialect, .style = style};
+    ud_status status = UD_OK;
+    uint32_t at = 0, last = 0, positional = 0;
+    while (!status && parameters) {
+        command_token token;
+        status = command_next(input, &at, &token);
+        if (status || !token.kind)
+            break;
+        if (token.kind == COMMAND_PARAMETER || token.kind == '?') {
+            uint32_t col, start = (uint32_t)(token.text - input.data);
+            status = argument_index(token, parameters, &positional, &col);
+            if (!status)
+                status = ud_bytes_put(&w.text, input.data + last, start - last);
+            if (!status)
+                status = parameter(&w, 0, col, UD_SQL_AFTER);
+            last = at;
+        }
+    }
+    if (!status)
+        status = ud_bytes_put(&w.text, input.data + last, input.length - last);
+    return bound_statement(&w, parameters, status, sql, arguments);
+}
+
+static const ud_json *query_member(const ud_json *object, const char *name) {
+    return ud_json_find(object, name, (uint32_t)strlen(name));
+}
+
+static ud_status query_name(const ud_json *value, ud_string *out) {
+    if (ud_json_kind(value) != UD_JSON_STRING)
+        return UD_SCHEMA;
+    return ud_json_text(value, &out->data, &out->length);
+}
+
+static ud_status query_number(const ud_json *value, uint32_t *out) {
+    ud_string text;
+    if (ud_json_kind(value) != UD_JSON_NUMBER)
+        return UD_SCHEMA;
+    UD_TRY(ud_json_text(value, &text.data, &text.length));
+    return sql_number(text, out);
+}
+
+static ud_status query_column(const writer *w, const ud_json *value, uint32_t *out) {
+    ud_string name;
+    UD_TRY(query_name(value, &name));
+    for (uint32_t i = 0; i < w->batch->columns; i++) {
+        const ud_field *field = &w->batch->column[i].field;
+        if (same_name(name, (ud_string){field->name, field->name_length})) {
+            *out = i;
+            return UD_OK;
+        }
+    }
+    return UD_SCHEMA;
+}
+
+static ud_status query_predicate(writer *w, const ud_json *node, uint32_t depth) {
+    if (depth > 64 || ud_json_kind(node) != UD_JSON_OBJECT)
+        return UD_SCHEMA;
+    const ud_json *field = query_member(node, "col"), *arg = query_member(node, "param");
+    uint32_t index;
+    if (field) {
+        UD_TRY(query_column(w, field, &index));
+        return column(w, index, NULL);
+    }
+    if (arg) {
+        UD_TRY(query_number(arg, &index));
+        if (!w->parameter_batch || index >= w->parameter_batch->columns)
+            return UD_SCHEMA;
+        return parameter(w, 0, index, UD_SQL_AFTER);
+    }
+    ud_string operation;
+    UD_TRY(query_name(query_member(node, "op"), &operation));
+    const ud_json *args = query_member(node, "args");
+    if (ud_json_kind(args) != UD_JSON_ARRAY)
+        return UD_SCHEMA;
+    const char *names[] = {"eq", "ne", "lt", "le", "gt", "ge", "and", "or", "not", "isnull"};
+    const char *operators[] = {" = ", " <> ", " < ", " <= ", " > ", " >= ", " AND ", " OR "};
+    uint32_t op = 0;
+    for (; op < sizeof(names) / sizeof(*names); op++)
+        if (same_name(operation, (ud_string){names[op], (uint32_t)strlen(names[op])}))
+            break;
+    if (op >= sizeof(names) / sizeof(*names) || ud_json_size(args) != (op >= 8 ? 1u : 2u))
+        return UD_SCHEMA;
+    UD_TRY(put(w, op == 8 ? "(NOT " : "("));
+    UD_TRY(query_predicate(w, ud_json_at(args, 0), depth + 1));
+    if (op == 9)
+        UD_TRY(put(w, " IS NULL"));
+    else if (op < 8) {
+        UD_TRY(put(w, operators[op]));
+        UD_TRY(query_predicate(w, ud_json_at(args, 1), depth + 1));
+    }
+    return put(w, ")");
+}
+
+static ud_status query_order(writer *w, const ud_json *order, const ud_json *keys, int paging) {
+    if ((order && ud_json_kind(order) != UD_JSON_ARRAY) ||
+        (paging && (ud_json_kind(keys) != UD_JSON_ARRAY || !ud_json_size(keys))))
+        return UD_SCHEMA;
+    uint32_t orders = ud_json_size(order), key_count = paging ? ud_json_size(keys) : 0;
+    if (orders > w->batch->columns || key_count > w->batch->columns)
+        return UD_SCHEMA;
+    if (!orders && !key_count)
+        return UD_OK;
+    uint8_t *seen = ud_alloc(w->ctx, w->batch->columns);
+    if (!seen)
+        return UD_RESOURCE;
+    memset(seen, 0, w->batch->columns);
+    ud_status status = put(w, " ORDER BY ");
+    uint32_t emitted = 0;
+    for (uint32_t i = 0; !status && i < orders + key_count; i++) {
+        const ud_json *entry = i < orders ? ud_json_at(order, i) : NULL;
+        const ud_json *direction = query_member(entry, "descending");
+        const ud_json *name = entry ? query_member(entry, "column") : ud_json_at(keys, i - orders);
+        uint32_t col;
+        status = query_column(w, name, &col);
+        if (!status && direction && ud_json_kind(direction) != UD_JSON_BOOL)
+            status = UD_SCHEMA;
+        if (status || seen[col])
+            continue;
+        if (emitted++)
+            status = put(w, ",");
+        if (!status)
+            status = column(w, col, NULL);
+        if (!status && direction) {
+            ud_string text;
+            status = ud_json_text(direction, &text.data, &text.length);
+            if (!status && text.length == 4)
+                status = put(w, " DESC");
+        }
+        seen[col] = 1;
+    }
+    ud_free(seen);
+    return status;
+}
+
+ud_status ud_sql_compile_table_query(ud_context *ctx, int32_t dialect, int32_t style,
+                                     ud_string document, const ud_batch *schema,
+                                     const ud_batch *parameters, ud_string *sql,
+                                     ud_batch **arguments) {
+    *sql = (ud_string){0};
+    *arguments = NULL;
+    if (!ctx || !schema || schema->ctx != ctx || !schema->columns ||
+        (parameters && (parameters->ctx != ctx || !parameters->sealed || parameters->rows != 1)))
+        return UD_INVALID;
+    ud_json *query = NULL;
+    UD_TRY(ud_json_parse(ctx, document.data, document.length, &query, NULL));
+    ud_sql_statement statement = {0};
+    ud_write_options options = {0};
+    writer w = {.ctx = ctx, .text = {.ctx = ctx, .limit = 16777216},
+                .statement = &statement, .options = &options, .batch = schema,
+                .parameter_batch = parameters, .dialect = dialect, .style = style};
+    ud_status status = query_name(query_member(query, "table"), &options.table);
+    if (!status)
+        status = put(&w, "SELECT ");
+    for (uint32_t i = 0; !status && i < schema->columns; i++) {
+        if (i)
+            status = put(&w, ",");
+        if (!status)
+            status = column(&w, i, NULL);
+        if (!status)
+            status = put(&w, " AS ");
+        if (!status)
+            status = column(&w, i, NULL);
+    }
+    if (!status)
+        status = put(&w, " FROM ");
+    if (!status)
+        status = table(&w);
+    const ud_json *predicate = query_member(query, "where");
+    if (!status && predicate) {
+        status = put(&w, " WHERE ");
+        if (!status)
+            status = query_predicate(&w, predicate, 0);
+    }
+    const ud_json *page_value = query_member(query, "page"), *size_value = query_member(query, "size");
+    uint32_t page = 0, size = 0;
+    int paging = page_value || size_value;
+    if (!status && paging) {
+        status = query_number(page_value, &page);
+        if (!status)
+            status = query_number(size_value, &size);
+        if (!status && (!page || !size || size > 65536))
+            status = UD_SCHEMA;
+    }
+    if (!status)
+        status = query_order(&w, query_member(query, "order"), query_member(query, "keys"), paging);
+    if (!status && paging) {
+        char tail[96];
+        unsigned long long offset = (unsigned long long)(page - 1) * size;
+        if (dialect == UD_SQL_ORACLE || dialect == UD_SQL_SQLSERVER)
+            snprintf(tail, sizeof(tail), " OFFSET %llu ROWS FETCH NEXT %u ROWS ONLY", offset, size);
+        else
+            snprintf(tail, sizeof(tail), " LIMIT %u OFFSET %llu", size, offset);
+        status = put(&w, tail);
+    }
+    ud_json_destroy(query);
+    return bound_statement(&w, parameters, status, sql, arguments);
 }

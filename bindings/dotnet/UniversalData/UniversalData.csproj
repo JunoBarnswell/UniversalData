@@ -17,6 +17,10 @@
   </PropertyGroup>
   <ItemGroup Condition="'$(NativeLibraryDirectory)' != ''">
     <None Include="$(NativeLibraryDirectory)/$(NativeLibraryName)" Pack="true" PackagePath="runtimes/$(NativeRuntimeIdentifier)/native/" />
+    <None Include="$(NativePluginDirectory)/ud_connector_sqlite.*;$(NativePluginDirectory)/ud_connector_postgresql.*;$(NativePluginDirectory)/ud_connector_mysql.*;$(NativePluginDirectory)/ud_connector_mariadb.*;$(NativePluginDirectory)/ud_connector_odbc.*;$(NativePluginDirectory)/ud_connector_oracle_oci.*"
+          Exclude="$(NativePluginDirectory)/*.pdb;$(NativePluginDirectory)/*.lib"
+          Condition="'$(NativePluginDirectory)' != ''"
+          Pack="true" PackagePath="runtimes/$(NativeRuntimeIdentifier)/native/" />
     <None Include="$(NativeDependencyDirectory)/*" Condition="'$(NativeDependencyDirectory)' != ''" Pack="true" PackagePath="runtimes/$(NativeRuntimeIdentifier)/native/" />
     <None Include="$(NativeLicenseDirectory)/**/*" Condition="'$(NativeLicenseDirectory)' != ''" Pack="true" PackagePath="licenses/" />
   </ItemGroup>

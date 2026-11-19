@@ -48,6 +48,8 @@ UD_API ud_status ud_sql_compile_stage(ud_context *, int32_t, const ud_write_opti
  * with a cardinality assertion per effect. PostgreSQL pipelines the individual
  * parameterized commands and checks each response before transaction commit. */
 UD_API uint32_t ud_sql_parameter_limit(int32_t dialect);
+UD_API uint32_t ud_sql_write_chunk_rows(int32_t dialect, const ud_write_options *, const ud_batch *);
+UD_API ud_status ud_sql_validate_read_query(ud_string);
 UD_API ud_status ud_sql_compile_write(ud_context *, int32_t dialect, int32_t parameter_style,
                                       const ud_write_options *, const ud_batch *, uint32_t first,
                                       uint32_t rows, ud_sql_statement *);

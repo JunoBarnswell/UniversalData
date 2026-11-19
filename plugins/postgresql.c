@@ -20,7 +20,7 @@ typedef struct {
     ud_batch *schema;
     uint32_t batch_size;
     ud_read_options record_options;
-    int reading, read_cursor_declared, finished;
+    int reading, read_cursor_declared, finished, scalar;
     atomic_int cancelled;
     void *control_user;
     ud_status (*check)(void *);
@@ -383,6 +383,7 @@ static ud_status close_read(void *state) {
     p->reading = 0;
     p->read_cursor_declared = 0;
     p->finished = 1;
+    p->scalar = 0;
     p->host.batch_destroy(p->schema);
     p->schema = NULL;
     return s;
@@ -390,15 +391,55 @@ static ud_status close_read(void *state) {
 static int compatible_oid(ud_type t, Oid oid) {
     return t == UD_BOOL                           ? oid == 16
            : t == UD_INT64                        ? oid == 20 || oid == 21 || oid == 23
-           : t == UD_FLOAT64                      ? oid == 701
-           : t == UD_UTF8                         ? oid == 25 || oid == 1043
+           : t == UD_FLOAT64                      ? oid == 700 || oid == 701
+           : t == UD_UTF8                         ? oid == 18 || oid == 19 || oid == 25 ||
+                                                         oid == 1042 || oid == 1043 || oid == 114 ||
+                                                         oid == 2950 || oid == 3802
            : t == UD_DECIMAL128 || t == UD_UINT64 ? oid == 1700
            : t == UD_INTERVAL || t == UD_DURATION ? oid == 1186
            : t == UD_DATE32                       ? oid == 1082
-           : t == UD_TIME64                       ? oid == 1083
-           : t == UD_TIMESTAMP                    ? oid == 1184
+           : t == UD_TIME64                       ? oid == 1083 || oid == 1266
+           : t == UD_TIMESTAMP                    ? oid == 1114 || oid == 1184
            : t == UD_BINARY                       ? oid == 17
                                                   : 0;
+}
+static ud_type pg_result_type(Oid oid) {
+    switch (oid) {
+    case 16:
+        return UD_BOOL;
+    case 20:
+    case 21:
+    case 23:
+        return UD_INT64;
+    case 700:
+    case 701:
+        return UD_FLOAT64;
+    case 17:
+        return UD_BINARY;
+    case 1082:
+        return UD_DATE32;
+    case 1083:
+    case 1266:
+        return UD_TIME64;
+    case 1114:
+    case 1184:
+        return UD_TIMESTAMP;
+    case 1186:
+        return UD_INTERVAL;
+    case 1700:
+        return UD_DECIMAL128;
+    case 18:
+    case 19:
+    case 25:
+    case 1042:
+    case 1043:
+    case 114:
+    case 2950:
+    case 3802:
+        return UD_UTF8;
+    default:
+        return UD_STRUCT;
+    }
 }
 typedef struct pg_parameters {
     uint32_t count;
@@ -555,25 +596,54 @@ static ud_status open_read(void *state, const ud_read_options *options, const ud
         !s ? query(p, "FETCH FORWARD 0 FROM ud_sdk_cursor", 0, NULL, NULL, NULL, NULL, 0) : NULL;
     if (!s && (!r || PQresultStatus(r) != PGRES_TUPLES_OK))
         s = pg_failure(p, r);
-    uint32_t columns = h->columns(schema);
+    uint32_t columns = 0;
     ud_field *fields = NULL;
-    if (!s && PQnfields(r) != (int)columns)
+    if (!s) {
+        columns = (uint32_t)PQnfields(r);
+        if (schema) {
+            if (h->columns(schema) != columns)
+                s = UD_SCHEMA;
+            else
+                s = plugin_fields(h, schema, &fields);
+        } else {
+            fields = h->allocate(h->context, columns * sizeof(*fields));
+            if (!fields && columns)
+                s = UD_RESOURCE;
+            for (uint32_t j = 0; !s && j < columns; j++) {
+                const char *name = PQfname(r, (int)j);
+                ud_type type = pg_result_type(PQftype(r, (int)j));
+                if (!name || type >= UD_STRUCT)
+                    s = UD_UNSUPPORTED;
+                else {
+                    fields[j] = (ud_field){.name = name,
+                                           .name_length = (uint32_t)strlen(name),
+                                           .type = type,
+                                           .nullable = 1};
+                    if (type == UD_DECIMAL128 && PQfmod(r, (int)j) >= 4) {
+                        int modifier = PQfmod(r, (int)j);
+                        fields[j].precision = ((modifier - 4) >> 16) & 65535;
+                        fields[j].scale = (((modifier - 4) & 2047) ^ 1024) - 1024;
+                    }
+                }
+            }
+        }
+    }
+    if (!s && options->result_mode == UD_READ_SCALAR && columns != 1)
         s = UD_SCHEMA;
-    if (!s)
-        s = plugin_fields(h, schema, &fields);
     for (uint32_t j = 0; !s && j < columns; j++)
         if (strcmp(fields[j].name, PQfname(r, (int)j)) ||
             !compatible_oid(fields[j].type, PQftype(r, (int)j)))
             s = UD_SCHEMA;
     if (!s)
-        s = h->batch_create(h->context, fields, columns, 0, &p->schema);
+        s = plugin_schema_outputs(h, fields, columns, &p->schema, options->result_schema);
     h->deallocate(fields);
     PQclear(r);
     if (s) {
         close_read(p);
         return s;
     }
-    p->batch_size = options->batch_size;
+    p->scalar = options->result_mode == UD_READ_SCALAR;
+    p->batch_size = p->scalar ? 1 : options->batch_size;
     p->record_options = *options;
     p->finished = 0;
     return UD_OK;
@@ -700,7 +770,9 @@ static ud_status next_read(void *state, ud_batch **out) {
     if (s)
         return s;
     uint32_t rows = h->rows(*out);
-    if (fetched < p->batch_size)
+    if (p->scalar && fetched)
+        p->finished = 1;
+    else if (fetched < p->batch_size)
         p->finished = 1;
     if (!rows && !fetched) {
         h->batch_destroy(*out);
@@ -835,7 +907,8 @@ static ud_status validate_target(postgres_state *p, ud_string table, const ud_ba
 /* COPY transports the same sealed typed Batch over the authenticated libpq
  * session. Receipt reservation and business writes stay in the same transaction. */
 static ud_status copy_batch(postgres_state *p, const ud_write_options *options,
-                            const ud_batch *batch, ud_bulk_reader *reader) {
+                            const ud_batch *batch, ud_bulk_reader *reader,
+                            uint64_t *affected) {
     ud_host_api *h = &p->host;
     ud_string sql = {0};
     ud_status status = h->compile_bulk(h->context, UD_SQL_POSTGRESQL, options, batch, &sql);
@@ -883,8 +956,13 @@ static ud_status copy_batch(postgres_state *p, const ud_write_options *options,
         while (wait_result(p) && (result = PQgetResult(p->db)) != NULL) {
             if (!status && PQresultStatus(result) != PGRES_COMMAND_OK)
                 status = pg_failure(p, result);
-            if (!status && strtoull(PQcmdTuples(result), NULL, 10) != h->rows(batch))
-                status = UD_CORRUPT;
+            if (!status) {
+                uint64_t count = strtoull(PQcmdTuples(result), NULL, 10);
+                if (count != h->rows(batch))
+                    status = UD_CORRUPT;
+                else if (affected)
+                    *affected += count;
+            }
             PQclear(result);
         }
         if (!status && (p->control_status || p->broken))
@@ -895,7 +973,7 @@ static ud_status copy_batch(postgres_state *p, const ud_write_options *options,
 /* Pipeline the original ordered statements inside the receipt transaction.
  * Each command retains its own preimage check, trigger and affected-row result. */
 static ud_status write_changes(postgres_state *p, const ud_write_options *options,
-                               const ud_batch *batch) {
+                               const ud_batch *batch, uint64_t *affected) {
     ud_host_api *h = &p->host;
     if (!PQenterPipelineMode(p->db))
         return pg_failure(p, NULL);
@@ -946,6 +1024,8 @@ static ud_status write_changes(postgres_state *p, const ud_write_options *option
             else {
                 if (!status && (received >= sent || kind != PGRES_COMMAND_OK))
                     status = received >= sent ? UD_CORRUPT : pg_failure(p, result);
+                if (!status && affected)
+                    *affected += strtoull(PQcmdTuples(result), NULL, 10);
                 if (!status && options->operations[first + received] != UD_CHANGE_UPSERT &&
                     options->operations[first + received] != UD_CHANGE_TRUNCATE &&
                     strcmp(PQcmdTuples(result), "1"))
@@ -977,6 +1057,9 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         return UD_BUSY;
     if (h->columns(batch) > 65535)
         return UD_RESOURCE;
+    int receipted = options->delivery != UD_DELIVERY_RESPONSE;
+    if (receipted && !digest)
+        return UD_INVALID;
     atomic_store(&p->cancelled, 0);
     ud_bulk_reader *bulk = NULL;
     ud_status s = UD_OK;
@@ -1014,9 +1097,10 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     h->deallocate(table);
     if (!s)
         s = validate_target(p, options->table, batch);
+    uint64_t affected = 0;
     ud_string strings[] = {tenant, options->job, options->batch_id, options->source_position};
     char *identity[4] = {0};
-    for (int j = 0; !s && j < 4; j++) {
+    for (int j = 0; !s && receipted && j < 4; j++) {
         identity[j] = plugin_string(h, strings[j].data ? strings[j].data : "", strings[j].length);
         if (!identity[j])
             s = UD_RESOURCE;
@@ -1026,17 +1110,17 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     Oid reserve_types[] = {25, 25, 25, 17, 25};
     int reserve_lengths[] = {0, 0, 0, 32, 0}, reserve_formats[] = {0, 0, 0, 1, 0};
     PGresult *result =
-        !s ? query(p,
+        !s && receipted ? query(p,
                    "INSERT INTO "
                    "public.ud_sdk_receipts_v11(tenant,job,batch_id,digest,source_position) "
                    "VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING batch_id",
                    5, reserve_types, reserve, reserve_lengths, reserve_formats, 0)
            : NULL;
-    if (!s && (!result || PQresultStatus(result) != PGRES_TUPLES_OK))
+    if (!s && receipted && (!result || PQresultStatus(result) != PGRES_TUPLES_OK))
         s = pg_failure(p, result);
-    int existing = !s && PQntuples(result) == 0;
+    int existing = !s && receipted && PQntuples(result) == 0;
     PQclear(result);
-    if (!s && existing) {
+    if (!s && receipted && existing) {
         ud_commit_receipt previous = {0};
         s = receipt(p, tenant, options->job, options->batch_id, &previous);
         if (!s && (!previous.committed || memcmp(previous.digest, digest, 32)))
@@ -1044,16 +1128,16 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
         h->deallocate((void *)previous.source_position.data);
     }
     uint32_t columns = options->mode == UD_WRITE_DELETE ? options->key_count : h->columns(batch);
-    uint32_t limit = columns ? h->parameter_limit(UD_SQL_POSTGRESQL) / columns : 0;
+    uint32_t limit = plugin_write_chunk_rows(h, UD_SQL_POSTGRESQL, options, batch, columns, 1024);
     if (!limit)
         s = UD_RESOURCE;
     if (limit > 1024)
         limit = 1024;
     if (!s && !existing && bulk)
-        s = copy_batch(p, options, batch, bulk);
+        s = copy_batch(p, options, batch, bulk, &affected);
     int changes = options->mode == UD_WRITE_CHANGESET;
     if (!s && !existing && changes)
-        s = write_changes(p, options, batch);
+        s = write_changes(p, options, batch, &affected);
     int ordinary = !changes && !bulk;
     h->bulk_close(bulk);
     for (uint32_t row = 0; !s && !existing && ordinary && row < h->rows(batch);) {
@@ -1073,6 +1157,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
                                : NULL;
         if (!s && (!changed || PQresultStatus(changed) != PGRES_COMMAND_OK))
             s = pg_failure(p, changed);
+        if (!s)
+            affected += strtoull(PQcmdTuples(changed), NULL, 10);
         PQclear(changed);
         parameters_clear(p, &parameters);
         h->statement_clear(&plan);
@@ -1093,6 +1179,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     } else if (s && own && command(p, "ROLLBACK") != UD_OK)
         return h->report(h->context, UD_COMMIT_UNKNOWN,
                          "rollback outcome is unknown; receipt verification is required");
+    if (!s && options->affected_rows)
+        *options->affected_rows = affected;
     return s;
 }
 static void destroy(void *state) {

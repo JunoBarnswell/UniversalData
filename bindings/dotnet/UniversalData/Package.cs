@@ -32,6 +32,20 @@ public sealed class Package : IDisposable
         lock (lifetime) { ObjectDisposedException.ThrowIf(disposed, this); DataOwnership.Check(context, Native.ud_package_serialize(package, out var text, out var length)); return DataOwnership.Text(text, length); }
     }
 
+    /// <summary>Returns the Native recovery decision for this immutable package.</summary>
+    public bool RequiresJournal
+    {
+        get
+        {
+            lock (lifetime)
+            {
+                ObjectDisposedException.ThrowIf(disposed, this);
+                DataOwnership.Check(context, Native.ud_package_requires_journal(package, out var required));
+                return required != 0;
+            }
+        }
+    }
+
     public Execution CreateExecution(string tenant, PackageAuthorizer? authorize, string parametersJson = "{}", string executionId = "", PackageCredentialResolver? resolve = null, ulong memoryLimit = 268435456)
         => new(ToJson(), tenant, authorize, parametersJson, executionId, resolve, memoryLimit: memoryLimit);
 
@@ -57,6 +71,8 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_package_create(ContextHandle context, StringValue document, out IntPtr package);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_package_serialize(PackageHandle package, out IntPtr document, out uint length);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_package_requires_journal(PackageHandle package, out int required);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void ud_package_destroy(IntPtr package);
 }

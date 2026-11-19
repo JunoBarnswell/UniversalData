@@ -496,7 +496,10 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
     ud_status status = UD_OK;
     char namespace_id[33];
     ud_string logical_connection = {0}, logical_table = {0};
-    status = ud_json_string(ud_member(b->config, "connection"), &logical_connection);
+    if (b->kind == SQL_SOURCE)
+        status = ud_builtin_source_read_mode(c, b->config, &b->stream_read);
+    if (!status)
+        status = ud_json_string(ud_member(b->config, "connection"), &logical_connection);
     if (!status)
         status = ud_assets_bind_source(c->activation, logical_connection, b->lease);
     if (!status && ud_member(b->config, "table"))
@@ -567,6 +570,8 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
     }
     if (!status && b->kind == SQL_SOURCE)
         status = bind_predicate(b);
+    if (!status && b->kind == SQL_SOURCE && b->stream_read && b->read_sql.length)
+        status = ud_sql_validate_read_query(b->read_sql);
     /* The immutable snapshot and physical batching are part of the replay policy. */
     char *configuration = NULL;
     uint32_t configuration_length = 0;
@@ -641,7 +646,8 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
     }
     if (!status && file_source(b->kind))
         status = open_file_reader(b, batch_rows);
-    b->materialized = b->cursor != NULL || b->kind == SQL_SOURCE || b->kind == REST_SOURCE;
+    b->materialized = b->cursor != NULL ||
+                      (b->kind == SQL_SOURCE && !b->stream_read) || b->kind == REST_SOURCE;
     ud_sha256_init(&b->snapshot_hash);
     if (!status) {
         uint8_t schema[32];
@@ -890,8 +896,13 @@ static ud_status source_read_batch(builtin *b, ud_batch **out) {
         }
         if (!status)
             b->snapshot_at++;
-    } else
+    } else {
         status = ud_builtin_source_raw(b, &input);
+        if (status == UD_END && b->kind == SQL_SOURCE && b->stream_read) {
+            ud_status closed = ud_connection_lease_read_close(b->lease);
+            status = closed ? closed : UD_END;
+        }
+    }
     if (!status && !b->output_port && (b->kind == SQL_SOURCE || b->kind == REST_SOURCE)) {
         ud_batch *identified = NULL;
         status = ud_builtin_source_identity(b, input, &identified);

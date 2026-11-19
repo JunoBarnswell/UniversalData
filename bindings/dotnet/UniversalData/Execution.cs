@@ -188,6 +188,18 @@ public sealed class Execution : IDisposable
         }
     }
 
+    /// <summary>Open a strongly typed SqlSugar client through this execution's authorized Native lease.</summary>
+    public SqlSugar.SqlSugarClient OpenSqlClient(string connection)
+    {
+        Control();
+        ArgumentException.ThrowIfNullOrWhiteSpace(connection);
+        lock (controller)
+        {
+            Open();
+            return SqlSugar.SqlSugarClient.FromExecution(execution, connection);
+        }
+    }
+
     public string CompileExpression(string schemaJson,string source)
     { Control();lock(controller){Open();using var strings=new NativeStrings(schemaJson,source);
         Check(Native.ud_execution_compile_expression(execution,strings[0],strings[1],out var text,out var length));return DataOwnership.Text(text,length);} }

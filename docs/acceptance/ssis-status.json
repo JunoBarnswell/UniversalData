@@ -1,7 +1,7 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "5.0.0",
-  "abi": 13,
+  "sdkVersion": "6.0.0",
+  "abi": 14,
   "scope": {
     "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",
     "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
@@ -16,7 +16,7 @@
   },
   "candidate": {
     "branch": "main",
-    "state": "SDK 5 messaging and worker execution candidate under verification",
+    "state": "SDK 6 native SQL and ETL candidate under verification",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,

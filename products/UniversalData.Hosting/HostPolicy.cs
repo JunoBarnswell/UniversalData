@@ -127,8 +127,13 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
         if ((Registry.Features & RegistryFeatures.ScopedJournal) == 0)
             throw new UniversalDataException((int)StatusCode.Incompatible,"Native runtime does not distinguish internal recovery storage");
         if (!Isolated && RequiresIsolation(packageJson)) throw new UniversalDataException((int)StatusCode.Auth, "Untrusted module requires an isolated Worker");
-        var scoped = this with { StateDirectory = stateDirectory };
-        return new(packageJson, Tenant, scoped.Authorize, parametersJson, executionId, scoped.Resolve, stateDirectory: stateDirectory,
+        using var package = new Package(packageJson, MemoryLimit);
+        bool requiresJournal = package.RequiresJournal;
+        if (resume && !requiresJournal)
+            throw new ArgumentException("This stream execution has no Native Journal and cannot be resumed", nameof(resume));
+        string? journalDirectory = requiresJournal ? stateDirectory : null;
+        var scoped = this with { StateDirectory = journalDirectory };
+        return new(package.ToJson(), Tenant, scoped.Authorize, parametersJson, executionId, scoped.Resolve, stateDirectory: journalDirectory,
             resume: resume, maxConcurrency: MaxConcurrency, memoryLimit: MemoryLimit, registry: registry, observe: observe,
             timeoutMilliseconds: checked(ExecutionTimeoutSeconds * 1000UL), eventSequenceStart: eventSequenceStart,
             workerMember: shard?.Member ?? 0, workerMembers: shard?.Members ?? 0,

@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 5.0.0，唯一 ABI/协议 13。Linux 与 Windows 均须验收。下列目录是 main 基线已有组件的入口与边界，不能代替 2.0 当前验收；50 项适用整改状态见 metadata/product.json 的 goals。
+SDK 6.0.0，唯一 ABI/协议 14。Linux 与 Windows 均须验收。下列目录是 main 基线已有组件的入口与边界，不能代替 2.0 当前验收；50 项适用整改状态见 metadata/product.json 的 goals。
 
 | SSIS 职责 | 实际入口/ID | 实现与边界 |
 |---|---|---|

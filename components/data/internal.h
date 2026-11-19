@@ -85,4 +85,12 @@ ud_status ud_value_canonical(const ud_value *, ud_status (*)(void *, const void 
 ud_status ud_batch_hash_rows(const ud_batch *, ud_sha256 *);
 ud_status ud_batch_hash_tagged_rows(const ud_batch *, ud_sha256 *, uint8_t port);
 void ud_sql_lookup_ordinal_name(const ud_batch *, char name[48]);
+
+/* Native SQL session compilation; parameters are an owned, sealed one-row batch. */
+ud_status ud_sql_validate_session_command(ud_string, int);
+ud_status ud_sql_bind_command(ud_context *, int32_t, int32_t, ud_string, const ud_batch *,
+                              ud_string *, ud_batch **);
+ud_status ud_sql_compile_table_query(ud_context *, int32_t, int32_t, ud_string,
+                                     const ud_batch *, const ud_batch *, ud_string *, ud_batch **);
+
 #endif

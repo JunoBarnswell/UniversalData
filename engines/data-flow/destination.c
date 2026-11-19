@@ -258,6 +258,8 @@ ud_status ud_builtin_sink_write(builtin *b, const ud_batch *input, const ud_batc
                           b->key_count};
     o.current_column = UINT32_MAX;
     o.load_mode = b->load_mode;
+    if (b->kind == SQL_SINK)
+        o.delivery = b->delivery_mode;
     const ud_json *truncate = ud_member(b->config, "allowTruncate");
     if (truncate) {
         const char *text;

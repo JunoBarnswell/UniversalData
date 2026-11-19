@@ -1,8 +1,8 @@
 {
   "generatedFrom": "metadata/product.json",
-  "version": 13,
-  "sdkVersion": "5.0.0",
-  "abi": 13,
+  "version": 14,
+  "sdkVersion": "6.0.0",
+  "abi": 14,
   "sourceFingerprint": null,
   "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
   "windows": "Required — complete driver build, native/language/install and platform acceptance",
@@ -11,77 +11,77 @@
       "id": "linux-full-build",
       "status": "NotRun",
       "scope": "CORE build only; full PRODUCT driver dependency closure unverified.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "windows-full-build",
       "status": "NotRun",
       "scope": "Windows toolchain/SSIS resources unavailable.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "correctness",
       "status": "NotRun",
       "scope": "75 portable cases passed; full inherited SSIS and vendor semantics remain unverified.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "recovery",
       "status": "NotRun",
       "scope": "Portable Native Journal, process kill, window state, disk spill and same-ID recovery passed.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "external-integration",
       "status": "NotRun",
       "scope": "No current external CDC/driver acceptance resources.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "language-parity",
       "status": "NotRun",
       "scope": "Current Native/C#/Java ABI and lifecycle tests passed; complete streaming cross-host UAT remains partial.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "web",
       "status": "NotRun",
       "scope": "Actual browser core journey and 200/500/1000-node scaling passed; full UI/a11y/probe matrix partial.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "performance",
       "status": "NotRun",
       "scope": "One million events and observed batch latency/RSS recorded; one-hour soak NotRun.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "installed-consumers",
       "status": "NotRun",
       "scope": "No current distributable archive or independent installed SDK consumer run.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "source-contracts",
       "status": "NotRun",
       "scope": "Product projections, whitespace, epoch migration and C/.NET/Java compilation verified.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     },
     {
       "id": "release-integrity",
       "status": "NotRun",
       "scope": "Review branch only; no release archive or release certification.",
-      "reason": "Awaiting current ABI 13 acceptance evidence.",
+      "reason": "Awaiting current ABI 14 acceptance evidence.",
       "evidence": []
     }
   ],

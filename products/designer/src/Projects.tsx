@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { FileInput, FolderOpen, Plus, Search } from "lucide-react";
 import { api } from "./api";
 import {
-  stateName,
+  executionStateName,
   type CatalogDocument,
   type PackageDocument,
   type RunState,
@@ -133,7 +133,7 @@ export function Projects({
                         0,
                       )}
                     </td>
-                    <td>{run ? stateName(run.state) : "尚未运行"}</td>
+                    <td>{run ? executionStateName(run) : "尚未运行"}</td>
                     <td>
                       <button
                         className="text-button"

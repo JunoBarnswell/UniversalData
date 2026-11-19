@@ -119,8 +119,15 @@ ud_status ud_mssql_bulk_stage(odbc_state *owner, const ud_write_options *options
     }
     char name[96] = "##ud_sdk_bulk_";
     size_t prefix = strlen(name);
-    for (uint32_t index = 0; index < 32; index++)
-        snprintf(name + prefix + index * 2, 3, "%02x", digest[index]);
+    uint8_t identifier[32];
+    ud_status identifier_status = digest
+                                     ? (memcpy(identifier, digest, sizeof(identifier)), UD_OK)
+                                     : owner->host.random_bytes(owner->host.context, identifier,
+                                                                sizeof(identifier));
+    if (identifier_status)
+        return identifier_status;
+    for (uint32_t index = 0; index < sizeof(identifier); index++)
+        snprintf(name + prefix + index * 2, 3, "%02x", identifier[index]);
     stage->data = plugin_string(&owner->host, name, (uint32_t)strlen(name));
     stage->length = (uint32_t)strlen(name);
     if (!stage->data)

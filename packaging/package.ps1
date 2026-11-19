@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][string]$BuildDirectory,
     [ValidateSet('Release')][string]$Configuration = 'Release',
     [ValidateSet('win-x64','linux-x64')][string]$RuntimeIdentifier = $(if ($IsWindows) { 'win-x64' } else { 'linux-x64' }),
+    [string]$NativeRuntimeLicenses,
     [string]$Output = "$PSScriptRoot/../artifacts",
     [string]$LogDirectory = (Join-Path ([IO.Path]::GetTempPath()) ("UniversalData-package-" + [guid]::NewGuid().ToString('N')))
 )
@@ -86,7 +87,32 @@ try {
     }
     $packages = Join-Path $stage 'packages'
     New-Item -ItemType Directory -Path $packages | Out-Null
-    Invoke-PackageTool $dotnet @('pack','bindings/dotnet/UniversalData/UniversalData.csproj','--configuration','Release','--nologo','--verbosity:minimal',"-p:NativeLibraryDirectory=$nativeDirectory","-p:NativeRuntimeIdentifier=$RuntimeIdentifier",'--output',$packages) 'nuget-pack.log'
+    $pluginDirectory = Join-Path $sdk 'lib/UniversalData/plugins'
+    $packArguments = @('pack','bindings/dotnet/UniversalData/UniversalData.csproj','--configuration','Release','--nologo','--verbosity:minimal',
+        "-p:NativeLibraryDirectory=$nativeDirectory","-p:NativePluginDirectory=$pluginDirectory","-p:NativeRuntimeIdentifier=$RuntimeIdentifier",'--output',$packages)
+    if ($IsWindows) {
+        $dependencies = Join-Path $logDirectoryPath 'nuget-native'
+        New-Item -ItemType Directory -Path $dependencies | Out-Null
+        $runtimeRoot = Join-Path $build "windows-runtime/$Configuration"
+        foreach ($runtime in @('ud_core_windows_runtime','ud_sql_windows_runtime')) {
+            $source = Join-Path $runtimeRoot $runtime
+            if (!(Test-Path -LiteralPath $source -PathType Container)) { continue }
+            foreach ($dll in Get-ChildItem -LiteralPath $source -File -Filter '*.dll') {
+                $existing = Join-Path $dependencies $dll.Name
+                if ((Test-Path -LiteralPath $existing) -and (Get-FileHash -LiteralPath $existing).Hash -ne (Get-FileHash -LiteralPath $dll.FullName).Hash) {
+                    throw "The core and SQL connector require different DLLs named $($dll.Name). Select compatible native SDKs."
+                }
+                Copy-Item -LiteralPath $dll.FullName -Destination $existing
+            }
+        }
+        $licenseDirectory = Join-Path $sdk 'share/UniversalData/licenses'
+        if ($NativeRuntimeLicenses) {
+            $notices = (Resolve-Path -LiteralPath $NativeRuntimeLicenses).Path
+            Copy-Item -LiteralPath $notices -Destination (Join-Path $licenseDirectory 'native-runtimes') -Recurse
+        }
+        $packArguments += @("-p:NativeDependencyDirectory=$dependencies","-p:NativeLicenseDirectory=$licenseDirectory")
+    }
+    Invoke-PackageTool $dotnet $packArguments 'nuget-pack.log'
     Invoke-PackageTool $dotnet @('restore','examples/dotnet/Consumer.csproj','--nologo') 'consumer-dependencies.log'
     Invoke-PackageTool $python @('packaging/nuget_feed.py','--assets','bindings/dotnet/UniversalData/obj/project.assets.json','--assets','examples/dotnet/obj/project.assets.json','--output',$packages) 'nuget-dependencies.log'
     Invoke-PackageTool $maven @('-B','-q','-f','bindings/java/pom.xml','package') 'maven-package.log'

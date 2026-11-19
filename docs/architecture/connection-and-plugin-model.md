@@ -43,8 +43,16 @@ Applied 结果使用现有事务事实信封，仅在 Native 协调决策确认�
 
 检查点格式修订为 3，协议族保持 10；旧修订明确拒绝恢复，旧文件保留。插件公共结构增加行命令证明与事务控制原语，旧插件因结构大小不匹配而拒绝，必须重新构建。
 
-## 验收范围
+## ABI 10 历史验收
 
-当前 Linux 验收使用真实 SQLite 混合行、重复参数、同连接并发 Savepoint、独立行提交、外部回滚、人工恢复、进程终止和未知提交禁止重放。PostgreSQL、MySQL、MariaDB、SQL Server 真实服务验证行命令、普通 SQL 与 Native Bulk。百万行装载逐字段回读并比较完整结果签名，写入时间与生成、回读时间分别记录。
+该版本在 Linux 的验收使用真实 SQLite 混合行、重复参数、同连接并发 Savepoint、独立行提交、外部回滚、人工恢复、进程终止和未知提交禁止重放。PostgreSQL、MySQL、MariaDB、SQL Server 真实服务验证行命令、普通 SQL 与 Native Bulk。百万行装载逐字段回读并比较完整结果签名，写入时间与生成、回读时间分别记录。
 
 本批 SQL Server XA、混合 PostgreSQL/SQL Server 参与者及新增 Schema/Catalog 验收尚待执行。Windows、OCI TCPS、完整连接中断/超时故障矩阵仍须分别记录代码缺口或验证受阻，不能根据上述 Linux 结果判定全部产品交付完成。
+
+## ABI 14 SQL 会话与读取模式
+
+`ud_sql_session_open` 把独立 SDK 的连接配置归一化为逻辑资源。`ud_execution_sql_session_open` 从 Package 绑定已授权的资源。两者使用 Connection Manager 的相同租约、C 游标及事务，ABI 的 `ud_read_options` 可在游标打开时返回结果 Schema。原始查询值由 C 解析并转成驱动参数，结构化查询由 C 编译器结合方言生成 SQL。
+
+`ud_write_options.delivery` 明确本次写入的交付语义。直接调用用 `UD_DELIVERY_RESPONSE` 等待数据库确认。需要可恢复语义的作业用 `UD_DELIVERY_RECEIPT` 将回执放入同一事务。`UD_WRITE_UPDATE` 按原生 Batch 的键更新，驱动根据参数预算和 `chunk_rows` 分块。`affected_rows` 返回实际影响行数。
+
+普通 SQL 作业在 SQL Source 配置 `readMode: "stream"`。SQL Destination 默认按作业模式选择交付方式，流式作业等待数据库响应，恢复作业使用回执。显式要求回执的源目标组合需要快照。C 按下游需求提取 Batch，绑定时检查转换是否无状态和外部副作用。SQL Command 仍按现有的逐行事务执行。源读取异常后报告实际已提交量。需要 Journal 的读取先封存快照，恢复按持久化事实继续。Studio、Worker 和 CLI 使用 C 判定的模式。

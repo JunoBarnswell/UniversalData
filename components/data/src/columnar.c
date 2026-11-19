@@ -88,6 +88,13 @@ ud_status ud_batch_create(ud_context *ctx, const ud_field *fields, uint32_t colu
                           uint32_t capacity, ud_batch **out) {
     return ud_batch_create_named(ctx, fields, columns, capacity, (ud_string){0}, out);
 }
+
+ud_status ud_batch_create_like(ud_context *ctx, const ud_batch *schema, uint32_t capacity,
+                               ud_batch **out) {
+    if (!ctx || !schema || !out)
+        return UD_INVALID;
+    return ud_batch_create(ctx, schema->schema->fields, schema->columns, capacity, out);
+}
 void ud_batch_destroy(ud_batch *b) {
     if (!b)
         return;
