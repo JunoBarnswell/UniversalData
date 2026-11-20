@@ -53,7 +53,6 @@ public sealed class RemoteWorkerSession : IAsyncDisposable
         return Send(lease.Reply(frame), cancellation);
     }
 
-    public Task CancelAsync(CancellationToken cancellation) => SendAsync("cancel", cancellation);
 
     // Called only after the dispatch owner durably renews the corresponding catalog lease.
     public async Task RenewAsync(CancellationToken cancellation)

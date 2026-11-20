@@ -1,6 +1,6 @@
 # Worker 自主管理与集群接管
 
-Management 在单机模式用本机 Worker 处理执行与检查。集群中的执行交给已注册的 Agent，Management 保留本机进程用于检查和 Kafka 位点采样。两种入口使用同一个 Hosting 监督器。普通 Worker 在初始化 CLR 与 Native 后通过继承的管道报告 PID，每个进程领用一份任务。隔离任务和专用 CPU、内存预算按任务创建进程。Windows 使用带关闭终止标志的 Job Object，Linux 的专用配额和隔离任务使用 systemd 用户管理器与 cgroup v2。
+Management 在单机模式用本机 Worker 处理执行与检查。集群中的执行交给已注册的 Agent，Management 保留本机进程用于检查和 Kafka 位点采样。两种入口使用同一个 Hosting 监督器。普通 Worker 在初始化 CLR 与 Native 后通过继承的管道报告 PID，每个进程领用一份任务。监督器通过同一条继承管道发送开始、停止和取消命令。隔离任务和专用 CPU、内存预算按任务创建进程。Windows 使用带关闭终止标志的 Job Object，Linux 的专用配额和隔离任务使用 systemd 用户管理器与 cgroup v2。
 
 默认预热一个普通进程。进程在启动、执行和排空各阶段计入配额，确认退出后归还配额。空闲进程被异常终止后以 1、2、4 秒递增退避，最长 30 秒。更新监督器配置时用文件替换写入，管理器验证新配置再切换代号。空闲额度允许时先等新进程就绪，容量吃紧时先释放空闲旧进程。守护者离开或许可耗尽后，Worker 请求原生停止，在清理期限内仍存活时终止进程。
 

@@ -34,7 +34,7 @@ def document(source, target):
     ]
     nodes = [
         node("source", "file.ndjson.source", connection="input",
-             schema=dict(version=VERSION, fields=fields), batchSize=1024),
+             schema=dict(version=VERSION, fields=fields)),
         node("derive", "derive", includeInput=True, columns=[
             dict(name="calculated", expression=NUMBER_EXPRESSION),
             dict(name="normalized", expression=TEXT_EXPRESSION),

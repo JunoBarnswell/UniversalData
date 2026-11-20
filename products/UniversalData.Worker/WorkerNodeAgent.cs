@@ -215,7 +215,6 @@ internal sealed class WorkerNodeAgent(
         private ulong term;
         private int processId;
         private int started;
-        private int drainRequested;
         private int? exitCode;
         private WorkerRequest? request;
         private WorkerSupervisor.Lease? worker;
@@ -358,7 +357,8 @@ internal sealed class WorkerNodeAgent(
             }
             catch (Exception error) when (ConnectionError(error) || error is UnauthorizedAccessException)
             {
-                if (!process.Process.HasExited) await process.DrainAsync(bound,controlToken);
+                if (!process.Process.HasExited)
+                    await process.DrainAsync(Math.Min(5,bound.Policy.CancellationGraceSeconds), requestStop: true);
             }
             finally
             {
@@ -484,21 +484,19 @@ internal sealed class WorkerNodeAgent(
                 if (frame.Kind == "start" && confirmed && Volatile.Read(ref started) == 0 && process is not null)
                 {
                     Volatile.Write(ref started, 1);
-                    await process.Process.StandardInput.WriteLineAsync("start".AsMemory(), cancellation);
-                    await process.Process.StandardInput.FlushAsync(cancellation);
+                    await process.SendAsync("start", cancellation);
                 }
                 else if (frame.Kind is "cancel" or "stop" && process is not null)
                 {
-                    await process.Process.StandardInput.WriteLineAsync(frame.Kind.AsMemory(), cancellation);
-                    await process.Process.StandardInput.FlushAsync(cancellation);
-                    if (Interlocked.Exchange(ref drainRequested,1) == 0 && bound is not null)
-                        _ = process.EnforceDrainDeadline(bound.Policy.CancellationGraceSeconds);
+                    await process.SendAsync(frame.Kind, cancellation);
+                    if (bound is not null)
+                        _ = process.DrainAsync(bound.Policy.CancellationGraceSeconds);
                 }
                 else if (frame.Kind == "control" && bound is not null && frame.Data is { } data &&
                     Guid.TryParseExact(frame.Correlation, "N", out _))
                 {
                     string action = data.GetProperty("action").GetString()!;
-                    if (action is not ("cancel" or "stop" or "metrics" or "snapshot" or "debug"))
+                    if (action is not ("metrics" or "snapshot" or "debug"))
                         throw new InvalidDataException("Invalid Worker control action");
                     int result = 0;
                     JsonElement? value = null;

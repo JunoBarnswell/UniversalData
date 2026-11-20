@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 
 namespace UniversalData.Hosting;
 
-/// <summary>Execution-scoped control capability. Unix sockets remain reachable inside the same bounded state-directory mount.</summary>
+/// <summary>Execution-scoped inspection and debugging. Unix sockets remain reachable inside the bounded state-directory mount.</summary>
 public static class WorkerControl
 {
     private static string Name(string ticket) {
@@ -87,8 +87,6 @@ public static class WorkerControl
                         var supplied = root.GetProperty("token").GetString() ?? "";
                         if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(token),Encoding.UTF8.GetBytes(supplied))) throw new UniversalDataException((int)StatusCode.Auth,"Invalid control capability");
                         switch(root.GetProperty("action").GetString()) {
-                            case "stop": execution.Stop(); break;
-                            case "cancel": execution.Cancel(); break;
                             case "metrics": using(var progress=JsonDocument.Parse(execution.Progress())) value=new {metrics=execution.Metrics,progress=progress.RootElement.Clone()};break;
                             case "snapshot": using(var snapshot = JsonDocument.Parse(filter?.Json(execution.DebugSnapshot()) ?? execution.DebugSnapshot())) value = snapshot.RootElement.Clone(); break;
                             case "debug": execution.DebugControl(root.GetProperty("command").GetRawText()); break;

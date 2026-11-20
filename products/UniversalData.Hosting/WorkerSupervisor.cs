@@ -356,39 +356,52 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
     internal sealed class Lease(WorkerSupervisor owner, Slot slot, Process process) : IAsyncDisposable
     {
+        private readonly SemaphoreSlim commands = new(1, 1);
+        private Task? drain;
         internal Process Process { get; } = process;
         internal int ProcessId => slot.ProcessId;
-        internal Task KillAsync() => WorkerLauncher.Terminate(Process, slot.Key, slot.Isolated);
-        internal async Task EnforceDrainDeadline(uint seconds)
+        internal async Task SendAsync(string command, CancellationToken cancellation)
         {
-            lock (owner.gate)
-                slot.Draining = true;
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
-            try { await Process.WaitForExitAsync(deadline.Token); }
-            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
-            {
-                if (!Process.HasExited) await KillAsync();
-            }
-            catch (InvalidOperationException) { }
-        }
-        internal async Task DrainAsync(WorkerRequest request,string controlToken)
-        {
-            lock (owner.gate)
-                slot.Draining = true;
-            if (Process.HasExited) return;
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Min(5,request.Policy.CancellationGraceSeconds)));
+            await commands.WaitAsync(cancellation);
             try
             {
-                await WorkerControl.Send(request.Policy.ControlDirectory(request.Ticket),request.Ticket,controlToken,
-                    "stop",cancellation:deadline.Token);
-                await Process.WaitForExitAsync(deadline.Token);
+                await Process.StandardInput.WriteLineAsync(command.AsMemory(), cancellation);
+                await Process.StandardInput.FlushAsync(cancellation);
             }
-            catch (Exception error) when (error is IOException or OperationCanceledException or System.Net.Sockets.SocketException or
-                UniversalDataException or InvalidOperationException)
+            finally { commands.Release(); }
+        }
+
+        internal Task DrainAsync(uint seconds, bool requestStop = false)
+        {
+            lock (owner.gate)
             {
-                if (!Process.HasExited) await KillAsync();
+                slot.Draining = true;
+                return drain ??= AwaitDrain(seconds, requestStop);
             }
         }
-        public ValueTask DisposeAsync() => owner.Release(slot);
+
+        private async Task AwaitDrain(uint seconds, bool requestStop)
+        {
+            if (Process.HasExited) return;
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
+            try
+            {
+                if (requestStop) await SendAsync("stop", deadline.Token);
+                await Process.WaitForExitAsync(deadline.Token);
+            }
+            catch (Exception error) when (error is IOException or OperationCanceledException or InvalidOperationException)
+            {
+                if (!Process.HasExited) await WorkerLauncher.Terminate(Process, slot.Key, slot.Isolated);
+            }
+        }
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                if (Volatile.Read(ref drain) is { } pending)
+                    await pending;
+            }
+            finally { await owner.Release(slot); }
+        }
     }
 }

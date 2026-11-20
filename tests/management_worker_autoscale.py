@@ -79,7 +79,8 @@ with tempfile.TemporaryDirectory(prefix="ud-worker-supervision-") as directory:
                 with client.open(urllib.request.Request(base + path, method=method,
                         data=None if body is None else json.dumps(body).encode(),
                         headers={"Content-Type":"application/json","X-UD-CSRF":csrf}), timeout=4) as response:
-                    return json.load(response)
+                    body = response.read()
+                    return json.loads(body) if body else None
 
             eventually(lambda: call("/health/ready"))
             csrf = call("/api/auth/login", "POST", dict(subject="admin", password=password))["csrf"]
@@ -128,6 +129,12 @@ with tempfile.TemporaryDirectory(prefix="ud-worker-supervision-") as directory:
             for ticket,name in zip(tickets,names):
                 eventually(lambda: call("/api/executions/"+ticket)["state"] == "Succeeded",55)
                 assert file_contents(files/(name+".csv")) == expected
+            cancelled = call("/api/executions","POST",dict(packageId=names[0],packageRevision="1",
+                debug=dict(definitionBreakpoints=[["copy"]],previewRows=0)))["id"]
+            eventually(lambda: call("/api/executions/"+cancelled+"/debug")["paused"])
+            call("/api/executions/"+cancelled+"/cancel","POST")
+            eventually(lambda: call("/api/executions/"+cancelled)["state"] == "Cancelled")
+            assert file_contents(files/(names[0]+".csv")) == expected
             idle = eventually(prewarmed)
             change = settings.with_suffix(".next")
             change.write_text('{"prewarm":0,"idleSeconds":1}',encoding="utf-8")
@@ -148,7 +155,7 @@ with tempfile.TemporaryDirectory(prefix="ud-worker-supervision-") as directory:
                 return not path.exists() or path.read_text().split(") ", 1)[1][0] in "ZX"
 
             eventually(exited,10)
-            print(f"PASS: prewarm, two Worker PIDs and {2*rows:,} exact rows, reload, quota and guardian exit")
+            print(f"PASS: prewarm, two Worker PIDs and {2*rows:,} exact rows, cancel, reload, quota and guardian exit")
         except BaseException:
             log.seek(0)
             print(log.read()[-5000:])

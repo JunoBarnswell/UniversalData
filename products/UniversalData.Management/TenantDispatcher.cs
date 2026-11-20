@@ -120,17 +120,17 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             Save(state); return state;
         }
     }
-    public async Task<DeploymentState> ActivateDeployment(HostIdentity identity,string id,bool enabled)
+    public Task<DeploymentState> ActivateDeployment(HostIdentity identity,string id,bool enabled)
     {
         identity.Require("deployment.manage",id); DeploymentState state; string[] running;
         lock(gate) {
             Refresh();
             state = deployments.GetValueOrDefault(id) ?? throw new ArgumentException("Deployment does not exist");
             state = state with { Enabled = enabled,TimestampMs = Now,Revision = checked(state.Revision + 1) }; Save(state);
-            running = enabled ? [] : states.Values.Where(run => run.ParentId is null && run.DeploymentId == id && run.State == "Running").Select(run => run.Id).ToArray();
-            if (!enabled) running = states.Values.Where(run => run.ParentId is null && run.DeploymentId == id && run.State is "Queued" or "Claimed" or "Running").Select(run => run.Id).ToArray();
+            running = enabled ? [] : states.Values.Where(run => run.ParentId is null && run.DeploymentId == id && run.State is "Queued" or "Claimed" or "Running").Select(run => run.Id).ToArray();
         }
-        foreach(string ticket in running) await CancelProcess(ticket); return state;
+        foreach(string ticket in running) CancelProcess(ticket);
+        return Task.FromResult(state);
     }
     private void CheckDeployment(string? id,string? revision,string packageId,string packageRevision)
     {
@@ -246,23 +246,22 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         }
     }
     private string Token(RunState state) { using var value = JsonDocument.Parse(new ParameterVault(policy).Resolve(state.ControlReference)); return value.RootElement.GetProperty("token").GetString()!; }
-    public async Task Cancel(HostIdentity identity,string id) { identity.Require("execution.cancel",id); await CancelProcess(id); }
-    private async Task CancelProcess(string id)
+    public Task Cancel(HostIdentity identity,string id)
     {
-        var state = Get(id);
-        if (state.ParentId is not null) throw new ArgumentException("Execution was not found");
-        using(var catalog=policy.OpenCatalog()) PutControl(catalog,"cancel",state);
-        if (state.State == "Running" && remoteWorkers.TryGetValue(id, out var remote)) {
-            try { await remote.CancelAsync(CancellationToken.None); } catch (IOException) { }
-        } else if (state.State == "Running" && Alive(state)) {
-            try { await WorkerControl.Send(policy.ControlDirectory(id),id,Token(state),"cancel"); } catch (IOException) { }
-            if (workers.TryGetValue(id,out var process)) {
-                _ = Task.Run(async () => { await Task.Delay(TimeSpan.FromSeconds(policy.CancellationGraceSeconds));
-                    try { await process.KillAsync(); } catch (InvalidOperationException) { } });
-            }
-        } else lock(gate) { state = Get(id);using var catalog=policy.OpenCatalog();
+        identity.Require("execution.cancel",id);
+        CancelProcess(id);
+        return Task.CompletedTask;
+    }
+    private void CancelProcess(string id)
+    {
+        lock(gate) {
+            var state = Get(id);
+            if (state.ParentId is not null) throw new ArgumentException("Execution was not found");
+            using var catalog = policy.OpenCatalog();
+            PutControl(catalog,"cancel",state);
             if (state.State is "Queued" or "Claimed" && !catalog.LeaseActive(CatalogKind.Audit,"run/"+id))
-                Save(state with { State = "Cancelled",Revision = checked(state.Revision + 1),TimestampMs = Now }); }
+                Save(state with { State = "Cancelled",Revision = checked(state.Revision + 1),TimestampMs = Now });
+        }
     }
     public async Task<JsonElement> Debug(HostIdentity identity,string id,JsonElement? command = null)
     {
@@ -831,7 +830,6 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         }
         Process? process = null;
         WorkerSupervisor.Lease? localWorker = null;
-        WorkerRequest? localRequest = null;
         RemoteWorkerSession? remote = null;
         bool startSent = continuation is not null, terminalRecorded = false, reattach = false;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation); deadline.CancelAfter(TimeSpan.FromSeconds(policy.ExecutionTimeoutSeconds + policy.CancellationGraceSeconds));
@@ -839,15 +837,12 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         int cancelled=0;
         var controlState = state;
         var remoteState = new TaskCompletionSource<RemoteWorkerSession>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var pipeWriter = new SemaphoreSlim(1, 1);
         async Task SendPipe(string command, CancellationToken token) {
             if (remoteState.Task.IsCompletedSuccessfully) { await remoteState.Task.Result.SendAsync(command, token);return; }
             if (workers.TryGetValue(id, out var local)) {
-                await pipeWriter.WaitAsync(token);
-                try {
-                    await local.Process.StandardInput.WriteLineAsync(command.AsMemory(), token);
-                    await local.Process.StandardInput.FlushAsync(token);
-                } finally { pipeWriter.Release(); }
+                await local.SendAsync(command, token);
+                if (command is "stop" or "cancel")
+                    _ = local.DrainAsync(policy.CancellationGraceSeconds);
             }
         }
         async Task HoldLease() {
@@ -908,7 +903,6 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 remote = await remoteNodes.StartAsync(placement, request, id, lease.Generation, deadline.Token);
                 remoteWorkers[id] = remote;remoteState.TrySetResult(remote);
             } else {
-                localRequest = request;
                 localWorker = await supervisor.RentAsync(request,placement.Budget,deadline.Token);
                 process = localWorker.Process;
                 workers[id] = localWorker;
@@ -1054,8 +1048,8 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 {
                     try
                     {
-                        if (startSent && !terminalRecorded && !localWorker.Process.HasExited && localRequest is not null)
-                            await localWorker.DrainAsync(localRequest,Token(state));
+                        if (startSent && !terminalRecorded && !localWorker.Process.HasExited)
+                            await localWorker.DrainAsync(Math.Min(5,policy.CancellationGraceSeconds), requestStop: true);
                     }
                     finally { await localWorker.DisposeAsync(); }
                 }

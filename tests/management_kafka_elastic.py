@@ -72,7 +72,12 @@ def read():
     return elastic
 
 
-wait_for(lambda: read().get("activeProcesses") == 1,45)
+def settled(plan, processes):
+    return (plan.get("activeProcesses") == plan.get("targetProcesses") == processes
+            and not plan.get("reassigning"))
+
+
+wait_for(lambda: settled(read(),1),45)
 rows = fixture.get("rows",10_000_000)
 field = fixture.get("idField","id")
 producer = Producer(fixture["broker"])
@@ -86,7 +91,10 @@ hosts = set()
 
 def observe():
     global largest
-    active = read().get("activeProcesses",0)
+    plan = read()
+    active = plan.get("activeProcesses",0)
+    if not settled(plan,active):
+        return
     largest = max(largest,active)
     if active == 3:
         hosts.update(member["workerNode"] for member in call("/executions/"+ticket+"/members")
@@ -126,7 +134,11 @@ try:
             seen[index] |= 1 << bit
             received += 1
     assert received == rows and largest == 3 and len(hosts) >= 2, (received, rows, largest, hosts)
-    wait_for(lambda: read().get("activeProcesses") == 1,190)
+    def fully_shrunk():
+        plan = read()
+        return plan if plan.get("planRevision",0) >= 5 and settled(plan,1) else None
+
+    final = wait_for(fully_shrunk,190)
     assert consumer.poll(2) is None, "Unexpected additional output"
 finally:
     consumer.close()
@@ -140,4 +152,4 @@ try:
 finally:
     consumer.close()
 call("/executions/"+ticket+"/stop","POST")
-print(f"PASS: {rows:,} exact results and offsets with 1→3→1 Worker processes")
+print(f"PASS: {rows:,} exact results and offsets with 1→3→1 settled Worker processes at revision {final['planRevision']}")

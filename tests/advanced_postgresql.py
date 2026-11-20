@@ -61,17 +61,26 @@ with tempfile.TemporaryDirectory(prefix='ud-advanced-pg-') as tmp:
             with sqlite3.connect(target) as db:
                 db.execute('CREATE TABLE output(id INTEGER NOT NULL PRIMARY KEY,name TEXT,rev INTEGER NOT NULL)')
             state, spill = root / 'state', root / 'spill'; state.mkdir(); spill.mkdir()
-            fields = [dict(name='id',type='int64',nullable=False),dict(name='name',type='utf8',nullable=True),dict(name='rev',type='int64',nullable=False)]
+            fields = [dict(name='id',type='int64',nullable=False,keyOrder=1),dict(name='name',type='utf8',nullable=True),dict(name='rev',type='int64',nullable=False)]
             package = dict(version=PROTOCOL_VERSION,id='actual-cdc-epoch',
-                connections=[dict(id='source',driver=str(build / 'plugins/ud_connector_postgresql.so'),resource='pg-fixture',credentialReference='file:'+str(config)),
+                connections=[dict(id='source',driver=str(build / 'plugins/ud_connector_postgresql.so'),resource='application_name=ud-advanced-cdc',credentialReference='file:'+str(config)),
                              dict(id='target',driver=str(build / 'plugins/ud_connector_sqlite.so'),resource=str(target),credentialReference='fixture'),
                              dict(id='spill',driver='file',resource=str(spill))],
                 policy=dict(buffers=dict(connection='spill',residentBytes=1,workingBytes=8388608,spillBytes=10000000,maxBlocks=4096)),
                 controlFlow=dict(tasks=[dict(id='flow',kind='dataFlow',config=dict(pipeline='p'))],constraints=[]),
                 dataFlows=[dict(id='p',components=[
                     dict(id='source',component='postgresql.cdc.source',config=dict(connection='source',table='ud_advanced_cdc',schema=dict(version=PROTOCOL_VERSION,fields=fields),slot='ud_advanced_pipeline',publication='ud_advanced_publication',maxTransactions=1)),
-                    dict(id='destination',component='sql.destination',config=dict(connection='target',table='output',mode='changeset',beforeField='before',keys=[0],provisionReceipts=True))],
+                    dict(id='destination',component='sql.destination',config=dict(connection='target',table='output',mode='changeset',beforeField='before',keys=[0],provisionReceipts=True,
+                         schemaPolicy=dict(policy='explicitMapping',mapping=[dict(expected=name,actual=name) for name in ('id','name','rev')])))],
                     paths=[{'from':'source','output':0,'to':'destination','input':0}])])
+            discovery, schema = root / 'discovery.json', root / 'schema.json'
+            discovery.write_text(json.dumps({**package,'connections':[
+                {**package['connections'][0],'credentialReference':'fixture'},
+                *package['connections'][1:]]}))
+            discovery_env = dict(env,PGHOST='localhost',PGHOSTADDR='127.0.0.1',PGPORT=str(port),
+                PGUSER='fixture',PGDATABASE='postgres',PGSSLMODE='verify-full',PGSSLROOTCERT=str(data / 'server.crt'))
+            run([build / 'tests/test_next_phase_queries','--discover',discovery,'source','ud_advanced_cdc',schema],env=discovery_env)
+            package['dataFlows'][0]['components'][0]['config']['schema'] = json.loads(schema.read_text())
             document = root / 'pipeline.json'; document.write_text(json.dumps(package))
             runner = build / 'tests/test_next_phase_execution'
             interrupted = subprocess.run([str(runner),str(document),str(state),'0','2','4','1','destination'],capture_output=True,text=True,timeout=60)
