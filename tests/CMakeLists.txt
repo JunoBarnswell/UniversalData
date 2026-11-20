@@ -330,14 +330,16 @@ endif()
 
 # Advanced SQL/CDC are actual registered acceptance entries, not unregistered
 if(UD_BUILD_HOSTS)
-  add_test(NAME management_multi_process_claim_recovery COMMAND ${Python3_EXECUTABLE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/management_cluster.py ${UD_DOTNET}
-    ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
-  set_tests_properties(management_multi_process_claim_recovery PROPERTIES TIMEOUT 180)
   add_test(NAME management_authenticated_native_worker COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/management_security.py ${UD_DOTNET}
     ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
   set_tests_properties(management_authenticated_native_worker PROPERTIES TIMEOUT 150)
+  if(UD_WITH_HTTP)
+    add_test(NAME management_multi_process_claim_recovery COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/management_cluster.py ${UD_DOTNET}
+      ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
+    set_tests_properties(management_multi_process_claim_recovery PROPERTIES TIMEOUT 180)
+  endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND UD_WITH_HTTP)
     find_program(UD_TEST_OPENSSL openssl)
     if(UD_TEST_OPENSSL)
