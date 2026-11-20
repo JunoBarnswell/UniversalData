@@ -486,11 +486,14 @@ ud_status ud_append_file(ud_context *c, const char *path, const void *p, size_t 
         result = UD_IO;
     return result;
 }
-ud_status ud_write_file(ud_context *c, const char *path, const void *p, size_t n) {
+ud_status ud_write_file(ud_context *c, const char *path, const void *p, size_t n,
+                        ud_file_durability durability) {
     FILE *f = ud_fopen(path, "wb");
     if (!f)
         return ud_fail(c, UD_IO, "cannot write %s", path);
-    ud_status s = fwrite(p, 1, n, f) == n ? ud_flush(c, f) : UD_IO;
+    ud_status s = fwrite(p, 1, n, f) == n ? UD_OK : UD_IO;
+    if (!s && durability == UD_FILE_DURABLE)
+        s = ud_flush(c, f);
     if (fclose(f) && !s)
         s = UD_IO;
     return s ? ud_fail(c, s, "write failed: %s", path) : UD_OK;

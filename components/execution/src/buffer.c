@@ -378,7 +378,7 @@ static ud_status store(ud_buffer_manager *manager, const ud_batch *batch, int ex
         int owned = !status;
         if (!status) {
             uint64_t started = ud_now_ms();
-            status = ud_write_file(manager->ctx, block->path, wire, (size_t)length);
+            status = ud_write_file(manager->ctx, block->path, wire, (size_t)length, UD_FILE_TRANSIENT);
             manager->metrics.write_ms += ud_now_ms() - started;
             if (!status)
                 manager->metrics.write_bytes += length;

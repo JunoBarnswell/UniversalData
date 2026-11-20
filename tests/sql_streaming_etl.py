@@ -229,7 +229,7 @@ def run_mode(root, plugin, stream):
     create_database(source, rows)
     create_database(target, [])
     package_file = root / ("stream.json" if stream else "snapshot.json")
-    package_file.write_text(json.dumps(package(plugin, source, target, stream)), encoding="utf-8")
+    package_file.write_text(json.dumps(package(plugin, source, target, stream, batch_size=128)), encoding="utf-8")
     policy_file = root / ("stream-policy.json" if stream else "snapshot-policy.json")
     policy_file.write_text(json.dumps(policy(root, resources, plugin, source, target)), encoding="utf-8")
     execution_id = "stream-etl" if stream else "snapshot-etl"

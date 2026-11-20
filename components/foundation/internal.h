@@ -78,6 +78,7 @@ void ud_bytes_clear(ud_bytes *);
 ud_status ud_json_quote(ud_bytes *, const char *, uint32_t);
 ud_status ud_base64_encode(ud_bytes *, const uint8_t *, uint32_t, uint32_t line_width);
 ud_status ud_read_file(ud_context *, const char *, ud_bytes *);
-ud_status ud_write_file(ud_context *, const char *, const void *, size_t);
+typedef enum ud_file_durability { UD_FILE_TRANSIENT, UD_FILE_DURABLE } ud_file_durability;
+ud_status ud_write_file(ud_context *, const char *, const void *, size_t, ud_file_durability);
 ud_status ud_append_file(ud_context *, const char *, const void *, size_t);
 #endif

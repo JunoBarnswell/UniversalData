@@ -272,7 +272,7 @@ static ud_status publish_bytes(ud_journal *journal, const char *target, const ud
      * committed generation and recovery does not promote it. */
     ud_status status = ud_path_no_symlinks(journal->ctx, temporary);
     if (!status)
-        status = ud_write_file(journal->ctx, temporary, bytes->data, bytes->size);
+        status = ud_write_file(journal->ctx, temporary, bytes->data, bytes->size, UD_FILE_DURABLE);
     if (!status)
         status = replace ? ud_replace_file(journal->ctx, temporary, target)
                          : ud_publish(journal->ctx, temporary, target);

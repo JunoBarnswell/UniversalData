@@ -214,7 +214,7 @@ static ud_status export_value(column_files *component, ud_connection_lease *leas
                                          path, component->mode, &generation);
     if (!status && !generation->prepared)
         status = ud_write_file(component->context.memory, generation->temporary, value->text,
-                               value->text_length);
+                               value->text_length, UD_FILE_DURABLE);
     if (!status)
         status = ud_file_generation_publish(generation);
     if (!status)

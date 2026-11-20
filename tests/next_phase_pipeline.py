@@ -40,7 +40,7 @@ def package(root,count=10003,duplicates='first'):
     build=[component('reference','file.ndjson.source',connection='reference',schema=ref,batchSize=3),component('build','cacheBuild',cache='ref',mapping=[0,1,2])]
     build_paths=[edge('reference','build')]
     if duplicates=='error':build.append(component('duplicateErrors','file.ndjson.destination',connection='duplicateErrors'));build_paths.append(edge('build','duplicateErrors'))
-    nodes=[component('facts','sql.source',connection='source',table='src',sql='SELECT * FROM src ORDER BY id DESC',schema=original,batchSize=127,incremental=dict(mode='composite',keys=['water','id'],after=[1000,0],unique=True,monotonic=True),schemaPolicy=dict(policy='strict')),
+    nodes=[component('facts','sql.source',connection='source',table='src',sql='SELECT * FROM src ORDER BY id DESC',schema=original,batchSize=255,incremental=dict(mode='composite',keys=['water','id'],after=[1000,0],unique=True,monotonic=True),schemaPolicy=dict(policy='strict')),
         component('reference','file.ndjson.source',connection='reference',schema=ref,batchSize=2),
         component('cast','cast',schema=converted,errorPolicy='redirect'),
         component('derive','derive',columns=[dict(name='doubled',expression={'op':'mul','args':[{'column':'amount'},{'literal':2,'type':'int64'}]})]),

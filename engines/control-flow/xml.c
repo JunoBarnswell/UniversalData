@@ -302,8 +302,8 @@ static ud_status invoke(void *user, const ud_component_context *context, ud_stri
     }
     if (!status && generation) {
         if (!generation->prepared)
-            status =
-                ud_write_file(context->memory, generation->temporary, output.data, output.size);
+            status = ud_write_file(context->memory, generation->temporary, output.data, output.size,
+                                   UD_FILE_DURABLE);
         if (!status)
             status = ud_file_generation_publish(generation);
         if (!status)

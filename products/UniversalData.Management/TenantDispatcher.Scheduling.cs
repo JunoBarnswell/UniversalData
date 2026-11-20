@@ -94,22 +94,22 @@ public sealed partial class TenantDispatcher
         if (!HostIdentity.ValidId(jobId) || !HostIdentity.ValidId(request.RequestId) ||
             request.OccurrenceId is not null && !HostIdentity.ValidId(request.OccurrenceId))
             throw new ArgumentException("Invalid job occurrence identity");
+        var occurrenceId = request.OccurrenceId ?? "manual-" + OccurrenceId(jobId, request.RequestId);
+        var key = OccurrenceKey(jobId, occurrenceId);
+        using var catalog = policy.OpenCatalog();
+        if (ReadOccurrence(catalog, key, occurrenceId) is { RunId: not null } issued)
+            return issued;
         lock (gate)
         {
-            using var catalog = policy.OpenCatalog();
-            var lease = catalog.TryAcquireLease(CatalogKind.Audit, "job/" + jobId, owner, LeaseDuration)
-                ?? throw new UniversalDataException((int)StatusCode.Busy, "Job is owned by another scheduler");
+            var lease = catalog.TryAcquireLease(CatalogKind.Audit, "job/" + jobId, owner, LeaseDuration);
+            if (lease is null)
+                return ReadOccurrence(catalog, key, occurrenceId) is { RunId: not null } current ? current :
+                    throw new UniversalDataException((int)StatusCode.Busy, "Job is owned by another scheduler");
             try
             {
                 Refresh();
                 var job = jobs.GetValueOrDefault(jobId) ?? throw new ArgumentException("Job does not exist");
-                var occurrenceId = request.OccurrenceId ?? "manual-" + OccurrenceId(jobId, request.RequestId);
-                var key = OccurrenceKey(jobId, occurrenceId);
-                var revision = catalog.LatestRevision(CatalogKind.Audit, key);
-                JobOccurrence? previous = revision != 0
-                    ? JsonSerializer.Deserialize<JobOccurrence>(catalog.Get(CatalogKind.Audit, key, revision)!,
-                        HostPolicy.JsonOptions) with { Id = occurrenceId }
-                    : null;
+                var previous = ReadOccurrence(catalog, key, occurrenceId);
                 if (previous is { RunId: not null })
                     return previous;
                 if (request.OccurrenceId is not null && previous?.State != "Missed")
@@ -119,6 +119,13 @@ public sealed partial class TenantDispatcher
             }
             finally { ReleaseJobLease(catalog, lease); }
         }
+    }
+
+    private static JobOccurrence? ReadOccurrence(Catalog catalog, string key, string id)
+    {
+        var revision = catalog.LatestRevision(CatalogKind.Audit, key);
+        return revision == 0 ? null : JsonSerializer.Deserialize<JobOccurrence>(
+            catalog.Get(CatalogKind.Audit, key, revision)!, HostPolicy.JsonOptions) with { Id = id };
     }
 
     private void Schedule()

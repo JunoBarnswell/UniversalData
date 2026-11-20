@@ -1,9 +1,11 @@
 """Real management and Native Catalog schedule admission."""
+from contextlib import closing
 import datetime as dt
 import http.cookiejar
 import json
 from pathlib import Path
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -71,14 +73,31 @@ with tempfile.TemporaryDirectory(prefix="ud-job-schedules-") as temporary:
             future = call("/api/jobs/scheduled-job/schedule-preview", "POST", job["schedules"][1])
             assert len(future) == 5 and [b-a for a, b in zip(future, future[1:])] == [31000]*4
             first = call("/api/jobs/scheduled-job/runs", "POST", {"requestId": "same-request"})
-            again = call("/api/jobs/scheduled-job/runs", "POST", {"requestId": "same-request"})
-            assert first["runId"] == again["runId"] and first["id"] == again["id"]
             for _ in range(60):
                 history = call("/api/jobs/scheduled-job/occurrences")
                 if len(history) == 2:
                     break
                 time.sleep(0.2)
             assert len(history) == 2 and len({entry["runId"] for entry in history}) == 2, history
+            catalog = root / "state" / "tenants" / "local" / "catalog" / "catalog.sqlite3"
+            lease = "tenant='local' AND kind=7 AND id='job/scheduled-job'"
+            with closing(sqlite3.connect(catalog)) as holder:
+                for _ in range(20):
+                    now = int(time.time() * 1000)
+                    with holder:
+                        claimed = holder.execute("UPDATE leases SET owner='external-scheduler', "
+                            f"generation=generation+1,until_ms=? WHERE {lease} AND until_ms<=?",
+                            (now + 30000, now)).rowcount
+                    if claimed:
+                        break
+                    time.sleep(0.1)
+                assert claimed == 1
+                try:
+                    again = call("/api/jobs/scheduled-job/runs", "POST", {"requestId": "same-request"})
+                finally:
+                    with holder:
+                        holder.execute(f"UPDATE leases SET owner='',until_ms=0 WHERE {lease} AND owner='external-scheduler'")
+            assert first["runId"] == again["runId"] and first["id"] == again["id"]
             print("One-shot admission, anchored interval preview and idempotent manual trigger passed")
         finally:
             process.terminate()
