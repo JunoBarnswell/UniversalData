@@ -14,13 +14,14 @@ using ConnectionManager = Microsoft.SqlServer.Dts.Runtime.ConnectionManager;
 public static class GoldenRows
 {
     private static ConnectionManager FlatFile(Package package, string name, string path,
-        string[] names, DataType[] types, int[] lengths)
+        string[] names, DataType[] types, int[] lengths, bool header)
     {
         var connection = package.Connections.Add("FLATFILE");
         connection.Name = name;
         connection.ConnectionString = path;
         var file = (IDTSConnectionManagerFlatFile100)connection.InnerObject;
         file.Format = "Delimited";
+        file.ColumnNamesInFirstDataRow = header;
         file.LocaleID = 1033;
         file.CodePage = 1252;
         file.HeaderRowDelimiter = "\r\n";
@@ -100,10 +101,10 @@ public static class GoldenRows
         }
         var sourceConnection = FlatFile(package, "Input", inputPath,
             new[] { "id", "amount", "label" }, new[] { DataType.DT_I4, DataType.DT_I4, DataType.DT_WSTR },
-            new[] { 0, 0, 24 });
+            new[] { 0, 0, 24 }, false);
         var targetConnection = FlatFile(package, "Observed", Path.Combine(root, "output.csv"),
             new[] { "id", "calculated", "normalized" }, new[] { DataType.DT_I4, DataType.DT_I4, DataType.DT_WSTR },
-            new[] { 0, 0, 24 });
+            new[] { 0, 0, 24 }, true);
 
         var flow = (TaskHost)package.Executables.Add("STOCK:PipelineTask");
         flow.Name = "Transform rows";
