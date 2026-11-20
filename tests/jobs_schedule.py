@@ -98,6 +98,19 @@ with tempfile.TemporaryDirectory(prefix="ud-job-schedules-") as temporary:
                     with holder:
                         holder.execute(f"UPDATE leases SET owner='',until_ms=0 WHERE {lease} AND owner='external-scheduler'")
             assert first["runId"] == again["runId"] and first["id"] == again["id"]
+            for _ in range(150):
+                runs = [call(f"/api/executions/{entry['runId']}") for entry in history]
+                nodes = call("/api/workers")
+                if not any(node["activeProcesses"] for node in nodes) and all(
+                    run["state"] not in ("Queued", "Claimed", "Running") for run in runs
+                ):
+                    break
+                time.sleep(0.2)
+            else:
+                raise AssertionError(f"Scheduled runs and Worker processes did not complete: {runs}, {nodes}")
+            if any(run["state"] != "Succeeded" for run in runs):
+                log.seek(0)
+                raise AssertionError(f"Scheduled runs did not succeed: {runs}\n{log.read()}")
             print("One-shot admission, anchored interval preview and idempotent manual trigger passed")
         finally:
             process.terminate()

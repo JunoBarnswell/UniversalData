@@ -276,7 +276,7 @@ if(TARGET ud_package)
     add_test(NAME next_phase_pipeline_recovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/next_phase_pipeline.py $<TARGET_FILE:test_next_phase_execution> $<TARGET_FILE:ud_connector_sqlite>)
     set_tests_properties(next_phase_pipeline_recovery PROPERTIES TIMEOUT 420)
     if(WIN32)
-      set_tests_properties(next_phase_pipeline_recovery PROPERTIES TIMEOUT 900)
+      set_tests_properties(next_phase_pipeline_recovery PROPERTIES TIMEOUT 900 ENVIRONMENT "UD_TEST_RECOVERY_TRACE=1")
     endif()
   endif()
 endif()
@@ -584,7 +584,8 @@ if(TARGET ud_package)
       DEPENDS ud_managed_product_test ud_product_hosts VERBATIM)
     add_test(NAME jobs_schedule_catalog COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/jobs_schedule.py ${UD_DOTNET}
-      ${PROJECT_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll $<TARGET_FILE:ud_worker>)
+      ${PROJECT_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll
+      ${PROJECT_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
     set_tests_properties(jobs_schedule_catalog PROPERTIES LABELS "scheduling" TIMEOUT 75)
     if(TARGET ud_connector_sqlite)
       add_test(NAME sdk_worker_process_isolation COMMAND ${Python3_EXECUTABLE}

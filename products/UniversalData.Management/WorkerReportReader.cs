@@ -19,8 +19,8 @@ internal sealed class WorkerReportReader(Catalog catalog, RunState run, Func<Can
     {
         while (true)
         {
-            string text = await read(cancellation) ?? throw new InvalidDataException("Worker outcome is unknown");
-            using var message = JsonDocument.Parse(text);
+            string text = await read(cancellation) ?? throw Failure(StatusCode.WorkerLost, "Worker report stream closed");
+            using var message = Decode(text);
             var report = message.RootElement;
             if (report.GetProperty("version").GetInt32() != ProductInfo.Protocol || report.GetProperty("ticket").GetString() != run.Id)
                 throw new InvalidDataException("Worker identity differs from dispatch");
@@ -38,6 +38,15 @@ internal sealed class WorkerReportReader(Catalog catalog, RunState run, Func<Can
             return report.Clone();
         }
     }
+
+    private static JsonDocument Decode(string text)
+    {
+        try { return JsonDocument.Parse(text); }
+        catch (JsonException) { throw Failure(StatusCode.Protocol, "Malformed Worker report"); }
+    }
+
+    private static WorkerFailureException Failure(StatusCode code, string message) => new(
+        new RunFailure((int)code, "worker.report", nameof(WorkerReportReader), new(ErrorSource.Worker, code, message)));
 
     private void Import(JsonElement report)
     {

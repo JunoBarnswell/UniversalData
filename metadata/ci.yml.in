@@ -82,6 +82,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
+          if ($IsWindows) {
+            $env:TEMP = $env:RUNNER_TEMP
+            $env:TMP = $env:RUNNER_TEMP
+          }
           python -m pip install -r tests/requirements.txt
           $triplet = $env:UD_CORE_TRIPLET
           $udInstalled = "$PWD/build/vcpkg/installed/$triplet"

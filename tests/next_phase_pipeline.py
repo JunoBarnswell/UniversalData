@@ -60,7 +60,14 @@ def package(root,count=10003,duplicates='first'):
 def run(root,resume=False,kill=0,after=1,component='',expected=0,workers=4,deny='',memory=67108864):
     operation = 'resume' if resume else 'interrupt' if kill and after > 0 else 'execute'
     print(f'{root.name}: {operation}', flush=True)
-    result=subprocess.run([DRIVER,str(root/'package.json'),str(root/'state'),str(int(resume)),str(workers),str(kill),str(after),component,str(memory),str(deny)],capture_output=True,text=True,timeout=180)
+    try:
+        result=subprocess.run([DRIVER,str(root/'package.json'),str(root/'state'),str(int(resume)),str(workers),str(kill),str(after),component,str(memory),str(deny)],capture_output=True,text=True,timeout=180)
+    except subprocess.TimeoutExpired as error:
+        events = error.stderr or ''
+        if isinstance(events, bytes):
+            events = events.decode('utf-8', errors='replace')
+        print(events[-4096:], file=sys.stderr, flush=True)
+        raise
     if kill and after>0: assert result.returncode==91,(result.stdout,result.stderr);return
     assert result.returncode==0,(result.stdout,result.stderr)
     facts=json.loads(result.stdout)
