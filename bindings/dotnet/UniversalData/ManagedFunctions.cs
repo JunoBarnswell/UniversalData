@@ -55,10 +55,7 @@ internal sealed class FunctionRegistration
         definition=value;root=GCHandle.Alloc(this);Retain=_=>{Interlocked.Increment(ref references);return 0;};Release=_=>Drop();Bind=BindValue;Evaluate=EvaluateValue;
     }
     internal void Drop() { if(Interlocked.Decrement(ref references)==0)root.Free(); }
-    private static int Failure(IntPtr memory,Exception error) {
-        int code=error is UniversalDataException native?native.Status:(int)StatusCode.Parse;
-        using var strings=new NativeStrings();return Native.ud_context_report(memory,code,strings.Pin("Managed function callback failed: "+error.GetType().FullName));
-    }
+    private static int Failure(IntPtr memory, Exception error) => WorkerNativeError.ReportComponent(memory, error);
     private int BindValue(IntPtr user,IntPtr memory,IntPtr fields,uint count,out IntPtr output) {
         using var guard=Execution.EnterCallback();output=IntPtr.Zero;IntPtr arguments=IntPtr.Zero;
         try {

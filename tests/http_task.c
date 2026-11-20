@@ -25,9 +25,10 @@ static int exists(const char *p) {
 static ud_status authorize(void *user, ud_string tenant, ud_string resource, int32_t action) {
     fixture *f = user;
     CHECK(tenant.length == 6 && !memcmp(tenant.data, "tenant", 6));
-    (void)resource;
     if ((f->mode == 2 && action == UD_ACCESS_NETWORK) ||
         (f->mode == 8 && action == UD_ACCESS_READ) ||
+        (f->mode == 12 && action == UD_ACCESS_NETWORK && resource.length >= 6 &&
+         !memcmp(resource.data + resource.length - 6, "/token", 6)) ||
         (f->mode == 9 && action == UD_ACCESS_NETWORK && exists(f->marker)))
         return UD_AUTH;
     return UD_OK;
@@ -35,10 +36,11 @@ static ud_status authorize(void *user, ud_string tenant, ud_string resource, int
 static ud_status resolve(void *user, ud_context *ctx, ud_string tenant, ud_string resource,
                          ud_string reference, ud_string *out) {
     fixture *f = user;
-    CHECK(tenant.length == 6 && resource.length > 5 && reference.length == 5 &&
-          !memcmp(reference.data, "token", 5));
+    CHECK(tenant.length == 6 && resource.length > 5 && reference.length == 5);
     f->resolved++;
-    const char *text = f->mode == 7 ? "{\"headers\":{\"Authorization\":\"bad\\r\\nX: x\"}}"
+    const char *text = !memcmp(reference.data, "oauth", 5) ? "fixture secret&" :
+                       !memcmp(reference.data, "extra", 5) ? "private header" :
+                       f->mode == 7 ? "{\"headers\":{\"Authorization\":\"bad\\r\\nX: x\"}}"
                                     : "{\"headers\":{\"Authorization\":\"Bearer fixture-token\"}}";
     size_t n = strlen(text);
     char *p = ud_alloc(ctx, n);
@@ -123,6 +125,13 @@ int main(int argc, char **argv) {
                           : s == UD_CANCELLED    ? UD_EXEC_CANCELLED
                           : s                    ? UD_EXEC_FAILED
                                                  : UD_EXEC_SUCCEEDED));
+        if (f.mode == 13) {
+            char *diagnostics = NULL;
+            uint32_t length = 0;
+            OK(ud_execution_diagnostics(e, &diagnostics, &length));
+            CHECK(fwrite(diagnostics, 1, length, stdout) == length);
+            ud_free(diagnostics);
+        }
         OK(ud_execution_destroy(e));
     }
     return 0;

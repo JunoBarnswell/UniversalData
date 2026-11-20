@@ -39,13 +39,36 @@ enum {
     UD_FENCED = 17,
     UD_TIMEOUT = 18,
     UD_MORE = 19, /* Component has bounded pending output; scheduler polls it. */
-    UD_TRUNCATED = 20
+    UD_TRUNCATED = 20,
+    UD_DRIVER_UNAVAILABLE = 21,
+    UD_WORKER_LOST = 22,
+    UD_PROTOCOL = 23,
+    UD_MANAGED_COMPONENT = 24,
+    UD_HTTP_STATUS = 25
 };
 typedef struct ud_context ud_context;
 UD_API const char *ud_version(void);
 UD_API const char *ud_status_name(ud_status status);
 /* Calling-thread diagnostic; borrowed until its next failing operation. */
 UD_API const char *ud_error(const ud_context *ctx);
+#define UD_STATUS_LAST UD_HTTP_STATUS
+enum {
+    UD_ERROR_NATIVE = 0,
+    UD_ERROR_DATABASE = 1,
+    UD_ERROR_HTTP = 2,
+    UD_ERROR_TRANSPORT = 3,
+    UD_ERROR_WORKER = 4,
+    UD_ERROR_COMPONENT = 5
+};
+typedef struct ud_error_detail {
+    uint32_t struct_size, abi_version;
+    int32_t source;
+    ud_status cause;
+    int64_t native_code;
+    char sqlstate[6];
+} ud_error_detail;
+/* Copies the calling thread's diagnostic details. No credentials or input values. */
+UD_API ud_status ud_error_details(const ud_context *, ud_error_detail *);
 #ifdef __cplusplus
 }
 #endif

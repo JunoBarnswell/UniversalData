@@ -19,16 +19,21 @@ def run(index,args):
 def write(path,value):path.write_text(json.dumps(value,ensure_ascii=False))
 with tempfile.TemporaryDirectory(prefix='ud-native-queries-') as folder:
     root=pathlib.Path(folder)
-    db=root/'source.db'
+    resources=root/'resources';resources.mkdir()
+    db=resources/'source.db'
     with closing(sqlite3.connect(db)) as connection, connection:
         connection.execute('CREATE TABLE source(id INTEGER PRIMARY KEY,name TEXT NOT NULL)')
     package=root/'package.json'
     write(package,dict(version=PROTOCOL_VERSION,id='query-parity',connections=[dict(id='db',driver=a.sqlite,resource=str(db),credentialReference='fixture')],controlFlow=dict(tasks=[],constraints=[]),dataFlows=[]))
+    secret = root / 'sqlite.conf'; secret.write_text(str(db), encoding='utf-8')
+    host = root / 'host-policy.json'
+    write(host, dict(dataDirectory=str(root/'sdk-state'), fileRoots=[str(resources)], networkOrigins=[],
+                     pluginRoots=[str(pathlib.Path(a.sqlite).resolve().parent)], credentialFiles={'fixture': str(secret)}))
     for round in (0,1):
         if round:
             with closing(sqlite3.connect(db)) as connection, connection:
                 connection.execute('ALTER TABLE source ADD COLUMN extra TEXT')
-        for index in range(3):run(index,['--discover',package,'db','source',root/f'{index}.schema.json'])
+        for index in range(3):run(index,['--discover',package,'db','source',root/f'{index}.schema.json'] + ([host] if index == 1 else []))
         canonical=(root/'0.schema.json').read_bytes()
         assert all((root/f'{i}.schema.json').read_bytes()==canonical for i in (1,2))
         discovered=json.loads(canonical);assert len(discovered['fields'])==2+round

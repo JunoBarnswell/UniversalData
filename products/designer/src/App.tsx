@@ -6,6 +6,7 @@ import {
   CalendarDays,
   FolderOpen,
   Workflow,
+  Server,
 } from "lucide-react";
 import { api, type Session } from "./api";
 import { Authentication, SessionControls } from "./Authentication";
@@ -13,9 +14,10 @@ import { Workspace, useWorkspaces } from "./features/workspace/Workspace";
 import { Appearance } from "./shared/design-system/Appearance";
 import { Executions } from "./Executions";
 import { Jobs } from "./Jobs";
+import { Workers } from "./Workers";
 import { Projects } from "./Projects";
 import type { Component } from "./model";
-type Page = "projects" | "designer" | "runs" | "logs" | "jobs";
+type Page = "projects" | "designer" | "runs" | "logs" | "jobs" | "workers";
 export default function App() {
   return (
     <Authentication>
@@ -48,6 +50,7 @@ function AuthenticatedApp({ session }: { session: Session }) {
     { key: "runs", label: "执行", icon: Play },
     { key: "logs", label: "日志", icon: List },
     { key: "jobs", label: "作业", icon: CalendarDays },
+    { key: "workers", label: "Worker", icon: Server },
   ];
   return (
     <div className="application">
@@ -107,7 +110,7 @@ function AuthenticatedApp({ session }: { session: Session }) {
         <Executions logsOnly={page === "logs"} />
       ) : page === "jobs" ? (
         <Jobs />
-      ) : null}
+      ) : page === "workers" ? <Workers /> : null}
     </div>
   );
 }

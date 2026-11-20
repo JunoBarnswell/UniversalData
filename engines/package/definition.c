@@ -95,8 +95,18 @@ ud_status ud_package_requires_journal(const ud_package *package, int32_t *requir
             const ud_json *task = ud_json_at(tasks, index);
             ud_string kind = {0};
             UD_TRY(ud_json_string(ud_member(task, "kind"), &kind));
-            if (!named(kind, "dataFlow") || ud_member(task, "children") ||
-                ud_member(task, "transaction"))
+            if (ud_member(task, "children") || ud_member(task, "transaction"))
+                return UD_OK;
+            if (named(kind, "http.request")) {
+                const ud_json *config = ud_member(task, "config");
+                const ud_json *method = ud_member(config, "method");
+                ud_string verb = {"GET", 3};
+                if ((method && ud_json_string(method, &verb)) ||
+                    (!named(verb, "GET") && !named(verb, "HEAD")))
+                    return UD_OK;
+                continue;
+            }
+            if (!named(kind, "dataFlow"))
                 return UD_OK;
         }
     }

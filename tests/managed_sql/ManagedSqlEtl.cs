@@ -19,23 +19,23 @@ internal static class ManagedSqlEtl
             var target = Path.Combine(directory.FullName, "target.db");
             using (var writer = Open(plugin, source))
             {
-                writer.Ado.ExecuteCommand("CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)");
+                writer.Ado.ExecuteCommand("CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)").Require();
                 var rows = Enumerable.Range(1, 35)
                     .Select(id => new ManagedEtlRow { Id = id, Label = $"数据-{id}-order" })
                     .ToList();
-                Require(writer.Insertable(rows).ExecuteCommand() == rows.Count, "Source preparation");
+                Require(writer.Insertable(rows).ExecuteCommand().Require() == rows.Count, "Source preparation");
             }
             using (var writer = Open(plugin, target))
-                writer.Ado.ExecuteCommand("CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)");
+                writer.Ado.ExecuteCommand("CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)").Require();
 
             var sourceReadable = true;
             var schema = Discover(plugin, source, Authorize, Resolve);
             var document = Definition(plugin, source, target, schema);
-            using (var package = new Package(document))
+            using (var package = new NativePackage(document))
                 Require(!package.RequiresJournal, "Live SQL work must use response delivery");
             VerifyPreview(document, Authorize, Resolve);
             using (var before = Open(plugin, target))
-                Require(Convert.ToInt64(before.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows"),
+                Require(Convert.ToInt64(before.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows").Require(),
                     CultureInfo.InvariantCulture) == 0, "Preview left the destination empty");
             using var registry = new Registry();
             new ManagedSqlModule().Register(registry);
@@ -45,11 +45,11 @@ internal static class ManagedSqlEtl
                 using (var hosted = execution.OpenSqlClient("source"))
                 {
                     Require(hosted.CurrentConnectionConfig.DbType == DbType.Sqlite, "Hosted driver identification");
-                    Require(Convert.ToInt64(hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows"),
+                    Require(Convert.ToInt64(hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows").Require(),
                         CultureInfo.InvariantCulture) == 35, "Hosted authorized read");
                     try
                     {
-                        hosted.Ado.ExecuteCommand("DELETE FROM etl_rows WHERE id=1");
+                        hosted.Ado.ExecuteCommand("DELETE FROM etl_rows WHERE id=1").Require();
                         throw new InvalidOperationException("The source write should have been denied.");
                     }
                     catch (UniversalDataException denied) when (denied.Code == StatusCode.Auth) { }
@@ -57,12 +57,12 @@ internal static class ManagedSqlEtl
                     sourceReadable = false;
                     try
                     {
-                        hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows");
+                        hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows").Require();
                         throw new InvalidOperationException("The revoked read should have been denied.");
                     }
                     catch (UniversalDataException denied) when (denied.Code == StatusCode.Auth) { }
                     finally { sourceReadable = true; }
-                    Require(Convert.ToInt64(hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows"),
+                    Require(Convert.ToInt64(hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows").Require(),
                         CultureInfo.InvariantCulture) == 35, "Read after restoring the host grant");
                 }
                 execution.Execute();
@@ -70,7 +70,7 @@ internal static class ManagedSqlEtl
                     "C source, managed transform and C target delivery");
             }
             using var reader = Open(plugin, target);
-            var result = reader.Queryable<ManagedEtlRow>().OrderBy(row => row.Id).ToList();
+            var result = reader.Queryable<ManagedEtlRow>().OrderBy(row => row.Id).ToList().Require();
             Require(result.Select(row => (row.Id, row.Label)).SequenceEqual(
                 Enumerable.Range(1, 35).Select(id => ((long)id, $"数据-{id}-ORDER"))), "Target readback");
             Console.WriteLine("PASS SQL Source, managed typed transform, SQL Destination, 35 rows and identities");
@@ -94,7 +94,7 @@ internal static class ManagedSqlEtl
         }
     }
 
-    private static SqlSugarClient Open(string plugin, string file) => new(new ConnectionConfig
+    private static SqlSugarClient Open(string plugin, string file) => SqlAcceptance.OpenClient(new ConnectionConfig
     {
         DbType = DbType.Sqlite,
         ConnectionString = "Data Source=" + file,

@@ -1,3 +1,4 @@
+using UniversalData;
 namespace SqlSugar;
 
 internal sealed class Insertable<T> : IInsertable<T>
@@ -9,7 +10,7 @@ internal sealed class Insertable<T> : IInsertable<T>
     internal Insertable(SqlSugarClient client, IEnumerable<T> entities)
     { this.client = client; mapping = EntityMapping.For<T>(); this.entities = entities ?? throw new ArgumentNullException(nameof(entities)); }
 
-    public int ExecuteCommand() => Execute(default);
+    public Result<int> ExecuteCommand() => SqlResult.Run(() => Execute(default));
 
     private int Execute(CancellationToken cancellationToken)
     {
@@ -19,6 +20,6 @@ internal sealed class Insertable<T> : IInsertable<T>
             cancellationToken: cancellationToken);
     }
 
-    public Task<int> ExecuteCommandAsync(CancellationToken cancellationToken = default)
-    { cancellationToken.ThrowIfCancellationRequested(); return Task.Run(() => Execute(cancellationToken), cancellationToken); }
+    public Task<Result<int>> ExecuteCommandAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(() => SqlResult.Run(() => Execute(cancellationToken)));
 }

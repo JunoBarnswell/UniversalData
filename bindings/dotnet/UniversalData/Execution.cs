@@ -21,7 +21,7 @@ public sealed record ExecutionEvent(string PackageId, string ExecutionId, string
 public sealed record ExecutionMetrics(ExecutionState State, StatusCode Result, ulong InputRows, ulong OutputRows, ulong RejectedRows, ulong Batches, ulong QueuedBatches, ulong QueueHighWater, ulong MemoryUsed, ulong ExecutedTasks, ulong DurableTasks, ulong RecoveryTasks, ulong ResumedTasks, ulong SpillBytes, ulong PipelineTrees, ulong TreeHighWater, ulong WorkerHighWater, ulong CommittedRows, ulong AcknowledgedRows, ulong ErrorCount, ulong ErrorRows, ulong CommittedErrorRows, ulong AcknowledgedErrorRows);
 
 /// <summary>Thin projection of the only native Package execution lifecycle.</summary>
-public sealed class Execution : IDisposable
+internal sealed class Execution : IDisposable
 {
     [ThreadStatic] private static int callbackDepth;
     private readonly ExecutionHandle execution;
@@ -141,7 +141,21 @@ public sealed class Execution : IDisposable
     { Control(); lock (controller) { Open(); Check(Native.ud_execution_start(execution)); } }
 
     public bool Wait(uint timeoutMilliseconds)
-    { Control(); lock (controller) { Open(); int s = Native.ud_execution_wait(execution, timeoutMilliseconds); if (s == 11) return false; Check(s); return true; } }
+    {
+        Control();
+        lock (controller)
+        {
+            Open();
+            var status = (StatusCode)Native.ud_execution_wait(execution, timeoutMilliseconds);
+            if (status == StatusCode.Busy) return false;
+            if (status != StatusCode.Ok)
+            {
+                var detail = WorkerNativeError.FromExecution(execution, status);
+                throw new UniversalDataException((int)status, detail.Message, detail);
+            }
+            return true;
+        }
+    }
 
     public void Stop() { Open(); Native.ud_execution_stop(execution); }
 
@@ -189,6 +203,15 @@ public sealed class Execution : IDisposable
     }
 
     /// <summary>Open a strongly typed SqlSugar client through this execution's authorized Native lease.</summary>
+    internal SqlSugar.SqlSessionHandle OpenSqlSession(string connection)
+    {
+        lock (controller)
+        {
+            Open();
+            return SqlSugar.SqlNative.Open(execution, connection);
+        }
+    }
+
     public SqlSugar.SqlSugarClient OpenSqlClient(string connection)
     {
         Control();

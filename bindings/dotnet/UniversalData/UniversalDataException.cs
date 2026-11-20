@@ -1,7 +1,8 @@
 namespace UniversalData;
 
-public sealed class UniversalDataException(int status, string message) : Exception(message)
+public sealed class UniversalDataException(int status, string message, OperationError? detail = null) : Exception(message)
 {
+    public OperationError? Detail { get; } = detail;
     public int Status { get; } = status;
     public StatusCode Code => (StatusCode)Status;
 }

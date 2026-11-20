@@ -1,3 +1,4 @@
+using UniversalData;
 using System.Linq.Expressions;
 
 namespace SqlSugar;
@@ -15,7 +16,7 @@ internal sealed class Updateable<T> : IUpdateable<T>
     public IUpdateable<T> WhereColumns(params Expression<Func<T, object>>[] columns)
     { keys = WriteKeyResolver.Resolve(mapping, columns ?? []); return this; }
 
-    public int ExecuteCommand() => Execute(default);
+    public Result<int> ExecuteCommand() => SqlResult.Run(() => Execute(default));
 
     private int Execute(CancellationToken cancellationToken)
     {
@@ -26,6 +27,6 @@ internal sealed class Updateable<T> : IUpdateable<T>
             cancellationToken: cancellationToken);
     }
 
-    public Task<int> ExecuteCommandAsync(CancellationToken cancellationToken = default)
-    { cancellationToken.ThrowIfCancellationRequested(); return Task.Run(() => Execute(cancellationToken), cancellationToken); }
+    public Task<Result<int>> ExecuteCommandAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(() => SqlResult.Run(() => Execute(cancellationToken)));
 }

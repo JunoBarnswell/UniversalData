@@ -24,8 +24,10 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
     static const char *keys[] = {
         "connection",     "method",           "body",           "contentType",  "caConnection",
         "timeoutMs",      "maxResponseBytes", "maxAttempts",    "retryDelayMs", "expectedStatus",
-        "statusVariable", "bodyVariable",     "headersVariable"};
-    ud_status s = ud_json_keys(*out, keys, 13);
+        "statusVariable", "bodyVariable",     "headersVariable", "headers", "responseHeaders"};
+    ud_status s = ud_json_keys(*out, keys, sizeof(keys) / sizeof(*keys));
+    if (!s)
+        s = ud_http_validate_headers(ud_member(*out, "headers"), ud_member(*out, "responseHeaders"));
     if (!s)
         s = ud_json_string(ud_member(*out, "connection"), &p->connection);
     const char *names[] = {"method", "contentType", "caConnection", "statusVariable"};
@@ -127,7 +129,9 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
                                .maximum = p.maximum,
                                .attempts = p.attempts,
                                .delay = p.delay,
-                               .expected = p.expected};
+                               .expected = p.expected,
+                               .headers = ud_member(doc, "headers"),
+                               .response_headers = ud_member(doc, "responseHeaders")};
     ud_http_response response = {0};
     if (!s)
         s = ud_http_call(c, connection, &options, &response);
@@ -157,6 +161,15 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
         if (!s)
             s = saved;
     }
+    ud_activation *activation = c->activation;
+    ud_free((void *)activation->http_response_headers.data);
+    activation->http_response_headers = (ud_string){0};
+    activation->http_status = response.status;
+    if (response.headers.length && ud_json_size(options.response_headers) &&
+        ud_utf8_valid(response.headers.data, response.headers.length)) {
+        activation->http_response_headers = response.headers;
+        response.headers = (ud_string){0};
+    }
     ud_http_response_clear(&response);
     ud_status closed = ud_connection_lease_release(connection);
     if (!s)
@@ -176,7 +189,7 @@ ud_status ud_http_register(ud_registry *registry) {
         "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000},"
         "\"expectedStatus\":{\"type\":\"integer\",\"minimum\":100,\"maximum\":599},"
         "\"statusVariable\":{\"type\":\"string\"},\"bodyVariable\":{\"type\":\"string\"},"
-        "\"headersVariable\":{\"type\":\"string\"}}}";
+        "\"headersVariable\":{\"type\":\"string\"}," UD_HTTP_HEADER_PROPERTIES "}}";
     ud_component_descriptor d = {.struct_size = sizeof(d),
                                  .abi_version = UD_ABI_VERSION,
                                  .id = {"http.request", 12},

@@ -41,5 +41,5 @@ public sealed class ParameterVault(HostPolicy policy)
             throw new ArgumentException("Invalid parameter credential reference");
         return Path.Combine(policy.DataDirectory, "credentials", reference);
     }
-    private byte[] Binding(string reference) => Encoding.UTF8.GetBytes($"UniversalData/{ProductInfo.Protocol}/{policy.Tenant}/{reference}");
+    private byte[] Binding(string reference) => Encoding.UTF8.GetBytes($"UniversalData/14/{policy.Tenant}/{reference}");
 }

@@ -81,6 +81,8 @@ export interface Connection {
   driver: string;
   resource: string;
   credentialReference?: string;
+  oauth2?: { tokenEndpoint: string; clientId: string; credentialReference: string; scope?: string;
+    authentication: "basic" | "post" };
 }
 export interface PackageDocument {
   caches?: Configuration[];
@@ -105,9 +107,13 @@ export interface RunState {
   packageRevision: string;
   state: string;
   requiresJournal?: boolean;
+  queueReason?: string;
+  queueWaitMs?: number;
   executionId: string;
   result: number;
-  failure?: { result: number; phase: string; errorType: string };
+  failure?: { result: number; phase: string; errorType: string; detail?: {
+    source: number; cause: number; nativeCode?: number; sqlState?: string; httpStatus?: number; exitCode?: number;
+  } };
   timestampMs: number;
   debug?: {
     previewRows: number;
@@ -223,6 +229,7 @@ export interface BoundNode {
 }
 export interface NativePlan {
   pipelines: { id: string; trees: { nodes: BoundNode[] }[] }[];
+  tasks?: { activation: string; httpStatus?: number; responseHeaders?: string; responseHeadersOmitted?: boolean }[];
 }
 export const isControlFlow = (flow: string) =>
   flow === "control" || flow.startsWith("control:");

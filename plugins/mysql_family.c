@@ -47,11 +47,7 @@ static ud_status classify_failure(mysql_state *p, unsigned int code, const char 
 static ud_status report_failure(mysql_state *p, unsigned int code, const char *state) {
     p->record_code = code;
     ud_status status = classify_failure(p, code, state);
-    char safe[96];
-    snprintf(safe, sizeof(safe), "SQL provider operation failed (code %u, state %.5s)", code,
-             state ? state : "");
-    p->host.report(p->host.context, status, safe);
-    return status;
+    return plugin_db_error(&p->host, status, code, state, "SQL provider operation failed");
 }
 static ud_status failure(mysql_state *p, MYSQL_STMT *stmt) {
     return report_failure(p, stmt ? mysql_stmt_errno(stmt) : mysql_errno(p->db),

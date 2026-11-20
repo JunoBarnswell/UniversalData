@@ -1,0 +1,1 @@
+{"provider":"PostgreSQL","rows":10000000,"batchRows":4096,"inputRows":10000000,"written":10000000,"read":10000000,"checksum":"82da80c54b8880a5","firstBatchMilliseconds":116.7396,"elapsedMilliseconds":107737.7975,"rowsPerSecond":92817.9360637106,"managedAllocatedBytes":3215067912,"peakRssBytes":111517696,"sourceWorkerPeakRssBytes":83038208,"targetWorkerPeakRssBytes":91615232}

@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using UniversalData;
 
 namespace SqlSugar;
 
@@ -33,57 +34,38 @@ internal sealed class SugarQueryable<T> : ISugarQueryable<T>
     public ISugarQueryable<T> OrderByDescending<TKey>(Expression<Func<T, TKey>> expression)
         => OrderBy(expression, OrderByType.Desc);
 
-    public List<T> ToList()
-        => ReadList(null, null);
+    public Result<List<T>> ToList() => SqlResult.Run(() => ReadList(null, null));
 
-    private List<T> ReadList(int? pageNumber, int? pageSize)
+    private List<T> ReadList(int? pageNumber, int? pageSize, CancellationToken cancellation = default)
     {
-        using var reader = OpenReader(default, null, pageNumber, pageSize);
+        using var reader = OpenReader(cancellation, null, pageNumber, pageSize);
         var result = new List<T>();
         var materializer = EntityMaterializerPlan<T>.Create(reader);
         while (reader.Read()) result.Add(materializer.Read(reader));
         return result;
     }
 
-    public Task<List<T>> ToListAsync(CancellationToken cancellationToken = default)
-    { cancellationToken.ThrowIfCancellationRequested(); return Task.Run(ToList, cancellationToken); }
+    public Task<Result<List<T>>> ToListAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(() => SqlResult.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ReadList(null, null, cancellationToken);
+        }));
 
-    public List<T> ToPageList(int pageNumber, int pageSize)
+    public Result<List<T>> ToPageList(int pageNumber, int pageSize) => SqlResult.Run(() =>
     {
-        if (pageNumber <= 0) throw new ArgumentOutOfRangeException(nameof(pageNumber));
-        if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize));
+        if (pageNumber <= 0 || pageSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(pageNumber));
         return ReadList(pageNumber, pageSize);
-    }
+    });
 
-    public IEnumerable<T> ToStream(CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        using var reader = OpenReader(cancellationToken);
-        var materializer = EntityMaterializerPlan<T>.Create(reader);
-        while (reader.Read())
+    public ValueTask<Result<SqlCursor<T>>> OpenCursorAsync(int batchSize = 0, CancellationToken cancellation = default) =>
+        ValueTask.FromResult(SqlResult.Run(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            yield return materializer.Read(reader);
-        }
-    }
-
-    public IEnumerable<IReadOnlyList<T>> ToBatches(int batchSize, CancellationToken cancellationToken = default)
-    {
-        if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize));
-        cancellationToken.ThrowIfCancellationRequested();
-        using var reader = OpenReader(cancellationToken, checked((uint)batchSize));
-        var materializer = EntityMaterializerPlan<T>.Create(reader);
-        var batch = new List<T>(batchSize);
-        while (reader.Read())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            batch.Add(materializer.Read(reader));
-            if (batch.Count != batchSize) continue;
-            yield return batch;
-            batch = new List<T>(batchSize);
-        }
-        if (batch.Count != 0) yield return batch;
-    }
+            if (batchSize < 0)
+                throw new ArgumentOutOfRangeException(nameof(batchSize));
+            return new SqlCursor<T>(OpenReader(cancellation, batchSize == 0 ? null : (uint)batchSize));
+        }));
 
     private NativeSqlReader OpenReader(CancellationToken cancellationToken = default, uint? batchRows = null,
         int? pageNumber = null, int? pageSize = null)

@@ -88,8 +88,9 @@ try {
     $packages = Join-Path $stage 'packages'
     New-Item -ItemType Directory -Path $packages | Out-Null
     $pluginDirectory = Join-Path $sdk 'lib/UniversalData/plugins'
-    $packArguments = @('pack','bindings/dotnet/UniversalData/UniversalData.csproj','--configuration','Release','--nologo','--verbosity:minimal',
-        "-p:NativeLibraryDirectory=$nativeDirectory","-p:NativePluginDirectory=$pluginDirectory","-p:NativeRuntimeIdentifier=$RuntimeIdentifier",'--output',$packages)
+    $packArguments = @('packaging/pack_sdk.py','--rid',$RuntimeIdentifier,'--native',$nativeDirectory,
+        '--plugins',$pluginDirectory,'--output',$packages)
+    if ($cache['UD_BUILD_PROFILE'] -eq 'PRODUCT') { $packArguments += '--complete' }
     if ($IsWindows) {
         $dependencies = Join-Path $logDirectoryPath 'nuget-native'
         New-Item -ItemType Directory -Path $dependencies | Out-Null
@@ -110,9 +111,9 @@ try {
             $notices = (Resolve-Path -LiteralPath $NativeRuntimeLicenses).Path
             Copy-Item -LiteralPath $notices -Destination (Join-Path $licenseDirectory 'native-runtimes') -Recurse
         }
-        $packArguments += @("-p:NativeDependencyDirectory=$dependencies","-p:NativeLicenseDirectory=$licenseDirectory")
+        $packArguments += @('--dependencies',$dependencies,'--licenses',$licenseDirectory)
     }
-    Invoke-PackageTool $dotnet $packArguments 'nuget-pack.log'
+    Invoke-PackageTool $python $packArguments 'nuget-pack.log'
     Invoke-PackageTool $dotnet @('restore','examples/dotnet/Consumer.csproj','--nologo') 'consumer-dependencies.log'
     Invoke-PackageTool $python @('packaging/nuget_feed.py','--assets','bindings/dotnet/UniversalData/obj/project.assets.json','--assets','examples/dotnet/obj/project.assets.json','--output',$packages) 'nuget-dependencies.log'
     Invoke-PackageTool $maven @('-B','-q','-f','bindings/java/pom.xml','package') 'maven-package.log'

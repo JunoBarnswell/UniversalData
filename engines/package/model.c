@@ -1,4 +1,5 @@
 #include "internal.h"
+#include "../../connectors/http_internal.h"
 #include <math.h>
 const ud_json *ud_member(const ud_json *v, const char *s) {
     return ud_json_find(v, s, (uint32_t)strlen(s));
@@ -40,8 +41,8 @@ ud_status ud_connection_definitions_check(const ud_json *defs) {
         const ud_json *def = ud_json_at(defs, i);
         static const char *keys[] = {
             "id",       "driver",    "resource",         "credentialReference",
-            "revision", "maxLeases", "acquireTimeoutMs", "idleTimeoutMs"};
-        UD_TRY(ud_json_keys(def, keys, 8));
+            "revision", "maxLeases", "acquireTimeoutMs", "idleTimeoutMs", "oauth2"};
+        UD_TRY(ud_json_keys(def, keys, sizeof(keys) / sizeof(*keys)));
         ud_string id;
         UD_TRY(ud_json_string(ud_member(def, "id"), &id));
         for (uint32_t j = 0; j < i; j++) {
@@ -58,6 +59,14 @@ ud_status ud_connection_definitions_check(const ud_json *defs) {
                 if ((k < 2 && !value) || (k == 1 && value > 65536) || (k >= 2 && value > 3600000))
                     return UD_SCHEMA;
             }
+        const ud_json *oauth = ud_member(def, "oauth2");
+        if (oauth) {
+            ud_string driver;
+            UD_TRY(ud_json_string(ud_member(def, "driver"), &driver));
+            if (!ud_named(driver, "http"))
+                return UD_SCHEMA;
+            UD_TRY(ud_http_oauth_validate(oauth));
+        }
         const char *fields[] = {"driver", "resource", "credentialReference"};
         for (int f = 0; f < 3; f++) {
             const ud_json *v = ud_member(def, fields[f]);

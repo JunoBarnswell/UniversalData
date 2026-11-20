@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using UniversalData;
 
 namespace SqlSugar;
 
@@ -8,9 +9,8 @@ public interface ISugarQueryable<T>
     ISugarQueryable<T> OrderBy<TKey>(Expression<Func<T, TKey>> expression);
     ISugarQueryable<T> OrderBy<TKey>(Expression<Func<T, TKey>> expression, OrderByType orderByType);
     ISugarQueryable<T> OrderByDescending<TKey>(Expression<Func<T, TKey>> expression);
-    List<T> ToList();
-    Task<List<T>> ToListAsync(CancellationToken cancellationToken = default);
-    List<T> ToPageList(int pageNumber, int pageSize);
-    IEnumerable<T> ToStream(CancellationToken cancellationToken = default);
-    IEnumerable<IReadOnlyList<T>> ToBatches(int batchSize, CancellationToken cancellationToken = default);
+    Result<List<T>> ToList();
+    Task<Result<List<T>>> ToListAsync(CancellationToken cancellationToken = default);
+    Result<List<T>> ToPageList(int pageNumber, int pageSize);
+    ValueTask<Result<SqlCursor<T>>> OpenCursorAsync(int batchSize = 0, CancellationToken cancellation = default);
 }

@@ -84,12 +84,13 @@ with tempfile.TemporaryDirectory(prefix='ud-nuget-native-', dir=output.parent) a
     staging = pathlib.Path(temp)
     for runtime in runtimes:
         os.link(native / runtime['soname'], staging / runtime['soname'])
-    subprocess.run(['dotnet', 'pack', str(ROOT / 'bindings/dotnet/UniversalData/UniversalData.csproj'),
-                    '-c', 'Release', '-o', str(packages), '-p:NativeLibraryDirectory=' + str(native),
-                    '-p:NativeDependencyDirectory=' + str(staging),
-                    '-p:NativePluginDirectory=' + str(native / 'UniversalData/plugins'),
-                    '-p:NativeLicenseDirectory=' + str(sdk / 'share/UniversalData/licenses'),
-                    '-p:NativeRuntimeIdentifier=linux-x64', '--nologo'], check=True)
+    command = [sys.executable, str(ROOT / 'packaging/pack_sdk.py'), '--rid', 'linux-x64',
+               '--native', str(native), '--plugins', str(native / 'UniversalData/plugins'),
+               '--dependencies', str(staging), '--licenses', str(sdk / 'share/UniversalData/licenses'),
+               '--output', str(packages)]
+    if re.search(r'^UD_BUILD_PROFILE:[^=]+=PRODUCT$', cache, re.M):
+        command += ['--complete']
+    subprocess.run(command, check=True)
 subprocess.run(['dotnet', 'restore', str(ROOT / 'examples/dotnet/Consumer.csproj'), '--nologo'], check=True)
 nuget_dependencies = json.loads(subprocess.check_output([sys.executable, str(ROOT / 'packaging/nuget_feed.py'),
     '--assets', str(ROOT / 'bindings/dotnet/UniversalData/obj/project.assets.json'),

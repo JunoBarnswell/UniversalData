@@ -4,6 +4,12 @@ using System.Text.Json;
 using ManagedSqlAcceptance;
 using SqlSugar;
 
+if (args is ["--worker-failure", var connectionFile, var plugin])
+{
+    await SdkWorkerFailure.Run(connectionFile, plugin);
+    return 0;
+}
+
 if (args.Length == 0 || args.Contains("--help", StringComparer.OrdinalIgnoreCase))
 {
     Console.Error.WriteLine("managed_sql --provider sqlite|postgresql|mysql|mariadb|sqlserver|oracle --connection-file <local-file> --plugin <absolute-plugin> [--fixture json] [--rows count] [--batch size] [--benchmark output.json] [--setup-sql file] [--stream-copy] [--target-connection-file <local-file>]");
@@ -24,11 +30,11 @@ var config = new ConnectionConfig
     ReadBatchSize = checked((uint)options.BatchSize),
     WriteChunkRows = checked((uint)options.BatchSize)
 };
-using var client = new SqlSugarClient(config);
+using var client = SqlAcceptance.OpenClient(config);
 if (options.SetupSqlPath is not null)
-    client.Ado.ExecuteCommand(File.ReadAllText(options.SetupSqlPath));
+    client.Ado.ExecuteCommand(File.ReadAllText(options.SetupSqlPath)).Require();
 
-client.Ado.ExecuteCommand(options.CreateTableSql());
+client.Ado.ExecuteCommand(options.CreateTableSql()).Require();
 try
 {
     using var process = Process.GetCurrentProcess();
@@ -36,18 +42,18 @@ try
     var cpuBefore = process.TotalProcessorTime;
     var stopwatch = Stopwatch.StartNew();
     var inserted = 0;
-    client.Ado.BeginTran();
+    client.Ado.BeginTran().Require();
     try
     {
         foreach (var rows in StreamRows(options.RowCount, options.BatchSize))
         {
-            inserted += client.Insertable(rows).ExecuteCommand();
+            inserted += client.Insertable(rows).ExecuteCommand().Require();
         }
-        client.Ado.CommitTran();
+        client.Ado.CommitTran().Require();
     }
     catch
     {
-        client.Ado.RollbackTran();
+        client.Ado.RollbackTran().Require();
         throw;
     }
     var streamed = 0;
@@ -75,9 +81,9 @@ try
     }
     streamStarted.Stop();
     var streamAllocated = GC.GetAllocatedBytesForCurrentThread() - readAllocatedBefore;
-    var page = ordered.ToPageList(1, Math.Min(options.BatchSize, options.RowCount));
-    var afterPage = options.BenchmarkPath is null ? ordered.ToList().Count : options.RowCount;
-    var descending = client.Queryable<ManagedSqlOrder>().OrderByDescending(order => (object)order.Id).ToPageList(1, 1);
+    var page = ordered.ToPageList(1, Math.Min(options.BatchSize, options.RowCount)).Require();
+    var afterPage = options.BenchmarkPath is null ? ordered.ToList().Require().Count : options.RowCount;
+    var descending = client.Queryable<ManagedSqlOrder>().OrderByDescending(order => (object)order.Id).ToPageList(1, 1).Require();
     if (page.Count == 0 || afterPage != options.RowCount || descending.Count != 1 || descending[0].Id != options.RowCount)
         throw new InvalidOperationException("Stable pagination or order state returned unexpected rows.");
     using (var early = ordered.ToBatches(1).GetEnumerator())
@@ -85,21 +91,25 @@ try
         if (!early.MoveNext() || early.Current.Single().Id != 1)
             throw new InvalidOperationException("The streaming cursor did not return the first row.");
     }
-    using (var raw = client.Ado.GetDataReader("SELECT " + options.QuotedColumns() + " FROM " + options.QuotedTable() + " WHERE " + options.QuotedColumn("Id") + "=@id", new SugarParameter("@id", 1)))
+    await using (var raw = (await client.Ado.OpenCursorAsync<SqlRow>("SELECT " + options.QuotedColumns() +
+        " FROM " + options.QuotedTable() + " WHERE " + options.QuotedColumn("Id") + "=@id",
+        [new SugarParameter("@id", 1)])).Require())
     {
-        if (!raw.Read() || Convert.ToInt64(raw["Id"], CultureInfo.InvariantCulture) != 1) throw new InvalidOperationException("Raw IDataReader did not return the requested row.");
+        var row = (await raw.ReadAsync()).Require();
+        if (Convert.ToInt64(row["Id"], CultureInfo.InvariantCulture) != 1)
+            throw new InvalidOperationException("Raw SQL cursor returned an unexpected row.");
     }
-    var updated = client.Updateable(new[] { new ManagedSqlOrder { Id = 1, Name = "updated", Amount = 99.50m } }).ExecuteCommand();
-    var scalar = Convert.ToInt64(client.Ado.GetScalar("SELECT COUNT(*) FROM " + options.QuotedTable()), CultureInfo.InvariantCulture);
-    var deleted = client.Deleteable(new List<ManagedSqlOrder> { new() { Id = options.RowCount } }).ExecuteCommand();
+    var updated = client.Updateable(new[] { new ManagedSqlOrder { Id = 1, Name = "updated", Amount = 99.50m } }).ExecuteCommand().Require();
+    var scalar = Convert.ToInt64(client.Ado.GetScalar("SELECT COUNT(*) FROM " + options.QuotedTable()).Require(), CultureInfo.InvariantCulture);
+    var deleted = client.Deleteable(new List<ManagedSqlOrder> { new() { Id = options.RowCount } }).ExecuteCommand().Require();
     var fastest = client.Fastest<ManagedSqlOrder>();
-    var fastestCopied = fastest.BulkCopy(new List<ManagedSqlOrder> { new() { Id = options.RowCount, Name = "fast-copy", Amount = 7m } });
-    var fastestUpdated = fastest.BulkUpdate(new[] { new ManagedSqlOrder { Id = options.RowCount, Name = "fast-update", Amount = 8m } });
-    var fastestDeleted = fastest.BulkDelete(new[] { new ManagedSqlOrder { Id = options.RowCount } });
-    client.Ado.BeginTran();
-    client.Insertable(new ManagedSqlOrder { Id = options.RowCount + 100, Name = "rollback", Amount = 1m }).ExecuteCommand();
-    client.Ado.RollbackTran();
-    var afterRollback = Convert.ToInt64(client.Ado.GetScalar("SELECT COUNT(*) FROM " + options.QuotedTable()), CultureInfo.InvariantCulture);
+    var fastestCopied = fastest.BulkCopy(new List<ManagedSqlOrder> { new() { Id = options.RowCount, Name = "fast-copy", Amount = 7m } }).Require();
+    var fastestUpdated = fastest.BulkUpdate(new[] { new ManagedSqlOrder { Id = options.RowCount, Name = "fast-update", Amount = 8m } }).Require();
+    var fastestDeleted = fastest.BulkDelete(new[] { new ManagedSqlOrder { Id = options.RowCount } }).Require();
+    client.Ado.BeginTran().Require();
+    client.Insertable(new ManagedSqlOrder { Id = options.RowCount + 100, Name = "rollback", Amount = 1m }).ExecuteCommand().Require();
+    client.Ado.RollbackTran().Require();
+    var afterRollback = Convert.ToInt64(client.Ado.GetScalar("SELECT COUNT(*) FROM " + options.QuotedTable()).Require(), CultureInfo.InvariantCulture);
     try
     {
         foreach (var _ in client.Queryable<ManagedSqlOrder>().ToStream(new CancellationToken(true))) { }
@@ -147,7 +157,7 @@ try
 }
 finally
 {
-    client.Ado.ExecuteCommand("DROP TABLE " + options.QuotedTable());
+    client.Ado.ExecuteCommand("DROP TABLE " + options.QuotedTable()).Require();
 }
 if (options.Provider == DbType.Sqlite && options.BenchmarkPath is null)
     ManagedSqlEtl.Run(options.PluginPath);

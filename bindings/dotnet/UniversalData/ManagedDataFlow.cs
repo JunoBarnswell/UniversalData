@@ -89,11 +89,7 @@ internal sealed class DataFlowRegistration
     }
     internal void Drop() { if (Interlocked.Decrement(ref references) == 0) root.Free(); }
     private static Instance State(IntPtr pointer) => (Instance)GCHandle.FromIntPtr(pointer).Target!;
-    private static int Failure(IntPtr memory, Exception error) {
-        using var strings = new NativeStrings(); int status = error is UniversalDataException native ? native.Status : (int)StatusCode.Io;
-        if (status <= 1 || status == 19 || status > 20) status = (int)StatusCode.Io;
-        return Native.ud_context_report(memory, status, strings.Pin("Managed component failed: " + error.GetType().FullName));
-    }
+    private static int Failure(IntPtr memory, Exception error) => WorkerNativeError.ReportComponent(memory, error);
     private static string[] Schemas(IntPtr pointer, uint count) {
         var result = new string[count];
         for (uint at = 0; at < count; at++) { var batch = Marshal.ReadIntPtr(pointer, checked((int)at * IntPtr.Size));

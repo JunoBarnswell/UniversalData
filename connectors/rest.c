@@ -57,7 +57,10 @@ static ud_status options(const ud_json *config, ud_http_options *out) {
                              .timeout = 60000,
                              .maximum = 16777216,
                              .attempts = 3,
-                             .delay = 100};
+                             .delay = 100,
+                             .headers = ud_member(config, "headers"),
+                             .response_headers = ud_member(config, "responseHeaders")};
+    UD_TRY(ud_http_validate_headers(out->headers, out->response_headers));
     const char *strings[] = {"caConnection", "url"};
     ud_string *fields[] = {&out->ca, &out->url};
     for (uint32_t i = 0; i < 2; i++)

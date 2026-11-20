@@ -16,21 +16,7 @@ ud_status ud_oci_control(oracle *p) {
         return UD_CANCELLED;
     return p->check ? p->check(p->user) : UD_OK;
 }
-static ud_status failure(oracle *p, sword rc) {
-    ud_status s = ud_oci_control(p);
-    if (s)
-        return s;
-    if (rc == OCI_SUCCESS || rc == OCI_SUCCESS_WITH_INFO)
-        return UD_OK;
-    if (!p->error)
-        return UD_RESOURCE;
-    sb4 code = 0;
-    OraText text[2];
-    OCIErrorGet(p->error, 1, NULL, &code, text, sizeof(text), OCI_HTYPE_ERROR);
-    p->record_code = code;
-    char safe[80];
-    snprintf(safe, sizeof(safe), "OCI operation failed (Oracle code %ld)", (long)code);
-    p->host.report(p->host.context, UD_IO, safe);
+static ud_status oracle_status(oracle *p, sb4 code) {
     if (code == 1291 || code == 1284 || code == 1327 || code == 1466 || code == 1555)
         return UD_FENCED;
     if (code == 1013)
@@ -56,6 +42,20 @@ static ud_status failure(oracle *p, sword rc) {
     if (code == 942 || code == 904)
         return UD_SCHEMA;
     return UD_IO;
+}
+static ud_status failure(oracle *p, sword rc) {
+    ud_status s = ud_oci_control(p);
+    if (s)
+        return s;
+    if (rc == OCI_SUCCESS || rc == OCI_SUCCESS_WITH_INFO)
+        return UD_OK;
+    if (!p->error)
+        return UD_RESOURCE;
+    sb4 code = 0;
+    OraText text[2];
+    OCIErrorGet(p->error, 1, NULL, &code, text, sizeof(text), OCI_HTYPE_ERROR);
+    p->record_code = code;
+    return plugin_db_error(&p->host, oracle_status(p, code), code, NULL, "OCI operation failed");
 }
 static ud_status record_diagnostic(void *state, ud_string *out) {
     oracle *p = state;

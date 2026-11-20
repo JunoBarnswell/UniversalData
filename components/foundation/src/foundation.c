@@ -14,6 +14,7 @@ struct ud_context {
  * operations must not race while writing an unrelated task's error string. */
 static _Thread_local const ud_context *diagnostic_context;
 static _Thread_local char diagnostic_text[1024];
+static _Thread_local ud_error_detail diagnostic_detail;
 struct ud_memory_domain {
     ud_context *ctx;
     uint64_t limit;
@@ -72,14 +73,31 @@ const char *ud_status_name(ud_status s) {
         "ok",          "end",      "invalid",   "io",        "resource",       "schema",
         "parse",       "overflow", "cancelled", "corrupt",   "incompatible",   "busy",
         "unsupported", "auth",     "quality",   "transient", "commit_unknown", "fenced",
-        "timeout",     "more",     "truncated"};
-    return s >= 0 && s < 21 ? names[s] : "unknown";
+        "timeout",     "more",     "truncated", "driver_unavailable", "worker_lost",
+        "protocol",    "managed_component", "http_status"};
+    return s >= 0 && s <= UD_STATUS_LAST ? names[s] : "unknown";
 }
 const char *ud_error(const ud_context *ctx) {
     return !ctx ? "no context" : diagnostic_context == ctx ? diagnostic_text : "";
 }
+ud_status ud_error_details(const ud_context *ctx, ud_error_detail *out) {
+    if (!ctx || !out)
+        return UD_INVALID;
+    if (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    *out = diagnostic_context == ctx ? diagnostic_detail :
+        (ud_error_detail){.struct_size = sizeof(*out), .abi_version = UD_ABI_VERSION};
+    return UD_OK;
+}
+void ud_context_clear_error(ud_context *ctx) {
+    if (diagnostic_context == ctx)
+        diagnostic_context = NULL;
+}
 ud_status ud_fail(ud_context *ctx, ud_status code, const char *format, ...) {
     if (ctx) {
+        if (code != UD_COMMIT_UNKNOWN || diagnostic_context != ctx || !diagnostic_detail.cause)
+            diagnostic_detail = (ud_error_detail){.struct_size = sizeof(diagnostic_detail),
+                                                   .abi_version = UD_ABI_VERSION, .cause = code};
         va_list args;
         va_start(args, format);
         diagnostic_context = ctx;
@@ -89,11 +107,29 @@ ud_status ud_fail(ud_context *ctx, ud_status code, const char *format, ...) {
     return code;
 }
 ud_status ud_context_report(ud_context *ctx, ud_status code, ud_string message) {
-    if (!ctx || code <= UD_END || code > UD_TRUNCATED || code == UD_MORE || !message.data ||
+    if (!ctx || code <= UD_END || code > UD_STATUS_LAST || code == UD_MORE || !message.data ||
         !message.length || message.length > 16384 || memchr(message.data, 0, message.length) ||
         !ud_utf8_valid(message.data, message.length))
         return UD_INVALID;
     return ud_fail(ctx, code, "%.*s", (int)message.length, message.data);
+}
+ud_status ud_context_report_error(ud_context *ctx, ud_status code, ud_string message,
+                                  const ud_error_detail *detail) {
+    if (!detail || detail->struct_size != sizeof(*detail) || detail->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    if (detail->source < UD_ERROR_NATIVE || detail->source > UD_ERROR_COMPONENT ||
+        detail->cause <= UD_END || detail->cause > UD_STATUS_LAST || detail->cause == UD_MORE ||
+        detail->sqlstate[5])
+        return UD_INVALID;
+    for (size_t i = 0; i < 5 && detail->sqlstate[0]; i++) {
+        char digit = detail->sqlstate[i];
+        if ((digit < '0' || digit > '9') && (digit < 'A' || digit > 'Z'))
+            return UD_INVALID;
+    }
+    ud_status status = ud_context_report(ctx, code, message);
+    if (ctx && status == code && diagnostic_context == ctx)
+        diagnostic_detail = *detail;
+    return status;
 }
 ud_status ud_context_create(const ud_context_options *options, ud_context **out) {
     if (!out)

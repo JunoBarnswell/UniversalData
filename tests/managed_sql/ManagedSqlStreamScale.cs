@@ -21,10 +21,10 @@ internal static class ManagedSqlStreamScale
         var amountType = sqlite ? "TEXT" : "NUMERIC(18,2)";
         using var source = Open(options.ConnectionString);
         using var target = Open(options.TargetConnectionString ?? options.ConnectionString);
-        source.Ado.ExecuteCommand($"CREATE TABLE {sourceTable}(id BIGINT PRIMARY KEY, label TEXT NOT NULL, amount {amountType} NOT NULL)");
+        source.Ado.ExecuteCommand($"CREATE TABLE {sourceTable}(id BIGINT PRIMARY KEY, label TEXT NOT NULL, amount {amountType} NOT NULL)").Require();
         try
         {
-            target.Ado.ExecuteCommand($"CREATE TABLE {targetTable}(id BIGINT PRIMARY KEY, label TEXT NOT NULL, amount {amountType} NOT NULL)");
+            target.Ado.ExecuteCommand($"CREATE TABLE {targetTable}(id BIGINT PRIMARY KEY, label TEXT NOT NULL, amount {amountType} NOT NULL)").Require();
             try
             {
                 var count = options.RowCount.ToString(CultureInfo.InvariantCulture);
@@ -32,19 +32,21 @@ internal static class ManagedSqlStreamScale
                     ? $"WITH RECURSIVE ids(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM ids WHERE n<{count}) " +
                       "SELECT n,printf('  订单-%08d  ',n),printf('%d.%02d',n/4,n%4*25) FROM ids"
                     : $"SELECT n,'  订单-'||lpad(n::text,8,'0')||'  ',n*0.25 FROM generate_series(1,{count}) n";
-                source.Ado.ExecuteCommand($"INSERT INTO {sourceTable} {generate}");
+                source.Ado.ExecuteCommand($"INSERT INTO {sourceTable} {generate}").Require();
 
                 using var process = Process.GetCurrentProcess();
+                using var sourceWorker = Process.GetProcessById(source.WorkerProcessId);
+                using var targetWorker = Process.GetProcessById(target.WorkerProcessId);
                 var batches = source.Queryable<SourceRow>().OrderBy(row => row.Id).ToBatches(options.BatchSize);
                 var writer = target.Fastest<TargetRow>();
                 writer.PageSize = options.BatchSize;
                 var inputRows = 0;
                 var firstBatchMilliseconds = 0.0;
-                var before = GC.GetAllocatedBytesForCurrentThread();
+                var before = GC.GetTotalAllocatedBytes(precise: true);
                 var stopwatch = Stopwatch.StartNew();
-                var written = writer.BulkCopy(Transform());
+                var written = writer.BulkCopy(Transform()).Require();
                 stopwatch.Stop();
-                var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                var allocated = GC.GetTotalAllocatedBytes(precise: true) - before;
                 process.Refresh();
                 var peakRss = process.PeakWorkingSet64;
 
@@ -74,7 +76,9 @@ internal static class ManagedSqlStreamScale
                     elapsedMilliseconds = stopwatch.Elapsed.TotalMilliseconds,
                     rowsPerSecond = written / stopwatch.Elapsed.TotalSeconds,
                     managedAllocatedBytes = allocated,
-                    peakRssBytes = peakRss
+                    peakRssBytes = peakRss,
+                    sourceWorkerPeakRssBytes = sourceWorker.PeakWorkingSet64,
+                    targetWorkerPeakRssBytes = targetWorker.PeakWorkingSet64
                 }));
 
                 IEnumerable<TargetRow> Transform()
@@ -88,11 +92,11 @@ internal static class ManagedSqlStreamScale
                     }
                 }
             }
-            finally { target.Ado.ExecuteCommand($"DROP TABLE {targetTable}"); }
+            finally { target.Ado.ExecuteCommand($"DROP TABLE {targetTable}").Require(); }
         }
-        finally { source.Ado.ExecuteCommand($"DROP TABLE {sourceTable}"); }
+        finally { source.Ado.ExecuteCommand($"DROP TABLE {sourceTable}").Require(); }
 
-        SqlSugarClient Open(string connection) => new(new ConnectionConfig
+        SqlSugarClient Open(string connection) => SqlAcceptance.OpenClient(new ConnectionConfig
         {
             DbType = options.Provider,
             ConnectionString = connection,

@@ -241,7 +241,7 @@ def main():
             assert facts.get('committed',0)==facts.get('acknowledged',0)==0,name
             result=dict(case=name,runId=runid,expectedFailure=True,result=facts['result'],remainingRows=counts,seconds=elapsed,native=facts);results.append(result)
             (case/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n');print(json.dumps({k:v for k,v in result.items() if k!='native'}),flush=True)
-            (root/'results.json').write_text(json.dumps(dict(abi=VERSION,ssisGolden='Verification Blocked: real Windows SSIS 2025 unavailable',cases=results),ensure_ascii=False,indent=2)+'\n')
+            (root/'results.json').write_text(json.dumps(dict(abi=VERSION,cases=results),ensure_ascii=False,indent=2)+'\n')
             continue
         crash_seconds=execute(crash=True)[0] if kill else None
         elapsed,facts=execute(resume=bool(kill));validated=verify(runid,dirty,reordered)
@@ -262,7 +262,7 @@ def main():
         result=dict(case=name,runId=runid,batchRows=batch,workers=workers,transaction=txn,loadMode=load,fault='input-row-durability-boundary' if type(kill) is int else 'coordinator-committed' if kill else None,seconds=elapsed,rowsPerSecond=None if kill else round(N/elapsed,2),crashExecutionSeconds=crash_seconds,recoverySeconds=elapsed if kill else None,history=history,native=facts,**validated);results.append(result)
         (case/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
         print(json.dumps({k:v for k,v in result.items() if k!='native'}),flush=True)
-        (root/'results.json').write_text(json.dumps(dict(abi=VERSION,ssisGolden='Verification Blocked: real Windows SSIS 2025 unavailable',cases=results),ensure_ascii=False,indent=2)+'\n')
+        (root/'results.json').write_text(json.dumps(dict(abi=VERSION,cases=results),ensure_ascii=False,indent=2)+'\n')
         # Data artifacts remain in MySQL; bounded snapshots are regenerated for
         # each independent test, while packages, logs and results are retained.
         shutil.rmtree(state);shutil.rmtree(case/'spill')

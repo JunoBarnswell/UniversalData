@@ -7,41 +7,63 @@ namespace SqlSugar;
 
 internal sealed class NativeSqlReader : IDataReader
 {
-    private readonly SqlSessionHandle session;
-    private readonly SqlBatchHandle? schema;
-    private readonly SqlBatchHandle? parameters;
+    private readonly SqlSugarClient client;
     private readonly CancellationToken cancellationToken;
-    private readonly CancellationTokenRegistration cancellation;
     private readonly ColumnInfo[] columns;
     private SqlBatchHandle? batch;
-    private int row = -1;
-    private bool closed;
+    private int row = -1, rowCount;
+    private bool closed, ended;
+    internal int RemainingInBatch => Math.Max(0, rowCount - row - 1);
 
-    internal NativeSqlReader(SqlSessionHandle session, SqlBatchHandle? schema, SqlBatchHandle? parameters = null,
-        CancellationToken cancellationToken = default)
+    internal void AdvanceInBatch() => row++;
+
+    internal NativeSqlReader(SqlSugarClient client, string schema, CancellationToken cancellationToken)
     {
-        this.session = session;
-        this.schema = schema;
-        this.parameters = parameters;
+        this.client = client;
         this.cancellationToken = cancellationToken;
-        cancellation = cancellationToken.CanBeCanceled ? cancellationToken.Register(static state => SqlNative.Cancel((SqlSessionHandle)state!), session) : default;
-        columns = schema is null ? [] : ReadColumns(SqlNative.SchemaJson(schema));
+        columns = schema.Length == 0 ? [] : ReadColumns(schema);
     }
 
     public bool Read()
     {
+        Result step = ReadAsync(cancellationToken).AsTask().GetAwaiter().GetResult();
+        if (step.Code == StatusCode.End)
+            return false;
+        if (!step.IsSuccess)
+            throw new UniversalDataException((int)step.Code, step.Error?.Message ?? step.Code.ToString(), step.Error);
+        return true;
+    }
+
+    internal async ValueTask<Result> ReadAsync(CancellationToken cancellation)
+    {
         EnsureOpen();
-        if (batch is not null && row + 1 < SqlNative.BatchRows(batch)) { row++; return true; }
+        if (ended)
+            return new(StatusCode.End);
+        if (cancellation.IsCancellationRequested)
+            return new(StatusCode.Cancelled);
+        if (RemainingInBatch > 0)
+        {
+            row++;
+            return Result.Success;
+        }
         batch?.Dispose();
         batch = null;
         row = -1;
-        var status = SqlNative.ReadNext(session, out batch);
-        if (status == 1) return false;
-        if (status == (int)StatusCode.Cancelled) throw new OperationCanceledException(cancellationToken);
-        SqlNative.Check(status);
-        if (batch is null) return false;
+        rowCount = 0;
+        var step = await client.Invoke("sql.read", cancellation: cancellation).ConfigureAwait(false);
+        using var payload = step.Batch;
+        if (step.Response.Code == StatusCode.End)
+            ended = true;
+        if (step.Response.Code != StatusCode.Ok)
+            return step.Response.Result;
+        if (payload is null)
+            return new(StatusCode.Protocol);
+        batch = SqlWire.Decode(client.DataContext, payload);
+        rowCount = checked((int)SqlNative.BatchRows(batch));
+        if (rowCount == 0)
+            return new(StatusCode.Protocol);
         row = 0;
-        return true;
+        return Result.Success;
     }
 
     public int FieldCount => columns.Length;
@@ -126,8 +148,7 @@ internal sealed class NativeSqlReader : IDataReader
         closed = true;
         batch?.Dispose();
         batch = null;
-        try { SqlNative.Check(SqlNative.ReadClose(session)); }
-        finally { cancellation.Dispose(); schema?.Dispose(); parameters?.Dispose(); }
+        _ = client.Invoke("sql.readClose").AsTask().GetAwaiter().GetResult();
     }
 
     private void EnsureOpen() => ObjectDisposedException.ThrowIf(closed, this);

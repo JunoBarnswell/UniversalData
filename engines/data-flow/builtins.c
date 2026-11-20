@@ -1,4 +1,5 @@
 #include "builtins_internal.h"
+#include "ud/http.h"
 ud_status ud_mq_source_register(ud_registry *);
 ud_status ud_mq_destination_register(ud_registry *);
 
@@ -402,7 +403,8 @@ static const char *configuration_schema(int kind) {
                "\"maxResponseBytes\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":67108864},"
                "\"maxAttempts\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":8},"
                "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000},"
-               "\"incremental\":{\"type\":\"object\"},\"ordering\":{\"type\":\"object\"}},"
+               "\"incremental\":{\"type\":\"object\"},\"ordering\":{\"type\":\"object\"},"
+               UD_HTTP_HEADER_PROPERTIES "},"
                "\"required\":[\"connection\",\"schema\"],\"additionalProperties\":false}";
     case REST_SINK:
         return "{ "
@@ -418,7 +420,8 @@ static const char *configuration_schema(int kind) {
                "\"retryDelayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000},"
                "\"delivery\":{\"type\":\"string\",\"enum\":[\"response\",\"idempotent\","
                "\"receipt\"],"
-               "\"default\":\"response\"},\"keyedReplace\":{\"type\":\"boolean\",\"default\":false}"
+               "\"default\":\"response\"},\"keyedReplace\":{\"type\":\"boolean\",\"default\":false},"
+               UD_HTTP_HEADER_PROPERTIES
                "},"
                "\"required\":[\"connection\"],\"additionalProperties\":false}";
     case PARQUET_SOURCE:

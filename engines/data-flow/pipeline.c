@@ -5,6 +5,7 @@
 #include "../../components/execution/state.h"
 #include "../package/kafka_checkpoint.h"
 static ud_status node_failed(node *n, ud_status result, const char *stage) {
+    ud_execution_capture_error(n->activation.execution, result);
     atomic_store(&n->result, result);
     atomic_store(&n->state, UD_EXEC_FAILED);
     return ud_fail(n->context.memory, result, "component '%.*s' %s failed", (int)n->id.length,
@@ -1644,7 +1645,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     int suspending = p->kafka && event.kind == UD_COMPONENT_INPUT_END &&
         atomic_load(&e->execution->stop_requested) &&
         !ud_pipeline_kafka_exhausted(p);
-    if (!s)
+    if (!s) {
+        ud_context_clear_error(n->context.memory);
         s = suspending ? (n->ended == n->descriptor.inputs ? UD_END : UD_OK)
             : atomic_load(&e->execution->stop_requested) &&
                     n->descriptor.category == UD_COMPONENT_SOURCE &&
@@ -1655,6 +1657,8 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
                 ? UD_END
             : event.kind >= UD_COMPONENT_WATERMARK ? stream_control(p, n, &event)
                                                    : n->descriptor.step(n->instance, &event);
+        ud_execution_capture_error(e->execution, s);
+    }
     ud_task_cancel_unregister(&n->activation);
     if (input || n->produced != produced_before)
         batch_observe(n, ud_monotonic_ns() - started_ns);
@@ -1700,7 +1704,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     if (emitted && n->descriptor.category == UD_COMPONENT_SOURCE &&
         !ud_transaction_active(&n->activation))
         ud_debug_advance(&n->activation);
-    if (s == UD_BUSY || s < UD_OK || s > UD_TRUNCATED)
+    if (s == UD_BUSY || s < UD_OK || s > UD_STATUS_LAST)
         s = UD_INVALID;
     if (s == UD_END) {
         if (emitted ||

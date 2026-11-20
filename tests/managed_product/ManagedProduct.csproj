@@ -4,5 +4,5 @@
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../bindings/dotnet/UniversalData/UniversalData.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../products/UniversalData.Hosting/UniversalData.Hosting.csproj" /></ItemGroup>
 </Project>

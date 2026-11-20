@@ -2,6 +2,7 @@ using System.Text.Json;
 using UniversalData;
 using UniversalData.Hosting;
 
+if (args is ["session"]) return await UniversalData.Worker.SdkWorker.Run();
 if (args is ["agent", var configPath]) return await UniversalData.Worker.WorkerNodeAgent.RunAsync(configPath);
 if (args.Length != 0) throw new ArgumentException("Worker uses the private inherited-pipe request protocol");
 var input = await WorkerProtocol.ReadLine(Console.In,67108864) ?? throw new InvalidDataException("Missing Worker request");
@@ -15,7 +16,7 @@ if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticke
     throw new InvalidDataException("Incompatible Worker request");
 var policy = request.Policy with { Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated };
 using var nativePackage = request.Mode == "execute"
-    ? new Package(request.Package, policy.MemoryLimit)
+    ? new NativePackage(request.Package, policy.MemoryLimit)
     : null;
 bool requiresJournal = nativePackage?.RequiresJournal ?? true;
 if (!requiresJournal && (request.Resume || request.JournalTicket is not null))
@@ -145,6 +146,7 @@ try {
         executionRun.Cancel();
     });
     int resultCode = 0;
+    OperationError? resultDetail = null;
     ulong currentRevision = readyRevision;
     long lastProgress = Environment.TickCount64;
     try {
@@ -161,11 +163,11 @@ try {
             }
             lastProgress = Environment.TickCount64;
         }
-    } catch (UniversalDataException error) { resultCode = error.Status; }
+    } catch (UniversalDataException error) { resultCode = error.Status; resultDetail = error.Detail; }
     var metrics = executionRun.Metrics;
     ulong terminalRevision = checked(currentRevision + 1); catalog.Record(executionRun,terminalRevision);
     Reply(new { version = ProductInfo.Protocol, kind = "terminal", ticket = request.Ticket, executionId = executionRun.Id,
-        state = metrics.State.ToString(), result = resultCode, metrics, revision = terminalRevision,
+        state = metrics.State.ToString(), result = resultCode, error = resultDetail, metrics, revision = terminalRevision,
         record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,terminalRevision)!),
         debug = request.Debug is null ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(secretFilter.Json(executionRun.DebugSnapshot())) });
     return resultCode == 0 ? 0 : 1;

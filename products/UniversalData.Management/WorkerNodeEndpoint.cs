@@ -48,7 +48,8 @@ internal static class WorkerNodeEndpoint
                 if (tenants.Length == 0)
                     throw new InvalidDataException("Worker node has no shared tenant scope");
                 await directory.RegisterAsync(new RemoteWorkerNode(frame.NodeId, capacity.MaxCpu,
-                    capacity.MaxProcesses, capacity.MaxMemoryBytes, tenants), channel, lifetime.Token);
+                    capacity.MaxProcesses, capacity.MaxMemoryBytes, tenants,
+                    tenants.ToDictionary(tenant => tenant, tenant => capacity.Inventory[tenant], StringComparer.Ordinal)), channel, lifetime.Token);
             }
             else if (!registration && frame.Kind == "attach" && frame.ValidLease)
                 await directory.AttachAsync(frame, channel, lifetime.Token);

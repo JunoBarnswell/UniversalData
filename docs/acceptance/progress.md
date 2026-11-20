@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 6.0.0 / ABI 14；SDK 6 native SQL and ETL candidate under verification。
+SDK 7.0.0 / ABI 15；SDK 7 cluster scheduling and .NET distribution candidate。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 

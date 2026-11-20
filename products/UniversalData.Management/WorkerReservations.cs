@@ -9,8 +9,30 @@ public sealed class WorkerReservations(HostPolicy policy, ProductConfiguration c
     private readonly Dictionary<(string Node, bool Remote), (uint Cpu, uint Processes, ulong Memory)> usage = new();
     private const ulong ClrAndProcessOverhead = 268435456;
 
+    public bool Ready => policy.MaxConcurrency > 0 && File.Exists(configuration.WorkerPath);
+
+    public WorkerNodeStatus[] Status(string tenant)
+    {
+        var local = new RemoteWorkerNode(configuration.NodeId, Math.Min(policy.MaxConcurrency, (uint)Environment.ProcessorCount),
+            policy.MaxConcurrency, (ulong)Math.Max(0, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes), [tenant]);
+        lock (gate)
+        {
+            return [Describe(local, false, true, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
+                .. directory.Status(tenant).Select(entry => Describe(entry.Node, true, entry.Online,
+                    entry.HeartbeatMs)).OrderBy(entry => entry.NodeId, StringComparer.Ordinal)];
+        }
+    }
+
+    private WorkerNodeStatus Describe(RemoteWorkerNode node, bool remote, bool online, long heartbeat)
+    {
+        var current = usage.GetValueOrDefault((node.NodeId, remote));
+        return new(node.NodeId, remote, online, heartbeat, node.MaxProcesses, current.Processes,
+            node.MaxCpu, current.Cpu, node.MaxMemoryBytes, current.Memory);
+    }
+
     internal WorkerReservation? TryReserve(string tenant, WorkerParallelism? plan, bool remote, int count,
-        IReadOnlyList<WorkerPlacement?>? pinned = null, WorkerPlacement? excluded = null)
+        IReadOnlyList<WorkerPlacement?>? pinned = null, WorkerPlacement? excluded = null,
+        System.Text.Json.JsonElement? package = null)
     {
         var budget = new WorkerBudget(plan?.ThreadsPerWorker ?? 1, policy.MemoryLimit,
             checked(policy.MemoryLimit + ClrAndProcessOverhead), plan?.ConsumerLanesPerWorker ?? 1);
@@ -18,7 +40,9 @@ public sealed class WorkerReservations(HostPolicy policy, ProductConfiguration c
         var local = new RemoteWorkerNode(configuration.NodeId, Math.Min(policy.MaxConcurrency, (uint)Environment.ProcessorCount),
             policy.MaxConcurrency, hostMemory, [tenant]);
         (RemoteWorkerNode Node, bool Remote)[] nodes = [(local, false), .. (remote
-            ? directory.Nodes.Where(node => node.AllowedTenants.Contains(tenant, StringComparer.Ordinal)).Select(node => (node, true))
+            ? directory.Nodes.Where(node => node.AllowedTenants.Contains(tenant, StringComparer.Ordinal) &&
+                (package is null || node.Inventory is not null && node.Inventory.TryGetValue(tenant, out var inventory) &&
+                 inventory.Supports(package.Value))).Select(node => (node, true))
             : Enumerable.Empty<(RemoteWorkerNode, bool)>())];
         var placements = new WorkerPlacement[count];
         var acquired = new List<WorkerPlacement>(count);

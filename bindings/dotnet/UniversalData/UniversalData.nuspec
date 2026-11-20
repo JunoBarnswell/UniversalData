@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package>
+  <metadata>
+    <id>UniversalData</id>
+    <version>$version$</version>
+    <authors>UniversalData</authors>
+    <description>Typed SQL and ETL with an isolated UniversalData Worker.</description>
+    <license type="expression">MIT</license>
+    <readme>README.md</readme>
+    <repository type="git" url="https://github.com/JunoBarnswell/UniversalData.git" />
+    <dependencies>
+      <group targetFramework="net8.0">
+        <dependency id="UniversalData.Runtime.win-x64" version="[$version$]" />
+        <dependency id="UniversalData.Runtime.linux-x64" version="[$version$]" />
+      </group>
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="bin/Release/net8.0/UniversalData.dll" target="lib/net8.0" />
+    <file src="../../../README.md" target="README.md" />
+  </files>
+</package>

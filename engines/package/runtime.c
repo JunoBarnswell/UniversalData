@@ -12,8 +12,38 @@ static ud_status copy_string(ud_context *ctx, ud_string source, ud_string *out) 
     out->length = source.length;
     return out->data ? UD_OK : UD_RESOURCE;
 }
+void ud_execution_capture_error(ud_execution *execution, ud_status result) {
+    if (!execution || result <= UD_END || result > UD_STATUS_LAST || result == UD_MORE || result == UD_BUSY)
+        return;
+    ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION};
+    if (ud_error_details(execution->ctx, &detail) || detail.source == UD_ERROR_NATIVE ||
+        (detail.cause != result && result != UD_COMMIT_UNKNOWN))
+        return;
+    ud_mutex_lock(&execution->diagnostics_lock);
+    if (!execution->error_details[result].cause)
+        execution->error_details[result] = detail;
+    ud_mutex_unlock(&execution->diagnostics_lock);
+}
+ud_status ud_execution_error_details(ud_execution *execution, ud_error_detail *out) {
+    if (!execution || !out)
+        return UD_INVALID;
+    if (out->struct_size != sizeof(*out) || out->abi_version != UD_ABI_VERSION)
+        return UD_INCOMPATIBLE;
+    ud_status result = atomic_load(&execution->result);
+    if (result <= UD_END || result > UD_STATUS_LAST)
+        return UD_END;
+    ud_mutex_lock(&execution->diagnostics_lock);
+    if (execution->error_details[result].cause)
+        *out = execution->error_details[result];
+    else
+        *out = (ud_error_detail){.struct_size = sizeof(*out), .abi_version = UD_ABI_VERSION,
+                                 .source = UD_ERROR_NATIVE, .cause = result};
+    ud_mutex_unlock(&execution->diagnostics_lock);
+    return UD_OK;
+}
 void ud_activation_notify_kind(ud_activation *e, int32_t kind, ud_execution_state state,
                                ud_status result) {
+    ud_execution_capture_error(e->execution, result);
     if (!e->execution->options.observe)
         return;
     ud_mutex_lock(&e->execution->events_lock);
@@ -34,7 +64,8 @@ void ud_activation_notify_kind(ud_activation *e, int32_t kind, ud_execution_stat
                                 ud_wall_ms(),
                                 kind,
                                 ++e->execution->event_sequence,
-                                e};
+                                e,
+                                {0}};
     ud_bytes chain = {.ctx = e->execution->ctx, .limit = 65536};
     if (result != UD_OK && result != UD_BUSY && result != UD_MORE && result != UD_END) {
         ud_status encoded = ud_bytes_put(&chain, "[", 1);
@@ -480,6 +511,7 @@ ud_status ud_activation_run_definition(ud_activation *e) {
     return s == UD_BUSY ? UD_TRANSIENT : s;
 }
 static ud_status execute(ud_execution *e) {
+    ud_context_clear_error(e->ctx);
     ud_status pool = ud_executor_start(e->executor);
     uint64_t now = ud_now_ms();
     if (e->options.timeout_ms)
@@ -512,6 +544,7 @@ static ud_status execute(ud_execution *e) {
                     : s                    ? UD_EXEC_FAILED
                     : atomic_load(&e->stop_requested) ? UD_EXEC_STOPPED : UD_EXEC_SUCCEEDED;
 
+    ud_execution_capture_error(e, s);
     atomic_store(&e->result, s);
     atomic_store(&e->state, state);
     ud_mutex_lock(&e->events_lock);

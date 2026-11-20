@@ -1,0 +1,1 @@
+{"provider":"Sqlite","rows":10000000,"batchRows":4096,"inputRows":10000000,"written":10000000,"read":10000000,"checksum":"82da80c54b8880a5","firstBatchMilliseconds":108.2856,"elapsedMilliseconds":66424.2364,"rowsPerSecond":150547.45890913997,"managedAllocatedBytes":3214668176,"peakRssBytes":115363840,"sourceWorkerPeakRssBytes":81559552,"targetWorkerPeakRssBytes":90480640}

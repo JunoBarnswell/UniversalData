@@ -519,6 +519,7 @@ static ud_status perform_task(ud_activation *e, const ud_json *task) {
             if (serial)
                 ud_mutex_lock(&e->execution->serial_tasks_lock);
             s = ud_activation_check(e);
+            ud_context_clear_error(ctx.memory);
             void *instance = d.user;
             int prepared = 0;
             if (!s && d.prepare) {
@@ -536,6 +537,7 @@ static ud_status perform_task(ud_activation *e, const ud_json *task) {
                 s = ud_activation_check(e);
             if (!s && d.finish)
                 s = d.finish(instance);
+            ud_execution_capture_error(e->execution, s);
             if ((s == UD_CANCELLED || s == UD_TIMEOUT) && d.cancel && !e->cancel_sent)
                 d.cancel(instance);
             if (prepared)
@@ -545,7 +547,7 @@ static ud_status perform_task(ud_activation *e, const ud_json *task) {
             if (serial)
                 ud_mutex_unlock(&e->execution->serial_tasks_lock);
         }
-        if (s == UD_END || s == UD_MORE || s < UD_OK || s > UD_TRUNCATED)
+        if (s == UD_END || s == UD_MORE || s < UD_OK || s > UD_STATUS_LAST)
             s = UD_INVALID; /* Iteration sentinels are not Task outcomes. */
         ud_free(json);
         ud_json_destroy(bound);
@@ -685,6 +687,8 @@ static ud_status init_task(ud_activation *parent, const ud_json *definition, tas
     a->depth = parent->depth;
     a->event_depth = parent->event_depth;
     a->parallel = parent->parallel;
+    a->http_response_headers = (ud_string){0};
+    a->http_status = 0;
     a->transaction = parent->transaction;
     a->transaction_serial = parent->transaction_serial;
     a->transaction_epoch = parent->transaction_epoch;
@@ -768,11 +772,29 @@ static void record_task(task_run *run, int32_t state, int pass, uint64_t start, 
     int n = snprintf(
         fields, sizeof(fields),
         ",\"state\":%d,\"outcome\":%d,\"precedencePassed\":%s,\"readyWaitMs\":%llu,\"elapsedMs\":%"
-        "llu,\"cpuNs\":%llu}",
+        "llu,\"cpuNs\":%llu",
         state, run->result, pass ? "true" : "false", (unsigned long long)(start - run->ready_ms),
         (unsigned long long)(ud_now_ms() - start), (unsigned long long)(ud_thread_cpu_ns() - cpu));
     if (!status)
         status = ud_bytes_put(&item, fields, (size_t)n);
+    ud_string headers = run->activation.http_response_headers;
+    if (!status && run->activation.http_status) {
+        n = snprintf(fields, sizeof(fields), ",\"httpStatus\":%d", run->activation.http_status);
+        status = ud_bytes_put(&item, fields, (size_t)n);
+        if (!status && headers.length) {
+            if (headers.length <= 4096 && headers.length <= 32768 - e->control_http_header_bytes) {
+                status = ud_bytes_put(&item, ",\"responseHeaders\":", sizeof(",\"responseHeaders\":") - 1);
+                if (!status)
+                    status = ud_json_quote(&item, headers.data, headers.length);
+            } else {
+                status = ud_bytes_put(&item, ",\"responseHeadersOmitted\":true",
+                                      sizeof(",\"responseHeadersOmitted\":true") - 1);
+                headers.length = 0;
+            }
+        }
+    }
+    if (!status)
+        status = ud_bytes_put(&item, "}", 1);
     uint64_t before = e->control_reports.size;
     if (!status && before)
         status = ud_bytes_put(&e->control_reports, ",", 1);
@@ -781,7 +803,8 @@ static void record_task(task_run *run, int32_t state, int pass, uint64_t start, 
     if (status) {
         e->control_reports.size = before;
         e->control_records_dropped++;
-    }
+    } else
+        e->control_http_header_bytes += headers.length;
     ud_bytes_clear(&item);
     ud_mutex_unlock(&e->diagnostics_lock);
 }
@@ -849,6 +872,7 @@ static ud_status execute_task(void *user, uint32_t index) {
     }
     ud_mutex_unlock(&flow->mutex);
     record_task(run, state, pass, started, cpu);
+    ud_free((void *)run->activation.http_response_headers.data);
     ud_free((void *)run->activation.task_id.data);
     run->activation.task_id = (ud_string){0};
     if (status == UD_COMMIT_UNKNOWN) {

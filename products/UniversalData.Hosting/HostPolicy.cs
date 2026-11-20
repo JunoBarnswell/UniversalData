@@ -116,22 +116,27 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     }
     public bool RequiresIsolation(string packageJson)
     {
-        using var package = new Package(packageJson); using var document = JsonDocument.Parse(package.ToJson());
+        using var package = new NativePackage(packageJson); using var document = JsonDocument.Parse(package.ToJson());
         return document.RootElement.TryGetProperty("extensions",out var extensions) && extensions.EnumerateArray().Any(entry =>
             !(TrustedAssemblyHashes ?? []).Contains(entry.GetProperty("sha256").GetString(),StringComparer.Ordinal));
     }
-    public Execution CreateExecution(string packageJson, string parametersJson = "{}", string executionId = "",
+    internal Execution CreateExecution(string packageJson, string parametersJson = "{}", string executionId = "",
         string? stateDirectory = null, bool resume = false, Registry? registry = null, Action<ExecutionEvent>? observe = null,
         ulong eventSequenceStart = 0, WorkerShard? shard = null, bool brokerRestore = false)
     {
         if ((Registry.Features & RegistryFeatures.ScopedJournal) == 0)
             throw new UniversalDataException((int)StatusCode.Incompatible,"Native runtime does not distinguish internal recovery storage");
         if (!Isolated && RequiresIsolation(packageJson)) throw new UniversalDataException((int)StatusCode.Auth, "Untrusted module requires an isolated Worker");
-        using var package = new Package(packageJson, MemoryLimit);
+        using var package = new NativePackage(packageJson, MemoryLimit);
         bool requiresJournal = package.RequiresJournal;
         if (resume && !requiresJournal)
             throw new ArgumentException("This stream execution has no Native Journal and cannot be resumed", nameof(resume));
         string? journalDirectory = requiresJournal ? stateDirectory : null;
+        if (journalDirectory is not null)
+        {
+            HostFiles.NoLinks(journalDirectory);
+            if (!resume) Directory.CreateDirectory(journalDirectory);
+        }
         var scoped = this with { StateDirectory = journalDirectory };
         return new(package.ToJson(), Tenant, scoped.Authorize, parametersJson, executionId, scoped.Resolve, stateDirectory: journalDirectory,
             resume: resume, maxConcurrency: MaxConcurrency, memoryLimit: MemoryLimit, registry: registry, observe: observe,

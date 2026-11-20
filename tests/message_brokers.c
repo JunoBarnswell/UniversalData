@@ -514,6 +514,12 @@ static ud_status pipeline_case(broker_fixture *f, int format, ud_string input, u
         if (status) {
             ud_execution_cancel(execution);
             (void)ud_execution_wait(execution, BROKER_WAIT_MS);
+            char *diagnostics = NULL;
+            uint32_t length = 0;
+            if (!ud_execution_diagnostics(execution, &diagnostics, &length)) {
+                fprintf(stderr, "Broker pipeline diagnostics: %.*s\n", (int)length, diagnostics);
+                ud_free(diagnostics);
+            }
         }
     }
     if (execution) {

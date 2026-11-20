@@ -18,6 +18,8 @@ import zipfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--bundle", required=True, type=pathlib.Path)
+parser.add_argument("--companion-packages", required=True, type=pathlib.Path,
+                    help="Directory with the other platform's runtime package from the same source")
 parser.add_argument("--work", required=True, type=pathlib.Path)
 parser.add_argument("--evidence", required=True, type=pathlib.Path)
 parser.add_argument("--cmake", default="cmake")
@@ -152,7 +154,9 @@ if manifest["capabilities"]["sqlite"]:
     run("c-dynamic-sqlite", [sys.executable, ROOT / "tests/package_sql.py", c_output / ("consumer_sql" + executable), connector], native_environment)
 
 nupkg = packages / f"UniversalData.{version}.nupkg"
-with zipfile.ZipFile(nupkg) as archive:
+assert nupkg.is_file()
+rid = manifest["runtimeIdentifier"]
+with zipfile.ZipFile(packages / f"UniversalData.Runtime.{rid}.{version}.nupkg") as archive:
     runtime_path = "runtimes/" + manifest["runtimeIdentifier"] + "/native/" + native_name
     assert hashlib.sha256(archive.read(runtime_path)).hexdigest() == digest(library), "NuGet contains a different native DLL."
 dotnet_outputs = []
@@ -168,6 +172,7 @@ for name, source, assembly in [("package", "examples/dotnet", "Consumer"),
                        '</PropertyGroup><ItemGroup><PackageReference Include="UniversalData" Version="' + version +
                        '" /></ItemGroup></Project>', encoding="utf-8")
     run("nuget-restore-" + name, [arguments.dotnet, "restore", project, "--source", packages,
+                                "--source", arguments.companion_packages.resolve(),
                                 "--packages", work / "nuget-cache", "--nologo", "--verbosity:minimal"])
     run("nuget-build-" + name, [arguments.dotnet, "build", project, "--configuration", "Release",
                               "--no-restore", "--nologo", "--verbosity:minimal"])
@@ -177,7 +182,7 @@ for name, source, assembly in [("package", "examples/dotnet", "Consumer"),
         # These are the already copied and verified NuGet assets, not SDK
         # loader paths. Share their exact bytes with the private package cache
         # to bound this verification workspace on constrained runners.
-        package_native = work / 'nuget-cache' / 'universaldata' / version / pathlib.Path(runtime_path).parent
+        package_native = work / 'nuget-cache' / ('universaldata.runtime.' + rid) / version / pathlib.Path(runtime_path).parent
         for asset in (output / pathlib.Path(runtime_path).parent).iterdir():
             original = package_native / asset.name
             assert original.is_file() and digest(asset) == digest(original)

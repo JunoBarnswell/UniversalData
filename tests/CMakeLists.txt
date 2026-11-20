@@ -338,6 +338,16 @@ if(UD_BUILD_HOSTS)
     ${CMAKE_CURRENT_SOURCE_DIR}/management_security.py ${UD_DOTNET}
     ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
   set_tests_properties(management_authenticated_native_worker PROPERTIES TIMEOUT 150)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND UD_WITH_HTTP)
+    find_program(UD_TEST_OPENSSL openssl)
+    if(UD_TEST_OPENSSL)
+      add_test(NAME management_remote_worker_dispatch COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/management_remote_nodes.py ${UD_DOTNET}
+        ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll
+        ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll ${UD_TEST_OPENSSL})
+      set_tests_properties(management_remote_worker_dispatch PROPERTIES TIMEOUT 120 LABELS "cluster")
+    endif()
+  endif()
   add_custom_target(ud_hosting_contracts_test ALL
     COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/hosting_contracts/HostingContracts.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts VERBATIM)
   add_test(NAME hosting_identity_secret_resource_contracts COMMAND ${UD_DOTNET} ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts/HostingContracts.dll)
@@ -562,7 +572,22 @@ if(TARGET ud_package)
     add_custom_target(ud_managed_sql_test ALL
       COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_sql/ManagedSql.csproj -c Release
         -o ${CMAKE_CURRENT_BINARY_DIR}/managed-sql
-      DEPENDS ud_managed_product_test VERBATIM)
+      DEPENDS ud_managed_product_test ud_product_hosts VERBATIM)
+    add_test(NAME jobs_schedule_catalog COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/jobs_schedule.py ${UD_DOTNET}
+      ${PROJECT_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll $<TARGET_FILE:ud_worker>)
+    set_tests_properties(jobs_schedule_catalog PROPERTIES LABELS "scheduling" TIMEOUT 75)
+    if(TARGET ud_connector_sqlite)
+      add_test(NAME sdk_worker_process_isolation COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/sdk_worker.py ${UD_DOTNET}
+        ${CMAKE_CURRENT_BINARY_DIR}/managed-sql/ManagedSql.dll $<TARGET_FILE:ud_worker>
+        $<TARGET_FILE:ud_connector_sqlite>)
+      set_tests_properties(sdk_worker_process_isolation PROPERTIES LABELS "sql-etl;crash-recovery" TIMEOUT 100)
+      if(NOT WIN32)
+        set_tests_properties(sdk_worker_process_isolation PROPERTIES
+          ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+      endif()
+    endif()
     foreach(driver sqlite postgresql mysql mariadb odbc oracle_oci)
       if(NOT TARGET ud_connector_${driver})
         continue()
@@ -585,7 +610,8 @@ if(TARGET ud_package)
         --dotnet ${UD_DOTNET} --assembly ${CMAKE_CURRENT_BINARY_DIR}/managed-sql/ManagedSql.dll
         --plugin $<TARGET_FILE:ud_connector_${driver}> --provider ${provider} ${resource})
       set_tests_properties(sql_etl_managed_${driver} PROPERTIES
-        LABELS "${labels}" SKIP_RETURN_CODE 77 TIMEOUT 240 RESOURCE_LOCK ud_integration_${driver})
+        LABELS "${labels}" SKIP_RETURN_CODE 77 TIMEOUT 240 RESOURCE_LOCK ud_integration_${driver}
+        ENVIRONMENT "UD_WORKER_PATH=$<TARGET_FILE:ud_worker>")
       if(NOT WIN32)
         set_tests_properties(sql_etl_managed_${driver} PROPERTIES
           ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")

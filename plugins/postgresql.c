@@ -211,8 +211,7 @@ static ud_status pg_failure(postgres_state *p, const PGresult *result) {
             status = UD_CANCELLED;
     }
     /* Database diagnostics can echo literal data / credentials; expose classification only. */
-    return p->host.report(p->host.context, status,
-                          code ? code : "PostgreSQL connection / protocol failure");
+    return plugin_db_error(&p->host, status, 0, code, "PostgreSQL operation failed");
 }
 static ud_status record_diagnostic(void *state, ud_string *out) {
     postgres_state *p = state;

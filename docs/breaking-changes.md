@@ -1,3 +1,13 @@
+# SDK 7.0.0 / ABI 15
+
+C# 从 `SqlSugarClient.OpenAsync` 打开会话，从 `EtlClient` 启动、预览并恢复 Package。SQL 读取使用 `SqlCursor<T>`，按行或按原生批次返回 `Result<T>`。执行结束返回 `End`。进程中断后的诊断保留 Worker 或传输原因，可能已写入的数据通过 `CommitUnknown` 进入核对。
+
+v14 Package 使用 `python scripts/migrate_package_v14_to_v15.py input.json output.json` 生成新副本。切换前用 v14 处理待恢复执行。Catalog 以原计划时间为间隔起点迁移旧日程，历史执行仍保留原版本。重新发布 v15 Package 后，将作业绑定到新的发布修订。
+
+普通作业按管理端保留的 CPU 槽位、Native 内存和进程数量派发。Worker 节点在本地再次核对额度和资源授权。显式分片计划继续使用 Linux systemd 或 Windows Job Objects 的进程级限制。
+
+安装 `UniversalData` 7.0.0 时还原锁定版本的 Windows x64 和 Linux x64 运行时包。Worker 随应用构建和发布。SQL Server ODBC 18 和 Oracle Instant Client 等需由宿主安装的客户端仍按各平台供应商要求提供。
+
 # SDK 6.0.0 / ABI 14
 
 C 公共 ABI、插件、Package、Schema、Wire、Worker 和检查点协议同步升级到 14。按 `metadata/product.json` 生成 C、C#、Java 和 Studio 版本。重建宿主、插件和消费者后一起发布。

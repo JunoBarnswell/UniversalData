@@ -2,15 +2,15 @@
   "modelVersion": 2,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "6.0.0",
-    "abiVersion": 14,
-    "protocolVersion": 14,
+    "sdkVersion": "7.0.0",
+    "abiVersion": 15,
+    "protocolVersion": 15,
     "checkpointRevision": 4,
-    "state": "ABI 14 candidate: bounded native SQL streaming, native SQL batch writes and typed .NET SQL sessions.",
+    "state": "ABI 15 candidate: isolated SDK execution, job schedules, and cluster dispatch.",
     "acceptanceResources": "Windows Release CORE and focused host acceptance use local evidence. Real MQ, Registry, multi-host and complete PRODUCT resources remain separately gated.",
     "dataLayoutRevision": 1,
-    "catalogRevision": 1,
-    "workerRevision": 3
+    "catalogRevision": 2,
+    "workerRevision": 4
   },
   "scope": {
     "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",
@@ -26,7 +26,7 @@
   },
   "candidate": {
     "branch": "main",
-    "state": "SDK 6 native SQL and ETL candidate under verification",
+    "state": "SDK 7 cluster scheduling and .NET distribution candidate",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,

@@ -65,6 +65,15 @@ UD_API ud_status ud_catalog_lease_active(ud_catalog *, int32_t kind, ud_string i
  * execution facts, but cannot overwrite a lease-protected object. */
 UD_API ud_status ud_catalog_compare_exchange(ud_catalog *, const ud_catalog_key *, ud_string json,
                                              uint64_t expected_revision, const ud_catalog_lease *);
+typedef struct ud_catalog_job_occurrence {
+    uint32_t struct_size, abi_version;
+    ud_catalog_key job, occurrence, run;
+    ud_string job_document, occurrence_document, run_document;
+} ud_catalog_job_occurrence;
+/* Advance the leased job revision and append its occurrence and optional queued
+ * run in one transaction. A backfill advances an existing occurrence revision. */
+UD_API ud_status ud_catalog_publish_occurrence(ud_catalog *, const ud_catalog_job_occurrence *,
+                                               const ud_catalog_lease *job_lease);
 /* Owned canonical JSON, released with ud_free. Missing key returns END. */
 UD_API ud_status ud_catalog_get(ud_catalog *, const ud_catalog_key *, char **json,
                                 uint32_t *length);

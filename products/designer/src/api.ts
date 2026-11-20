@@ -48,8 +48,8 @@ export async function request(
     const text = await response.text();
     let message = `请求失败 (${response.status})`;
     try {
-      const error = decode(text) as { error?: string };
-      message = error.error ?? message;
+      const error = decode(text) as { error?: string | { message: string } };
+      message = typeof error.error === "string" ? error.error : error.error?.message ?? message;
     } catch {
       /* Preserve HTTP status. */
     }

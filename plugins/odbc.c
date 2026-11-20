@@ -19,18 +19,9 @@ ud_status ud_odbc_control(odbc_state *p) {
            : p->host.check_io ? p->host.check_io(p->host.control_user)
                               : UD_OK;
 }
-static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
-    SQLCHAR message[2];
-    SQLSMALLINT length = 0;
-    SQLGetDiagRecA(kind, handle, 1, (SQLCHAR *)p->sqlstate, &p->native_error, message,
-                   sizeof(message), &length);
-    p->sqlstate[5] = 0;
+static ud_status odbc_status(odbc_state *p) {
     if (p->dialect == DIALECT_MSSQL && p->native_error == 51079)
-        return p->host.report(p->host.context, UD_FENCED, "changeset preimage conflict");
-    char safe[96];
-    snprintf(safe, sizeof(safe), "ODBC operation failed (SQLSTATE %.5s, native %ld)", p->sqlstate,
-             (long)p->native_error);
-    p->host.report(p->host.context, UD_IO, safe);
+        return UD_FENCED;
     if (!strncmp(p->sqlstate, "08", 2)) {
         p->broken = 1;
         return UD_TRANSIENT;
@@ -56,6 +47,16 @@ static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
     if (!strcmp(p->sqlstate, "HY001"))
         return UD_RESOURCE;
     return UD_IO;
+}
+static ud_status failure(odbc_state *p, SQLSMALLINT kind, SQLHANDLE handle) {
+    SQLCHAR ignored[2];
+    SQLSMALLINT length = 0;
+    SQLGetDiagRecA(kind, handle, 1, (SQLCHAR *)p->sqlstate, &p->native_error, ignored,
+                   sizeof(ignored), &length);
+    p->sqlstate[5] = 0;
+    ud_status status = odbc_status(p);
+    const char *message = status == UD_FENCED ? "changeset preimage conflict" : "ODBC operation failed";
+    return plugin_db_error(&p->host, status, p->native_error, p->sqlstate, message);
 }
 ud_status ud_odbc_diagnostic(odbc_state *state) {
     return failure(state, SQL_HANDLE_DBC, state->connection);
@@ -1144,8 +1145,10 @@ ud_status ud_odbc_tx_receipt(odbc_state *p, const ud_transaction_branch *branch,
         if (!status && affected != 1)
             status = UD_FENCED;
     } else if (!status) {
+        /* Keep the locking read on this primary key. A Unicode parameter can
+         * otherwise convert the indexed CHAR column and scan other prepared receipts. */
         const char *text = "SELECT digest FROM dbo.ud_sdk_tx_receipts_v11 "
-                           "WITH(READCOMMITTEDLOCK) WHERE branch_id=?";
+                           "WITH (READCOMMITTEDLOCK, FORCESEEK) WHERE branch_id=CAST(? AS CHAR(64))";
         SQLHSTMT statement = SQL_NULL_HSTMT;
         status = prepare(p, (ud_string){text, (uint32_t)strlen(text)}, &statement);
         if (!status)

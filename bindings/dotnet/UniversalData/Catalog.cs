@@ -69,6 +69,30 @@ public sealed class Catalog : IDisposable
             DataOwnership.Check(context,result);
         }
     }
+
+    public void PublishOccurrence(CatalogLease job, ulong revision, string jobDocument,
+        string occurrenceId, ulong occurrenceRevision, string occurrenceDocument,
+        string? runId, string? runDocument)
+    {
+        lock (sync)
+        {
+            Open();
+            using var strings = new NativeStrings(job.Id, job.Owner, jobDocument, occurrenceId,
+                occurrenceDocument, runId ?? "", runDocument ?? "");
+            var request = new Native.JobOccurrence
+            {
+                Size = (uint)Marshal.SizeOf<Native.JobOccurrence>(),
+                Abi = ProductVersion.Abi,
+                Job = Key(CatalogKind.Audit, strings[0], revision),
+                Occurrence = Key(CatalogKind.Audit, strings[3], occurrenceRevision),
+                Run = Key(CatalogKind.Audit, strings[5], 1),
+                JobDocument = strings[2], OccurrenceDocument = strings[4], RunDocument = strings[6]
+            };
+            var lease = LeaseValue(job, strings[0], strings[1]);
+            DataOwnership.Check(context, Native.ud_catalog_publish_occurrence(catalog, ref request, ref lease));
+        }
+    }
+
     public CatalogLease? TryAcquireLease(CatalogKind kind,string id,string owner,uint durationMilliseconds = 30000,
         string pool = "",uint capacity = 0)
     {
@@ -162,9 +186,9 @@ public sealed class Catalog : IDisposable
             DataOwnership.Check(context, Native.ud_catalog_record_event(catalog, ref value, executionEvent.Sequence));
         }
     }
-    public void RecordProgress(Execution execution, ulong revision)
+    internal void RecordProgress(Execution execution, ulong revision)
     { lock (sync) { Open(); execution.RecordProgress(catalog, revision); } }
-    public void Record(Execution execution, ulong revision)
+    internal void Record(Execution execution, ulong revision)
     { lock (sync) { Open(); execution.RecordCatalog(catalog, revision); } }
     public ulong PruneEvents(ulong beforeMilliseconds, uint limit = 1000)
     { lock (sync) { Open(); DataOwnership.Check(context, Native.ud_catalog_prune_events(catalog, beforeMilliseconds, limit, out var removed)); return removed; } }
@@ -211,6 +235,15 @@ internal static partial class Native
     { internal uint Size, Abi; internal StringValue Directory, Tenant; internal IntPtr Authorize, User; internal int Create; }
     [StructLayout(LayoutKind.Sequential)] internal struct CatalogKey
     { internal uint Size, Abi; internal int Kind; internal StringValue Id; internal ulong Revision; }
+    [StructLayout(LayoutKind.Sequential)] internal struct JobOccurrence
+    {
+        internal uint Size, Abi;
+        internal CatalogKey Job, Occurrence, Run;
+        internal StringValue JobDocument, OccurrenceDocument, RunDocument;
+    }
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_catalog_publish_occurrence(IntPtr catalog, ref JobOccurrence request,
+        ref CatalogLease lease);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_open(ContextHandle context, ref CatalogOptions options, out IntPtr catalog);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_put(IntPtr catalog, ref CatalogKey key, StringValue json);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_get(IntPtr catalog, ref CatalogKey key, out IntPtr json, out uint length);

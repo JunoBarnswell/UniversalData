@@ -71,7 +71,7 @@ internal static class SqlBatchBuilder
         }
     }
 
-    internal static SqlBatchHandle BuildParameters(SqlSessionHandle session, IReadOnlyList<SugarParameter> parameters)
+    internal static SqlBatchHandle BuildParameters(IntPtr context, IReadOnlyList<SugarParameter> parameters)
     {
         if (parameters.Count == 0) throw new ArgumentException("No parameters were supplied.", nameof(parameters));
         var members = new List<EntityMember>(parameters.Count);
@@ -103,7 +103,6 @@ internal static class SqlBatchBuilder
                 Scale = scale
             });
         }
-        var context = SqlNative.Context(session);
         using var schema = SqlNative.SchemaFromJson(context, EntityMapping.FormatSchema(members));
         SqlNative.Check(SqlNative.BatchCreateLike(context, schema.DangerousGetHandle(), 1, out var batch));
         try

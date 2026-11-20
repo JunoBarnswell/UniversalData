@@ -12,7 +12,7 @@ internal sealed class ContextHandle : SafeHandleZeroOrMinusOneIsInvalid
 
 internal static partial class Native
 {
-    private const string Library = "ud_data";
+    internal const string Library = "ud_data";
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct ContextOptions

@@ -1,3 +1,5 @@
+using UniversalData;
+
 namespace SqlSugar;
 
 internal sealed class Fastest<T> : IFastest<T>
@@ -7,9 +9,9 @@ internal sealed class Fastest<T> : IFastest<T>
     internal Fastest(SqlSugarClient client, EntityMapping mapping) { this.client = client; this.mapping = mapping; }
 
     public int PageSize { get; set; } = 512;
-    public int BulkCopy(IEnumerable<T> entities) => Copy(entities, default);
-    public int BulkUpdate(IEnumerable<T> entities) => Update(entities, default);
-    public int BulkDelete(IEnumerable<T> entities) => Delete(entities, default);
+    public Result<int> BulkCopy(IEnumerable<T> entities) => SqlResult.Run(() => Copy(entities, default));
+    public Result<int> BulkUpdate(IEnumerable<T> entities) => SqlResult.Run(() => Update(entities, default));
+    public Result<int> BulkDelete(IEnumerable<T> entities) => SqlResult.Run(() => Delete(entities, default));
 
     private int Copy(IEnumerable<T> entities, CancellationToken cancellationToken)
     {
@@ -35,10 +37,10 @@ internal sealed class Fastest<T> : IFastest<T>
         return client.Write(SqlNative.WriteDelete, SqlNative.LoadAuto, mapping, keys, entities, keys,
             checked((uint)Math.Max(PageSize, 1)), cancellationToken);
     }
-    public Task<int> BulkCopyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default) => RunAsync(() => Copy(entities, cancellationToken), cancellationToken);
-    public Task<int> BulkUpdateAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default) => RunAsync(() => Update(entities, cancellationToken), cancellationToken);
-    public Task<int> BulkDeleteAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default) => RunAsync(() => Delete(entities, cancellationToken), cancellationToken);
+    public Task<Result<int>> BulkCopyAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default) => RunAsync(() => Copy(entities, cancellationToken));
+    public Task<Result<int>> BulkUpdateAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default) => RunAsync(() => Update(entities, cancellationToken));
+    public Task<Result<int>> BulkDeleteAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default) => RunAsync(() => Delete(entities, cancellationToken));
 
-    private static Task<int> RunAsync(Func<int> operation, CancellationToken cancellationToken)
-    { cancellationToken.ThrowIfCancellationRequested(); return Task.Run(operation, cancellationToken); }
+    private static Task<Result<int>> RunAsync(Func<int> operation) =>
+        Task.Run(() => SqlResult.Run(operation));
 }

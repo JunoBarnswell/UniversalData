@@ -1,10 +1,40 @@
 using System.Text.Json;
 using UniversalData;
 
-if (args.Length != 4) throw new ArgumentException("package.json parameters.json execution-id authorized-root");
-string root = Path.GetFullPath(args[3]).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-using var package = new Package(File.ReadAllText(args[0]));
-using var execution = package.CreateExecution("fixture", (_, resource, _) => Path.IsPathFullyQualified(resource) && Path.GetFullPath(resource).StartsWith(root, StringComparison.Ordinal), File.ReadAllText(args[1]), args[2]);
-execution.Start(); while (!execution.Wait(100)) { }
-var m = execution.Metrics;
-Console.WriteLine(JsonSerializer.Serialize(new { state = (int)m.State, result = (int)m.Result, inputRows = m.InputRows, outputRows = m.OutputRows, rejectedRows = m.RejectedRows, executedTasks = m.ExecutedTasks, durableTasks = m.DurableTasks, recoveryTasks = m.RecoveryTasks, resumedTasks = m.ResumedTasks, pipelineTrees = m.PipelineTrees, treeHighWater = m.TreeHighWater, workerHighWater = m.WorkerHighWater }));
+if (args.Length != 4)
+    throw new ArgumentException("package.json parameters.json execution-id authorized-root");
+
+string state = Directory.CreateTempSubdirectory("universaldata-consumer-").FullName;
+try
+{
+    var policy = Path.Combine(state, "policy.json");
+    await File.WriteAllTextAsync(policy, JsonSerializer.Serialize(new
+    {
+        dataDirectory = Path.Combine(state, "runtime"),
+        fileRoots = new[] { Path.GetFullPath(args[3]) },
+        networkOrigins = Array.Empty<string>(),
+        pluginRoots = new[] { AppContext.BaseDirectory },
+        credentialFiles = new Dictionary<string, string>()
+    }));
+    var package = Package.FromJson(await File.ReadAllTextAsync(args[0]));
+    if (!package.IsSuccess)
+        return Failure(package.Code, package.Error);
+    var started = await new EtlClient(new(policy, "fixture")).StartNamedAsync(package.Value!,
+        await File.ReadAllTextAsync(args[1]), args[2]);
+    if (!started.IsSuccess)
+        return Failure(started.Code, started.Error);
+    await using var run = started.Value!;
+    var result = await run.WaitAsync();
+    if (!result.IsSuccess)
+        return Failure(result.Code, result.Error);
+    Console.WriteLine(JsonSerializer.Serialize(result.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    return 0;
+}
+finally { Directory.Delete(state, recursive: true); }
+
+static int Failure(StatusCode code, OperationError? error)
+{
+    Console.Error.WriteLine(JsonSerializer.Serialize(new Result(code, error),
+        new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    return (int)code;
+}

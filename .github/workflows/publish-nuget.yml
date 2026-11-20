@@ -1,0 +1,55 @@
+name: Publish approved UniversalData NuGet packages
+on:
+  workflow_dispatch:
+    inputs:
+      acceptance_run:
+        description: GitHub Actions run with the approved NuGet artifacts and hashes
+        required: true
+        type: string
+      version:
+        description: Exact UniversalData SDK version
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.acceptance_run }}
+          name: approved-nuget
+          path: approved-nuget
+      - name: Verify approved artifacts
+        env:
+          UD_APPROVED_VERSION: ${{ inputs.version }}
+          UD_RELEASE_COMMIT: ${{ github.sha }}
+        run: python scripts/release_guard.py --nuget approved-nuget
+      - uses: NuGet/login@v1
+        id: nuget
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      - name: Publish the locked SDK and both runtimes
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+          UD_APPROVED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          for package in UniversalData.Runtime.win-x64 UniversalData.Runtime.linux-x64 UniversalData; do
+            dotnet nuget push "approved-nuget/$package.$UD_APPROVED_VERSION.nupkg" \
+              --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+          done

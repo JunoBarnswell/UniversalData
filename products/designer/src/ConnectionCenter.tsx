@@ -220,6 +220,30 @@ export function ConnectionCenter({
                     ))}
                   </Select>
                 </label>
+                {current.driver === "http" && <fieldset>
+                  <label><input type="checkbox" checked={current.oauth2 !== undefined}
+                    onChange={(event) => edit({ oauth2: event.target.checked ? {
+                      tokenEndpoint: "", clientId: "", credentialReference: "", authentication: "basic",
+                    } : undefined })} />OAuth2 客户端凭据</label>
+                  {current.oauth2 && <>
+                    <label>令牌端点<input type="url" value={current.oauth2.tokenEndpoint}
+                      onChange={(event) => edit({ oauth2: { ...current.oauth2!, tokenEndpoint: event.target.value } })} /></label>
+                    <label>客户端 ID<input value={current.oauth2.clientId}
+                      onChange={(event) => edit({ oauth2: { ...current.oauth2!, clientId: event.target.value } })} /></label>
+                    <label>客户端密钥引用<Select value={current.oauth2.credentialReference}
+                      onChange={(event) => edit({ oauth2: { ...current.oauth2!, credentialReference: event.target.value } })}>
+                      <option value="">选择凭据</option>{resources?.credentialReferences?.map((reference) =>
+                        <option key={reference} value={reference}>{reference}</option>)}
+                    </Select></label>
+                    <label>Scope<input value={current.oauth2.scope ?? ""}
+                      onChange={(event) => edit({ oauth2: { ...current.oauth2!, scope: event.target.value || undefined } })} /></label>
+                    <label>客户端认证<Select value={current.oauth2.authentication}
+                      onChange={(event) => edit({ oauth2: { ...current.oauth2!, authentication:
+                        event.target.value === "post" ? "post" : "basic" } })}>
+                      <option value="basic">HTTP Basic</option><option value="post">表单</option>
+                    </Select></label>
+                  </>}
+                </fieldset>}
                 <div className="inline-actions">
                   <Button
                     disabled={busy || !loadedConnectors || current.driver === "file" ||

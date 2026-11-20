@@ -1,8 +1,10 @@
 namespace UniversalData.Hosting;
 
-public sealed record WorkerNodeCapacity(uint MaxCpu, uint MaxProcesses, ulong MaxMemoryBytes, string[] Tenants)
+public sealed record WorkerNodeCapacity(uint MaxCpu, uint MaxProcesses, ulong MaxMemoryBytes, string[] Tenants,
+    Dictionary<string, WorkerNodeInventory> Inventory)
 {
     public bool Valid => MaxCpu > 0 && MaxProcesses is > 0 and <= 64 && MaxMemoryBytes > 0 &&
         Tenants is { Length: > 0 and <= 128 } && Tenants.All(HostIdentity.ValidId) &&
-        Tenants.Distinct(StringComparer.Ordinal).Count() == Tenants.Length;
+        Tenants.Distinct(StringComparer.Ordinal).Count() == Tenants.Length && Inventory.Count == Tenants.Length &&
+        Tenants.All(tenant => Inventory.TryGetValue(tenant, out var inventory) && inventory.Valid);
 }

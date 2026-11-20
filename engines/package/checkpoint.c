@@ -499,7 +499,7 @@ static ud_status effect_parse(checkpoint_journal *journal,const ud_json *entry,c
     if (ud_json_kind(ud_member(entry,"providerCode")) != UD_JSON_STRING) return UD_CORRUPT;
     UD_TRY(ud_json_text(ud_member(entry,"providerCode"),&provider.data,&provider.length));
     if (provider.length > 128 || (provider.length && memchr(provider.data,0,provider.length))) return UD_CORRUPT;
-    if (state < UD_COMMAND_PENDING || state > UD_COMMAND_REJECTED || result > UD_TRUNCATED || result == UD_END || result == UD_MORE ||
+    if (state < UD_COMMAND_PENDING || state > UD_COMMAND_REJECTED || result > UD_STATUS_LAST || result == UD_END || result == UD_MORE ||
         (state == UD_COMMAND_REJECTED && !result) ||
         ((state == UD_COMMAND_APPLIED || state == UD_COMMAND_COMMITTED || state == UD_COMMAND_PENDING) && result)) return UD_CORRUPT;
     out->state = (int32_t)state; out->result = (ud_status)result; out->affected_rows = rows;

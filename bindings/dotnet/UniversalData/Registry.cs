@@ -128,13 +128,7 @@ internal sealed class TaskRegistration
         Cancel = CancelInstance; Dispose = DisposeInstance;
     }
     internal void ReleaseTemporary() { if (Interlocked.Decrement(ref references) == 0) root.Free(); }
-    private static int Failure(IntPtr memory, Exception error)
-    {
-        int code = error is UniversalDataException native ? native.Status : (int)StatusCode.Io;
-        if (code <= 1 || code > 20 || code == 19) code = (int)StatusCode.Io;
-        using var text = new NativeStrings();
-        return Native.ud_context_report(memory, code, text.Pin("Managed callback failed: " + error.GetType().FullName));
-    }
+    private static int Failure(IntPtr memory, Exception error) => WorkerNativeError.ReportComponent(memory, error);
     private int PrepareInstance(IntPtr user, IntPtr context, Native.StringValue configuration, IntPtr inputs, IntPtr outputs, out IntPtr instance)
     {
         using var guard = Execution.EnterCallback();

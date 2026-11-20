@@ -169,6 +169,7 @@ UD_API ud_status ud_execution_wait(ud_execution *, uint32_t timeout_ms);
 UD_API void ud_execution_stop(ud_execution *);
 UD_API void ud_execution_cancel(ud_execution *);
 UD_API ud_status ud_execution_get_metrics(const ud_execution *, ud_execution_metrics *);
+UD_API ud_status ud_execution_error_details(ud_execution *, ud_error_detail *);
 /* One controller; Running/Draining return BUSY. Context allocation leaks are
  * reported at teardown. cancel/metrics are safe concurrently with execution. */
 UD_API ud_status ud_execution_destroy(ud_execution *);

@@ -1,51 +1,44 @@
 using System.Data;
+using UniversalData;
 
 namespace SqlSugar;
 
-internal sealed class AdoProvider : IAdo
+internal sealed class AdoProvider(SqlSugarClient client) : IAdo
 {
-    private readonly SqlSugarClient client;
-    internal AdoProvider(SqlSugarClient client) => this.client = client;
+    public ValueTask<Result<SqlCursor<T>>> OpenCursorAsync<T>(string sql, IReadOnlyList<SugarParameter>? parameters = null,
+        CancellationToken cancellation = default) => ValueTask.FromResult(SqlResult.Run(() =>
+            new SqlCursor<T>(client.OpenRawReader(sql, parameters ?? [], cancellation: cancellation))));
 
-    public IDataReader GetDataReader(string sql, params SugarParameter[] parameters)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sql);
-        return client.OpenRawReader(sql, parameters ?? [], SqlNative.ReadDiscover);
-    }
-
-    public object? GetScalar(string sql, params SugarParameter[] parameters)
+    public Result<object?> GetScalar(string sql, params SugarParameter[] parameters) => SqlResult.Run<object?>(() =>
     {
         using var reader = client.OpenRawReader(sql, parameters ?? [], SqlNative.ReadScalar);
-        if (!reader.Read() || reader.FieldCount == 0) return null;
+        if (!reader.Read() || reader.FieldCount == 0)
+            return null;
         var value = reader.GetValue(0);
         return value is DBNull ? null : value;
-    }
+    });
 
-    public int ExecuteCommand(string sql, params SugarParameter[] parameters)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sql);
-        return client.Execute(sql, parameters ?? []);
-    }
+    public Result<int> ExecuteCommand(string sql, params SugarParameter[] parameters) =>
+        SqlResult.Run(() => client.Execute(sql, parameters ?? []));
 
-    public List<T> SqlQuery<T>(string sql, params SugarParameter[] parameters)
+    public Result<List<T>> SqlQuery<T>(string sql, params SugarParameter[] parameters) => SqlResult.Run(() =>
     {
-        using var reader = client.OpenRawReader(sql, parameters ?? [], SqlNative.ReadDiscover);
-        var result = new List<T>();
+        using var reader = client.OpenRawReader(sql, parameters ?? []);
+        var rows = new List<T>();
         var materializer = EntityMaterializerPlan<T>.Create(reader);
-        while (reader.Read()) result.Add(materializer.Read(reader));
-        return result;
-    }
+        while (reader.Read())
+            rows.Add(materializer.Read(reader));
+        return rows;
+    });
 
-    public void BeginTran() => client.BeginTransaction(0);
-    public void BeginTran(IsolationLevel isolationLevel) => client.BeginTransaction(ToNativeIsolation(isolationLevel));
-    public void CommitTran() => client.CommitTransaction();
-    public void RollbackTran() => client.RollbackTransaction();
-
-    private static int ToNativeIsolation(IsolationLevel isolationLevel) => isolationLevel switch
+    public Result BeginTran() => SqlResult.Run(() => client.BeginTransaction(0));
+    public Result BeginTran(IsolationLevel isolationLevel) => SqlResult.Run(() => client.BeginTransaction(isolationLevel switch
     {
         IsolationLevel.RepeatableRead => 2,
         IsolationLevel.Serializable => 3,
         IsolationLevel.Snapshot => 4,
         _ => 1
-    };
+    }));
+    public Result CommitTran() => SqlResult.Run(client.CommitTransaction);
+    public Result RollbackTran() => SqlResult.Run(client.RollbackTransaction);
 }

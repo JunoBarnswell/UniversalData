@@ -2,6 +2,6 @@
 namespace UniversalData;
 internal static class ProductVersion
 {
-    internal const uint Abi = 14;
-    internal const string Sdk = "6.0.0";
+    internal const uint Abi = 15;
+    internal const string Sdk = "7.0.0";
 }

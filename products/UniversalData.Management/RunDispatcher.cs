@@ -4,9 +4,9 @@ using UniversalData.Hosting;
 namespace UniversalData.Management;
 
 /// <summary>Tenant-separated dispatch over one Native execution and Catalog contract.</summary>
-public sealed class RunDispatcher(HostPolicy root, ProductConfiguration configuration, IdentityDirectory identities, WorkerNodeDirectory remoteNodes) : BackgroundService
+public sealed class RunDispatcher(HostPolicy root, ProductConfiguration configuration, IdentityDirectory identities,
+    WorkerNodeDirectory remoteNodes, WorkerReservations reservations) : BackgroundService
 {
-    private readonly WorkerReservations reservations = new(root, configuration, remoteNodes);
     private readonly ConcurrentDictionary<string,TenantDispatcher> tenants = new(StringComparer.Ordinal);
     public TenantDispatcher For(HostIdentity identity) => tenants.GetOrAdd(identity.Tenant,tenant =>
         new(root.Bind(HostIdentity.Operator(tenant)),root,configuration,identities,remoteNodes,reservations));

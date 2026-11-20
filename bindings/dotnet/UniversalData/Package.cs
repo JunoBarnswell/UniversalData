@@ -1,78 +1,36 @@
-using Microsoft.Win32.SafeHandles;
-using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace UniversalData;
 
-/// <summary>Immutable native Package definition; Current ABI. No managed planning.</summary>
-public sealed class Package : IDisposable
+/// <summary>An immutable Package document shared by the Worker, management service and Studio.</summary>
+public sealed class Package
 {
-    private readonly ContextHandle context;
-    private readonly PackageHandle package;
-    private readonly object lifetime = new();
-    private bool disposed;
+    private readonly string document;
+    private Package(string document) => this.document = document;
 
-    public Package(string document, ulong memoryLimit = 268435456)
+    public string ToJson() => document;
+
+    public static Result<Package> FromJson(string document)
     {
-        context = DataOwnership.Context(memoryLimit);
         try
         {
-            var data = Utf8.Bytes(document); var pin = GCHandle.Alloc(data, GCHandleType.Pinned);
-            try
-            {
-                DataOwnership.Check(context, Native.ud_package_create(context, new Native.StringValue(pin.AddrOfPinnedObject(), checked((uint)data.Length)), out var pointer));
-                package = new PackageHandle(pointer, context);
-            }
-            finally { pin.Free(); }
+            using var parsed = JsonDocument.Parse(document);
+            var root = parsed.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("version", out var version) || !version.TryGetInt32(out int protocol) ||
+                protocol != ProductInfo.Protocol)
+                return Failure(StatusCode.Incompatible, "The Package protocol differs from the Worker protocol");
+            if (!root.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(id.GetString()))
+                return Failure(StatusCode.Schema, "The Package identity is missing");
+            return Result<Package>.Success(new(document));
         }
-        catch { context.Dispose(); throw; }
-    }
-
-    public string ToJson()
-    {
-        lock (lifetime) { ObjectDisposedException.ThrowIf(disposed, this); DataOwnership.Check(context, Native.ud_package_serialize(package, out var text, out var length)); return DataOwnership.Text(text, length); }
-    }
-
-    /// <summary>Returns the Native recovery decision for this immutable package.</summary>
-    public bool RequiresJournal
-    {
-        get
+        catch (Exception error) when (error is JsonException or ArgumentException)
         {
-            lock (lifetime)
-            {
-                ObjectDisposedException.ThrowIf(disposed, this);
-                DataOwnership.Check(context, Native.ud_package_requires_journal(package, out var required));
-                return required != 0;
-            }
+            return Failure(StatusCode.Parse, "Invalid Package JSON");
         }
     }
 
-    public Execution CreateExecution(string tenant, PackageAuthorizer? authorize, string parametersJson = "{}", string executionId = "", PackageCredentialResolver? resolve = null, ulong memoryLimit = 268435456)
-        => new(ToJson(), tenant, authorize, parametersJson, executionId, resolve, memoryLimit: memoryLimit);
-
-    public void Dispose()
-    { lock (lifetime) { if (disposed) return; disposed = true; package.Dispose(); context.Dispose(); } }
-}
-
-internal sealed class PackageHandle : SafeHandleZeroOrMinusOneIsInvalid
-{
-    private readonly ContextHandle context;
-
-    internal PackageHandle(IntPtr pointer, ContextHandle owner) : base(true)
-    {
-        context = owner; bool retained = false; owner.DangerousAddRef(ref retained); SetHandle(pointer);
-    }
-
-    protected override bool ReleaseHandle()
-    { Native.ud_package_destroy(handle); context.DangerousRelease(); return true; }
-}
-
-internal static partial class Native
-{
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_package_create(ContextHandle context, StringValue document, out IntPtr package);
-
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_package_serialize(PackageHandle package, out IntPtr document, out uint length);
-
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_package_requires_journal(PackageHandle package, out int required);
-
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void ud_package_destroy(IntPtr package);
+    private static Result<Package> Failure(StatusCode code, string message) =>
+        new(code, null, new(ErrorSource.Native, code, message));
 }

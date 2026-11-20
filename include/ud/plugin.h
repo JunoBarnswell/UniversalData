@@ -82,6 +82,7 @@ typedef struct ud_host_api {
     /* A message driver calls this before opening each advertised or explicit endpoint. */
     ud_status (*authorize_endpoint)(void *control_user, ud_string endpoint);
     uint32_t (*write_chunk_rows)(int32_t dialect, const ud_write_options *, const ud_batch *);
+    ud_status (*report_error)(ud_context *, ud_status, ud_string, const ud_error_detail *);
 } ud_host_api;
 typedef struct ud_plugin_api {
     uint32_t struct_size, abi_version;

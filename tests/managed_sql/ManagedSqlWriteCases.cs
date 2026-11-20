@@ -19,7 +19,7 @@ internal static class ManagedSqlWriteCases
         {
             Precision = 10,
             Scale = 2
-        });
+        }).Require();
         Require(Convert.ToDecimal(answer, CultureInfo.InvariantCulture) == 19.25m,
             "Parameterized decimal retained its scale");
     }
@@ -28,22 +28,18 @@ internal static class ManagedSqlWriteCases
     {
         const decimal amount = -1.2345678901234567890123456789m;
         var row = new ManagedSqlOrder { Id = id, Name = "exact-decimal", Amount = amount };
-        Require(client.Insertable(row).ExecuteCommand() == 1, "Insert an exact signed decimal");
+        Require(client.Insertable(row).ExecuteCommand().Require() == 1, "Insert an exact signed decimal");
         try
         {
-            var read = client.Queryable<ManagedSqlOrder>().Where(order => order.Id == id).ToList().Single();
+            var read = client.Queryable<ManagedSqlOrder>().Where(order => order.Id == id).ToList().Require().Single();
             Require(read.Amount == amount, "Read all 28 digits of a negative decimal");
             row.Amount = decimal.MaxValue;
-            try
-            {
-                client.Updateable(row).ExecuteCommand();
-                throw new InvalidOperationException("A decimal larger than the native coefficient unexpectedly succeeded.");
-            }
-            catch (OverflowException) { }
-            read = client.Queryable<ManagedSqlOrder>().Where(order => order.Id == id).ToList().Single();
+            Require(client.Updateable(row).ExecuteCommand().Code == StatusCode.Overflow,
+                "A decimal larger than the native coefficient returned Overflow");
+            read = client.Queryable<ManagedSqlOrder>().Where(order => order.Id == id).ToList().Require().Single();
             Require(read.Amount == amount, "A decimal overflow did not change the stored value");
         }
-        finally { client.Deleteable(row).ExecuteCommand(); }
+        finally { client.Deleteable(row).ExecuteCommand().Require(); }
     }
 
     private static void VerifyWholeDecimal(SqlSugarClient client, ManagedSqlOptions options)
@@ -57,15 +53,15 @@ internal static class ManagedSqlWriteCases
             DbType.Sqlite => "TEXT",
             _ => "DECIMAL(38,0)"
         };
-        client.Ado.ExecuteCommand($"CREATE TABLE {table} ({id} INTEGER NOT NULL PRIMARY KEY, {amount} {dataType} NOT NULL)");
+        client.Ado.ExecuteCommand($"CREATE TABLE {table} ({id} INTEGER NOT NULL PRIMARY KEY, {amount} {dataType} NOT NULL)").Require();
         try
         {
             var row = new ManagedSqlWholeDecimal { Id = 1, Amount = decimal.MaxValue };
-            Require(client.Insertable(row).ExecuteCommand() == 1, "Insert the largest whole System.Decimal");
-            Require(client.Queryable<ManagedSqlWholeDecimal>().ToList().Single().Amount == decimal.MaxValue,
+            Require(client.Insertable(row).ExecuteCommand().Require() == 1, "Insert the largest whole System.Decimal");
+            Require(client.Queryable<ManagedSqlWholeDecimal>().ToList().Require().Single().Amount == decimal.MaxValue,
                 "Declared zero decimal digits allowed the full whole-number range");
         }
-        finally { client.Ado.ExecuteCommand("DROP TABLE " + table); }
+        finally { client.Ado.ExecuteCommand("DROP TABLE " + table).Require(); }
     }
 
     private static void VerifyRollback(SqlSugarClient client, ManagedSqlOptions options, int expected)
@@ -74,65 +70,58 @@ internal static class ManagedSqlWriteCases
             .Select(id => new ManagedSqlOrder { Id = id, Name = "first-chunk", Amount = 1m }).ToList();
         rows.Add(new ManagedSqlOrder { Id = 1, Name = "duplicate", Amount = 1m });
         var countSql = "SELECT COUNT(*) FROM " + options.QuotedTable();
-        Require(client.Insertable(new List<ManagedSqlOrder>()).ExecuteCommand() == 0, "Empty batch");
-        ExpectWriteFailure(() => client.Insertable(rows).ExecuteCommand());
-        Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+        Require(client.Insertable(new List<ManagedSqlOrder>()).ExecuteCommand().Require() == 0, "Empty batch");
+        ExpectWriteFailure(() => client.Insertable(rows).ExecuteCommand().Require());
+        Require(Convert.ToInt32(client.Ado.GetScalar(countSql).Require(), CultureInfo.InvariantCulture) == expected,
             "An error in a later chunk must roll back earlier chunks");
-        client.Ado.BeginTran();
+        client.Ado.BeginTran().Require();
         try
         {
-            ExpectWriteFailure(() => client.Insertable(rows).ExecuteCommand());
+            ExpectWriteFailure(() => client.Insertable(rows).ExecuteCommand().Require());
             try
             {
-                client.Ado.CommitTran();
+                client.Ado.CommitTran().Require();
                 throw new InvalidOperationException("The failed transaction unexpectedly committed.");
             }
             catch (UniversalDataException error) when (error.Code == StatusCode.Busy) { }
         }
-        finally { client.Ado.RollbackTran(); }
-        Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+        finally { client.Ado.RollbackTran().Require(); }
+        Require(Convert.ToInt32(client.Ado.GetScalar(countSql).Require(), CultureInfo.InvariantCulture) == expected,
             "The explicit transaction was rolled back");
         var enumerations = 0;
         var sequence = client.Insertable<ManagedSqlOrder>(FaultingRows());
         Require(enumerations == 0, "Building a command leaves its input lazy");
-        try
-        {
-            sequence.ExecuteCommand();
-            throw new InvalidOperationException("A faulting sequence completed.");
-        }
-        catch (IOException error) when (error.Message == "Input interrupted") { }
+        var interrupted = sequence.ExecuteCommand();
+        Require(interrupted.Code == StatusCode.ManagedComponent && interrupted.Error?.Source == ErrorSource.Component,
+            "A faulting sequence returned a managed component error");
         Require(enumerations == 1 &&
-            Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+            Convert.ToInt32(client.Ado.GetScalar(countSql).Require(), CultureInfo.InvariantCulture) == expected,
             "A failed input ended once and rolled back successful earlier chunks");
         using var cancel = new CancellationTokenSource();
-        try
-        {
-            client.Insertable<ManagedSqlOrder>(CancelDuringInput()).ExecuteCommandAsync(cancel.Token)
-                .GetAwaiter().GetResult();
-            throw new InvalidOperationException("A cancelled sequence completed.");
-        }
-        catch (OperationCanceledException) { }
-        Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+        var cancelled = client.Insertable<ManagedSqlOrder>(CancelDuringInput()).ExecuteCommandAsync(cancel.Token)
+            .GetAwaiter().GetResult();
+        Require(cancelled.Code == StatusCode.Cancelled, "The Worker confirmed rollback after input cancellation");
+        Require(Convert.ToInt32(client.Ado.GetScalar(countSql).Require(), CultureInfo.InvariantCulture) == expected,
             "Cancellation during enumeration rolled back successful earlier chunks");
         var fastest = client.Fastest<ManagedSqlOrder>();
         fastest.PageSize = 2;
         var streamed = rows.Take(5);
         var updated = streamed.Select(row => new ManagedSqlOrder { Id = row.Id, Name = "changed", Amount = 2m });
-        Require(fastest.BulkCopy(streamed) == 5 && fastest.BulkUpdate(updated) == 5 &&
-                fastest.BulkDelete(streamed) == 5,
+        Require(fastest.BulkCopy(streamed).Require() == 5 && fastest.BulkUpdate(updated).Require() == 5 &&
+                fastest.BulkDelete(streamed).Require() == 5,
             "Lazy Fastest insert, update and delete reported all rows across three batches");
-        Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+        Require(Convert.ToInt32(client.Ado.GetScalar(countSql).Require(), CultureInfo.InvariantCulture) == expected,
             "Fastest deleted every added row");
         if (options.Provider == DbType.Oracle)
         {
-            client.Ado.BeginTran(System.Data.IsolationLevel.Serializable);
+            client.Ado.BeginTran(System.Data.IsolationLevel.Serializable).Require();
             try
             {
-                Require(fastest.BulkCopy(rows.Take(2)) == 2,
+                Require(fastest.BulkCopy(rows.Take(2)).Require() == 2,
                     "BulkCopy used array DML inside a serializable Oracle transaction");
             }
-            finally { client.Ado.RollbackTran(); }
-            Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+            finally { client.Ado.RollbackTran().Require(); }
+            Require(Convert.ToInt32(client.Ado.GetScalar(countSql).Require(), CultureInfo.InvariantCulture) == expected,
                 "The serializable transaction was rolled back");
         }
 
@@ -162,7 +151,7 @@ internal static class ManagedSqlWriteCases
             DbType.Oracle => "NVARCHAR2(120)",
             _ => "VARCHAR(120)"
         };
-        client.Ado.ExecuteCommand($"CREATE TABLE {table} ({group} INTEGER NOT NULL, {id} INTEGER NOT NULL, {label} {textType}, PRIMARY KEY ({group},{id}))");
+        client.Ado.ExecuteCommand($"CREATE TABLE {table} ({group} INTEGER NOT NULL, {id} INTEGER NOT NULL, {label} {textType}, PRIMARY KEY ({group},{id}))").Require();
         try
         {
             var rows = new[]
@@ -170,19 +159,19 @@ internal static class ManagedSqlWriteCases
                 new ManagedSqlCompositeRow { GroupId = 1, Id = 1, Label = "初始" },
                 new ManagedSqlCompositeRow { GroupId = 2, Id = 1, Label = null }
             };
-            Require(client.Insertable(rows).ExecuteCommand() == 2, "Insert distinct compound keys");
+            Require(client.Insertable(rows).ExecuteCommand().Require() == 2, "Insert distinct compound keys");
             rows[0].Label = "修改";
-            Require(client.Updateable(rows[0]).ExecuteCommand() == 1, "Update one compound key");
+            Require(client.Updateable(rows[0]).ExecuteCommand().Require() == 1, "Update one compound key");
             var read = client.Queryable<ManagedSqlCompositeRow>()
                 .Where(row => row.Id == 1 && (row.Label == null || row.GroupId == 1))
-                .ToPageList(1, 2);
+                .ToPageList(1, 2).Require();
             Require(read.Count == 2 && read[0].Label == "修改" && read[1].Label is null,
                 "Stable composite-key ordering, Unicode and null predicate");
-            Require(client.Deleteable(rows[0]).ExecuteCommand() == 1, "Delete one compound key");
-            var after = client.Queryable<ManagedSqlCompositeRow>().ToList();
+            Require(client.Deleteable(rows[0]).ExecuteCommand().Require() == 1, "Delete one compound key");
+            var after = client.Queryable<ManagedSqlCompositeRow>().ToList().Require();
             Require(after.Count == 1 && after[0].GroupId == 2, "The other key remained");
         }
-        finally { client.Ado.ExecuteCommand("DROP TABLE " + table); }
+        finally { client.Ado.ExecuteCommand("DROP TABLE " + table).Require(); }
     }
 
     private static void ExpectWriteFailure(Action execute)

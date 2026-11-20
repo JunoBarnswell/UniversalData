@@ -1,0 +1,16 @@
+{
+  "environment": {
+    "ssisVersion": "17.0.1000.7",
+    "sqlServerVersion": "17.0.1000.7",
+    "ssdtVersion": "18.11.12328.437",
+    "windowsVersion": "Windows Server 2025 Datacenter 26100.33674",
+    "localeId": 1033,
+    "codePage": 1252,
+    "timeZone": "UTC",
+    "command": "\"C:\\Program Files\\Microsoft SQL Server\\170\\DTS\\Binn\\DTExec.exe\" /FILE \"D:\\a\\_temp\\ssis-row-capture\\baseline.dtsx\" /REPORTING V",
+    "packageSha256": "fa71bbe34e5a7b997584555c2ad429890eb935f55d8f02542fc801248033ade1"
+  },
+  "observations": 100000,
+  "differences": [],
+  "status": "GoldenVerified"
+}

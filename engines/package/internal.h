@@ -46,6 +46,8 @@ struct ud_activation {
     ud_scope *scope;
     ud_scope globals, project_scope;
     ud_string task_id, pipeline_id, component_id;
+    ud_string http_response_headers;
+    int32_t http_status;
     uint64_t deadline, invocation;
     uint32_t depth;
     atomic_int cancelled;
@@ -100,11 +102,13 @@ struct ud_execution {
     ud_condition finished;
     atomic_uint error_count;
     atomic_int error_limit_reason;
+    ud_error_detail error_details[UD_STATUS_LAST + 1];
     ud_bytes pipeline_reports, bound_plans, control_reports, schema_reports;
     void *active_progress; /* Pipeline-owned plans; diagnostics_lock protects registration/lifetime.
                             */
     uint64_t control_record_count, control_records_dropped, pipeline_record_count,
         pipeline_records_dropped;
+    size_t control_http_header_bytes;
     ud_mutex diagnostics_lock, cancellation_lock;
     ud_condition cancellation_changed;
     ud_activation *cancellable;
@@ -166,6 +170,7 @@ ud_status ud_pipeline_write(const ud_component_context *, struct ud_connection_l
 ud_status ud_component_lookup(ud_activation *, ud_string, ud_component_descriptor *);
 void ud_activation_notify_kind(ud_activation *, int32_t kind, ud_execution_state, ud_status);
 void ud_activation_notify(ud_activation *, ud_execution_state, ud_status);
+void ud_execution_capture_error(ud_execution *, ud_status);
 enum { UD_TASK_EXECUTED = 1, UD_TASK_DURABLE = 2, UD_TASK_UNCERTAIN = 4, UD_TASK_RESUMED = 8 };
 void ud_task_cancel_register(ud_activation *, void *, void (*)(void *));
 void ud_task_cancel_unregister(ud_activation *);

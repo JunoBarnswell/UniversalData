@@ -41,11 +41,12 @@ internal sealed class WorkerNodeAgent(
                 management.Query.Length != 0 || management.Fragment.Length != 0 || !HostIdentity.ValidId(config.NodeId) ||
                 !WorkerNodeCertificate.ValidPin(config.ManagementCertificateSha256))
                 throw new InvalidDataException("Invalid Worker node agent endpoint");
-            var capacity = new WorkerNodeCapacity(config.MaxCpu, config.MaxProcesses, config.MaxMemoryBytes, config.Tenants);
             var policy = HostPolicy.Load(Path.GetFullPath(config.PolicyPath));
-            if (!capacity.Valid || capacity.MaxCpu > (uint)Environment.ProcessorCount ||
-                capacity.MaxProcesses > policy.MaxConcurrency || policy.Tenants is null ||
-                capacity.Tenants.Any(tenant => !policy.Tenants.ContainsKey(tenant)))
+            if (policy.Tenants is null || config.Tenants.Any(tenant => !policy.Tenants.ContainsKey(tenant)))
+                throw new InvalidDataException("Worker node agent tenant is outside its policy");
+            var inventory = config.Tenants.ToDictionary(tenant => tenant, tenant => Inventory(policy.Bind(HostIdentity.Operator(tenant))), StringComparer.Ordinal);
+            var capacity = new WorkerNodeCapacity(config.MaxCpu, config.MaxProcesses, config.MaxMemoryBytes, config.Tenants, inventory);
+            if (!capacity.Valid || capacity.MaxCpu > (uint)Environment.ProcessorCount || capacity.MaxProcesses > policy.MaxConcurrency)
                 throw new InvalidDataException("Invalid Worker node agent capacity");
             var certPath = Path.GetFullPath(config.CertificatePath);
             HostFiles.NoLinks(certPath);
@@ -66,6 +67,17 @@ internal sealed class WorkerNodeAgent(
         }
         catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { return 0; }
         finally { Console.CancelKeyPress -= stop; }
+    }
+
+    private static WorkerNodeInventory Inventory(HostPolicy policy)
+    {
+        var plugins = policy.PluginRoots.Where(Directory.Exists).SelectMany(path => Directory.EnumerateFiles(path, "ud_connector_*"))
+            .Where(path => policy.Authorize(policy.Tenant, path, ConnectionAccess.Execute)).Distinct(StringComparer.Ordinal).Take(256).ToArray();
+        string assemblies = Path.Combine(policy.DataDirectory, "assemblies");
+        var hashes = Directory.Exists(assemblies) ? Directory.EnumerateFiles(assemblies, "*.dll")
+            .Select(Path.GetFileNameWithoutExtension).Where(hash => hash is { Length: 64 } && hash.All(Uri.IsHexDigit)).Cast<string>() : [];
+        return new(plugins, policy.CredentialFiles.Keys.Take(256).ToArray(),
+            hashes.Concat(policy.TrustedAssemblyHashes ?? []).Distinct(StringComparer.OrdinalIgnoreCase).Take(256).ToArray());
     }
 
     private async Task<WorkerNodeChannel> ConnectAsync(string path, CancellationToken cancellation)
@@ -108,15 +120,24 @@ internal sealed class WorkerNodeAgent(
                 var welcome = await channel.ReadAsync(handshake.Token, 4096);
                 if (welcome?.Kind != "registered" || !welcome.SameLease(hello))
                     throw new InvalidDataException("Worker node registration failed");
-                while (await channel.ReadAsync(registration.Token, 4096) is { } lease)
+                var heartbeat = KeepAlive(channel, registration.Token);
+                try
                 {
-                    if (lease.Kind != "launch" || lease.NodeId != configuration.NodeId || !lease.ValidLease)
-                        throw new InvalidDataException("Worker lease instruction is invalid");
-                    foreach (var finished in active.Where(entry => entry.Value.IsCompleted).Select(entry => entry.Key).ToArray())
-                        active.Remove(finished);
-                    if (active.Count >= capacity.MaxProcesses || active.ContainsKey(lease.MemberId))
-                        continue;
-                    active.Add(lease.MemberId, ExecuteAsync(lease, registration.Token));
+                    while (await channel.ReadAsync(registration.Token, 4096) is { } lease)
+                    {
+                        if (lease.Kind != "launch" || lease.NodeId != configuration.NodeId || !lease.ValidLease)
+                            throw new InvalidDataException("Worker lease instruction is invalid");
+                        foreach (var finished in active.Where(entry => entry.Value.IsCompleted).Select(entry => entry.Key).ToArray())
+                            active.Remove(finished);
+                        if (active.Count >= capacity.MaxProcesses || active.ContainsKey(lease.MemberId))
+                            continue;
+                        active.Add(lease.MemberId, ExecuteAsync(lease, registration.Token));
+                    }
+                }
+                finally
+                {
+                    await registration.CancelAsync();
+                    await heartbeat;
                 }
             }
             catch (Exception error) when (error is IOException or WebSocketException or HttpRequestException or
@@ -130,6 +151,17 @@ internal sealed class WorkerNodeAgent(
         }
     }
 
+    private async Task KeepAlive(WorkerNodeChannel channel, CancellationToken cancellation)
+    {
+        try
+        {
+            using var clock = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            while (await clock.WaitForNextTickAsync(cancellation))
+                await channel.SendAsync(WorkerNodeFrame.Registration("heartbeat", configuration.NodeId), cancellation);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+    }
+
     private async Task ExecuteAsync(WorkerNodeFrame lease, CancellationToken registration)
     {
         using var expiry = new CancellationTokenSource(WorkerNodeChannel.LeaseDuration);
@@ -140,6 +172,7 @@ internal sealed class WorkerNodeAgent(
         WorkerBudget? reservation = null;
         string ticket = "";
         string controlToken = "";
+        string phase = "worker.node.connect";
         try
         {
             channel = await ConnectAsync(WorkerNodeChannel.ExecutionPath, lifetime.Token);
@@ -154,13 +187,16 @@ internal sealed class WorkerNodeAgent(
                 throw new UniversalDataException((int)StatusCode.Busy, "Worker node has no execution capacity");
             reservation = launch.Budget;
             controlToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            phase = "worker.node.bind";
             request = Bind(launch, controlToken);
+            phase = "worker.node.launch";
             child = WorkerLauncher.Launch(workerPath, request);
             _ = WorkerProtocol.Discard(child.StandardError, lifetime.Token);
             await child.StandardInput.WriteLineAsync(
                 JsonSerializer.Serialize(request, HostPolicy.JsonOptions).AsMemory(), lifetime.Token)
                 .WaitAsync(lifetime.Token);
             await child.StandardInput.FlushAsync(lifetime.Token);
+            phase = "worker.node.exchange";
             var commands = CommandsAsync(channel, lease, child, request, controlToken, expiry, lifetime.Token);
             var reports = ReportsAsync(channel, lease, child, request.Ticket, lifetime.Token);
             try
@@ -188,6 +224,8 @@ internal sealed class WorkerNodeAgent(
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
+            if (error is not OperationCanceledException || !registration.IsCancellationRequested)
+                Console.Error.WriteLine($"{phase} failed ({error.GetType().Name})");
             if (channel is not null && child is null && Guid.TryParseExact(ticket, "N", out _) &&
                 !lifetime.IsCancellationRequested)
             {
@@ -195,7 +233,7 @@ internal sealed class WorkerNodeAgent(
                 {
                     var result = error is UniversalDataException native ? native.Status : (int)StatusCode.Io;
                     await channel.SendAsync(lease.Reply("report", JsonSerializer.SerializeToElement(
-                        new { version = ProductInfo.Protocol, ticket, kind = "failed", result, phase = "worker.node", errorType = "RemoteWorkerLaunch" })), lifetime.Token);
+                        new { version = ProductInfo.Protocol, ticket, kind = "failed", result, phase, errorType = "RemoteWorkerLaunch" })), lifetime.Token);
                     await channel.SendAsync(lease.Reply("exit", JsonSerializer.SerializeToElement(1)), lifetime.Token);
                 }
                 catch (Exception failure) when (failure is IOException or OperationCanceledException or WebSocketException or InvalidOperationException) { }
@@ -210,20 +248,29 @@ internal sealed class WorkerNodeAgent(
                     if (!child.HasExited)
                         await DrainAsync(child, request, controlToken);
             }
-            if (request is not null && request.ControlReference.Length != 0)
+            if (request is not null)
             {
-                var directory = new ParameterVault(request.Policy).DirectoryFor(request.ControlReference);
-                try
-                {
-                    File.Delete(Path.Combine(directory, "key"));
-                    File.Delete(Path.Combine(directory, "payload"));
-                    Directory.Delete(directory);
-                }
-                catch (IOException) { }
+                var vault = new ParameterVault(request.Policy);
+                Erase(vault, request.ControlReference);
+                Erase(vault, request.ParametersReference);
             }
             if (reservation is not null)
                 Release(lease.MemberId, reservation);
         }
+    }
+
+    private static void Erase(ParameterVault vault, string reference)
+    {
+        if (reference.Length == 0)
+            return;
+        string directory = vault.DirectoryFor(reference);
+        try
+        {
+            File.Delete(Path.Combine(directory, "key"));
+            File.Delete(Path.Combine(directory, "payload"));
+            Directory.Delete(directory);
+        }
+        catch (IOException) { }
     }
 
     private WorkerRequest Bind(WorkerNodeLaunch launch, string controlToken)
@@ -266,14 +313,13 @@ internal sealed class WorkerNodeAgent(
         if (launch.Resume && !Directory.Exists(scoped.ExecutionDirectory(launch.JournalTicket ?? launch.Ticket)))
             throw new UniversalDataException((int)StatusCode.Fenced, "Remote Worker recovery directory is unavailable");
         var vault = new ParameterVault(scoped);
-        if (launch.ParametersReference.Length != 0)
-            _ = vault.Resolve(launch.ParametersReference);
+        string parameters = launch.Parameters is null ? "" : vault.Store(launch.Parameters);
         string control = vault.Store(JsonSerializer.Serialize(new { token = controlToken }));
         return new WorkerRequest(ProductInfo.Protocol, launch.Ticket, "execute", scoped, identity,
-            launch.Package, launch.ParametersReference, launch.ExecutionId, launch.Resume, launch.Revision,
+            launch.Package, parameters, launch.ExecutionId, launch.Resume, launch.Revision,
             launch.EventSequence, launch.Debug, ControlReference: control, Isolated: isolated,
             BindingSnapshot: launch.BindingSnapshot, DeploymentId: launch.DeploymentId,
-            DeploymentRevision: launch.DeploymentRevision, Budget: launch.Budget, Shard: launch.Shard,
+            DeploymentRevision: launch.DeploymentRevision, Budget: launch.GovernProcess ? launch.Budget : null, Shard: launch.Shard,
             BrokerRestore: launch.BrokerRestore, JournalTicket: launch.JournalTicket);
     }
 

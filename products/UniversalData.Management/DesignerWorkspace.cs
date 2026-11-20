@@ -51,7 +51,7 @@ public static class DesignerWorkspace
     }
     public static object SaveVersion(HostPolicy policy,HostIdentity identity,JsonElement document,string expected) {
         string id=document.GetProperty("id").GetString()!;identity.Require("package.write",id);
-        using var package=new Package(document.GetRawText());string text=package.ToJson();ulong revision=ulong.Parse(expected);
+        using var package=new NativePackage(document.GetRawText());string text=package.ToJson();ulong revision=ulong.Parse(expected);
         using var catalog=policy.OpenCatalog();try{catalog.CompareExchange(CatalogKind.Package,id,revision,text);}catch(UniversalDataException error)when(error.Code is StatusCode.Busy or StatusCode.Fenced){throw new UniversalDataException((int)StatusCode.Fenced,"Package revision changed");}
         return new {id,revision=(revision+1).ToString(),subject=identity.Subject,document=JsonSerializer.Deserialize<JsonElement>(text)};
     }

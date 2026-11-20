@@ -42,7 +42,7 @@ public static class WorkerControl
     }
     // Binding is synchronous: returning from Serve guarantees the endpoint is
     // accepting connections. Worker publishes ready only after this boundary.
-    public static Task Serve(string directory,string ticket,string token,Execution execution,CancellationToken cancellation,SecretFilter? filter = null)
+    internal static Task Serve(string directory,string ticket,string token,Execution execution,CancellationToken cancellation,SecretFilter? filter = null)
     {
         cancellation.ThrowIfCancellationRequested();
         Socket? listener = null; string? address = null; NamedPipeServerStream? firstPipe = null;

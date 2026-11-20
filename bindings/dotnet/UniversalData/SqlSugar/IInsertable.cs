@@ -1,7 +1,8 @@
+using UniversalData;
 namespace SqlSugar;
 
 public interface IInsertable<T>
 {
-    int ExecuteCommand();
-    Task<int> ExecuteCommandAsync(CancellationToken cancellationToken = default);
+    Result<int> ExecuteCommand();
+    Task<Result<int>> ExecuteCommandAsync(CancellationToken cancellationToken = default);
 }

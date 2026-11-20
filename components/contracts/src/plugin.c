@@ -99,8 +99,8 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
     if (!entry) {
         close_library(library);
         ud_free(p);
-        return ud_fail(ctx, UD_IO, "plugin library or entry point missing (OS error %lu): %s",
-                       loader_error, path);
+        return ud_fail(ctx, library ? UD_INCOMPATIBLE : UD_DRIVER_UNAVAILABLE,
+                       "plugin library or entry point unavailable (OS error %lu): %s", loader_error, path);
     }
     ud_mutex_lock(&modules_lock);
     module_record *shared = modules;
@@ -195,7 +195,8 @@ ud_status ud_plugin_load(ud_context *ctx, const char *path, uint64_t caps, ud_pl
                             {0},
                             {0},
                             NULL,
-                            ud_sql_write_chunk_rows};
+                            ud_sql_write_chunk_rows,
+                            ud_context_report_error};
     *out = p;
     return UD_OK;
 }

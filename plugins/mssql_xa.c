@@ -22,7 +22,7 @@ _Static_assert(sizeof(mssql_xid) == 140, "Microsoft XA XID layout");
 _Static_assert(sizeof(mssql_xa_call) == 164, "Microsoft XA request layout");
 enum { XA_START, XA_END, XA_PREPARE, XA_COMMIT, XA_ROLLBACK, XA_FORGET, XA_RECOVER,
        XA_GET_TIMEOUT, XA_SET_TIMEOUT };
-enum { XA_OK = 0, XA_RDONLY = 3, XA_NOTA = -4, XA_RMFAIL = -7 };
+enum { XA_OK = 0, XA_RDONLY = 3, XA_RMERR = -3, XA_NOTA = -4, XA_RMFAIL = -7 };
 enum { XA_SUCCESS = 0x04000000, XA_FAIL = 0x20000000,
        XA_SCAN_START = 0x01000000, XA_SCAN_END = 0x00800000 };
 enum { PHASE_ACTIVE = 1, PHASE_ENDED, PHASE_PREPARED };
@@ -32,6 +32,7 @@ enum { PHASE_ACTIVE = 1, PHASE_ENDED, PHASE_PREPARED };
 #define XA_RECOVERY_LIMIT (8u * 1024u * 1024u)
 #define XA_ATTRIBUTE 1208 /* SQL_ATTR_ENLIST_IN_XA / SQL_COPT_SS_ENLIST_IN_XA */
 #define XA_FORMAT INT32_C(0x55441001)
+#define XA_PROBE_FORMAT INT32_C(0x55441002)
 
 static mssql_xid identity(const ud_transaction_branch *branch) {
     mssql_xid xid = {.format = XA_FORMAT, .global_length = 32, .branch_length = 32};
@@ -77,16 +78,17 @@ static ud_status call(odbc_state *p, const mssql_xid *xid, int operation, int fl
     if (capacity)
         memcpy(request + 1, data, capacity);
     SQLRETURN rc = SQLSetConnectAttr(p->connection, XA_ATTRIBUTE, request, SQL_IS_POINTER);
-    ud_status status=SQL_SUCCEEDED(rc) ? UD_OK : ud_odbc_diagnostic(p);
-    if (status && !strcmp(p->sqlstate,"00000") && !p->native_error) {
+    *result = request->status;
+    ud_status status = SQL_SUCCEEDED(rc) ? UD_OK : ud_odbc_diagnostic(p);
+    if (status && !strcmp(p->sqlstate, "00000") && !p->native_error) {
         char diagnostic[112];
-        snprintf(diagnostic,sizeof(diagnostic),"SQL Server XA request failed (ODBC %d, XA %d)",(int)rc,request->status);
-        status=p->host.report(p->host.context,UD_IO,diagnostic);
+        snprintf(diagnostic, sizeof(diagnostic), "SQL Server XA request failed (ODBC %d, XA %d)",
+                 (int)rc, request->status);
+        status = p->host.report(p->host.context, UD_IO, diagnostic);
     }
     if (!status && request->returned > capacity)
         status = UD_CORRUPT;
     if (!status) {
-        *result = request->status;
         if (data && request->returned)
             memcpy(data, request + 1, request->returned);
         if (returned)
@@ -100,43 +102,87 @@ static ud_status request(odbc_state *p, const mssql_xid *xid, int operation, int
     ud_status status = call(p, xid, operation, flags, NULL, 0, NULL, &result);
     return status ? status : result == XA_OK ? UD_OK : xa_status(p, result);
 }
-static ud_status scan(odbc_state *p, const mssql_xid *wanted, int *found) {
-    *found=0;
-    uint8_t *data=p->host.allocate(p->host.context,XA_RECOVERY_PAGE),
-            *previous=p->host.allocate(p->host.context,XA_RECOVERY_PAGE);
-    if (!data || !previous) { p->host.deallocate(data);p->host.deallocate(previous);return UD_RESOURCE; }
-    uint32_t total=0,previous_size=0;
-    int started=0;
-    ud_status status=UD_OK;
+static ud_status scan(odbc_state *p, const mssql_xid *wanted, int *found, int *initial_result) {
+    *found = 0;
+    if (initial_result)
+        *initial_result = XA_OK;
+    uint8_t *data = p->host.allocate(p->host.context, XA_RECOVERY_PAGE);
+    uint8_t *previous = p->host.allocate(p->host.context, XA_RECOVERY_PAGE);
+    if (!data || !previous) {
+        p->host.deallocate(data);
+        p->host.deallocate(previous);
+        return UD_RESOURCE;
+    }
+    uint32_t total = 0, previous_size = 0;
+    int started = 0;
+    ud_status status = UD_OK;
     while (!status) {
-        memset(data,0,XA_RECOVERY_PAGE);
-        int result=XA_RMFAIL;uint32_t returned=0;
-        status=call(p,NULL,XA_RECOVER,started ? 0 : XA_SCAN_START,data,XA_RECOVERY_PAGE,&returned,&result);
-        started=1;
-        if (!status && result<0) status=xa_status(p,result);
-        if (!status && (returned%sizeof(mssql_xid) ||
-            (result>0 && (uint64_t)returned!=(uint64_t)result*sizeof(mssql_xid)))) status=UD_CORRUPT;
-        if (!status && returned==previous_size && returned && !memcmp(previous,data,returned)) status=UD_CORRUPT;
-        if (!status && returned>XA_RECOVERY_LIMIT-total) status=UD_RESOURCE;
-        if (status || !returned) break;
-        total+=returned;memcpy(previous,data,returned);previous_size=returned;
-        for (uint32_t at=0;!status && at<returned/sizeof(mssql_xid);at++) {
-            const mssql_xid *xid=(const mssql_xid *)data+at;
-            if (xid->global_length<0 || xid->global_length>64 || xid->branch_length<0 || xid->branch_length>64) status=UD_CORRUPT;
-            else if (wanted && xid->format==wanted->format && xid->global_length==wanted->global_length &&
-                !memcmp(xid->data,wanted->data,(size_t)wanted->global_length)) {
-                if (xid->branch_length!=wanted->branch_length ||
-                    memcmp(xid->data+xid->global_length,wanted->data+wanted->global_length,(size_t)wanted->branch_length)) status=UD_FENCED;
-                else if ((*found)++) status=UD_CORRUPT;
+        memset(data, 0, XA_RECOVERY_PAGE);
+        int result = XA_RMFAIL;
+        uint32_t returned = 0;
+        status = call(p, NULL, XA_RECOVER, started ? 0 : XA_SCAN_START, data, XA_RECOVERY_PAGE,
+                      &returned, &result);
+        if (!started && initial_result)
+            *initial_result = result;
+        if (result >= 0)
+            started = 1;
+        if (!status && result < 0)
+            status = xa_status(p, result);
+        if (status)
+            break;
+        if (returned % sizeof(mssql_xid) ||
+            (result > 0 && (uint64_t)returned != (uint64_t)result * sizeof(mssql_xid)))
+            status = UD_CORRUPT;
+        if (returned && returned == previous_size && !memcmp(previous, data, returned))
+            status = UD_CORRUPT;
+        if (!status && returned > XA_RECOVERY_LIMIT - total)
+            status = UD_RESOURCE;
+        if (status || !returned)
+            break;
+        total += returned;
+        memcpy(previous, data, returned);
+        previous_size = returned;
+        for (uint32_t at = 0; !status && at < returned / sizeof(mssql_xid); at++) {
+            const mssql_xid *xid = (const mssql_xid *)data + at;
+            if (xid->global_length < 0 || xid->global_length > 64 ||
+                xid->branch_length < 0 || xid->branch_length > 64)
+                status = UD_CORRUPT;
+            else if (wanted && xid->format == wanted->format &&
+                     xid->global_length == wanted->global_length &&
+                     !memcmp(xid->data, wanted->data, (size_t)wanted->global_length)) {
+                if (xid->branch_length != wanted->branch_length ||
+                    memcmp(xid->data + xid->global_length, wanted->data + wanted->global_length,
+                           (size_t)wanted->branch_length))
+                    status = UD_FENCED;
+                else if ((*found)++)
+                    status = UD_CORRUPT;
             }
         }
     }
     if (started) {
-        ud_status closed=request(p,NULL,XA_RECOVER,XA_SCAN_END);
-        if (!status) status=closed;
+        ud_status closed = request(p, NULL, XA_RECOVER, XA_SCAN_END);
+        if (!status)
+            status = closed;
     }
-    p->host.deallocate(previous);p->host.deallocate(data);return status;
+    p->host.deallocate(previous);
+    p->host.deallocate(data);
+    return status;
 }
+
+static ud_status start_resource_manager(odbc_state *p) {
+    /* SQL Server on Linux can return XAER_RMERR from recovery until its first
+     * XA START. Initialize it with a separate, empty branch and roll it back. */
+    mssql_xid xid = {.format = XA_PROBE_FORMAT, .global_length = 32, .branch_length = 32};
+    UD_TRY(ud_odbc_control(p));
+    UD_TRY(p->host.random_bytes(p->host.context, xid.data, 64));
+    UD_TRY(request(p, &xid, XA_START, 0));
+    ud_status ended = request(p, &xid, XA_END, XA_FAIL);
+    ud_status rolled_back = request(p, &xid, XA_ROLLBACK, 0);
+    if (rolled_back)
+        p->broken = 1;
+    return rolled_back ? rolled_back : ended;
+}
+
 ud_status ud_mssql_xa_probe(odbc_state *p) {
     if (p->dialect != DIALECT_MSSQL || p->bulk_session ||
         !(p->capabilities & UD_CONNECT_TRANSACTION))
@@ -148,8 +194,13 @@ ud_status ud_mssql_xa_probe(odbc_state *p) {
         if (driver[at]>='A' && driver[at]<='Z') driver[at]=(char)(driver[at]-'A'+'a');
     if (!strstr(driver,"msodbcsql")) return UD_OK;
     /* Probe the real provider API and server configuration before admission. */
-    int found = 0;
-    ud_status status = scan(p, NULL, &found);
+    int found = 0, initial_result = XA_OK;
+    ud_status status = scan(p, NULL, &found, &initial_result);
+    if (status == UD_IO && !p->broken && initial_result == XA_RMERR) {
+        status = start_resource_manager(p);
+        if (!status)
+            status = scan(p, NULL, &found, NULL);
+    }
     if (!status)
         p->capabilities |= UD_CONNECT_TRANSACTION_PARTICIPANT;
     /* An unavailable XA facility leaves ordinary SQL/BCP available; a broken
@@ -229,7 +280,7 @@ ud_status ud_mssql_xa_recover(void *state, const ud_transaction_branch *branch, 
     mssql_xid xid = identity(branch);
     int found = 0, resolving = p->resolving;
     p->resolving = 1;
-    ud_status status = scan(p, &xid, &found);
+    ud_status status = scan(p, &xid, &found, NULL);
     if (!status && found)
         *result = UD_TX_PREPARED;
     else if (!status) {

@@ -115,4 +115,19 @@ static inline char *plugin_identifier(const ud_host_api *h, ud_string name) {
     quoted[n] = 0;
     return quoted;
 }
+/* Report classified vendor diagnostics without forwarding provider text. */
+static inline ud_status plugin_db_error(const ud_host_api *host, ud_status status, int64_t code,
+                                         const char *sqlstate, const char *message) {
+    ud_error_detail detail = {0};
+    detail.struct_size = sizeof(detail);
+    detail.abi_version = UD_ABI_VERSION;
+    detail.source = UD_ERROR_DATABASE;
+    detail.cause = status;
+    detail.native_code = code;
+    if (sqlstate && strlen(sqlstate) == 5)
+        memcpy(detail.sqlstate, sqlstate, 5);
+    ud_string text = {message, (uint32_t)strlen(message)};
+    return host->report_error(host->context, status, text, &detail);
+}
+
 #endif

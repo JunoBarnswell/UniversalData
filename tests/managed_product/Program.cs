@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using UniversalData;
+using UniversalData.Hosting;
 
 NativeLibrary.SetDllImportResolver(typeof(Execution).Assembly, (name, _, _) =>
     name == "ud_data" ? NativeLibrary.Load(Path.GetFullPath(args[0])) : IntPtr.Zero);

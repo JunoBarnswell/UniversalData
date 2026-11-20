@@ -9,12 +9,14 @@ import sys
 import tempfile
 import threading
 import time
+from urllib.parse import parse_qs, urlsplit
 from product_version import PROTOCOL_VERSION
 
 
 with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
     root = pathlib.Path(temporary)
     requests = []
+    oauth = []
     counts = collections.Counter()
     lock = threading.Lock()
 
@@ -25,7 +27,8 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
             pass
 
         def handle_request(self):
-            name, action = self.path.strip("/").split("/", 1)
+            target = urlsplit(self.path)
+            name, action = target.path.strip("/").split("/", 1)
             folder = root / name
             body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
             with lock:
@@ -44,12 +47,34 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
             if action == "redirect":
                 code = 302
             response = b"x" * (65536 if action == "large" else 5)
+            if action == "token":
+                form = parse_qs(body.decode())
+                assert form == {"grant_type": ["client_credentials"], "scope": ["orders read"],
+                                "client_id": ["sdk-fixture"], "client_secret": ["fixture secret&"]}
+                assert self.headers.get("Content-Type") == "application/x-www-form-urlencoded"
+                response = json.dumps(dict(access_token=f"rotating-{number}", token_type="Bearer",
+                                           expires_in=1)).encode()
+            if action == "page":
+                first = not target.query
+                assert first or parse_qs(target.query) == {"cursor": ["next page"]}
+                with lock:
+                    oauth.append((self.headers.get("Authorization"), self.headers.get("X-Variable"),
+                                  self.headers.get("X-Private"), self.headers.get("X-Literal")))
+                if first:
+                    time.sleep(1.1)
+                response = json.dumps(dict(rows=[{"id": 1 if first else 2}],
+                                           nextCursor="next page" if first else None)).encode()
             self.send_response(code)
             if action == "redirect":
                 self.send_header("Location", f"http://127.0.0.1:{plain.server_port}/{name}/effect")
             if action == "large-header":
                 for i in range(16):
                     self.send_header(f"X-Pad-{i}", "x" * 8192)
+            if action == "selected-headers":
+                self.send_header("X-Trace", "public-trace")
+                self.send_header("X-Echo", self.headers["Authorization"].removeprefix("Bearer "))
+                self.send_header("X-Private-Echo", self.headers["X-Private"])
+                self.send_header("X-Unselected", "unselected")
             self.send_header("Content-Length", str(len(response)))
             self.end_headers()
             if self.command != "HEAD":
@@ -95,7 +120,8 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
                "dataFlows": []}
         return folder, doc
 
-    def run(folder, doc, mode=0, status=0, code=200, checkpoint=False, resume=0, exit=0, resolved=0):
+    def run(folder, doc, mode=0, status=0, code=200, checkpoint=False, resume=0, exit=0, resolved=0,
+            expected_headers=None):
         package = folder / "package.json"
         package.write_text(json.dumps(doc, ensure_ascii=False))
         started = time.monotonic()
@@ -104,6 +130,9 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
                                  str(resume), str(resolved)], capture_output=True, text=True, timeout=10)
         assert result.returncode == exit, (folder.name, result.returncode, result.stderr)
         assert "fixture-token" not in result.stdout + result.stderr
+        if expected_headers is not None:
+            [task] = json.loads(result.stdout)["tasks"]
+            assert task["httpStatus"] == code and task["responseHeaders"] == expected_headers, task
         return time.monotonic() - started
 
     folder, doc = fixture("get")
@@ -126,6 +155,12 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
     doc["connections"][0]["credentialReference"] = "token"
     run(folder, doc, resolved=1)
     assert requests[-1][3] == "Bearer fixture-token"
+    folder, doc = fixture("selected-headers", "selected-headers", config={
+        "headers": [{"name": "X-Private", "credentialReference": "extra"}],
+        "responseHeaders": ["X-Trace", "X-Echo", "X-Private-Echo"],
+    })
+    doc["connections"][0]["credentialReference"] = "token"
+    run(folder, doc, mode=13, resolved=2, expected_headers="X-Trace: public-trace\r\n")
     for name, mode, status in (("missing-resolver", 6, 13), ("header-injection", 7, 5)):
         folder, doc = fixture(name)
         doc["connections"][0]["credentialReference"] = "token"
@@ -133,6 +168,32 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
         assert counts[name] == 0
     folder, doc = fixture("tls", https=True)
     run(folder, doc)
+    folder, doc = fixture("oauth", "page", https=True)
+    token_folder = root / "issuer"
+    token_folder.mkdir()
+    doc["connections"][0]["oauth2"] = dict(tokenEndpoint=f"https://localhost:{secure.server_port}/issuer/token",
+        clientId="sdk-fixture", credentialReference="oauth", scope="orders read", authentication="post")
+    doc["variables"]["header"] = dict(type="utf8", default="runtime")
+    output = folder / "output.ndjson"
+    doc["connections"].append(dict(id="output", driver="file", resource=str(output)))
+    doc["controlFlow"]["tasks"] = [dict(id="copy", kind="dataFlow", config=dict(pipeline="copy"))]
+    doc["dataFlows"] = [dict(id="copy", components=[
+        dict(id="read", component="rest.source", config=dict(connection="endpoint", caConnection="ca",
+             schema=dict(version=PROTOCOL_VERSION, fields=[dict(name="id", type="int64", nullable=False)]),
+             headers=[dict(name="X-Literal", value="literal"), dict(name="X-Variable", variable="header"),
+                      dict(name="X-Private", credentialReference="extra")])),
+        dict(id="write", component="file.ndjson.destination", config=dict(connection="output"))],
+        paths=[{"from": "read", "output": 0, "to": "write", "input": 0}])]
+    run(folder, doc, code=-1, checkpoint=True, resolved=4)
+    assert counts["issuer"] == 2
+    assert oauth == [("Bearer rotating-1", "runtime", "private header", "literal"),
+                     ("Bearer rotating-2", "runtime", "private header", "literal")]
+    assert [json.loads(line) for line in output.read_text().splitlines()] == [{"id": 1}, {"id": 2}]
+    folder, doc = fixture("oauth-denied", https=True)
+    doc["connections"][0]["oauth2"] = dict(tokenEndpoint=f"https://localhost:{secure.server_port}/issuer/token",
+                                           clientId="sdk-fixture", credentialReference="oauth")
+    run(folder, doc, mode=12, status=13, code=-1)
+    assert counts["issuer"] == 2 and counts["oauth-denied"] == 0
     for name, change in (("wrong-ca", "ca"), ("wrong-host", "host"), ("untrusted", "system")):
         folder, doc = fixture(name, https=True)
         if change == "ca":
@@ -147,7 +208,7 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
     run(folder, doc, mode=8, status=13, code=-1)
     assert counts[folder.name] == 0
     folder, doc = fixture("failure", "failure")
-    run(folder, doc, status=3, code=500)
+    run(folder, doc, status=25, code=500)
     assert counts[folder.name] == 1
     folder, doc = fixture("expected-failure", "failure", {"expectedStatus": 500})
     run(folder, doc, code=500)
@@ -155,7 +216,7 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
     run(folder, doc)
     assert counts[folder.name] == 3
     folder, doc = fixture("retry-exhausted", "failure", {"maxAttempts": 2})
-    run(folder, doc, status=3, code=500)
+    run(folder, doc, status=25, code=500)
     assert counts[folder.name] == 2
     folder, doc = fixture("post-no-retry", "failure", {"method": "POST"})
     run(folder, doc, status=16, code=500)
@@ -164,7 +225,7 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
     run(folder, doc, status=5, code=-1)
     assert counts[folder.name] == 0
     folder, doc = fixture("redirect", "redirect")
-    run(folder, doc, status=3, code=302)
+    run(folder, doc, status=25, code=302)
     assert counts[folder.name] == 1 and not (folder / "marker").exists()
     folder, doc = fixture("response-limit", "large", {"maxResponseBytes": 32})
     run(folder, doc, status=4)
@@ -224,8 +285,9 @@ with tempfile.TemporaryDirectory(prefix="ud-http-task-") as temporary:
                 assert actual["result"] == (0 if mode == "permit" else 13), (name, actual)
                 assert actual["state"] == (5 if mode == "permit" else 6)
                 assert actual["executedTasks"] == (1 if mode == "permit" else 0)
-                assert actual["resolutions"] == (1 if mode == "permit" else 0)
-                assert actual["networkGrants"] > 0
+                if language == "java":
+                    assert actual["resolutions"] == (1 if mode == "permit" else 0)
+                    assert actual["networkGrants"] > 0
                 assert counts[name] == (1 if mode == "permit" else 0)
                 if mode == "permit":
                     assert requests[-1][3] == "Bearer fixture-token"

@@ -1,5 +1,5 @@
 #include "../engines/package/internal.h"
-#include "ud/http.h"
+#include "http_internal.h"
 #include "network.h"
 #ifdef UD_WITH_HTTP
 #include <curl/curl.h>
@@ -43,6 +43,11 @@ typedef struct transfer {
     ud_status status;
     ud_bytes body, header_bytes;
     uint64_t retry_after;
+    const ud_json *response_headers;
+    const ud_json *request_header_definitions;
+    const struct curl_slist *request_headers;
+    uint32_t credential_header_count;
+    int32_t transport_code;
     FILE *file;
     ud_connection_lease *file_lease;
     const uint8_t *upload_bytes;
@@ -117,6 +122,64 @@ static size_t upload(char *bytes, size_t size, size_t count, void *pointer) {
     t->uploaded += received;
     return received;
 }
+
+static int selected_header(const ud_json *selection, const char *line, size_t length) {
+    const char *end = memchr(line, ':', length);
+    if (!end)
+        return 0;
+    size_t name_length = (size_t)(end - line);
+    if (name_length == 10 && curl_strnequal(line, "Set-Cookie", 10))
+        return 0;
+    if (!selection)
+        return (name_length == 12 && curl_strnequal(line, "Content-Type", 12)) ||
+               (name_length == 12 && curl_strnequal(line, "X-Request-Id", 12));
+    for (uint32_t i = 0; i < ud_json_size(selection); ++i) {
+        ud_string name;
+        if (!ud_json_string(ud_json_at(selection, i), &name) && name.length == name_length &&
+            curl_strnequal(name.data, line, name_length))
+            return 1;
+    }
+    return 0;
+}
+
+static int contains_value(const char *text, size_t length, const char *value) {
+    size_t size = strlen(value);
+    if (!size || size > length)
+        return 0;
+    for (size_t at = 0; at <= length - size; ++at)
+        if (!memcmp(text + at, value, size))
+            return 1;
+    return 0;
+}
+
+static int reflects_credentials(const transfer *t, const char *line, size_t length) {
+    const char *separator = memchr(line, ':', length);
+    const char *text = separator + 1;
+    length -= (size_t)(text - line);
+    uint32_t index = 0;
+    for (const struct curl_slist *header = t->request_headers; header; header = header->next, ++index) {
+        const char *colon = strchr(header->data, ':');
+        if (!colon)
+            continue;
+        size_t name_length = (size_t)(colon - header->data);
+        int authorization = name_length == 13 && curl_strnequal(header->data, "Authorization", 13);
+        const ud_json *definition = index < t->credential_header_count ? NULL :
+            ud_json_at(t->request_header_definitions, index - t->credential_header_count);
+        if (!authorization && index >= t->credential_header_count &&
+            !ud_member(definition, "credentialReference") && !ud_member(definition, "variable"))
+            continue;
+        const char *value = colon + 1;
+        while (*value == ' ' || *value == '\t')
+            ++value;
+        if (contains_value(text, length, value))
+            return 1;
+        const char *token = authorization ? strchr(value, ' ') : NULL;
+        if (token && contains_value(text, length, token + 1))
+            return 1;
+    }
+    return 0;
+}
+
 static size_t header(char *ptr, size_t size, size_t count, void *user) {
     transfer *t = user;
     if (size && count > SIZE_MAX / size) {
@@ -130,9 +193,13 @@ static size_t header(char *ptr, size_t size, size_t count, void *user) {
         t->status = UD_RESOURCE;
         return 0;
     }
-    t->status = ud_bytes_put(&t->header_bytes, ptr, n);
-    if (t->status)
-        return 0;
+    if (n >= 5 && !memcmp(ptr, "HTTP/", 5))
+        t->header_bytes.size = 0;
+    if (selected_header(t->response_headers, ptr, n) && !reflects_credentials(t, ptr, n)) {
+        t->status = ud_bytes_put(&t->header_bytes, ptr, n);
+        if (t->status)
+            return 0;
+    }
     if (n > 12 && curl_strnequal(ptr, "Retry-After:", 12)) {
         uint64_t seconds = 0;
         uint32_t i = 12;
@@ -199,50 +266,150 @@ static ud_status add_header(struct curl_slist **list, const char *value) {
     *list = next;
     return UD_OK;
 }
-static ud_status credentials(ud_context *ctx, ud_string text, struct curl_slist **list) {
+static int header_name(ud_string name) {
+    if (!name.length || name.length > 128)
+        return 0;
+    for (uint32_t i = 0; i < name.length; ++i) {
+        unsigned char c = (unsigned char)name.data[i];
+        if (!c || !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                    (c >= '0' && c <= '9') || strchr("!#$%&'*+-.^_`|~", c)))
+            return 0;
+    }
+    return 1;
+}
+static int request_header(ud_string name) {
+    static const char *reserved[] = {"host", "content-length", "transfer-encoding", "connection",
+                                    "expect", "proxy-authorization", "content-type", "idempotency-key"};
+    if (!header_name(name))
+        return 0;
+    for (uint32_t i = 0; i < sizeof(reserved) / sizeof(*reserved); ++i)
+        if (named_ci(name, reserved[i]))
+            return 0;
+    return 1;
+}
+ud_status ud_http_validate_headers(const ud_json *headers, const ud_json *response) {
+    if ((headers && (ud_json_kind(headers) != UD_JSON_ARRAY || ud_json_size(headers) > 64)) ||
+        (response && (ud_json_kind(response) != UD_JSON_ARRAY || ud_json_size(response) > 64)))
+        return UD_SCHEMA;
+    for (uint32_t i = 0; i < ud_json_size(headers); ++i) {
+        const ud_json *entry = ud_json_at(headers, i);
+        static const char *keys[] = {"name", "value", "variable", "credentialReference"};
+        UD_TRY(ud_json_keys(entry, keys, 4));
+        ud_string name, value;
+        UD_TRY(ud_json_string(ud_member(entry, "name"), &name));
+        const ud_json *literal = ud_member(entry, "value");
+        const ud_json *variable = ud_member(entry, "variable");
+        const ud_json *credential = ud_member(entry, "credentialReference");
+        if (!request_header(name) || !!literal + !!variable + !!credential != 1 ||
+            (named_ci(name, "authorization") && !credential))
+            return UD_SCHEMA;
+        UD_TRY(ud_json_string(literal ? literal : variable ? variable : credential, &value));
+        if (value.length > 8192 || !clean_text(value))
+            return UD_SCHEMA;
+    }
+    for (uint32_t i = 0; i < ud_json_size(response); ++i) {
+        ud_string name;
+        UD_TRY(ud_json_string(ud_json_at(response, i), &name));
+        if (!header_name(name) || named_ci(name, "set-cookie") || named_ci(name, "authorization") ||
+            named_ci(name, "proxy-authorization") || named_ci(name, "cookie"))
+            return UD_SCHEMA;
+    }
+    return UD_OK;
+}
+static ud_status header_value(ud_context *memory, struct curl_slist **list, ud_string name,
+                              ud_string value) {
+    if (!request_header(name) || value.length > 16384 || !clean_text(value))
+        return UD_SCHEMA;
+    for (const struct curl_slist *entry = *list; entry; entry = entry->next) {
+        const char *separator = strchr(entry->data, ':');
+        if (separator && (size_t)(separator - entry->data) == name.length &&
+            curl_strnequal(entry->data, name.data, name.length))
+            return UD_SCHEMA;
+    }
+    ud_bytes line = {.ctx = memory, .limit = 32768};
+    ud_status status = ud_bytes_put(&line, name.data, name.length);
+    if (!status)
+        status = ud_bytes_put(&line, ": ", 2);
+    if (!status)
+        status = ud_bytes_put(&line, value.data, value.length);
+    if (!status)
+        status = ud_bytes_put(&line, "", 1);
+    if (!status)
+        status = add_header(list, (char *)line.data);
+    ud_string secret = {(const char *)line.data, (uint32_t)line.size};
+    ud_http_clear_secret(&secret);
+    return status;
+}
+static ud_status credentials(ud_context *memory, ud_string text, struct curl_slist **list,
+                             uint32_t *count) {
     if (!text.length)
         return UD_OK;
-    ud_json *doc = NULL;
-    UD_TRY(ud_json_parse(ctx, text.data, text.length, &doc, NULL));
+    ud_json *document = NULL;
+    UD_TRY(ud_json_parse(memory, text.data, text.length, &document, NULL));
     static const char *keys[] = {"headers"};
-    ud_status s = ud_json_keys(doc, keys, 1);
-    const ud_json *headers = ud_member(doc, "headers");
-    if (!s && (ud_json_kind(headers) != UD_JSON_OBJECT || ud_json_size(headers) > 64))
-        s = UD_SCHEMA;
-    for (uint32_t i = 0; !s && i < ud_json_size(headers); i++) {
+    ud_status status = ud_json_keys(document, keys, 1);
+    const ud_json *headers = ud_member(document, "headers");
+    if (!status && (ud_json_kind(headers) != UD_JSON_OBJECT || ud_json_size(headers) > 64))
+        status = UD_SCHEMA;
+    if (!status)
+        *count = ud_json_size(headers);
+    for (uint32_t i = 0; !status && i < *count; ++i) {
         ud_string name, value;
-        s = ud_json_key(headers, i, &name.data, &name.length);
-        if (!s)
-            s = ud_json_string(ud_json_at(headers, i), &value);
-        if (!s && (!name.length || !clean_text(value)))
-            s = UD_SCHEMA;
-        for (uint32_t j = 0; !s && j < name.length; j++) {
-            unsigned char c = (unsigned char)name.data[j];
-            if (!c || !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-                        (c >= '0' && c <= '9') || strchr("!#$%&'*+-.^_`|~", c)))
-                s = UD_SCHEMA;
-        }
-        static const char *forbidden[] = {"host",        "content-length", "transfer-encoding",
-                                          "connection",  "expect",         "proxy-authorization",
-                                          "content-type"};
-        for (int j = 0; !s && j < 7; j++)
-            if (named_ci(name, forbidden[j]))
-                s = UD_SCHEMA;
-        ud_bytes line = {.ctx = ctx, .limit = 32768};
-        if (!s)
-            s = ud_bytes_put(&line, name.data, name.length);
-        if (!s)
-            s = ud_bytes_put(&line, ": ", 2);
-        if (!s)
-            s = ud_bytes_put(&line, value.data, value.length);
-        if (!s)
-            s = ud_bytes_put(&line, "", 1);
-        if (!s)
-            s = add_header(list, (char *)line.data);
-        ud_bytes_clear(&line);
+        status = ud_json_key(headers, i, &name.data, &name.length);
+        if (!status)
+            status = ud_json_string(ud_json_at(headers, i), &value);
+        if (!status)
+            status = header_value(memory, list, name, value);
     }
-    ud_json_destroy(doc);
-    return s;
+    ud_json_destroy(document);
+    return status;
+}
+static ud_status request_headers(const ud_component_context *context, ud_connection_lease *lease,
+                                 const ud_http_options *request, ud_string resource,
+                                 struct curl_slist **list) {
+    for (uint32_t i = 0; i < ud_json_size(request->headers); ++i) {
+        const ud_json *entry = ud_json_at(request->headers, i);
+        ud_string name, value = {0}, secret = {0};
+        UD_TRY(ud_json_string(ud_member(entry, "name"), &name));
+        const ud_json *literal = ud_member(entry, "value");
+        const ud_json *reference = ud_member(entry, "credentialReference");
+        char buffer[256];
+        if (literal)
+            UD_TRY(ud_json_string(literal, &value));
+        else if (reference) {
+            ud_string id;
+            UD_TRY(ud_json_string(reference, &id));
+            UD_TRY(ud_http_resolve_reference(lease, resource, id, &secret));
+            value = secret;
+        } else {
+            ud_string variable;
+            ud_value data;
+            UD_TRY(ud_json_string(ud_member(entry, "variable"), &variable));
+            UD_TRY(ud_activation_variable(context->activation, variable, &data));
+            if (data.is_null || data.type == UD_BINARY)
+                return UD_SCHEMA;
+            if (data.type == UD_UTF8)
+                value = (ud_string){data.text, data.text_length};
+            else {
+                uint32_t length = 0;
+                UD_TRY(ud_value_format(&data, buffer, sizeof(buffer), &length));
+                value = (ud_string){buffer, length};
+            }
+        }
+        ud_status status = header_value(context->memory, list, name, value);
+        ud_http_clear_secret(&secret);
+        if (status)
+            return status;
+    }
+    return UD_OK;
+}
+static void clear_headers(struct curl_slist *headers) {
+    for (struct curl_slist *entry = headers; entry; entry = entry->next) {
+        volatile char *value = entry->data;
+        while (*value)
+            *value++ = 0;
+    }
+    curl_slist_free_all(headers);
 }
 static ud_status load_ca(ud_activation *e, ud_string id, ud_bytes *bytes) {
     if (!id.length)
@@ -310,6 +477,7 @@ static ud_status perform(CURL *easy, transfer *t, long *status) {
     if (added)
         curl_multi_remove_handle(multi, easy);
     curl_multi_cleanup(multi);
+    t->transport_code = (int32_t)result;
     if (t->status)
         s = t->status;
     if (!s && (!received || result != CURLE_OK))
@@ -351,7 +519,8 @@ static int retry_status(long code) {
 }
 static ud_status request(const ud_component_context *c, const ud_http_options *p,
                          ud_connection_lease *connection, const char *url, ud_bytes *ca,
-                         struct curl_slist *headers, long *status, ud_http_response *out) {
+                         struct curl_slist *headers, uint32_t credential_count, long *status,
+                         ud_http_response *out) {
     CURL *easy = curl_easy_init();
     if (!easy)
         return UD_RESOURCE;
@@ -360,6 +529,10 @@ static ud_status request(const ud_component_context *c, const ud_http_options *p
     transfer t = {.execution = c->activation,
                   .connection = connection,
                   .maximum = p->maximum,
+                  .response_headers = p->response_headers,
+                  .request_header_definitions = p->headers,
+                  .request_headers = headers,
+                  .credential_header_count = credential_count,
                   .deadline = p->timeout > UINT64_MAX - now ? UINT64_MAX : now + p->timeout};
     t.body = (ud_bytes){.ctx = c->memory, .limit = (size_t)p->maximum};
     t.header_bytes = (ud_bytes){.ctx = c->memory, .limit = 65536};
@@ -406,7 +579,7 @@ static ud_status request(const ud_component_context *c, const ud_http_options *p
         if (success && !transport_failed)
             break;
         if ((!transport_failed && !retry_status(*status)) || i + 1 == p->attempts) {
-            s = UD_IO;
+            s = UD_HTTP_STATUS;
             break;
         }
         uint64_t pause = p->delay;
@@ -427,6 +600,7 @@ static ud_status request(const ud_component_context *c, const ud_http_options *p
     curl_easy_cleanup(easy);
     ud_free(method);
     out->status = (int32_t)*status;
+    out->transport_code = t.transport_code;
     out->completed = completed;
     out->retry_after_ms = t.retry_after;
     if (completed) {
@@ -439,6 +613,56 @@ static ud_status request(const ud_component_context *c, const ud_http_options *p
     ud_bytes_clear(&t.body);
     ud_bytes_clear(&t.header_bytes);
     return s;
+}
+static ud_status http_outcome(ud_context *memory, ud_status status, const ud_http_response *response) {
+    if (status == UD_HTTP_STATUS && (response->status == 401 || response->status == 403))
+        status = UD_AUTH;
+    if (status && response->attempted) {
+        ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION,
+                                  .source = response->completed ? UD_ERROR_HTTP : UD_ERROR_TRANSPORT,
+                                  .cause = status,
+                                  .native_code = response->completed ? response->status : response->transport_code};
+        const char *message = response->completed ? "HTTP status rejected" : "HTTP transfer failed";
+        return ud_context_report_error(memory, status, (ud_string){message, (uint32_t)strlen(message)},
+                                        &detail);
+    }
+    return status;
+}
+ud_status ud_http_token_exchange(const ud_component_context *context, ud_connection_lease *lease,
+                                 const ud_http_options *options, ud_string endpoint, ud_string body,
+                                 ud_string authorization, ud_http_response *response) {
+    char *url = ud_strdup_n(context->memory, endpoint.data, endpoint.length);
+    if (!url)
+        return UD_RESOURCE;
+    ud_status status = validate_url(url);
+    if (!status)
+        status = ud_connection_lease_authorize_uri(lease, endpoint);
+    struct curl_slist *headers = NULL;
+    ud_bytes ca = {.ctx = context->memory, .limit = 1048576};
+    if (!status)
+        status = load_ca(context->activation, options->ca, &ca);
+    if (!status)
+        status = add_header(&headers, "Content-Type: application/x-www-form-urlencoded");
+    if (!status && authorization.length) {
+        char *line = ud_strdup_n(context->memory, authorization.data, authorization.length);
+        status = line ? add_header(&headers, line) : UD_RESOURCE;
+        ud_string secret = {line, line ? authorization.length : 0};
+        ud_http_clear_secret(&secret);
+    }
+    ud_http_options request_options = {.method = {"POST", 4}, .body = body,
+                                       .timeout = options->timeout, .maximum = 65536,
+                                       .attempts = 1};
+    long code = 0;
+    if (!status)
+        status = request(context, &request_options, lease, url, &ca, headers, 0, &code, response);
+    clear_headers(headers);
+    ud_bytes_clear(&ca);
+    ud_free(url);
+    return http_outcome(context->memory, status, response);
+}
+#else
+ud_status ud_http_validate_headers(const ud_json *headers, const ud_json *response) {
+    return headers || response ? UD_UNSUPPORTED : UD_OK;
 }
 #endif
 
@@ -465,9 +689,11 @@ ud_status ud_http_call(const ud_component_context *c, ud_connection_lease *conne
     if (p->attempts > 1 && !ud_named(p->method, "GET") && !ud_named(p->method, "HEAD") &&
         !ud_named(p->method, "PUT") && !ud_named(p->method, "DELETE") && !p->idempotency_key.length)
         return UD_UNSUPPORTED;
+    UD_TRY(ud_http_validate_headers(p->headers, p->response_headers));
     ud_string resource = {0}, secret = {0};
     ud_bytes ca = {.ctx = c->memory, .limit = 1048576};
     struct curl_slist *headers = NULL;
+    uint32_t credential_count = 0;
     char *url = NULL;
     ud_status status = ud_connection_lease_authorize(connection, UD_ACCESS_NETWORK);
     if (!status)
@@ -524,8 +750,28 @@ ud_status ud_http_call(const ud_component_context *c, ud_connection_lease *conne
     if (!status)
         status = ud_http_connection_credentials(connection, &secret);
     if (!status)
-        status = credentials(c->memory, secret, &headers);
-    ud_free((void *)secret.data);
+        status = credentials(c->memory, secret, &headers, &credential_count);
+    ud_http_clear_secret(&secret);
+    if (!status)
+        status = request_headers(c, connection, p, resource, &headers);
+    ud_http_oauth_cache *cache;
+    const ud_json *oauth = ud_http_connection_oauth(connection, &cache);
+    if (!status && oauth) {
+        ud_string token;
+        status = ud_http_oauth_bearer(c, connection, p, oauth, cache, &token);
+        if (!status) {
+            ud_bytes authorization = {.ctx = c->memory, .limit = 16384};
+            status = ud_bytes_put(&authorization, "Bearer ", 7);
+            if (!status)
+                status = ud_bytes_put(&authorization, token.data, token.length);
+            if (!status)
+                status = header_value(c->memory, &headers, (ud_string){"Authorization", 13},
+                                      (ud_string){(const char *)authorization.data,
+                                                  (uint32_t)authorization.size});
+            ud_string value = {(const char *)authorization.data, (uint32_t)authorization.size};
+            ud_http_clear_secret(&value);
+        }
+    }
     if (!status)
         status = add_header(&headers, "Expect:");
     const ud_string values[] = {p->content_type, p->idempotency_key};
@@ -546,15 +792,11 @@ ud_status ud_http_call(const ud_component_context *c, ud_connection_lease *conne
         status = load_ca(c->activation, p->ca, &ca);
     long code = 0;
     if (!status)
-        status = request(c, p, connection, url, &ca, headers, &code, out);
-    if (status && code == 401)
-        status = UD_AUTH;
-    else if (status && code == 403)
-        status = UD_AUTH;
-    curl_slist_free_all(headers);
+        status = request(c, p, connection, url, &ca, headers, credential_count, &code, out);
+    clear_headers(headers);
     ud_bytes_clear(&ca);
     ud_free(url);
-    return status;
+    return http_outcome(c->memory, status, out);
 #endif
 }
 
@@ -656,10 +898,12 @@ static ud_status network_auth(const ud_component_context *context, ud_connection
             status = ud_bytes_put(&json, "}", 1);
         if (!status)
             status = credentials(context->memory,
-                                 (ud_string){(char *)json.data, (uint32_t)json.size}, headers);
+                                 (ud_string){(char *)json.data, (uint32_t)json.size}, headers,
+                                 &transfer_state->credential_header_count);
         ud_free(value);
         ud_bytes_clear(&json);
     }
+    transfer_state->request_headers = *headers;
     if (!status)
         status = credential_file(context, *document, "knownHostsConnection",
                                  &transfer_state->trust_lease, trust_path);

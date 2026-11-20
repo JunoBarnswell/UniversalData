@@ -31,14 +31,16 @@ def invoke(index, mode, package, output, succeed=True):
             env['LD_LIBRARY_PATH'] = a.native
     if index == 1:
         env.pop('LD_LIBRARY_PATH', None)
-    result = subprocess.run(commands[index] + [mode, str(package), str(output)],
+    managed = [str(package.parent / 'host-policy.json')] if index == 1 else []
+    result = subprocess.run(commands[index] + [mode, str(package), str(output)] + managed,
                             env=env, capture_output=True, text=True, timeout=60)
     assert (result.returncode == 0) == succeed, (index, mode, result.returncode, result.stderr)
     return json.loads(output.read_text()) if succeed else None
 
 with tempfile.TemporaryDirectory(prefix='ud-advanced-metadata-') as folder:
     root = pathlib.Path(folder)
-    database = root / 'ten.db'
+    resources = root / 'resources'; resources.mkdir()
+    database = resources / 'ten.db'
     doc = json.loads((ROOT / 'examples/templates/ten-table-etl.json').read_text())
     doc['connections'][0].update(driver=str(pathlib.Path(a.sqlite).resolve()),
                                  resource=str(database), credentialReference='fixture')
@@ -51,10 +53,13 @@ with tempfile.TemporaryDirectory(prefix='ud-advanced-metadata-') as folder:
             db.executemany(f'INSERT INTO table_{i:02d} VALUES(?,?)',
                            [(i * 10 + j, None if j == 1 else '90071992547409.93') for j in range(3)])
     package = root / 'template.json'
+    secret = root / 'sqlite.conf'; secret.write_text(str(database), encoding='utf-8')
+    (root / 'host-policy.json').write_text(json.dumps(dict(dataDirectory=str(root/'sdk-state'), fileRoots=[str(resources)],
+        networkOrigins=[], pluginRoots=[str(pathlib.Path(a.sqlite).resolve().parent)], credentialFiles={'fixture': str(secret)})))
     expected_catalog = expected_expansion = expected_plan = None
     for index in range(len(commands)):
         for i in range(10):
-            doc['connections'][i + 1]['resource'] = str(root / f'{index}-{i:02d}.ndjson')
+            doc['connections'][i + 1]['resource'] = str(resources / f'{index}-{i:02d}.ndjson')
         package.write_text(json.dumps(doc))
         expansion = invoke(index, '--instantiate', package, root / f'{index}.expanded.json')
         assert 'templates' not in expansion and 'instances' not in expansion
@@ -81,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix='ud-advanced-metadata-') as folder:
         diagnostics = invoke(index, '--execute', package, root / f'{index}.diagnostics.json')
         assert diagnostics['outcome'] == 0 and len(diagnostics['pipelines']) == 10
         for i in range(10):
-            rows = [json.loads(line) for line in (root / f'{index}-{i:02d}.ndjson').read_text().splitlines()]
+            rows = [json.loads(line) for line in (resources / f'{index}-{i:02d}.ndjson').read_text().splitlines()]
             assert rows == [dict(**{f'key_{i}':i * 10 + j, f'amount_{i}':None if j == 1 else '90071992547409.93'},
                                 canonicalKey=i * 10 + j, canonicalAmount=None if j == 1 else '90071992547409.93') for j in range(3)]
         measured = [node for pipeline in diagnostics['pipelines'] for tree in pipeline['trees']

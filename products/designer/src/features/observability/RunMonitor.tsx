@@ -189,11 +189,26 @@ export function RunMonitor({
         ) : null}
       </header>
       {error ? <p role="alert">{error}</p> : null}
+      {run?.state === "Queued" ? (
+        <p role="status">
+          {run.queueReason ?? "等待派发"} · 已等待 {Math.floor((run.queueWaitMs ?? 0) / 1000)} 秒
+        </p>
+      ) : null}
       {run?.failure ? (
         <p role="alert">
           {failurePhase(run.failure.phase)}失败 · 状态码 {run.failure.result}
+          {run.failure.detail?.sqlState ? ` · SQLSTATE ${run.failure.detail.sqlState}` : ""}
+          {run.failure.detail?.httpStatus ? ` · HTTP ${run.failure.detail.httpStatus}` : ""}
+          {run.failure.detail?.exitCode != null ? ` · Worker 退出码 ${run.failure.detail.exitCode}` : ""}
         </p>
       ) : null}
+      {facts?.diagnostics?.tasks?.filter(task => task.httpStatus !== undefined).map((task, index) => (
+        <details key={`${task.activation}/${index}`}>
+          <summary>{task.activation} · HTTP {task.httpStatus}</summary>
+          {task.responseHeaders ? <pre>{task.responseHeaders.trimEnd()}</pre> : null}
+          {task.responseHeadersOmitted ? <p>响应头超出运行历史记录上限。</p> : null}
+        </details>
+      ))}
       <div className="native-metrics">
         {[
           ["inputRows", "读取行"],

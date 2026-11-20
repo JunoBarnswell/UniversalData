@@ -1122,16 +1122,14 @@ ud_status RocketMqSession::publish(const ud_message_target &target, const ud_mes
             request.mutable_messages()->RemoveLast();
             continue;
         }
-        if (id.empty()) {
+        // The broker assigns a common UNIQ_KEY to records from a physical batch.
+        // Publish replies still need a distinct correlation ID for each outgoing record.
+        while (id.empty() || indexes.find(id) != indexes.end()) {
             id = new_id(host_);
             if (id.empty())
                 return UD_RESOURCE;
         }
-        if (!indexes.emplace(id, i).second) {
-            request.mutable_messages()->RemoveLast();
-            results[i] = {UD_MESSAGE_NOT_SENT, UD_INVALID};
-            continue;
-        }
+        indexes.emplace(id, i);
         *message->mutable_topic() = topic;
         message->set_body(input.payload.data, input.payload.length);
         auto *props = message->mutable_system_properties();

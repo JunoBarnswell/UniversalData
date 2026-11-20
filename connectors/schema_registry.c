@@ -83,7 +83,7 @@ static ud_status registry_response(ud_schema_registry *registry, uint32_t number
         status = ud_http_call(&registry->context, registry->lease, &options, &response);
     }
     ud_bytes_clear(&url);
-    if (!status || (status == UD_IO && response.completed && response.status == 404)) {
+    if (!status || (status == UD_HTTP_STATUS && response.completed && response.status == 404)) {
         ud_json *document = NULL;
         ud_status parsed = ud_json_parse(registry->context.memory, response.body.data,
                                          response.body.length, &document, NULL);
@@ -103,7 +103,7 @@ static ud_status registry_response(ud_schema_registry *registry, uint32_t number
             }
         }
         ud_json_destroy(document);
-    } else if (status == UD_IO && response.completed &&
+    } else if (status == UD_HTTP_STATUS && response.completed &&
                (response.status == 429 || response.status == 500 || response.status == 502 ||
                 response.status == 503 || response.status == 504)) {
         status = UD_TRANSIENT;

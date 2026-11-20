@@ -1,6 +1,6 @@
 # Managed SQL acceptance runner
 
-`ManagedSql.csproj` is a real-driver console acceptance test. It does not create an in-memory substitute or use a fake connector. The runner executes Native parameter binding, typed query batches, stable pagination, raw `IDataReader`, insert/update/delete, a rollback transaction, cancellation, and bounded streaming batches.
+`ManagedSql.csproj` exercises real drivers through an independent Worker. It covers Native parameter binding, typed query batches, stable pagination, `SqlCursor<T>`, insert/update/delete, rollback, cancellation, and bounded streaming batches.
 
 Connection secrets are read from a local file and are never printed:
 
@@ -28,6 +28,7 @@ Run it with `--fixture path/to/mariadb.fixture.json`. The acceptance entity is d
 ```bash
 cmake --build build/product --config Release --target ud_managed_sql_test
 LD_LIBRARY_PATH="$PWD/build/product${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+UD_WORKER_PATH="$PWD/build/product/hosts/product/worker/ud_worker" \
 dotnet build/product/tests/managed-sql/ManagedSql.dll --stream-copy \
   --provider postgresql --connection-file "$UD_TEST_POSTGRESQL_CONFIG" \
   --plugin "$PWD/build/product/plugins/ud_connector_postgresql.so" \

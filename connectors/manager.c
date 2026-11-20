@@ -3,6 +3,7 @@
 #include "../components/contracts/connection_internal.h"
 #include "../engines/package/internal.h"
 #include "rest.h"
+#include "http_internal.h"
 #include "ud/csv.h"
 #include "ud/xlsx.h"
 
@@ -50,6 +51,7 @@ struct ud_connection_lease {
     ud_string id, resource, driver;
     session *session;
     ud_rest_target *rest;
+    ud_http_oauth_cache oauth;
     ud_connection *connection;
     uint64_t capabilities;
     uint32_t pins;
@@ -629,17 +631,29 @@ ud_status ud_http_connection_credentials(ud_connection_lease *l, ud_string *out)
         return UD_OK;
     ud_string reference;
     UD_TRY(ud_json_string(ref, &reference));
+    return ud_http_resolve_reference(l, l->resource, reference, out);
+}
+ud_status ud_http_resolve_reference(ud_connection_lease *l, ud_string resource,
+                                    ud_string reference, ud_string *out) {
+    if (!l || !out || !reference.length)
+        return UD_INVALID;
+    *out = (ud_string){0};
+    UD_TRY(ud_connection_lease_authorize_uri(l, resource));
     ud_execution *e = l->activation->execution;
     if (!e->options.resolve)
         return UD_AUTH;
     ud_status status = e->options.resolve(e->options.resolve_user, e->ctx, e->options.tenant,
-                                          l->resource, reference, out);
+                                          resource, reference, out);
     if (status || !out->data || !out->length || out->length > 32768) {
         ud_free((void *)out->data);
         *out = (ud_string){0};
         return status ? status : UD_SCHEMA;
     }
     return UD_OK;
+}
+const ud_json *ud_http_connection_oauth(ud_connection_lease *l, ud_http_oauth_cache **cache) {
+    *cache = l ? &l->oauth : NULL;
+    return l ? ud_member(l->definition, "oauth2") : NULL;
 }
 ud_status ud_network_connection_resource(ud_connection_lease *lease, ud_string *out) {
     if (!lease || !out)
@@ -1003,6 +1017,7 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
         }
     }
     ud_rest_target_close(l->rest);
+    ud_http_clear_secret(&l->oauth.token);
     ud_json_destroy(l->definition);
     ud_free(l);
     return status;

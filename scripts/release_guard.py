@@ -2,8 +2,13 @@
 import argparse
 import hashlib
 import json
+import os
+import zipfile
 import pathlib
+import shutil
+import subprocess
 import sys
+from xml.etree import ElementTree as ET
 from product_model import generate, read_model
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -11,13 +16,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 def source_hash():
     files = [ROOT / name for name in (
         "CMakeLists.txt", "CMakePresets.json", "VERSION", ".github/workflows/ci.yml",
-        "Directory.Build.props", "Directory.Build.targets", "UniversalData.sln")]
+        "Directory.Build.props", "Directory.Build.targets", "UniversalData.sln", ".github/workflows/publish-nuget.yml")]
     for folder in ("include", "components", "engines", "connectors", "catalog", "plugins",
                    "hosts", "products", "bindings", "cmake", "tests", "examples", "scripts", "packaging", "metadata", "benchmarks"):
         files.extend(p for p in (ROOT / folder).rglob("*") if p.is_file()
             and not set(p.relative_to(ROOT).parts) & {"bin", "obj", "target", "build", "__pycache__", "node_modules", "wwwroot"}
             and p.suffix in {".c", ".h", ".cpp", ".cs", ".java", ".py", ".ps1", ".cmake", ".json",
-                             ".xml", ".csproj", ".vcxproj", ".filters", ".txt", ".props", ".in", ".tsx", ".ts", ".css", ".html", ".js"}
+                             ".xml", ".nuspec", ".csproj", ".vcxproj", ".filters", ".txt", ".props", ".in", ".tsx", ".ts", ".css", ".html", ".js"}
             and p != ROOT / "metadata/product.json")
     digest = hashlib.sha256()
     # Candidate/gate evidence cannot hash itself. Contract product fields are
@@ -92,10 +97,105 @@ def check():
                 errors.append("Delivered file changed: " + entry["path"])
     return fingerprint, errors
 
+def nuget_names(version):
+    return [f"{identity}.{version}.nupkg" for identity in
+            ("UniversalData", "UniversalData.Runtime.win-x64", "UniversalData.Runtime.linux-x64")]
+
+
+def nuget_inventory(directory, version):
+    entries = []
+    for name in sorted(nuget_names(version)):
+        path = directory / name
+        with path.open("rb") as archive:
+            digest = hashlib.file_digest(archive, "sha256").hexdigest()
+        entries.append({"name": name, "bytes": path.stat().st_size, "sha256": digest})
+    return entries
+
+
+def assemble_nuget(linux, windows, destination):
+    version = read_model()["product"]["sdkVersion"]
+    sdk, win, linux_runtime = nuget_names(version)
+    destination.mkdir(parents=True, exist_ok=True)
+    for folder, name in ((linux, sdk), (linux, linux_runtime), (windows, win)):
+        paths = list(folder.rglob(name))
+        if len(paths) != 1:
+            raise ValueError(f"Expected one actual package for {name} in {folder}")
+        shutil.copyfile(paths[0], destination / name)
+
+
+def verify_nuget_installations(directory, commit, archives, version):
+    drivers = {"sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci"}
+    for rid in ("linux-x64", "win-x64"):
+        evidence = json.loads((directory / f"installed-{rid}.json").read_text())
+        if (evidence["rid"] != rid or evidence["sourceCommit"] != commit or evidence["version"] != version
+                or not evidence["framework"].startswith("8.") or evidence["http"] != 200
+                or evidence["sqliteRows"] != 35 or set(evidence["drivers"]) != drivers
+                or sorted(evidence["archives"], key=lambda item: item["name"]) != archives):
+            raise ValueError(f"The {rid} installation evidence differs from the proposed release")
+
+
+def seal_nuget(directory):
+    version = read_model()["product"]["sdkVersion"]
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    archives = nuget_inventory(directory, version)
+    verify_nuget_installations(directory, commit, archives, version)
+    approval = dict(version=version, sourceCommit=commit, sourceFingerprint=source_hash(), archives=archives)
+    (directory / "approval.json").write_text(json.dumps(approval, indent=2) + "\n", encoding="utf-8")
+
+
+def check_nuget(directory):
+    expected = read_model()["product"]["sdkVersion"]
+    approved = json.loads((directory / "approval.json").read_text())
+    if (os.environ.get("UD_APPROVED_VERSION") != expected or approved.get("version") != expected
+            or approved.get("sourceCommit") != os.environ.get("UD_RELEASE_COMMIT")
+            or approved.get("sourceFingerprint") != source_hash()):
+        raise ValueError("NuGet approval differs from verified source or installation evidence")
+    entries = nuget_inventory(directory, expected)
+    if approved["archives"] != entries:
+        raise ValueError("The approved NuGet archive hashes differ")
+    verify_nuget_installations(directory, approved["sourceCommit"], entries, expected)
+    for entry in entries:
+        path = directory / entry["name"]
+        if entry["bytes"] > 250_000_000:
+            raise ValueError(f"NuGet size limit exceeded by {path.name}")
+        with zipfile.ZipFile(path) as bundle:
+            files = set(bundle.namelist())
+            if path.name.startswith("UniversalData.Runtime."):
+                rid = path.name.removeprefix("UniversalData.Runtime.").split(".", 1)[0]
+                extension = ".dll" if rid == "win-x64" else ".so"
+                worker = "ud_worker.exe" if rid == "win-x64" else "ud_worker"
+                required = {f"runtimes/{rid}/worker/{worker}"} | {
+                    f"runtimes/{rid}/native/ud_connector_{driver}{extension}"
+                    for driver in ("sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci")}
+                if not required <= files or not any(name.startswith("licenses/") for name in files):
+                    raise ValueError(f"Runtime inventory or license notices are incomplete in {path.name}")
+            else:
+                spec = ET.fromstring(bundle.read("UniversalData.nuspec"))
+                dependencies = {element.get("id"): element.get("version") for element in
+                                spec.findall(".//{*}dependencies/{*}group/{*}dependency")}
+                if ("lib/net8.0/UniversalData.dll" not in files or dependencies != {
+                        f"UniversalData.Runtime.{rid}": f"[{expected}]" for rid in ("linux-x64", "win-x64")}):
+                    raise ValueError("The SDK assembly or exact RID dependencies differ")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--fingerprint", action="store_true")
-    if parser.parse_args().fingerprint:
+    parser.add_argument("--nuget", type=pathlib.Path)
+    parser.add_argument("--assemble-nuget", type=pathlib.Path, nargs=3, metavar=("LINUX", "WINDOWS", "OUTPUT"))
+    parser.add_argument("--seal-nuget", type=pathlib.Path)
+    arguments = parser.parse_args()
+    if arguments.assemble_nuget:
+        assemble_nuget(*arguments.assemble_nuget)
+        sys.exit(0)
+    if arguments.seal_nuget:
+        seal_nuget(arguments.seal_nuget)
+        sys.exit(0)
+    if arguments.nuget:
+        check_nuget(arguments.nuget.resolve())
+        print("Approved NuGet packages match both installation records")
+        sys.exit(0)
+    if arguments.fingerprint:
         print(source_hash())
         sys.exit(0)
     fingerprint, errors = check()

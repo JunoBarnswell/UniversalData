@@ -37,17 +37,18 @@ if (!HostIdentity.ValidId(nodeId)) throw new InvalidDataException("Invalid dispa
 var configuration = new ProductConfiguration(Path.GetFullPath(builder.Configuration["worker"] ?? Path.Combine(AppContext.BaseDirectory,"worker","ud_worker.dll")),nodeId);
 builder.Services.AddSingleton(policy); builder.Services.AddSingleton(configuration); builder.Services.AddSingleton(identities);
 builder.Services.AddSingleton<WorkerNodeDirectory>();
+builder.Services.AddSingleton<WorkerReservations>();
 builder.Services.AddSingleton<RunDispatcher>(); builder.Services.AddHostedService(services => services.GetRequiredService<RunDispatcher>());
 ManagementSecurity.Configure(builder,policy,identities);
 var app = builder.Build();
 app.Use(async (context,next) => {
     try { await next(); }
     catch(UniversalDataException failure) { if (context.Response.HasStarted) throw; context.Response.StatusCode = failure.Code == StatusCode.Auth ? 403 : failure.Code == StatusCode.Fenced ? 409 : 422;
-        await context.Response.WriteAsJsonAsync(new { result = failure.Status,error = failure.Code.ToString() }); }
+        await context.Response.WriteAsJsonAsync(new Result(failure.Code, failure.Detail ?? new(ErrorSource.Native, failure.Code, failure.Code.ToString()))); }
     catch(Exception error) when(error is ArgumentException or JsonException or FormatException or OverflowException) {
-        if (context.Response.HasStarted) throw; context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new { error = "Invalid request" }); }
+        if (context.Response.HasStarted) throw; context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new Result(StatusCode.Invalid, new(ErrorSource.Native, StatusCode.Invalid, "Invalid request"))); }
     catch(Exception error) when(error is IOException or InvalidDataException or OperationCanceledException or InvalidOperationException) {
-        if (context.Response.HasStarted) throw; context.Response.StatusCode = 503; await context.Response.WriteAsJsonAsync(new { error = "Host operation is unavailable" }); }
+        if (context.Response.HasStarted) throw; context.Response.StatusCode = 503; await context.Response.WriteAsJsonAsync(new Result(StatusCode.Io, new(ErrorSource.Worker, StatusCode.Io, "Host operation is unavailable"))); }
 });
 ManagementSecurity.Install(app,policy,identities);
 WorkerNodeEndpoint.Map(app, workerNodeTrust);
@@ -161,19 +162,19 @@ api.MapPut("/packages/{id}/versions/{revision}",(string id,string revision,JsonE
     var identity = Identity(context); identity.Require("package.write",id);
     if (id != document.GetProperty("id").GetString()) throw new ArgumentException("Package identity differs");
     // Native parsing owns shape/default/type validation; complete binding happens in the same Worker entry.
-    using var package = new Package(document.GetRawText());
+    using var package = new NativePackage(document.GetRawText());
     var scoped = Scope(context); string text = package.ToJson();
     using var catalog = scoped.OpenCatalog(); catalog.Put(CatalogKind.Package,id,ulong.Parse(revision),text); return Results.Ok(new { id,revision });
 });
-api.MapGet("/executions",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).List(Identity(context)).Select(RunStateView.From));
+api.MapGet("/executions",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).List(Identity(context)).Select(run => dispatcher.For(Identity(context)).View(run)));
 api.MapGet("/deployments",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Deployments(Identity(context)));
 api.MapPost("/deployments",(DeploymentRequest request,HttpContext context,RunDispatcher dispatcher) => Results.Ok(dispatcher.For(Identity(context)).Deploy(Identity(context),request)));
 api.MapPost("/deployments/{id}/start",async (string id,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).ActivateDeployment(Identity(context),id,true)));
 api.MapPost("/deployments/{id}/stop",async (string id,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).ActivateDeployment(Identity(context),id,false)));
 api.MapPost("/executions",(RunRequest request,HttpContext context,RunDispatcher dispatcher) => Results.Accepted(value:RunStateView.From(dispatcher.For(Identity(context)).Enqueue(Identity(context),request))));
-api.MapGet("/executions/{ticket}",(string ticket,HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Get(Identity(context),ticket) is { } run ? Results.Ok(RunStateView.From(run)) : Results.NotFound());
+api.MapGet("/executions/{ticket}",(string ticket,HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Get(Identity(context),ticket) is { } run ? Results.Ok(dispatcher.For(Identity(context)).View(run)) : Results.NotFound());
 api.MapGet("/executions/{ticket}/members", (string ticket, HttpContext context, RunDispatcher dispatcher) =>
-    dispatcher.For(Identity(context)).Members(Identity(context), ticket).Select(RunStateView.From));
+    dispatcher.For(Identity(context)).Members(Identity(context), ticket).Select(run => dispatcher.For(Identity(context)).View(run)));
 api.MapPost("/executions/{ticket}/stop",async (string ticket,HttpContext context,RunDispatcher dispatcher) => { await dispatcher.For(Identity(context)).Stop(Identity(context),ticket); return Results.Accepted(); });
 api.MapGet("/executions/{ticket}/events",async (string ticket,HttpContext context,RunDispatcher dispatcher) => await ExecutionFeed.Stream(context,ticket,dispatcher,policy,identities));
 api.MapPost("/executions/{ticket}/cancel",async (string ticket,HttpContext context,RunDispatcher dispatcher) => { await dispatcher.For(Identity(context)).Cancel(Identity(context),ticket); return Results.Accepted(); });
@@ -183,6 +184,12 @@ api.MapGet("/executions/{ticket}/debug",async (string ticket,HttpContext context
 api.MapPost("/executions/{ticket}/debug",async (string ticket,JsonElement command,HttpContext context,RunDispatcher dispatcher) => Results.Ok(await dispatcher.For(Identity(context)).Debug(Identity(context),ticket,command)));
 api.MapGet("/jobs",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Jobs(Identity(context)).Select(JobView));
 api.MapPut("/jobs/{id}",(string id,JobRequest job,HttpContext context,RunDispatcher dispatcher) => id != job.Id ? Results.BadRequest() : Results.Ok(JobView(dispatcher.For(Identity(context)).SaveJob(Identity(context),job))));
+api.MapPost("/jobs/{id}/schedule-preview", (string id, JobSchedule schedule, HttpContext context,
+    RunDispatcher dispatcher) => Results.Ok(dispatcher.For(Identity(context)).PreviewSchedule(Identity(context), id, schedule)));
+api.MapGet("/jobs/{id}/occurrences", (string id, string? afterId, HttpContext context,
+    RunDispatcher dispatcher) => Results.Ok(dispatcher.For(Identity(context)).Occurrences(Identity(context), id, afterId)));
+api.MapPost("/jobs/{id}/runs", (string id, JobRunRequest request, HttpContext context,
+    RunDispatcher dispatcher) => Results.Accepted(value: dispatcher.For(Identity(context)).RunJob(Identity(context), id, request)));
 api.MapGet("/logs",(string executionId,string? afterRevision,string? taskId,string? pipelineId,string? componentId,
     ulong? sinceMs,ulong? untilMs,int? result,int? eventKind,HttpContext context,RunDispatcher dispatcher) => {
     var identity = Identity(context);
@@ -200,11 +207,20 @@ api.MapPost("/logs/retention",(RetentionRequest request,HttpContext context) => 
 api.MapGet("/resources",(HttpContext context) => { var scope = Scope(context); scope.Identity.Require("resource.list","*");
     return new { fileRoots = scope.FileRoots,readOnlyRoots = scope.ReadOnlyRoots,networkOrigins = scope.NetworkOrigins,credentialReferences = scope.CredentialFiles.Keys,
         testResources = scope.TestResources ?? [], resources = scope.Resources?.Keys.Where(resource => scope.Identity.Allows("resource.open",resource)) }; });
+app.MapGet("/health/live", () => Results.Ok(new { status = "live" })).AllowAnonymous();
+app.MapGet("/health/ready", (WorkerReservations workers) => workers.Ready
+    ? Results.Ok(new { status = "ready" }) : Results.StatusCode(503)).AllowAnonymous();
+api.MapGet("/workers", (HttpContext context, WorkerReservations workers) =>
+{
+    var identity = Identity(context);
+    identity.Require("worker.read", "*");
+    return workers.Status(identity.Tenant);
+});
 api.MapGet("/health",() => new { sdk = ProductInfo.Sdk,protocol = ProductInfo.Protocol });
 app.MapFallbackToFile("index.html"); app.Run();
 
-static object JobView(JobState value) => new { value.Version,value.Id,value.PackageId,value.PackageRevision,value.ParametersReference,value.Enabled,value.EverySeconds,
-    value.NextDueMs,value.MaxConcurrency,value.MaxAttempts,value.RetryDelaySeconds,value.Revision,value.DeploymentId,value.DeploymentRevision,value.Subject };
+static object JobView(JobState value) => new { value.Version,value.Id,value.PackageId,value.PackageRevision,value.ParametersReference,value.Enabled,
+    value.Schedules,value.MaxConcurrency,value.MaxAttempts,value.RetryDelaySeconds,value.Revision,value.DeploymentId,value.DeploymentRevision,value.Subject };
 static string Query(CatalogKind kind,string? afterId = null,string? afterRevision = null) {
     var query = new Dictionary<string,object> { ["kind"] = (int)kind,["limit"] = 100 };
     if (afterId is not null) query["afterId"] = afterId; if (afterRevision is not null) query["afterRevision"] = ulong.Parse(afterRevision);

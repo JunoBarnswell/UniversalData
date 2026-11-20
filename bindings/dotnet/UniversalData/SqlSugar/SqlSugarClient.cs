@@ -1,6 +1,4 @@
 using System.IO;
-using System.Runtime.ExceptionServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using UniversalData;
 
@@ -10,23 +8,46 @@ namespace SqlSugar;
 public sealed class SqlSugarClient : IDisposable
 {
     private readonly ConnectionConfig config;
-    private readonly SqlSessionHandle session;
+    private readonly WorkerSession? worker;
+    private readonly NativeSqlWorker? hosted;
+    private readonly ContextHandle data = DataOwnership.Context(268435456);
     private readonly object gate = new();
     private bool disposed;
 
-    public SqlSugarClient(ConnectionConfig connectionConfig)
+    private SqlSugarClient(ConnectionConfig connectionConfig, WorkerSession? worker, NativeSqlWorker? hosted)
     {
-        ArgumentNullException.ThrowIfNull(connectionConfig);
-        ValidateConfig(connectionConfig);
         config = connectionConfig;
-        var opened = SqlNative.Open(config.DbType, ResolvePlugin(config), config.ConnectionString);
-        try { SqlNative.Check(SqlNative.SetAutoClose(opened, config.IsAutoCloseConnection)); session = opened; }
-        catch { opened.Dispose(); throw; }
+        this.worker = worker;
+        this.hosted = hosted;
         Ado = new AdoProvider(this);
     }
 
-    public SqlSugarClient(ConnectionConfig connectionConfig, Action<SqlSugarClient> configure)
-        : this(connectionConfig) => configure?.Invoke(this);
+    public static async ValueTask<Result<SqlSugarClient>> OpenAsync(ConnectionConfig connectionConfig,
+        CancellationToken cancellation = default)
+    {
+        try { SqlConnectionConfiguration.Validate(connectionConfig); }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or NullReferenceException)
+        {
+            return new(StatusCode.Invalid, null, new(ErrorSource.Native, StatusCode.Invalid, "Invalid SQL connection configuration"));
+        }
+        var start = WorkerSession.Start(connectionConfig.WorkerPath);
+        if (!start.IsSuccess)
+            return new(start.Code, null, start.Error);
+        var worker = start.Value!;
+        var opened = await worker.InvokeAsync("sql.open", connectionConfig, cancellation: cancellation).ConfigureAwait(false);
+        if (opened.Response.Code != StatusCode.Ok)
+        {
+            await worker.DisposeAsync().ConfigureAwait(false);
+            return new(opened.Response.Code, null, opened.Response.Error);
+        }
+        try { return Result<SqlSugarClient>.Success(new(connectionConfig, worker, null)); }
+        catch (Exception error) when (error is DllNotFoundException or UniversalDataException)
+        {
+            await worker.DisposeAsync().ConfigureAwait(false);
+            var status = error is UniversalDataException native ? native.Code : StatusCode.DriverUnavailable;
+            return new(status, null, new(ErrorSource.Native, status, "Native columnar data is unavailable"));
+        }
+    }
 
     public IAdo Ado { get; }
     public ConnectionConfig CurrentConnectionConfig => config;
@@ -46,56 +67,100 @@ public sealed class SqlSugarClient : IDisposable
     public IDeleteable<T> Deleteable<T>(IEnumerable<T> entities) => new Deleteable<T>(this, entities);
     public IFastest<T> Fastest<T>() => new Fastest<T>(this, EntityMapping.For<T>());
 
-    internal SqlSessionHandle Session { get { EnsureOpen(); return session; } }
+    public static async ValueTask<Result<SqlSugarClient>> OpenAsync(Package package, string connection,
+        EtlClientOptions options, CancellationToken cancellation = default)
+    {
+        var sent = WorkerSession.Start(options.WorkerPath);
+        if (!sent.IsSuccess)
+            return new(sent.Code, null, sent.Error);
+        var worker = sent.Value!;
+        var reply = (await worker.InvokeAsync("sql.openAuthorized", new
+        {
+            package = package.ToJson(), connection, options.PolicyFile, options.Tenant
+        }, cancellation: cancellation).ConfigureAwait(false)).Response;
+        if (reply.Code == StatusCode.Ok)
+        {
+            try
+            {
+                return Result<SqlSugarClient>.Success(new(new ConnectionConfig
+                    { ConfigId = connection, DbType = (DbType)reply.Value!.Value.GetInt32() }, worker, null));
+            }
+            catch (Exception error) when (SqlResult.Expected(error))
+            {
+                await worker.DisposeAsync().ConfigureAwait(false);
+                return Result<SqlSugarClient>.Failure(SqlResult.Error(error));
+            }
+        }
+        await worker.DisposeAsync().ConfigureAwait(false);
+        return new(reply.Code, null, reply.Error);
+    }
+
+    internal int WorkerProcessId => worker?.ProcessId ?? Environment.ProcessId;
+    internal IntPtr DataContext => data.DangerousGetHandle();
     internal uint ReadBatchSize => config.ReadBatchSize == 0 ? 512 : config.ReadBatchSize;
     internal uint WriteChunkRows => config.WriteChunkRows == 0 ? 512 : config.WriteChunkRows;
 
-    internal NativeSqlReader OpenQuery(SqlQueryPlan plan, uint? batchRows = null, CancellationToken cancellationToken = default)
-    {
-        EnsureOpen();
-        cancellationToken.ThrowIfCancellationRequested();
-        var parameterBatch = plan.Parameters.Count == 0 ? null : SqlBatchBuilder.BuildParameters(session, plan.Parameters);
-        try
-        {
-            using var strings = new NativeStrings(string.Empty, plan.QueryJson, plan.SchemaJson);
-            var status = SqlNative.ReadOpen(session, strings[0], strings[1], strings[2], parameterBatch?.DangerousGetHandle() ?? IntPtr.Zero,
-                batchRows is > 0 ? batchRows.Value : ReadBatchSize, SqlNative.ReadTyped, out var schema);
-            try
-            {
-                SqlNative.Check(status);
-                return new NativeSqlReader(session, schema, parameterBatch, cancellationToken);
-            }
-            catch { schema?.Dispose(); throw; }
-        }
-        catch { parameterBatch?.Dispose(); throw; }
-    }
+    internal NativeSqlReader OpenQuery(SqlQueryPlan plan, uint? batchRows = null,
+        CancellationToken cancellationToken = default) => OpenReader("", plan.QueryJson, plan.SchemaJson,
+            plan.Parameters, SqlNative.ReadTyped, batchRows.GetValueOrDefault(ReadBatchSize), cancellationToken);
 
-    internal NativeSqlReader OpenRawReader(string sql, IReadOnlyList<SugarParameter> parameters, int mode = SqlNative.ReadDiscover, string schemaJson = "")
+    internal NativeSqlReader OpenRawReader(string sql, IReadOnlyList<SugarParameter> parameters,
+        int mode = SqlNative.ReadDiscover, string schemaJson = "", CancellationToken cancellation = default) =>
+        OpenReader(sql, "", schemaJson, parameters, mode, ReadBatchSize, cancellation);
+
+    private NativeSqlReader OpenReader(string sql, string query, string schema,
+        IReadOnlyList<SugarParameter> parameters, int mode, uint rows, CancellationToken cancellation)
     {
-        EnsureOpen();
-        var parameterBatch = parameters.Count == 0 ? null : SqlBatchBuilder.BuildParameters(session, parameters);
-        try
-        {
-            using var strings = new NativeStrings(sql, string.Empty, schemaJson);
-            var status = SqlNative.ReadOpen(session, strings[0], strings[1], strings[2], parameterBatch?.DangerousGetHandle() ?? IntPtr.Zero,
-                ReadBatchSize, mode, out var schema);
-            try
-            {
-                SqlNative.Check(status);
-                return new NativeSqlReader(session, schema, parameterBatch);
-            }
-            catch { schema?.Dispose(); throw; }
-        }
-        catch { parameterBatch?.Dispose(); throw; }
+        using var arguments = ParameterWire(parameters);
+        var reply = Invoke("sql.readOpen", new { sql, query, schema, rows, mode }, arguments,
+            cancellation: cancellation).AsTask().GetAwaiter().GetResult().Response;
+        Check(reply);
+        var returned = reply.Value?.GetString() ?? "";
+        return new NativeSqlReader(this, returned, cancellation);
     }
 
     internal int Execute(string sql, IReadOnlyList<SugarParameter> parameters)
     {
+        using var arguments = ParameterWire(parameters);
+        var reply = Invoke("sql.execute", new { sql }, arguments, mayWrite: true)
+            .AsTask().GetAwaiter().GetResult().Response;
+        Check(reply);
+        return checked((int)Math.Min(reply.Value!.Value.GetUInt64(), int.MaxValue));
+    }
+
+    private WorkerBatchBuffer? ParameterWire(IReadOnlyList<SugarParameter> parameters)
+    {
         EnsureOpen();
-        using var parameterBatch = parameters.Count == 0 ? null : SqlBatchBuilder.BuildParameters(session, parameters);
-        using var strings = new NativeStrings(sql);
-        SqlNative.Check(SqlNative.Execute(session, strings[0], parameterBatch?.DangerousGetHandle() ?? IntPtr.Zero, out var affected));
-        return checked((int)Math.Min(affected, int.MaxValue));
+        if (parameters.Count == 0)
+            return null;
+        using var batch = SqlBatchBuilder.BuildParameters(DataContext, parameters);
+        return SqlWire.Encode(batch);
+    }
+
+    internal ValueTask<(WorkerResponseFrame Response, WorkerBatchBuffer? Batch)> Invoke(string operation,
+        object? values = null, WorkerBatchBuffer? batch = null, bool mayWrite = false,
+        Func<uint, (WorkerBatchFrame Control, WorkerBatchBuffer? Batch)>? source = null,
+        CancellationToken cancellation = default)
+    {
+        EnsureOpen();
+        if (worker is not null)
+            return worker.InvokeAsync(operation, values, batch, mayWrite, source, cancellation);
+        var request = new WorkerRequestFrame(ProductInfo.WorkerRevision, 1, operation,
+            System.Text.Json.JsonSerializer.SerializeToElement(values ?? new {}, WorkerProtocol.Json));
+        if (cancellation.IsCancellationRequested)
+            return ValueTask.FromResult(NativeSqlWorker.Reply(request, (int)StatusCode.Cancelled));
+        return ValueTask.FromResult(hosted!.Invoke(request, batch, capacity =>
+        {
+            var next = source!(capacity);
+            return (next.Control with { Revision = request.Revision, Sequence = request.Sequence }, next.Batch);
+        }));
+    }
+
+    internal static void Check(WorkerResponseFrame response)
+    {
+        if (response.Code != StatusCode.Ok)
+            throw new UniversalDataException((int)response.Code, response.Error?.Message ?? response.Code.ToString(),
+                response.Error);
     }
 
     internal int Write<T>(int mode, int loadMode, EntityMapping mapping, IReadOnlyList<EntityMember> members,
@@ -121,152 +186,84 @@ public sealed class SqlSugarClient : IDisposable
                 keyOrdinals[k] = (uint)column;
             }
 
-            var context = SqlNative.Context(session);
+            var context = DataContext;
             using var values = new SqlBatchBuilder.PinnedValues(members.Count);
-            using var table = new NativeStrings(mapping.TableName);
-            IEnumerator<T>? rows = entities.GetEnumerator();
-            SqlBatchHandle? batch = null, schema = null;
-            ExceptionDispatchInfo? inputError = null;
-            GCHandle pinned = default;
-            try
-            {
-                if (keyOrdinals.Length != 0) pinned = GCHandle.Alloc(keyOrdinals, GCHandleType.Pinned);
-                var status = SqlNative.WriteStream(session, mode, loadMode, table[0],
-                    pinned.IsAllocated ? pinned.AddrOfPinnedObject() : IntPtr.Zero, (uint)keyOrdinals.Length,
-                    chunkRows is > 0 ? chunkRows.Value : WriteChunkRows, Next, IntPtr.Zero, out var affected);
-                try { CloseInput(); }
-                catch when (status != (int)StatusCode.Ok) { /* Preserve the write failure. */ }
-                if (status != (int)StatusCode.CommitUnknown)
-                {
-                    inputError?.Throw();
-                    if (status == (int)StatusCode.Cancelled) cancellationToken.ThrowIfCancellationRequested();
-                }
-                SqlNative.Check(status);
-                return checked((int)Math.Min(affected, int.MaxValue));
-            }
-            finally
-            {
-                batch?.Dispose();
-                schema?.Dispose();
-                if (pinned.IsAllocated) pinned.Free();
-                CloseInput();
-            }
+            using var input = entities.GetEnumerator();
+            if (!input.MoveNext())
+                return 0;
+            using var schema = SqlNative.SchemaFromJson(context, mapping.SchemaJson(members));
+            var response = Invoke("sql.write", new { mode, loadMode, table = mapping.TableName,
+                keys = keyOrdinals, rows = chunkRows is > 0 ? chunkRows.Value : WriteChunkRows },
+                mayWrite: true, source: Next, cancellation: cancellationToken)
+                .AsTask().GetAwaiter().GetResult().Response;
+            Check(response);
+            return checked((int)Math.Min(response.Value!.Value.GetUInt64(), int.MaxValue));
 
-            void CloseInput()
+            (WorkerBatchFrame, WorkerBatchBuffer?) Next(uint capacity)
             {
-                var input = rows;
-                rows = null;
-                input?.Dispose();
-            }
-
-            int Next(IntPtr _, uint capacity, out IntPtr pointer, out int last)
-            {
-                pointer = IntPtr.Zero;
-                last = 0;
                 try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (schema is null)
-                    {
-                        if (!rows!.MoveNext())
-                        {
-                            CloseInput();
-                            return (int)StatusCode.End;
-                        }
-                        schema = SqlNative.SchemaFromJson(context, mapping.SchemaJson(members));
-                    }
-                    if (knownCount > 0) capacity = Math.Min(capacity, (uint)knownCount);
-                    batch?.Dispose();
-                    batch = SqlBatchBuilder.BuildChunk(context, schema, members, rows!, values,
+                    if (knownCount > 0)
+                        capacity = Math.Min(capacity, (uint)knownCount);
+                    using var batch = SqlBatchBuilder.BuildChunk(context, schema, members, input, values,
                         capacity, cancellationToken, out var hasMore);
-                    if (!hasMore) CloseInput();
-                    cancellationToken.ThrowIfCancellationRequested();
-                    pointer = batch.DangerousGetHandle();
-                    last = hasMore ? 0 : 1;
-                    return (int)StatusCode.Ok;
+                    return (new(0, 0, StatusCode.Ok, !hasMore), SqlWire.Encode(batch));
                 }
                 catch (Exception error)
                 {
-                    inputError = ExceptionDispatchInfo.Capture(error);
-                    return (int)(error is OperationCanceledException ? StatusCode.Cancelled : StatusCode.Invalid);
+                    var status = error switch
+                    {
+                        OperationCanceledException => StatusCode.Cancelled,
+                        OverflowException => StatusCode.Overflow,
+                        UniversalDataException native => native.Code,
+                        _ => StatusCode.ManagedComponent
+                    };
+                    return (new(0, 0, status, true,
+                        new(ErrorSource.Component, status, $"SQL input batch failed ({status})")), null);
                 }
             }
         }
     }
 
-    internal void BeginTransaction(int isolation)
-    { EnsureOpen(); SqlNative.Check(SqlNative.Transaction(session, SqlNative.TransactionBegin, isolation)); }
-    internal void CommitTransaction()
-    { EnsureOpen(); SqlNative.Check(SqlNative.Transaction(session, SqlNative.TransactionCommit, 0)); }
-    internal void RollbackTransaction()
-    { EnsureOpen(); SqlNative.Check(SqlNative.Transaction(session, SqlNative.TransactionRollback, 0)); }
+    internal void BeginTransaction(int isolation) => Transaction(SqlNative.TransactionBegin, isolation);
+    internal void CommitTransaction() => Transaction(SqlNative.TransactionCommit, 0);
+    internal void RollbackTransaction() => Transaction(SqlNative.TransactionRollback, 0);
+
+    private void Transaction(int operation, int isolation)
+    {
+        var response = Invoke("sql.transaction", new { operation, isolation },
+            mayWrite: operation == SqlNative.TransactionCommit)
+            .AsTask().GetAwaiter().GetResult().Response;
+        Check(response);
+    }
 
     internal static SqlSugarClient FromExecution(ExecutionHandle execution, string connection)
     {
-        var session = SqlNative.Open(execution, connection);
+        var backend = new NativeSqlWorker(id => SqlNative.Open(execution, id));
+        var configuration = new ConnectionConfig { ConfigId = connection };
+        var client = new SqlSugarClient(configuration, null, backend);
         try
         {
-            var config = new ConnectionConfig { ConfigId = connection, DbType = SqlNative.Dialect(session) };
-            return new SqlSugarClient(config, session);
+            var opened = client.Invoke("sql.open", configuration).GetAwaiter().GetResult().Response;
+            Check(opened);
+            configuration.DbType = (DbType)opened.Value!.Value.GetInt32();
+            return client;
         }
-        catch { session.Dispose(); throw; }
-    }
-
-    private SqlSugarClient(ConnectionConfig config, SqlSessionHandle session)
-    {
-        this.config = config;
-        try { SqlNative.Check(SqlNative.SetAutoClose(session, config.IsAutoCloseConnection)); this.session = session; }
-        catch { session.Dispose(); throw; }
-        Ado = new AdoProvider(this);
+        catch { client.Dispose(); throw; }
     }
 
     private void EnsureOpen() => ObjectDisposedException.ThrowIf(disposed, this);
-    private static void ValidateConfig(ConnectionConfig value)
-    {
-        if (!Enum.IsDefined(value.DbType)) throw new ArgumentOutOfRangeException(nameof(value.DbType));
-        if (value.InitKeyType != InitKeyType.Attribute)
-            throw new NotSupportedException("Declare entity keys with SugarColumn attributes.");
-        if (string.IsNullOrWhiteSpace(value.ConnectionString)) throw new ArgumentException("ConnectionString is required.", nameof(value));
-    }
-    private static string ResolvePlugin(ConnectionConfig value)
-    {
-        if (!string.IsNullOrWhiteSpace(value.PluginPath))
-        {
-            if (!Path.IsPathFullyQualified(value.PluginPath)) throw new ArgumentException("PluginPath must be absolute.", nameof(value));
-            if (!File.Exists(value.PluginPath)) throw new FileNotFoundException("Native SQL connector plugin was not found.", value.PluginPath);
-            return value.PluginPath;
-        }
-        var stem = value.DbType switch
-        {
-            DbType.Sqlite => "ud_connector_sqlite",
-            DbType.PostgreSQL => "ud_connector_postgresql",
-            DbType.MySql => "ud_connector_mysql",
-            DbType.MariaDb => "ud_connector_mariadb",
-            DbType.SqlServer => "ud_connector_odbc",
-            DbType.Oracle => "ud_connector_oracle_oci",
-            _ => throw new ArgumentOutOfRangeException(nameof(value.DbType))
-        };
-        var extension = OperatingSystem.IsWindows() ? ".dll" : OperatingSystem.IsMacOS() ? ".dylib" : ".so";
-        var names = OperatingSystem.IsWindows() ? new[] { stem + extension } : new[] { stem + extension, "lib" + stem + extension };
-        var candidates = names.SelectMany(name => new[]
-        {
-            Path.Combine(AppContext.BaseDirectory, name),
-            Path.Combine(AppContext.BaseDirectory, "UniversalData", "plugins", name)
-        }).ToArray();
-        var path = candidates.FirstOrDefault(File.Exists);
-        return path ?? throw new FileNotFoundException($"Native SQL connector plugin '{stem}' was not found. Specify ConnectionConfig.PluginPath.");
-    }
 
     public void Dispose()
     {
-        if (disposed) return;
         lock (gate)
         {
-            if (disposed) return;
+            if (disposed)
+                return;
             disposed = true;
-            SqlNative.Cancel(session);
-            session.Dispose();
+            hosted?.Dispose();
+            worker?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            data.Dispose();
         }
-        GC.SuppressFinalize(this);
     }
 }

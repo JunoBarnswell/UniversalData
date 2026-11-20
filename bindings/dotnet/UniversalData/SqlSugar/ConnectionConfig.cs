@@ -8,6 +8,7 @@ public sealed class ConnectionConfig
     public string ConnectionString { get; set; } = string.Empty;
     public InitKeyType InitKeyType { get; set; } = InitKeyType.Attribute;
     public bool IsAutoCloseConnection { get; set; } = true;
+    public string? WorkerPath { get; set; }
     public string? PluginPath { get; set; }
     public uint ReadBatchSize { get; set; } = 512;
     public uint WriteChunkRows { get; set; } = 512;

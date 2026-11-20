@@ -1,26 +1,38 @@
-using UniversalData;
 using System.Text.Json;
-if(args.Length!=4)throw new ArgumentException("package.json exact-url ca-file permit|deny|resolver-deny");
-int resolutions=0,networkGrants=0;
-using var package=new Package(File.ReadAllText(args[0]));
-using var execution=package.CreateExecution("fixture",(tenant,resource,access)=>
+using UniversalData;
+
+if (args.Length != 4)
+    throw new ArgumentException("package.json exact-url ca-file permit|deny|resolver-deny");
+
+string state = Directory.CreateTempSubdirectory("universaldata-http-").FullName;
+try
 {
-    if(tenant!="fixture")return false;
-    if(resource==args[1] && (access==ConnectionAccess.Open || access==ConnectionAccess.Network))
+    string policy = Path.Combine(state, "policy.json");
+    string privateHeaders = Path.Combine(state, "header.json");
+    await File.WriteAllTextAsync(privateHeaders, "{\"headers\":{\"Authorization\":\"Bearer fixture-token\"}}");
+    var uri = new Uri(args[1]);
+    await File.WriteAllTextAsync(policy, JsonSerializer.Serialize(new
     {
-        if(access==ConnectionAccess.Network) { networkGrants++;return args[3]!="deny"; }
-        return true;
+        dataDirectory = Path.Combine(state, "runtime"),
+        fileRoots = new[] { Path.GetDirectoryName(Path.GetFullPath(args[2])) },
+        networkOrigins = args[3] == "deny" ? Array.Empty<string>() : new[] { uri.GetLeftPart(UriPartial.Authority) },
+        pluginRoots = Array.Empty<string>(),
+        credentialFiles = args[3] == "resolver-deny" ? new Dictionary<string, string>()
+            : new Dictionary<string, string> { ["token"] = privateHeaders }
+    }));
+    var package = Package.FromJson(await File.ReadAllTextAsync(args[0]));
+    if (!package.IsSuccess)
+        return (int)package.Code;
+    var start = await new EtlClient(new(policy, "fixture")).StartAsync(package.Value!);
+    if (!start.IsSuccess)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(new { result = (int)start.Code, error = start.Error }));
+        return 0;
     }
-    return resource==args[2] && (access==ConnectionAccess.Open || access==ConnectionAccess.Read);
-},executionId:"http-dotnet",resolve:(tenant,resource,reference)=>
-{
-    if(args[3]=="resolver-deny" || tenant!="fixture" || resource!=args[1] || reference!="token")
-        throw new InvalidOperationException("Denied credential scope");
-    resolutions++;
-    return "{\"headers\":{\"Authorization\":\"Bearer fixture-token\"}}";
-});
-int status=0;
-try { execution.Start();while(!execution.Wait(100)) { } }
-catch(UniversalDataException error) { status=error.Status; }
-var m=execution.Metrics;
-Console.WriteLine(JsonSerializer.Serialize(new { result=status,state=(int)m.State,executedTasks=m.ExecutedTasks,resolutions,networkGrants }));
+    await using var run = start.Value!;
+    var finished = await run.WaitAsync();
+    Console.WriteLine(JsonSerializer.Serialize(new { result = (int)finished.Code, error = finished.Error,
+        state = finished.Value?.State, executedTasks = finished.Value?.ExecutedTasks }));
+    return 0;
+}
+finally { Directory.Delete(state, recursive: true); }
