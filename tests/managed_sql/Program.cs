@@ -6,11 +6,16 @@ using SqlSugar;
 
 if (args.Length == 0 || args.Contains("--help", StringComparer.OrdinalIgnoreCase))
 {
-    Console.Error.WriteLine("managed_sql --provider sqlite|postgresql|mysql|mariadb|sqlserver|oracle --connection-file <local-file> --plugin <absolute-plugin> [--fixture json] [--rows count] [--batch size] [--benchmark output.json] [--setup-sql file]");
+    Console.Error.WriteLine("managed_sql --provider sqlite|postgresql|mysql|mariadb|sqlserver|oracle --connection-file <local-file> --plugin <absolute-plugin> [--fixture json] [--rows count] [--batch size] [--benchmark output.json] [--setup-sql file] [--stream-copy] [--target-connection-file <local-file>]");
     return args.Length == 0 ? 2 : 0;
 }
 
 var options = ManagedSqlOptions.Parse(args);
+if (args.Contains("--stream-copy", StringComparer.Ordinal))
+{
+    ManagedSqlStreamScale.Run(options);
+    return 0;
+}
 var config = new ConnectionConfig
 {
     DbType = options.Provider,

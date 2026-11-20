@@ -15,12 +15,15 @@ internal sealed class EntityMapping
         var table = entityType.GetCustomAttribute<SugarTable>(true);
         TableName = table?.TableName ?? entityType.Name;
         Members = BuildMembers(entityType);
+        Keys = Members.Where(member => member.IsPrimaryKey).ToArray();
+        InsertMembers = Members.Where(member => !member.IsIdentity && !member.IgnoreInsert).ToArray();
     }
 
     internal Type EntityType { get; }
     internal string TableName { get; }
     internal IReadOnlyList<EntityMember> Members { get; }
-    internal IReadOnlyList<EntityMember> Keys => Members.Where(member => member.IsPrimaryKey).ToArray();
+    internal IReadOnlyList<EntityMember> Keys { get; }
+    internal IReadOnlyList<EntityMember> InsertMembers { get; }
 
     internal static EntityMapping For(Type type) => Cache.GetOrAdd(type, static value => new EntityMapping(value));
     internal static EntityMapping For<T>() => For(typeof(T));

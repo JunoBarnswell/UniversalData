@@ -89,9 +89,6 @@ public sealed class ManagedComponentContext
     {
         ArgumentNullException.ThrowIfNull(entities);
         var metadata = OutputMetadata(output);
-        var rows = entities as IReadOnlyList<T> ?? entities.Take(checked((int)value.MaxRows + 1)).ToArray();
-        if (rows.Count == 0 || (uint)rows.Count > value.MaxRows)
-            throw new ArgumentException("Managed output exceeds the bound batch size or is empty.", nameof(entities));
         var members = EntityMapping.For<T>().Members.ToDictionary(member => member.ColumnName,
             StringComparer.OrdinalIgnoreCase);
         Check(Native.ud_schema_to_json_raw(metadata, out var text, out var length));
@@ -109,7 +106,7 @@ public sealed class ManagedComponentContext
             projection.Add((member, numeric ? field.GetProperty("precision").GetInt32() : null,
                 numeric ? field.GetProperty("scale").GetInt32() : null));
         }
-        var pointer = SqlBatchBuilder.BuildManaged(value.Memory, metadata, projection, rows);
+        var pointer = SqlBatchBuilder.BuildManaged(value.Memory, metadata, projection, entities, value.MaxRows);
         return new ManagedBatch(value.Memory, pointer, instance, true);
     }
 }

@@ -10,6 +10,7 @@ internal sealed class ManagedSqlOptions
 
     internal DbType Provider { get; private init; }
     internal string ConnectionString { get; private init; } = string.Empty;
+    internal string? TargetConnectionString { get; private init; }
     internal string PluginPath { get; private init; } = string.Empty;
     internal int RowCount { get; private init; } = 16;
     internal int BatchSize { get; private init; } = 4;
@@ -42,6 +43,7 @@ internal sealed class ManagedSqlOptions
         if (!Enum.TryParse<DbType>(Value("--provider"), true, out var provider))
             throw new ArgumentException("Unknown --provider.");
         var connectionFile = RawArg(args, "--connection-file") ?? FixtureValue("connectionFile");
+        var targetFile = RawArg(args, "--target-connection-file");
         var connection = connectionFile is not null
             ? File.ReadAllText(connectionFile).Trim()
             : RawArg(args, "--connection") ?? FixtureValue("connection") ?? throw new ArgumentException("Missing --connection-file or --connection.");
@@ -51,6 +53,7 @@ internal sealed class ManagedSqlOptions
         {
             Provider = provider,
             ConnectionString = connection,
+            TargetConnectionString = targetFile is null ? null : File.ReadAllText(targetFile).Trim(),
             PluginPath = plugin,
             RowCount = ParsePositive("--rows", 16),
             BatchSize = ParsePositive("--batch", 4),

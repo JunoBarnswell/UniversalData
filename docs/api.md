@@ -27,7 +27,7 @@ foreach (var batch in source.Queryable<Order>()
 
 Oracle 的原始查询返回固定刻度的 `NUMBER` 时，读取器保留驱动提供的精度和刻度。驱动报告刻度可变时，读取器保留十进制文本，调用方可按业务类型转换。Oracle 的 `Ado.BeginTran()` 默认使用 `ReadCommitted`，也可通过重载显式选择隔离级别。
 
-`Insertable`、`Updateable` 和 `Deleteable` 接收单个对象或一批对象。`Fastest<T>()` 使用相同的原生写入入口。`PageSize` 指定物理执行的分块上限，整个 SDK 批量调用仍属于一个事务。按键更新和删除使用实体声明的主键。显式事务中的批量失败要求回滚。驱动的 `CommitUnknown` 需要先核实数据库状态。
+`Insertable`、`Updateable` 和 `Deleteable` 接收单个对象或一批对象。`Fastest<T>()` 使用相同的原生写入入口。`IEnumerable<T>` 在执行命令时开始枚举，SDK 按 `WriteChunkRows` 或 `Fastest<T>().PageSize` 构建有界原生批次。流式搬运使用独立的源和目标 SQL 会话。一次批量调用由一个事务提交，输入枚举中断或后续分块写入失败时回滚。异步写入在构建批次时检查取消。按键更新和删除使用实体声明的主键。显式事务中的批量失败要求回滚。驱动的 `CommitUnknown` 需要先核实数据库状态。
 
 Oracle 在显式 `Serializable` 事务中使用数组 DML 执行 `Fastest<T>().BulkCopy()`，数据写入仍由该事务提交或回滚。
 
@@ -37,7 +37,7 @@ Oracle 在显式 `Serializable` 事务中使用数组 DML 执行 `Fastest<T>().B
 dotnet run --project examples/dotnet-data -- --sql-etl source.json target.json result.json
 ```
 
-托管数据流组件可用 `ManagedBatch.ToEntities<T>()` 读取当前批，用 `ManagedComponentContext.CreateBatch<T>(rows, output)` 生成已绑定输出端口的同结构 Batch。需要维持行血缘的转换在发出之前调用 `CopyRowIdentity`。SQL Destination 和 SQL Command 通过 C 执行写入。
+托管数据流组件可用 `ManagedBatch.ToEntities<T>()` 读取当前批，直接把转换后的 `IEnumerable<T>` 传给 `ManagedComponentContext.CreateBatch<T>(rows, output)`。输出按已绑定端口结构填充原生 Batch。需要维持行血缘的转换在发出之前调用 `CopyRowIdentity`。SQL Destination 和 SQL Command 通过 C 执行写入。
 
 ## Package API
 

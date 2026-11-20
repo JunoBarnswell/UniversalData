@@ -23,6 +23,7 @@ struct ud_sql_session {
     int transaction;
     int rollback_only;
     int auto_close;
+    int writing;
 };
 
 static ud_status authorize_standalone(void *user, ud_string tenant, ud_string resource,
@@ -108,6 +109,8 @@ static ud_status release_idle(ud_sql_session *session) {
 ud_status ud_sql_session_set_auto_close(ud_sql_session *session, int32_t enabled) {
     if (!session || (enabled != 0 && enabled != 1))
         return UD_INVALID;
+    if (session->writing)
+        return UD_BUSY;
     session->auto_close = enabled;
     return release_idle(session);
 }
@@ -242,7 +245,7 @@ ud_status ud_sql_session_read_open(ud_sql_session *session, ud_string sql, ud_st
         (!schema_json.length && (query_json.length || result_mode == UD_READ_TYPED)))
         return UD_INVALID;
     *shape = NULL;
-    if (session->cursor)
+    if (session->cursor || session->writing)
         return UD_BUSY;
     if (batch_rows > session->execution->options.max_batch_rows)
         batch_rows = session->execution->options.max_batch_rows;
@@ -314,7 +317,7 @@ ud_status ud_sql_session_execute(ud_sql_session *session, ud_string sql,
     if (!session || !affected)
         return UD_INVALID;
     *affected = 0;
-    if (session->cursor || session->rollback_only)
+    if (session->cursor || session->rollback_only || session->writing)
         return UD_BUSY;
     ud_string statement = {0};
     ud_batch *arguments = NULL;
@@ -338,7 +341,7 @@ ud_status ud_sql_session_execute(ud_sql_session *session, ud_string sql,
     return status;
 }
 
-ud_status ud_sql_session_write(ud_sql_session *session, int32_t mode, int32_t load_mode,
+static ud_status session_write(ud_sql_session *session, int32_t mode, int32_t load_mode,
                                ud_string table, const uint32_t *keys, uint32_t key_count,
                                uint32_t chunk_rows, const ud_batch *batch, uint64_t *affected) {
     if (!session || !batch || !affected || batch->ctx != session->execution->ctx ||
@@ -359,7 +362,7 @@ ud_status ud_sql_session_write(ud_sql_session *session, int32_t mode, int32_t lo
     return status;
 }
 
-ud_status ud_sql_session_transaction(ud_sql_session *session, int32_t operation, int32_t isolation) {
+static ud_status session_transaction(ud_sql_session *session, int32_t operation, int32_t isolation) {
     if (!session || operation < UD_SQL_SESSION_BEGIN || operation > UD_SQL_SESSION_ROLLBACK)
         return UD_INVALID;
     if (operation == UD_SQL_SESSION_BEGIN && session->transaction)
@@ -388,6 +391,86 @@ ud_status ud_sql_session_transaction(ud_sql_session *session, int32_t operation,
     return status;
 }
 
+ud_status ud_sql_session_write(ud_sql_session *session, int32_t mode, int32_t load_mode,
+                               ud_string table, const uint32_t *keys, uint32_t key_count,
+                               uint32_t chunk_rows, const ud_batch *batch, uint64_t *affected) {
+    if (session && session->writing)
+        return UD_BUSY;
+    return session_write(session, mode, load_mode, table, keys, key_count, chunk_rows,
+                         batch, affected);
+}
+
+ud_status ud_sql_session_transaction(ud_sql_session *session, int32_t operation, int32_t isolation) {
+    if (session && session->writing)
+        return UD_BUSY;
+    return session_transaction(session, operation, isolation);
+}
+
+ud_status ud_sql_session_write_stream(ud_sql_session *session, int32_t mode, int32_t load_mode,
+                                     ud_string table, const uint32_t *keys, uint32_t key_count,
+                                     uint32_t chunk_rows, ud_sql_batch_source next, void *user,
+                                     uint64_t *affected) {
+    if (!session || !next || !affected || !chunk_rows)
+        return UD_INVALID;
+    *affected = 0;
+    if (session->writing || session->cursor || session->rollback_only)
+        return UD_BUSY;
+    uint32_t capacity = session->execution->options.max_batch_rows;
+    if (capacity > chunk_rows)
+        capacity = chunk_rows;
+    uint64_t total = 0;
+    int32_t last = 0;
+    const ud_batch *batch = NULL;
+    session->writing = 1;
+    ud_status status = next(user, capacity, &batch, &last);
+    int own = 0, attempted = 0;
+    if (status == UD_END)
+        status = UD_OK;
+    else if (!status) {
+        if (!last && !session->transaction) {
+            int32_t isolation =
+                session->dialect == UD_SQL_SQLITE || session->dialect == UD_SQL_MYSQL ||
+                        session->dialect == UD_SQL_MARIADB
+                    ? UD_ISOLATION_SERIALIZABLE
+                    : UD_ISOLATION_READ_COMMITTED;
+            status = session_transaction(session, UD_SQL_SESSION_BEGIN, isolation);
+            own = !status;
+        }
+        while (!status) {
+            if (!batch || !batch->rows || batch->rows > capacity || (last != 0 && last != 1)) {
+                status = UD_INVALID;
+                break;
+            }
+            uint64_t written = 0;
+            attempted = 1;
+            status = session_write(session, mode, load_mode, table, keys, key_count,
+                                   chunk_rows, batch, &written);
+            if (!status && UINT64_MAX - total < written)
+                status = UD_OVERFLOW;
+            if (status)
+                break;
+            total += written;
+            if (last)
+                break;
+            batch = NULL;
+            status = next(user, capacity, &batch, &last);
+            if (status == UD_END)
+                status = UD_INVALID;
+        }
+        if (!status && own)
+            status = session_transaction(session, UD_SQL_SESSION_COMMIT, 0);
+        if (status && own && status != UD_COMMIT_UNKNOWN) {
+            if (session_transaction(session, UD_SQL_SESSION_ROLLBACK, 0))
+                status = UD_COMMIT_UNKNOWN;
+        } else if (status && attempted && session->transaction)
+            session->rollback_only = 1;
+    }
+    session->writing = 0;
+    if (!status)
+        *affected = total;
+    return status;
+}
+
 void ud_sql_session_cancel(ud_sql_session *session) {
     if (!session)
         return;
@@ -399,6 +482,8 @@ void ud_sql_session_cancel(ud_sql_session *session) {
 ud_status ud_sql_session_close(ud_sql_session *session) {
     if (!session)
         return UD_OK;
+    if (session->writing)
+        return UD_BUSY;
     ud_execution *e = session->execution;
     standalone_connection *standalone = session->standalone;
     ud_status status = ud_sql_session_read_close(session);

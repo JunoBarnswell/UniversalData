@@ -52,10 +52,13 @@ internal static class SqlNative
     private static extern int ud_sql_session_execute(SqlSessionHandle session, Native.StringValue sql,
         IntPtr parameters, out ulong affectedRows);
 
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int ud_sql_session_write(SqlSessionHandle session, int mode, int loadMode,
-        Native.StringValue table, IntPtr keys, uint keyCount, uint chunkRows, IntPtr batch,
-        out ulong affectedRows);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int BatchSource(IntPtr user, uint capacity, out IntPtr batch, out int last);
+
+    [DllImport(Library, EntryPoint = "ud_sql_session_write_stream", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int WriteStream(SqlSessionHandle session, int mode, int loadMode,
+        Native.StringValue table, IntPtr keys, uint keyCount, uint chunkRows,
+        BatchSource next, IntPtr user, out ulong affectedRows);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     private static extern int ud_sql_session_transaction(SqlSessionHandle session, int operation, int isolation);
@@ -148,9 +151,6 @@ internal static class SqlNative
     internal static int CloseRaw(IntPtr session) => ud_sql_session_close(session);
     internal static int Execute(SqlSessionHandle session, Native.StringValue sql, IntPtr parameters, out ulong affected) =>
         ud_sql_session_execute(session, sql, parameters, out affected);
-    internal static int Write(SqlSessionHandle session, int mode, int loadMode, Native.StringValue table,
-        IntPtr keys, uint keyCount, uint chunkRows, IntPtr batch, out ulong affected) =>
-        ud_sql_session_write(session, mode, loadMode, table, keys, keyCount, chunkRows, batch, out affected);
     internal static int Transaction(SqlSessionHandle session, int operation, int isolation) =>
         ud_sql_session_transaction(session, operation, isolation);
     internal static void Cancel(SqlSessionHandle session) => ud_sql_session_cancel(session);
@@ -165,19 +165,8 @@ internal static class SqlNative
     internal static int BatchCreateLikeRaw(IntPtr context, IntPtr schema, uint capacity, out IntPtr batch) =>
         ud_batch_create_like(context, schema, capacity, out batch);
 
-    internal static int BatchAppendRaw(IntPtr batch, Native.ScalarValue[] values)
-    {
-        var handle = GCHandle.Alloc(values, GCHandleType.Pinned);
-        try { return ud_batch_append(batch, handle.AddrOfPinnedObject(), checked((uint)values.Length)); }
-        finally { handle.Free(); }
-    }
-
-    internal static int BatchAppend(SqlBatchHandle batch, Native.ScalarValue[] values)
-    {
-        var handle = GCHandle.Alloc(values, GCHandleType.Pinned);
-        try { return ud_batch_append(batch.DangerousGetHandle(), handle.AddrOfPinnedObject(), checked((uint)values.Length)); }
-        finally { handle.Free(); }
-    }
+    internal static int BatchAppendRaw(IntPtr batch, IntPtr values, uint columns) =>
+        ud_batch_append(batch, values, columns);
 
     internal static int BatchSeal(SqlBatchHandle batch) => ud_batch_seal(batch.DangerousGetHandle());
     internal static int BatchGet(SqlBatchHandle batch, uint row, uint column, out Native.ScalarValue value) =>

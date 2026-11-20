@@ -92,17 +92,61 @@ internal static class ManagedSqlWriteCases
         finally { client.Ado.RollbackTran(); }
         Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
             "The explicit transaction was rolled back");
+        var enumerations = 0;
+        var sequence = client.Insertable<ManagedSqlOrder>(FaultingRows());
+        Require(enumerations == 0, "Building a command leaves its input lazy");
+        try
+        {
+            sequence.ExecuteCommand();
+            throw new InvalidOperationException("A faulting sequence completed.");
+        }
+        catch (IOException error) when (error.Message == "Input interrupted") { }
+        Require(enumerations == 1 &&
+            Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+            "A failed input ended once and rolled back successful earlier chunks");
+        using var cancel = new CancellationTokenSource();
+        try
+        {
+            client.Insertable<ManagedSqlOrder>(CancelDuringInput()).ExecuteCommandAsync(cancel.Token)
+                .GetAwaiter().GetResult();
+            throw new InvalidOperationException("A cancelled sequence completed.");
+        }
+        catch (OperationCanceledException) { }
+        Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+            "Cancellation during enumeration rolled back successful earlier chunks");
+        var fastest = client.Fastest<ManagedSqlOrder>();
+        fastest.PageSize = 2;
+        var streamed = rows.Take(5);
+        var updated = streamed.Select(row => new ManagedSqlOrder { Id = row.Id, Name = "changed", Amount = 2m });
+        Require(fastest.BulkCopy(streamed) == 5 && fastest.BulkUpdate(updated) == 5 &&
+                fastest.BulkDelete(streamed) == 5,
+            "Lazy Fastest insert, update and delete reported all rows across three batches");
+        Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+            "Fastest deleted every added row");
         if (options.Provider == DbType.Oracle)
         {
             client.Ado.BeginTran(System.Data.IsolationLevel.Serializable);
             try
             {
-                Require(client.Fastest<ManagedSqlOrder>().BulkCopy(rows.Take(2)) == 2,
+                Require(fastest.BulkCopy(rows.Take(2)) == 2,
                     "BulkCopy used array DML inside a serializable Oracle transaction");
             }
             finally { client.Ado.RollbackTran(); }
             Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
                 "The serializable transaction was rolled back");
+        }
+
+        IEnumerable<ManagedSqlOrder> FaultingRows()
+        {
+            enumerations++;
+            foreach (var row in rows.Take(options.BatchSize + 1)) yield return row;
+            throw new IOException("Input interrupted");
+        }
+
+        IEnumerable<ManagedSqlOrder> CancelDuringInput()
+        {
+            foreach (var row in rows.Take(options.BatchSize + 1)) yield return row;
+            cancel.Cancel();
         }
     }
 

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using UniversalData;
@@ -34,19 +35,18 @@ public sealed class SqlSugarClient : IDisposable
     public IInsertable<T> Insertable<T>(T entity) => new Insertable<T>(this, new[] { entity });
     public IInsertable<T> Insertable<T>(List<T> entities) => new Insertable<T>(this, entities);
     public IInsertable<T> Insertable<T>(T[] entities) => new Insertable<T>(this, entities);
-    public IInsertable<T> Insertable<T>(IEnumerable<T> entities) => new Insertable<T>(this, Materialize(entities));
+    public IInsertable<T> Insertable<T>(IEnumerable<T> entities) => new Insertable<T>(this, entities);
     public IUpdateable<T> Updateable<T>(T entity) => new Updateable<T>(this, new[] { entity });
     public IUpdateable<T> Updateable<T>(List<T> entities) => new Updateable<T>(this, entities);
     public IUpdateable<T> Updateable<T>(T[] entities) => new Updateable<T>(this, entities);
-    public IUpdateable<T> Updateable<T>(IEnumerable<T> entities) => new Updateable<T>(this, Materialize(entities));
+    public IUpdateable<T> Updateable<T>(IEnumerable<T> entities) => new Updateable<T>(this, entities);
     public IDeleteable<T> Deleteable<T>(T entity) => new Deleteable<T>(this, new[] { entity });
     public IDeleteable<T> Deleteable<T>(List<T> entities) => new Deleteable<T>(this, entities);
     public IDeleteable<T> Deleteable<T>(T[] entities) => new Deleteable<T>(this, entities);
-    public IDeleteable<T> Deleteable<T>(IEnumerable<T> entities) => new Deleteable<T>(this, Materialize(entities));
+    public IDeleteable<T> Deleteable<T>(IEnumerable<T> entities) => new Deleteable<T>(this, entities);
     public IFastest<T> Fastest<T>() => new Fastest<T>(this, EntityMapping.For<T>());
 
     internal SqlSessionHandle Session { get { EnsureOpen(); return session; } }
-    internal object Gate => gate;
     internal uint ReadBatchSize => config.ReadBatchSize == 0 ? 512 : config.ReadBatchSize;
     internal uint WriteChunkRows => config.WriteChunkRows == 0 ? 512 : config.WriteChunkRows;
 
@@ -99,28 +99,99 @@ public sealed class SqlSugarClient : IDisposable
     }
 
     internal int Write<T>(int mode, int loadMode, EntityMapping mapping, IReadOnlyList<EntityMember> members,
-        IReadOnlyList<T> entities, IReadOnlyList<EntityMember> keys, uint? chunkRows = null)
+        IEnumerable<T> entities, IReadOnlyList<EntityMember> keys, uint? chunkRows = null,
+        CancellationToken cancellationToken = default)
     {
-        EnsureOpen();
-        if (entities.Count == 0) return 0;
-        var memberList = members.ToList();
-        var keyOrdinals = keys.Select(key => memberList.IndexOf(key)).ToArray();
-        if (keyOrdinals.Any(index => index < 0)) throw new InvalidOperationException("The write key is not part of the supplied Native batch.");
-        var chunk = chunkRows is > 0 ? chunkRows.Value : WriteChunkRows;
-        using var batch = SqlBatchBuilder.Build(this.session, mapping, members, entities, chunk);
-        var keyBytes = keyOrdinals.Length == 0 ? null : new uint[keyOrdinals.Length];
-        if (keyBytes is not null) for (var i = 0; i < keyBytes.Length; i++) keyBytes[i] = checked((uint)keyOrdinals[i]);
-        GCHandle? pinned = null;
-        try
+        ArgumentNullException.ThrowIfNull(entities);
+        lock (gate)
         {
-            IntPtr keyPointer = IntPtr.Zero;
-            if (keyBytes is not null) { pinned = GCHandle.Alloc(keyBytes, GCHandleType.Pinned); keyPointer = pinned.Value.AddrOfPinnedObject(); }
+            EnsureOpen();
+            cancellationToken.ThrowIfCancellationRequested();
+            var knownCount = entities is IReadOnlyCollection<T> collection ? collection.Count
+                : entities.TryGetNonEnumeratedCount(out var count) ? count : -1;
+            if (knownCount == 0) return 0;
+
+            uint[] keyOrdinals = keys.Count == 0 ? [] : new uint[keys.Count];
+            for (var k = 0; k < keyOrdinals.Length; k++)
+            {
+                var column = 0;
+                while (column < members.Count && members[column] != keys[k]) column++;
+                if (column == members.Count)
+                    throw new InvalidOperationException("The write key is missing from the Native batch.");
+                keyOrdinals[k] = (uint)column;
+            }
+
+            var context = SqlNative.Context(session);
+            using var values = new SqlBatchBuilder.PinnedValues(members.Count);
             using var table = new NativeStrings(mapping.TableName);
-            SqlNative.Check(SqlNative.Write(session, mode, loadMode, table[0], keyPointer,
-                checked((uint)(keyBytes?.Length ?? 0)), chunk, batch.DangerousGetHandle(), out var affected));
-            return checked((int)Math.Min(affected, int.MaxValue));
+            IEnumerator<T>? rows = entities.GetEnumerator();
+            SqlBatchHandle? batch = null, schema = null;
+            ExceptionDispatchInfo? inputError = null;
+            GCHandle pinned = default;
+            try
+            {
+                if (keyOrdinals.Length != 0) pinned = GCHandle.Alloc(keyOrdinals, GCHandleType.Pinned);
+                var status = SqlNative.WriteStream(session, mode, loadMode, table[0],
+                    pinned.IsAllocated ? pinned.AddrOfPinnedObject() : IntPtr.Zero, (uint)keyOrdinals.Length,
+                    chunkRows is > 0 ? chunkRows.Value : WriteChunkRows, Next, IntPtr.Zero, out var affected);
+                try { CloseInput(); }
+                catch when (status != (int)StatusCode.Ok) { /* Preserve the write failure. */ }
+                if (status != (int)StatusCode.CommitUnknown)
+                {
+                    inputError?.Throw();
+                    if (status == (int)StatusCode.Cancelled) cancellationToken.ThrowIfCancellationRequested();
+                }
+                SqlNative.Check(status);
+                return checked((int)Math.Min(affected, int.MaxValue));
+            }
+            finally
+            {
+                batch?.Dispose();
+                schema?.Dispose();
+                if (pinned.IsAllocated) pinned.Free();
+                CloseInput();
+            }
+
+            void CloseInput()
+            {
+                var input = rows;
+                rows = null;
+                input?.Dispose();
+            }
+
+            int Next(IntPtr _, uint capacity, out IntPtr pointer, out int last)
+            {
+                pointer = IntPtr.Zero;
+                last = 0;
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (schema is null)
+                    {
+                        if (!rows!.MoveNext())
+                        {
+                            CloseInput();
+                            return (int)StatusCode.End;
+                        }
+                        schema = SqlNative.SchemaFromJson(context, mapping.SchemaJson(members));
+                    }
+                    if (knownCount > 0) capacity = Math.Min(capacity, (uint)knownCount);
+                    batch?.Dispose();
+                    batch = SqlBatchBuilder.BuildChunk(context, schema, members, rows!, values,
+                        capacity, cancellationToken, out var hasMore);
+                    if (!hasMore) CloseInput();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    pointer = batch.DangerousGetHandle();
+                    last = hasMore ? 0 : 1;
+                    return (int)StatusCode.Ok;
+                }
+                catch (Exception error)
+                {
+                    inputError = ExceptionDispatchInfo.Capture(error);
+                    return (int)(error is OperationCanceledException ? StatusCode.Cancelled : StatusCode.Invalid);
+                }
+            }
         }
-        finally { pinned?.Free(); }
     }
 
     internal void BeginTransaction(int isolation)
@@ -150,11 +221,6 @@ public sealed class SqlSugarClient : IDisposable
     }
 
     private void EnsureOpen() => ObjectDisposedException.ThrowIf(disposed, this);
-    private static List<T> Materialize<T>(IEnumerable<T> entities)
-    {
-        ArgumentNullException.ThrowIfNull(entities);
-        return entities is List<T> list ? list : entities.ToList();
-    }
     private static void ValidateConfig(ConnectionConfig value)
     {
         if (!Enum.IsDefined(value.DbType)) throw new ArgumentOutOfRangeException(nameof(value.DbType));

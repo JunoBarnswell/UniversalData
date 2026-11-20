@@ -42,7 +42,7 @@ if (args.Length == 4 && args[0] == "--sql-etl")
     var written = 0;
     foreach (var sourceBatch in source.Queryable<ExampleOrder>().OrderBy(order => order.Id).ToBatches(512))
     {
-        var transformed = sourceBatch.Select(order => new ExampleOrder { Id = order.Id, Name = order.Name.Trim(), Amount = order.Amount }).ToList();
+        var transformed = sourceBatch.Select(order => new ExampleOrder { Id = order.Id, Name = order.Name.Trim(), Amount = order.Amount });
         written += target.Insertable(transformed).ExecuteCommand();
     }
     File.WriteAllText(args[3], JsonSerializer.Serialize(new { rows = written, mode = "native-typed-stream" }));

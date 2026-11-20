@@ -145,6 +145,8 @@ public sealed class Batch : IDisposable
 internal static class Utf8
 {
     private static readonly UTF8Encoding Encoding = new(false, true);
+    internal static int ByteCount(string text) => Encoding.GetByteCount(text);
+    internal static void Encode(string text, Span<byte> buffer) => Encoding.GetBytes(text.AsSpan(), buffer);
 
     internal static byte[] Bytes(string value)
     {

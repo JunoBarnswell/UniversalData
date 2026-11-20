@@ -26,6 +26,14 @@ UD_API ud_status ud_sql_session_execute(ud_sql_session *, ud_string sql, const u
 UD_API ud_status ud_sql_session_write(ud_sql_session *, int32_t mode, int32_t load_mode,
                                        ud_string table, const uint32_t *keys, uint32_t key_count,
                                        uint32_t chunk_rows, const ud_batch *, uint64_t *);
+/* Supply a sealed batch from this session's context, valid until the next call.
+ * Return UD_END for empty input, or set last on the final nonempty batch. */
+typedef ud_status (*ud_sql_batch_source)(void *user, uint32_t capacity,
+                                         const ud_batch **batch, int32_t *last);
+UD_API ud_status ud_sql_session_write_stream(ud_sql_session *, int32_t mode, int32_t load_mode,
+                                              ud_string table, const uint32_t *keys,
+                                              uint32_t key_count, uint32_t chunk_rows,
+                                              ud_sql_batch_source next, void *user, uint64_t *);
 enum { UD_SQL_SESSION_BEGIN = 1, UD_SQL_SESSION_COMMIT = 2, UD_SQL_SESSION_ROLLBACK = 3 };
 UD_API ud_status ud_sql_session_transaction(ud_sql_session *, int32_t operation, int32_t isolation);
 UD_API void ud_sql_session_cancel(ud_sql_session *);

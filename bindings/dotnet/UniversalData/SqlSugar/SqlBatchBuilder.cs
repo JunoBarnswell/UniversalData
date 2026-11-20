@@ -7,44 +7,60 @@ namespace SqlSugar;
 internal static class SqlBatchBuilder
 {
     internal static IntPtr BuildManaged<T>(IntPtr context, IntPtr metadata,
-        IReadOnlyList<(EntityMember Member, int? Precision, int? Scale)> columns, IReadOnlyList<T> entities)
+        IReadOnlyList<(EntityMember Member, int? Precision, int? Scale)> columns,
+        IEnumerable<T> entities, uint maxRows)
     {
-        SqlNative.Check(SqlNative.BatchCreateLikeRaw(context, metadata, checked((uint)entities.Count), out var batch));
+        var known = entities is IReadOnlyCollection<T> collection ? collection.Count
+            : entities.TryGetNonEnumeratedCount(out var count) ? count : -1;
+        if (known >= 0 && (uint)known > maxRows)
+            throw new ArgumentException("Managed output exceeds the bound batch size.", nameof(entities));
+        var batch = IntPtr.Zero;
         try
         {
-            foreach (var entity in entities)
+            using var rows = entities.GetEnumerator();
+            if (!rows.MoveNext())
+                throw new ArgumentException("A managed output batch cannot be empty.", nameof(entities));
+            using var values = new PinnedValues(columns.Count);
+            SqlNative.Check(SqlNative.BatchCreateLikeRaw(context, metadata,
+                known > 0 ? (uint)known : maxRows, out batch));
+            uint written = 0;
+            do
             {
-                using var values = new PinnedValues(columns.Count);
+                if (written++ == maxRows)
+                    throw new ArgumentException("Managed output exceeds the bound batch size.", nameof(entities));
+                var entity = rows.Current;
                 for (var i = 0; i < columns.Count; i++)
                 {
                     var (member, precision, scale) = columns[i];
                     values.Set(i, member, member.Get(entity!), precision, scale);
                 }
-                SqlNative.Check(SqlNative.BatchAppendRaw(batch, values.Values));
-            }
+                values.Append(batch);
+            } while (rows.MoveNext());
             return batch;
         }
         catch { SqlNative.DestroyBatchRaw(batch); throw; }
     }
 
-    internal static SqlBatchHandle Build<T>(SqlSessionHandle session, EntityMapping mapping,
-        IReadOnlyList<EntityMember> members, IReadOnlyList<T> entities, uint capacity)
+    internal static SqlBatchHandle BuildChunk<T>(IntPtr context, SqlBatchHandle schema,
+        IReadOnlyList<EntityMember> members, IEnumerator<T> rows, PinnedValues values,
+        uint capacity, CancellationToken cancellationToken, out bool hasMore)
     {
-        if (entities.Count == 0) throw new ArgumentException("A Native write batch cannot be empty.", nameof(entities));
-        var context = SqlNative.Context(session);
-        using var schema = SqlNative.SchemaFromJson(context, mapping.SchemaJson(members));
-        var createStatus = SqlNative.BatchCreateLike(context, schema.DangerousGetHandle(),
-            Math.Max(capacity, checked((uint)entities.Count)), out var batch);
+        var createStatus = SqlNative.BatchCreateLike(context, schema.DangerousGetHandle(), capacity, out var batch);
         try { SqlNative.Check(createStatus); }
         catch { batch?.Dispose(); throw; }
         try
         {
-            foreach (var entity in entities)
+            uint written = 0;
+            do
             {
-                using var values = new PinnedValues(members.Count);
+                cancellationToken.ThrowIfCancellationRequested();
+                var entity = rows.Current;
                 for (var i = 0; i < members.Count; i++) values.Set(i, members[i], members[i].Get(entity!));
-                SqlNative.Check(SqlNative.BatchAppend(batch, values.Values));
-            }
+                values.Append(batch.DangerousGetHandle());
+                written++;
+                hasMore = rows.MoveNext();
+            } while (written < capacity && hasMore);
+            cancellationToken.ThrowIfCancellationRequested();
             SqlNative.Check(SqlNative.BatchSeal(batch));
             return batch;
         }
@@ -95,7 +111,7 @@ internal static class SqlBatchBuilder
             using var values = new PinnedValues(parameters.Count);
             for (var i = 0; i < parameters.Count; i++)
                 values.Set(i, members[i], parameters[i].Value is DBNull ? null : parameters[i].Value);
-            SqlNative.Check(SqlNative.BatchAppend(batch, values.Values));
+            values.Append(batch.DangerousGetHandle());
             SqlNative.Check(SqlNative.BatchSeal(batch));
             return batch;
         }
@@ -123,8 +139,8 @@ internal static class SqlBatchBuilder
         _ => throw new NotSupportedException($"Native SQL parameter type '{parameter.DbType}' is unsupported.")
     };
 
-    internal static Native.ScalarValue CreateValue(EntityMember member, object? value, Func<byte[], IntPtr> pin,
-        int? precision = null, int? scale = null)
+    private static Native.ScalarValue CreateValue(int index, EntityMember member, object? value,
+        PinnedValues buffers, int? precision, int? scale)
     {
         var result = new Native.ScalarValue { Type = (int)member.NativeType, IsNull = value is null ? 1 : 0 };
         if (value is null) return result;
@@ -142,9 +158,13 @@ internal static class SqlBatchBuilder
                 break;
             case DataType.Utf8:
                 var text = value is Guid guid ? guid.ToString("D") : Convert.ToString(value, CultureInfo.InvariantCulture)!;
-                var textBytes = Utf8.Bytes(text); result.Text = pin(textBytes); result.TextLength = checked((uint)textBytes.Length); break;
+                result.Text = buffers.Encode(index, text, out result.TextLength);
+                break;
             case DataType.Binary:
-                var binary = (byte[])value; result.Text = pin(binary); result.TextLength = checked((uint)binary.Length); break;
+                var binary = (byte[])value;
+                result.Text = buffers.PinBinary(index, binary);
+                result.TextLength = checked((uint)binary.Length);
+                break;
             case DataType.Date32:
                 var date = value is DateOnly dateOnly ? dateOnly : DateOnly.FromDateTime(Convert.ToDateTime(value, CultureInfo.InvariantCulture));
                 result.Unsigned = unchecked((ulong)date.DayNumber - (ulong)DateOnly.FromDateTime(DateTime.UnixEpoch).DayNumber); break;
@@ -171,25 +191,58 @@ internal static class SqlBatchBuilder
 
     internal sealed class PinnedValues : IDisposable
     {
-        private readonly List<GCHandle> pins = [];
-        internal PinnedValues(int count) { Values = new Native.ScalarValue[count]; }
-        internal Native.ScalarValue[] Values { get; }
-        internal void Set(int index, EntityMember member, object? value, int? precision = null, int? scale = null)
+        private static readonly byte[] EmptyPayload = new byte[1];
+        private readonly Native.ScalarValue[] values;
+        private readonly byte[]?[] textBuffers;
+        private readonly GCHandle[] payloadPins;
+        private GCHandle valuePin;
+
+        internal PinnedValues(int count)
         {
-            Values[index] = CreateValue(member, value, Pin, precision, scale);
+            values = new Native.ScalarValue[count];
+            textBuffers = new byte[count][];
+            payloadPins = new GCHandle[count];
+            valuePin = GCHandle.Alloc(values, GCHandleType.Pinned);
         }
 
-        private IntPtr Pin(byte[] bytes)
+        internal void Set(int index, EntityMember member, object? value, int? precision = null, int? scale = null)
         {
-            var pin = GCHandle.Alloc(bytes.Length == 0 ? new byte[1] : bytes, GCHandleType.Pinned);
-            pins.Add(pin);
-            return pin.AddrOfPinnedObject();
+            if (member.NativeType == DataType.Binary && payloadPins[index].IsAllocated)
+                payloadPins[index].Free();
+            values[index] = CreateValue(index, member, value, this, precision, scale);
         }
+
+        internal IntPtr Encode(int index, string text, out uint length)
+        {
+            int bytes = Utf8.ByteCount(text);
+            var buffer = textBuffers[index];
+            if (buffer is null || buffer.Length < bytes)
+            {
+                buffer = new byte[Math.Max(bytes, 64)];
+                if (payloadPins[index].IsAllocated)
+                    payloadPins[index].Free();
+                payloadPins[index] = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                textBuffers[index] = buffer;
+            }
+            Utf8.Encode(text, buffer);
+            length = checked((uint)bytes);
+            return payloadPins[index].AddrOfPinnedObject();
+        }
+
+        internal IntPtr PinBinary(int index, byte[] bytes)
+        {
+            payloadPins[index] = GCHandle.Alloc(bytes.Length == 0 ? EmptyPayload : bytes, GCHandleType.Pinned);
+            return payloadPins[index].AddrOfPinnedObject();
+        }
+
+        internal void Append(IntPtr batch) =>
+            SqlNative.Check(SqlNative.BatchAppendRaw(batch, valuePin.AddrOfPinnedObject(), checked((uint)values.Length)));
 
         public void Dispose()
         {
-            foreach (var pin in pins) if (pin.IsAllocated) pin.Free();
-            pins.Clear();
+            foreach (ref var pin in payloadPins.AsSpan())
+                if (pin.IsAllocated) pin.Free();
+            if (valuePin.IsAllocated) valuePin.Free();
         }
     }
 }

@@ -6,22 +6,25 @@ internal sealed class Deleteable<T> : IDeleteable<T>
 {
     private readonly SqlSugarClient client;
     private readonly EntityMapping mapping;
-    private readonly IReadOnlyList<T> entities;
+    private readonly IEnumerable<T> entities;
     private IReadOnlyList<EntityMember>? keys;
 
-    internal Deleteable(SqlSugarClient client, IReadOnlyList<T> entities)
-    { this.client = client; mapping = EntityMapping.For<T>(); this.entities = entities; }
+    internal Deleteable(SqlSugarClient client, IEnumerable<T> entities)
+    { this.client = client; mapping = EntityMapping.For<T>(); this.entities = entities ?? throw new ArgumentNullException(nameof(entities)); }
 
     public IDeleteable<T> WhereColumns(params Expression<Func<T, object>>[] columns)
     { keys = WriteKeyResolver.Resolve(mapping, columns ?? []); return this; }
 
-    public int ExecuteCommand()
+    public int ExecuteCommand() => Execute(default);
+
+    private int Execute(CancellationToken cancellationToken)
     {
         var selectedKeys = keys ?? mapping.Keys;
         if (selectedKeys.Count == 0) throw new InvalidOperationException($"Entity '{mapping.EntityType.FullName}' has no delete key.");
-        return client.Write(SqlNative.WriteDelete, SqlNative.LoadAuto, mapping, selectedKeys, entities, selectedKeys);
+        return client.Write(SqlNative.WriteDelete, SqlNative.LoadAuto, mapping, selectedKeys, entities, selectedKeys,
+            cancellationToken: cancellationToken);
     }
 
     public Task<int> ExecuteCommandAsync(CancellationToken cancellationToken = default)
-    { cancellationToken.ThrowIfCancellationRequested(); return Task.Run(ExecuteCommand, cancellationToken); }
+    { cancellationToken.ThrowIfCancellationRequested(); return Task.Run(() => Execute(cancellationToken), cancellationToken); }
 }
