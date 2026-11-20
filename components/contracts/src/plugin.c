@@ -960,7 +960,9 @@ ud_status ud_connection_close(ud_connection *c) {
         return UD_OK;
     UD_TRY(ud_connection_read_close(c));
     UD_TRY(ud_connection_message_unsubscribe(c));
-    if (c->transaction)
+    /* The durable coordinator owns branch resolution. Closing the transport
+     * must release an unresolved distributed branch without a local rollback. */
+    if (c->transaction && !c->transaction_branch[0])
         UD_TRY(ud_connection_rollback(c));
     c->cleanup = 1;
     ud_status destroyed = connection_instance_destroy(c->instance);
@@ -1281,8 +1283,8 @@ ud_status ud_connection_message_verify_epoch(ud_connection *c, const ud_message_
     return status;
 }
 
-ud_status ud_connection_execute_command(ud_connection *c, const ud_read_options *options,
-                                        uint64_t *processed) {
+static ud_status execute_command(ud_connection *c, const ud_read_options *options,
+                                 uint64_t *processed, int transactional) {
     if (processed)
         *processed = 0;
     if (!options || options->struct_size != sizeof(*options) ||
@@ -1296,9 +1298,27 @@ ud_status ud_connection_execute_command(ud_connection *c, const ud_read_options 
     if (!(c->capabilities & UD_CONNECT_EXECUTE_SQL) || !c->api->execute)
         return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c, UD_ACCESS_WRITE));
-    ud_status s = c->api->execute(c->instance->state, options, processed);
+    ud_status s = UD_OK;
+    if (transactional) {
+        int32_t dialect = ud_connection_dialect(c);
+        if (!c->transaction)
+            s = UD_FENCED;
+        else if (dialect == UD_SQL_MYSQL || dialect == UD_SQL_MARIADB)
+            s = c->api->record_validate ? c->api->record_validate(c->instance->state, options)
+                                         : UD_UNSUPPORTED;
+    }
+    if (!s)
+        s = c->api->execute(c->instance->state, options, processed);
     connection_leave(c);
     return s;
+}
+ud_status ud_connection_execute_command(ud_connection *c, const ud_read_options *options,
+                                        uint64_t *processed) {
+    return execute_command(c, options, processed, 0);
+}
+ud_status ud_connection_execute_transactional_command(ud_connection *c, const ud_read_options *options,
+                                                       uint64_t *processed) {
+    return execute_command(c, options, processed, 1);
 }
 void ud_command_result_clear(ud_command_result *result) {
     if (!result || result->struct_size != sizeof(*result) || result->abi_version != UD_ABI_VERSION) return;

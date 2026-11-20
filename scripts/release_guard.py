@@ -104,9 +104,14 @@ def nuget_names(version):
 
 
 def nuget_inventory(directory, version):
+    files = {path.name: path for path in directory.glob("*.nupkg")}
+    product = read_model()["product"]
+    required = set(nuget_names(version)) | {
+        f"{package.lower()}.{locked}.nupkg" for package, locked in product["dotnetPackages"].items()}
+    if not required <= files.keys():
+        raise ValueError("Incomplete NuGet feed: " + ", ".join(sorted(required - files.keys())))
     entries = []
-    for name in sorted(nuget_names(version)):
-        path = directory / name
+    for name, path in sorted(files.items()):
         with path.open("rb") as archive:
             digest = hashlib.file_digest(archive, "sha256").hexdigest()
         entries.append({"name": name, "bytes": path.stat().st_size, "sha256": digest})
@@ -122,15 +127,30 @@ def assemble_nuget(linux, windows, destination):
         if len(paths) != 1:
             raise ValueError(f"Expected one actual package for {name} in {folder}")
         shutil.copyfile(paths[0], destination / name)
+    product_names = {name.lower() for name in (sdk, win, linux_runtime)}
+    for folder in (linux, windows):
+        for path in sorted(folder.rglob("*.nupkg")):
+            if path.name.lower() in product_names:
+                continue
+            output = destination / path.name.lower()
+            if not output.exists():
+                shutil.copyfile(path, output)
+            else:
+                with path.open("rb") as source, output.open("rb") as copied:
+                    if hashlib.file_digest(source, "sha256").digest() != hashlib.file_digest(copied, "sha256").digest():
+                        raise ValueError(f"Dependency archive differs between inputs: {path.name}")
+    nuget_inventory(destination, version)
 
 
 def verify_nuget_installations(directory, commit, archives, version):
     drivers = {"sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci"}
     for rid in ("linux-x64", "win-x64"):
         evidence = json.loads((directory / f"installed-{rid}.json").read_text())
+        lock_hash = evidence.get("dependencyLockSha256", "")
         if (evidence["rid"] != rid or evidence["sourceCommit"] != commit or evidence["version"] != version
                 or not evidence["framework"].startswith("8.") or evidence["http"] != 200
                 or evidence["sqliteRows"] != 35 or set(evidence["drivers"]) != drivers
+                or len(lock_hash) != 64 or any(character not in "0123456789abcdef" for character in lock_hash)
                 or sorted(evidence["archives"], key=lambda item: item["name"]) != archives):
             raise ValueError(f"The {rid} installation evidence differs from the proposed release")
 
@@ -145,7 +165,8 @@ def seal_nuget(directory):
 
 
 def check_nuget(directory):
-    expected = read_model()["product"]["sdkVersion"]
+    product = read_model()["product"]
+    expected = product["sdkVersion"]
     approved = json.loads((directory / "approval.json").read_text())
     if (os.environ.get("UD_APPROVED_VERSION") != expected or approved.get("version") != expected
             or approved.get("sourceCommit") != os.environ.get("UD_RELEASE_COMMIT")
@@ -155,7 +176,8 @@ def check_nuget(directory):
     if approved["archives"] != entries:
         raise ValueError("The approved NuGet archive hashes differ")
     verify_nuget_installations(directory, approved["sourceCommit"], entries, expected)
-    for entry in entries:
+    product_names = set(nuget_names(expected))
+    for entry in (entry for entry in entries if entry["name"] in product_names):
         path = directory / entry["name"]
         if entry["bytes"] > 250_000_000:
             raise ValueError(f"NuGet size limit exceeded by {path.name}")
@@ -174,9 +196,12 @@ def check_nuget(directory):
                 spec = ET.fromstring(bundle.read("UniversalData.nuspec"))
                 dependencies = {element.get("id"): element.get("version") for element in
                                 spec.findall(".//{*}dependencies/{*}group/{*}dependency")}
-                if ("lib/net8.0/UniversalData.dll" not in files or dependencies != {
-                        f"UniversalData.Runtime.{rid}": f"[{expected}]" for rid in ("linux-x64", "win-x64")}):
-                    raise ValueError("The SDK assembly or exact RID dependencies differ")
+                expected_dependencies = {
+                    f"UniversalData.Runtime.{rid}": f"[{expected}]" for rid in ("linux-x64", "win-x64")}
+                expected_dependencies.update({package: f"[{locked}]"
+                                              for package, locked in product["dotnetPackages"].items()})
+                if "lib/net8.0/UniversalData.dll" not in files or dependencies != expected_dependencies:
+                    raise ValueError("The SDK assembly or exact dependencies differ")
 
 
 if __name__ == "__main__":

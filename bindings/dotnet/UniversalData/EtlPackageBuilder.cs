@@ -34,8 +34,13 @@ public sealed class EtlPackageBuilder(string id)
 
     public EtlPackageBuilder SqlSource(string name, string connection, string sql,
         JsonElement schema, bool stream = false, uint batchSize = 4096, SqlParameterBatch? parameters = null) =>
-        Component(name, "sql.source", new { connection, sql, schema,
-            readMode = stream ? "stream" : "snapshot", batchSize, parameters });
+        SqlSource(name, connection, null, sql, schema, stream, batchSize, parameters);
+
+    internal EtlPackageBuilder SqlSource(string name, string connection, string? table, string? sql,
+        JsonElement schema, bool stream, uint? batchSize, SqlParameterBatch? parameters) =>
+        Component(name, "sql.source", new { connection, table, sql, schema,
+            readMode = stream ? "stream" : "snapshot", batchSize, parameters,
+            schemaPolicy = table is null ? null : new { policy = "compatible" } });
 
     public EtlPackageBuilder RestSource(string name, string connection, JsonElement schema,
         string? url = null, HttpHeaderDefinition[]? headers = null, uint batchSize = 4096,
@@ -47,7 +52,11 @@ public sealed class EtlPackageBuilder(string id)
         Component(name, registeredComponent, configuration);
 
     public EtlPackageBuilder SqlDestination(string name, string connection, string table, string mode = "append") =>
-        Component(name, "sql.destination", new { connection, table, mode });
+        SqlDestination(name, connection, table, mode, null, null, null, null);
+
+    internal EtlPackageBuilder SqlDestination(string name, string connection, string table, string mode,
+        SqlColumnMapping[]? mapping, int[]? keys, string? delivery, bool? provisionReceipts) =>
+        Component(name, "sql.destination", new { connection, table, mode, mapping, keys, delivery, provisionReceipts });
 
     public EtlPackageBuilder SqlCommand(string name, string connection, string statement,
         IReadOnlyList<uint> parameters) => Component(name, "sql.command", new { connection, statement, parameters });
@@ -80,6 +89,10 @@ public sealed class EtlPackageBuilder(string id)
     public EtlPackageBuilder RegisterModule(JsonElement module) { modules.Add(module.Clone()); return this; }
     public EtlPackageBuilder Variable(string name, JsonElement definition) { variables.Add(name, definition.Clone()); return this; }
 
+    internal JsonElement DescribeDataFlow() => JsonSerializer.SerializeToElement(Pipeline(), Json);
+
+    private object Pipeline() => new { id = "main", components, paths };
+
     public Result<Package> Build()
     {
         if (error is null && componentEdges.Any(edge => !componentIds.Contains(edge.From) || !componentIds.Contains(edge.To)))
@@ -98,8 +111,8 @@ public sealed class EtlPackageBuilder(string id)
         {
             version = ProductInfo.Protocol, id, connections,
             controlFlow = new { tasks = controlTasks, constraints },
-            dataFlows = components.Count == 0 ? Array.Empty<object>() : new object[] { new { id = "main", components, paths } },
-            extensions = modules, variables
+            dataFlows = components.Count == 0 ? Array.Empty<object>() : new[] { Pipeline() },
+            extensions = modules.Count == 0 ? null : modules, variables
         }, Json));
     }
 
@@ -118,3 +131,5 @@ public sealed class EtlPackageBuilder(string id)
         return this;
     }
 }
+
+internal sealed record SqlColumnMapping(string Source, string Target);

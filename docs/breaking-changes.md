@@ -1,3 +1,11 @@
+# SDK 8.0.0 / ABI 15
+
+C# 通过 `DataClient` 注册命名数据源和业务程序集。 `RunAsync` 在 Worker 调用公开静态方法，数据库操作在 `DataContext.Database(name).UseAsync` 作用域内使用官方 `ISqlSugarClient`。NuGet 锁定 `SqlSugarCore` 5.1.4.216。应用须用 SDK 8 重新编译。原有 `SqlSugarClient.OpenAsync` 和 `SqlCursor<T>` 的调用点迁至官方 SqlSugar 查询或原生 ETL。
+
+大数据搬运迁至 `DataClient.Etl`，复用 Native Package 的批次、资源授权和恢复语义。已构建的 Package 可用 `new EtlClient(data)` 执行、检查和恢复。执行方法直接返回结果，失败从 `UniversalDataException` 或其派生类型读取状态码和诊断。进程中断后，`DataExecutionException.Reference` 保留恢复所需的标识。
+
+SDK 8 要求同一发行版的 Worker 协议修订 6。Native ABI、Package 与持久检查点仍为 15。详情见 [C# API](api.md)。
+
 # SDK 7.0.0 / ABI 15
 
 C# 从 `SqlSugarClient.OpenAsync` 打开会话，从 `EtlClient` 启动、预览并恢复 Package。SQL 读取使用 `SqlCursor<T>`，按行或按原生批次返回 `Result<T>`。执行结束返回 `End`。进程中断后的诊断保留 Worker 或传输原因，可能已写入的数据通过 `CommitUnknown` 进入核对。

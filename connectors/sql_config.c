@@ -297,8 +297,11 @@ static ud_status encode_settings(ud_context *ctx, int32_t dialect, const connect
 
 ud_status ud_sql_connection_config(ud_context *ctx, int32_t dialect, ud_string input,
                                    ud_string *out) {
+    if (!out)
+        return UD_INVALID;
     *out = (ud_string){0};
-    if (!input.data || !input.length || input.length > 65535 ||
+    if (!ctx || dialect < UD_SQL_SQLITE || dialect > UD_SQL_ORACLE || !input.data ||
+        !input.length || input.length > 65535 ||
         memchr(input.data, 0, input.length) || !ud_utf8_valid(input.data, input.length))
         return UD_INVALID;
     input = trim(input);

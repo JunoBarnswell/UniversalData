@@ -15,7 +15,13 @@ VERSION = PRODUCT["sdkVersion"]
 
 def archives(source):
     names = ("UniversalData", "UniversalData.Runtime.linux-x64", "UniversalData.Runtime.win-x64")
-    return [source / f"{name}.{VERSION}.nupkg" for name in names]
+    required = {f"{name}.{VERSION}.nupkg" for name in names}
+    required.update(f"{package.lower()}.{locked}.nupkg"
+                    for package, locked in PRODUCT["dotnetPackages"].items())
+    files = sorted(source.glob("*.nupkg"))
+    if missing := required - {path.name for path in files}:
+        raise FileNotFoundError("The isolated feed is missing " + ", ".join(sorted(missing)))
+    return files
 
 
 def hashes(source):
@@ -34,6 +40,7 @@ def run(args, source):
     with tempfile.TemporaryDirectory(prefix="ud-installed-nuget-") as folder:
         work = Path(folder)
         env["NUGET_PACKAGES"] = str(work / "packages")
+        env["NUGET_HTTP_CACHE_PATH"] = str(work / "http-cache")
         project = work / "InstalledSdk.csproj"
         project.write_text('''<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -44,12 +51,16 @@ def run(args, source):
 </Project>
 ''', encoding="utf-8")
         shutil.copyfile(ROOT / "tests/nuget_consumer/Program.cs", work / "Program.cs")
-        subprocess.run([args.dotnet, "restore", project, "--source", source], cwd=work, env=env, check=True, timeout=240)
-        subprocess.run([args.dotnet, "build", project, "-c", "Release", "--no-restore"], cwd=work, env=env, check=True, timeout=240)
+        subprocess.run([args.dotnet, "restore", project, "--source", source, "--use-lock-file",
+                        "-p:TreatWarningsAsErrors=true"], cwd=work, env=env, check=True, timeout=240)
+        lock_hash = hashlib.sha256((work / "packages.lock.json").read_bytes()).hexdigest()
+        subprocess.run([args.dotnet, "build", project, "-c", "Release", "--no-restore",
+                        "-p:TreatWarningsAsErrors=true"], cwd=work, env=env, check=True, timeout=240)
         assembly = work / "bin/Release/net8.0/InstalledSdk.dll"
         command = [args.dotnet, str(assembly)] + (["--complete"] if args.complete else [])
         output = subprocess.check_output(command, cwd=work, env=env, text=True, timeout=120)
     facts = json.loads(output)
+    facts["dependencyLockSha256"] = lock_hash
     if not facts["framework"].startswith("8.") or facts["version"] != VERSION or facts["http"] != 200 or facts["sqliteRows"] != 35:
         raise ValueError(f"Installed SDK facts differ: {facts}")
     return facts

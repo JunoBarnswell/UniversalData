@@ -129,7 +129,8 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     }
     internal Execution CreateExecution(string packageJson, string parametersJson = "{}", string executionId = "",
         string? stateDirectory = null, bool resume = false, Registry? registry = null, Action<ExecutionEvent>? observe = null,
-        ulong eventSequenceStart = 0, WorkerShard? shard = null, bool brokerRestore = false, KafkaAssignment? assignment = null)
+        ulong eventSequenceStart = 0, WorkerShard? shard = null, bool brokerRestore = false, KafkaAssignment? assignment = null,
+        SdkExecutionEnvironment? environment = null)
     {
         if ((Registry.Features & RegistryFeatures.ScopedJournal) == 0)
             throw new UniversalDataException((int)StatusCode.Incompatible,"Native runtime does not distinguish internal recovery storage");
@@ -145,7 +146,20 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
             if (!resume) Directory.CreateDirectory(journalDirectory);
         }
         var scoped = this with { StateDirectory = journalDirectory };
-        return new(package.ToJson(), Tenant, scoped.Authorize, parametersJson, executionId, scoped.Resolve, stateDirectory: journalDirectory,
+        PackageAuthorizer authorizer = scoped.Authorize;
+        PackageCredentialResolver resolver = scoped.Resolve;
+        if (environment is not null)
+        {
+            if (environment.Tenant != Tenant)
+                throw new UniversalDataException((int)StatusCode.Auth, "SDK execution is outside the Worker tenant");
+            authorizer = (tenant, resource, access) => tenant == Tenant &&
+                (access is ConnectionAccess.CheckpointOpen or ConnectionAccess.CheckpointRead or ConnectionAccess.CheckpointWrite
+                    ? scoped.Authorize(tenant, resource, access) : environment.Authorize(resource, access));
+            if (environment.Resolve is { } resolve)
+                resolver = (tenant, resource, reference) => tenant == Tenant ? resolve(resource, reference) :
+                    throw new UniversalDataException((int)StatusCode.Auth, "SDK credential is outside the Worker tenant");
+        }
+        return new(package.ToJson(), Tenant, authorizer, parametersJson, executionId, resolver, stateDirectory: journalDirectory,
             resume: resume, maxConcurrency: MaxConcurrency, memoryLimit: MemoryLimit, registry: registry, observe: observe,
             timeoutMilliseconds: checked(ExecutionTimeoutSeconds * 1000UL), eventSequenceStart: eventSequenceStart,
             workerMember: shard?.Member ?? 0, workerMembers: shard?.Members ?? 0,

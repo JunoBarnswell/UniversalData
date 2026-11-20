@@ -12,6 +12,18 @@ typedef struct ud_sql_session ud_sql_session;
 UD_API ud_status ud_package_requires_journal(const ud_package *, int32_t *);
 UD_API ud_status ud_execution_sql_session_open(ud_execution *, ud_string connection,
                                                  ud_sql_session **);
+/* Borrows the enrolled physical connection until the handle is closed. Close
+ * it before the activation callback returns. Explicit local transaction control
+ * is unavailable on a coordinator-owned session. */
+UD_API ud_status ud_activation_sql_session_open(ud_activation *, ud_string connection,
+                                                ud_sql_session **);
+/* Resolve the Journal of a single required Task without running its callback.
+ * The execution must be READY and built with resume and the original binding.
+ * A successful decision is zero (no manifest), UD_TX_COMMIT, or UD_TX_ROLLBACK. */
+UD_API ud_status ud_execution_recover_transaction(ud_execution *, int32_t *decision);
+/* Convert the provider's client syntax into its Native connector credentials. */
+UD_API ud_status ud_sql_connection_config(ud_context *, int32_t dialect, ud_string,
+                                          ud_string *);
 UD_API ud_status ud_sql_session_open(int32_t dialect, ud_string plugin_path,
                                       ud_string connection_string, ud_sql_session **);
 UD_API ud_context *ud_sql_session_context(ud_sql_session *);

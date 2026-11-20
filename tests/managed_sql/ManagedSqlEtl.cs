@@ -1,8 +1,7 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using SqlSugar;
 using UniversalData;
+using static ManagedSqlAcceptance.SqlAcceptance;
 
 namespace ManagedSqlAcceptance;
 
@@ -19,14 +18,13 @@ internal static class ManagedSqlEtl
             var target = Path.Combine(directory.FullName, "target.db");
             using (var writer = Open(plugin, source))
             {
-                writer.Ado.ExecuteCommand("CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)").Require();
+                Execute(writer, "CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)");
                 var rows = Enumerable.Range(1, 35)
-                    .Select(id => new ManagedEtlRow { Id = id, Label = $"数据-{id}-order" })
-                    .ToList();
-                Require(writer.Insertable(rows).ExecuteCommand().Require() == rows.Count, "Source preparation");
+                    .Select(id => new ManagedEtlRow { Id = id, Label = $"数据-{id}-order" });
+                Require(WriteRows(writer, SqlNative.WriteAppend, rows, 4) == 35, "Source preparation");
             }
             using (var writer = Open(plugin, target))
-                writer.Ado.ExecuteCommand("CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)").Require();
+                Execute(writer, "CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)");
 
             var sourceReadable = true;
             var schema = Discover(plugin, source, Authorize, Resolve);
@@ -35,21 +33,19 @@ internal static class ManagedSqlEtl
                 Require(!package.RequiresJournal, "Live SQL work must use response delivery");
             VerifyPreview(document, Authorize, Resolve);
             using (var before = Open(plugin, target))
-                Require(Convert.ToInt64(before.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows").Require(),
-                    CultureInfo.InvariantCulture) == 0, "Preview left the destination empty");
+                Require(Scalar<long>(before, "SELECT COUNT(*) FROM etl_rows") == 0, "Preview left the destination empty");
             using var registry = new Registry();
             new ManagedSqlModule().Register(registry);
             using (var execution = new Execution(document, "sql-etl", Authorize, resolve: Resolve,
                        registry: registry, maxBatchRows: 4))
             {
-                using (var hosted = execution.OpenSqlClient("source"))
+                using (var hosted = execution.OpenSqlSession("source"))
                 {
-                    Require(hosted.CurrentConnectionConfig.DbType == DbType.Sqlite, "Hosted driver identification");
-                    Require(Convert.ToInt64(hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows").Require(),
-                        CultureInfo.InvariantCulture) == 35, "Hosted authorized read");
+                    Require(SqlNative.Dialect(hosted) == DataSourceKind.Sqlite, "Hosted driver identification");
+                    Require(Scalar<long>(hosted, "SELECT COUNT(*) FROM etl_rows") == 35, "Hosted authorized read");
                     try
                     {
-                        hosted.Ado.ExecuteCommand("DELETE FROM etl_rows WHERE id=1").Require();
+                        Execute(hosted, "DELETE FROM etl_rows WHERE id=1");
                         throw new InvalidOperationException("The source write should have been denied.");
                     }
                     catch (UniversalDataException denied) when (denied.Code == StatusCode.Auth) { }
@@ -57,20 +53,19 @@ internal static class ManagedSqlEtl
                     sourceReadable = false;
                     try
                     {
-                        hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows").Require();
+                        _ = Scalar<long>(hosted, "SELECT COUNT(*) FROM etl_rows");
                         throw new InvalidOperationException("The revoked read should have been denied.");
                     }
                     catch (UniversalDataException denied) when (denied.Code == StatusCode.Auth) { }
                     finally { sourceReadable = true; }
-                    Require(Convert.ToInt64(hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows").Require(),
-                        CultureInfo.InvariantCulture) == 35, "Read after restoring the host grant");
+                    Require(Scalar<long>(hosted, "SELECT COUNT(*) FROM etl_rows") == 35, "Read after restoring the host grant");
                 }
                 execution.Execute();
                 Require(execution.Metrics.State == ExecutionState.Succeeded && execution.Metrics.CommittedRows == 35,
                     "C source, managed transform and C target delivery");
             }
             using var reader = Open(plugin, target);
-            var result = reader.Queryable<ManagedEtlRow>().OrderBy(row => row.Id).ToList().Require();
+            var result = ReadBatches<ManagedEtlRow>(reader, "SELECT id,label FROM etl_rows ORDER BY id", 4).SelectMany(batch => batch);
             Require(result.Select(row => (row.Id, row.Label)).SequenceEqual(
                 Enumerable.Range(1, 35).Select(id => ((long)id, $"数据-{id}-ORDER"))), "Target readback");
             Console.WriteLine("PASS SQL Source, managed typed transform, SQL Destination, 35 rows and identities");
@@ -94,12 +89,8 @@ internal static class ManagedSqlEtl
         }
     }
 
-    private static SqlSugarClient Open(string plugin, string file) => SqlAcceptance.OpenClient(new ConnectionConfig
-    {
-        DbType = DbType.Sqlite,
-        ConnectionString = "Data Source=" + file,
-        PluginPath = plugin
-    });
+    private static SqlSessionHandle Open(string plugin, string file) =>
+        SqlNative.Open(DataSourceKind.Sqlite, plugin, "Data Source=" + file);
 
     private static void VerifyPreview(string document, PackageAuthorizer authorize,
         PackageCredentialResolver resolve)

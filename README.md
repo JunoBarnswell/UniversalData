@@ -1,6 +1,6 @@
 # UniversalData
 
-当前候选版本为 **SDK 7.0.0 / ABI 15**。C17 继续拥有统一的 Package、Execution、Activation、Component 与 Connector 链路。C# 使用独立 Worker 执行 SQL 和 ETL，通过结果码取得值、诊断和恢复状态。作业支持多个日程，Catalog 在一个事务中登记触发、运行和时间游标。升级见 [兼容性说明](docs/breaking-changes.md)。
+当前候选版本为 **SDK 8.0.0 / ABI 15**。C17 提供统一的 Package、Execution、Activation、Component 与 Connector。C# 通过 `DataClient` 管理命名数据源和独立 Worker 会话，在会话内使用官方 SqlSugar，并将批量数据处理编译为原生 ETL。作业支持多个日程，Catalog 在一个事务中登记触发、运行和时间游标。SDK 用法与升级见 [C# API](docs/api.md) 和 [升级说明](docs/breaking-changes.md)。
 
 Studio 4 引入事件时间与 Tumbling/Sliding/Session 聚合、原生状态快照与 Spill、持续源空闲停放、优雅停止、Catalog 事实订阅，以及多标签工作台、命令面板和主题。契约及该版本的验收记录见 [Studio 4 PRD](docs/product/studio4-prd.md)、[流批统一设计](docs/architecture/stream-batch-unification.md) 和 [Studio 4 追踪表](docs/acceptance/studio4-traceability.md)。
 
@@ -91,12 +91,12 @@ Windows 构建自动将 `ud_data.dll` 的依赖放在原生库和各宿主旁。
 ./packaging/package.ps1 -BuildDirectory build/windows -NativeRuntimeLicenses 'D:/SDK/native-licenses'
 ctest --test-dir build/windows -C Release --parallel 4 --output-on-failure
 $consumerWork = Join-Path $env:TEMP ('ud-sdk-consumer-' + [guid]::NewGuid().ToString('N'))
-python tests/installed_sdk.py --bundle artifacts/UniversalData-7.0.0-win-x64.zip --companion-packages <Linux运行时包目录> --work $consumerWork --evidence artifacts/consumers.json
+python tests/installed_sdk.py --bundle artifacts/UniversalData-8.0.0-win-x64.zip --companion-packages <Linux运行时包目录> --work $consumerWork --evidence artifacts/consumers.json
 ```
 
-脚本重新构建 Release，再生成 `artifacts/7.0.0/win-x64/sdk`、带原生依赖的 NuGet、Java JAR/POM、逐文件 SHA-256 清单和 ZIP。独立消费测试仅使用解压后的产物，C# 进程无需将 SDK 加入 `PATH`。`-NativeRuntimeLicenses` 随包收录本次所用供应商运行库的许可证。
+脚本重新构建 Release，再生成 `artifacts/8.0.0/win-x64/sdk`、带原生依赖的 NuGet、Java JAR/POM、逐文件 SHA-256 清单和 ZIP。独立消费测试仅使用解压后的产物，C# 进程无需将 SDK 加入 `PATH`。`-NativeRuntimeLicenses` 随包收录本次所用供应商运行库的许可证。
 
-将 Windows 和 Linux 的运行时包与同版本 `UniversalData` 放入同一个本地源。安装项目仅引用 `UniversalData`，两个 RID 依赖由 NuGet 按准确版本还原。构建与发布会复制当前平台的自包含 Worker。使用 `python tests/installed_nuget.py --source <本地源> --complete --evidence <验证报告>` 在独立 .NET 8 项目中验收六库与 HTTP。发行工作流在同一提交的双平台安装报告与包哈希一致后生成审核产物。 [NuGet 发行工作流](.github/workflows/publish-nuget.yml)
+将 Windows 和 Linux 的运行时包、同版本 `UniversalData` 和打包时解析的 NuGet 依赖放入同一个本地源。安装项目引用 `UniversalData`，通过 `dotnet restore --source <本地源> --use-lock-file` 在本地解析依赖并记录锁文件。构建与发布会复制当前平台的自包含 Worker。使用 `python tests/installed_nuget.py --source <本地源> --complete --evidence <验证报告>` 在独立 .NET 8 项目中验收六库与 HTTP。两个系统的安装报告记录依赖锁和包哈希。发行工作流核对同一提交的报告后生成审核产物。 [NuGet 发行工作流](.github/workflows/publish-nuget.yml)
 
 Windows 原生运行需要 x64 Microsoft Visual C++ Redistributable。C# SDK 面向 .NET 8 或兼容运行时，产品宿主需要 ASP.NET Core Runtime 10，Java 需要 JDK 17。SQL Server 由安装程序注册与构建时 SDK 一致的 x64 Microsoft ODBC Driver。部署 Oracle 和 MySQL 连接器时，分别将 Oracle Instant Client Basic 和 MySQL C 客户端的匹配运行库放在连接器 DLL 旁。每个 Windows 进程按应用或连接器所处目录加载依赖。
 

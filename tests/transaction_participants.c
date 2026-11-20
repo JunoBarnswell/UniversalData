@@ -2,6 +2,7 @@
 #include "check.h"
 #include "ud/plugin.h"
 #include "ud/sql.h"
+#include <ctype.h>
 #include <string.h>
 #ifdef _WIN32
 #include <process.h>
@@ -94,76 +95,87 @@ static ud_status count_rows(ud_connection *connection, const char *table, uint64
         }                                                                                          \
     } while (0)
 int main(int argc, char **argv) {
-    CHECK((argc == 5 || argc == 7) && strlen(argv[4]) == 64);
+    CHECK((argc == 5 || argc == 7 || argc == 9) && strlen(argv[4]) == 64);
     OK(ud_context_create(NULL, &context));
-    ud_plugin *plugin = NULL;
-    OK(ud_plugin_load(context, argv[1], 0, &plugin));
-    ud_plugin *other=NULL;
-    if (argc==7) OK(ud_plugin_load(context,argv[5],0,&other));
-    ud_connection *connections[2] = {0};
-    ud_transaction_branch branches[2] = {0};
-    char identities[2][65];
-    for (uint32_t index = 0; index < 2; index++) {
+    uint32_t count = argc == 9 ? 3 : 2;
+    ud_plugin *plugins[3] = {0};
+    ud_connection *connections[3] = {0};
+    ud_transaction_branch branches[3] = {0};
+    char identities[3][65], tables[3][31];
+    for (uint32_t index = 0; index < count; index++) {
+        int argument = index && argc > 5 ? 3 + 2 * (int)index : 1;
+        OK(ud_plugin_load(context, argv[argument], 0, plugins + index));
         ud_connection_options options = {.struct_size = sizeof(options),
                                          .abi_version = UD_ABI_VERSION,
                                          .tenant = {"transaction-fixture", 19},
                                          .resource = {"independent-participant", 23},
                                          .credential_reference = {"fixture", 7},
                                          .authorize = grant,
-                                         .resolve_user = index && argc==7 ? argv[6] : argv[2],
+                                         .resolve_user = argv[argument + 1],
                                          .resolve = configuration};
-        OK(ud_connection_open(index && other ? other : plugin, &options, connections + index));
+        OK(ud_connection_open(plugins[index], &options, connections + index));
         if (!(ud_connection_capabilities(connections[index]) &
               UD_CONNECT_TRANSACTION_PARTICIPANT)) {
             fprintf(stderr, "Blocked: resource has no durable participant capability (%s)\n",ud_error(context));
             return 77;
         }
         memcpy(identities[index], argv[4], 65);
-        identities[index][63] = index ? 'b' : 'a';
+        identities[index][63] = (char)('a' + index);
         branches[index] = (ud_transaction_branch){.struct_size = sizeof(branches[index]),
                                                   .abi_version = UD_ABI_VERSION,
                                                   .id = {identities[index], 64},
                                                   .isolation = UD_ISOLATION_READ_COMMITTED};
         memset(branches[index].digest, index + 17, sizeof(branches[index].digest));
-    }
-    const char *tables[2] = {"ud_tx_participant_a", "ud_tx_participant_b"};
-    for (uint32_t index = 0; index < 2; index++)
+        snprintf(tables[index], sizeof(tables[index]), "ud_xa_%.16s_%c", argv[4], 'a' + (int)index);
         if (ud_connection_dialect(connections[index]) == UD_SQL_ORACLE)
-            tables[index] = index ? "UD_TX_PARTICIPANT_B" : "UD_TX_PARTICIPANT_A";
+            for (char *at = tables[index]; *at; ++at)
+                *at = (char)toupper((unsigned char)*at);
+    }
+    int active_rollback = !strcmp(argv[3], "active-rollback");
+    int active_kill = !strcmp(argv[3], "active-kill");
+    int prepare_kill = !strcmp(argv[3], "prepare-kill") || !strcmp(argv[3], "partial-commit-kill");
     if (!strcmp(argv[3], "setup")) {
-        for (uint32_t index = 0; index < 2; index++) {
-            /* Fixture owns these two dedicated tables; receipt generations remain intact. */
+        for (uint32_t index = 0; index < count; index++) {
             char sql[160];
-            snprintf(sql, sizeof(sql), "DROP TABLE %s", tables[index]);
-            (void)command(connections[index], sql);
             snprintf(sql, sizeof(sql), "CREATE TABLE %s (id INTEGER PRIMARY KEY)", tables[index]);
             OK(command(connections[index], sql));
             OK(ud_connection_provision(connections[index]));
         }
-    } else if (!strcmp(argv[3], "prepare-kill") || !strcmp(argv[3], "partial-commit-kill")) {
-        for (uint32_t index = 0; index < 2; index++) {
-            OK(ud_connection_transaction_begin(connections[index], branches + index));
-            char sql[160];
-            snprintf(sql, sizeof(sql), "INSERT INTO %s (id) VALUES (1)", tables[index]);
-            OK(command(connections[index], sql));
-        }
-        for (uint32_t index = 0; index < 2; index++) {
-            OK(ud_connection_transaction_prepare(connections[index], branches + index));
-            int32_t state = UD_TX_UNKNOWN;
-            OK(ud_connection_transaction_recover(connections[index], branches + index, &state));
-            CHECK(state == UD_TX_PREPARED);
-        }
-        if (!strcmp(argv[3], "partial-commit-kill"))
-            OK(ud_connection_transaction_resolve(connections[0], branches, UD_TX_COMMIT));
-        fflush(NULL);
-        _exit(86); /* No SDK cleanup or driver close: real recovery boundary. */
     } else {
+        if (active_rollback || active_kill || prepare_kill) {
+            for (uint32_t index = 0; index < count; index++) {
+                OK(ud_connection_transaction_begin(connections[index], branches + index));
+                char sql[160];
+                snprintf(sql, sizeof(sql), "INSERT INTO %s (id) VALUES (1)", tables[index]);
+                OK(command(connections[index], sql));
+            }
+        }
+        if (prepare_kill) {
+            for (uint32_t index = 0; index < count; index++) {
+                OK(ud_connection_transaction_prepare(connections[index], branches + index));
+                int32_t state = UD_TX_UNKNOWN;
+                OK(ud_connection_transaction_recover(connections[index], branches + index, &state));
+                CHECK(state == UD_TX_PREPARED);
+            }
+            if (!strcmp(argv[3], "partial-commit-kill"))
+                OK(ud_connection_transaction_resolve(connections[0], branches, UD_TX_COMMIT));
+        }
+        if (active_kill || prepare_kill) {
+            fflush(NULL);
+            _exit(86); /* No SDK cleanup or driver close: real recovery boundary. */
+        }
         int commit = !strcmp(argv[3], "recover-commit");
-        CHECK(commit || !strcmp(argv[3], "recover-rollback"));
-        for (uint32_t index = 0; index < 2; index++) {
+        int abandoned = !strcmp(argv[3], "recover-abandoned");
+        CHECK(active_rollback || abandoned || commit || !strcmp(argv[3], "recover-rollback"));
+        for (uint32_t index = 0; index < count; index++) {
             int32_t state = UD_TX_UNKNOWN;
             OK(ud_connection_transaction_recover(connections[index], branches + index, &state));
-            CHECK(state == UD_TX_PREPARED || (commit && state == UD_TX_COMMITTED));
+            if (active_rollback)
+                CHECK(state == UD_TX_ACTIVE);
+            else if (abandoned)
+                CHECK(state == UD_TX_ACTIVE || state == UD_TX_NOT_FOUND);
+            else
+                CHECK(state == UD_TX_PREPARED || (commit && state == UD_TX_COMMITTED));
             OK(ud_connection_transaction_resolve(connections[index], branches + index,
                                                  commit ? UD_TX_COMMIT : UD_TX_ROLLBACK));
             uint64_t rows = UINT64_MAX;
@@ -177,12 +189,15 @@ int main(int argc, char **argv) {
                 CHECK(ud_connection_transaction_recover(connections[index], &wrong, &state) ==
                       UD_FENCED);
             }
+            char sql[160];
+            snprintf(sql, sizeof(sql), "DROP TABLE %s", tables[index]);
+            OK(command(connections[index], sql));
         }
     }
-    for (uint32_t index = 0; index < 2; index++)
+    for (uint32_t index = 0; index < count; index++) {
         OK(ud_connection_close(connections[index]));
-    if (other) OK(ud_plugin_unload(other));
-    OK(ud_plugin_unload(plugin));
+        OK(ud_plugin_unload(plugins[index]));
+    }
     ud_context_destroy(context);
     return 0;
 }

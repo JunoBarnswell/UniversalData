@@ -124,6 +124,8 @@ struct ud_execution {
     ud_mutex events_lock, journal_lock, serial_tasks_lock;
     uint64_t event_sequence;
     uint32_t sql_sessions; /* Protected by events_lock with the execution controller. */
+    int transaction_recovery_only;
+    int32_t transaction_recovery_decision;
     struct ud_debug *debug;
     ud_json *preview_pipeline;
     uint32_t preview_source_rows;
@@ -231,6 +233,9 @@ ud_status ud_checkpoint_transaction_read(ud_activation *, int32_t, ud_string, ch
 ud_status ud_checkpoint_transaction_record(ud_activation *, int32_t, ud_string, ud_string);
 ud_status ud_checkpoint_transaction_facts(ud_activation *, ud_string identity, int commit);
 int ud_transaction_active(const ud_activation *);
+ud_status ud_transaction_sql_lease(ud_activation *, ud_string, void *, void (*)(void *),
+                                   struct ud_connection_lease **);
+void ud_transaction_sql_failed(ud_activation *, ud_status);
 ud_status ud_transaction_commit_epoch(ud_activation *);
 ud_status ud_acquire_file_connection(ud_activation *, ud_string, uint64_t capabilities,
                                      ud_connection_lease **);

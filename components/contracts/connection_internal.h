@@ -12,4 +12,6 @@ ud_status ud_connection_operation_begin(ud_connection *,void *,ud_authorize_fn,u
 void ud_connection_operation_end(ud_connection *);
 ud_status ud_connection_reset_session(ud_connection *);
 int ud_connection_reusable(const ud_connection *);
+ud_status ud_connection_execute_transactional_command(ud_connection *, const ud_read_options *,
+                                                       uint64_t *);
 #endif

@@ -1,11 +1,11 @@
 # Managed SQL acceptance runner
 
-`ManagedSql.csproj` exercises real drivers through an independent Worker. It covers Native parameter binding, typed query batches, stable pagination, `SqlCursor<T>`, insert/update/delete, rollback, cancellation, and bounded streaming batches.
+`ManagedSql.csproj` exercises the Native SQL contract against real drivers. It covers parameter binding, bounded typed batches, ordering, insert/update/delete, rollback, cancellation, exact decimals and composite keys. The Worker failure case uses a registered business method and the official SqlSugar client in an isolated process.
 
 Connection secrets are read from a local file and are never printed:
 
 ```powershell
-dotnet run --project tests/managed_sql/ManagedSql.csproj -- --provider Sqlite --connection-file .artifacts/sqlite.connection --plugin D:/build/plugins/ud_connector_sqlite.dll --rows 1000000 --batch 512 --benchmark .artifacts/sqlite-managed-sql.json
+dotnet run --project tests/managed_sql/ManagedSql.csproj -- --provider Sqlite --connection-file .artifacts/sqlite.connection --plugin D:/build/plugins/ud_connector_sqlite.dll --rows 10000000 --batch 512 --benchmark .artifacts/sqlite-managed-sql.json
 ```
 
 An isolated remote fixture is a JSON file kept outside source control. Relative `connectionFile`, `plugin`, and `setupSql` paths are resolved relative to the fixture:
@@ -19,11 +19,11 @@ An isolated remote fixture is a JSON file kept outside source control. Relative 
 }
 ```
 
-Run it with `--fixture path/to/mariadb.fixture.json`. The acceptance entity is deliberately mapped to the fixed `managed_sql_orders` table, so the fixture cannot silently create a different table from the ORM mapping. Command-line values override fixture values; `--connection-file` takes precedence over `--connection`. `--benchmark` writes first-batch latency, CPU time, managed allocations, peak working-set, throughput inputs, and a result signature. The benchmark inserts rows in bounded batches inside one transaction, so a million-row run never materializes the whole source list in managed memory.
+Run it with `--fixture path/to/mariadb.fixture.json`. The acceptance entity is deliberately mapped to the fixed `managed_sql_orders` table, so the fixture cannot silently create a different table from the ORM mapping. Command-line values override fixture values; `--connection-file` takes precedence over `--connection`. `--benchmark` writes first-batch latency, CPU time, managed allocations, peak working-set, throughput inputs, and a result signature. The benchmark inserts rows in bounded batches inside one transaction, so a ten-million-row run never materializes the whole source list in managed memory.
 
 ## 千万行流式验收
 
-`--stream-copy` 使用两个 SDK 会话，生成输入表并运行强类型读取、Unicode 字符串转换、十进制运算和原生批量写入。计时从打开读取游标开始，到目标事务提交结束。随后遍历目标全部记录，核对业务值、行数和校验值。
+`--stream-copy` 在单个 Worker 执行强类型 Native ETL，按配置的批次大小读取、转换 Unicode 字符串并处理十进制金额，再写入目标库。计时覆盖从启动 ETL 到目标事务提交。报告分别记录客户端和 Worker 峰值内存，以及 Native 指标。提交后逐行核对目标库的业务值、行数和校验值。
 
 ```bash
 cmake --build build/product --config Release --target ud_managed_sql_test

@@ -1,4 +1,4 @@
-using SqlSugar;
+using UniversalData;
 
 var runEtl = args is ["--etl"];
 if (args.Length != 0 && !runEtl)
@@ -8,59 +8,35 @@ if (args.Length != 0 && !runEtl)
 }
 
 var connectionVariable = runEtl ? "UD_ETL_CONNECTION_STRING" : "UD_MYSQL_CONNECTION_STRING";
-var connectionString = Environment.GetEnvironmentVariable(connectionVariable);
-if (string.IsNullOrWhiteSpace(connectionString))
+var connection = Environment.GetEnvironmentVariable(connectionVariable);
+var policy = Environment.GetEnvironmentVariable("UD_POLICY_FILE");
+if (string.IsNullOrWhiteSpace(connection) || string.IsNullOrWhiteSpace(policy))
 {
-    Console.Error.WriteLine($"Set {connectionVariable} to a local MySQL connection string before running the demo.");
+    Console.Error.WriteLine($"Set {connectionVariable} and UD_POLICY_FILE before running the example.");
     return 2;
 }
 
-if (runEtl)
+try
 {
-    try
+    await using var client = DataClient.CreateBuilder(policy, "demo")
+        .AddMariaDb("demo", connection)
+        .AddModule(typeof(MariaDbEtlDemo).Assembly)
+        .ConfigureWorkers(workers => workers.MaxConcurrentSessions(2).MaxBranchesPerSession(2))
+        .Build();
+
+    if (runEtl)
     {
-        await MariaDbEtlDemo.RunAsync(connectionString);
+        await MariaDbEtlDemo.RunAsync(client);
         return 0;
     }
-    catch (InvalidOperationException error)
-    {
-        Console.Error.WriteLine(error.Message);
-        return 1;
-    }
-}
-
-return await RunConnectionCheckAsync(connectionString);
-
-static async Task<int> RunConnectionCheckAsync(string connectionString)
-{
-    var opened = await SqlSugarClient.OpenAsync(new ConnectionConfig
-    {
-        DbType = DbType.MariaDb,
-        ConnectionString = connectionString
-    });
-    if (!opened.IsSuccess || opened.Value is null)
-    {
-        Console.Error.WriteLine($"MySQL connection failed ({opened.Code}).");
-        return 1;
-    }
-
-    using var client = opened.Value;
-    var ping = client.Ado.GetScalar("SELECT 1");
-    if (!ping.IsSuccess || ping.Value is null || Convert.ToInt64(ping.Value) != 1)
-    {
-        Console.Error.WriteLine($"MySQL health query failed ({ping.Code}).");
-        return 1;
-    }
-
-    var version = client.Ado.GetScalar("SELECT VERSION()");
-    if (!version.IsSuccess || string.IsNullOrWhiteSpace(version.Value?.ToString()))
-    {
-        Console.Error.WriteLine($"MySQL version query failed ({version.Code}).");
-        return 1;
-    }
-
-    Console.WriteLine("UniversalData NuGet MySQL demo passed.");
-    Console.WriteLine($"SELECT 1 => {ping.Value}");
-    Console.WriteLine($"Server version => {version.Value}");
+    var health = await client.RunAsync(MariaDbEtlDemo.CheckAsync);
+    if (health.Ping != 1 || string.IsNullOrWhiteSpace(health.Version))
+        throw new InvalidOperationException("The MariaDB health response was invalid.");
+    Console.WriteLine($"MariaDB {health.Version} returned {health.Ping}.");
     return 0;
+}
+catch (Exception error) when (error is DataBusinessException or UniversalDataException or InvalidOperationException)
+{
+    Console.Error.WriteLine(error.Message);
+    return 1;
 }

@@ -23,16 +23,19 @@ try
     var package = Package.FromJson(await File.ReadAllTextAsync(args[0]));
     if (!package.IsSuccess)
         return (int)package.Code;
-    var start = await new EtlClient(new(policy, "fixture")).StartAsync(package.Value!);
-    if (!start.IsSuccess)
-    {
-        Console.WriteLine(JsonSerializer.Serialize(new { result = (int)start.Code, error = start.Error }));
-        return 0;
-    }
-    await using var run = start.Value!;
+    await using var data = DataClient.CreateBuilder(policy, "fixture").Build();
+    await using var run = await new EtlClient(data).StartAsync(package.Value!);
     var finished = await run.WaitAsync();
-    Console.WriteLine(JsonSerializer.Serialize(new { result = (int)finished.Code, error = finished.Error,
-        state = finished.Value?.State, executedTasks = finished.Value?.ExecutedTasks }));
+    Console.WriteLine(JsonSerializer.Serialize(new { result = (int)StatusCode.Ok, error = (OperationError?)null,
+        state = finished.State, executedTasks = finished.ExecutedTasks }));
     return 0;
 }
+catch (UniversalDataException error)
+{
+    var metrics = (error as DataExecutionException)?.Metrics;
+    Console.WriteLine(JsonSerializer.Serialize(new { result = (int)error.Code, error = error.Detail,
+        state = metrics?.State, executedTasks = metrics?.ExecutedTasks }));
+    return 0;
+}
+
 finally { Directory.Delete(state, recursive: true); }

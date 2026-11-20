@@ -577,12 +577,9 @@ static ud_status table_parts(mysql_state *p, ud_string table, ud_string values[2
     }
     return values[0].length && values[1].length ? UD_OK : UD_SCHEMA;
 }
-static ud_status record_validate(void *state, const ud_read_options *options) {
-    mysql_state *p = state;
-    ud_string schema = {0}, table = {0}, identifier = {0};
-    ud_status status = p->host.record_target(p->host.context, options->sql, &schema, &table);
-    ud_string args[] = {
-        schema.length ? schema : (ud_string){p->database, (uint32_t)strlen(p->database)}, table};
+static ud_status prove_transactional_target(mysql_state *p, const ud_string args[2]) {
+    ud_string identifier = {0};
+    ud_status status = UD_OK;
     char *qualified = NULL, *locking = NULL;
     ud_batch *proof = NULL;
     /* Hold the provider's metadata lock until the Native row transaction ends.
@@ -618,9 +615,12 @@ static ud_status record_validate(void *state, const ud_read_options *options) {
     ud_field fields[] = {{.name = "engine", .name_length = 6, .type = UD_UTF8},
                          {.name = "triggers", .name_length = 8, .type = UD_INT64},
                          {.name = "trigger_visibility", .name_length = 18, .type = UD_INT64}};
-    /* TRIGGERS is privilege-filtered. Require a visible TRIGGER grant before
-     * interpreting an empty result as absence. Role-only grants fail closed. */
-    static const char sql[] =
+    /* TRIGGERS is privilege-filtered. Require a direct TRIGGER grant before
+     * interpreting an empty result as absence. Schema grants store the provider's
+     * database pattern, including escaped literal underscores and percent signs.
+     * MySQL partial revokes make database names literal and can restrict a global
+     * grant. In that mode only a direct schema or table grant proves visibility. */
+    static const char proof_query[] =
         "SELECT t.ENGINE AS engine,(SELECT COUNT(*) FROM information_schema.TRIGGERS r "
         "WHERE r.TRIGGER_SCHEMA=t.TABLE_SCHEMA AND r.EVENT_OBJECT_TABLE=t.TABLE_NAME) AS triggers,"
         "(SELECT COUNT(*) FROM ("
@@ -630,16 +630,29 @@ static ud_status record_validate(void *state, const ud_read_options *options) {
         "information_schema.SCHEMA_PRIVILEGES "
         "UNION ALL SELECT GRANTEE,PRIVILEGE_TYPE,TABLE_SCHEMA,TABLE_NAME FROM "
         "information_schema.TABLE_PRIVILEGES) ud_grants "
-        "WHERE ud_grants.PRIVILEGE_TYPE='TRIGGER' AND ud_grants.GRANTEE=CONCAT("
+        "WHERE ud_grants.PRIVILEGE_TYPE='TRIGGER' AND CAST(ud_grants.GRANTEE AS BINARY)=CAST(CONCAT("
         "QUOTE(LEFT(CURRENT_USER(),LENGTH(CURRENT_USER())-LENGTH(SUBSTRING_INDEX(CURRENT_USER(),'@'"
         ",-1))-1)),"
-        "'@',QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',-1))) "
-        "AND (ud_grants.scope_schema IS NULL OR ud_grants.scope_schema=t.TABLE_SCHEMA) "
-        "AND (ud_grants.scope_table IS NULL OR ud_grants.scope_table=t.TABLE_NAME)) AS "
+        "'@',QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',-1))) AS BINARY) "
+        "AND CASE WHEN ud_grants.scope_schema IS NULL THEN %s "
+        "WHEN ud_grants.scope_table IS NOT NULL THEN "
+        "CAST(ud_grants.scope_schema AS BINARY)=CAST(t.TABLE_SCHEMA AS BINARY) AND "
+        "CAST(ud_grants.scope_table AS BINARY)=CAST(t.TABLE_NAME AS BINARY) "
+        "WHEN %s THEN CAST(t.TABLE_SCHEMA AS BINARY) LIKE "
+        "CAST(ud_grants.scope_schema AS BINARY) ESCAPE 0x5c "
+        "ELSE CAST(ud_grants.scope_schema AS BINARY)=CAST(t.TABLE_SCHEMA AS BINARY) END) AS "
         "trigger_visibility "
         "FROM information_schema.TABLES t WHERE t.TABLE_SCHEMA=? AND t.TABLE_NAME=?";
-    if (!status)
+    if (!status) {
+        const char *server = mysql_get_server_info(p->db);
+        static const char without_partial_revokes[] = "@@GLOBAL.partial_revokes=0";
+        const char *schema_patterns = server && !strstr(server, "MariaDB") &&
+                                      mysql_get_server_version(p->db) >= 80016
+                                          ? without_partial_revokes : "1";
+        char sql[sizeof(proof_query) + 2 * sizeof(without_partial_revokes)];
+        snprintf(sql, sizeof(sql), proof_query, schema_patterns, schema_patterns);
         status = query(p, sql, args, 2, fields, 3, &proof);
+    }
     if (!status && p->host.rows(proof) != 1)
         status = UD_SCHEMA;
     ud_value engine = {0}, triggers = {0}, visible = {0};
@@ -655,11 +668,22 @@ static ud_status record_validate(void *state, const ud_read_options *options) {
                     triggers.is_null || triggers.integer))
         status = UD_UNSUPPORTED;
     p->host.batch_destroy(proof);
-    p->host.deallocate((void *)schema.data);
-    p->host.deallocate((void *)table.data);
     p->host.deallocate((void *)identifier.data);
     p->host.deallocate(qualified);
     p->host.deallocate(locking);
+    return status;
+}
+static ud_status record_validate(void *state, const ud_read_options *options) {
+    mysql_state *p = state;
+    ud_string schema = {0}, table = {0};
+    ud_status status = p->host.record_target(p->host.context, options->sql, &schema, &table);
+    if (!status) {
+        ud_string args[] = {
+            schema.length ? schema : (ud_string){p->database, (uint32_t)strlen(p->database)}, table};
+        status = prove_transactional_target(p, args);
+    }
+    p->host.deallocate((void *)schema.data);
+    p->host.deallocate((void *)table.data);
     return status;
 }
 static ud_status discover(void *state, ud_string table, ud_batch **out) {
@@ -1098,16 +1122,13 @@ static ud_status transaction_resolve(void *state, const ud_transaction_branch *b
     p->cleanup = 0;
     return status;
 }
-static ud_status prove_target(mysql_state *p, const ud_write_options *o, const ud_batch *batch) {
-    ud_string args[2];
-    ud_status s = table_parts(p, o->table, args);
+static ud_status prove_innodb_target(mysql_state *p, const ud_string args[2]) {
     ud_field f = {.name = "engine", .name_length = 6, .type = UD_UTF8};
     ud_batch *engine = NULL;
-    if (!s)
-        s = query(p,
-                  "SELECT ENGINE AS engine FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND "
-                  "TABLE_NAME=?",
-                  args, 2, &f, 1, &engine);
+    ud_status s = query(p,
+                        "SELECT ENGINE AS engine FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND "
+                        "TABLE_NAME=?",
+                        args, 2, &f, 1, &engine);
     if (!s && p->host.rows(engine) != 1)
         s = UD_SCHEMA;
     ud_value e = {0};
@@ -1116,6 +1137,13 @@ static ud_status prove_target(mysql_state *p, const ud_write_options *o, const u
     if (!s && (e.is_null || e.text_length != 6 || memcmp(e.text, "InnoDB", 6)))
         s = UD_UNSUPPORTED;
     p->host.batch_destroy(engine);
+    return s;
+}
+static ud_status prove_target(mysql_state *p, const ud_write_options *o, const ud_batch *batch) {
+    ud_string args[2];
+    ud_status s = table_parts(p, o->table, args);
+    if (!s)
+        s = p->transaction ? prove_transactional_target(p, args) : prove_innodb_target(p, args);
     ud_batch *meta = NULL;
     if (!s)
         s = discover(p, o->table, &meta);

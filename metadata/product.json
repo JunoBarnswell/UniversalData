@@ -2,15 +2,21 @@
   "modelVersion": 2,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "7.0.0",
+    "sdkVersion": "8.0.0",
+    "dotnetPackages": {
+      "SqlSugarCore": "5.1.4.216",
+      "MySqlConnector": "2.6.1",
+      "SQLitePCLRaw.lib.e_sqlite3": "2.1.14",
+      "System.Security.Cryptography.Pkcs": "8.0.2"
+    },
     "abiVersion": 15,
     "protocolVersion": 15,
     "checkpointRevision": 4,
-    "state": "ABI 15 candidate: Worker protocol 5, Catalog revision 3, PostgreSQL leadership, and Kafka partition assignments.",
+    "state": "SDK 8 candidate with official SqlSugar, request-scoped Worker sessions, Native transaction participation, and fluent ETL. ABI and Package protocol remain 15.",
     "acceptanceResources": "Windows Release CORE and focused host acceptance use local evidence. Real MQ, Registry, multi-host and complete PRODUCT resources remain separately gated.",
     "dataLayoutRevision": 1,
     "catalogRevision": 3,
-    "workerRevision": 5
+    "workerRevision": 6
   },
   "scope": {
     "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",
@@ -26,7 +32,7 @@
   },
   "candidate": {
     "branch": "main",
-    "state": "SDK 7 cluster scheduling and .NET distribution candidate",
+    "state": "SDK 8 fluent .NET execution and distribution candidate",
     "sourceCommit": null,
     "sourceFingerprint": null,
     "mergeEvidence": null,

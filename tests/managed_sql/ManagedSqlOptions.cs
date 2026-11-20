@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
-using SqlSugar;
+using UniversalData;
 
 namespace ManagedSqlAcceptance;
 
@@ -8,7 +8,7 @@ internal sealed class ManagedSqlOptions
 {
     private const string TableName = "managed_sql_orders";
 
-    internal DbType Provider { get; private init; }
+    internal DataSourceKind Provider { get; private init; }
     internal string ConnectionString { get; private init; } = string.Empty;
     internal string? TargetConnectionString { get; private init; }
     internal string PluginPath { get; private init; } = string.Empty;
@@ -40,7 +40,7 @@ internal sealed class ManagedSqlOptions
             return result;
         }
 
-        if (!Enum.TryParse<DbType>(Value("--provider"), true, out var provider))
+        if (!Enum.TryParse<DataSourceKind>(Value("--provider"), true, out var provider))
             throw new ArgumentException("Unknown --provider.");
         var connectionFile = RawArg(args, "--connection-file") ?? FixtureValue("connectionFile");
         var targetFile = RawArg(args, "--target-connection-file");
@@ -84,16 +84,16 @@ internal sealed class ManagedSqlOptions
 
     internal string CreateTableSql() => Provider switch
     {
-        DbType.SqlServer => $"CREATE TABLE {QuotedTable()} ({QuotedColumn("Id")} BIGINT NOT NULL PRIMARY KEY, {QuotedColumn("Name")} NVARCHAR(200) NOT NULL, {QuotedColumn("Amount")} DECIMAL(38,28) NOT NULL)",
-        DbType.Oracle => $"CREATE TABLE {QuotedTable()} ({QuotedColumn("Id")} NUMBER(19) PRIMARY KEY, {QuotedColumn("Name")} NVARCHAR2(200) NOT NULL, {QuotedColumn("Amount")} NUMBER(38,28) NOT NULL)",
-        DbType.Sqlite => $"CREATE TABLE {QuotedTable()} ({QuotedColumn("Id")} INTEGER NOT NULL PRIMARY KEY, {QuotedColumn("Name")} TEXT NOT NULL, {QuotedColumn("Amount")} TEXT NOT NULL)",
+        DataSourceKind.SqlServer => $"CREATE TABLE {QuotedTable()} ({QuotedColumn("Id")} BIGINT NOT NULL PRIMARY KEY, {QuotedColumn("Name")} NVARCHAR(200) NOT NULL, {QuotedColumn("Amount")} DECIMAL(38,28) NOT NULL)",
+        DataSourceKind.Oracle => $"CREATE TABLE {QuotedTable()} ({QuotedColumn("Id")} NUMBER(19) PRIMARY KEY, {QuotedColumn("Name")} NVARCHAR2(200) NOT NULL, {QuotedColumn("Amount")} NUMBER(38,28) NOT NULL)",
+        DataSourceKind.Sqlite => $"CREATE TABLE {QuotedTable()} ({QuotedColumn("Id")} INTEGER NOT NULL PRIMARY KEY, {QuotedColumn("Name")} TEXT NOT NULL, {QuotedColumn("Amount")} TEXT NOT NULL)",
         _ => $"CREATE TABLE {QuotedTable()} ({QuotedColumn("Id")} BIGINT NOT NULL PRIMARY KEY, {QuotedColumn("Name")} VARCHAR(200) NOT NULL, {QuotedColumn("Amount")} DECIMAL(38,28) NOT NULL)"
     };
 
     private string Quote(string identifier) => Provider switch
     {
-        DbType.SqlServer => "[" + identifier + "]",
-        DbType.MySql or DbType.MariaDb => "`" + identifier + "`",
+        DataSourceKind.SqlServer => "[" + identifier + "]",
+        DataSourceKind.MySql or DataSourceKind.MariaDb => "`" + identifier + "`",
         _ => "\"" + identifier + "\""
     };
 

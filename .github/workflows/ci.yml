@@ -150,7 +150,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: nuget-runtime-${{ matrix.platform }}
-          path: artifacts/**/UniversalData*.nupkg
+          path: artifacts/**/*.nupkg
           if-no-files-found: error
 
   installed-nuget:
@@ -174,7 +174,7 @@ jobs:
         with:
           pattern: nuget-runtime-*
           path: runtime-packages
-      - name: Install the same three packages from a local feed
+      - name: Install the approved package dependencies from a local feed
         run: |
           python scripts/release_guard.py --assemble-nuget runtime-packages/nuget-runtime-linux runtime-packages/nuget-runtime-windows nuget-feed
           python tests/installed_nuget.py --source nuget-feed --complete --evidence installed-${{ matrix.rid }}.json

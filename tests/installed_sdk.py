@@ -168,12 +168,13 @@ for name, source, assembly in [("package", "examples/dotnet", "Consumer"),
         shutil.copyfile(source_file, client / source_file.name)
     project = client / (assembly + ".csproj")
     project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType>'
-                       '<TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>'
-                       '</PropertyGroup><ItemGroup><PackageReference Include="UniversalData" Version="' + version +
-                       '" /></ItemGroup></Project>', encoding="utf-8")
+                       '<TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>'
+                       '</PropertyGroup><ItemGroup><PackageReference Include="UniversalData" Version="[' + version +
+                       ']" /></ItemGroup></Project>', encoding="utf-8")
     run("nuget-restore-" + name, [arguments.dotnet, "restore", project, "--source", packages,
                                 "--source", arguments.companion_packages.resolve(),
-                                "--packages", work / "nuget-cache", "--nologo", "--verbosity:minimal"])
+                                "--packages", work / "nuget-cache", "--use-lock-file",
+                                "-p:TreatWarningsAsErrors=true", "--nologo", "--verbosity:minimal"])
     run("nuget-build-" + name, [arguments.dotnet, "build", project, "--configuration", "Release",
                               "--no-restore", "--nologo", "--verbosity:minimal"])
     output = client / "bin/Release/net8.0"

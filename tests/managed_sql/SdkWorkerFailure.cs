@@ -1,56 +1,70 @@
-using System.Diagnostics;
-using SqlSugar;
+using System.Text.Json;
 using UniversalData;
 
 namespace ManagedSqlAcceptance;
 
-internal static class SdkWorkerFailure
+public static class SdkWorkerFailure
 {
     internal static async Task Run(string connectionFile, string plugin)
     {
-        var config = new ConnectionConfig
+        var directory = Directory.CreateTempSubdirectory("ud-sdk-loss-");
+        try
         {
-            DbType = DbType.Sqlite, ConnectionString = File.ReadAllText(connectionFile),
-            PluginPath = plugin, ReadBatchSize = 1, WriteChunkRows = 1
-        };
-        using (var reader = (await SqlSugarClient.OpenAsync(config)).Require())
-        {
-            reader.Ado.ExecuteCommand("CREATE TABLE managed_sql_orders(\"Id\" INTEGER NOT NULL PRIMARY KEY, \"Name\" TEXT NOT NULL, \"Amount\" TEXT NOT NULL)").Require();
-            reader.Ado.ExecuteCommand("INSERT INTO managed_sql_orders VALUES(1,'durable','1.00')").Require();
-            await using var cursor = (await reader.Queryable<ManagedSqlOrder>().OpenCursorAsync(1)).Require();
-            if ((await cursor.ReadBatchAsync()).Require().Single().Id != 1)
-                throw new InvalidOperationException("SQL Worker returned the wrong first batch");
-            Kill(reader);
-            if ((await cursor.ReadAsync()).Code != StatusCode.WorkerLost)
-                throw new InvalidOperationException("A terminated read Worker must report WorkerLost");
+            string connection = (await File.ReadAllTextAsync(connectionFile)).Trim();
+            var parsed = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = connection };
+            string dataFile = Path.GetFullPath((string)parsed["Data Source"]);
+            string policy = Path.Combine(directory.FullName, "policy.json");
+            await File.WriteAllTextAsync(policy, JsonSerializer.Serialize(new
+            {
+                dataDirectory = Path.Combine(directory.FullName, "state"),
+                fileRoots = new[] { Path.GetDirectoryName(dataFile)! },
+                networkOrigins = Array.Empty<string>(),
+                pluginRoots = new[] { Path.GetDirectoryName(Path.GetFullPath(plugin))!, AppContext.BaseDirectory },
+                credentialFiles = new Dictionary<string, string>()
+            }));
+            await using var data = DataClient.CreateBuilder(policy, "local").AddSqlite("orders", connection)
+                .AddModule(typeof(SdkWorkerFailure).Assembly).Build();
+            await data.RunAsync(Prepare);
+            await using (var doomed = await data.OpenSessionAsync())
+            {
+                if (doomed.ProcessId == Environment.ProcessId)
+                    throw new InvalidOperationException("The request did not leave the application process");
+                try
+                {
+                    await doomed.RunAsync(InterruptWrite);
+                    throw new InvalidOperationException("An interrupted write was reported as committed");
+                }
+                catch (UniversalDataException failure) when (failure.Code == StatusCode.CommitUnknown) { }
+            }
+            if (await data.RunAsync(Count) != 1L)
+                throw new InvalidOperationException("A database transaction survived a physical Worker exit");
+            Console.WriteLine("Independent process, CommitUnknown on interruption and reopened readback passed");
         }
-        using (var writer = (await SqlSugarClient.OpenAsync(config)).Require())
-        {
-            var fastest = writer.Fastest<ManagedSqlOrder>();
-            fastest.PageSize = 1;
-            var result = await fastest.BulkCopyAsync(Rows(writer));
-            if (result.Code != StatusCode.CommitUnknown || result.Error?.Cause != StatusCode.WorkerLost)
-                throw new InvalidOperationException($"Interrupted write returned {result.Code} ({result.Error?.Cause})");
-        }
-        using var verifier = (await SqlSugarClient.OpenAsync(config)).Require();
-        if (Convert.ToInt64(verifier.Ado.GetScalar("SELECT count(*) FROM managed_sql_orders").Require()) != 1)
-            throw new InvalidOperationException("An uncommitted batch survived Worker termination");
-        Console.WriteLine("WorkerLost read; CommitUnknown interrupted write; reopened client readback passed");
+        finally { directory.Delete(recursive: true); }
     }
 
-    private static IEnumerable<ManagedSqlOrder> Rows(SqlSugarClient client)
-    {
-        yield return new() { Id = 2, Name = "first", Amount = 2m };
-        yield return new() { Id = 3, Name = "second", Amount = 3m };
-        Kill(client);
-        yield return new() { Id = 4, Name = "third", Amount = 4m };
-    }
+    public static Task Prepare(DataContext context, CancellationToken cancellation) =>
+        context.Database("orders").UseAsync(async (db, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            await db.Ado.ExecuteCommandAsync("CREATE TABLE managed_sql_orders(id INTEGER NOT NULL PRIMARY KEY)");
+            return await db.Ado.ExecuteCommandAsync("INSERT INTO managed_sql_orders VALUES(1)");
+        }, cancellation);
 
-    private static void Kill(SqlSugarClient client)
-    {
-        using var process = Process.GetProcessById(client.WorkerProcessId);
-        process.Kill();
-        if (!process.WaitForExit(5000))
-            throw new InvalidOperationException("Worker did not terminate");
-    }
+    public static Task InterruptWrite(DataContext context, CancellationToken cancellation) =>
+        context.Database("orders").UseAsync(async (db, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            db.Ado.BeginTran();
+            await db.Ado.ExecuteCommandAsync("INSERT INTO managed_sql_orders VALUES(2)");
+            Environment.Exit(87);
+            return false;
+        }, cancellation);
+
+    public static Task<long> Count(DataContext context, CancellationToken cancellation) =>
+        context.Database("orders").UseAsync(async (db, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            return Convert.ToInt64(await db.Ado.GetScalarAsync("SELECT COUNT(*) FROM managed_sql_orders"));
+        }, cancellation);
 }

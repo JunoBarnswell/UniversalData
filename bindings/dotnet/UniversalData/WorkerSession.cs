@@ -1,153 +1,160 @@
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Text.Json;
 
 namespace UniversalData;
 
-internal sealed class WorkerSession : IAsyncDisposable
+internal sealed class WorkerSession(NamedPipeClientStream pipe, SdkWorkerGrant grant, SdkHostConfiguration host)
+    : IAsyncDisposable
 {
-    private readonly Process process;
-    private readonly Stream input;
-    private readonly Stream output;
     private readonly SemaphoreSlim operations = new(1, 1);
-    private readonly Task stderr;
     private long sequence;
-    private int closed, disposed;
+    private int closed;
 
-    internal int ProcessId => process.Id;
+    internal int ProcessId => grant.ProcessId;
 
-    private WorkerSession(Process process)
+    internal static async Task<WorkerSession> AttachAsync(SdkWorkerGrant grant, SdkHostConfiguration host,
+        CancellationToken cancellation)
     {
-        this.process = process;
-        input = process.StandardInput.BaseStream;
-        output = process.StandardOutput.BaseStream;
-        stderr = WorkerProtocol.Discard(process.StandardError, CancellationToken.None);
-    }
-
-    internal static Result<WorkerSession> Start(string? workerPath)
-    {
+        var pipe = SdkSessionProtocol.Connect(grant.Endpoint);
+        var session = new WorkerSession(pipe, grant, host);
         try
         {
-            string executable = workerPath ?? Environment.GetEnvironmentVariable("UD_WORKER_PATH") ??
-                Path.Combine(AppContext.BaseDirectory, "runtimes",
-                    OperatingSystem.IsWindows() ? "win-x64" : "linux-x64", "worker",
-                    OperatingSystem.IsWindows() ? "ud_worker.exe" : "ud_worker");
-            if (!Path.IsPathFullyQualified(executable) || !File.Exists(executable))
-                return new(StatusCode.DriverUnavailable, null, new(ErrorSource.Worker,
-                    StatusCode.DriverUnavailable, "The UniversalData Worker executable is unavailable"));
-            var start = new ProcessStartInfo(executable)
-            {
-                UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true,
-                RedirectStandardError = true, CreateNoWindow = true
-            };
-            if (!OperatingSystem.IsWindows() && workerPath is null && Environment.GetEnvironmentVariable("UD_WORKER_PATH") is null)
-                File.SetUnixFileMode(executable, File.GetUnixFileMode(executable) | UnixFileMode.UserExecute);
-            start.ArgumentList.Add("session");
-            var process = Process.Start(start) ?? throw new IOException("Worker could not start");
-            return Result<WorkerSession>.Success(new(process));
+            await pipe.ConnectAsync(cancellation).ConfigureAwait(false);
+            await WorkerProtocol.WriteAsync(pipe, new SdkPipeAdmission(ProductInfo.WorkerRevision, grant.Capability),
+                null, cancellation).ConfigureAwait(false);
+            var admitted = await WorkerProtocol.ReadAsync<SdkHostStatus>(pipe, cancellation).ConfigureAwait(false);
+            using (admitted.Batch) SdkSessionHostClient.Check(admitted.Message, admitted.Batch is null);
+            return session;
         }
-        catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        catch
         {
-            return new(StatusCode.WorkerLost, null, new(ErrorSource.Worker, StatusCode.WorkerLost,
-                "Could not start the UniversalData Worker"));
+            await session.TerminateAsync().ConfigureAwait(false);
+            throw;
         }
     }
 
     internal async ValueTask<(WorkerResponseFrame Response, WorkerBatchBuffer? Batch)> InvokeAsync(
-        string operation, object? values = null, WorkerBatchBuffer? batch = null, bool mayWrite = false,
-        Func<uint, (WorkerBatchFrame Control, WorkerBatchBuffer? Batch)>? source = null,
-        CancellationToken cancellation = default)
+        string operation, object? values = null, bool mayWrite = false, CancellationToken cancellation = default)
     {
         try { await operations.WaitAsync(cancellation).ConfigureAwait(false); }
         catch (OperationCanceledException) { return Failure(StatusCode.Cancelled, false); }
         bool sent = false;
+        bool timedOut = false;
         try
         {
-            if (Volatile.Read(ref closed) != 0 || process.HasExited)
-                return Failure(StatusCode.WorkerLost, false);
-            if (cancellation.IsCancellationRequested)
-                return Failure(StatusCode.Cancelled, false);
+            if (Volatile.Read(ref closed) != 0) return Failure(StatusCode.WorkerLost, false);
+            if (cancellation.IsCancellationRequested) return Failure(StatusCode.Cancelled, false);
             long id = checked(++sequence);
             var request = new WorkerRequestFrame(ProductInfo.WorkerRevision, id, operation,
-                JsonSerializer.SerializeToElement(values ?? new {}, WorkerProtocol.Json));
+                JsonSerializer.SerializeToElement(values ?? new { }, WorkerProtocol.Json));
+            using var timeout = new CancellationTokenSource(host.Options.ExecutionTimeout);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation, timeout.Token);
             sent = true;
-            await WorkerProtocol.WriteAsync(input, request, batch, cancellation).ConfigureAwait(false);
-            while (true)
+            await WorkerProtocol.WriteAsync(pipe, request, null, deadline.Token).ConfigureAwait(false);
+            var response = WorkerProtocol.ReadAsync<WorkerResponseFrame>(pipe).AsTask();
+            using var waiting = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+            var interrupted = Task.Delay(Timeout.InfiniteTimeSpan, waiting.Token);
+            if (await Task.WhenAny(response, interrupted).ConfigureAwait(false) != response && !response.IsCompleted)
             {
-                var result = await WorkerProtocol.ReadAsync<WorkerResponseFrame>(output, cancellation).ConfigureAwait(false);
-                if (result.Message.Revision != ProductInfo.WorkerRevision || result.Message.Sequence != id)
+                timedOut = timeout.IsCancellationRequested && !cancellation.IsCancellationRequested;
+                using var grace = new CancellationTokenSource(host.Options.CancellationGrace);
+                await WorkerProtocol.WriteAsync(pipe, request with { Operation = "sdk.cancel", Values = defaultValue },
+                    null, grace.Token).ConfigureAwait(false);
+                try { await response.WaitAsync(grace.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (grace.IsCancellationRequested)
                 {
-                    result.Batch?.Dispose();
-                    throw new InvalidDataException("Worker response identity differs");
+                    await TerminateAsync().ConfigureAwait(false);
+                    try { (await response.ConfigureAwait(false)).Batch?.Dispose(); }
+                    catch (Exception error) when (IsTransport(error)) { }
+                    return Failure(timedOut ? StatusCode.Timeout : StatusCode.Cancelled, mayWrite);
                 }
-                if (result.Message.Kind == "result")
-                {
-                    if (result.Batch is not null && (operation != "sql.read" || result.Message.Code != StatusCode.Ok))
-                    {
-                        result.Batch.Dispose();
-                        throw new InvalidDataException("Unexpected Worker result batch");
-                    }
-                    return (result.Message, result.Batch);
-                }
-                if (result.Message.Kind != "input" || source is null || result.Batch is not null ||
-                    result.Message.Capacity == 0)
-                {
-                    result.Batch?.Dispose();
-                    throw new InvalidDataException("Invalid Worker response");
-                }
-                var next = source(result.Message.Capacity);
-                using var transmitted = next.Batch;
-                // Send the cancelled input to the transaction owner and wait for its rollback result.
-                if (next.Control.Code == StatusCode.Cancelled)
-                    cancellation = CancellationToken.None;
-                await WorkerProtocol.WriteAsync(input, next.Control with
-                {
-                    Revision = ProductInfo.WorkerRevision, Sequence = id
-                }, transmitted, cancellation).ConfigureAwait(false);
             }
+            await waiting.CancelAsync().ConfigureAwait(false);
+            var result = await response.ConfigureAwait(false);
+            if (result.Message.Revision != ProductInfo.WorkerRevision || result.Message.Sequence != id ||
+                result.Message.Kind != "result" || result.Batch is not null)
+            {
+                result.Batch?.Dispose();
+                throw new InvalidDataException("SDK Worker response identity or shape differs");
+            }
+            if (timedOut && result.Message.Code == StatusCode.Cancelled)
+                return (result.Message with { Code = StatusCode.Timeout,
+                    Error = new OperationError(ErrorSource.Worker, StatusCode.Timeout, "SDK execution deadline elapsed") }, null);
+            return result;
         }
-        catch (Exception error) when (error is IOException or InvalidDataException or JsonException or OperationCanceledException or InvalidOperationException)
+        catch (Exception error) when (IsTransport(error))
         {
-            var cause = error is OperationCanceledException ? StatusCode.Cancelled :
+            var cause = error is OperationCanceledException ? (timedOut || !cancellation.IsCancellationRequested
+                ? StatusCode.Timeout : StatusCode.Cancelled) :
                 error is InvalidDataException or JsonException ? StatusCode.Protocol : StatusCode.WorkerLost;
-            var failure = Failure(cause, sent && mayWrite);
-            Terminate();
-            return failure;
+            await TerminateAsync().ConfigureAwait(false);
+            return Failure(cause, sent && mayWrite);
         }
         finally { operations.Release(); }
     }
 
+    private static readonly JsonElement defaultValue = JsonSerializer.SerializeToElement<object?>(null, WorkerProtocol.Json);
+
     private (WorkerResponseFrame, WorkerBatchBuffer?) Failure(StatusCode cause, bool uncertain)
     {
-        int? exitCode = process.HasExited ? process.ExitCode : null;
         var error = new OperationError(ErrorSource.Worker, cause, cause switch
         {
-            StatusCode.Cancelled => "Worker operation cancelled",
-            StatusCode.Protocol => "Invalid Worker protocol message",
-            _ => "Worker process stopped responding"
-        }, ExitCode: exitCode);
-        return (new(ProductInfo.WorkerRevision, sequence, "result",
-            uncertain ? StatusCode.CommitUnknown : cause, Error: error), null);
+            StatusCode.Cancelled => "SDK Worker operation cancelled",
+            StatusCode.Timeout => "SDK Worker execution deadline elapsed",
+            StatusCode.Protocol => "Invalid SDK Worker protocol message",
+            _ => "SDK Worker process stopped responding"
+        });
+        return (new(ProductInfo.WorkerRevision, sequence, "result", uncertain ? StatusCode.CommitUnknown : cause, Error: error), null);
     }
 
-    private void Terminate()
+    private static bool IsTransport(Exception error) => error is IOException or InvalidDataException or JsonException or
+        OperationCanceledException or InvalidOperationException;
+
+    private async Task TerminateAsync()
     {
-        if (Interlocked.Exchange(ref closed, 1) == 0 && !process.HasExited)
-            try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
+        if (Interlocked.Exchange(ref closed, 1) != 0) return;
+        await pipe.DisposeAsync().ConfigureAwait(false);
+        await AbortAsync().ConfigureAwait(false);
+    }
+
+    private async Task AbortAsync()
+    {
+        try
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            await using var endpoint = SdkSessionProtocol.Connect(host.Endpoint);
+            await endpoint.ConnectAsync(deadline.Token).ConfigureAwait(false);
+            await WorkerProtocol.WriteAsync(endpoint, new SdkPipeAdmission(ProductInfo.WorkerRevision,
+                host.Capability, "session.abort", grant.Capability), null, deadline.Token).ConfigureAwait(false);
+            var response = await WorkerProtocol.ReadAsync<SdkHostStatus>(endpoint, deadline.Token).ConfigureAwait(false);
+            response.Batch?.Dispose();
+        }
+        catch (Exception error) when (IsTransport(error)) { }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
-            return;
-        await operations.WaitAsync().ConfigureAwait(false);
-        try
+        if (Interlocked.Exchange(ref closed, 1) != 0) return;
+        Process? process;
+        try { process = Process.GetProcessById(ProcessId); }
+        catch (ArgumentException) { process = null; }
+        await pipe.DisposeAsync().ConfigureAwait(false);
+        if (process is null) return;
+        using (process)
         {
-            Terminate();
-            await process.WaitForExitAsync().ConfigureAwait(false);
-            await stderr.ConfigureAwait(false);
-            process.Dispose();
+            using var timeout = new CancellationTokenSource(host.Options.CancellationGrace + TimeSpan.FromSeconds(1));
+            try { await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException)
+            {
+                await AbortAsync().ConfigureAwait(false);
+                using var forced = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                try { await process.WaitForExitAsync(forced.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException)
+                {
+                    throw SdkSessionHostClient.Failure(StatusCode.WorkerLost, "SDK Worker exit could not be confirmed");
+                }
+            }
         }
-        finally { operations.Release(); }
     }
 }

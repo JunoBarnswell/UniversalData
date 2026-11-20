@@ -2,76 +2,129 @@ using System.Text.Json;
 
 namespace UniversalData;
 
-public sealed class EtlClient(EtlClientOptions options)
+/// <summary>Execute and inspect Native Packages using a DataClient Worker lease.</summary>
+public sealed class EtlClient(DataClient client)
 {
-    public ValueTask<Result<EtlRun>> StartAsync(Package package, string parameters = "{}",
-        CancellationToken cancellation = default) => Start(package, parameters, "", Guid.NewGuid().ToString("N"),
-            false, cancellation);
+    public Task<EtlRun> StartAsync(Package package, string parameters = "{}",
+        CancellationToken cancellationToken = default) =>
+        StartNamedAsync(package, parameters, Guid.NewGuid().ToString("N"), cancellationToken);
 
-    public ValueTask<Result<EtlRun>> ResumeAsync(Package package, string executionId, string journalTicket,
-        string parameters = "{}", CancellationToken cancellation = default) =>
-        Start(package, parameters, executionId, journalTicket, true, cancellation);
+    public Task<EtlRun> StartNamedAsync(Package package, string parameters, string id,
+        CancellationToken cancellationToken = default) =>
+        StartAsync((_, _) => Task.FromResult(package), [], parameters, id, Guid.NewGuid().ToString("N"),
+            resume: false, cancellationToken);
 
-    public async ValueTask<Result<JsonElement>> PreviewAsync(Package package, JsonElement pipeline, string component,
+    public Task<EtlRun> ResumeAsync(Package package, string executionId, string journalTicket,
+        string parameters = "{}", CancellationToken cancellationToken = default) =>
+        StartAsync((_, _) => Task.FromResult(package), [], parameters, executionId, journalTicket,
+            resume: true, cancellationToken);
+
+    public async Task<JsonElement> PreviewAsync(Package package, JsonElement pipeline, string component,
         uint sourceRows = 1000, uint sampleRows = 32, string parameters = "{}",
-        CancellationToken cancellation = default)
+        CancellationToken cancellationToken = default)
     {
-        var start = WorkerSession.Start(options.WorkerPath);
-        if (!start.IsSuccess)
-            return new(start.Code, default, start.Error);
-        await using var worker = start.Value!;
-        var result = (await worker.InvokeAsync("etl.preview", new
-        {
-            package = package.ToJson(), options.PolicyFile, options.Tenant,
-            pipeline, component, sourceRows, sampleRows, parameters
-        }, cancellation: cancellation).ConfigureAwait(false)).Response;
-        return new(result.Code, result.Value.GetValueOrDefault(), result.Error);
+        await using var worker = await client.OpenWorkerAsync(cancellationToken).ConfigureAwait(false);
+        return await PreviewAsync(worker, package, pipeline, component, sourceRows, sampleRows, parameters,
+            [], cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<Result<EtlRun>> StartNamedAsync(Package package, string parameters, string id,
-        CancellationToken cancellation = default) =>
-        Start(package, parameters, id, Guid.NewGuid().ToString("N"), false, cancellation);
+    public Task<JsonElement> ExplainAsync(Package package, string parameters = "{}",
+        CancellationToken cancellationToken = default) =>
+        InspectAsync("inspect", package, parameters, null, null, cancellationToken);
 
-    public ValueTask<Result<JsonElement>> ExplainAsync(Package package, string parameters = "{}",
-        CancellationToken cancellation = default) => InspectAsync("inspect", package, parameters, cancellation: cancellation);
-    public ValueTask<Result<JsonElement>> ComponentCatalogAsync(Package package,
-        CancellationToken cancellation = default) => InspectAsync("catalog", package, "{}", cancellation: cancellation);
-    public ValueTask<Result<JsonElement>> InstantiateAsync(Package package,
-        CancellationToken cancellation = default) => InspectAsync("instantiate", package, "{}", cancellation: cancellation);
-    public ValueTask<Result<JsonElement>> DiscoverSchemaAsync(Package package, string connection, string table,
-        CancellationToken cancellation = default) => InspectAsync("discover", package, "{}", connection, table, cancellation);
+    public Task<JsonElement> ComponentCatalogAsync(Package package, CancellationToken cancellationToken = default) =>
+        ComponentCatalogAsync(package, "{}", cancellationToken);
 
-    internal async ValueTask<Result<JsonElement>> InspectAsync(string mode, Package package, string parameters,
-        string? connection = null, string? table = null, CancellationToken cancellation = default)
+    public Task<JsonElement> ComponentCatalogAsync(Package package, string parameters,
+        CancellationToken cancellationToken = default) => InspectAsync("catalog", package, parameters, null, null, cancellationToken);
+
+    public Task<JsonElement> InstantiateAsync(Package package, CancellationToken cancellationToken = default) =>
+        InspectAsync("instantiate", package, "{}", null, null, cancellationToken);
+
+    public Task<JsonElement> DiscoverSchemaAsync(Package package, string connection, string table,
+        CancellationToken cancellationToken = default) =>
+        DiscoverSchemaAsync(package, connection, table, "{}", cancellationToken);
+
+    public Task<JsonElement> DiscoverSchemaAsync(Package package, string connection, string table, string parameters,
+        CancellationToken cancellationToken = default) => InspectAsync("discover", package, parameters, connection, table, cancellationToken);
+
+    private async Task<JsonElement> InspectAsync(string operation, Package package, string parameters,
+        string? connection, string? table, CancellationToken cancellationToken)
     {
-        var start = WorkerSession.Start(options.WorkerPath);
-        if (!start.IsSuccess)
-            return new(start.Code, default, start.Error);
-        await using var worker = start.Value!;
-        var response = (await worker.InvokeAsync("etl." + mode, new
-        {
-            package = package.ToJson(), options.PolicyFile, options.Tenant, parameters, connection, table
-        }, cancellation: cancellation).ConfigureAwait(false)).Response;
-        return new(response.Code, response.Value.GetValueOrDefault(), response.Error);
+        await using var worker = await client.OpenWorkerAsync(cancellationToken).ConfigureAwait(false);
+        return await InspectAsync(worker, operation, package, [], parameters, connection, table,
+            cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<Result<EtlRun>> Start(Package package, string parameters, string id, string ticket,
-        bool resume, CancellationToken cancellation)
+    internal static async Task<JsonElement> InspectAsync(WorkerSession worker, string operation, Package package,
+        SdkSourceBinding[] sources, string parameters, string? connection, string? table,
+        CancellationToken cancellationToken)
     {
-        var start = WorkerSession.Start(options.WorkerPath);
-        if (!start.IsSuccess)
-            return new(start.Code, null, start.Error);
-        var worker = start.Value!;
-        var response = (await worker.InvokeAsync("etl.start", new
+        var response = (await worker.InvokeAsync("etl." + operation, new
         {
-            package = package.ToJson(), options.PolicyFile, options.Tenant, id, ticket, resume, parameters
-        }, mayWrite: true, cancellation: cancellation).ConfigureAwait(false)).Response;
-        if (response.Code == StatusCode.Ok && response.Value is { } opened &&
-            opened.TryGetProperty("id", out var identity) && identity.GetString() is { } executionId)
-            return Result<EtlRun>.Success(new(worker, executionId, ticket));
-        await worker.DisposeAsync().ConfigureAwait(false);
-        return response.Code == StatusCode.Ok
-            ? new(StatusCode.CommitUnknown, null, new(ErrorSource.Worker, StatusCode.Protocol, "Missing execution identity"))
-            : new(response.Code, null, response.Error);
+            package = package.ToJson(), parameters, connection, table, sources
+        }, cancellation: cancellationToken).ConfigureAwait(false)).Response;
+        return Read(response, "Native ETL inspection failed");
+    }
+
+    internal static async Task<JsonElement> PreviewAsync(WorkerSession worker, Package package, JsonElement pipeline,
+        string component, uint sourceRows, uint sampleRows, string parameters, SdkSourceBinding[] sources,
+        CancellationToken cancellationToken)
+    {
+        var response = (await worker.InvokeAsync("etl.preview", new
+        {
+            package = package.ToJson(), pipeline, component, sourceRows, sampleRows, parameters, sources
+        }, cancellation: cancellationToken).ConfigureAwait(false)).Response;
+        return Read(response, "Native ETL preview failed");
+    }
+
+    internal async Task<EtlRun> StartAsync(Func<WorkerSession, CancellationToken, Task<Package>> compile,
+        SdkSourceBinding[] sources, string parameters, string id, string ticket, bool resume,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        if (!Guid.TryParseExact(ticket, "N", out _))
+            throw new ArgumentException("Invalid Native Journal ticket", nameof(ticket));
+        var worker = await client.OpenWorkerAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var package = await compile(worker, cancellationToken).ConfigureAwait(false);
+            var response = (await worker.InvokeAsync("etl.start", new
+            {
+                package = package.ToJson(), id, ticket, resume, parameters, sources
+            }, mayWrite: true, cancellation: cancellationToken).ConfigureAwait(false)).Response;
+            Check(response, "Native ETL start failed", new(id, JournalTicket: ticket));
+            if (response.Value is not { } opened || !opened.TryGetProperty("id", out var identity) ||
+                identity.GetString() != id)
+                throw new DataExecutionException((int)StatusCode.CommitUnknown, "Worker returned another execution identity",
+                    new(id, JournalTicket: ticket), new(ErrorSource.Worker, StatusCode.Protocol, "ETL execution identity differs"));
+            return new(worker, id, ticket);
+        }
+        catch
+        {
+            await worker.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    internal static JsonElement Read(WorkerResponseFrame response, string message)
+    {
+        Check(response, message);
+        return response.Value ?? throw new UniversalDataException((int)StatusCode.Protocol,
+            "Worker returned no ETL result");
+    }
+
+    internal static void Check(WorkerResponseFrame response, string message, DataRunReference? run = null,
+        ExecutionMetrics? metrics = null)
+    {
+        if (response.Code == StatusCode.Ok) return;
+        var description = $"{message} ({response.Code})";
+        if (run is not null)
+        {
+            var code = response.Code is StatusCode.WorkerLost or StatusCode.Protocol ? StatusCode.CommitUnknown :
+                response.Code;
+            throw new DataExecutionException((int)code, description, run, response.Error) { Metrics = metrics };
+        }
+        throw new UniversalDataException((int)response.Code, description, response.Error);
     }
 }

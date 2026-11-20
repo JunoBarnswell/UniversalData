@@ -12,6 +12,20 @@ public static class WorkerProtocol
     internal const int MaximumControlBytes = 64 * 1024 * 1024;
     internal const int MaximumBatchBytes = 64 * 1024 * 1024;
 
+    internal static async Task<int> ReadProcessIdAsync(TextReader output, CancellationToken cancellation)
+    {
+        var message = await ReadLine(output, 1024, cancellation).ConfigureAwait(false)
+            ?? throw new IOException("Worker exited before reporting process readiness");
+        using var document = JsonDocument.Parse(message);
+        var hello = document.RootElement;
+        if (hello.GetProperty("kind").GetString() != "hello" ||
+            hello.GetProperty("version").GetInt32() != ProductInfo.Protocol ||
+            hello.GetProperty("contractRevision").GetInt32() != ProductInfo.WorkerRevision ||
+            hello.GetProperty("processId").GetInt32() is not (> 0 and var pid))
+            throw new InvalidDataException("Incompatible Worker process handshake");
+        return pid;
+    }
+
     internal static async ValueTask WriteAsync<T>(Stream output, T control, WorkerBatchBuffer? batch,
         CancellationToken cancellation = default)
     {

@@ -11,6 +11,7 @@ typedef struct standalone_connection {
 
 struct ud_sql_session {
     ud_execution *execution;
+    ud_activation *activation;
     ud_mutex lease_lock;
     ud_connection_lease *lease;
     ud_string connection;
@@ -22,9 +23,22 @@ struct ud_sql_session {
     int32_t dialect;
     int transaction;
     int rollback_only;
+    int enlisted;
     int auto_close;
     int writing;
 };
+
+static void clear_query(ud_sql_session *);
+
+static void borrowed_lease_ended(void *user) {
+    ud_sql_session *session = user;
+    ud_mutex_lock(&session->lease_lock);
+    session->lease = NULL;
+    session->activation = NULL;
+    session->cursor = 0;
+    clear_query(session);
+    ud_mutex_unlock(&session->lease_lock);
+}
 
 static ud_status authorize_standalone(void *user, ud_string tenant, ud_string resource,
                                      int32_t action) {
@@ -69,9 +83,14 @@ static void standalone_destroy(standalone_connection *connection) {
 static ud_status acquire_lease(ud_sql_session *session) {
     if (session->lease)
         return UD_OK;
+    if (session->enlisted && !session->activation)
+        return UD_FENCED;
     ud_connection_lease *lease = NULL;
-    ud_status status = ud_activation_acquire_connection(&session->execution->root,
-        session->connection, UD_CONNECT_READ, &lease);
+    ud_status status = session->enlisted
+        ? ud_transaction_sql_lease(session->activation, session->connection, session,
+                                   borrowed_lease_ended, &lease)
+        : ud_activation_acquire_connection(&session->execution->root, session->connection,
+                                           UD_CONNECT_READ, &lease);
     if (status)
         return status;
     int32_t dialect = ud_connection_lease_dialect(lease);
@@ -111,18 +130,21 @@ ud_status ud_sql_session_set_auto_close(ud_sql_session *session, int32_t enabled
         return UD_INVALID;
     if (session->writing)
         return UD_BUSY;
+    if (session->enlisted && enabled)
+        return UD_UNSUPPORTED;
     session->auto_close = enabled;
     return release_idle(session);
 }
 
-ud_status ud_execution_sql_session_open(ud_execution *e, ud_string connection,
-                                         ud_sql_session **out) {
+static ud_status open_session(ud_execution *e, ud_activation *activation, ud_string connection,
+                              ud_sql_session **out) {
     if (!e || !out || !connection.data || !connection.length ||
         memchr(connection.data, 0, connection.length))
         return UD_INVALID;
     *out = NULL;
     ud_mutex_lock(&e->events_lock);
-    if (atomic_load(&e->state) != UD_EXEC_READY || e->sql_sessions == UINT32_MAX) {
+    int state = activation ? UD_EXEC_RUNNING : UD_EXEC_READY;
+    if (atomic_load(&e->state) != state || e->sql_sessions == UINT32_MAX) {
         ud_mutex_unlock(&e->events_lock);
         return UD_BUSY;
     }
@@ -131,7 +153,8 @@ ud_status ud_execution_sql_session_open(ud_execution *e, ud_string connection,
     ud_sql_session *session = ud_alloc(e->ctx, sizeof(*session));
     ud_status status = session ? UD_OK : UD_RESOURCE;
     if (!status) {
-        *session = (ud_sql_session){.execution = e};
+        *session = (ud_sql_session){.execution = e, .activation = activation,
+                                    .enlisted = activation != NULL};
         ud_mutex_init(&session->lease_lock);
         char *id = ud_strdup_n(e->ctx, connection.data, connection.length);
         if (!id)
@@ -155,6 +178,22 @@ ud_status ud_execution_sql_session_open(ud_execution *e, ud_string connection,
         ud_mutex_unlock(&e->events_lock);
     }
     return status;
+}
+
+ud_status ud_execution_sql_session_open(ud_execution *e, ud_string connection,
+                                         ud_sql_session **out) {
+    return open_session(e, NULL, connection, out);
+}
+
+ud_status ud_activation_sql_session_open(ud_activation *activation, ud_string connection,
+                                         ud_sql_session **out) {
+    if (!out)
+        return UD_INVALID;
+    *out = NULL;
+    if (!ud_transaction_active(activation))
+        return UD_UNSUPPORTED;
+    UD_TRY(ud_activation_check(activation));
+    return open_session(activation->execution, activation, connection, out);
 }
 
 ud_status ud_sql_session_open(int32_t dialect, ud_string plugin_path, ud_string connection_string,
@@ -237,6 +276,15 @@ static void clear_query(ud_sql_session *session) {
     session->query_arguments = session->query_schema = NULL;
 }
 
+static void mark_failed(ud_sql_session *session, ud_status status) {
+    if (!status || status == UD_END || status == UD_BUSY)
+        return;
+    if (session->enlisted)
+        ud_transaction_sql_failed(session->activation, status);
+    else if (session->transaction)
+        session->rollback_only = 1;
+}
+
 ud_status ud_sql_session_read_open(ud_sql_session *session, ud_string sql, ud_string query_json,
                                    ud_string schema_json, const ud_batch *parameters,
                                    uint32_t batch_rows, int32_t result_mode, ud_batch **shape) {
@@ -245,8 +293,10 @@ ud_status ud_sql_session_read_open(ud_sql_session *session, ud_string sql, ud_st
         (!schema_json.length && (query_json.length || result_mode == UD_READ_TYPED)))
         return UD_INVALID;
     *shape = NULL;
-    if (session->cursor || session->writing)
+    if (session->cursor || session->writing || session->rollback_only)
         return UD_BUSY;
+    if ((session->enlisted || session->transaction) && sql.length)
+        UD_TRY(ud_sql_validate_read_query(sql));
     if (batch_rows > session->execution->options.max_batch_rows)
         batch_rows = session->execution->options.max_batch_rows;
     UD_TRY(acquire_lease(session));
@@ -270,6 +320,7 @@ ud_status ud_sql_session_read_open(ud_sql_session *session, ud_string sql, ud_st
                                 .sql = session->query, .parameters = session->query_arguments,
                                 .result_mode = result_mode, .result_schema = shape};
         status = ud_connection_lease_read_open(session->lease, &read, session->query_schema);
+        mark_failed(session, status);
     }
     if (!status)
         session->cursor = 1;
@@ -295,7 +346,9 @@ ud_status ud_sql_session_read_next(ud_sql_session *session, ud_batch **out) {
     *out = NULL;
     if (!session || !session->cursor)
         return UD_INVALID;
-    return ud_connection_lease_read_next(session->lease, out);
+    ud_status status = ud_connection_lease_read_next(session->lease, out);
+    mark_failed(session, status);
+    return status;
 }
 
 ud_status ud_sql_session_read_close(ud_sql_session *session) {
@@ -304,6 +357,7 @@ ud_status ud_sql_session_read_close(ud_sql_session *session) {
     if (!session->cursor)
         return UD_OK;
     ud_status status = ud_connection_lease_read_close(session->lease);
+    mark_failed(session, status);
     if (!status) {
         session->cursor = 0;
         clear_query(session);
@@ -321,7 +375,7 @@ ud_status ud_sql_session_execute(ud_sql_session *session, ud_string sql,
         return UD_BUSY;
     ud_string statement = {0};
     ud_batch *arguments = NULL;
-    UD_TRY(ud_sql_validate_session_command(sql, session->transaction));
+    UD_TRY(ud_sql_validate_session_command(sql, session->transaction || session->enlisted));
     UD_TRY(acquire_lease(session));
     ud_status status = ud_sql_bind_command(session->execution->ctx,
         ud_connection_lease_dialect(session->lease),
@@ -330,8 +384,7 @@ ud_status ud_sql_session_execute(ud_sql_session *session, ud_string sql,
         ud_read_options command = {.struct_size = sizeof(command), .abi_version = UD_ABI_VERSION,
                                    .sql = statement, .parameters = arguments};
         status = ud_connection_lease_execute_command(session->lease, &command, affected);
-        if (status && session->transaction)
-            session->rollback_only = 1;
+        mark_failed(session, status);
     }
     if (status)
         *affected = 0;
@@ -350,14 +403,16 @@ static ud_status session_write(ud_sql_session *session, int32_t mode, int32_t lo
     *affected = 0;
     if (session->cursor || session->rollback_only)
         return UD_BUSY;
+    if (session->enlisted && load_mode == UD_LOAD_NATIVE)
+        return UD_UNSUPPORTED;
     UD_TRY(acquire_lease(session));
     ud_write_options write = {
         .struct_size = sizeof(write), .abi_version = UD_ABI_VERSION, .mode = mode, .table = table,
-        .keys = keys, .key_count = key_count, .current_column = UINT32_MAX, .load_mode = load_mode,
+        .keys = keys, .key_count = key_count, .current_column = UINT32_MAX,
+        .load_mode = session->enlisted ? UD_LOAD_PARAMETERS : load_mode,
         .delivery = UD_DELIVERY_RESPONSE, .chunk_rows = chunk_rows, .affected_rows = affected};
     ud_status status = ud_connection_lease_write(session->lease, &write, batch);
-    if (status && session->transaction)
-        session->rollback_only = 1;
+    mark_failed(session, status);
     (void)release_idle(session);
     return status;
 }
@@ -365,6 +420,8 @@ static ud_status session_write(ud_sql_session *session, int32_t mode, int32_t lo
 static ud_status session_transaction(ud_sql_session *session, int32_t operation, int32_t isolation) {
     if (!session || operation < UD_SQL_SESSION_BEGIN || operation > UD_SQL_SESSION_ROLLBACK)
         return UD_INVALID;
+    if (session->enlisted)
+        return UD_UNSUPPORTED;
     if (operation == UD_SQL_SESSION_BEGIN && session->transaction)
         return UD_BUSY;
     if (operation != UD_SQL_SESSION_BEGIN && !session->transaction)
@@ -415,6 +472,10 @@ ud_status ud_sql_session_write_stream(ud_sql_session *session, int32_t mode, int
     *affected = 0;
     if (session->writing || session->cursor || session->rollback_only)
         return UD_BUSY;
+    if (session->enlisted && load_mode == UD_LOAD_NATIVE)
+        return UD_UNSUPPORTED;
+    if (session->enlisted)
+        UD_TRY(acquire_lease(session));
     uint32_t capacity = session->execution->options.max_batch_rows;
     if (capacity > chunk_rows)
         capacity = chunk_rows;
@@ -427,7 +488,7 @@ ud_status ud_sql_session_write_stream(ud_sql_session *session, int32_t mode, int
     if (status == UD_END)
         status = UD_OK;
     else if (!status) {
-        if (!last && !session->transaction) {
+        if (!last && !session->transaction && !session->enlisted) {
             int32_t isolation =
                 session->dialect == UD_SQL_SQLITE || session->dialect == UD_SQL_MYSQL ||
                         session->dialect == UD_SQL_MARIADB
@@ -462,8 +523,8 @@ ud_status ud_sql_session_write_stream(ud_sql_session *session, int32_t mode, int
         if (status && own && status != UD_COMMIT_UNKNOWN) {
             if (session_transaction(session, UD_SQL_SESSION_ROLLBACK, 0))
                 status = UD_COMMIT_UNKNOWN;
-        } else if (status && attempted && session->transaction)
-            session->rollback_only = 1;
+        } else if (status && attempted)
+            mark_failed(session, status);
     }
     session->writing = 0;
     if (!status)
@@ -475,6 +536,8 @@ void ud_sql_session_cancel(ud_sql_session *session) {
     if (!session)
         return;
     ud_mutex_lock(&session->lease_lock);
+    if (session->lease && session->enlisted)
+        mark_failed(session, UD_CANCELLED);
     ud_connection_lease_cancel(session->lease);
     ud_mutex_unlock(&session->lease_lock);
 }

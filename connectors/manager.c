@@ -40,6 +40,7 @@ struct ud_transaction {
     char identity[65];
     uint64_t attempt, fact_order;
     int completed;
+    ud_status sql_failure;
     char scope_identity[65];
     uint64_t pending_rows, pending_errors;
     uint64_t pending_tasks;
@@ -54,8 +55,11 @@ struct ud_connection_lease {
     ud_http_oauth_cache oauth;
     ud_connection *connection;
     uint64_t capabilities;
-    uint32_t pins;
-    int cancelled, shared, read_only, cleanup, messaging;
+    uint32_t pins, aliases;
+    int cancelled, shared, exclusive_sql, sql_borrowed, sql_transaction, read_only, cleanup, messaging;
+    struct ud_connection_lease *shared_owner;
+    void *sql_session;
+    void (*sql_session_ended)(void *);
     struct ud_connection_lease *next;
 };
 static int network_driver(ud_string driver) {
@@ -466,6 +470,8 @@ static ud_status relative_file_definition(ud_context *memory, ud_json **definiti
     ud_bytes_clear(&json);
     return status;
 }
+enum { CONNECTION_ATOMIC_SQL = 5 };
+
 static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps, int kind,
                                   ud_string relative, ud_connection_lease **out) {
     if (!out)
@@ -503,7 +509,9 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
                     (kind == 2 && !ud_named(l->driver, "process")) ||
                     (kind == 3 && !ud_named(l->driver, "http"))))
         status = UD_UNSUPPORTED;
-    if (!status && kind == 4) {
+    if (!status && kind == CONNECTION_ATOMIC_SQL && !ud_transaction_active(a)) {
+        status = UD_UNSUPPORTED;
+    } else if (!status && kind == 4) {
         l->capabilities = 0;
     } else if (!status && a->transaction) {
         ud_connection_lease *owned = NULL;
@@ -512,7 +520,7 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
                 owned = a->transaction->participants[index].lease;
         if (caps & UD_CONNECT_NATIVE_CDC)
             owned = NULL; /* Replication cursors own a dedicated read session. */
-        if (!owned && (caps & UD_CONNECT_READ) &&
+        if (kind != CONNECTION_ATOMIC_SQL && !owned && (caps & UD_CONNECT_READ) &&
             !(caps & (UD_CONNECT_APPEND | UD_CONNECT_UPSERT | UD_CONNECT_DELETE |
                       UD_CONNECT_EXECUTE_SQL | UD_CONNECT_CHANGESET))) {
             l->read_only = 1;
@@ -526,9 +534,23 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
                    !ud_same(owned->driver, l->driver) || (owned->capabilities & caps) != caps)
             status = UD_UNSUPPORTED;
         else {
-            l->shared = 1;
-            l->connection = owned->connection;
-            l->capabilities = owned->capabilities;
+            struct ud_connection_manager *manager = a->execution->connections;
+            ud_mutex_lock(&manager->mutex);
+            if (owned->cancelled)
+                status = UD_CANCELLED;
+            else if (owned->sql_borrowed || owned->aliases == UINT32_MAX ||
+                     (kind == CONNECTION_ATOMIC_SQL && owned->aliases))
+                status = UD_BUSY;
+            else {
+                owned->aliases++;
+                l->shared = 1;
+                l->exclusive_sql = kind == CONNECTION_ATOMIC_SQL;
+                owned->sql_borrowed = l->exclusive_sql;
+                l->shared_owner = owned;
+                l->connection = owned->connection;
+                l->capabilities = owned->capabilities;
+            }
+            ud_mutex_unlock(&manager->mutex);
         }
     } else if (!status && ud_named(l->driver, "http")) {
 #ifdef UD_WITH_HTTP
@@ -581,6 +603,13 @@ ud_status ud_activation_acquire_file_resource(ud_activation *activation, ud_stri
 ud_status ud_activation_acquire_connection(ud_activation *a, ud_string id, uint64_t caps,
                                            ud_connection_lease **out) {
     return acquire(a, id, caps, 0, out);
+}
+ud_status ud_transaction_sql_lease(ud_activation *activation, ud_string connection,
+                                   void *session, void (*ended)(void *), ud_connection_lease **out) {
+    UD_TRY(acquire(activation, connection, UD_CONNECT_READ, CONNECTION_ATOMIC_SQL, out));
+    (*out)->sql_session = session;
+    (*out)->sql_session_ended = ended;
+    return UD_OK;
 }
 ud_status ud_activation_acquire_grant(ud_activation *a, ud_string id, ud_connection_lease **out) {
     return acquire(a, id, 0, 4, out);
@@ -856,7 +885,10 @@ ud_status ud_connection_lease_execute_command(ud_connection_lease *l,
     if (!l || !l->connection)
         return UD_UNSUPPORTED;
     UD_TRY(lease_operation_begin(l, UD_ACCESS_WRITE));
-    return lease_operation_end(l, ud_connection_execute_command(l->connection, options, processed));
+    ud_status status = l->exclusive_sql || l->sql_transaction
+                           ? ud_connection_execute_transactional_command(l->connection, options, processed)
+                           : ud_connection_execute_command(l->connection, options, processed);
+    return lease_operation_end(l, status);
 }
 ud_status ud_connection_lease_execute_record(ud_connection_lease *lease,
                                              const ud_read_options *options,
@@ -972,11 +1004,15 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
         return UD_OK;
     struct ud_connection_manager *m = l->activation->execution->connections;
     ud_mutex_lock(&m->mutex);
+    if (l->aliases) {
+        ud_mutex_unlock(&m->mutex);
+        return UD_BUSY;
+    }
     while (l->pins)
         ud_condition_wait(&m->changed, &m->mutex);
     ud_mutex_unlock(&m->mutex);
     session *s = l->session;
-    ud_status status = UD_OK;
+    ud_status status = l->exclusive_sql ? ud_connection_lease_read_close(l) : UD_OK;
     if (s && s->connection) {
         status = ud_connection_read_close(s->connection);
         if (!status) {
@@ -997,6 +1033,11 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
     if (*at) {
         *at = l->next;
         m->active--;
+    }
+    if (l->shared_owner) {
+        l->shared_owner->aliases--;
+        if (l->exclusive_sql)
+            l->shared_owner->sql_borrowed = 0;
     }
     int retiring = 0;
     if (s) {
@@ -1030,6 +1071,8 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
                 status = disposed;
         }
     }
+    if (l->sql_session_ended)
+        l->sql_session_ended(l->sql_session);
     ud_rest_target_close(l->rest);
     ud_http_clear_secret(&l->oauth.token);
     ud_json_destroy(l->definition);
@@ -1043,16 +1086,23 @@ ud_status ud_connection_lease_sql_transaction(ud_connection_lease *lease, int32_
         return UD_UNSUPPORTED;
     if (operation == UD_SQL_SESSION_ROLLBACK) {
         UD_TRY(ud_connection_operation_begin(lease->connection, lease, session_grant, NULL));
-        return lease_operation_end(lease, ud_connection_rollback(lease->connection));
+        ud_status status = ud_connection_rollback(lease->connection);
+        if (!status)
+            lease->sql_transaction = 0;
+        return lease_operation_end(lease, status);
     }
     UD_TRY(lease_operation_begin(lease, UD_ACCESS_WRITE));
     ud_status status = operation == UD_SQL_SESSION_BEGIN
                        ? ud_connection_begin(lease->connection, isolation)
                        : ud_connection_commit(lease->connection);
+    if (!status)
+        lease->sql_transaction = operation == UD_SQL_SESSION_BEGIN;
     return lease_operation_end(lease, status);
 }
 
 void ud_connection_lease_cancel(ud_connection_lease *lease) {
+    if (lease && lease->exclusive_sql)
+        lease = lease->shared_owner;
     if (!lease || !lease->connection || lease->shared)
         return;
     struct ud_connection_manager *manager = lease->activation->execution->connections;
@@ -1153,6 +1203,15 @@ ud_status ud_connections_diagnostics(ud_execution *e, ud_bytes *b) {
 }
 int ud_transaction_active(const ud_activation *activation) {
     return activation && activation->transaction && !activation->transaction->completed;
+}
+void ud_transaction_sql_failed(ud_activation *activation, ud_status status) {
+    if (!ud_transaction_active(activation) || !status || status == UD_END || status == UD_BUSY)
+        return;
+    struct ud_connection_manager *manager = activation->execution->connections;
+    ud_mutex_lock(&manager->mutex);
+    if (!activation->transaction->sql_failure)
+        activation->transaction->sql_failure = status;
+    ud_mutex_unlock(&manager->mutex);
 }
 ud_status ud_transaction_resource_validate(const ud_activation *activation, ud_string connection) {
     if (!activation || !activation->transaction_serial)
@@ -1452,6 +1511,21 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
     ud_status status = transaction->participants
                            ? ud_activation_scope_identity(activation, transaction->scope_identity)
                            : UD_RESOURCE;
+    char *saved = NULL;
+    uint32_t saved_length = 0;
+    ud_status found =
+        !status ? ud_checkpoint_transaction_read(activation, UD_TX_JOURNAL_MANIFEST,
+                                                 (ud_string){transaction->scope_identity, 64},
+                                                 &saved, &saved_length)
+                : UD_END;
+    if (!status && found != UD_END && found)
+        status = found;
+    if (activation->execution->transaction_recovery_only && !status && found == UD_END) {
+        status = transaction_release(transaction);
+        if (!status)
+            activation->execution->transaction_recovery_decision = 0;
+        return status;
+    }
     for (uint32_t index = 0; !status && index < count; index++) {
         transaction_participant *participant = transaction->participants + index;
         status = ud_json_string(ud_json_at(participants, index), &participant->connection);
@@ -1464,17 +1538,9 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
                 UD_CONNECT_TRANSACTION | UD_CONNECT_TRANSACTION_PARTICIPANT, &participant->lease);
     }
     /* Capability-check the complete set before provisioning or starting a branch. */
-    for (uint32_t index = 0; !status && provision && index < count; index++)
-        status = ud_connection_lease_provision(transaction->participants[index].lease);
-    char *saved = NULL;
-    uint32_t saved_length = 0;
-    ud_status found =
-        !status ? ud_checkpoint_transaction_read(activation, UD_TX_JOURNAL_MANIFEST,
-                                                 (ud_string){transaction->scope_identity, 64},
-                                                 &saved, &saved_length)
-                : UD_END;
-    if (!status && found != UD_END && found)
-        status = found;
+    if (provision && !activation->execution->transaction_recovery_only)
+        for (uint32_t index = 0; !status && index < count; index++)
+            status = ud_connection_lease_provision(transaction->participants[index].lease);
     if (!status && !found) {
         ud_json *manifest = NULL;
         status = ud_json_parse(activation->execution->ctx, saved, saved_length, &manifest, NULL);
@@ -1530,13 +1596,24 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
             status = transaction_resolve_all(transaction, decision);
         else if (!status)
             transaction->completed = 1;
+        if (status || activation->execution->transaction_recovery_only) {
+            /* An existing decision always dominates a failed rebind or scan. */
+            ud_status released = transaction_release(transaction);
+            ud_free(saved);
+            if (!status && !released)
+                activation->execution->transaction_recovery_decision = decision;
+            return status ? status : released;
+        }
         if (!status && decision == UD_TX_COMMIT && !activation->transaction_epoch) {
             activation->transaction = transaction;
             ud_free(saved);
             return UD_OK;
         }
-        if (!status && transaction->attempt == UINT64_MAX)
-            status = UD_RESOURCE;
+        if (transaction->attempt == UINT64_MAX) {
+            (void)transaction_release(transaction);
+            ud_free(saved);
+            return UD_RESOURCE;
+        }
         if (!status) {
             transaction->attempt++;
             transaction->completed = 0;
@@ -1547,6 +1624,15 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
     ud_free(saved);
     if (!status)
         status = transaction_identity(transaction);
+    /* Prove branch recovery and the installed receipts before journaling an attempt. */
+    for (uint32_t index = 0; !status && index < count; index++) {
+        transaction_participant *participant = transaction->participants + index;
+        int32_t state = UD_TX_UNKNOWN;
+        status = ud_connection_transaction_recover(participant->lease->connection,
+                                                    &participant->branch, &state);
+        if (!status && state != UD_TX_NOT_FOUND)
+            status = UD_FENCED;
+    }
     char *manifest = NULL;
     uint32_t length = 0;
     if (!status)
@@ -1558,10 +1644,10 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
     ud_free(manifest);
     for (uint32_t index = 0; !status && index < count; index++) {
         transaction_participant *participant = transaction->participants + index;
+        /* A failed response does not prove that the participant did not begin. */
+        participant->begun = 1;
         status =
             ud_connection_transaction_begin(participant->lease->connection, &participant->branch);
-        if (!status)
-            participant->begun = 1;
     }
     if (status) {
         int any_begun = 0;
@@ -1584,6 +1670,11 @@ ud_status ud_transaction_leave(ud_activation *activation, ud_status outcome) {
     struct ud_transaction *transaction = activation->transaction;
     if (!transaction || transaction->owner != activation)
         return outcome;
+    struct ud_connection_manager *manager = activation->execution->connections;
+    ud_mutex_lock(&manager->mutex);
+    if (!outcome)
+        outcome = transaction->sql_failure;
+    ud_mutex_unlock(&manager->mutex);
     ud_status status = UD_OK;
     if (!transaction->completed) {
         for (uint32_t index = 0; !outcome && index < transaction->count; index++) {
@@ -1593,6 +1684,8 @@ ud_status ud_transaction_leave(ud_activation *activation, ud_status outcome) {
             if (prepared)
                 outcome = prepared;
         }
+        if (!outcome)
+            outcome = ud_activation_check(activation);
         int decision = outcome ? UD_TX_ROLLBACK : UD_TX_COMMIT;
         status = transaction_record_decision(transaction, decision);
         if (!status)
@@ -1610,7 +1703,6 @@ ud_status ud_transaction_leave(ud_activation *activation, ud_status outcome) {
         } else if (status)
             ud_rule_delivered(activation, transaction->delivery, 2);
     }
-    struct ud_connection_manager *manager = activation->execution->connections;
     ud_mutex_lock(&manager->mutex);
     if (status)
         manager->uncertain++;

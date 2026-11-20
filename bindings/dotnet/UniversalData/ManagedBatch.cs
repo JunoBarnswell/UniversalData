@@ -1,5 +1,4 @@
 using System.Text.Json;
-using SqlSugar;
 
 namespace UniversalData;
 
@@ -34,7 +33,9 @@ public sealed class ManagedBatch : IDisposable
     public void Dispose() { if (pointer == IntPtr.Zero) return; if (owned) { lifetime.Open(); Native.ud_batch_destroy(pointer); lifetime.Release(this); } pointer = IntPtr.Zero; }
 
     /// <summary>Map Native columnar rows to strong entities without a JSON row round-trip.</summary>
-    public IReadOnlyList<T> ToEntities<T>()
+    public IReadOnlyList<T> ToEntities<T>() => EnumerateEntities<T>().ToArray();
+
+    internal IEnumerable<T> EnumerateEntities<T>()
     {
         var mapping = EntityMapping.For<T>();
         using var schema = JsonDocument.Parse(SchemaJson);
@@ -48,7 +49,6 @@ public sealed class ManagedBatch : IDisposable
                 selected.Add((member, checked((uint)ordinal)));
         var count = Rows;
         var input = Pointer;
-        var result = new List<T>(checked((int)count));
         for (uint row = 0; row < count; row++)
         {
             object entity = Activator.CreateInstance<T>()!;
@@ -57,8 +57,7 @@ public sealed class ManagedBatch : IDisposable
                 Check(Native.ud_batch_get_raw(input, row, ordinal, out var value));
                 member.Set(entity, SqlValueCodec.ReadValue(value, member.ValueType, member.ColumnName));
             }
-            result.Add((T)entity);
+            yield return (T)entity;
         }
-        return result;
     }
 }

@@ -20,6 +20,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
     private readonly List<Slot> slots = [];
     private readonly string path;
     private readonly string? settingsPath;
+    private readonly bool enforceOrdinaryLimits;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Task upkeep;
     private WorkerSupervisorSettings settings;
@@ -32,15 +33,16 @@ public sealed class WorkerSupervisor : IAsyncDisposable
     private bool closing;
 
     public WorkerSupervisor(string workerPath, uint maxProcesses, uint maxCpu, ulong maxMemoryBytes,
-        ulong nativeMemoryBytes, string? configurationPath = null)
+        ulong nativeMemoryBytes, string? configurationPath = null, bool enforceOrdinaryLimits = false, int initialPrewarm = 1)
     {
         path = Path.GetFullPath(workerPath);
         settingsPath = configurationPath is null ? null : Path.GetFullPath(configurationPath);
+        this.enforceOrdinaryLimits = enforceOrdinaryLimits;
         MaxProcesses = maxProcesses;
         MaxCpu = maxCpu;
         MaxMemoryBytes = maxMemoryBytes;
         OrdinaryBudget = new(1, nativeMemoryBytes, checked(nativeMemoryBytes + ProcessOverhead), 1);
-        settings = new();
+        settings = new(Prewarm: initialPrewarm);
         if (settingsPath is not null)
             settings = ReadSettings(out loadedSettings);
         settings.Validate(maxProcesses);
@@ -229,7 +231,8 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         {
             using var startup = CancellationTokenSource.CreateLinkedTokenSource(slot.Retiring.Token);
             startup.CancelAfter(TimeSpan.FromSeconds(15));
-            process = WorkerLauncher.Launch(path, slot.Key, request?.Budget, request);
+            var budget = request?.Budget ?? (enforceOrdinaryLimits ? slot.Charge : null);
+            process = WorkerLauncher.Launch(path, slot.Key, budget, request);
             slot.Process = process;
             stderr = WorkerProtocol.Discard(process.StandardError, CancellationToken.None);
             int pid = await WorkerLauncher.WaitReady(process, startup.Token);
@@ -360,6 +363,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         private Task? drain;
         internal Process Process { get; } = process;
         internal int ProcessId => slot.ProcessId;
+        internal Task TerminateAsync() => WorkerLauncher.Terminate(Process, slot.Key, slot.Isolated);
         internal async Task SendAsync(string command, CancellationToken cancellation)
         {
             await commands.WaitAsync(cancellation);
@@ -391,7 +395,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
             }
             catch (Exception error) when (error is IOException or OperationCanceledException or InvalidOperationException)
             {
-                if (!Process.HasExited) await WorkerLauncher.Terminate(Process, slot.Key, slot.Isolated);
+                if (!Process.HasExited) await TerminateAsync();
             }
         }
         public async ValueTask DisposeAsync()

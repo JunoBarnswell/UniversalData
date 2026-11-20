@@ -3,6 +3,8 @@ using System.Globalization;
 using System.Text.Json;
 using ManagedSqlAcceptance;
 using SqlSugar;
+using UniversalData;
+using static ManagedSqlAcceptance.SqlAcceptance;
 
 if (args is ["--worker-failure", var connectionFile, var plugin])
 {
@@ -19,22 +21,14 @@ if (args.Length == 0 || args.Contains("--help", StringComparer.OrdinalIgnoreCase
 var options = ManagedSqlOptions.Parse(args);
 if (args.Contains("--stream-copy", StringComparer.Ordinal))
 {
-    ManagedSqlStreamScale.Run(options);
+    await ManagedSqlStreamScale.RunAsync(options);
     return 0;
 }
-var config = new ConnectionConfig
-{
-    DbType = options.Provider,
-    ConnectionString = options.ConnectionString,
-    PluginPath = options.PluginPath,
-    ReadBatchSize = checked((uint)options.BatchSize),
-    WriteChunkRows = checked((uint)options.BatchSize)
-};
-using var client = SqlAcceptance.OpenClient(config);
+using var client = SqlNative.Open(options.Provider, Path.GetFullPath(options.PluginPath), options.ConnectionString);
 if (options.SetupSqlPath is not null)
-    client.Ado.ExecuteCommand(File.ReadAllText(options.SetupSqlPath)).Require();
+    Execute(client, File.ReadAllText(options.SetupSqlPath));
 
-client.Ado.ExecuteCommand(options.CreateTableSql()).Require();
+Execute(client, options.CreateTableSql());
 try
 {
     using var process = Process.GetCurrentProcess();
@@ -42,18 +36,18 @@ try
     var cpuBefore = process.TotalProcessorTime;
     var stopwatch = Stopwatch.StartNew();
     var inserted = 0;
-    client.Ado.BeginTran().Require();
+    Transaction(client, SqlNative.TransactionBegin);
     try
     {
         foreach (var rows in StreamRows(options.RowCount, options.BatchSize))
         {
-            inserted += client.Insertable(rows).ExecuteCommand().Require();
+            inserted += WriteRows(client, SqlNative.WriteAppend, rows, options.BatchSize);
         }
-        client.Ado.CommitTran().Require();
+        Transaction(client, SqlNative.TransactionCommit);
     }
     catch
     {
-        client.Ado.RollbackTran().Require();
+        Transaction(client, SqlNative.TransactionRollback);
         throw;
     }
     var streamed = 0;
@@ -64,55 +58,56 @@ try
     var streamStarted = Stopwatch.StartNew();
     var previousBatch = TimeSpan.Zero;
     ulong readSignature = 0;
-    var ordered = client.Queryable<ManagedSqlOrder>()
-        .Where(order => order.Id > 0)
-        .OrderBy(order => (object)order.Id, OrderByType.Asc);
-    foreach (var batch in ordered.ToBatches(options.BatchSize))
+    var table = options.QuotedTable();
+    var id = options.QuotedColumn("Id");
+    var columns = options.QuotedColumns();
+    var prefix = $"SELECT {columns} FROM {table}";
+    var ordered = $"{prefix} WHERE {id} > 0 ORDER BY {id}";
+    foreach (var batch in ReadBatches<ManagedSqlOrder>(client, ordered, options.BatchSize))
     {
         var elapsed = streamStarted.Elapsed;
         if (streamed == 0) { firstBatchObserved = true; firstBatchLatency = elapsed; }
-        if (batch.Count > options.BatchSize)
+        if (batch.Length > options.BatchSize)
             throw new InvalidOperationException("The returned batch exceeds the configured batch size.");
         fetchTimings.Add((elapsed - previousBatch).TotalMilliseconds);
-        streamed += batch.Count;
+        streamed += batch.Length;
         foreach (var row in batch)
             readSignature = unchecked(readSignature * 1099511628211UL + (ulong)row.Id);
         previousBatch = streamStarted.Elapsed;
     }
     streamStarted.Stop();
     var streamAllocated = GC.GetAllocatedBytesForCurrentThread() - readAllocatedBefore;
-    var page = ordered.ToPageList(1, Math.Min(options.BatchSize, options.RowCount)).Require();
-    var afterPage = options.BenchmarkPath is null ? ordered.ToList().Require().Count : options.RowCount;
-    var descending = client.Queryable<ManagedSqlOrder>().OrderByDescending(order => (object)order.Id).ToPageList(1, 1).Require();
-    if (page.Count == 0 || afterPage != options.RowCount || descending.Count != 1 || descending[0].Id != options.RowCount)
-        throw new InvalidOperationException("Stable pagination or order state returned unexpected rows.");
-    using (var early = ordered.ToBatches(1).GetEnumerator())
-    {
-        if (!early.MoveNext() || early.Current.Single().Id != 1)
-            throw new InvalidOperationException("The streaming cursor did not return the first row.");
-    }
-    await using (var raw = (await client.Ado.OpenCursorAsync<SqlRow>("SELECT " + options.QuotedColumns() +
-        " FROM " + options.QuotedTable() + " WHERE " + options.QuotedColumn("Id") + "=@id",
-        [new SugarParameter("@id", 1)])).Require())
-    {
-        var row = (await raw.ReadAsync()).Require();
-        if (Convert.ToInt64(row["Id"], CultureInfo.InvariantCulture) != 1)
-            throw new InvalidOperationException("Raw SQL cursor returned an unexpected row.");
-    }
-    var updated = client.Updateable(new[] { new ManagedSqlOrder { Id = 1, Name = "updated", Amount = 99.50m } }).ExecuteCommand().Require();
-    var scalar = Convert.ToInt64(client.Ado.GetScalar("SELECT COUNT(*) FROM " + options.QuotedTable()).Require(), CultureInfo.InvariantCulture);
-    var deleted = client.Deleteable(new List<ManagedSqlOrder> { new() { Id = options.RowCount } }).ExecuteCommand().Require();
-    var fastest = client.Fastest<ManagedSqlOrder>();
-    var fastestCopied = fastest.BulkCopy(new List<ManagedSqlOrder> { new() { Id = options.RowCount, Name = "fast-copy", Amount = 7m } }).Require();
-    var fastestUpdated = fastest.BulkUpdate(new[] { new ManagedSqlOrder { Id = options.RowCount, Name = "fast-update", Amount = 8m } }).Require();
-    var fastestDeleted = fastest.BulkDelete(new[] { new ManagedSqlOrder { Id = options.RowCount } }).Require();
-    client.Ado.BeginTran().Require();
-    client.Insertable(new ManagedSqlOrder { Id = options.RowCount + 100, Name = "rollback", Amount = 1m }).ExecuteCommand().Require();
-    client.Ado.RollbackTran().Require();
-    var afterRollback = Convert.ToInt64(client.Ado.GetScalar("SELECT COUNT(*) FROM " + options.QuotedTable()).Require(), CultureInfo.InvariantCulture);
+    var pageSize = Math.Min(options.BatchSize, options.RowCount);
+    var page = ReadBatches<ManagedSqlOrder>(client, ordered, pageSize).First();
+    var afterPage = (options.BenchmarkPath is null
+        ? ReadBatches<ManagedSqlOrder>(client, ordered, options.BatchSize).Sum(rows => rows.Length)
+        : options.RowCount);
+    var descending = ReadBatches<ManagedSqlOrder>(client, $"{prefix} ORDER BY {id} DESC", 1).First();
+    Require(page.Length == pageSize && afterPage == options.RowCount && descending is [{ Id: var maximum }] &&
+        maximum == options.RowCount, "An ordered cursor returned unexpected rows");
+    using (var early = ReadBatches<ManagedSqlOrder>(client, ordered, 1).GetEnumerator())
+        Require(early.MoveNext() && early.Current.Single().Id == 1, "The streaming cursor did not return the first row");
+    Require(Scalar<long>(client, $"SELECT {id} FROM {table} WHERE {id}=@id", new SugarParameter("@id", 1)) == 1,
+        "Native bound scalar returned an unexpected row");
+    var updated = WriteRows(client, SqlNative.WriteUpdate,
+        new[] { new ManagedSqlOrder { Id = 1, Name = "updated", Amount = 99.50m } }, options.BatchSize);
+    var scalar = Scalar<long>(client, $"SELECT COUNT(*) FROM {table}");
+    var deleted = WriteRows(client, SqlNative.WriteDelete,
+        new[] { new ManagedSqlOrder { Id = options.RowCount } }, options.BatchSize);
+    var tail = new ManagedSqlOrder { Id = options.RowCount, Name = "native-copy", Amount = 7m };
+    var fastestCopied = WriteRows(client, SqlNative.WriteAppend, new[] { tail }, options.BatchSize, bulk: true);
+    tail.Name = "native-update";
+    tail.Amount = 8m;
+    var fastestUpdated = WriteRows(client, SqlNative.WriteUpdate, new[] { tail }, options.BatchSize, bulk: true);
+    var fastestDeleted = WriteRows(client, SqlNative.WriteDelete, new[] { tail }, options.BatchSize, bulk: true);
+    Transaction(client, SqlNative.TransactionBegin);
+    _ = WriteRows(client, SqlNative.WriteAppend,
+        new[] { new ManagedSqlOrder { Id = options.RowCount + 100, Name = "rollback", Amount = 1m } }, options.BatchSize);
+    Transaction(client, SqlNative.TransactionRollback);
+    var afterRollback = Scalar<long>(client, $"SELECT COUNT(*) FROM {table}");
     try
     {
-        foreach (var _ in client.Queryable<ManagedSqlOrder>().ToStream(new CancellationToken(true))) { }
+        _ = ReadBatches<ManagedSqlOrder>(client, ordered, options.BatchSize, new CancellationToken(true)).First();
         throw new InvalidOperationException("A cancelled stream did not throw.");
     }
     catch (OperationCanceledException) { }
@@ -157,9 +152,9 @@ try
 }
 finally
 {
-    client.Ado.ExecuteCommand("DROP TABLE " + options.QuotedTable()).Require();
+    Execute(client, "DROP TABLE " + options.QuotedTable());
 }
-if (options.Provider == DbType.Sqlite && options.BenchmarkPath is null)
+if (options.Provider == DataSourceKind.Sqlite && options.BenchmarkPath is null)
     ManagedSqlEtl.Run(options.PluginPath);
 return 0;
 

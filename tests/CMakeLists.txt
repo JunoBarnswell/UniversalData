@@ -427,6 +427,22 @@ if(TARGET ud_java)
 endif()
 # Advanced SQL/CDC are actual registered acceptance entries, not unregistered
 # binaries. No credential is stored in a CMake cache or echoed to CTest output.
+function(add_participant_recovery name driver)
+  string(TOUPPER "${driver}" fixture)
+  set(resources UD_TEST_${fixture}_CONFIG $<TARGET_FILE:test_transaction_participants>
+    $<TARGET_FILE:ud_connector_${driver}>)
+  set(locks ud_integration_${driver})
+  foreach(peer IN LISTS ARGN)
+    string(TOUPPER "${peer}" fixture)
+    list(APPEND resources UD_TEST_${fixture}_CONFIG $<TARGET_FILE:ud_connector_${peer}>)
+    list(APPEND locks ud_integration_${peer})
+  endforeach()
+  add_test(NAME ${name} COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/transaction_participants.py ${resources})
+  set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
+    LABELS "real-integration;crash-recovery;${driver};${ARGN}" RESOURCE_LOCK "${locks}")
+endfunction()
+
 if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
   add_executable(test_mysql_domains mysql_domains.c)
   target_link_libraries(test_mysql_domains PRIVATE ud_plugins)
@@ -465,12 +481,7 @@ if(TARGET test_advanced_sql AND TARGET test_advanced_cdc)
           RESOURCE_LOCK ud_integration_${driver})
       endif()
       if(driver MATCHES "^(postgresql|mysql|mariadb|odbc|oracle_oci)$")
-        add_test(NAME integration_${driver}_participant_recovery COMMAND ${Python3_EXECUTABLE}
-          ${CMAKE_CURRENT_SOURCE_DIR}/transaction_participants.py UD_TEST_${fixture}_CONFIG
-          $<TARGET_FILE:test_transaction_participants> $<TARGET_FILE:ud_connector_${driver}>)
-        set_tests_properties(integration_${driver}_participant_recovery PROPERTIES
-          SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS "real-integration;crash-recovery;${driver}"
-          RESOURCE_LOCK ud_integration_${driver})
+        add_participant_recovery(integration_${driver}_participant_recovery ${driver})
       endif()
     endif()
   endforeach()
@@ -513,13 +524,20 @@ if(TARGET ud_package)
   endif()
 endif()
 
-if(TARGET ud_connector_odbc AND TARGET ud_connector_postgresql)
-  add_test(NAME integration_mssql_postgresql_participant_recovery COMMAND ${Python3_EXECUTABLE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/transaction_participants.py UD_TEST_ODBC_CONFIG
-    $<TARGET_FILE:test_transaction_participants> $<TARGET_FILE:ud_connector_odbc>
-    UD_TEST_POSTGRESQL_CONFIG $<TARGET_FILE:ud_connector_postgresql>)
-  set_tests_properties(integration_mssql_postgresql_participant_recovery PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
-    LABELS "real-integration;crash-recovery;odbc;postgresql" RESOURCE_LOCK "ud_integration_odbc;ud_integration_postgresql")
+set(participant_drivers mariadb mysql odbc oracle_oci postgresql)
+foreach(first IN LISTS participant_drivers)
+  foreach(second IN LISTS participant_drivers)
+    if(first STRLESS second AND TARGET ud_connector_${first} AND TARGET ud_connector_${second})
+      set(name integration_${first}_${second}_participant_recovery)
+      if(first STREQUAL "odbc" AND second STREQUAL "postgresql")
+        set(name integration_mssql_postgresql_participant_recovery)
+      endif()
+      add_participant_recovery(${name} ${first} ${second})
+    endif()
+  endforeach()
+endforeach()
+if(TARGET ud_connector_odbc AND TARGET ud_connector_postgresql AND TARGET ud_connector_mariadb)
+  add_participant_recovery(integration_mssql_postgresql_mariadb_participant_recovery odbc postgresql mariadb)
 endif()
 
 if(TARGET ud_expression)
@@ -649,6 +667,57 @@ if(TARGET ud_package)
           ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
       endif()
     endforeach()
+    add_custom_target(ud_sdk_fluent_test ALL
+      COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/sdk_fluent/SdkFluent.csproj -c Release
+        -o ${CMAKE_CURRENT_BINARY_DIR}/managed-sdk-fluent
+      DEPENDS ud_managed_product_test ud_product_hosts VERBATIM)
+    add_dependencies(ud_managed_sql_test ud_sdk_fluent_test)
+    set(fluent_sdk ${CMAKE_CURRENT_BINARY_DIR}/managed-sdk-fluent/SdkFluent.dll)
+    set(fluent_fixture ${CMAKE_CURRENT_SOURCE_DIR}/sdk_fluent_fixture.py)
+    if(TARGET ud_connector_sqlite)
+      add_test(NAME sdk_fluent_sessions COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
+        ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> $<TARGET_FILE:ud_connector_sqlite>)
+      set_tests_properties(sdk_fluent_sessions PROPERTIES LABELS "sdk;sql-etl;crash-recovery" TIMEOUT 130)
+      add_test(NAME sdk_fluent_slow_sessions COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
+        ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> $<TARGET_FILE:ud_connector_sqlite> --latency)
+      set_tests_properties(sdk_fluent_slow_sessions PROPERTIES LABELS "sdk;performance;real-integration"
+        SKIP_RETURN_CODE 77 TIMEOUT 180 RUN_SERIAL TRUE)
+      if(NOT WIN32)
+        set_tests_properties(sdk_fluent_sessions sdk_fluent_slow_sessions PROPERTIES
+          ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+      endif()
+    endif()
+    if(TARGET ud_connector_postgresql OR TARGET ud_connector_odbc OR TARGET ud_connector_mysql
+        OR TARGET ud_connector_mariadb OR TARGET ud_connector_oracle_oci)
+      set(fluent_native_plugins)
+      set(fluent_provider_locks)
+      foreach(driver postgresql odbc mysql mariadb oracle_oci)
+        if(TARGET ud_connector_${driver})
+          list(APPEND fluent_native_plugins $<TARGET_FILE_DIR:ud_connector_${driver}>)
+          list(APPEND fluent_provider_locks ud_integration_${driver})
+        endif()
+      endforeach()
+      add_test(NAME sdk_fluent_atomic COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
+        ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> ${fluent_native_plugins} --atomic)
+      set_tests_properties(sdk_fluent_atomic PROPERTIES
+        LABELS "sdk;sql-etl;real-integration;xa" SKIP_RETURN_CODE 77 TIMEOUT 250
+        RESOURCE_LOCK "${fluent_provider_locks}")
+      if(NOT WIN32)
+        set_tests_properties(sdk_fluent_atomic PROPERTIES
+          ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+      endif()
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET ud_connector_postgresql AND TARGET ud_connector_odbc)
+        add_library(ud_sdk_journal_crash_probe MODULE sdk_fluent/journal_crash_probe.c)
+        add_dependencies(ud_sdk_fluent_test ud_sdk_journal_crash_probe)
+        add_test(NAME sdk_fluent_atomic_decision COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
+          ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> ${fluent_native_plugins}
+          $<TARGET_FILE:ud_sdk_journal_crash_probe> --decision)
+        set_tests_properties(sdk_fluent_atomic_decision PROPERTIES
+          LABELS "sdk;xa;crash-recovery;real-integration" SKIP_RETURN_CODE 77 TIMEOUT 250
+          RESOURCE_LOCK "ud_integration_postgresql;ud_integration_odbc"
+          ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+      endif()
+    endif()
   endif()
 endif()
 

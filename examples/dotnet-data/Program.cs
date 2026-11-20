@@ -1,16 +1,16 @@
 using UniversalData;
-using SqlSugar;
 using System.Text.Json;
 
 if (args.Length == 4 && args[0] is "--catalog" or "--explain" or "--execute" or "--instantiate")
 {
     var package = Require(Package.FromJson(await File.ReadAllTextAsync(args[1])));
-    var client = new EtlClient(new(Path.GetFullPath(args[3]), "fixture"));
+    await using var data = DataClient.CreateBuilder(args[3], "fixture").Build();
+    var client = new EtlClient(data);
     if (args[0] == "--execute")
     {
-        await using var run = Require(await client.StartAsync(package));
-        _ = Require(await run.WaitAsync());
-        await File.WriteAllTextAsync(args[2], Require(await run.DiagnosticsAsync()).GetRawText());
+        await using var run = await client.StartAsync(package);
+        _ = await run.WaitAsync();
+        await File.WriteAllTextAsync(args[2], (await run.DiagnosticsAsync()).GetRawText());
     }
     else
     {
@@ -20,7 +20,7 @@ if (args.Length == 4 && args[0] is "--catalog" or "--explain" or "--execute" or 
             "--instantiate" => await client.InstantiateAsync(package),
             _ => await client.ExplainAsync(package)
         };
-        await File.WriteAllTextAsync(args[2], Require(result).GetRawText());
+        await File.WriteAllTextAsync(args[2], result.GetRawText());
     }
     return;
 }
@@ -38,36 +38,25 @@ if (args.Length == 3 && args[0] == "--row-info")
 if (args.Length == 6 && args[0] == "--discover")
 {
     var package = Require(Package.FromJson(await File.ReadAllTextAsync(args[1])));
-    var client = new EtlClient(new(Path.GetFullPath(args[5]), "fixture"));
-    await File.WriteAllTextAsync(args[4], Require(await client.DiscoverSchemaAsync(package, args[2], args[3])).GetRawText());
+    await using var data = DataClient.CreateBuilder(args[5], "fixture").Build();
+    var client = new EtlClient(data);
+    await File.WriteAllTextAsync(args[4], (await client.DiscoverSchemaAsync(package, args[2], args[3])).GetRawText());
     return;
 }
-if (args.Length == 4 && args[0] == "--sql-etl")
+if (args.Length == 5 && args[0] == "--sql-etl")
 {
-    using var source = Require(await SqlSugarClient.OpenAsync(ReadSqlConfig(args[1])));
-    using var target = Require(await SqlSugarClient.OpenAsync(ReadSqlConfig(args[2])));
-    await using var cursor = Require(await source.Queryable<ExampleOrder>().OrderBy(order => order.Id).OpenCursorAsync(512));
-    var written = 0;
-    Check(target.Ado.BeginTran());
-    try
-    {
-        while (true)
-        {
-            var batch = await cursor.ReadBatchAsync();
-            if (batch.Code == StatusCode.End)
-                break;
-            var transformed = Require(batch).Select(order => new ExampleOrder
-                { Id = order.Id, Name = order.Name.Trim(), Amount = order.Amount });
-            written += Require(target.Fastest<ExampleOrder>().BulkCopy(transformed));
-        }
-        Check(target.Ado.CommitTran());
-    }
-    catch
-    {
-        _ = target.Ado.RollbackTran();
-        throw;
-    }
-    await File.WriteAllTextAsync(args[3], JsonSerializer.Serialize(new { rows = written, mode = "native-typed-stream" }));
+    var target = ReadSource("target", args[3]);
+    await using var data = DataClient.CreateBuilder(args[1], "fixture")
+        .AddSource(ReadSource("source", args[2]))
+        .AddSource(target)
+        .AddModule(typeof(ExampleOrder).Assembly)
+        .Build();
+    var source = data.Etl("example-orders").FromTable<ExampleOrder>("source").Stream();
+    var pipeline = target.Kind == DataSourceKind.Sqlite
+        ? source.Map(ExampleOrderText.Trim).ToTable("target").Append()
+        : source.Map(ExampleOrder.Trim).ToTable("target").Append();
+    var metrics = await pipeline.RunAsync();
+    await File.WriteAllTextAsync(args[4], JsonSerializer.Serialize(new { rows = metrics.CommittedRows, mode = "native-typed-stream" }));
     return;
 }
 if (args.Length != 4) throw new ArgumentException("schema.json data.json output.json output.wire");
@@ -86,16 +75,16 @@ static T Require<T>(Result<T> result)
     return result.Value!;
 }
 
-static ConnectionConfig ReadSqlConfig(string path)
+static DataSourceDefinition ReadSource(string name, string path)
 {
     using var document = JsonDocument.Parse(File.ReadAllText(path));
     var root = document.RootElement;
-    if (!root.TryGetProperty("dbType", out var dbType) || !Enum.TryParse<DbType>(dbType.GetString(), true, out var dialect))
-        throw new ArgumentException("SQL config needs a dbType string.");
-    return new ConnectionConfig
-    {
-        DbType = dialect,
-        ConnectionString = root.GetProperty("connectionString").GetString() ?? throw new ArgumentException("SQL config needs connectionString."),
-        PluginPath = root.GetProperty("pluginPath").GetString() ?? throw new ArgumentException("SQL config needs pluginPath.")
-    };
+    if (!root.TryGetProperty("dbType", out var dbType) ||
+        !Enum.TryParse<DataSourceKind>(dbType.GetString(), true, out var dialect) || dialect == DataSourceKind.Http)
+        throw new ArgumentException("SQL config needs a database dbType string.");
+    return new(name, dialect, Required("connectionString"), Optional("resource"),
+        Optional("credentialReference"), nativeConnectionString: Optional("nativeConnectionString"));
+
+    string Required(string key) => Optional(key) ?? throw new ArgumentException($"SQL config needs {key}.");
+    string? Optional(string key) => root.TryGetProperty(key, out var value) ? value.GetString() : null;
 }

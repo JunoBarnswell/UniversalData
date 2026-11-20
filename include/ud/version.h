@@ -1,7 +1,7 @@
 /* Generated from metadata/product.json. */
 #ifndef UD_VERSION_H
 #define UD_VERSION_H
-#define UD_SDK_VERSION "7.0.0"
+#define UD_SDK_VERSION "8.0.0"
 #define UD_ABI_VERSION 15u
 #define UD_PROTOCOL_VERSION_TEXT "15"
 #define UD_CONFIG_VERSION 15u
@@ -14,5 +14,5 @@
 #define UD_CHECKPOINT_FORMAT_REVISION 4u
 #define UD_DATA_LAYOUT_REVISION 1u
 #define UD_CATALOG_FORMAT_REVISION 3u
-#define UD_WORKER_FORMAT_REVISION 5u
+#define UD_WORKER_FORMAT_REVISION 6u
 #endif

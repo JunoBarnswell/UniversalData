@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 from xml.etree import ElementTree as ET
 
@@ -91,13 +92,11 @@ def assemble(args):
 </Project>
 """, encoding="utf-8")
         spec = root / "runtime.nuspec"
-        # NuGet preserves the source directory below a recursive wildcard. Target its parent
-        # so WorkerSession and native asset resolution see the expected flat package paths.
-        files = [("worker/**/*", f"runtimes/{args.rid}"),
-                 ("native/**/*", f"runtimes/{args.rid}"), (targets.name, "buildTransitive")]
+        files = [("worker/**/*", f"runtimes/{args.rid}/worker"),
+                 ("native/*", f"runtimes/{args.rid}/native"), (targets.name, "buildTransitive")]
         if args.licenses:
             shutil.copytree(args.licenses, root / "licenses")
-            files.append(("licenses/**/*", "."))
+            files.append(("licenses/**/*", "licenses"))
         elif args.complete:
             raise ValueError("Complete runtime packages require native dependency notices")
         nuspec(spec, identity, version, "Self-contained UniversalData Worker and native runtime", files)
@@ -109,13 +108,19 @@ def assemble(args):
             sdk_spec.find("metadata/version").text = version
             group = sdk_spec.find("metadata/dependencies/group")
             for dependency in list(group):
-                if dependency.get("id") == identity:
+                package = dependency.get("id")
+                if package == identity:
                     dependency.set("version", f"[{version}]")
-                else:
+                elif package in product["dotnetPackages"]:
+                    dependency.set("version", f'[{product["dotnetPackages"][package]}]')
+                elif package in {"UniversalData.Runtime." + rid for rid in RIDS}:
                     group.remove(dependency)
             local_spec = root / "UniversalData.nuspec"
             sdk_spec.write(local_spec, encoding="utf-8", xml_declaration=True)
             pack(local_spec, args.output, SDK.parent)
+            subprocess.run([sys.executable, str(ROOT / "packaging/nuget_feed.py"),
+                            "--assets", str(SDK.parent / "obj/project.assets.json"),
+                            "--output", str(args.output)], cwd=ROOT, check=True)
         else:
             subprocess.run(["dotnet", "pack", str(SDK), "-c", "Release", "--no-build", "--no-restore",
                             "-p:IncludeUniversalDataRuntimeDependencies=true", "-o", str(args.output)], cwd=ROOT, check=True)

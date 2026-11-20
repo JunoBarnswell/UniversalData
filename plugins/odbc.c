@@ -1126,8 +1126,11 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
 /* Written before business DML in the SAME XA branch. Locking reads prevent
  * RCSI from mistaking an uncommitted receipt for an absent transaction. */
 ud_status ud_odbc_tx_receipt(odbc_state *p, const ud_transaction_branch *branch, int insert,
-                             int *found) {
-    *found = 0;
+                             int32_t *state) {
+    if (!insert && !state)
+        return UD_INVALID;
+    if (state)
+        *state = UD_TX_UNKNOWN;
     ud_field fields[] = {{.name = "branch", .name_length = 6, .type = UD_UTF8},
                          {.name = "digest", .name_length = 6, .type = UD_BINARY}};
     ud_value values[] = {{.type = UD_UTF8, .text = branch->id.data, .text_length = 64},
@@ -1145,11 +1148,13 @@ ud_status ud_odbc_tx_receipt(odbc_state *p, const ud_transaction_branch *branch,
         if (!status && affected != 1)
             status = UD_FENCED;
     } else if (!status) {
-        /* Keep the locking read on this primary key. A Unicode parameter can
-         * otherwise convert the indexed CHAR column and scan other prepared receipts. */
+        /* Seek only this receipt and return immediately on a lock. DTC can
+         * retain an active branch after the originating process has exited. */
         const char *text = "SELECT digest FROM dbo.ud_sdk_tx_receipts_v11 "
-                           "WITH (READCOMMITTEDLOCK, FORCESEEK) WHERE branch_id=CAST(? AS CHAR(64))";
+                           "WITH (READCOMMITTEDLOCK, FORCESEEK, NOWAIT) WHERE branch_id=CAST(? AS CHAR(64))";
         SQLHSTMT statement = SQL_NULL_HSTMT;
+        int32_t outcome = UD_TX_NOT_FOUND;
+        p->native_error = 0;
         status = prepare(p, (ud_string){text, (uint32_t)strlen(text)}, &statement);
         if (!status)
             status = execute_bound(p, statement, parameters, 0, 1, NULL, 1, NULL, NULL, NULL);
@@ -1168,13 +1173,21 @@ ud_status ud_odbc_tx_receipt(odbc_state *p, const ud_transaction_branch *branch,
                     if (!status && memcmp(digest, branch->digest, 32))
                         status = UD_FENCED;
                     if (!status)
-                        *found = 1;
+                        outcome = UD_TX_COMMITTED;
                     p->host.deallocate(digest);
                     if (!status && SQLFetch(statement) != SQL_NO_DATA)
                         status = UD_CORRUPT;
                 }
             }
         }
+        if (status && p->native_error == 1222) {
+            /* A locked key gives no proof of absence. A recorded rollback can
+             * resolve the exact DTC XID before rechecking the receipt. */
+            outcome = UD_TX_ACTIVE;
+            status = UD_OK;
+        }
+        if (!status)
+            *state = outcome;
         statement_release(p, statement);
     }
     p->host.batch_destroy(parameters);

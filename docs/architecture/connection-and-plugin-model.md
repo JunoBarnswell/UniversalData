@@ -33,6 +33,8 @@ PostgreSQL、SQLite、OCI 以及能力探测证明支持事务的 SQL Server/Pos
 
 MySQL/MariaDB 先在本行事务内持有目标元数据锁，再证明 InnoDB、触发器可见权限及不存在触发器。分析使用 Native SQL 分析器，当前只接受可证明的单目标 INSERT/UPDATE/DELETE 子集，拒绝多目标写入、INSERT SELECT、自定义函数、触发器和无法证明的语法。仅通过角色间接获得的 TRIGGER 权限尚不接受。MyISAM 和缺少证明的资源在业务写入前拒绝。
 
+SDK 本地和跨库事务中的 MySQL/MariaDB 写入沿用相同的目标校验。运行账号需要对 InnoDB 目标具备可直接验证的 `TRIGGER` 权限，且目标不得包含触发器。数据库授权中的转义按服务端规则匹配。MySQL 启用 `partial_revokes` 时，需要直接的数据库级或表级授权。
+
 普通事务和持久事务参与者是独立能力。SQL Server 的 Microsoft ODBC 17.3+ 资源通过官方 SQL_ATTR_ENLIST_IN_XA / XACALLPARAM 直接执行 XA start/end/prepare/commit/rollback/recover；没有 JDBC 或另一事务协调器。只有真实恢复扫描成功的资源才声明参与能力；未配置 DTC 的服务继续提供普通 SQL/BCP。分支先在同一事务写入摘要回执，恢复使用锁定读取避免 RCSI 将未提交回执误判为不存在。prepared 分支不随连接销毁回滚。SQL Server DTC 不支持 Savepoint，行错误隔离在写入前明确拒绝。PostgreSQL、MySQL/MariaDB、OCI 的持久参与者继续由 Native 协调器和同一 Journal 管理。
 
 ## 恢复事实

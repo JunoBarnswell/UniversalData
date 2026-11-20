@@ -80,5 +80,5 @@ ud_status ud_mssql_xa_resolve(void *, const ud_transaction_branch *, int32_t);
 ud_status ud_mssql_xa_recover(void *, const ud_transaction_branch *, int32_t *);
 void ud_mssql_xa_close(odbc_state *);
 void ud_odbc_bulk_close(odbc_state *);
-ud_status ud_odbc_tx_receipt(odbc_state *, const ud_transaction_branch *, int insert, int *found);
+ud_status ud_odbc_tx_receipt(odbc_state *, const ud_transaction_branch *, int insert, int32_t *state);
 #endif

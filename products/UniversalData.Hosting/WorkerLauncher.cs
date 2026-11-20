@@ -14,15 +14,17 @@ public static class WorkerLauncher
         workerPath = Path.GetFullPath(workerPath); HostFiles.NoLinks(workerPath);
         string dotnet = Environment.ProcessPath is { } current && Path.GetFileNameWithoutExtension(current).Equals("dotnet",StringComparison.OrdinalIgnoreCase)
             ? current : Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
+        bool managed = Path.GetExtension(workerPath).Equals(".dll", StringComparison.OrdinalIgnoreCase);
+        string executable = managed ? dotnet : workerPath;
         bool isolated = request?.Isolated == true;
         if (isolated && !OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Untrusted modules require an available OS sandbox; this host has none configured");
         if (!Guid.TryParseExact(processKey, "N", out _)) throw new ArgumentException("Invalid Worker process key");
         if (budget is not null && request is not null) WorkerProcessLimits.Validate(request, budget);
         bool systemd = isolated || (budget is not null && OperatingSystem.IsLinux());
-        var start = new ProcessStartInfo(systemd ? "/usr/bin/systemd-run" : dotnet) { RedirectStandardInput = true, RedirectStandardOutput = true,
+        var start = new ProcessStartInfo(systemd ? "/usr/bin/systemd-run" : executable) { RedirectStandardInput = true, RedirectStandardOutput = true,
             RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
         if (systemd) {
-            if (isolated && !Path.IsPathFullyQualified(dotnet)) throw new InvalidOperationException("An absolute dotnet host is required for isolation");
+            if (isolated && !Path.IsPathFullyQualified(executable)) throw new InvalidOperationException("An absolute Worker host is required for isolation");
             if (!File.Exists("/usr/bin/systemd-run") || (isolated && !File.Exists("/usr/bin/bwrap")))
                 throw new PlatformNotSupportedException("Worker resource control requires systemd and untrusted modules also require bubblewrap");
             foreach (string option in new[] { "--user", "--quiet", "--wait", "--pipe", "--collect", "--unit=ud-worker-" + processKey,
@@ -51,7 +53,7 @@ public static class WorkerLauncher
             }
             foreach (string path in new[] { "/usr", "/lib", "/lib64", "/etc/ssl", "/etc/ld.so.cache", "/etc/localtime" })
                 if (File.Exists(path) || Directory.Exists(path)) { start.ArgumentList.Add("--ro-bind"); start.ArgumentList.Add(path); start.ArgumentList.Add(path); mounted.Add(path); }
-            Mount(Path.GetDirectoryName(dotnet)!,false); Mount(Path.GetDirectoryName(workerPath)!,false);
+            Mount(Path.GetDirectoryName(executable)!,false); Mount(Path.GetDirectoryName(workerPath)!,false);
             foreach (string path in request.Policy.PluginRoots.Concat(request.Policy.ReadOnlyRoots)) Mount(path,false);
             foreach (string path in request.Policy.FileRoots) Mount(path,true);
             foreach(string root in request.Policy.FileRoots.Concat(request.Policy.ReadOnlyRoots).Distinct(StringComparer.Ordinal)) {
@@ -70,10 +72,11 @@ public static class WorkerLauncher
             File.SetUnixFileMode(controls,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); Mount(controls,true);
             var assemblies = Path.Combine(request.Policy.DataDirectory,"assemblies");
             Directory.CreateDirectory(assemblies); Mount(assemblies,request.Mode == "compile");
-            start.ArgumentList.Add("--chdir"); start.ArgumentList.Add(directory); start.ArgumentList.Add("--"); start.ArgumentList.Add(dotnet);
+            start.ArgumentList.Add("--chdir"); start.ArgumentList.Add(directory); start.ArgumentList.Add("--"); start.ArgumentList.Add(executable);
         }
         // Do not inherit unrelated application/cloud credentials into an extension process.
-        var allowed = new[] { "PATH", "DOTNET_ROOT", "DOTNET_ROOT_X64", "LD_LIBRARY_PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS" };
+        var allowed = new[] { "PATH", "DOTNET_ROOT", "DOTNET_ROOT_X64", "LD_LIBRARY_PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+            "ODBCSYSINI", "TNS_ADMIN", "SSL_CERT_FILE", "SSL_CERT_DIR" };
         foreach (string key in start.Environment.Keys.ToArray()) if (!allowed.Contains(key,StringComparer.OrdinalIgnoreCase)) start.Environment.Remove(key);
         if (systemd && !isolated) {
             start.ArgumentList.Add("/usr/bin/env");
@@ -81,9 +84,10 @@ public static class WorkerLauncher
             foreach (var variable in start.Environment)
                 if (variable.Value is { } value)
                     start.ArgumentList.Add(variable.Key + "=" + value.Replace("$", "$$", StringComparison.Ordinal));
-            start.ArgumentList.Add(dotnet.Replace("$", "$$", StringComparison.Ordinal));
+            start.ArgumentList.Add(executable.Replace("$", "$$", StringComparison.Ordinal));
         }
-        start.ArgumentList.Add(systemd ? workerPath.Replace("$", "$$", StringComparison.Ordinal) : workerPath);
+        if (managed)
+            start.ArgumentList.Add(systemd ? workerPath.Replace("$", "$$", StringComparison.Ordinal) : workerPath);
         if (OperatingSystem.IsWindows())
             return WorkerProcessLimits.StartWindows(start, budget);
         return Process.Start(start) ?? throw new InvalidOperationException("Worker failed to start");
@@ -99,19 +103,8 @@ public static class WorkerLauncher
         }
         try { if (!process.HasExited) process.Kill(entireProcessTree:true); } catch(InvalidOperationException) { }
     }
-    public static async Task<int> WaitReady(Process process, CancellationToken cancellation = default)
-    {
-        var message = await WorkerProtocol.ReadLine(process.StandardOutput, 1024, cancellation)
-            ?? throw new IOException("Worker exited before reporting process readiness");
-        using var document = JsonDocument.Parse(message);
-        var hello = document.RootElement;
-        if (hello.GetProperty("kind").GetString() != "hello" ||
-            hello.GetProperty("version").GetInt32() != ProductInfo.Protocol ||
-            hello.GetProperty("contractRevision").GetInt32() != ProductInfo.WorkerRevision ||
-            hello.GetProperty("processId").GetInt32() is not (> 0 and var pid))
-            throw new InvalidDataException("Incompatible Worker process handshake");
-        return pid;
-    }
+    public static Task<int> WaitReady(Process process, CancellationToken cancellation = default) =>
+        WorkerProtocol.ReadProcessIdAsync(process.StandardOutput, cancellation);
 
     internal static async Task<JsonElement> Inspect(WorkerSupervisor supervisor, WorkerRequest request, CancellationToken cancellation)
     {

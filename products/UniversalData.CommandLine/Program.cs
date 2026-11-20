@@ -58,10 +58,9 @@ if (args.Length is 2 or 3 && args[0] == "doctor")
             var package = Package.FromJson(File.ReadAllText(args[2]));
             if (!package.IsSuccess)
                 return Report(new(package.Code, package.Error));
-            var response = await new EtlClient(new(path, WorkerPath: worker))
-                .InspectAsync("inspect", package.Value!, "{}");
-            if (!response.IsSuccess)
-                return Report(new(response.Code, response.Error));
+            await using var data = DataClient.CreateBuilder(path, "local")
+                .ConfigureWorkers(options => options.WorkerPath(worker)).Build();
+            _ = await new EtlClient(data).ExplainAsync(package.Value!);
         }
         Console.WriteLine(JsonSerializer.Serialize(new { code = 0, sdk = ProductInfo.Sdk,
             protocol = ProductInfo.Protocol, worker = ProductInfo.WorkerRevision }, HostPolicy.JsonOptions));
@@ -93,7 +92,9 @@ try
     if (!parsed.IsSuccess)
         return Report(new(parsed.Code, parsed.Error));
     var package = parsed.Value!;
-    var client = new EtlClient(new(policyPath, WorkerPath: Worker()));
+    await using var data = DataClient.CreateBuilder(policyPath, "local")
+        .ConfigureWorkers(options => options.WorkerPath(Worker())).Build();
+    var client = new EtlClient(data);
     string parameters = args.Length > 3 ? args[3] : "{}";
     string id = args.Length > 4 ? args[4] : "";
     bool resume = args.Length > 5 && args[5] == "resume";
@@ -101,14 +102,16 @@ try
     {
         if (args[0] == "discover" && args.Length < 7)
             throw new ArgumentException("Discovery requires a logical connection");
-        var inspected = await client.InspectAsync(args[0], package, parameters,
-            args.Length > 6 ? args[6] : null, args.Length > 7 ? args[7] : null);
-        if (!inspected.IsSuccess)
-            return Report(new(inspected.Code, inspected.Error));
-        Console.WriteLine(inspected.Value.GetRawText());
+        var inspected = args[0] switch
+        {
+            "catalog" => await client.ComponentCatalogAsync(package, parameters),
+            "discover" => await client.DiscoverSchemaAsync(package, args[6], args.Length > 7 ? args[7] : "", parameters),
+            _ => await client.ExplainAsync(package, parameters)
+        };
+        Console.WriteLine(inspected.GetRawText());
         return 0;
     }
-    Result<EtlRun> started;
+    EtlRun started;
     if (resume)
     {
         using var catalog = host.OpenCatalog();
@@ -117,26 +120,35 @@ try
         started = await client.ResumeAsync(package, id, info.RootElement.GetProperty("ticket").GetString()!, parameters);
     }
     else
-        started = await client.StartNamedAsync(package, parameters, id);
-    if (!started.IsSuccess)
-        return Report(new(started.Code, started.Error));
-    await using var run = started.Value!;
+        started = id.Length == 0 ? await client.StartAsync(package, parameters)
+            : await client.StartNamedAsync(package, parameters, id);
+    await using var run = started;
     Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; _ = run.CancelAsync(); };
-    var result = await run.WaitAsync();
-    if (result.Value is null)
-        return Report(new(result.Code, result.Error));
-    var diagnostics = await run.DiagnosticsAsync();
-    var output = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(result.Value, HostPolicy.JsonOptions))!.AsObject();
+    ExecutionMetrics result;
+    StatusCode code = StatusCode.Ok;
+    OperationError? failure = null;
+    try { result = await run.WaitAsync(); }
+    catch (DataExecutionException error) when (error.Metrics is { } metrics)
+    {
+        result = metrics;
+        code = error.Code;
+        failure = error.Detail;
+    }
+    var output = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(result, HostPolicy.JsonOptions))!.AsObject();
     output["version"] = ProductInfo.Protocol;
     output["executionId"] = run.Id;
-    output["result"] = (int)result.Code;
-    output["code"] = (int)result.Code;
-    if (diagnostics.IsSuccess)
-        output["diagnostics"] = System.Text.Json.Nodes.JsonNode.Parse(diagnostics.Value.GetRawText());
-    if (result.Error is not null)
-        output["error"] = JsonSerializer.SerializeToNode(result.Error, HostPolicy.JsonOptions);
+    output["result"] = (int)code;
+    output["code"] = (int)code;
+    try
+    {
+        var diagnostics = await run.DiagnosticsAsync();
+        output["diagnostics"] = System.Text.Json.Nodes.JsonNode.Parse(diagnostics.GetRawText());
+    }
+    catch (UniversalDataException) { }
+    if (failure is not null)
+        output["error"] = JsonSerializer.SerializeToNode(failure, HostPolicy.JsonOptions);
     Console.WriteLine(output.ToJsonString(HostPolicy.JsonOptions));
-    return result.IsSuccess ? 0 : 1;
+    return code == StatusCode.Ok ? 0 : 1;
 }
 catch (Exception error) when (error is ArgumentException or JsonException or IOException or UniversalDataException)
 {

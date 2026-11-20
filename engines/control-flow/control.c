@@ -582,6 +582,11 @@ typedef struct task_run {
 } task_run;
 static ud_status task_result(task_run *run) {
     ud_activation *a = &run->activation;
+    if (a->execution->transaction_recovery_only) {
+        ud_status status = ud_transaction_enter(a, ud_member(run->definition, "transaction"), 0);
+        ud_status released = ud_connections_release_activation(a);
+        return status ? status : released;
+    }
     ud_string kind = {0};
     UD_TRY(ud_json_string(ud_member(run->definition, "kind"), &kind));
     int completed = 0;

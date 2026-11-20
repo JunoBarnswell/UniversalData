@@ -367,6 +367,8 @@ function EditorCanvas({
       id: node.id,
       type: "component",
       selected: selectedNodes.includes(node.id),
+      // Reuse the dimensions measured by the canvas across controlled updates.
+      measured: graphApi.getInternalNode(node.id)?.measured,
       position: dragPositions[node.id] ??
         layout ?? { x: 70 + index * 300, y: 140 },
       data: {

@@ -1109,7 +1109,8 @@ static ud_status xa_command(oracle *p, const ud_transaction_branch *branch,
 static ud_status xa_rollback_active(oracle *p, const ud_transaction_branch *branch) {
     ud_status status = UD_OK;
     if (p->branch_state == UD_TX_ACTIVE) {
-        status = xa_command(p, branch, "END", ",DBMS_XA.TMFAIL");
+        /* DBMS_XA ends the association with TMSUCCESS; XA_ROLLBACK decides the branch. */
+        status = xa_command(p, branch, "END", ",DBMS_XA.TMSUCCESS");
         if (!status) {
             p->transaction = 0;
             p->branch_state = XA_ENDED;

@@ -22,7 +22,8 @@ public sealed class ManagedTaskContext
     private readonly Native.CallbackContext value;
     private bool active = true;
     internal ManagedTaskContext(IntPtr pointer) => value = Marshal.PtrToStructure<Native.CallbackContext>(pointer);
-    internal void End() => active = false;
+    internal void End() => Volatile.Write(ref active, false);
+    internal IntPtr Activation { get { Open(); return value.Activation; } }
     public string TaskId { get { Open(); return Native.Text(value.TaskId); } }
     public string PipelineId { get { Open(); return Native.Text(value.PipelineId); } }
     public string ComponentId { get { Open(); return Native.Text(value.ComponentId); } }
@@ -31,7 +32,7 @@ public sealed class ManagedTaskContext
         Open(); int status = Native.ud_activation_check(value.Activation);
         if (status != 0) throw new UniversalDataException(status, "Native activation is cancelled or expired");
     }
-    private void Open() => ObjectDisposedException.ThrowIf(!active, this);
+    private void Open() => ObjectDisposedException.ThrowIf(!Volatile.Read(ref active), this);
 }
 
 /// <summary>Registrations and callback owners belong to the sole Native Registry.</summary>

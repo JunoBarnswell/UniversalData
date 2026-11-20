@@ -238,8 +238,7 @@ ud_status ud_mssql_xa_begin(void *state, const ud_transaction_branch *branch) {
         p->transaction = 1;
         memcpy(p->branch_id, branch->id.data, 64);
         memcpy(p->branch_digest, branch->digest, 32);
-        int found = 0;
-        status = ud_odbc_tx_receipt(p, branch, 1, &found);
+        status = ud_odbc_tx_receipt(p, branch, 1, NULL);
         if (status) {
             ud_status rolled_back = ud_mssql_xa_resolve(p, branch, UD_TX_ROLLBACK);
             if (rolled_back)
@@ -283,11 +282,8 @@ ud_status ud_mssql_xa_recover(void *state, const ud_transaction_branch *branch, 
     ud_status status = scan(p, &xid, &found, NULL);
     if (!status && found)
         *result = UD_TX_PREPARED;
-    else if (!status) {
-        status = ud_odbc_tx_receipt(p, branch, 0, &found);
-        if (!status)
-            *result = found ? UD_TX_COMMITTED : UD_TX_NOT_FOUND;
-    }
+    else if (!status)
+        status = ud_odbc_tx_receipt(p, branch, 0, result);
     p->resolving = resolving;
     return status;
 }
@@ -304,8 +300,17 @@ ud_status ud_mssql_xa_resolve(void *state, const ud_transaction_branch *branch, 
         if (!status)
             p->xa_phase = PHASE_ENDED;
     }
-    if (!status)
-        status = request(p, &xid, decision == UD_TX_COMMIT ? XA_COMMIT : XA_ROLLBACK, 0);
+    if (!status) {
+        int result = XA_RMFAIL;
+        status = call(p, &xid, decision == UD_TX_COMMIT ? XA_COMMIT : XA_ROLLBACK, 0,
+                      NULL, 0, NULL, &result);
+        /* An abandoned branch can time out between the locked receipt and
+         * rollback. The common coordinator must still recheck the receipt. */
+        if (decision == UD_TX_ROLLBACK && !p->xa_phase && result == XA_NOTA && !p->broken)
+            status = UD_OK;
+        else if (!status && result != XA_OK)
+            status = xa_status(p, result);
+    }
     if (!status)
         clear_branch(p);
     p->resolving = resolving;

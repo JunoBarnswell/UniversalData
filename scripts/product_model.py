@@ -134,7 +134,10 @@ def projections(model):
         ".github/workflows/ci.yml": (ROOT / "metadata/ci.yml.in").read_text(encoding="utf-8").replace("@UD_SDK_VERSION@", version),
         "include/ud/version.h": header,
         "metadata/ProductVersion.props": '<!-- Generated from metadata/product.json. -->\n'
-            '<Project><PropertyGroup><UDSdkVersion>' + version + '</UDSdkVersion></PropertyGroup></Project>\n',
+            '<Project>\n  <PropertyGroup>\n    <UDSdkVersion>' + version + '</UDSdkVersion>\n'
+            + ''.join(f'    <UD{package.replace(".", "")}Version>{value}</UD{package.replace(".", "")}Version>\n'
+                      for package, value in product["dotnetPackages"].items())
+            + '  </PropertyGroup>\n</Project>\n',
         "bindings/dotnet/UniversalData/ProductVersion.cs":
             "// Generated from metadata/product.json.\nnamespace UniversalData;\n"
             "internal static class ProductVersion\n{\n    internal const uint Abi = " + str(abi) +

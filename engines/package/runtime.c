@@ -566,9 +566,13 @@ static ud_status execute(ud_execution *e) {
         s = ud_checkpoint_open(e);
     if (!s)
         s = ud_execution_prepare_buffers(e);
-    if (!s)
-        s = e->preview_pipeline ? ud_pipeline_execute(&e->root, e->preview_pipeline)
-                                : ud_activation_run_definition(&e->root);
+    if (!s) {
+        if (e->transaction_recovery_only)
+            s = ud_control_execute(&e->root, ud_member(e->package->document, "controlFlow"));
+        else
+            s = e->preview_pipeline ? ud_pipeline_execute(&e->root, e->preview_pipeline)
+                                    : ud_activation_run_definition(&e->root);
+    }
     if (s == UD_BUSY)
         s = UD_TRANSIENT; /* Terminal lock contention must not look like wait. */
     if (!s) {
@@ -596,17 +600,49 @@ static ud_status execute(ud_execution *e) {
     ud_activation_notify(&e->root, state, s);
     return s;
 }
-ud_status ud_execution_execute(ud_execution *e) {
-    if (!e)
-        return UD_INVALID;
+static int enter_execution(ud_execution *e, int recover_transaction) {
     int expected = UD_EXEC_READY;
     ud_mutex_lock(&e->events_lock);
     int started = !e->sql_sessions &&
                   atomic_compare_exchange_strong(&e->state, &expected, UD_EXEC_RUNNING);
+    if (started) {
+        e->transaction_recovery_only = recover_transaction;
+        e->transaction_recovery_decision = -1;
+    }
     ud_mutex_unlock(&e->events_lock);
-    if (!started)
+    return started;
+}
+ud_status ud_execution_execute(ud_execution *e) {
+    if (!e)
+        return UD_INVALID;
+    if (!enter_execution(e, 0))
         return UD_BUSY;
     return execute(e);
+}
+ud_status ud_execution_recover_transaction(ud_execution *e, int32_t *decision) {
+    if (!e || !decision || !e->options.resume || !e->options.state_directory.length)
+        return UD_INVALID;
+    *decision = 0;
+    const ud_json *package = e->package->document;
+    const ud_json *flow = ud_member(package, "controlFlow");
+    const ud_json *tasks = ud_member(flow, "tasks");
+    const ud_json *task = ud_json_at(tasks, 0), *policy = ud_member(task, "transaction");
+    ud_string mode = {0}, scope = {"task", 4};
+    if (e->preview_pipeline || ud_json_size(tasks) != 1 ||
+        ud_json_size(ud_member(flow, "constraints")) || ud_member(task, "children") ||
+        ud_member(ud_member(package, "policy"), "transaction") ||
+        ud_json_string(ud_member(policy, "mode"), &mode) || !ud_named(mode, "required") ||
+        (ud_member(policy, "scope") && ud_json_string(ud_member(policy, "scope"), &scope)) ||
+        !ud_named(scope, "task"))
+        return UD_UNSUPPORTED;
+    if (!enter_execution(e, 1))
+        return UD_BUSY;
+    ud_status status = execute(e);
+    if (!status && e->transaction_recovery_decision < 0)
+        return UD_FENCED;
+    if (!status)
+        *decision = e->transaction_recovery_decision;
+    return status;
 }
 #ifdef _WIN32
 static unsigned __stdcall execution_thread(void *p) {
@@ -622,12 +658,7 @@ static void *execution_thread(void *p) {
 ud_status ud_execution_start(ud_execution *e) {
     if (!e)
         return UD_INVALID;
-    int expected = UD_EXEC_READY;
-    ud_mutex_lock(&e->events_lock);
-    int started = !e->sql_sessions &&
-                  atomic_compare_exchange_strong(&e->state, &expected, UD_EXEC_RUNNING);
-    ud_mutex_unlock(&e->events_lock);
-    if (!started)
+    if (!enter_execution(e, 0))
         return UD_BUSY;
 #ifdef _WIN32
     e->thread = (HANDLE)_beginthreadex(NULL, 0, execution_thread, e, 0, NULL);

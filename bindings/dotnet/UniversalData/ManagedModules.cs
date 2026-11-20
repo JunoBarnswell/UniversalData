@@ -1,6 +1,4 @@
 using System.Reflection;
-using System.Runtime.Loader;
-using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace UniversalData;
@@ -13,70 +11,108 @@ public sealed record ManagedAssembly(string Kind, string Path, string Sha256);
 
 public sealed partial class Registry
 {
-    private sealed class ModuleContext() : AssemblyLoadContext(isCollectible: true)
-    {
-        protected override Assembly? Load(AssemblyName name) => name.Name == typeof(Registry).Assembly.GetName().Name ? typeof(Registry).Assembly : null;
-    }
-    private readonly Dictionary<string, (ModuleContext Context, IManagedModule[] Modules)> modules = new();
-    private bool failedModule;
-    private readonly List<(ModuleContext Context, List<IManagedModule> Modules)> failedLoads = new();
-    /// <summary>Same fixed-assembly loading entry for SDK, CLI and product Worker.</summary>
+    private readonly Dictionary<string, SdkModuleCatalog> modules = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<SdkModuleCatalog> moduleCatalogs = [];
+    private readonly List<IManagedModule> ownedModules = [];
+    private bool failedModule, registeredMap;
+
+    /// <summary>Loads the immutable assembly inventory used by Native package components.</summary>
     public void LoadPackageExtensions(string packageJson, string tenant, PackageAuthorizer authorize)
     {
         ArgumentNullException.ThrowIfNull(authorize);
-        // The C17 package parser owns the allowed document and extension contract.
         using var package = new NativePackage(packageJson);
         using var document = JsonDocument.Parse(package.ToJson());
-        if (!document.RootElement.TryGetProperty("extensions", out var entries)) return;
-        lock (sync) {
-            Open();
-            foreach (var entry in entries.EnumerateArray()) {
-                var path = entry.GetProperty("path").GetString()!; var digest = entry.GetProperty("sha256").GetString()!;
-                if (!Path.IsPathFullyQualified(path) || !authorize(tenant, path, ConnectionAccess.Execute))
-                    throw new UniversalDataException((int)StatusCode.Auth, "Managed assembly is outside host scope");
-                path = Path.GetFullPath(path);
-                // Loading uses verified frozen bytes, never a mutable deployment file.
-                var info = new FileInfo(path); if (info.Length > 64 * 1024 * 1024) throw new ArgumentException("Assembly exceeds product limit");
-                for (FileSystemInfo? part = info; part is not null; part = part is FileInfo file ? file.Directory : ((DirectoryInfo)part).Parent)
-                    if (part.LinkTarget is not null) throw new UniversalDataException((int)StatusCode.Auth, "Assembly path contains a link");
-                byte[] bytes = File.ReadAllBytes(path);
-                if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(bytes), Convert.FromHexString(digest)))
-                    throw new UniversalDataException((int)StatusCode.Corrupt, "Assembly digest differs from deployment");
-                if (modules.ContainsKey(digest)) continue;
-                var load = new ModuleContext();
-                var registrations = new List<IManagedModule>();
-                try {
-                    using var stream = new MemoryStream(bytes, writable: false); var assembly = load.LoadFromStream(stream);
-                    var version = assembly.GetCustomAttribute<UniversalDataModuleAttribute>();
-                    if (version?.ProtocolVersion != ProductInfo.Protocol || version.SdkVersion != ProductInfo.Sdk)
-                        throw new UniversalDataException((int)StatusCode.Incompatible, "Managed module SDK/protocol differs from product");
-                    foreach (var type in assembly.GetExportedTypes().Where(type => !type.IsAbstract && typeof(IManagedModule).IsAssignableFrom(type)))
-                        registrations.Add((IManagedModule)(Activator.CreateInstance(type) ?? throw new ArgumentException("Module construction failed")));
-                    if (registrations.Count == 0) throw new ArgumentException("Assembly exports no Native Registry registrations");
-                    foreach (var registration in registrations) registration.Register(this);
-                    modules.Add(digest, (load, registrations.ToArray()));
-                } catch {
-                    // Native registrations already installed by a failing module
-                    // remain owned until registry destruction. Fence further use.
-                    failedModule = true; failedLoads.Add((load, registrations)); throw;
+        var root = document.RootElement;
+        bool usesMaps = EtlMapRegistration.UsedBy(root);
+        var entries = root.TryGetProperty("extensions", out var extensions)
+            ? extensions.EnumerateArray().Select(entry => new SdkModule(entry.GetProperty("path").GetString()!,
+                entry.GetProperty("sha256").GetString()!)).ToArray() : [];
+        var declared = new HashSet<string>(entries.Select(entry => entry.Sha256), StringComparer.OrdinalIgnoreCase);
+        var mapModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (usesMaps)
+            foreach (var flow in root.GetProperty("dataFlows").EnumerateArray())
+                foreach (var component in flow.GetProperty("components").EnumerateArray())
+                {
+                    if (component.GetProperty("component").GetString() != EtlMapRegistration.Component) continue;
+                    var method = component.GetProperty("config").GetProperty("method").Deserialize<SdkMethod>(WorkerProtocol.Json)
+                        ?? throw new ArgumentException("Missing registered ETL mapping method");
+                    if (!declared.Contains(method.ModuleSha256))
+                        throw new UniversalDataException((int)StatusCode.Auth, "ETL mapping module is outside the package inventory");
+                    mapModules.Add(method.ModuleSha256);
                 }
+
+        lock (sync)
+        {
+            Open();
+            foreach (var entry in entries)
+                if (!Path.IsPathFullyQualified(entry.Path) || !authorize(tenant, entry.Path, ConnectionAccess.Execute))
+                    throw new UniversalDataException((int)StatusCode.Auth, "Managed assembly is outside host scope");
+            if (entries.Length == 0) return;
+            SdkModuleCatalog? catalog = null;
+            try
+            {
+                foreach (var entry in entries)
+                {
+                    if (modules.ContainsKey(entry.Sha256)) continue;
+                    if (catalog is null)
+                    {
+                        catalog = new SdkModuleCatalog(entries, (resource, access) => authorize(tenant, resource, access));
+                        moduleCatalogs.Add(catalog);
+                    }
+                    var assembly = catalog.Load(entry.Sha256);
+                    var registrations = assembly.GetExportedTypes().Where(type => !type.IsAbstract &&
+                        typeof(IManagedModule).IsAssignableFrom(type)).ToArray();
+                    if (registrations.Length == 0 && !mapModules.Contains(entry.Sha256))
+                        throw new ArgumentException("Assembly exports no Native Registry registrations or package mappings");
+                    if (registrations.Length != 0)
+                    {
+                        var version = assembly.GetCustomAttribute<UniversalDataModuleAttribute>();
+                        if (version?.ProtocolVersion != ProductInfo.Protocol || version.SdkVersion != ProductInfo.Sdk)
+                            throw new UniversalDataException((int)StatusCode.Incompatible, "Managed module SDK/protocol differs from product");
+                    }
+                    foreach (var type in registrations)
+                    {
+                        var module = (IManagedModule)(Activator.CreateInstance(type) ?? throw new ArgumentException("Module construction failed"));
+                        ownedModules.Add(module);
+                        module.Register(this);
+                    }
+                    modules.Add(entry.Sha256, catalog);
+                }
+                if (usesMaps && !registeredMap)
+                {
+                    EtlMapRegistration.Register(this, ResolveMappedMethod);
+                    registeredMap = true;
+                }
+            }
+            catch
+            {
+                // Native registrations already installed by a failing module remain owned until registry destruction.
+                failedModule = true;
+                throw;
             }
         }
     }
+
+    private MethodInfo ResolveMappedMethod(SdkMethod method)
+    {
+        SdkModuleCatalog catalog;
+        lock (sync)
+            catalog = modules.TryGetValue(method.ModuleSha256, out var owner) ? owner :
+                throw new UniversalDataException((int)StatusCode.Auth, "ETL mapping module is outside the registered inventory");
+        return catalog.Resolve(method);
+    }
+
     private void ReleaseModules()
     {
-        foreach (var module in modules.Values) {
-            foreach (var registration in module.Modules) if (registration is IDisposable owned) {
-                try { owned.Dispose(); } catch { /* Native teardown already completed. */ }
+        foreach (var registration in ownedModules)
+            if (registration is IDisposable disposable)
+            {
+                try { disposable.Dispose(); }
+                catch { /* Native teardown already completed. */ }
             }
-            module.Context.Unload();
-        }
-        foreach (var load in failedLoads) {
-            foreach (var registration in load.Modules) if (registration is IDisposable owned) {
-                try { owned.Dispose(); } catch { /* Native teardown already completed. */ }
-            }
-            load.Context.Unload();
-        }
-        modules.Clear(); failedLoads.Clear();
+        foreach (var catalog in moduleCatalogs) catalog.Dispose();
+        ownedModules.Clear();
+        moduleCatalogs.Clear();
+        modules.Clear();
     }
 }

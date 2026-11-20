@@ -3,12 +3,14 @@ using System.Threading.Channels;
 using UniversalData;
 using UniversalData.Hosting;
 
-if (args is ["session"]) return await UniversalData.Worker.SdkWorker.Run();
 if (args is ["agent", var configPath]) return await UniversalData.Worker.WorkerNodeAgent.RunAsync(configPath);
-if (args.Length != 0) throw new ArgumentException("Worker uses the private inherited-pipe request protocol");
+string? sdkDeployment = args is ["sdk-host", var deployment] ? deployment : args.Length == 0 ?
+    Environment.GetEnvironmentVariable(SdkSessionProtocol.DeploymentVariable) : null;
+if (args.Length != 0 && sdkDeployment is null) throw new ArgumentException("Worker uses the private inherited-pipe request protocol");
 _ = Registry.Features;
 Console.WriteLine(JsonSerializer.Serialize(new { kind = "hello", version = ProductInfo.Protocol,
     contractRevision = ProductInfo.WorkerRevision, processId = Environment.ProcessId }, HostPolicy.JsonOptions));
+if (sdkDeployment is not null) return await SdkSessionHost.RunAsync(sdkDeployment);
 var input = await WorkerProtocol.ReadLine(Console.In,67108864);
 if (input is null) return 0;
 using(var envelope=JsonDocument.Parse(input))
@@ -17,9 +19,15 @@ using(var envelope=JsonDocument.Parse(input))
 var request = JsonSerializer.Deserialize<WorkerRequest>(input,HostPolicy.JsonOptions) ?? throw new InvalidDataException("Invalid Worker request");
 if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket,"N",out _) || request.Policy is null ||
     request.Identity is null || request.Identity.Grants is null || !HostIdentity.ValidId(request.Identity.Tenant) ||
-    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare" or "kafkaPositions"))
+    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare" or "kafkaPositions" or "sdk.session"))
     throw new InvalidDataException("Incompatible Worker request");
 var policy = request.Policy with { Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated };
+if (request.Mode == "sdk.session")
+{
+    var session = request.Payload?.Deserialize<SdkSessionConfiguration>(WorkerProtocol.Json)
+        ?? throw new InvalidDataException("Missing SDK session assignment");
+    return await UniversalData.Worker.SdkWorker.RunAsync(policy, session);
+}
 using var watchdog = new CancellationTokenSource();
 using var guardianLost = new CancellationTokenSource();
 var commands = Channel.CreateBounded<string>(4);

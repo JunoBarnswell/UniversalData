@@ -13,6 +13,12 @@
   <PropertyGroup Condition="'$(IncludeUniversalDataRuntimeDependencies)' == 'true'">
     <NuspecFile>$(MSBuildProjectDirectory)/UniversalData.nuspec</NuspecFile>
     <NuspecBasePath>$(MSBuildProjectDirectory)</NuspecBasePath>
-    <NuspecProperties>version=$(UDSdkVersion)</NuspecProperties>
+    <NuspecProperties>version=$(UDSdkVersion);SqlSugarCore=$(UDSqlSugarCoreVersion);MySqlConnector=$(UDMySqlConnectorVersion);SQLitePCLRawlibe_sqlite3=$(UDSQLitePCLRawlibe_sqlite3Version);SystemSecurityCryptographyPkcs=$(UDSystemSecurityCryptographyPkcsVersion)</NuspecProperties>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SqlSugarCore" Version="[$(UDSqlSugarCoreVersion)]" />
+    <PackageReference Include="MySqlConnector" Version="[$(UDMySqlConnectorVersion)]" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="[$(UDSQLitePCLRawlibe_sqlite3Version)]" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="[$(UDSystemSecurityCryptographyPkcsVersion)]" />
+  </ItemGroup>
 </Project>

@@ -171,6 +171,22 @@ internal sealed class Execution : IDisposable
     public void Execute()
     { Control(); lock (controller) { Open(); Check(Native.ud_execution_execute(execution)); } }
 
+    internal int RecoverTransaction()
+    {
+        Control();
+        lock (controller)
+        {
+            Open();
+            var status = (StatusCode)Native.ud_execution_recover_transaction(execution, out var decision);
+            if (status != StatusCode.Ok)
+            {
+                var detail = WorkerNativeError.FromExecution(execution, status);
+                throw new UniversalDataException((int)status, detail.Message, detail);
+            }
+            return decision;
+        }
+    }
+
     public void Start()
     { Control(); lock (controller) { Open(); Check(Native.ud_execution_start(execution)); } }
 
@@ -236,24 +252,12 @@ internal sealed class Execution : IDisposable
         }
     }
 
-    /// <summary>Open a strongly typed SqlSugar client through this execution's authorized Native lease.</summary>
-    internal SqlSugar.SqlSessionHandle OpenSqlSession(string connection)
+    internal SqlSessionHandle OpenSqlSession(string connection)
     {
         lock (controller)
         {
             Open();
-            return SqlSugar.SqlNative.Open(execution, connection);
-        }
-    }
-
-    public SqlSugar.SqlSugarClient OpenSqlClient(string connection)
-    {
-        Control();
-        ArgumentException.ThrowIfNullOrWhiteSpace(connection);
-        lock (controller)
-        {
-            Open();
-            return SqlSugar.SqlSugarClient.FromExecution(execution, connection);
+            return SqlNative.Open(execution, connection);
         }
     }
 
