@@ -9,6 +9,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
+      - uses: actions/checkout@v4
       - name: Verify or provision Microsoft SQL Server 2025 Integration Services
         shell: pwsh
         run: |
@@ -39,6 +40,15 @@ jobs:
           Get-Item $runtime | ForEach-Object { $_.VersionInfo | Select-Object FileVersion, ProductVersion | Format-List }
           Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' | Select-Object ProductName,CurrentBuild,UBR | Format-List
           & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.VisualStudio.Component.SQL.SSDT -property installationVersion
+      - name: Capture typed row output from DTExec
+        shell: powershell
+        run: tests/ssis_parity/windows/Capture-GoldenRows.ps1 -Output "${{ runner.temp }}\ssis-row-capture"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ssis-2025-row-capture
+          path: ${{ runner.temp }}/ssis-row-capture
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()
         with:
