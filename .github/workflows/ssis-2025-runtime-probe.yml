@@ -43,6 +43,21 @@ jobs:
       - name: Capture typed row output from DTExec
         shell: powershell
         run: tests/ssis_parity/windows/Capture-GoldenRows.ps1 -Output "${{ runner.temp }}\ssis-row-capture"
+      - name: Export compact capture for verification
+        shell: pwsh
+        run: |
+          @'
+          import base64, io, sys, zipfile
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          compressed = io.BytesIO()
+          with zipfile.ZipFile(compressed, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+              for filename in ('capture.json', 'baseline.dtsx', 'metadata.csv', 'input.csv', 'output.csv', 'dtexec.log'):
+                  archive.write(root / filename, filename)
+          text = base64.b64encode(compressed.getbuffer()).decode('ascii')
+          for offset in range(0, len(text), 4000):
+              print('UD_ROW_CAPTURE=' + text[offset:offset+4000])
+          '@ | python - "${{ runner.temp }}\ssis-row-capture"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
