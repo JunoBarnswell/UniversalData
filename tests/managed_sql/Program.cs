@@ -75,6 +75,11 @@ try
     var descending = client.Queryable<ManagedSqlOrder>().OrderByDescending(order => (object)order.Id).ToPageList(1, 1);
     if (page.Count == 0 || afterPage != options.RowCount || descending.Count != 1 || descending[0].Id != options.RowCount)
         throw new InvalidOperationException("Stable pagination or order state returned unexpected rows.");
+    using (var early = ordered.ToBatches(1).GetEnumerator())
+    {
+        if (!early.MoveNext() || early.Current.Single().Id != 1)
+            throw new InvalidOperationException("The streaming cursor did not return the first row.");
+    }
     using (var raw = client.Ado.GetDataReader("SELECT " + options.QuotedColumns() + " FROM " + options.QuotedTable() + " WHERE " + options.QuotedColumn("Id") + "=@id", new SugarParameter("@id", 1)))
     {
         if (!raw.Read() || Convert.ToInt64(raw["Id"], CultureInfo.InvariantCulture) != 1) throw new InvalidOperationException("Raw IDataReader did not return the requested row.");

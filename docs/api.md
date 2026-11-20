@@ -29,6 +29,8 @@ Oracle 的原始查询返回固定刻度的 `NUMBER` 时，读取器保留驱动
 
 `Insertable`、`Updateable` 和 `Deleteable` 接收单个对象或一批对象。`Fastest<T>()` 使用相同的原生写入入口。`PageSize` 指定物理执行的分块上限，整个 SDK 批量调用仍属于一个事务。按键更新和删除使用实体声明的主键。显式事务中的批量失败要求回滚。驱动的 `CommitUnknown` 需要先核实数据库状态。
 
+Oracle 在显式 `Serializable` 事务中使用数组 DML 执行 `Fastest<T>().BulkCopy()`，数据写入仍由该事务提交或回滚。
+
 `examples/dotnet-data` 的 `--sql-etl` 示例从源读取 `example_orders`，去除 `Name` 两端的空白，再批量写入目标的同名表。为源和目标分别准备 JSON 配置文件，每个文件包含 `dbType`、`connectionString` 和 `pluginPath`。在已加载对应 ABI 14 原生库的环境中运行下列命令。
 
 ```powershell

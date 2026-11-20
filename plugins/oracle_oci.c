@@ -1008,7 +1008,7 @@ static ud_status begin(void *state, int32_t isolation) {
                                                            ? OCI_TRANS_SERIALIZABLE
                                                            : 0)));
     if (!s)
-        p->transaction = 1;
+        p->transaction = isolation;
     return s;
 }
 static ud_status rollback(void *state) {
@@ -1040,12 +1040,13 @@ static ud_status receipt(void *state, ud_string tenant, ud_string job, ud_string
     ud_string args[] = {tenant, job, batch};
     ud_field f[] = {{.name = "digest", .name_length = 6, .type = UD_BINARY},
                     {.name = "source_position", .name_length = 15, .type = UD_UTF8, .nullable = 1}};
+    char sql[192];
+    snprintf(sql, sizeof(sql),
+             "SELECT digest AS \"digest\",source_position AS \"source_position\" FROM "
+             "ud_sdk_receipts_v11 WHERE tenant=:p1 AND job=:p2 AND batch_id=:p3%s",
+             p->transaction ? " FOR UPDATE" : "");
     ud_batch *b = NULL;
-    ud_status s =
-        ud_oci_query(p,
-                     "SELECT digest AS \"digest\",source_position AS \"source_position\" FROM "
-                     "ud_sdk_receipts_v11 WHERE tenant=:p1 AND job=:p2 AND batch_id=:p3 FOR UPDATE",
-                     args, 3, f, 2, &b);
+    ud_status s = ud_oci_query(p, sql, args, 3, f, 2, &b);
     if (!s && p->host.rows(b)) {
         ud_value d, v;
         s = p->host.get(b, 0, 0, &d);
@@ -1435,8 +1436,7 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (receipted && !digest)
         return UD_INVALID;
     int own = !p->transaction;
-    int32_t isolation = receipted ? UD_ISOLATION_SERIALIZABLE : UD_ISOLATION_READ_COMMITTED;
-    ud_status s = own ? begin(p, isolation) : UD_OK;
+    ud_status s = own ? begin(p, UD_ISOLATION_READ_COMMITTED) : UD_OK;
     if (!s && o->mode == UD_WRITE_CHANGESET && o->current_column != UINT32_MAX) {
         char *table = plugin_identifier(&p->host, o->table);
         size_t n = table ? strlen(table) + 40 : 0;
@@ -1467,6 +1467,12 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     ud_string stage = {0};
     uint64_t affected = 0;
     int native = !s && !exists && o->mode == UD_WRITE_APPEND && o->load_mode != UD_LOAD_PARAMETERS;
+    /* Direct Path commits its private stage after a serializable snapshot has started. */
+    if (native && p->transaction == UD_ISOLATION_SERIALIZABLE) {
+        if (o->load_mode == UD_LOAD_NATIVE)
+            s = UD_UNSUPPORTED;
+        native = 0;
+    }
     if (native) {
         s = ud_oci_bulk_stage(p, o, b, &bulk, &stage);
         if (s == UD_UNSUPPORTED && o->load_mode == UD_LOAD_AUTO) {

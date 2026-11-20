@@ -28,6 +28,7 @@ internal static class ManagedSqlEtl
             using (var writer = Open(plugin, target))
                 writer.Ado.ExecuteCommand("CREATE TABLE etl_rows(id INTEGER NOT NULL PRIMARY KEY,label TEXT NOT NULL)");
 
+            var sourceReadable = true;
             var schema = Discover(plugin, source, Authorize, Resolve);
             var document = Definition(plugin, source, target, schema);
             using (var package = new Package(document))
@@ -52,6 +53,17 @@ internal static class ManagedSqlEtl
                         throw new InvalidOperationException("The source write should have been denied.");
                     }
                     catch (UniversalDataException denied) when (denied.Code == StatusCode.Auth) { }
+
+                    sourceReadable = false;
+                    try
+                    {
+                        hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows");
+                        throw new InvalidOperationException("The revoked read should have been denied.");
+                    }
+                    catch (UniversalDataException denied) when (denied.Code == StatusCode.Auth) { }
+                    finally { sourceReadable = true; }
+                    Require(Convert.ToInt64(hosted.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows"),
+                        CultureInfo.InvariantCulture) == 35, "Read after restoring the host grant");
                 }
                 execution.Execute();
                 Require(execution.Metrics.State == ExecutionState.Succeeded && execution.Metrics.CommittedRows == 35,
@@ -66,7 +78,8 @@ internal static class ManagedSqlEtl
             bool Authorize(string tenant, string resource, ConnectionAccess action) =>
                 tenant == "sql-etl" &&
                 ((resource == plugin && action is ConnectionAccess.Open or ConnectionAccess.Execute) ||
-                 (resource == source && action is ConnectionAccess.Open or ConnectionAccess.Discover or ConnectionAccess.Read) ||
+                 (resource == source && (action is ConnectionAccess.Open or ConnectionAccess.Discover ||
+                                         (action == ConnectionAccess.Read && sourceReadable))) ||
                  (resource == target && action is ConnectionAccess.Open or ConnectionAccess.Discover or ConnectionAccess.Read or ConnectionAccess.Write));
 
             string Resolve(string tenant, string resource, string reference) =>

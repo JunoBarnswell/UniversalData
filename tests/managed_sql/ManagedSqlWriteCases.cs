@@ -92,6 +92,18 @@ internal static class ManagedSqlWriteCases
         finally { client.Ado.RollbackTran(); }
         Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
             "The explicit transaction was rolled back");
+        if (options.Provider == DbType.Oracle)
+        {
+            client.Ado.BeginTran(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                Require(client.Fastest<ManagedSqlOrder>().BulkCopy(rows.Take(2)) == 2,
+                    "BulkCopy used array DML inside a serializable Oracle transaction");
+            }
+            finally { client.Ado.RollbackTran(); }
+            Require(Convert.ToInt32(client.Ado.GetScalar(countSql), CultureInfo.InvariantCulture) == expected,
+                "The serializable transaction was rolled back");
+        }
     }
 
     private static void VerifyCompositeKeys(SqlSugarClient client, ManagedSqlOptions options)

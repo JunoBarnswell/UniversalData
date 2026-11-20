@@ -353,9 +353,10 @@ int main(int argc, char **argv) {
     OK(ud_batch_seal(params));
     char sql[512];
     const char *quote = dialect == UD_SQL_MYSQL || dialect == UD_SQL_MARIADB ? "`" : "\"";
-    const char *marker = ud_connection_parameter_style(c) == UD_SQL_PARAMETER_NUMBERED
-                             ? (dialect == UD_SQL_ORACLE ? ":1" : "$1")
-                             : "?";
+    int parameter_style = ud_connection_parameter_style(c);
+    const char *marker = parameter_style == UD_SQL_PARAMETER_NAMED ? ":1"
+                         : parameter_style == UD_SQL_PARAMETER_NUMBERED ? "$1"
+                                                                        : "?";
     snprintf(sql, sizeof(sql),
              "SELECT %sid%s,%sname%s,%samount%s,%spayload%s,%sstamp%s,%sflag%s FROM "
              "%sud_advanced_rows%s WHERE %sid%s >= %s ORDER BY %sid%s",
