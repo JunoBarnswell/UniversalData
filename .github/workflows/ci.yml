@@ -32,8 +32,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+            triplet: x64-linux-dynamic
+          - os: windows-2025
+            platform: windows
+            triplet: x64-windows
     runs-on: ${{ matrix.os }}
+    env:
+      UD_CORE_TRIPLET: ${{ matrix.triplet }}
     steps:
       - uses: actions/checkout@v4
       - name: Check out the pinned CORE dependency registry
@@ -60,8 +68,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
-          python scripts/fetch_deps.py --platform ${{ runner.os == 'Windows' && 'windows' || 'linux' }} --output build/deps
-          $triplet = 'x64-' + '${{ runner.os == 'Windows' && 'windows' || 'linux' }}'
+          python scripts/fetch_deps.py --platform ${{ matrix.platform }} --output build/deps
+          $triplet = $env:UD_CORE_TRIPLET
           if ($IsWindows) {
             & ./build/vcpkg/bootstrap-vcpkg.bat -disableMetrics
             $udVcpkg = './build/vcpkg/vcpkg.exe'
@@ -75,7 +83,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r tests/requirements.txt
-          $triplet = 'x64-' + '${{ runner.os == 'Windows' && 'windows' || 'linux' }}'
+          $triplet = $env:UD_CORE_TRIPLET
           $udInstalled = "$PWD/build/vcpkg/installed/$triplet"
           cmake -S . -B build/core -DCMAKE_TOOLCHAIN_FILE="$PWD/build/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=$triplet -DCMAKE_PREFIX_PATH="$udInstalled" -DICU_ROOT="$udInstalled" -DUD_BUILD_PROFILE=CORE -DUD_BUILD_HOSTS=ON -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$PWD/build/deps/sqlite/sqlite-amalgamation-3490100" -DCMAKE_BUILD_TYPE=Release
           cmake --build build/core --config Release --parallel 4
