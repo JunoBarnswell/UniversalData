@@ -8,7 +8,7 @@ public sealed class WorkerNodeChannel(WebSocket socket) : IDisposable
 {
     public const string RegistrationPath = "/internal/worker-nodes/register";
     public const string ExecutionPath = "/internal/worker-nodes/execute";
-    public static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(20);
     private const int MaxFrameBytes = 64 * 1024 * 1024;
     private readonly SemaphoreSlim writer = new(1, 1);
 

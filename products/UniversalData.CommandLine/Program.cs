@@ -2,6 +2,23 @@ using System.Text.Json;
 using UniversalData;
 using UniversalData.Hosting;
 
+if (args is ["catalog", "migrate", var mode, var source, var connection, var encryption])
+{
+    try
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            UniversalData.CommandLine.CatalogMigration.Run(mode,source,connection,encryption),HostPolicy.JsonOptions));
+        return 0;
+    }
+    catch (UniversalDataException error)
+    {
+        return Report(new(error.Code,new(ErrorSource.Native,error.Code,"Catalog migration did not finish")));
+    }
+    catch (Exception error) when (error is IOException or ArgumentException or JsonException or System.Security.Cryptography.CryptographicException)
+    {
+        return Report(new(StatusCode.Invalid,new(ErrorSource.Native,StatusCode.Invalid,"Invalid Catalog migration input")));
+    }
+}
 if (args.Length >= 1 && args[0] == "identity-init") {
     if (args.Length != 4 || !HostIdentity.ValidId(args[2]) || !HostIdentity.ValidId(args[3])) throw new ArgumentException("usage: identity-init IDENTITY_FILE SUBJECT TENANT; password is read from standard input");
     string password;

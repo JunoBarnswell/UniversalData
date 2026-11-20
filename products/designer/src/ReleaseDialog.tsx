@@ -1,6 +1,7 @@
 import { Button, Input } from "./shared/design-system/Controls";
 import { useState } from "react";
 import { post } from "./api";
+import { canUseKafkaElasticity } from "./model";
 import type {
   ControlGraph,
   Deployment,
@@ -20,6 +21,8 @@ export function ExecutionConfirmation({
 }) {
   const [confirmed, setConfirmed] = useState(false),
     [debug, setDebug] = useState(false),
+    [elastic, setElastic] = useState(false),
+    [requestId, setRequestId] = useState(() => crypto.randomUUID()),
     [breakpoints, setBreakpoints] = useState<string[][]>([]),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -45,6 +48,8 @@ export function ExecutionConfirmation({
     setBusy(true);
     try {
       const result = await post<RunState>("/executions", {
+        requestId,
+        elastic: elastic ? {} : undefined,
         packageId: deployment.packageId,
         packageRevision: deployment.packageRevision,
         deploymentId: deployment.id,
@@ -138,11 +143,21 @@ export function ExecutionConfirmation({
           </tbody>
         </table>
         <p>执行将使用这一已发布版本；后续草稿更改将进入下一个版本。</p>
+        {canUseKafkaElasticity(document) && <label className="checkbox">
+          <Input type="checkbox" checked={elastic} disabled={busy}
+            onChange={(event) => {
+              setElastic(event.target.checked);
+              if (event.target.checked) setDebug(false);
+              setRequestId(crypto.randomUUID());
+            }} />
+          按 Kafka 分区积压弹性调度
+        </label>}
         <label className="checkbox">
           <Input
             type="checkbox"
+            disabled={elastic || busy}
             checked={debug}
-            onChange={(event) => setDebug(event.target.checked)}
+            onChange={(event) => { setDebug(event.target.checked); setRequestId(crypto.randomUUID()); }}
           />
           开启 Native 调试与有界数据查看
         </label>

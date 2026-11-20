@@ -1,20 +1,59 @@
 using System.Text.Json;
+using System.Threading.Channels;
 using UniversalData;
 using UniversalData.Hosting;
 
 if (args is ["session"]) return await UniversalData.Worker.SdkWorker.Run();
 if (args is ["agent", var configPath]) return await UniversalData.Worker.WorkerNodeAgent.RunAsync(configPath);
 if (args.Length != 0) throw new ArgumentException("Worker uses the private inherited-pipe request protocol");
-var input = await WorkerProtocol.ReadLine(Console.In,67108864) ?? throw new InvalidDataException("Missing Worker request");
+_ = Registry.Features;
+Console.WriteLine(JsonSerializer.Serialize(new { kind = "hello", version = ProductInfo.Protocol,
+    contractRevision = ProductInfo.WorkerRevision, processId = Environment.ProcessId }, HostPolicy.JsonOptions));
+var input = await WorkerProtocol.ReadLine(Console.In,67108864);
+if (input is null) return 0;
 using(var envelope=JsonDocument.Parse(input))
     if (!envelope.RootElement.TryGetProperty("contractRevision",out var contract) || contract.GetInt32()!=ProductInfo.WorkerRevision)
         throw new InvalidDataException("Incompatible Worker contract revision");
 var request = JsonSerializer.Deserialize<WorkerRequest>(input,HostPolicy.JsonOptions) ?? throw new InvalidDataException("Invalid Worker request");
 if (request.Version != ProductInfo.Protocol || !Guid.TryParseExact(request.Ticket,"N",out _) || request.Policy is null ||
     request.Identity is null || request.Identity.Grants is null || !HostIdentity.ValidId(request.Identity.Tenant) ||
-    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare"))
+    request.Mode is not ("execute" or "components" or "connectors" or "validate" or "reidentify" or "ports" or "schema" or "compile" or "expression" or "expressionLanguage" or "preview" or "file" or "metadata" or "messageConnection" or "schemaCompare" or "kafkaPositions"))
     throw new InvalidDataException("Incompatible Worker request");
 var policy = request.Policy with { Tenant = request.Identity.Tenant, Identity = request.Identity, Isolated = request.Isolated };
+using var watchdog = new CancellationTokenSource();
+using var guardianLost = new CancellationTokenSource();
+var commands = Channel.CreateBounded<string>(4);
+_ = Task.Run(async () =>
+{
+    try
+    {
+        while (await WorkerProtocol.ReadLine(Console.In, 64, watchdog.Token) is { } command)
+        {
+            if (command is not ("start" or "stop" or "cancel") || !commands.Writer.TryWrite(command))
+                break;
+        }
+    }
+    catch (Exception error) when (error is IOException or OperationCanceledException) { }
+    finally
+    {
+        commands.Writer.TryComplete();
+        if (!watchdog.IsCancellationRequested) guardianLost.Cancel();
+    }
+});
+_ = Task.Run(async () =>
+{
+    var grace = TimeSpan.FromSeconds(Math.Min(policy.CancellationGraceSeconds, 5));
+    using var stop = CancellationTokenSource.CreateLinkedTokenSource(watchdog.Token, guardianLost.Token);
+    try { await Task.Delay(TimeSpan.FromSeconds(policy.ExecutionTimeoutSeconds), stop.Token); }
+    catch (OperationCanceledException) { }
+    try
+    {
+        await guardianLost.CancelAsync();
+        await Task.Delay(grace, watchdog.Token);
+        Environment.Exit(1);
+    }
+    catch (OperationCanceledException) { }
+});
 using var nativePackage = request.Mode == "execute"
     ? new NativePackage(request.Package, policy.MemoryLimit)
     : null;
@@ -41,6 +80,8 @@ if (request.Mode != "execute") {
             value = CSharpDeployment.Compile(request.Payload!.Value.GetProperty("source").GetString()!,Path.Combine(policy.DataDirectory,"assemblies"),policy.Tenant,
                 (_,resource,access) => access == ConnectionAccess.Write && HostPolicy.Inside(resource,Path.Combine(policy.DataDirectory,"assemblies")));
         } else {
+            if (request.Mode == "kafkaPositions")
+                request.Identity.Require("package.execute",request.Payload!.Value.GetProperty("packageId").GetString()!);
             using var execution = policy.CreateExecution(request.Package,parameters,stateDirectory:validationState);
             string result = request.Mode switch {
                 "components" => execution.ComponentCatalog(),
@@ -51,6 +92,10 @@ if (request.Mode != "execute") {
                 "file" => execution.InspectFile(request.Payload!.Value.GetProperty("connection").GetString()!,request.Payload.Value.GetProperty("configuration").GetRawText()),
                 "metadata" => execution.Metadata(request.Payload!.Value.GetProperty("connection").GetString()!,request.Payload.Value.GetProperty("kind").GetInt32(),request.Payload.Value.GetProperty("parent").GetString()!,request.Payload.Value.GetProperty("offset").GetUInt64()),
                 "messageConnection" => ProbeMessageConnection(execution, request.Payload!.Value.GetProperty("connection").GetString()!),
+                "kafkaPositions" => JsonSerializer.Serialize(execution.PartitionPositions(
+                    request.Payload!.Value.GetProperty("connection").GetString()!,
+                    request.Payload.Value.GetProperty("topic").GetString()!,
+                    request.Payload.Value.GetProperty("group").GetString()!), HostPolicy.JsonOptions),
                 "expression" => execution.CompileExpression(request.Payload!.Value.GetProperty("schema").GetRawText(),request.Payload.Value.GetProperty("source").GetString()!),
                 "validate" => execution.Explain(),
                 "ports" => execution.ComponentPorts(request.Payload!.Value.GetProperty("pipelineId").GetString()!,request.Payload.Value.GetProperty("componentId").GetString()!,
@@ -64,7 +109,7 @@ if (request.Mode != "execute") {
     } catch (UniversalDataException error) { status = error.Status; }
       catch (Exception error) when (error is ArgumentException or JsonException or IOException or InvalidOperationException) { status = (int)StatusCode.Invalid; }
     finally {if(validationState is not null&&Directory.Exists(directory))Directory.Delete(directory,true);}
-    Reply(new { version = ProductInfo.Protocol, ticket = request.Ticket, kind = "inspection", result = status, value }); return status == 0 ? 0 : 1;
+    Reply(new { version = ProductInfo.Protocol, ticket = request.Ticket, kind = "inspection", result = status, value }); watchdog.Cancel(); return status == 0 ? 0 : 1;
 }
 static string ProbeMessageConnection(Execution execution, string connection) {
     var (capabilities, elapsedMs) = execution.TestMessageConnection(connection);
@@ -124,7 +169,8 @@ void Observe(ExecutionEvent value) {
 }
 phase="native.create";
 string? journalDirectory = requiresJournal ? directory : null;
-using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,journalDirectory,request.Resume,observe:Observe,eventSequenceStart:eventSequence,shard:request.Shard,brokerRestore:request.BrokerRestore);
+using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,journalDirectory,request.Resume,observe:Observe,eventSequenceStart:eventSequence,
+    shard:request.Shard,brokerRestore:request.BrokerRestore,assignment:request.Assignment);
 phase="native.debug";
 if (request.Debug is { } debug) executionRun.ConfigureDebug(debug.GetRawText());
 using var controls = new CancellationTokenSource();
@@ -136,15 +182,23 @@ try {
     phase="catalog.ready";
     ulong readyRevision=checked(Math.Max(request.Revision,catalog.LatestRevision(CatalogKind.Execution,executionRun.Id))+1);
     catalog.Record(executionRun,readyRevision);
-    Reply(new { version = ProductInfo.Protocol, kind = "ready", controlReady = true, historyComplete = true,ticket = request.Ticket, executionId = executionRun.Id, revision = readyRevision,
+    Reply(new { version = ProductInfo.Protocol, kind = "ready", controlReady = true, historyComplete = true,
+        ticket = request.Ticket, processId = Environment.ProcessId, executionId = executionRun.Id, revision = readyRevision,
         record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,readyRevision)!) });
-    var start = await WorkerProtocol.ReadLine(Console.In,64); if (start != "start") return 2;
+    if (!await commands.Reader.WaitToReadAsync() || !commands.Reader.TryRead(out var start) || start != "start" || guardianLost.IsCancellationRequested) return 2;
     phase="native.execute";
     executionRun.Start();
-    _ = Task.Run(async () => {
-        while (await WorkerProtocol.ReadLine(Console.In,64) is { } command) if (command == "cancel") executionRun.Cancel();
-        executionRun.Cancel();
+    using var ownerLost = guardianLost.Token.Register(executionRun.Stop);
+    var controlCommands = Task.Run(async () => {
+        try {
+            await foreach (var command in commands.Reader.ReadAllAsync(controls.Token))
+            {
+                if (command == "cancel") executionRun.Cancel();
+                else if (command == "stop") executionRun.Stop();
+            }
+        } catch (OperationCanceledException) when (controls.IsCancellationRequested) { }
     });
+    try {
     int resultCode = 0;
     OperationError? resultDetail = null;
     ulong currentRevision = readyRevision;
@@ -171,6 +225,7 @@ try {
         record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,terminalRevision)!),
         debug = request.Debug is null ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(secretFilter.Json(executionRun.DebugSnapshot())) });
     return resultCode == 0 ? 0 : 1;
+    } finally { controls.Cancel(); await controlCommands; }
 } finally { controls.Cancel(); await controlServer; }
 } catch(Exception error) when(error is not OutOfMemoryException) {
     int result=error is UniversalDataException native?native.Status:error is UnauthorizedAccessException?(int)StatusCode.Auth:error is IOException?(int)StatusCode.Io:error is OperationCanceledException?(int)StatusCode.Cancelled:(int)StatusCode.Invalid;
@@ -178,4 +233,4 @@ try {
     // product protocol exports only a Native status and fixed lifecycle phase.
     Reply(new {version=ProductInfo.Protocol,ticket=request.Ticket,kind="failed",result,phase,errorType=error.GetType().Name});
     return 1;
-}
+} finally { watchdog.Cancel(); }

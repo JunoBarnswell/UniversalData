@@ -53,7 +53,7 @@ export interface DataFlowParallelism {
 }
 export type DataFlowDelivery =
   | { mode: "atLeastOnce" }
-  | { mode: "kafkaTransaction"; checkpointTopic: string; checkpointPartition?: number };
+  | { mode: "kafkaTransaction"; checkpointTopic: string; checkpointPartition?: number; kafkaStage?: boolean; kafkaMerge?: boolean };
 export interface DataFlow {
   id: string;
   components: FlowComponent[];
@@ -100,8 +100,53 @@ export interface PackageDocument {
     viewports?: { flow: string; x: number; y: number; zoom: number }[];
   };
 }
+export interface KafkaElasticity {
+  minProcesses: number;
+  maxProcesses: number;
+  targetLagPerProcess?: number;
+  maxPartitionsPerProcess?: number;
+}
+export const canUseKafkaElasticity = (document: PackageDocument) => {
+  const [flow] = document.dataFlows;
+  const [task] = document.controlFlow.tasks;
+  return document.dataFlows.length === 1 && document.controlFlow.tasks.length === 1 &&
+    task?.kind === "dataFlow" && task.config.pipeline === flow?.id && !flow.parallelism &&
+    flow.delivery?.mode === "kafkaTransaction" && !flow.delivery.kafkaStage &&
+    flow.components.filter((node) => node.component === "mq.source").length === 1 &&
+    flow.components.every((node) => node.component !== "mq.source" ||
+      node.config.partition === undefined && node.config.endOffsets === undefined);
+};
+export const workerReason = (reason: string) => ({
+  NoOnlineWorker: "没有在线节点满足租户范围",
+  WorkerIsolation: "节点隔离能力不匹配",
+  WorkerCapabilities: "节点缺少所需的连接器、凭据或文件",
+  WorkerCapacity: "等待节点容量",
+  JournalOwnerUnavailable: "原日记节点不可用",
+  DispatchAuthorityExpired: "原执行身份已失效",
+  KafkaPositionsUnavailable: "暂时无法读取 Kafka 位点",
+  KafkaPositionsRejected: "Kafka 位点探测被拒绝",
+  KafkaPartitionMissing: "Kafka 分区缺失",
+  KafkaOffsetMismatch: "Kafka 位点与运行计划不符",
+  KafkaPartitionRecoveryRequired: "分区检查点需要恢复",
+  KafkaResizeCapacity: "等待分区交接所需的节点额度",
+  KafkaWorkerLost: "从 Broker 检查点接管失联分区",
+  WorkerRestartBackoff: "等待 Worker 重启",
+  InvalidSupervisorConfiguration: "Worker 配置未通过校验",
+  Draining: "正在排空",
+} as Record<string, string>)[reason] ?? reason;
+
 export interface RunState {
   attempt?:number;
+  elastic?: {
+    planRevision: number;
+    targetProcesses: number;
+    activeProcesses: number;
+    lag: number;
+    reassigning: boolean;
+    reason?: string;
+    groups: { id: string; partitions: { partition: number }[] }[];
+    plannedGroups?: { id: string; partitions: { partition: number }[] }[];
+  };
   id: string;
   packageId: string;
   packageRevision: string;

@@ -29,6 +29,7 @@ static ud_status prepare_lane(ud_activation *parent, pipeline_lane *lane, ud_str
     a->depth = parent->depth;
     a->event_depth = parent->event_depth;
     a->parallel = 1;
+    a->assigned_partition = a->execution->assignment_count ? &a->execution->assignments[index] : NULL;
     a->consumer_lane = index + 1;
     a->consumer_lane_count = count;
     atomic_init(&a->cancelled, 0);
@@ -44,7 +45,9 @@ static ud_status prepare_lane(ud_activation *parent, pipeline_lane *lane, ud_str
     /* Control task paths append a length-prefixed task segment. The lane
      * segment is disjoint from that grammar and stable across task resumption. */
     char suffix[24];
-    int n = snprintf(suffix, sizeof(suffix), "/~lane/%u", index);
+    int n = a->assigned_partition
+        ? snprintf(suffix, sizeof(suffix), "/~partition/%d", a->assigned_partition->partition)
+        : snprintf(suffix, sizeof(suffix), "/~lane/%u", index);
     if (n < 0 || (size_t)n >= sizeof(suffix) ||
         parent->task_id.length > UINT32_MAX - (uint32_t)n - 1)
         return UD_OVERFLOW;
@@ -105,7 +108,7 @@ static void collect_lane(ud_activation *parent, ud_activation *lane) {
 
 ud_status ud_pipeline_run_lanes(ud_activation *parent, const ud_json *definition, uint32_t count,
                                ud_status (*run_one)(ud_activation *, const ud_json *)) {
-    if (count == 1)
+    if (count == 1 && !parent->execution->assignment_count)
         return run_one(parent, definition);
     if (!count || count > ud_execution_concurrency(parent))
         return UD_UNSUPPORTED;

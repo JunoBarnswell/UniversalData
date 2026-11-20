@@ -27,11 +27,13 @@ public sealed partial class TenantDispatcher
             JobCalendar.Validate(schedule);
         if (request.Schedules.Select(schedule => schedule.Id).Distinct(StringComparer.Ordinal).Count() != request.Schedules.Length)
             throw new ArgumentException("Schedule identities must be unique within the job");
-        _ = WorkerParallelism.Read(Package(request.PackageId, request.PackageRevision), policy.MaxConcurrency);
+        var package = Package(request.PackageId, request.PackageRevision);
+        _ = WorkerParallelism.Read(package, policy.MaxConcurrency);
+        CheckElastic(request.Elastic,package,null);
 
         lock (gate)
         {
-            Refresh();
+            RefreshDefinitions();
             var prior = jobs.GetValueOrDefault(request.Id);
             var reference = request.Parameters is not null ? ParametersReference(request.Parameters) :
                 request.ParametersReference == prior?.ParametersReference ? prior?.ParametersReference ?? "" : "";
@@ -51,7 +53,7 @@ public sealed partial class TenantDispatcher
             var job = new JobState(ProductInfo.Protocol, request.Id, request.PackageId, request.PackageRevision,
                 reference, request.Enabled, schedules, identity.Subject, identity.Stamp, request.MaxConcurrency,
                 request.MaxAttempts, request.RetryDelaySeconds, now, checked((prior?.Revision ?? 0) + 1),
-                request.DeploymentId, request.DeploymentRevision);
+                request.DeploymentId, request.DeploymentRevision, Elastic: request.Elastic);
             Save(job);
             return job;
         }
@@ -107,7 +109,7 @@ public sealed partial class TenantDispatcher
                     throw new UniversalDataException((int)StatusCode.Busy, "Job is owned by another scheduler");
             try
             {
-                Refresh();
+                RefreshDefinitions();
                 var job = jobs.GetValueOrDefault(jobId) ?? throw new ArgumentException("Job does not exist");
                 var previous = ReadOccurrence(catalog, key, occurrenceId);
                 if (previous is { RunId: not null })
@@ -125,7 +127,7 @@ public sealed partial class TenantDispatcher
     {
         var revision = catalog.LatestRevision(CatalogKind.Audit, key);
         return revision == 0 ? null : JsonSerializer.Deserialize<JobOccurrence>(
-            catalog.Get(CatalogKind.Audit, key, revision)!, HostPolicy.JsonOptions) with { Id = id };
+            catalog.Get(CatalogKind.Audit, key, revision)!, HostPolicy.JsonOptions)! with { Id = id };
     }
 
     private void Schedule()
@@ -141,7 +143,7 @@ public sealed partial class TenantDispatcher
                 continue;
             try
             {
-                Refresh();
+                RefreshDefinitions();
                 var job = jobs[snapshot.Id];
                 if (job.RecordVersion == 2)
                 {
@@ -203,7 +205,7 @@ public sealed partial class TenantDispatcher
                 TimestampMs: Now, JobId: job.Id, DeploymentId: occurrence.DeploymentId,
                 DeploymentRevision: occurrence.DeploymentRevision,
                 Parallelism: WorkerParallelism.Read(package, policy.MaxConcurrency),
-                RequiresJournal: native.RequiresJournal);
+                RequiresJournal: native.RequiresJournal, Elastic: job.Elastic);
         }
         var next = job with
         {

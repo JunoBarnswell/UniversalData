@@ -18,7 +18,7 @@ ud_status ud_catalog_publish_occurrence(ud_catalog *catalog, const ud_catalog_jo
          (!audit_key(&request->run, "run/") || request->run.revision != 1)))
         return UD_INVALID;
 
-    UD_TRY(ud_catalog_sql(catalog, "BEGIN IMMEDIATE"));
+    UD_TRY(ud_catalog_begin(catalog, 0));
     ud_status status = ud_catalog_append_document(catalog, &request->job, request->job_document, 1,
                                                   request->job.revision - 1, job_lease, 0);
     if (!status)
@@ -28,9 +28,5 @@ ud_status ud_catalog_publish_occurrence(ud_catalog *catalog, const ud_catalog_jo
     if (!status && request->run_document.length)
         status = ud_catalog_append_document(catalog, &request->run, request->run_document, 1,
                                             0, NULL, 0);
-    if (!status)
-        status = ud_catalog_sql(catalog, "COMMIT");
-    if (status)
-        (void)ud_catalog_sql(catalog, "ROLLBACK");
-    return status;
+    return ud_catalog_finish(catalog, status);
 }

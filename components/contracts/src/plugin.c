@@ -1029,7 +1029,22 @@ static const char *message_target_path(const ud_message_target *target) {
            target->kind == UD_MESSAGE_TOPIC ? "/topic/" : "/exchange/";
 }
 
-ud_status ud_connection_message_subscribe(ud_connection *c, const ud_message_subscription *options) {
+static const ud_message_partition_api *partition_api(ud_connection *c) {
+    void *library = c->instance->plugin->module->library;
+#ifdef _WIN32
+    FARPROC symbol = GetProcAddress((HMODULE)library, "ud_plugin_partition_api");
+#else
+    void *symbol = dlsym(library, "ud_plugin_partition_api");
+#endif
+    ud_message_partition_entry entry = NULL;
+    memcpy(&entry,&symbol,sizeof(entry));
+    const ud_message_partition_api *api = entry ? entry(UD_PLUGIN_ABI) : NULL;
+    return api && api->struct_size == sizeof(*api) && api->abi_version == UD_PLUGIN_ABI &&
+        api->subscribe && api->positions ? api : NULL;
+}
+
+static ud_status message_subscribe(ud_connection *c, const ud_message_subscription *options,
+                                   int64_t start) {
     if (!c || !options || options->struct_size != sizeof(*options) ||
         options->abi_version != UD_ABI_VERSION)
         return UD_INCOMPATIBLE;
@@ -1046,8 +1061,10 @@ ud_status ud_connection_message_subscribe(ud_connection *c, const ud_message_sub
         (options->fixed_partition && (!(c->capabilities & UD_CONNECT_MESSAGE_TRANSACTION) ||
                                       options->source.kind != UD_MESSAGE_TOPIC || !options->group.length)) ||
         !valid_string(options->group, 0) || !valid_string(options->subscription, 0) ||
-        !valid_string(options->filter, 0))
+        !valid_string(options->filter, 0) || (start >= 0 && !options->fixed_partition))
         return UD_INVALID;
+    const ud_message_partition_api *partition = start >= 0 ? partition_api(c) : NULL;
+    if (start >= 0 && !partition) return UD_UNSUPPORTED;
     UD_TRY(connection_enter(c, UD_ACCESS_READ));
     ud_string source = {0}, confirmation = {0};
     ud_status status = message_resource(c, message_target_path(&options->source),
@@ -1062,7 +1079,8 @@ ud_status ud_connection_message_subscribe(ud_connection *c, const ud_message_sub
     if (!status)
         status = authorize_resource(c, confirmation, UD_ACCESS_WRITE);
     if (!status)
-        status = c->api->message->subscribe(c->instance->state, options);
+        status = partition ? partition->subscribe(c->instance->state, options, start)
+            : c->api->message->subscribe(c->instance->state, options);
     if (!status) {
         c->message_source = source;
         c->message_confirmation = confirmation;
@@ -1072,6 +1090,14 @@ ud_status ud_connection_message_subscribe(ud_connection *c, const ud_message_sub
     }
     connection_leave(c);
     return status;
+}
+
+ud_status ud_connection_message_subscribe(ud_connection *c, const ud_message_subscription *options) {
+    return message_subscribe(c,options,-1);
+}
+ud_status ud_connection_message_subscribe_partition(ud_connection *c, const ud_message_subscription *options,
+                                                    int64_t start) {
+    return start < 0 ? UD_INVALID : message_subscribe(c,options,start);
 }
 
 ud_status ud_connection_message_receive(ud_connection *c, uint32_t timeout_ms, ud_message *out) {
@@ -1220,6 +1246,27 @@ ud_status ud_connection_message_visit_committed(ud_connection *c, ud_string topi
     return status;
 }
 
+ud_status ud_connection_message_partition_positions(ud_connection *c, ud_string topic, ud_string group,
+    ud_message_partition_position *positions, uint32_t capacity, uint32_t *count) {
+    if (!c || !positions || !count || !capacity || capacity > 65536 ||
+        !valid_string(topic,1) || !valid_string(group,1))
+        return UD_INVALID;
+    *count = 0;
+    const ud_message_partition_api *api = c->api->message ? partition_api(c) : NULL;
+    if (!api) return UD_UNSUPPORTED;
+    UD_TRY(connection_enter(c, UD_ACCESS_DISCOVER));
+    ud_string source = {0}, offsets = {0};
+    ud_status status = message_resource(c, "/topic/", topic, &source);
+    if (!status) status = authorize_resource(c,source,UD_ACCESS_READ);
+    if (!status) status = message_resource(c, "/group/", group, &offsets);
+    if (!status) status = authorize_resource(c,offsets,UD_ACCESS_READ);
+    if (!status) status = api->positions(c->instance->state,topic,group,positions,capacity,count);
+    ud_free((void *)source.data);
+    ud_free((void *)offsets.data);
+    connection_leave(c);
+    if (!status && *count > capacity) return UD_CORRUPT;
+    return status;
+}
 ud_status ud_connection_message_verify_epoch(ud_connection *c, const ud_message_epoch *epoch) {
     if (!c || !c->message_source.data || !epoch || !epoch->cluster_id.length ||
         (epoch->offset_count && !epoch->offsets))

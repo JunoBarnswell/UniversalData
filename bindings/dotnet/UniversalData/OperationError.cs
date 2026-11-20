@@ -7,7 +7,8 @@ public enum ErrorSource
     Http = 2,
     Transport = 3,
     Worker = 4,
-    Component = 5
+    Component = 5,
+    Catalog = 6
 }
 
 public sealed record OperationError(ErrorSource Source, StatusCode Cause, string Message,

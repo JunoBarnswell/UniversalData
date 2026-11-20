@@ -3,6 +3,7 @@
 #include "component.h"
 #include "connector.h"
 #include "execution.h"
+#include "message.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -105,6 +106,16 @@ UD_API void ud_package_destroy(ud_package *);
 UD_API ud_status ud_execution_create(const ud_package *, const ud_execution_options *,
                                      ud_execution **);
 UD_API ud_status ud_execution_create_json(ud_string, const ud_execution_options *, ud_execution **);
+typedef struct ud_kafka_partition_assignment {
+    int32_t partition, require_checkpoint;
+    int64_t start_offset;
+} ud_kafka_partition_assignment;
+/* One process runs a bounded set of independent Native consumer lanes. The
+ * parent run identity and partition offsets remain stable across grouping. */
+UD_API ud_status ud_execution_create_partitioned(ud_string, const ud_execution_options *,
+    ud_string run_id, ud_string topic, const ud_kafka_partition_assignment *, uint32_t count, ud_execution **);
+UD_API ud_status ud_execution_message_partition_positions(ud_execution *, ud_string connection,
+    ud_string topic, ud_string group, ud_message_partition_position *, uint32_t capacity, uint32_t *);
 /* Immutable identity borrowed until Execution destruction; available in every state.
  * UUID v4 for an omitted new ID, otherwise the exact validated host-supplied ID. */
 UD_API ud_status ud_execution_id(const ud_execution *, ud_string *);

@@ -66,7 +66,7 @@ internal static class WorkerProcessLimits
     }
 
     [SupportedOSPlatform("windows")]
-    internal static Process StartWindows(ProcessStartInfo start, WorkerBudget budget)
+    internal static Process StartWindows(ProcessStartInfo start, WorkerBudget? budget)
     {
         var job = CreateJobObjectW(IntPtr.Zero, null);
         Process? process = null;
@@ -76,21 +76,24 @@ internal static class WorkerProcessLimits
                 throw new Win32Exception(Marshal.GetLastPInvokeError(), "Cannot create Worker Job Object");
             var memory = new JobExtendedLimits
             {
-                BasicLimitInformation = new JobBasicLimits { LimitFlags = JobMemory | KillOnJobClose },
-                JobMemoryLimit = checked((nuint)budget.ProcessMemoryBytes)
+                BasicLimitInformation = new JobBasicLimits { LimitFlags = KillOnJobClose | (budget is null ? 0 : JobMemory) },
+                JobMemoryLimit = checked((nuint)(budget?.ProcessMemoryBytes ?? 0))
             };
             if (!SetInformationJobObject(job, JobExtendedLimitInformation, ref memory, (uint)Marshal.SizeOf<JobExtendedLimits>()))
                 throw new Win32Exception(Marshal.GetLastPInvokeError(), "Cannot impose Worker memory limit");
 
-            var processors = GetActiveProcessorCount(AllProcessorGroups);
-            if (processors == 0)
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), "Cannot read CPU capacity for the Worker Job Object");
-            var cpu = new JobCpuRate { ControlFlags = CpuEnable | CpuHardCap,
-                Rate = (uint)((ulong)budget.CpuSlots * CpuRateFull / processors) };
-            if (cpu.Rate is 0 or > CpuRateFull)
-                throw new InvalidOperationException("Worker CPU budget cannot be represented by the Windows Job Object");
-            if (!SetInformationJobObject(job, JobCpuRateControlInformation, ref cpu, (uint)Marshal.SizeOf<JobCpuRate>()))
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), "Cannot impose Worker CPU limit");
+            if (budget is not null)
+            {
+                var processors = GetActiveProcessorCount(AllProcessorGroups);
+                if (processors == 0)
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "Cannot read CPU capacity for the Worker Job Object");
+                var cpu = new JobCpuRate { ControlFlags = CpuEnable | CpuHardCap,
+                    Rate = (uint)((ulong)budget.CpuSlots * CpuRateFull / processors) };
+                if (cpu.Rate is 0 or > CpuRateFull)
+                    throw new InvalidOperationException("Worker CPU budget cannot be represented by the Windows Job Object");
+                if (!SetInformationJobObject(job, JobCpuRateControlInformation, ref cpu, (uint)Marshal.SizeOf<JobCpuRate>()))
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "Cannot impose Worker CPU limit");
+            }
 
             // Worker blocks on the private inherited request. The stdin handle is handed to
             // the caller only after assignment succeeds.

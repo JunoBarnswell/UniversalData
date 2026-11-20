@@ -1,2 +1,4 @@
 # Independent format implementation used by the Native interoperability gate.
 avro==1.12.0
+# Independent read_committed consumer for the Worker elasticity gate.
+confluent-kafka==2.16.2

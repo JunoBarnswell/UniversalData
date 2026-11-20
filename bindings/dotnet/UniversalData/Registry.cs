@@ -48,6 +48,16 @@ public sealed partial class Registry : IDisposable
     private IntPtr registry;
     internal int CreateExecution(Native.StringValue document, ref Native.ExecutionOptions options, out IntPtr pointer)
     { lock (sync) { Open(); options.Registry = registry; return Native.ud_execution_create_json(document, ref options, out pointer); } }
+    internal int CreatePartitionedExecution(Native.StringValue document, ref Native.ExecutionOptions options,
+        Native.StringValue run, Native.StringValue topic, Native.KafkaPartitionInputValue[] parts, out IntPtr pointer)
+    {
+        lock (sync)
+        {
+            Open();
+            options.Registry = registry;
+            return Native.ud_execution_create_partitioned(document,ref options,run,topic,parts,(uint)parts.Length,out pointer);
+        }
+    }
     public Registry(ulong memoryLimit = 268435456)
     {
         context = DataOwnership.Context(memoryLimit);

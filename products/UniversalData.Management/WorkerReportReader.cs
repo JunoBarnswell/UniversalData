@@ -4,7 +4,8 @@ using UniversalData.Hosting;
 namespace UniversalData.Management;
 
 /// <summary>Verifies the inherited Worker report stream before importing Native facts into the tenant Catalog.</summary>
-internal sealed class WorkerReportReader(Catalog catalog, RunState run, Func<CancellationToken, ValueTask<string?>> read)
+internal sealed class WorkerReportReader(Catalog catalog, RunState run, CatalogLease lease,
+    Func<CancellationToken, ValueTask<string?>> read, Action? checkpoint = null)
 {
     internal string? NativeId { get; private set; } = run.ExecutionId.Length == 0 ? null : run.ExecutionId;
 
@@ -31,6 +32,7 @@ internal sealed class WorkerReportReader(Catalog catalog, RunState run, Func<Can
             if (kind == "catalog")
             {
                 Import(report);
+                checkpoint?.Invoke();
                 continue;
             }
             if (kind != expected)
@@ -63,7 +65,7 @@ internal sealed class WorkerReportReader(Catalog catalog, RunState run, Func<Can
                 (NativeId is not null && NativeId != recordId))
                 throw new InvalidDataException("Worker Catalog identity differs from dispatch");
             NativeId = recordId;
-            catalog.Put(kind, recordId, entry.GetProperty("revision").GetUInt64(), document.GetRawText());
+            catalog.PutLeased(kind, recordId, entry.GetProperty("revision").GetUInt64(), document.GetRawText(), lease);
         }
     }
 }

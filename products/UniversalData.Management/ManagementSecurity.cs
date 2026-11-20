@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.RateLimiting;
 using UniversalData.Hosting;
 
@@ -13,11 +14,18 @@ namespace UniversalData.Management;
 public static class ManagementSecurity
 {
     public const string Scheme = "ud-session";
-    public static void Configure(WebApplicationBuilder builder,HostPolicy policy,IdentityDirectory identities)
+    internal static void Configure(WebApplicationBuilder builder,HostPolicy policy,IdentityDirectory identities,
+        ClusterHostState? cluster)
     {
-        string keys = Path.Combine(policy.DataDirectory,"authentication","keys"); HostFiles.NoLinks(keys); Directory.CreateDirectory(keys);
-        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(keys,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keys)).SetApplicationName("UniversalData/" + ProductInfo.Protocol);
+        var protection = builder.Services.AddDataProtection().SetApplicationName("UniversalData/" + ProductInfo.Protocol);
+        if (cluster is null)
+        {
+            string keys = Path.Combine(policy.DataDirectory,"authentication","keys"); HostFiles.NoLinks(keys); Directory.CreateDirectory(keys);
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(keys,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            protection.PersistKeysToFileSystem(new DirectoryInfo(keys));
+        }
+        else
+            builder.Services.Configure<KeyManagementOptions>(options => options.XmlRepository = cluster);
         builder.Services.AddAuthentication(Scheme).AddCookie(Scheme,options => {
             options.Cookie.Name = "ud-session-v" + ProductInfo.Protocol; options.Cookie.HttpOnly = true;
             options.Cookie.SameSite = SameSiteMode.Strict; options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;

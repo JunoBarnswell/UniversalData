@@ -228,6 +228,11 @@ ud_status ud_pipeline_parallel_run(ud_activation *activation, const ud_json *def
     UD_TRY(limits(definition, &members, &lanes, &threads));
     const ud_execution_options *options = &activation->execution->options;
     const ud_json *stage = ud_member(ud_member(definition, "delivery"), "kafkaStage");
+    if (activation->execution->assignment_count) {
+        if (members != 1 || lanes != 1 || stage) return UD_UNSUPPORTED;
+        UD_TRY(ud_pipeline_bind_validate(activation, definition));
+        return ud_pipeline_run_lanes(activation, definition, activation->execution->assignment_count, run_one);
+    }
     if ((members > 1 && options->worker_members != members) ||
         (options->worker_members > 1 && options->worker_members != members) ||
         (options->consumer_lanes && options->consumer_lanes != lanes) ||

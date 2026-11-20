@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Save } from "lucide-react";
 import { api } from "./api";
 import { PROTOCOL_VERSION } from "./version";
-import type { Deployment } from "./model";
+import { canUseKafkaElasticity, type Deployment, type KafkaElasticity, type PackageDocument } from "./model";
 import { Deployments } from "./Deployments";
 
 const frequencies = { Once: "一次", Interval: "固定间隔", Daily: "每天", Weekly: "每周", Monthly: "每月" };
@@ -25,6 +25,7 @@ interface Job {
   packageId: string;
   packageRevision: string;
   parameters?: string;
+  elastic?: KafkaElasticity;
   parametersReference?: string;
   enabled: boolean;
   schedules: Cursor[];
@@ -54,6 +55,7 @@ export function Jobs() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [editing, setEditing] = useState<Job>();
   const [error, setError] = useState("");
+  const [elasticEligible, setElasticEligible] = useState(false);
   const [history, setHistory] = useState<{ job: Job; items: Occurrence[] }>();
   const [preview, setPreview] = useState<{ id: string; times: number[] }>();
 
@@ -65,6 +67,16 @@ export function Jobs() {
       .catch((failure) => { if (!signal.aborted) setError(String(failure)); });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (editing?.packageId && editing.packageRevision) {
+      api<PackageDocument>(`/packages/${encodeURIComponent(editing.packageId)}/versions/${editing.packageRevision}`,
+        { signal: controller.signal }).then((document) => setElasticEligible(canUseKafkaElasticity(document)))
+        .catch(() => { if (!controller.signal.aborted) setElasticEligible(false); });
+    }
+    return () => controller.abort();
+  }, [editing?.packageId, editing?.packageRevision]);
 
   async function save(job: Job) {
     try {
@@ -139,7 +151,7 @@ export function Jobs() {
         <label>已发布版本<select aria-label="作业发布版本" value={editing.deploymentId ?? ""}
           onChange={(event) => {
             const selected = deployments.find((item) => item.id === event.target.value);
-            if (selected) setEditing({ ...editing, deploymentId: selected.id,
+            if (selected) setEditing({ ...editing, elastic: undefined, deploymentId: selected.id,
               packageId: selected.packageId, packageRevision: selected.packageRevision,
               deploymentRevision: selected.deploymentRevision,
             });
@@ -150,6 +162,19 @@ export function Jobs() {
         </select></label>
         <label>并发上限<input type="number" min="1" value={editing.maxConcurrency}
           onChange={(event) => setEditing({ ...editing, maxConcurrency: Number(event.target.value) })} /></label>
+        {(elasticEligible || editing.elastic) && <fieldset>
+          <label><input type="checkbox" checked={Boolean(editing.elastic)}
+            onChange={(event) => setEditing({ ...editing, elastic: event.target.checked
+              ? { minProcesses: 1, maxProcesses: 8 } : undefined })} />Kafka 弹性调度</label>
+          {editing.elastic && <>
+            <label>最少进程<input type="number" min="1" max="64" value={editing.elastic.minProcesses}
+              onChange={(event) => setEditing({ ...editing, elastic: { ...editing.elastic!,
+                minProcesses: Number(event.target.value) } })} /></label>
+            <label>最多进程<input type="number" min="1" max="64" value={editing.elastic.maxProcesses}
+              onChange={(event) => setEditing({ ...editing, elastic: { ...editing.elastic!,
+                maxProcesses: Number(event.target.value) } })} /></label>
+          </>}
+        </fieldset>}
         {editing.schedules.map(({ schedule }) =>
           <fieldset key={schedule.id}>
             <label>日程类型<select value={schedule.frequency} onChange={(event) =>

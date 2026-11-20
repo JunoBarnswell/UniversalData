@@ -55,6 +55,10 @@ UD_API ud_status ud_connection_lease_message_abort_epoch(ud_connection_lease *);
 UD_API ud_status ud_connection_lease_message_release_epoch(ud_connection_lease *, const uint64_t *, uint32_t);
 UD_API ud_status ud_connection_lease_message_visit_committed(ud_connection_lease *, ud_string,
                                                                int32_t, void *, ud_message_visit);
+UD_API ud_status ud_connection_lease_message_subscribe_partition(ud_connection_lease *,
+    const ud_message_subscription *, int64_t start);
+UD_API ud_status ud_connection_lease_message_partition_positions(ud_connection_lease *, ud_string topic, ud_string group,
+    ud_message_partition_position *, uint32_t capacity, uint32_t *);
 UD_API ud_status ud_connection_lease_message_verify_epoch(ud_connection_lease *, const ud_message_epoch *);
 UD_API ud_status ud_connection_lease_read_open(ud_connection_lease *, const ud_read_options *,
                                                const ud_batch *);

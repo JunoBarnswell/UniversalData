@@ -14,8 +14,11 @@ public sealed class RemoteWorkerSession : IAsyncDisposable
     private readonly CancellationTokenSource lifetime;
     private readonly Task pump;
     private string? renewalProbe;
+    private ulong consumed;
+    private readonly TaskCompletionSource initialProbe = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<int> exit = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly Channel<string> reports = Channel.CreateBounded<string>(new BoundedChannelOptions(4) { SingleWriter = true });
+    private readonly Channel<(ulong Sequence, string Text)> reports = Channel.CreateBounded<(ulong,string)>(
+        new BoundedChannelOptions(4) { SingleWriter = true });
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> controls = new(StringComparer.Ordinal);
 
     internal RemoteWorkerSession(WorkerNodeChannel channel, WorkerNodeFrame lease,
@@ -24,21 +27,28 @@ public sealed class RemoteWorkerSession : IAsyncDisposable
         this.channel = channel;
         this.lease = lease;
         this.closed = closed;
+        consumed = lease.Sequence;
         lifetime = CancellationTokenSource.CreateLinkedTokenSource(disconnected);
         pump = ReadReports();
     }
+    internal WorkerNodeFrame Identity => lease;
+    internal ulong Sequence => consumed;
+    internal bool ExitReported => exit.Task.IsCompletedSuccessfully;
 
     public async Task<string?> ReadAsync(CancellationToken cancellation)
     {
         while (await reports.Reader.WaitToReadAsync(cancellation))
             if (reports.Reader.TryRead(out var value))
-                return value;
+            {
+                consumed = value.Sequence;
+                return value.Text;
+            }
         return null;
     }
 
     public Task SendAsync(string frame, CancellationToken cancellation)
     {
-        if (frame is not ("start" or "cancel"))
+        if (frame is not ("start" or "stop" or "cancel"))
             throw new ArgumentException("Invalid Worker pipe command", nameof(frame));
         return Send(lease.Reply(frame), cancellation);
     }
@@ -46,11 +56,15 @@ public sealed class RemoteWorkerSession : IAsyncDisposable
     public Task CancelAsync(CancellationToken cancellation) => SendAsync("cancel", cancellation);
 
     // Called only after the dispatch owner durably renews the corresponding catalog lease.
-    public Task RenewAsync(CancellationToken cancellation)
+    public async Task RenewAsync(CancellationToken cancellation)
     {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation,lifetime.Token);
+        await initialProbe.Task.WaitAsync(linked.Token);
         var probe = Volatile.Read(ref renewalProbe);
-        return probe is null ? Task.CompletedTask : Send(lease.Reply("renew", correlation: probe), cancellation);
+        await Send(lease.Reply("renew", correlation: probe), cancellation);
     }
+
+    internal Task AcknowledgeAsync(CancellationToken cancellation) => Send(lease.Reply("committed"), cancellation);
 
     public Task<int> WaitForExitAsync(CancellationToken cancellation) => exit.Task.WaitAsync(cancellation);
 
@@ -86,14 +100,16 @@ public sealed class RemoteWorkerSession : IAsyncDisposable
         Exception? failure = null;
         try
         {
+            ulong expected = lease.Sequence;
             while (await channel.ReadAsync(lifetime.Token) is { } frame)
             {
                 if (!frame.SameLease(lease))
                     throw new InvalidDataException("Remote Worker report differs from its lease");
                 switch (frame.Kind)
                 {
-                    case "report" when frame.Data is { ValueKind: JsonValueKind.Object } report:
-                        await reports.Writer.WriteAsync(report.GetRawText(), lifetime.Token);
+                    case "report" when frame.Data is { ValueKind: JsonValueKind.Object } report && frame.Sequence == expected + 1:
+                        expected = frame.Sequence;
+                        await reports.Writer.WriteAsync((expected,report.GetRawText()), lifetime.Token);
                         break;
                     case "control-result" when frame.Data is { ValueKind: JsonValueKind.Object } response:
                         if (frame.Correlation is { } id && controls.TryGetValue(id, out var pending))
@@ -101,10 +117,12 @@ public sealed class RemoteWorkerSession : IAsyncDisposable
                         break;
                     case "renew-probe" when Guid.TryParseExact(frame.Correlation, "N", out _):
                         Volatile.Write(ref renewalProbe, frame.Correlation);
+                        initialProbe.TrySetResult();
                         break;
-                    case "exit" when frame.Data is { ValueKind: JsonValueKind.Number } status:
+                    case "exit" when frame.Data is { ValueKind: JsonValueKind.Number } status && frame.Sequence == expected:
                         exit.TrySetResult(status.GetInt32());
-                        return;
+                        reports.Writer.TryComplete();
+                        break;
                     default:
                         throw new InvalidDataException("Invalid remote Worker report kind");
                 }

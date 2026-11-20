@@ -55,6 +55,7 @@ struct ud_activation {
     uint32_t consumer_lane, consumer_lane_count;
     struct ud_activation *scope_authority;
     struct ud_kafka_checkpoint *kafka_checkpoint;
+    const ud_kafka_partition_assignment *assigned_partition;
     int deferred_kafka_input_commit;
     int stepping;
     ud_status pipeline_result;
@@ -74,10 +75,18 @@ struct ud_activation {
     atomic_uint_fast64_t input_rows, output_rows, rejected_rows, committed_rows, acknowledged_rows,
         error_rows, committed_error_rows, acknowledged_error_rows;
 };
+static inline const ud_kafka_partition_assignment *ud_activation_partition(const ud_activation *activation) {
+    for (; activation; activation = activation->parent)
+        if (activation->assigned_partition) return activation->assigned_partition;
+    return NULL;
+}
 struct ud_execution {
     ud_context *ctx;
     ud_package *package;
     ud_execution_options options;
+    ud_string partition_run, partition_topic;
+    ud_kafka_partition_assignment *assignments;
+    uint32_t assignment_count;
     atomic_int observer_fault;
     ud_registry *registry, *external;
     ud_json *parameters;

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace UniversalData.Hosting;
@@ -7,16 +6,18 @@ namespace UniversalData.Hosting;
 /// <summary>All product Native inspection, script compilation and execution use the same Worker process entry.</summary>
 public static class WorkerLauncher
 {
-    private static readonly ConcurrentDictionary<string,SemaphoreSlim> inspections=new(StringComparer.Ordinal);
-    public static Process Launch(string workerPath, WorkerRequest request)
+    public static Process Launch(string workerPath, WorkerRequest request) =>
+        Launch(workerPath, request.Ticket, request.Budget, request);
+
+    internal static Process Launch(string workerPath, string processKey, WorkerBudget? budget, WorkerRequest? request)
     {
         workerPath = Path.GetFullPath(workerPath); HostFiles.NoLinks(workerPath);
         string dotnet = Environment.ProcessPath is { } current && Path.GetFileNameWithoutExtension(current).Equals("dotnet",StringComparison.OrdinalIgnoreCase)
             ? current : Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
-        bool isolated = request.Isolated;
+        bool isolated = request?.Isolated == true;
         if (isolated && !OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Untrusted modules require an available OS sandbox; this host has none configured");
-        var budget = request.Budget;
-        if (budget is not null) WorkerProcessLimits.Validate(request, budget);
+        if (!Guid.TryParseExact(processKey, "N", out _)) throw new ArgumentException("Invalid Worker process key");
+        if (budget is not null && request is not null) WorkerProcessLimits.Validate(request, budget);
         bool systemd = isolated || (budget is not null && OperatingSystem.IsLinux());
         var start = new ProcessStartInfo(systemd ? "/usr/bin/systemd-run" : dotnet) { RedirectStandardInput = true, RedirectStandardOutput = true,
             RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
@@ -24,11 +25,11 @@ public static class WorkerLauncher
             if (isolated && !Path.IsPathFullyQualified(dotnet)) throw new InvalidOperationException("An absolute dotnet host is required for isolation");
             if (!File.Exists("/usr/bin/systemd-run") || (isolated && !File.Exists("/usr/bin/bwrap")))
                 throw new PlatformNotSupportedException("Worker resource control requires systemd and untrusted modules also require bubblewrap");
-            foreach (string option in new[] { "--user", "--quiet", "--wait", "--pipe", "--collect", "--unit=ud-worker-" + request.Ticket,
-                "--property=RuntimeMaxSec=" + request.Policy.ExecutionTimeoutSeconds, "--property=KillMode=control-group" })
+            foreach (string option in new[] { "--user", "--quiet", "--wait", "--pipe", "--collect", "--unit=ud-worker-" + processKey,
+                "--property=KillMode=control-group" })
                 start.ArgumentList.Add(option);
             if (budget is null) {
-                start.ArgumentList.Add("--property=MemoryMax=" + checked(request.Policy.MemoryLimit + 268435456UL));
+                start.ArgumentList.Add("--property=MemoryMax=" + checked(request!.Policy.MemoryLimit + WorkerSupervisor.ProcessOverhead));
                 start.ArgumentList.Add("--property=TasksMax=64");
                 start.ArgumentList.Add("--property=CPUQuota=100%");
             } else WorkerProcessLimits.AddLinuxProperties(start, budget);
@@ -36,6 +37,7 @@ public static class WorkerLauncher
             start.ArgumentList.Add("--");
         }
         if (isolated) {
+            ArgumentNullException.ThrowIfNull(request);
             start.ArgumentList.Add("/usr/bin/bwrap");
             foreach (string option in new[] { "--die-with-parent", "--new-session", "--unshare-all", "--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "LANG", "C.UTF-8", "--cap-drop", "ALL", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp" }) start.ArgumentList.Add(option);
             foreach(string variable in new[] { "DOTNET_ROOT", "DOTNET_ROOT_X64", "LD_LIBRARY_PATH" })
@@ -82,7 +84,7 @@ public static class WorkerLauncher
             start.ArgumentList.Add(dotnet.Replace("$", "$$", StringComparison.Ordinal));
         }
         start.ArgumentList.Add(systemd ? workerPath.Replace("$", "$$", StringComparison.Ordinal) : workerPath);
-        if (budget is not null && OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
             return WorkerProcessLimits.StartWindows(start, budget);
         return Process.Start(start) ?? throw new InvalidOperationException("Worker failed to start");
     }
@@ -97,19 +99,25 @@ public static class WorkerLauncher
         }
         try { if (!process.HasExited) process.Kill(entireProcessTree:true); } catch(InvalidOperationException) { }
     }
-    public static async Task<JsonElement> Inspect(string workerPath, WorkerRequest request, CancellationToken cancellation = default)
+    public static async Task<int> WaitReady(Process process, CancellationToken cancellation = default)
     {
-        var gate=inspections.GetOrAdd(request.Policy.DataDirectory,_=>new SemaphoreSlim((int)Math.Min(2,request.Policy.MaxConcurrency)));
-        await gate.WaitAsync(cancellation);
-        try{return await InspectCore(workerPath,request,cancellation);}finally{gate.Release();}
+        var message = await WorkerProtocol.ReadLine(process.StandardOutput, 1024, cancellation)
+            ?? throw new IOException("Worker exited before reporting process readiness");
+        using var document = JsonDocument.Parse(message);
+        var hello = document.RootElement;
+        if (hello.GetProperty("kind").GetString() != "hello" ||
+            hello.GetProperty("version").GetInt32() != ProductInfo.Protocol ||
+            hello.GetProperty("contractRevision").GetInt32() != ProductInfo.WorkerRevision ||
+            hello.GetProperty("processId").GetInt32() is not (> 0 and var pid))
+            throw new InvalidDataException("Incompatible Worker process handshake");
+        return pid;
     }
-    private static async Task<JsonElement> InspectCore(string workerPath,WorkerRequest request,CancellationToken cancellation)
+
+    internal static async Task<JsonElement> Inspect(WorkerSupervisor supervisor, WorkerRequest request, CancellationToken cancellation)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation); deadline.CancelAfter(TimeSpan.FromSeconds(60));
-        using var process = Launch(workerPath,request);
-        var discard = WorkerProtocol.Discard(process.StandardError,deadline.Token);
-        try {
-            await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request,HostPolicy.JsonOptions)); await process.StandardInput.FlushAsync(deadline.Token);
+        await using var worker = await supervisor.RentAsync(request, supervisor.OrdinaryBudget, deadline.Token);
+        var process = worker.Process;
             string response = await WorkerProtocol.ReadLine(process.StandardOutput,67108864,deadline.Token) ?? throw new IOException("Worker returned no result");
             using var document = JsonDocument.Parse(response); var root = document.RootElement;
             if (root.GetProperty("version").GetInt32() != ProductInfo.Protocol || root.GetProperty("ticket").GetString() != request.Ticket || root.GetProperty("kind").GetString() != "inspection")
@@ -117,6 +125,5 @@ public static class WorkerLauncher
             int result = root.GetProperty("result").GetInt32(); if (result != 0) throw new UniversalDataException(result,"Native Worker operation failed");
             await process.WaitForExitAsync(deadline.Token); if (process.ExitCode != 0) throw new IOException("Worker inspection failed");
             return root.GetProperty("value").Clone();
-        } finally { if (!process.HasExited) await Terminate(process,request.Ticket,request.Isolated); }
     }
 }

@@ -163,6 +163,15 @@
     <ClCompile Include="..\..\catalog\deployment.c">
       <Filter>Catalog</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\catalog\storage.c">
+      <Filter>Catalog</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\catalog\catalog_postgresql.c">
+      <Filter>Catalog</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\catalog\scheduling.c">
+      <Filter>Catalog</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\catalog\history.c">
       <Filter>Catalog</Filter>
     </ClCompile>

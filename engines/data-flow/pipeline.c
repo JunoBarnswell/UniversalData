@@ -1187,7 +1187,9 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
     if (p->kafka) {
         ud_string manifest = {0};
         saved = ud_kafka_checkpoint_manifest(p->kafka, &manifest);
-        if (saved == UD_END && e->execution->options.broker_restore)
+        const ud_kafka_partition_assignment *assigned = ud_activation_partition(e);
+        if (saved == UD_END && (e->execution->options.broker_restore ||
+            (assigned && assigned->require_checkpoint)))
             return UD_COMMIT_UNKNOWN;
         if (!saved) {
             epoch_json = ud_strdup_n(e->execution->ctx, manifest.data, manifest.length);
@@ -1870,7 +1872,7 @@ static ud_status execute_lane(ud_activation *activation, const ud_json *definiti
 }
 
 ud_status ud_pipeline_execute(ud_activation *activation, const ud_json *definition) {
-    if (!ud_member(definition, "parallelism"))
+    if (!activation->execution->assignment_count && !ud_member(definition, "parallelism"))
         return execute_lane(activation, definition);
     return ud_pipeline_parallel_run(activation, definition, execute_lane);
 }

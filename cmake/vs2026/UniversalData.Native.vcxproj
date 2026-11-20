@@ -89,6 +89,9 @@
     <ClCompile Include="..\..\engines\package\runtime.c" />
     <ClCompile Include="..\..\catalog\catalog.c" />
     <ClCompile Include="..\..\catalog\deployment.c" />
+    <ClCompile Include="..\..\catalog\storage.c" />
+    <ClCompile Include="..\..\catalog\catalog_postgresql.c" />
+    <ClCompile Include="..\..\catalog\scheduling.c" />
     <ClCompile Include="..\..\catalog\history.c" />
     <ClInclude Include="..\..\catalog\internal.h" />
     <ClCompile Include="..\..\connectors\manager.c" />

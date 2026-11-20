@@ -24,7 +24,7 @@ Worker 在同步绑定本次控制端口后才发送带 `controlReady=true` 的 
 
 Worker 私有协议修订为 3，旧请求在加载包前拒绝。事件先写入 Worker 私有 Native Catalog，再以规范 Native 记录回传。恢复时先分页补齐管理端遗漏的事实，执行版本与事件序号从持久化记录继续。多进程派发使用 Native Catalog 条件写入和租约，未知提交与租约过期进入人工恢复。
 
-在 Management 的 HTTPS 配置中，为每个远程 Worker 设置 `WorkerNodes:<nodeId>:CertificateSha256` 及 `Tenants`。在执行节点运行 `ud_worker agent CONFIG_FILE`，配置 `managementUrl`、`nodeId`、`certificatePath`、`managementCertificateSha256`、`policyPath`、`maxCpu`、`maxProcesses`、`maxMemoryBytes`、`tenants`。节点证书由管理端信任的 CA 签发，PFX 密码可从 `certificatePasswordFile` 读取。注册容量及租户范围取管理端与执行端策略的交集，实际消息 Broker 和文件资源由执行节点授权并直接访问。
+在 Management 的 HTTPS 配置中，为每个远程 Worker 设置 `WorkerNodes:<nodeId>:CertificateSha256` 及 `Tenants`。在执行节点运行 `ud_worker agent CONFIG_FILE`，配置 `managementEndpoints`（每项设置 `url` 和 `certificateSha256`）、`nodeId`、`certificatePath`、`policyPath`、`maxCpu`、`maxProcesses`、`maxMemoryBytes`、`tenants`。节点证书由管理端信任的 CA 签发，PFX 密码可从 `certificatePasswordFile` 读取。注册容量及租户范围取管理端与执行端策略的交集，实际消息 Broker 和文件资源由执行节点授权并直接访问。
 
 在执行节点的租户 `resources` 中为 MQ 配置逻辑连接和具体地址。连接的 `Open`、`Read`、`Write` 按实际操作授予，Broker 使用的网络端点持有 `Network`。例如，逻辑连接 `orders-broker` 下的 Kafka 源主题 `orders-broker/topic/orders-in` 需要 `Read`，消费组 `orders-broker/group/etl-orders` 需要 `Write`，目标主题需要 `Write`。同时授权 Broker 实际返回的端点，例如 `kafka://broker.example:9092`。MQ 凭据仍通过 `credentialFiles` 引用。
 

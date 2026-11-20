@@ -28,20 +28,22 @@ int ud_pipeline_kafka_terminal_pending(const physical_plan *plan) {
 
 ud_status ud_pipeline_kafka_bind(physical_plan *plan, const ud_json *definition) {
     const ud_json *delivery = ud_member(definition, "delivery");
+    int assigned = plan->execution->execution->assignment_count != 0;
     if (!delivery)
-        return UD_OK;
+        return assigned ? UD_UNSUPPORTED : UD_OK;
     static const char *keys[] = {"mode", "checkpointTopic", "checkpointPartition", "kafkaStage", "kafkaMerge"};
     UD_TRY(ud_json_keys(delivery, keys, 5));
     const ud_json *stage = ud_member(delivery, "kafkaStage");
     if ((stage && !ud_kafka_stage_enabled(stage)) ||
         (ud_member(delivery, "kafkaMerge") && (!stage || !ud_kafka_stage_enabled(ud_member(delivery, "kafkaMerge")))))
         return UD_SCHEMA;
+    if (assigned && stage) return UD_UNSUPPORTED;
     plan->kafka_stage = stage != NULL;
     plan->kafka_merge = ud_member(delivery, "kafkaMerge") != NULL;
     ud_string mode;
     UD_TRY(ud_json_string(ud_member(delivery, "mode"), &mode));
     if (ud_named(mode, "atLeastOnce"))
-        return ud_member(delivery, "checkpointTopic") || ud_member(delivery, "checkpointPartition") || stage
+        return assigned || ud_member(delivery, "checkpointTopic") || ud_member(delivery, "checkpointPartition") || stage
                    ? UD_SCHEMA : UD_OK;
     if (!ud_named(mode, "kafkaTransaction"))
         return UD_SCHEMA;
@@ -69,6 +71,8 @@ ud_status ud_pipeline_kafka_bind(physical_plan *plan, const ud_json *definition)
         if ((component->descriptor.category == UD_COMPONENT_SOURCE && !mq_source) ||
             ((effects & UD_EFFECT_EXTERNAL_WRITE) && !mq_destination))
             return UD_UNSUPPORTED;
+        if (assigned && (component->descriptor.capabilities & UD_COMPONENT_BLOCKING))
+            return UD_UNSUPPORTED;
         if ((component->descriptor.capabilities & UD_COMPONENT_STATEFUL) &&
             (!component->descriptor.checkpoint || !component->descriptor.restore ||
              !component->descriptor.state_version))
@@ -84,6 +88,9 @@ ud_status ud_pipeline_kafka_bind(physical_plan *plan, const ud_json *definition)
             return UD_SCHEMA;
         plan->kafka_connection = connection;
         if (mq_source) {
+            if (assigned && (!ud_same(address, plan->execution->execution->partition_topic) ||
+                ud_member(component->configuration, "partition") || ud_member(component->configuration, "endOffsets")))
+                return UD_SCHEMA;
             uint32_t index = plan->kafka_sources;
             if (index >= (plan->kafka_stage ? 2u : 1u))
                 return UD_UNSUPPORTED;
@@ -120,8 +127,9 @@ ud_status ud_pipeline_kafka_open(physical_plan *plan) {
     ud_activation *execution = plan->execution;
     uint32_t lanes = execution->consumer_lane_count ? execution->consumer_lane_count : 1;
     uint32_t lane = execution->consumer_lane ? execution->consumer_lane - 1 : 0;
-    uint64_t partition = (uint64_t)plan->kafka_partition +
-                         (uint64_t)execution->execution->options.worker_member * lanes + lane;
+    const ud_kafka_partition_assignment *assigned = ud_activation_partition(execution);
+    uint64_t partition = (uint64_t)plan->kafka_partition + (assigned
+        ? (uint64_t)assigned->partition : (uint64_t)execution->execution->options.worker_member * lanes + lane);
     if (partition > INT32_MAX)
         return UD_OVERFLOW;
     return ud_kafka_checkpoint_open(plan->execution, plan->kafka_connection, plan->kafka_topic,

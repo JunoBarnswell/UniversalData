@@ -18,6 +18,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     public string[] ReadOnlyRoots { get; init; } = [];
     [JsonIgnore] public bool Isolated { get; init; }
     [JsonIgnore] public string? StateDirectory { get; init; }
+    [JsonIgnore] internal ClusterCatalog? Cluster { get; init; }
     public static HostPolicy Load(string path)
     {
         HostFiles.NoLinks(path);
@@ -114,6 +115,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     }
     public Catalog OpenCatalog()
     {
+        if (Cluster is not null) return Cluster.Open(Tenant);
         string catalogDirectory = Path.GetFullPath(CatalogDirectory);
         Directory.CreateDirectory(DataDirectory);
         HostFiles.NoLinks(catalogDirectory);
@@ -127,7 +129,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     }
     internal Execution CreateExecution(string packageJson, string parametersJson = "{}", string executionId = "",
         string? stateDirectory = null, bool resume = false, Registry? registry = null, Action<ExecutionEvent>? observe = null,
-        ulong eventSequenceStart = 0, WorkerShard? shard = null, bool brokerRestore = false)
+        ulong eventSequenceStart = 0, WorkerShard? shard = null, bool brokerRestore = false, KafkaAssignment? assignment = null)
     {
         if ((Registry.Features & RegistryFeatures.ScopedJournal) == 0)
             throw new UniversalDataException((int)StatusCode.Incompatible,"Native runtime does not distinguish internal recovery storage");
@@ -147,6 +149,6 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
             resume: resume, maxConcurrency: MaxConcurrency, memoryLimit: MemoryLimit, registry: registry, observe: observe,
             timeoutMilliseconds: checked(ExecutionTimeoutSeconds * 1000UL), eventSequenceStart: eventSequenceStart,
             workerMember: shard?.Member ?? 0, workerMembers: shard?.Members ?? 0,
-            consumerLanes: shard?.Lanes ?? 0, brokerRestore: brokerRestore, workerRunId: shard?.RunId);
+            consumerLanes: shard?.Lanes ?? 0, brokerRestore: brokerRestore, workerRunId: shard?.RunId, assignment: assignment);
     }
 }

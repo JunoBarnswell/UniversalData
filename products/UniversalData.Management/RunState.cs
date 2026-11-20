@@ -11,4 +11,6 @@ public sealed record RunState(int Version, string Id, string PackageId, string P
     WorkerParallelism? Parallelism = null, string? ParentId = null, string[]? MemberIds = null,
     WorkerShard? Shard = null, WorkerPlacement? Placement = null, string? HomeNodeId = null,
     bool BrokerRestore = false, string? JournalTicket = null, long RecoverySafeAfterMs = 0,
-    bool RequiresJournal = true);
+    bool RequiresJournal = true, string? RequestDigest = null, bool StartAuthorized = false,
+    string? AgentBootId = null, ulong TaskGeneration = 0, string? DispatchLeaseId = null, ulong ReportSequence = 0,
+    KafkaElasticity? Elastic = null, KafkaElasticState? ElasticPlan = null, KafkaAssignment? Assignment = null);

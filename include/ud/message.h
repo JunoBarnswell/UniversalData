@@ -31,8 +31,13 @@ typedef struct ud_message_subscription {
     const ud_message_partition_end *end_offsets;
     uint32_t end_offset_count;
     int32_t exclusive_transaction; /* One transactional consumer owns the entire topic. */
-    uint32_t fixed_partition; /* Partition + 1. Zero uses broker assignment. A fixed partition uses a dedicated group. */
+    uint32_t fixed_partition; /* Partition + 1. Zero uses broker assignment. */
 } ud_message_subscription;
+
+typedef struct ud_message_partition_position {
+    int32_t partition;
+    int64_t earliest, latest, committed; /* committed is -1 when the group has no offset. */
+} ud_message_partition_position;
 
 typedef struct ud_message_header {
     ud_string name;
@@ -91,8 +96,20 @@ typedef struct ud_message_api {
     ud_status (*visit_committed)(void *, ud_string topic, int32_t partition,
                                   void *user, ud_message_visit visit);
     ud_status (*verify_epoch)(void *, const ud_message_epoch *);
+
 } ud_message_api;
 
+/* Optional provider extension exported as ud_plugin_partition_api. It retains
+ * the ordinary Message ABI and adds subscription at a frozen first offset. */
+typedef struct ud_message_partition_api {
+    uint32_t struct_size, abi_version;
+    ud_status (*subscribe)(void *, const ud_message_subscription *, int64_t);
+    ud_status (*positions)(void *, ud_string, ud_string, ud_message_partition_position *, uint32_t, uint32_t *);
+} ud_message_partition_api;
+typedef const ud_message_partition_api *(*ud_message_partition_entry)(uint32_t);
+UD_API ud_status ud_connection_message_subscribe_partition(ud_connection *, const ud_message_subscription *, int64_t start);
+UD_API ud_status ud_connection_message_partition_positions(ud_connection *, ud_string topic, ud_string group,
+    ud_message_partition_position *, uint32_t capacity, uint32_t *);
 UD_API void ud_message_clear(ud_message *);
 UD_API void ud_message_epoch_clear(ud_message_epoch *);
 UD_API ud_status ud_connection_message_subscribe(ud_connection *, const ud_message_subscription *);

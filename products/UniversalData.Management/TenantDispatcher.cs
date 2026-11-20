@@ -7,40 +7,75 @@ using UniversalData.Hosting;
 namespace UniversalData.Management;
 
 public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy root, ProductConfiguration configuration, IdentityDirectory identityDirectory,
-    WorkerNodeDirectory remoteNodes, WorkerReservations reservations)
+    WorkerNodeDirectory remoteNodes, WorkerReservations reservations, WorkerSupervisor supervisor,
+    ClusterLeadership leadership, ILogger<RunDispatcher> logger)
 {
     private readonly HostPolicy policy = tenantPolicy;
     private readonly IdentityDirectory identities = identityDirectory;
     private readonly object gate = new();
-    private readonly string owner = configuration.NodeId;
+    private readonly string owner = configuration.Cluster ? configuration.NodeId + "." + Guid.NewGuid().ToString("N") : configuration.NodeId;
     private readonly Dictionary<string,RunState> states = new(StringComparer.Ordinal);
     private readonly Dictionary<string,JobState> jobs = new(StringComparer.Ordinal);
     private readonly Dictionary<string,DeploymentState> deployments = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string,RemoteWorkerSession> remoteWorkers = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string,Process> workers = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string,WorkerSupervisor.Lease> workers = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string,Task> monitors = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string,string> queueReasons = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string,CatalogLease> leases = new(StringComparer.Ordinal);
+    private RunState? queueCursor;
     private const uint LeaseDuration = 30000;
+    private uint ExecutionLeaseDuration => configuration.Cluster ? 20000U : LeaseDuration;
     private static long Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     public RunState[] List(HostIdentity identity) { lock(gate) { Refresh();return states.Values.Where(run => run.ParentId is null && identity.Allows("execution.read",run.Id)).OrderByDescending(run => run.TimestampMs).ToArray(); } }
     public RunStateView View(RunState run) => RunStateView.From(run,
         run.State == "Queued" ? queueReasons.GetValueOrDefault(run.Id) ??
-        (run.NotBeforeMs > Now ? "RetryDelay" : "WaitingForWorker") : null);
-    public RunState? Get(HostIdentity identity,string id) { identity.Require("execution.read",id); lock(gate) { Refresh();return states.GetValueOrDefault(id) is { ParentId: null } state ? state : null; } }
+        (run.NotBeforeMs > Now ? "RetryDelay" : "WaitingForWorker") : null, ActiveProcesses(run));
+    private int ActiveProcesses(RunState run)
+    {
+        lock (gate)
+            return run.ElasticPlan is null ? 0 : run.ElasticPlan.Groups.Count(group =>
+                states.TryGetValue(group.Id,out var member) && member.State == "Running" && member.ProcessId is > 0);
+    }
+    public RunState? Get(HostIdentity identity,string id)
+    {
+        identity.Require("execution.read",id);
+        lock (gate)
+        {
+            using var catalog = policy.OpenCatalog();
+            return ReadRun(catalog,id) is { ParentId:null } state ? state : null;
+        }
+    }
     public RunState[] Members(HostIdentity identity, string id)
     {
         identity.Require("execution.read", id);
         lock (gate) {
-            Refresh();
-            var parent = states.GetValueOrDefault(id);
+            using var catalog = policy.OpenCatalog();
+            var parent = ReadRun(catalog,id);
             if (parent is null || parent.ParentId is not null) throw new ArgumentException("Execution was not found");
-            return parent.MemberIds?.Where(states.ContainsKey).Select(member => states[member]).ToArray() ?? [];
+            return parent.MemberIds?.Select(member => ReadRun(catalog,member)).OfType<RunState>().ToArray() ?? [];
         }
     }
     public JobState[] Jobs(HostIdentity identity) { lock(gate) { Refresh();return jobs.Values.Where(job => identity.Allows("job.read",job.Id)).OrderBy(job => job.Id).ToArray(); } }
     public DeploymentState[] Deployments(HostIdentity identity) { lock(gate) { Refresh();return deployments.Values.Where(item => identity.Allows("deployment.read",item.Id)).OrderBy(item => item.Id).ToArray(); } }
-    private RunState Get(string id) { lock(gate) { Refresh();return states.GetValueOrDefault(id) ?? throw new ArgumentException("Execution does not exist"); } }
+    private RunState? ReadRun(Catalog catalog, string id)
+    {
+        if (!HostIdentity.ValidId(id)) throw new ArgumentException("Invalid execution id");
+        string key = "run/" + id;
+        var revision = catalog.LatestRevision(CatalogKind.Audit,key);
+        if (revision == 0) return null;
+        using var document = JsonDocument.Parse(catalog.Get(CatalogKind.Audit,key,revision)!);
+        var state = ReadRun(document.RootElement);
+        states[id] = state;
+        return state;
+    }
+    private static RunState ReadRun(JsonElement document)
+    {
+        var state = document.Deserialize<RunState>(HostPolicy.JsonOptions)!;
+        if (state.RecordVersion != 2 || state.ParametersReference is null || state.Subject is null)
+            throw new InvalidDataException("Run record requires explicit credential migration");
+        return state with { Id = state.Id[4..] };
+    }
+    private RunState Get(string id) { lock(gate) { using var catalog = policy.OpenCatalog(); return ReadRun(catalog,id) ?? throw new ArgumentException("Execution does not exist"); } }
     private string Package(string id,string revision)
     {
         using var catalog = policy.OpenCatalog();
@@ -114,24 +149,53 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
     public RunState Enqueue(HostIdentity identity,RunRequest request)
     {
         identity.Require("package.execute",request.PackageId);
+        string id = Guid.NewGuid().ToString("N");
+        string? fingerprint = null;
+        if (policy.Cluster is { } cluster)
+        {
+            if (request.RequestId is not { } requestId || !HostIdentity.ValidId(requestId))
+                throw new ArgumentException("Cluster execution requires a requestId");
+            id = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity.Subject + "\0" + requestId)).AsSpan(0, 16)).ToLowerInvariant();
+            fingerprint = cluster.Fingerprint("execution/" + identity.Tenant + "/" + id,
+                JsonSerializer.Serialize(request,HostPolicy.JsonOptions));
+            lock (gate)
+            {
+                using var catalog = policy.OpenCatalog();
+                if (ReadRun(catalog, id) is { } existing)
+                    return SameRequest(existing, fingerprint);
+            }
+        }
         string packageText = Package(request.PackageId,request.PackageRevision);
         using var nativePackage = new NativePackage(packageText, policy.MemoryLimit);
         bool requiresJournal = nativePackage.RequiresJournal;
         var parallelism = WorkerParallelism.Read(packageText, policy.MaxConcurrency);
+        CheckElastic(request.Elastic,packageText,request.Debug);
         if (request.Debug is not null && parallelism is { } plan &&
             (plan.WorkerProcesses != 1 || plan.ConsumerLanesPerWorker != 1 || plan.ThreadsPerWorker != 1))
             throw new ArgumentException("Debug requires a single Worker and consumer lane");
         if (request.Debug is not null) identity.Require("package.debug",request.PackageId);
         if (request.DeploymentId is not null) identity.Require("deployment.execute",request.DeploymentId);
-        var reference = ParametersReference(request.Parameters);
         lock(gate) {
             Refresh();
             CheckDeployment(request.DeploymentId,request.DeploymentRevision,request.PackageId,request.PackageRevision);
-            var state = new RunState(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),request.PackageId,request.PackageRevision,reference,"Queued",identity.Subject,identity.Stamp,ControlReference(),
+            using var catalog = policy.OpenCatalog();
+            if (fingerprint is not null && ReadRun(catalog,id) is { } existing)
+                return SameRequest(existing, fingerprint);
+            var state = new RunState(ProductInfo.Protocol,id,request.PackageId,request.PackageRevision,ParametersReference(request.Parameters),"Queued",identity.Subject,identity.Stamp,ControlReference(),
                 TimestampMs:Now,Debug:request.Debug?.Clone(),DeploymentId:request.DeploymentId,DeploymentRevision:request.DeploymentRevision,
-                Parallelism: parallelism, RequiresJournal: requiresJournal); Save(state); return state;
+                Parallelism: parallelism, RequiresJournal: requiresJournal, RequestDigest: fingerprint, Elastic: request.Elastic);
+            try { Save(state); return state; }
+            catch (UniversalDataException error) when (fingerprint is not null && error.Code is StatusCode.Fenced or StatusCode.Busy)
+            {
+                if (ReadRun(catalog,id) is { } stored) return SameRequest(stored,fingerprint!);
+                throw;
+            }
         }
     }
+
+    private static RunState SameRequest(RunState existing, string fingerprint) =>
+        existing.RequestDigest == fingerprint ? existing :
+        throw new UniversalDataException((int)StatusCode.Fenced, "Request id was already used for a different execution");
     public RunState Resume(HostIdentity identity,string id,bool brokerRestore = false)
     {
         identity.Require("execution.resume",id);
@@ -149,13 +213,24 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     states.TryGetValue(member, out var prior) && Alive(prior)))
                 throw new ArgumentException("Execution is not ready for recovery on this node");
             if (brokerRestore) {
+                if (state.ElasticPlan is { } elastic)
+                {
+                    var replacement = elastic.Groups.Select(group => KafkaElasticGroup.Create(group.Partitions,true)).ToArray();
+                    var next = state with { State="Queued",Failure=null,Subject=identity.Subject,SubjectStamp=identity.Stamp,
+                        Revision=checked(state.Revision+1),Attempt=checked(state.Attempt+1),TimestampMs=Now,
+                        ElasticPlan=elastic with { Groups=replacement,Next=null,Reason=null,Revision=checked(elastic.Revision+1),
+                            LastChangeMs=Now,HighSamples=0,LowSinceMs=0 },
+                        MemberIds=replacement.Select(group => group.Id).ToArray() };
+                    Save(next);
+                    return next;
+                }
                 bool stages = state.MemberIds is not null && WorkerParallelism.UsesKafkaStages(packageText);
                 bool single = state.MemberIds is null && state.Parallelism is { WorkerProcesses: 1 } &&
                     state.Placement is { } placement && (placement.Remote || state.BrokerRestore) &&
                     state.ExecutionId.Length != 0 && WorkerParallelism.UsesBrokerRecovery(packageText);
                 if (!(stages || single) || state.ParametersReference.Length != 0 || state.Debug is not null)
                     throw new ArgumentException("Execution does not support Kafka Broker recovery");
-            } else if (state.BrokerRestore || state.HomeNodeId is { } home && home != owner) {
+            } else if (state.BrokerRestore || state.HomeNodeId is { } home && state.Placement is not { Remote: true } && home != configuration.NodeId) {
                 throw new ArgumentException("Execution requires recovery on its journal node or an eligible Broker recovery");
             }
             var executionRevision = state.ExecutionId.Length == 0 ? 0 : catalog.LatestRevision(CatalogKind.Execution,state.ExecutionId);
@@ -183,7 +258,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             try { await WorkerControl.Send(policy.ControlDirectory(id),id,Token(state),"cancel"); } catch (IOException) { }
             if (workers.TryGetValue(id,out var process)) {
                 _ = Task.Run(async () => { await Task.Delay(TimeSpan.FromSeconds(policy.CancellationGraceSeconds));
-                    try { if (!process.HasExited) await WorkerLauncher.Terminate(process,id,policy.RequiresIsolation(Package(Get(id).PackageId,Get(id).PackageRevision))); } catch (InvalidOperationException) { } });
+                    try { await process.KillAsync(); } catch (InvalidOperationException) { } });
             }
         } else lock(gate) { state = Get(id);using var catalog=policy.OpenCatalog();
             if (state.State is "Queued" or "Claimed" && !catalog.LeaseActive(CatalogKind.Audit,"run/"+id))
@@ -203,17 +278,13 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         if (!Alive(state)) throw new ArgumentException("Execution is not an active debug session");
         return await WorkerControl.Send(policy.ControlDirectory(id),id,Token(state),command is null ? "snapshot" : "debug",command);
     }
-    public async Task Stop(HostIdentity identity,string id)
+    public Task Stop(HostIdentity identity,string id)
     {
         identity.Require("execution.cancel",id);var state=Get(identity,id) ?? throw new ArgumentException("Execution was not found");
         using var catalog=policy.OpenCatalog();
         if (state.State!="Running" || !catalog.LeaseActive(CatalogKind.Audit,"run/"+id)) throw new ArgumentException("Execution is not running");
-        if (state.MemberIds is not null || state.Placement is { Remote: true }) {
-            PutControl(catalog,"stop",state);
-            return;
-        }
-        if (!Alive(state)) throw new ArgumentException("Execution is not running");
-        await WorkerControl.Send(policy.ControlDirectory(id),id,Token(state),"stop");
+        PutControl(catalog,"stop",state);
+        return Task.CompletedTask;
     }
     public Task<JsonElement> Metrics(HostIdentity identity,string id)
     {
@@ -232,6 +303,11 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         var revision=catalog.LatestRevision(CatalogKind.Execution,state.ExecutionId);if(revision==0)throw new IOException("Native execution facts are unavailable");
         using var record=JsonDocument.Parse(catalog.Get(CatalogKind.Execution,state.ExecutionId,revision)!);
         return Task.FromResult(JsonSerializer.SerializeToElement(new {metrics=record.RootElement.Clone(),progress=record.RootElement.TryGetProperty("progress",out var progress)?progress.Clone():(JsonElement?)null,diagnostics=record.RootElement.TryGetProperty("diagnostics",out var details)?details.Clone():(JsonElement?)null},HostPolicy.JsonOptions));
+    }
+    private static long ProcessStartTime(int id)
+    {
+        using var process = Process.GetProcessById(id);
+        return new DateTimeOffset(process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds();
     }
     private static bool Alive(RunState state)
     {
@@ -254,20 +330,28 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or FileNotFoundException or DirectoryNotFoundException)
         { return false; }
     }
-    private void Refresh()
+    private void Refresh() => RefreshRange(null);
+    private void RefreshDefinitions()
     {
-        using var catalog = policy.OpenCatalog(); string? afterId = null; ulong afterRevision = 0;
+        RefreshRange("deployment/");
+        RefreshRange("job/");
+    }
+    private void RefreshRange(string? prefix)
+    {
+        using var catalog = policy.OpenCatalog(); string? afterId = prefix; ulong afterRevision = 0;
         while(true) {
             var query = new Dictionary<string,object> { ["kind"] = (int)CatalogKind.Audit,["limit"] = 100,["latestOnly"]=true };
             if (afterId is not null) { query["afterId"] = afterId; query["afterRevision"] = afterRevision; }
             using var page = JsonDocument.Parse(catalog.Query(JsonSerializer.Serialize(query,HostPolicy.JsonOptions)));
             if (page.RootElement.GetArrayLength() == 0) break;
             foreach(var entry in page.RootElement.EnumerateArray()) {
-                afterId = entry.GetProperty("id").GetString()!; afterRevision = entry.GetProperty("revision").GetUInt64(); var document = entry.GetProperty("document");
+                afterId = entry.GetProperty("id").GetString()!;
+                if (prefix is not null && !afterId.StartsWith(prefix,StringComparison.Ordinal))
+                    return;
+                afterRevision = entry.GetProperty("revision").GetUInt64(); var document = entry.GetProperty("document");
                 if (afterId.StartsWith("run/",StringComparison.Ordinal)) {
-                    var state = document.Deserialize<RunState>(HostPolicy.JsonOptions)!;
-                    if (state.RecordVersion != 2 || state.ParametersReference is null || state.Subject is null) throw new InvalidDataException("Legacy run requires explicit credential migration");
-                    state = state with { Id = state.Id[4..] }; if (!states.TryGetValue(state.Id,out var prior) || prior.Revision < state.Revision) states[state.Id] = state;
+                    var state = ReadRun(document);
+                    if (!states.TryGetValue(state.Id,out var prior) || prior.Revision < state.Revision) states[state.Id] = state;
                 } else if (afterId.StartsWith("job/",StringComparison.Ordinal)) {
                     var job = ReadJob(document);
                     if (!jobs.TryGetValue(job.Id, out var prior) || prior.Revision < job.Revision) jobs[job.Id] = job;
@@ -278,44 +362,147 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             }
         }
     }
-    private void Reconcile()
+    private RunState[] QueryRuns(Catalog catalog, string state, bool rootsOnly = false, ulong due = long.MaxValue, uint limit = 128, RunState? after = null)
+    {
+        using var page = JsonDocument.Parse(catalog.QueryRuns(state, rootsOnly, due, limit, (ulong)(after?.NotBeforeMs ?? 0),
+            (ulong)(after?.TimestampMs ?? 0), after is null ? "" : "run/" + after.Id));
+        var runs = new RunState[page.RootElement.GetArrayLength()];
+        int index = 0;
+        foreach (var row in page.RootElement.EnumerateArray())
+        {
+            var run = ReadRun(row.GetProperty("document"));
+            states[run.Id] = runs[index++] = run;
+        }
+        return runs;
+    }
+
+    private void Reconcile(CancellationToken stopping)
     {
         using var catalog=policy.OpenCatalog();
-        foreach(var state in states.Values.Where(run => run.State is "Claimed" or "Running" && !workers.ContainsKey(run.Id) &&
+        foreach(var state in QueryRuns(catalog, "Claimed").Concat(QueryRuns(catalog, "Running")).Where(run => !workers.ContainsKey(run.Id) &&
             !remoteWorkers.ContainsKey(run.Id) && !monitors.ContainsKey(run.Id) &&
-            (run.ParentId is null || !monitors.ContainsKey(run.ParentId))).ToArray()) {
-            var lease=catalog.TryAcquireLease(CatalogKind.Audit,"run/"+state.Id,owner,LeaseDuration);
+            (run.ParentId is null || !monitors.ContainsKey(run.ParentId) || run.Assignment is not null)).ToArray()) {
+            if (state.ParentId is null && state.Elastic is not null && state.State == "Running")
+            {
+                Track(state.Id,DispatchTracked(state,leadership.Current,stopping));
+                continue;
+            }
+            if (configuration.Cluster && state.State == "Running" && state.StartAuthorized &&
+                state.Owner is { } previous && state.TaskGeneration != 0 && remoteNodes.Matches(state))
+            {
+                var identity = identities.Find(state.Subject,state.SubjectStamp);
+                if (identity?.Allows("package.execute",state.PackageId) == true &&
+                    (state.DeploymentId is null || identity.Allows("deployment.execute",state.DeploymentId)))
+                {
+                    try
+                    {
+                        var prior = new CatalogLease(CatalogKind.Audit,"run/"+state.Id,previous,state.TaskGeneration,0);
+                        var recovered = catalog.AdoptLease(prior,owner,ExecutionLeaseDuration);
+                        var adopted = state with { Owner=owner,Revision=checked(state.Revision+1),TimestampMs=Now };
+                        Save(adopted,recovered);
+                        Track(adopted.Id,ContinueRemote(adopted,recovered,leadership.Current,stopping));
+                        continue;
+                    }
+                    catch (UniversalDataException error) when (Retryable(error)) { }
+                }
+            }
+            var lease=catalog.TryAcquireLease(CatalogKind.Audit,"run/"+state.Id,owner,ExecutionLeaseDuration);
             if (lease is null) continue;
             try {
-                Refresh();var current=states[state.Id];
-                if (current.State is "Claimed" or "Running")
-                    Save(current with { State="RecoveryRequired",Result=(int)StatusCode.CommitUnknown,Owner=null,
+                var current = ReadRun(catalog, state.Id);
+                if (current?.State is "Claimed" or "Running")
+                {
+                    bool authorized = current.StartAuthorized || current.State == "Running" || current.Resume;
+                    var actor = configuration.Cluster && authorized && current.ExecutionId.Length != 0 &&
+                        current.ParentId is null && current.MemberIds is null && current.Placement is { Remote:true } &&
+                        current.Debug is null && !current.BrokerRestore
+                        ? identities.Find(current.Subject,current.SubjectStamp) : null;
+                    bool restore = actor?.Allows("package.execute",current.PackageId) == true &&
+                        (current.DeploymentId is null || actor.Allows("deployment.execute",current.DeploymentId)) &&
+                        WorkerParallelism.UsesBrokerRecovery(Package(current.PackageId,current.PackageRevision));
+                    Save(current with { State=authorized && !restore ? "RecoveryRequired" : "Queued",
+                        Resume=restore || current.Resume, BrokerRestore=restore || current.BrokerRestore,
+                        JournalTicket=restore ? Guid.NewGuid().ToString("N") : current.JournalTicket,
+                        Attempt=restore ? checked(current.Attempt+1) : current.Attempt,
+                        Result=authorized ? (int)StatusCode.CommitUnknown : 0,Owner=null,
+                        ProcessId=null, Placement=authorized ? current.Placement : null,
+                        HomeNodeId=authorized && !restore ? current.HomeNodeId : null,
+                        Failure=authorized ? new RunFailure((int)StatusCode.CommitUnknown,"dispatch.reconcile",
+                            "ExecutionPermitExpired") : null,
                         Revision=checked(current.Revision+1),TimestampMs=Now },lease);
+                }
             } finally { catalog.ReleaseLease(lease); }
         }
     }
-    public async Task Run(CancellationToken cancellation)
+    internal void Tick(ClusterLeadership.Term? term,CancellationToken cancellation)
     {
-        lock(gate) Refresh();
-        try {
-            while(!cancellation.IsCancellationRequested) {
-                RunState[] queued;
-                lock(gate) { Refresh();Reconcile(); Schedule(); queued = states.Values.Where(run => run.ParentId is null && run.State == "Queued" && run.NotBeforeMs <= Now).OrderBy(run => run.TimestampMs).ToArray(); }
-                foreach(var state in queued) {
-                    if (monitors.Count >= policy.MaxConcurrency) break;
-                    if (monitors.ContainsKey(state.Id)) continue;
-                    var task = Dispatch(state,cancellation); monitors[state.Id] = task;
-                    _ = task.ContinueWith(_ => monitors.TryRemove(state.Id,out var ignored),TaskScheduler.Default);
+        using var pin = leadership.Pin(term);
+        try
+        {
+            lock (gate)
+            {
+                RefreshDefinitions();
+                Reconcile(cancellation);
+                Schedule();
+                if (monitors.Count >= policy.MaxConcurrency) return;
+                using var catalog = policy.OpenCatalog();
+                var queued = QueryRuns(catalog,"Queued",true,(ulong)Now,limit:16,after:queueCursor);
+                if (queued.Length == 0)
+                {
+                    queueCursor = null;
+                    return;
                 }
-                await Task.Delay(250,cancellation);
+                foreach (var state in queued)
+                {
+                    queueCursor = state;
+                    if (monitors.ContainsKey(state.Id)) continue;
+                    Track(state.Id,DispatchTracked(state,term,cancellation));
+                    break;
+                }
             }
-        } finally {
-            await Task.WhenAll(monitors.Values);
         }
+        catch (UniversalDataException error) when (Retryable(error))
+        { leadership.CatalogUnavailable(error); logger.LogDebug("Tenant scheduling is waiting for the Catalog ({Status}).",error.Code); }
+    }
+
+    internal Task WaitForMonitors() => Task.WhenAll(monitors.Values.Where(task => !task.IsFaulted));
+
+    private void Track(string id,Task task)
+    {
+        monitors[id] = task;
+        _ = task.ContinueWith(completed =>
+        {
+            if (completed.IsFaulted)
+                logger.LogError("Execution monitor ended ({Failure}).", completed.Exception?.GetBaseException().GetType().Name);
+            monitors.TryRemove(id,out _);
+        }, TaskScheduler.Default);
+    }
+
+    private async Task ContinueRemote(RunState state,CatalogLease lease,ClusterLeadership.Term? term,CancellationToken stopping)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(stopping,term?.Lost ?? CancellationToken.None);
+        try { await StartWorker(state.Id,state.Placement!,cancellation.Token,continuation:state,reserved:lease); }
+        catch (UniversalDataException error) when (Retryable(error)) { leadership.CatalogUnavailable(error); }
+    }
+
+    private static bool Retryable(UniversalDataException error) =>
+        error.Code is StatusCode.Fenced or StatusCode.Busy or StatusCode.Transient or StatusCode.Io;
+
+    private async Task DispatchTracked(RunState state, ClusterLeadership.Term? term, CancellationToken stopping)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(stopping,term?.Lost ?? CancellationToken.None);
+        try
+        {
+            if (state.Elastic is not null && state.State == "Running") await DispatchElastic(state,cancellation.Token);
+            else await Dispatch(state,cancellation.Token);
+        }
+        catch (UniversalDataException error) when (Retryable(error))
+        { leadership.CatalogUnavailable(error); logger.LogDebug("Dispatch paused after a Catalog change ({Status}).", error.Code); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
     }
     private async Task Dispatch(RunState run, CancellationToken cancellation)
     {
-        if (run.HomeNodeId is { } home && home != owner)
+        if (run.HomeNodeId is { } home && run.Placement is not { Remote: true } && home != configuration.NodeId)
         {
             queueReasons[run.Id] = "JournalOwnerUnavailable";
             return;
@@ -333,10 +520,9 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         {
             lock (gate)
             {
-                Refresh();
                 if (run.JobId is { } job && jobs.TryGetValue(job, out var schedule) &&
-                    states.Values.Count(other => other.ParentId is null && other.JobId == job &&
-                        other.State is "Claimed" or "Running") >= schedule.MaxConcurrency)
+                    QueryRuns(catalog,"Claimed",true,limit:256).Concat(QueryRuns(catalog,"Running",true,limit:256))
+                        .Count(other => other.JobId == job) >= schedule.MaxConcurrency)
                 {
                     queueReasons[run.Id] = "JobConcurrency";
                     return;
@@ -350,9 +536,17 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
 
     private async Task DispatchPlacement(RunState run, CancellationToken cancellation)
     {
+        if (run.Elastic is not null)
+        {
+            await DispatchElastic(run,cancellation);
+            return;
+        }
         var plan = run.Parallelism;
-        bool remote = run.Debug is null && (!run.Resume || run.BrokerRestore || run.Placement is { Remote: true });
+        bool remote = (run.Debug is null || configuration.Cluster && !WorkerNodeLaunch.SamplesRows(run.Debug)) &&
+            (!run.Resume || run.BrokerRestore || run.Placement is { Remote: true });
         using var requirements = remote && remoteNodes.Nodes.Count != 0 ? JsonDocument.Parse(Package(run.PackageId, run.PackageRevision)) : null;
+        string rejection = reservations.Rejection(policy.Tenant,remote,requirements?.RootElement,run.Placement,run.Resume);
+
         if (plan is null || plan.WorkerProcesses == 1) {
             using var reservation = reservations.TryReserve(policy.Tenant, plan, remote, 1,
                 !run.BrokerRestore && run.Placement is { Remote: true } ? [run.Placement] : null,
@@ -363,7 +557,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 await StartWorker(run.Id, reservation.Placements[0], cancellation);
             }
             else
-                queueReasons[run.Id] = "WorkerCapacity";
+                queueReasons[run.Id] = rejection;
             return;
         }
         await DispatchGroup(run, plan, remote, requirements?.RootElement, cancellation);
@@ -402,7 +596,8 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             lock (gate)
             {
                 run = Get(run.Id);
-                if (run.State != "Queued" || run.HomeNodeId is { } home && home != owner)
+                if (run.State != "Queued" || run.HomeNodeId is { } home &&
+                    run.Placement is not { Remote: true } && home != configuration.NodeId)
                     return;
                 if (Control(catalog, run) == "cancel") {
                     Save(run with { State="Cancelled", Result=(int)StatusCode.Cancelled,
@@ -416,7 +611,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             foreach (int index in pending)
             {
                 var claim = catalog.TryAcquireLease(CatalogKind.Audit, "run/" + memberIds[index], owner,
-                    LeaseDuration, "workers", policy.MaxConcurrency);
+                    ExecutionLeaseDuration, "workers", policy.MaxConcurrency);
                 if (claim is null)
                 {
                     lock (gate)
@@ -498,7 +693,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         string[] memberIds, int[] pending, WorkerPlacement[] placements)
     {
         string? stageRunId = WorkerParallelism.UsesKafkaStages(Package(run.PackageId, run.PackageRevision)) ? run.Id : null;
-        run = run with { State = "Claimed", Owner = owner, HomeNodeId = owner, MemberIds = memberIds,
+        run = run with { State = "Claimed", Owner = owner, HomeNodeId = null, MemberIds = memberIds,
             Revision = checked(run.Revision + 1), TimestampMs = Now };
         Save(run, lease);
         for (int slot = 0; slot < pending.Length; ++slot)
@@ -513,7 +708,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     "Queued", run.Subject, run.SubjectStamp, ControlReference(), TimestampMs: Now,
                     DeploymentId: run.DeploymentId, DeploymentRevision: run.DeploymentRevision,
                     Attempt: run.Attempt, Parallelism: plan, ParentId: run.Id,
-                    Shard: shard, Placement: placement, HomeNodeId: owner,
+                    Shard: shard, Placement: placement, HomeNodeId: placement.NodeId,
                     RequiresJournal: run.RequiresJournal)
                 : previous with { State = "Queued", Subject = run.Subject, SubjectStamp = run.SubjectStamp,
                     Attempt = run.Attempt, Resume = previous.ExecutionId.Length != 0, Failure = null,
@@ -578,8 +773,9 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
     private static string? Control(Catalog catalog, RunState run)
     {
         string id = run.ParentId ?? run.Id;
-        return catalog.Get(CatalogKind.Audit, "cancel/" + id, run.Attempt) is not null ? "cancel" :
-            catalog.Get(CatalogKind.Audit, "stop/" + id, run.Attempt) is not null ? "stop" : null;
+        if (catalog.Get(CatalogKind.Audit,"cancel/"+id,run.Attempt) is not null) return "cancel";
+        return catalog.Get(CatalogKind.Audit,"stop/"+id,run.Attempt) is not null ||
+            run.Assignment is not null && catalog.Get(CatalogKind.Audit,"stop/"+run.Id,run.Attempt) is not null ? "stop" : null;
     }
 
     private static void PutControl(Catalog catalog, string action, RunState run)
@@ -590,18 +786,24 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
     }
 
     private async Task StartWorker(string id, WorkerPlacement placement, CancellationToken cancellation,
-        WorkerStartBarrier? barrier = null, CatalogLease? reserved = null)
+        WorkerStartBarrier? barrier = null, CatalogLease? reserved = null, RunState? continuation = null)
     {
         RunState state;
         CatalogLease lease;
-        lock(gate) {
+        if (continuation is not null)
+        {
+            state = continuation;
+            lease = reserved!;
+            leases[lease.Id] = lease;
+        }
+        else lock(gate) {
             state = Get(id);
             using var catalog=policy.OpenCatalog();
             if (state.State != "Queued") {
                 if (reserved is not null) catalog.ReleaseLease(reserved);
                 return;
             }
-            var acquired=reserved ?? catalog.TryAcquireLease(CatalogKind.Audit,"run/"+id,owner,LeaseDuration,"workers",policy.MaxConcurrency);
+            var acquired=reserved ?? catalog.TryAcquireLease(CatalogKind.Audit,"run/"+id,owner,ExecutionLeaseDuration,"workers",policy.MaxConcurrency);
             if (acquired is null) { barrier?.Fail(); return; }
             lease=acquired;leases[lease.Id]=lease;
             try {
@@ -613,8 +815,9 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 barrier?.Fail(); leases.TryRemove(lease.Id,out _);catalog.ReleaseLease(lease);return;
             }
             CheckDeployment(state.DeploymentId,state.DeploymentRevision,state.PackageId,state.PackageRevision);
-            state = state with { State = "Claimed",Owner = owner,Placement = placement,
-                HomeNodeId = placement.Remote ? owner : state.HomeNodeId,
+            state = state with { State = "Claimed",Owner = owner,Placement = placement, StartAuthorized = false,
+                AgentBootId=null,DispatchLeaseId=null,ReportSequence=0,TaskGeneration=lease.Generation,
+                HomeNodeId = placement.Remote ? placement.NodeId : state.HomeNodeId,
                 Revision = checked(state.Revision + 1),TimestampMs = Now }; Save(state);
             } catch (ArgumentException error) {
                 try {
@@ -627,8 +830,10 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             } catch { leases.TryRemove(lease.Id,out _);catalog.ReleaseLease(lease);throw; }
         }
         Process? process = null;
+        WorkerSupervisor.Lease? localWorker = null;
+        WorkerRequest? localRequest = null;
         RemoteWorkerSession? remote = null;
-        bool startSent = false, isolated = false, terminalRecorded = false;
+        bool startSent = continuation is not null, terminalRecorded = false, reattach = false;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation); deadline.CancelAfter(TimeSpan.FromSeconds(policy.ExecutionTimeoutSeconds + policy.CancellationGraceSeconds));
         using var heartbeatStop=CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
         int cancelled=0;
@@ -640,8 +845,8 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             if (workers.TryGetValue(id, out var local)) {
                 await pipeWriter.WaitAsync(token);
                 try {
-                    await local.StandardInput.WriteLineAsync(command.AsMemory(), token);
-                    await local.StandardInput.FlushAsync(token);
+                    await local.Process.StandardInput.WriteLineAsync(command.AsMemory(), token);
+                    await local.Process.StandardInput.FlushAsync(token);
                 } finally { pipeWriter.Release(); }
             }
         }
@@ -655,36 +860,39 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     int signal = action == "cancel" ? 2 : action == "stop" ? 1 : 0;
                     if (action is not null && signal > Volatile.Read(ref cancelled)) {
                         Interlocked.Exchange(ref cancelled,signal);
-                        if (action == "cancel") await SendPipe(action, heartbeatStop.Token);
-                        else if (remoteState.Task.IsCompletedSuccessfully)
-                            await remoteState.Task.Result.SendControlAsync(action, null, heartbeatStop.Token);
-                        else if (workers.ContainsKey(id))
-                            await WorkerControl.Send(policy.ControlDirectory(id), id, Token(state), action, cancellation: heartbeatStop.Token);
-                        deadline.CancelAfter(TimeSpan.FromSeconds(policy.CancellationGraceSeconds));
+                        await SendPipe(action,heartbeatStop.Token);
+                        deadline.CancelAfter(TimeSpan.FromSeconds(policy.CancellationGraceSeconds +
+                            (placement.Remote ? 5 : 0)));
                     }
                     if (++tick%5==0) {
-                        leases[lease.Id]=catalog.RenewLease(lease,LeaseDuration);
+                        leases[lease.Id]=catalog.RenewLease(lease,ExecutionLeaseDuration);
                         if (remoteState.Task.IsCompletedSuccessfully)
                             await remoteState.Task.Result.RenewAsync(heartbeatStop.Token);
                     }
                 }
             } catch(OperationCanceledException) when(heartbeatStop.IsCancellationRequested) { }
-              catch(Exception error) when(error is UniversalDataException or IOException or InvalidOperationException or System.Net.WebSockets.WebSocketException) { deadline.Cancel(); }
+              catch(Exception error) when(error is UniversalDataException or IOException or InvalidOperationException or System.Net.WebSockets.WebSocketException) {
+                  if (error is UniversalDataException native) leadership.CatalogUnavailable(native);
+                  deadline.Cancel();
+              }
         }
         var heartbeat=HoldLease();
         try {
             var identity = identities.Find(state.Subject,state.SubjectStamp) ?? throw new UniversalDataException((int)StatusCode.Auth,"Dispatch authority expired");
             identity.Require("package.execute",state.PackageId); if (state.Debug is not null) identity.Require("package.debug",state.PackageId);
             if (state.DeploymentId is not null) identity.Require("deployment.execute",state.DeploymentId);
+            using var catalog = policy.OpenCatalog();
+            if (continuation is null)
+            {
             var scoped = root.Bind(identity); string package = Package(state.PackageId,state.PackageRevision);
-            using var catalog = policy.OpenCatalog(); JsonElement? snapshot = null;
+            JsonElement? snapshot = null;
             if (state.DeploymentId is not null) {
                 using var documents = JsonDocument.Parse(catalog.BindingSnapshot(state.DeploymentId,ulong.Parse(state.DeploymentRevision!),state.PackageId));
                 foreach(var document in documents.RootElement.EnumerateArray())
                     if (document.GetProperty("kind").GetInt32() == (int)CatalogKind.Package) identity.Require("package.execute",document.GetProperty("id").GetString()!);
                 snapshot = documents.RootElement.Clone();
             }
-            isolated = scoped.RequiresIsolation(package) || snapshot is { } documentsSnapshot && documentsSnapshot.EnumerateArray().Any(document =>
+            bool isolated = scoped.RequiresIsolation(package) || snapshot is { } documentsSnapshot && documentsSnapshot.EnumerateArray().Any(document =>
                 document.GetProperty("kind").GetInt32() == (int)CatalogKind.Package && scoped.RequiresIsolation(document.GetProperty("document").GetRawText()));
             var budget = state.Parallelism is not null ? placement.Budget : null;
             if (budget is not null) scoped = scoped with { MaxConcurrency=budget.CpuSlots,MemoryLimit=budget.NativeMemoryBytes };
@@ -693,23 +901,42 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 state.Resume && !state.BrokerRestore,startingRevision,
                 state.ExecutionId.Length == 0 ? 0 : catalog.LatestRevision(CatalogKind.Event,state.ExecutionId),state.Debug,ControlReference:state.ControlReference,Isolated:isolated,
                 BindingSnapshot:snapshot,DeploymentId:state.DeploymentId,DeploymentRevision:state.DeploymentRevision is null ? 0 : ulong.Parse(state.DeploymentRevision),
-                Budget: budget, Shard: state.Shard ?? (state.Parallelism is { } plan && plan.ConsumerLanesPerWorker > 1
+                Budget: budget, Shard: state.Shard ?? (state.Assignment is null && state.Parallelism is { } plan && plan.ConsumerLanesPerWorker > 1
                     ? new WorkerShard(0,1,plan.ConsumerLanesPerWorker) : null),
-                BrokerRestore:state.BrokerRestore, JournalTicket:state.JournalTicket);
+                BrokerRestore:state.BrokerRestore, JournalTicket:state.JournalTicket, Assignment:state.Assignment);
             if (placement.Remote) {
                 remote = await remoteNodes.StartAsync(placement, request, id, lease.Generation, deadline.Token);
                 remoteWorkers[id] = remote;remoteState.TrySetResult(remote);
             } else {
-                process = WorkerLauncher.Launch(configuration.WorkerPath,request);
-                _ = WorkerProtocol.Discard(process.StandardError,deadline.Token);
-                await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request,HostPolicy.JsonOptions).AsMemory(), deadline.Token);
-                await process.StandardInput.FlushAsync(deadline.Token);
-                workers[id] = process;
+                localRequest = request;
+                localWorker = await supervisor.RentAsync(request,placement.Budget,deadline.Token);
+                process = localWorker.Process;
+                workers[id] = localWorker;
             }
-            var reports = new WorkerReportReader(catalog, state, token => remote is null
-                ? WorkerProtocol.ReadLine(process!.StandardOutput,67108864,token) : new ValueTask<string?>(remote.ReadAsync(token)));
+            }
+            else
+            {
+                remote = await remoteNodes.RecoverAsync(state,deadline.Token);
+                remoteWorkers[id] = remote;
+                remoteState.TrySetResult(remote);
+            }
+            long lastCursor = Stopwatch.GetTimestamp();
+            var reports = new WorkerReportReader(catalog, state, lease, token => remote is null
+                ? WorkerProtocol.ReadLine(process!.StandardOutput,67108864,token) : new ValueTask<string?>(remote.ReadAsync(token)), () =>
+                {
+                    if (remote is null || !startSent || Stopwatch.GetElapsedTime(lastCursor) < TimeSpan.FromSeconds(5)) return;
+                    lock (gate)
+                    {
+                        var run = Get(id);
+                        Save(run with { ReportSequence=remote.Sequence,Revision=checked(run.Revision+1) },lease);
+                    }
+                    lastCursor = Stopwatch.GetTimestamp();
+                });
+            string nativeId = state.ExecutionId;
+            if (continuation is null)
+            {
             var ready = await reports.ReadAsync("ready", deadline.Token);
-            string nativeId = ready.GetProperty("executionId").GetString()!;
+            nativeId = ready.GetProperty("executionId").GetString()!;
             if (!ready.TryGetProperty("controlReady",out var controlReady) || controlReady.ValueKind != JsonValueKind.True)
                 throw new InvalidDataException("Worker control endpoint is not ready");
             if (!ready.TryGetProperty("historyComplete",out var history) || history.ValueKind!=JsonValueKind.True ||
@@ -718,7 +945,8 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             var readyRecord = ready.GetProperty("record");
             if (readyRecord.GetProperty("id").GetString() != nativeId || readyRecord.GetProperty("packageId").GetString() != state.PackageId)
                 throw new InvalidDataException("Worker ready record differs from dispatch");
-            catalog.Put(CatalogKind.Execution,nativeId,ready.GetProperty("revision").GetUInt64(),readyRecord.GetRawText());
+            catalog.PutLeased(CatalogKind.Execution,nativeId,ready.GetProperty("revision").GetUInt64(),readyRecord.GetRawText(),lease);
+            reports.BindReady(nativeId);
             lock(gate) {
                 if (Get(id).State != "Claimed" || Get(id).Owner != owner) return;
                 CheckDeployment(state.DeploymentId,state.DeploymentRevision,state.PackageId,state.PackageRevision);
@@ -727,27 +955,37 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     throw new OperationCanceledException("Dispatch was cancelled before Native start");
                 }
                 state = Get(id) with { State = barrier is null ? "Running" : "Claimed",Failure=null,ExecutionId = nativeId,
-                    ProcessId = process?.Id,ProcessStartedAtMs = process is null ? null : new DateTimeOffset(process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds(),
+                    StartAuthorized=barrier is null, ProcessId=ready.GetProperty("processId").GetInt32(),
+                    AgentBootId=remote?.Identity.AgentBootId,DispatchLeaseId=remote?.Identity.Lease,
+                    ReportSequence=remote?.Sequence ?? 0,
+                    ProcessStartedAtMs = process is null ? null : ProcessStartTime(ready.GetProperty("processId").GetInt32()),
                     Revision = checked(Get(id).Revision + 1),TimestampMs = Now }; Save(state);
             }
             if (barrier is not null) {
                 await barrier.ReadyAsync(deadline.Token);
                 lock (gate) {
                     var current = Get(id);
-                    state = current with { State="Running",Revision=checked(current.Revision+1),TimestampMs=Now };
+                    state = current with { State="Running",StartAuthorized=true,Revision=checked(current.Revision+1),TimestampMs=Now };
                     Save(state);
                 }
             }
-            startSent = true; await SendPipe("start",deadline.Token);
+            }
+            startSent = true;
+            if (remote is not null)
+            {
+                leases[lease.Id] = catalog.RenewLease(lease,ExecutionLeaseDuration);
+                await remote.RenewAsync(deadline.Token);
+            }
+            await SendPipe("start",deadline.Token);
             var terminal = await reports.ReadAsync("terminal", deadline.Token);
             if (terminal.GetProperty("executionId").GetString() != nativeId) throw new InvalidDataException("Worker terminal identity differs");
             var terminalRecord = terminal.GetProperty("record");
             if (terminalRecord.GetProperty("id").GetString() != nativeId || terminalRecord.GetProperty("packageId").GetString() != state.PackageId)
                 throw new InvalidDataException("Worker terminal record differs from dispatch");
-            catalog.Put(CatalogKind.Execution,nativeId,terminal.GetProperty("revision").GetUInt64(),terminalRecord.GetRawText());
+            catalog.PutLeased(CatalogKind.Execution,nativeId,terminal.GetProperty("revision").GetUInt64(),terminalRecord.GetRawText(),lease);
             if(terminal.TryGetProperty("debug",out var debug)&&debug.ValueKind==JsonValueKind.Object) {
                 string debugId="debug/"+id;ulong revision=catalog.LatestRevision(CatalogKind.Audit,debugId)+1;
-                catalog.Put(CatalogKind.Audit,debugId,revision,JsonSerializer.Serialize(new {version=ProductInfo.Protocol,id=debugId,snapshot=debug},HostPolicy.JsonOptions));
+                catalog.PutLeased(CatalogKind.Audit,debugId,revision,JsonSerializer.Serialize(new {version=ProductInfo.Protocol,id=debugId,snapshot=debug},HostPolicy.JsonOptions),lease);
             }
             int result = terminal.GetProperty("result").GetInt32(); string final = terminal.GetProperty("state").GetString()!;
             OperationError? detail = terminal.TryGetProperty("error", out var terminalError) && terminalError.ValueKind == JsonValueKind.Object
@@ -766,7 +1004,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             }
             lock(gate) {
                 var current = Get(id);
-                state = current with { State = final,Result = result,
+                state = current with { State = final,Result = result,ReportSequence=remote?.Sequence ?? 0,
                     Failure = result == 0 ? null : new RunFailure(result, "native.execute", "NativeExecution", detail),
                     BrokerRestore=state.BrokerRestore && final == "RecoveryRequired",
                     RecoverySafeAfterMs=final == "RecoveryRequired" && placement.Remote
@@ -779,17 +1017,30 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             }
             terminalRecorded = true;
             if (remote is null) await process!.WaitForExitAsync(deadline.Token);
+            else await remote.AcknowledgeAsync(deadline.Token);
         } catch(Exception error) when(error is not OutOfMemoryException) {
             barrier?.Fail();
-            bool unknown = startSent || state.BrokerRestore || barrier is null && isolated && process is not null ||
+            if (error is UniversalDataException storage) leadership.CatalogUnavailable(storage);
+            bool unknown = startSent || state.StartAuthorized || state.BrokerRestore ||
                 state.Resume && state.Result==(int)StatusCode.CommitUnknown;
+            reattach = configuration.Cluster && placement.Remote && unknown && !terminalRecorded && remote?.ExitReported != true &&
+                (error is IOException or OperationCanceledException or System.Net.WebSockets.WebSocketException ||
+                 error is WorkerFailureException { Failure.Result: (int)StatusCode.WorkerLost } ||
+                 error is UniversalDataException native && Retryable(native));
+            if (reattach) return;
             if (unknown && placement.Remote) {
                 await heartbeatStop.CancelAsync();
                 await heartbeat;
             }
             var failure=error is WorkerFailureException worker?worker.Failure:new RunFailure(error is UniversalDataException nativeError?nativeError.Status:error is IOException?(int)StatusCode.Io:(int)StatusCode.Invalid,"dispatch",error.GetType().Name);
-            try { lock(gate) { var current = Get(id); if (!terminalRecorded && current.State != "Cancelled") Save(current with { State = unknown ? "RecoveryRequired" : Volatile.Read(ref cancelled)!=0 ? "Cancelled" : "Failed",
-                Result = unknown ? (int)StatusCode.CommitUnknown : failure.Result,Failure=failure,
+            bool retryPlacement = !unknown && Volatile.Read(ref cancelled) == 0 && placement.Remote &&
+                failure.Result is (int)StatusCode.Busy or (int)StatusCode.Resource or (int)StatusCode.WorkerLost;
+            if (retryPlacement) queueReasons[id] = "WorkerCapacity";
+            try { lock(gate) { var current = Get(id); if (!terminalRecorded && current.State != "Cancelled") Save(current with {
+                State = unknown ? "RecoveryRequired" : Volatile.Read(ref cancelled)!=0 ? "Cancelled" : retryPlacement ? "Queued" : "Failed",
+                Result = unknown ? (int)StatusCode.CommitUnknown : retryPlacement ? 0 : failure.Result,Failure=retryPlacement ? null : failure,
+                Placement=retryPlacement && !current.Resume ? null : current.Placement,
+                NotBeforeMs=retryPlacement ? checked(Now+1000) : current.NotBeforeMs,
                 RecoverySafeAfterMs=unknown && placement.Remote
                     ? checked((long)leases.GetValueOrDefault(lease.Id,lease).UntilMilliseconds) : 0,
                 Revision = checked(current.Revision + 1),TimestampMs = Now }); } }
@@ -799,21 +1050,24 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             heartbeatStop.Cancel();await heartbeat;
             try {
                 if (remote is not null) await remote.DisposeAsync();
-                if (process is not null) {
-                    using (process) {
-                        if (!process.HasExited) {
-                            await WorkerLauncher.Terminate(process,id,isolated);
-                            using var killed = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                            await process.WaitForExitAsync(killed.Token);
-                        }
+                if (localWorker is not null)
+                {
+                    try
+                    {
+                        if (startSent && !terminalRecorded && !localWorker.Process.HasExited && localRequest is not null)
+                            await localWorker.DrainAsync(localRequest,Token(state));
                     }
+                    finally { await localWorker.DisposeAsync(); }
                 }
             } finally {
                 workers.TryRemove(id,out _);
                 remoteWorkers.TryRemove(id,out _);
                 leases.TryRemove(lease.Id,out _);
-                using var catalog=policy.OpenCatalog();
-                try { catalog.ReleaseLease(lease); } catch(UniversalDataException error) when(error.Code==StatusCode.Fenced) { }
+                if (!reattach)
+                {
+                    using var catalog=policy.OpenCatalog();
+                    try { catalog.ReleaseLease(lease); } catch(UniversalDataException error) when(Retryable(error)) { }
+                }
             }
         }
     }

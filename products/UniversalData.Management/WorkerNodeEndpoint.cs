@@ -39,7 +39,7 @@ internal static class WorkerNodeEndpoint
             if (frame is null || !trust.TryGetValue(frame.NodeId, out var node) ||
                 !WorkerNodeCertificate.Matches(certificate, node.CertificateSha256))
                 throw new InvalidDataException("Worker node certificate does not match its identity");
-            if (registration && frame.Kind == "register" && frame is { MemberId.Length: 0, Generation: 0, Lease.Length: 0 })
+            if (registration && frame.Kind == "register" && frame is { MemberId.Length: 0, Generation: 0, Lease.Length: 0, LeadershipGeneration: 0 } && Guid.TryParseExact(frame.AgentBootId,"N",out _))
             {
                 var capacity = frame.Data?.Deserialize<WorkerNodeCapacity>(HostPolicy.JsonOptions);
                 if (capacity is not { Valid: true })
@@ -49,7 +49,7 @@ internal static class WorkerNodeEndpoint
                     throw new InvalidDataException("Worker node has no shared tenant scope");
                 await directory.RegisterAsync(new RemoteWorkerNode(frame.NodeId, capacity.MaxCpu,
                     capacity.MaxProcesses, capacity.MaxMemoryBytes, tenants,
-                    tenants.ToDictionary(tenant => tenant, tenant => capacity.Inventory[tenant], StringComparer.Ordinal)), channel, lifetime.Token);
+                    tenants.ToDictionary(tenant => tenant, tenant => capacity.Inventory[tenant], StringComparer.Ordinal)), frame.AgentBootId, channel, lifetime.Token);
             }
             else if (!registration && frame.Kind == "attach" && frame.ValidLease)
                 await directory.AttachAsync(frame, channel, lifetime.Token);

@@ -35,6 +35,10 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
     public ValueTask<Result<WorkerNodeStatus[]>> WorkersAsync(CancellationToken cancellation = default) =>
         Send<WorkerNodeStatus[]>(HttpMethod.Get, "/api/workers", null, cancellation);
 
+    public ValueTask<Result<JsonElement>> StartExecutionAsync(ExecutionSubmission request,
+        CancellationToken cancellation = default) =>
+        Send<JsonElement>(HttpMethod.Post, "/api/executions", request, cancellation);
+
     private async ValueTask<Result<T>> Send<T>(HttpMethod method, string path, object? body,
         CancellationToken cancellation)
     {

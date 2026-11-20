@@ -27,7 +27,7 @@ typedef struct ud_catalog_options {
     void *authorize_user;
     int32_t create_directory;
 } ud_catalog_options;
-/* Native SQLite indexed immutable document repository. Host owns
+/* Native indexed immutable document repository. Host owns
  * ctx and serializes calls on each handle; independent handles/processes share
  * the transactional WAL database. Metadata stores only supplied documents;
  * it never reads process credentials or invokes a credential resolver.
@@ -35,6 +35,13 @@ typedef struct ud_catalog_options {
  * different document is CORRUPT. Tenant is part of each physical identity. */
 UD_API ud_status ud_catalog_open(ud_context *, const ud_catalog_options *, ud_catalog **);
 UD_API ud_status ud_catalog_put(ud_catalog *, const ud_catalog_key *, ud_string json);
+/* PostgreSQL 17 writable endpoint. The logical directory is used for authorization.
+ * create_directory initializes storage for installation, and runtime opens an existing schema.
+ * Management election uses Audit key leadership in tenant __ud_cluster.
+ * Every other write requires a live leadership token attached to the handle. */
+UD_API ud_status ud_catalog_open_postgresql(ud_context *, const ud_catalog_options *, ud_string connection,
+                                             ud_catalog **);
+UD_API ud_status ud_catalog_set_leadership(ud_catalog *, ud_string owner, uint64_t generation);
 /* Native-only atomic ownership. The Catalog server's persisted UTC clock is
  * monotone; clients must also stop their Worker on a missed renewal. Expiry
  * revokes authority, it NEVER proves that external side effects were absent. */
@@ -57,6 +64,10 @@ UD_API ud_status ud_catalog_lease_acquire(ud_catalog *, const ud_catalog_lease_r
                                           uint64_t *generation, uint64_t *until_ms);
 UD_API ud_status ud_catalog_lease_renew(ud_catalog *, const ud_catalog_lease *,
                                         uint32_t duration_ms, uint64_t *until_ms);
+/* Rebind a still-live task lease to a current Management owner after it
+ * identifies the existing Worker. The task generation stays the same. */
+UD_API ud_status ud_catalog_lease_adopt(ud_catalog *, const ud_catalog_lease *, ud_string owner,
+                                        uint32_t duration_ms, uint64_t *until_ms);
 UD_API ud_status ud_catalog_lease_release(ud_catalog *, const ud_catalog_lease *);
 UD_API ud_status ud_catalog_lease_active(ud_catalog *, int32_t kind, ud_string id, int32_t *active);
 /* Append revision expected+1 atomically, or FENCED. After an object first uses
@@ -65,6 +76,9 @@ UD_API ud_status ud_catalog_lease_active(ud_catalog *, int32_t kind, ud_string i
  * execution facts, but cannot overwrite a lease-protected object. */
 UD_API ud_status ud_catalog_compare_exchange(ud_catalog *, const ud_catalog_key *, ud_string json,
                                              uint64_t expected_revision, const ud_catalog_lease *);
+/* Append a Native fact under the corresponding run lease in one transaction. */
+UD_API ud_status ud_catalog_put_leased(ud_catalog *, const ud_catalog_key *, ud_string,
+                                        const ud_catalog_lease *);
 typedef struct ud_catalog_job_occurrence {
     uint32_t struct_size, abi_version;
     ud_catalog_key job, occurrence, run;
@@ -87,6 +101,10 @@ UD_API ud_status ud_catalog_list(ud_catalog *, int32_t kind, char **json, uint32
  * Time bounds select explicit timestampMs values in stored documents.
  * Only the current tenant/kind/filter/page is inspected; no directory scan. */
 UD_API ud_status ud_catalog_query(ud_catalog *, ud_string query, char **json, uint32_t *length);
+/* Current run heads for one state, ordered by due time, creation time and id. */
+UD_API ud_status ud_catalog_query_runs(ud_catalog *, ud_string state, int32_t roots_only,
+                                        uint64_t due_ms, uint32_t limit, uint64_t after_due_ms,
+                                        uint64_t after_timestamp_ms, ud_string after_id, char **, uint32_t *);
 UD_API ud_status ud_catalog_latest_revision(ud_catalog *, int32_t kind, ud_string id, uint64_t *);
 /* Stores versioned identifiers/state/result/time/kind only, no row/SQL/config
  * data. sequence is explicit; returned errors belong to the host log policy. */
@@ -124,6 +142,11 @@ UD_API ud_status ud_catalog_record_execution(ud_catalog *, const ud_execution *,
  * package/deployment/job documents are never pruned by log retention. */
 UD_API ud_status ud_catalog_prune_events(ud_catalog *, uint64_t before_ms, uint32_t limit,
                                          uint64_t *removed);
+/* Verify a drained SQLite snapshot and optionally import or verify identical
+ * immutable revisions in a PostgreSQL tenant. The digest covers the ordered
+ * stored row digests including their original timestamp and digest domain. */
+UD_API ud_status ud_catalog_copy_snapshot(ud_catalog *source, ud_catalog *target, int32_t import,
+                                            uint64_t *rows, uint8_t digest[32]);
 UD_API void ud_catalog_close(ud_catalog *);
 #ifdef __cplusplus
 }

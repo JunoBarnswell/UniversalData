@@ -1,0 +1,20 @@
+{
+  "node": "management-linux",
+  "urls": "https://0.0.0.0:5443",
+  "policy": "/etc/universaldata/management-policy.json",
+  "worker-supervisor-config": "/etc/universaldata/worker-supervisor.json",
+  "Cluster": {
+    "ConnectionFile": "/run/secrets/universaldata-postgresql",
+    "EncryptionKeyFile": "/run/secrets/universaldata-catalog-key"
+  },
+  "WorkerNodes": {
+    "etl-node-a": {
+      "CertificateSha256": "REPLACE_WITH_AGENT_CERTIFICATE_SHA256",
+      "Tenants": ["data-platform"]
+    },
+    "etl-node-b": {
+      "CertificateSha256": "REPLACE_WITH_AGENT_CERTIFICATE_SHA256",
+      "Tenants": ["data-platform"]
+    }
+  }
+}

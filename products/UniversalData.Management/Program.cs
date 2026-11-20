@@ -12,8 +12,18 @@ builder.Services.ConfigureHttpJsonOptions(options => {
 });
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics",LogLevel.Warning);
 var policy = HostPolicy.Load(Path.GetFullPath(builder.Configuration["policy"] ?? "host-policy.json"));
-if (policy.IdentityFile is null || policy.Tenants is null || policy.Tenants.Count == 0) throw new InvalidDataException("Management requires an identity directory and explicit tenant policies");
-var identities = new IdentityDirectory(policy.IdentityFile); _ = identities.Find("__configuration_probe__");
+string? connectionFile = builder.Configuration["Cluster:ConnectionFile"];
+string? encryptionFile = builder.Configuration["Cluster:EncryptionKeyFile"];
+if ((connectionFile is null) != (encryptionFile is null))
+    throw new InvalidDataException("Cluster Catalog requires both secret files");
+ClusterCatalog? cluster = connectionFile is null ? null : new(Path.GetFullPath(connectionFile), Path.GetFullPath(encryptionFile!));
+if (policy.Tenants is null || policy.Tenants.Count == 0 || policy.Tenants.ContainsKey(ClusterCatalog.SystemTenant) ||
+    cluster is null && policy.IdentityFile is null)
+    throw new InvalidDataException("Management requires identities and explicit tenant policies");
+policy = policy with { Cluster = cluster };
+var clusterState = cluster is null ? null : new ClusterHostState(cluster);
+var identities = clusterState?.Identities() ?? new IdentityDirectory(policy.IdentityFile!);
+if (cluster is null) _ = identities.Find("__configuration_probe__");
 Directory.CreateDirectory(policy.DataDirectory);
 var urls = builder.Configuration["urls"] ?? "http://127.0.0.1:5080";
 foreach (string address in urls.Split(';')) {
@@ -34,16 +44,37 @@ builder.WebHost.ConfigureKestrel(options => {
 });
 string nodeId=builder.Configuration["node"] ?? Guid.NewGuid().ToString("N");
 if (!HostIdentity.ValidId(nodeId)) throw new InvalidDataException("Invalid dispatcher node identity");
-var configuration = new ProductConfiguration(Path.GetFullPath(builder.Configuration["worker"] ?? Path.Combine(AppContext.BaseDirectory,"worker","ud_worker.dll")),nodeId);
+var configuration = new ProductConfiguration(Path.GetFullPath(builder.Configuration["worker"] ?? Path.Combine(AppContext.BaseDirectory,"worker","ud_worker.dll")),nodeId,cluster is not null);
+string? supervisorPath = builder.Configuration["worker-supervisor-config"];
+var supervisor = new WorkerSupervisor(configuration.WorkerPath, policy.MaxConcurrency,
+    Math.Min(policy.MaxConcurrency, (uint)Environment.ProcessorCount),
+    (ulong)Math.Max(0, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes), policy.MemoryLimit, supervisorPath);
+builder.Services.AddSingleton<WorkerSupervisor>(_ => supervisor);
 builder.Services.AddSingleton(policy); builder.Services.AddSingleton(configuration); builder.Services.AddSingleton(identities);
+builder.Services.AddSingleton(services => new ClusterLeadership(cluster, nodeId, services.GetRequiredService<ILogger<ClusterLeadership>>()));
+builder.Services.AddHostedService(services => services.GetRequiredService<ClusterLeadership>());
 builder.Services.AddSingleton<WorkerNodeDirectory>();
 builder.Services.AddSingleton<WorkerReservations>();
 builder.Services.AddSingleton<RunDispatcher>(); builder.Services.AddHostedService(services => services.GetRequiredService<RunDispatcher>());
-ManagementSecurity.Configure(builder,policy,identities);
+ManagementSecurity.Configure(builder,policy,identities,clusterState);
 var app = builder.Build();
+var leadership = app.Services.GetRequiredService<ClusterLeadership>();
+app.Use(async (context, next) =>
+{
+    var term = leadership.Current;
+    if (leadership.Enabled && term is not { Ready: true } &&
+        (context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments("/internal/worker-nodes")))
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        return;
+    }
+    using var pin = leadership.Pin(term);
+    await next();
+});
 app.Use(async (context,next) => {
     try { await next(); }
-    catch(UniversalDataException failure) { if (context.Response.HasStarted) throw; context.Response.StatusCode = failure.Code == StatusCode.Auth ? 403 : failure.Code == StatusCode.Fenced ? 409 : 422;
+    catch(UniversalDataException failure) { leadership.CatalogUnavailable(failure); if (context.Response.HasStarted) throw; context.Response.StatusCode = failure.Code == StatusCode.Auth ? 403 :
+        failure.Code is StatusCode.Transient or StatusCode.Io or StatusCode.Busy ? 503 : failure.Code == StatusCode.Fenced ? 409 : 422;
         await context.Response.WriteAsJsonAsync(new Result(failure.Code, failure.Detail ?? new(ErrorSource.Native, failure.Code, failure.Code.ToString()))); }
     catch(Exception error) when(error is ArgumentException or JsonException or FormatException or OverflowException) {
         if (context.Response.HasStarted) throw; context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new Result(StatusCode.Invalid, new(ErrorSource.Native, StatusCode.Invalid, "Invalid request"))); }
@@ -60,13 +91,13 @@ async Task<JsonElement> InspectValue(HttpContext context,string mode,JsonElement
     var identity = Identity(context); string id = package.GetProperty("id").GetString()!; identity.Require(permission,id);
     var scoped = Scope(context); string text = package.GetRawText();
     var request = new WorkerRequest(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),mode,scoped,identity,text,Payload:payload,Isolated:scoped.RequiresIsolation(text));
-    return await WorkerLauncher.Inspect(configuration.WorkerPath,request,context.RequestAborted);
+    return await supervisor.InspectAsync(request,context.RequestAborted);
 }
 async Task<IResult> Inspect(HttpContext context,string mode,JsonElement package,JsonElement? payload = null,string permission = "package.read") => Results.Json(await InspectValue(context,mode,package,payload,permission));
 string empty = "{\"version\":"+ProductInfo.Protocol+",\"id\":\"component-catalog\",\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}";
 api.MapGet("/components",async (HttpContext context) => {
     Identity(context).Require("component.read","*"); using var document = JsonDocument.Parse(empty); var scoped = Scope(context);
-    return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"components",scoped,Identity(context),empty),context.RequestAborted));
+    return Results.Json(await supervisor.InspectAsync(new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"components",scoped,Identity(context),empty),context.RequestAborted));
 });
 api.MapGet("/connectors",async(HttpContext context)=>{
     var scoped=Scope(context);var identity=Identity(context);identity.Require("component.read","*");identity.Require("resource.list","*");
@@ -74,12 +105,12 @@ api.MapGet("/connectors",async(HttpContext context)=>{
         .Where(path=>Path.GetFileName(path).StartsWith("ud_connector_",StringComparison.Ordinal)&&Path.GetExtension(path) is ".so" or ".dll" or ".dylib")
         .Where(path=>scoped.Authorize(scoped.Tenant,path,ConnectionAccess.Open)).Distinct(StringComparer.Ordinal).Take(32).ToArray();
     foreach(string path in paths)HostFiles.NoLinks(path);
-    return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"connectors",scoped,identity,empty,
+    return Results.Json(await supervisor.InspectAsync(new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"connectors",scoped,identity,empty,
         Payload:JsonSerializer.SerializeToElement(paths,HostPolicy.JsonOptions)),context.RequestAborted));
 });
 api.MapGet("/expression-language",async (HttpContext context) => {
     Identity(context).Require("component.read","*");using var document=JsonDocument.Parse(empty);var scoped=Scope(context);
-    return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"expressionLanguage",scoped,Identity(context),empty),context.RequestAborted));
+    return Results.Json(await supervisor.InspectAsync(new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"expressionLanguage",scoped,Identity(context),empty),context.RequestAborted));
 });
 api.MapPost("/expression",async (ExpressionRequest request,HttpContext context) => {
     using var package=JsonDocument.Parse(DesignerWorkspace.InspectionPackage(request.Package).ToJsonString());
@@ -138,11 +169,11 @@ api.MapPost("/tests",async (TestRequest request,HttpContext context,RunDispatche
     foreach(var pipeline in plan.GetProperty("pipelines").EnumerateArray())foreach(var tree in pipeline.GetProperty("trees").EnumerateArray())foreach(var node in tree.GetProperty("nodes").EnumerateArray())
         if((node.GetProperty("effects").GetUInt32()&2)!=0&&node.GetProperty("component").GetString()!="sql.destination")return Results.BadRequest(new {error="Test contains an external side effect outside approved SQL destinations"});
     var saved=DesignerWorkspace.SaveVersion(Scope(context),identity,doc.RootElement,"0");
-    string id=doc.RootElement.GetProperty("id").GetString()!;return Results.Accepted(value:RunStateView.From(dispatcher.For(identity).Enqueue(identity,new(id,"1"))));
+    string id=doc.RootElement.GetProperty("id").GetString()!;return Results.Accepted(value:RunStateView.From(dispatcher.For(identity).Enqueue(identity,new(id,"1",RequestId:Guid.NewGuid().ToString("N")))));
 });
 api.MapPost("/scripts/compile",async (ScriptRequest request,HttpContext context) => {
     var identity = Identity(context); identity.Require("script.compile","*"); var scoped = Scope(context);
-    return Results.Json(await WorkerLauncher.Inspect(configuration.WorkerPath,new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"compile",scoped,identity,
+    return Results.Json(await supervisor.InspectAsync(new(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),"compile",scoped,identity,
         Payload:JsonSerializer.SerializeToElement(new { request.Source },HostPolicy.JsonOptions)),context.RequestAborted));
 });
 api.MapGet("/packages",(string? afterId,string? afterRevision,HttpContext context) => {
@@ -208,7 +239,7 @@ api.MapGet("/resources",(HttpContext context) => { var scope = Scope(context); s
     return new { fileRoots = scope.FileRoots,readOnlyRoots = scope.ReadOnlyRoots,networkOrigins = scope.NetworkOrigins,credentialReferences = scope.CredentialFiles.Keys,
         testResources = scope.TestResources ?? [], resources = scope.Resources?.Keys.Where(resource => scope.Identity.Allows("resource.open",resource)) }; });
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" })).AllowAnonymous();
-app.MapGet("/health/ready", (WorkerReservations workers) => workers.Ready
+app.MapGet("/health/ready", (WorkerReservations workers) => workers.Ready && leadership.Ready
     ? Results.Ok(new { status = "ready" }) : Results.StatusCode(503)).AllowAnonymous();
 api.MapGet("/workers", (HttpContext context, WorkerReservations workers) =>
 {

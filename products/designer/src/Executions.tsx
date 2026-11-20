@@ -7,6 +7,7 @@ import {
   executionStateName,
   stateName,
   failurePhase,
+  workerReason,
   type Deployment,
   type PackageDocument,
   type CatalogDocument,
@@ -90,7 +91,7 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
   }, [run?.executionId, after, run?.state, componentFilter, errorOnly]);
   async function control(action: "cancel" | "resume") {
     try {
-      await post(`/executions/${selected}/${action}`);
+      await post(`/executions/${selected}/${action}${action === "resume" && run?.elastic ? "?brokerRestore=true" : ""}`);
       await refresh();
     } catch (error) {
       setError(String(error));
@@ -205,6 +206,16 @@ export function Executions({ logsOnly }: { logsOnly: boolean }) {
                 <dd>{executionStateName(run)}</dd>
                 <dt>Native 结果</dt>
                 <dd>{run.result === 16 ? "提交状态不明" : run.result}</dd>
+                {run.queueReason && <p>{workerReason(run.queueReason)}</p>}
+                {run.elastic && <section aria-label="Kafka 弹性调度">
+                  <p>进程 {run.elastic.activeProcesses} / {run.elastic.targetProcesses} · 积压 {run.elastic.lag.toLocaleString()} · 计划 {run.elastic.planRevision}</p>
+                  {run.elastic.reason && <p>{workerReason(run.elastic.reason)}</p>}
+                  <ul>{run.elastic.groups.map((group) => <li key={group.id}>
+                    分区 {group.partitions.map((part) => part.partition).join("、")}
+                  </li>)}</ul>
+                  {run.elastic.reassigning && <p>正在交接到 {run.elastic.plannedGroups?.map((group) =>
+                    group.partitions.map((part) => part.partition).join("、")).join(" / ")}</p>}
+                </section>}
                 {run.failure ? (
                   <>
                     <dt>失败阶段</dt>

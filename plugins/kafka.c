@@ -50,7 +50,8 @@ typedef struct kafka_state {
     ud_status (*check_io)(void *);
     char *servers, *username, *password, *ca_file, *topic, *transactional_id;
     int tls, assigned, transaction;
-    int32_t initial_position;
+    int32_t initial_position, has_frozen_offset;
+    int64_t frozen_offset;
     atomic_int cancelled, unauthorized;
     ud_status rebalance_error;
     rd_kafka_t *consumer, *producer;
@@ -253,18 +254,7 @@ static void invalidate(kafka_state *p) {
 static void close_consumer(kafka_state *p) {
     if (p->consumer) {
         invalidate(p);
-        rd_kafka_queue_t *queue = rd_kafka_queue_new(p->consumer);
-        if (queue) {
-            rd_kafka_error_t *error = rd_kafka_consumer_close_queue(p->consumer, queue);
-            if (!error) {
-                uint64_t deadline = now_ms() + 500;
-                while (!rd_kafka_consumer_closed(p->consumer) && now_ms() < deadline)
-                    rd_kafka_queue_poll_callback(queue, wait_ms(deadline));
-            } else {
-                rd_kafka_error_destroy(error);
-            }
-            rd_kafka_queue_destroy(queue);
-        }
+        (void)rd_kafka_consumer_close(p->consumer);
         rd_kafka_destroy_flags(p->consumer, RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE);
         p->consumer = NULL;
     }
@@ -585,6 +575,12 @@ static ud_status prepare_exclusive_assignment(kafka_state *p,
         int64_t committed = part->offset == RD_KAFKA_OFFSET_INVALID ? -1 : part->offset;
         if (!status && p->frontier_frozen && entry->committed != committed)
             status = UD_FENCED;
+        if (!status && !p->frontier_frozen && p->has_frozen_offset) {
+            if (committed >= 0 && committed != p->frozen_offset)
+                status = UD_FENCED;
+            else if (committed < 0)
+                entry->start = p->frozen_offset;
+        }
         if (!status)
             entry->committed = committed;
         if (!status && committed < 0 && entry->start >= 0)
@@ -733,7 +729,6 @@ static ud_status create_client(kafka_state *p, rd_kafka_type_t mode, const char 
         if (identity) {
             if (!p->fixed_partition)
                 rd_kafka_conf_set_rebalance_cb(conf, rebalance);
-            rd_kafka_conf_set_events(conf, RD_KAFKA_EVENT_OFFSET_COMMIT);
             valid = conf_text(conf, "group.id", identity) &&
                     (p->fixed_partition ? conf_text(conf, "group.protocol", "classic") :
                                           conf_text(conf, "partition.assignment.strategy", "range")) &&
@@ -850,7 +845,7 @@ static ud_status bind_cuts(kafka_state *p, const ud_message_subscription *option
     return UD_OK;
 }
 
-static ud_status subscribe(void *state, const ud_message_subscription *options) {
+static ud_status subscribe_at(void *state, const ud_message_subscription *options, int64_t offset) {
     kafka_state *p = state;
     if (p->consumer || p->producer || p->transaction)
         return UD_BUSY;
@@ -862,7 +857,8 @@ static ud_status subscribe(void *state, const ud_message_subscription *options) 
         !options->max_message_bytes || options->max_message_bytes > KAFKA_LIMIT_RECORD ||
         options->max_in_flight_bytes < options->max_message_bytes ||
         options->max_in_flight_bytes > KAFKA_LIMIT_TOTAL || !options->prefetch ||
-        options->prefetch > KAFKA_LIMIT_TOKENS || options->fixed_partition > KAFKA_LIMIT_PARTITIONS)
+        options->prefetch > KAFKA_LIMIT_TOKENS || options->fixed_partition > KAFKA_LIMIT_PARTITIONS ||
+        (offset >= 0 && !options->fixed_partition))
         return UD_INVALID;
     const ud_host_api *h = p->host;
     p->topic = plugin_string(h, options->source.name.data, options->source.name.length);
@@ -871,6 +867,8 @@ static ud_status subscribe(void *state, const ud_message_subscription *options) 
     p->budget = options->max_in_flight_bytes;
     p->credit = options->prefetch;
     p->initial_position = options->initial_position;
+    p->has_frozen_offset = offset >= 0;
+    p->frozen_offset = offset;
     p->fixed_partition = options->fixed_partition;
     p->exclusive_transaction = options->exclusive_transaction != 0 || p->fixed_partition;
     ud_status status = group_id && p->topic ? bind_cuts(p, options) : UD_RESOURCE;
@@ -906,6 +904,10 @@ static ud_status subscribe(void *state, const ud_message_subscription *options) 
     if (status)
         close_consumer(p);
     return status;
+}
+
+static ud_status subscribe(void *state, const ud_message_subscription *options) {
+    return subscribe_at(state,options,-1);
 }
 
 static ud_status check_cut_record(kafka_state *p, const rd_kafka_message_t *record) {
@@ -1280,41 +1282,50 @@ static void confirm_frontier(kafka_state *p, const rd_kafka_topic_partition_list
     }
 }
 
+typedef struct kafka_commit_reply {
+    const rd_kafka_topic_partition_list_t *expected;
+    ud_status status;
+    int complete;
+} kafka_commit_reply;
+
+static void offset_commit_result(rd_kafka_t *client, rd_kafka_resp_err_t error,
+                                 rd_kafka_topic_partition_list_t *result, void *context) {
+    (void)client;
+    kafka_commit_reply *reply = context;
+    ud_status status = kafka_status(error);
+    int committed = 0;
+    for (int i = 0; result && i < result->cnt; ++i) {
+        const rd_kafka_topic_partition_t *reported = &result->elems[i];
+        const rd_kafka_topic_partition_t *expected = rd_kafka_topic_partition_list_find(
+            reply->expected, reported->topic, reported->partition);
+        ud_status item = !expected || expected->offset != reported->offset ?
+                             UD_COMMIT_UNKNOWN : kafka_status(reported->err);
+        if (item && !status)
+            status = item;
+        committed += item == UD_OK;
+    }
+    if (status == UD_TIMEOUT || status == UD_TRANSIENT ||
+        (!status && (!result || result->cnt != reply->expected->cnt)) ||
+        (status && result && committed > 0 && committed < result->cnt))
+        status = UD_COMMIT_UNKNOWN;
+    reply->status = status;
+    reply->complete = 1;
+}
+
 static ud_status commit_offsets(kafka_state *p, rd_kafka_topic_partition_list_t *offsets) {
     rd_kafka_queue_t *queue = rd_kafka_queue_new(p->consumer);
     if (!queue)
         return UD_RESOURCE;
-    ud_status status = kafka_status(rd_kafka_commit_queue(p->consumer, offsets, queue, NULL, NULL));
-    rd_kafka_event_t *event = NULL;
+    kafka_commit_reply reply = {.expected = offsets, .status = UD_COMMIT_UNKNOWN};
+    ud_status status = kafka_status(rd_kafka_commit_queue(p->consumer, offsets, queue,
+                                                        offset_commit_result, &reply));
     uint64_t deadline = now_ms() + KAFKA_TIMEOUT;
     if (!status) {
         do {
-            event = rd_kafka_queue_poll(queue, wait_ms(deadline));
-        } while (!event && !control(p) && now_ms() < deadline);
-        if (!event || rd_kafka_event_type(event) != RD_KAFKA_EVENT_OFFSET_COMMIT) {
-            status = UD_COMMIT_UNKNOWN;
-        } else {
-            status = kafka_status(rd_kafka_event_error(event));
-            const rd_kafka_topic_partition_list_t *result = rd_kafka_event_topic_partition_list(event);
-            int committed = 0;
-            for (int i = 0; result && i < result->cnt; ++i) {
-                const rd_kafka_topic_partition_t *reported = &result->elems[i];
-                const rd_kafka_topic_partition_t *expected = rd_kafka_topic_partition_list_find(
-                    offsets, reported->topic, reported->partition);
-                ud_status item = !expected || expected->offset != reported->offset ?
-                                     UD_COMMIT_UNKNOWN : kafka_status(reported->err);
-                if (item && !status)
-                    status = item;
-                committed += item == UD_OK;
-            }
-            if (status == UD_TIMEOUT || status == UD_TRANSIENT ||
-                (!status && (!result || result->cnt != offsets->cnt)) ||
-                (status && result && committed > 0 && committed < result->cnt))
-                status = UD_COMMIT_UNKNOWN;
-        }
+            rd_kafka_queue_poll_callback(queue, wait_ms(deadline));
+        } while (!reply.complete && !control(p) && now_ms() < deadline);
+        status = reply.status;
     }
-    if (event)
-        rd_kafka_event_destroy(event);
     rd_kafka_queue_destroy(queue);
     return status;
 }
@@ -1819,6 +1830,66 @@ static ud_status publish(void *state, const ud_message_target *target, const ud_
     return uncertain ? UD_COMMIT_UNKNOWN : first;
 }
 
+static ud_status partition_positions(void *state, ud_string topic, ud_string group,
+    ud_message_partition_position *positions, uint32_t capacity, uint32_t *length) {
+    kafka_state *p = state;
+    if (p->consumer || p->producer || p->transaction)
+        return UD_BUSY;
+    if (!valid_topic(topic) || !group.length || group.length > 1024)
+        return UD_INVALID;
+    p->topic = plugin_string(p->host, topic.data, topic.length);
+    char *group_id = plugin_string(p->host, group.data, group.length);
+    /* The group client only reads offsets and never subscribes to records. */
+    p->maximum = 1024;
+    p->budget = 1024;
+    p->credit = 1;
+    uint32_t count = 0;
+    ud_status status = p->topic && group_id
+        ? create_client(p, RD_KAFKA_CONSUMER, group_id, UD_MESSAGE_POSITION_REQUIRE, &p->consumer)
+        : UD_RESOURCE;
+    p->host->deallocate(group_id);
+    if (!status) status = source_partition_count(p, &count);
+    if (!status && (!count || count > capacity)) status = UD_RESOURCE;
+    rd_kafka_topic_partition_list_t *list = NULL;
+    if (!status) {
+        list = rd_kafka_topic_partition_list_new((int)count);
+        p->frontier = p->host->allocate(p->host->context, count * sizeof(*p->frontier));
+        if (!list || !p->frontier) status = UD_RESOURCE;
+    }
+    if (!status) {
+        p->frontier_count = count;
+        for (uint32_t i = 0; i < count; i++) {
+            rd_kafka_topic_partition_list_add(list,p->topic,(int32_t)i)->offset = RD_KAFKA_OFFSET_INVALID;
+            p->frontier[i].candidate = -1;
+        }
+        status = kafka_status(rd_kafka_committed(p->consumer, list, KAFKA_TIMEOUT));
+    }
+    for (uint32_t i = 0; !status && i < count; i++) {
+        const rd_kafka_topic_partition_t *entry = &list->elems[i];
+        status = kafka_status(entry->err);
+        if (!status && entry->offset < 0 && entry->offset != RD_KAFKA_OFFSET_INVALID)
+            status = UD_FENCED;
+        positions[i] = (ud_message_partition_position){(int32_t)i, -1, -1,
+            entry->offset == RD_KAFKA_OFFSET_INVALID ? -1 : entry->offset};
+        list->elems[i].offset = RD_KAFKA_OFFSET_INVALID;
+    }
+    if (!status) status = query_cut_offsets(p,list,RD_KAFKA_OFFSET_SPEC_EARLIEST);
+    for (uint32_t i = 0; !status && i < count; i++) {
+        positions[i].earliest = p->frontier[i].candidate;
+        p->frontier[i].candidate = -1;
+    }
+    if (!status) status = query_cut_offsets(p,list,RD_KAFKA_OFFSET_SPEC_LATEST);
+    for (uint32_t i = 0; !status && i < count; i++) {
+        positions[i].latest = p->frontier[i].candidate;
+        if (positions[i].earliest < 0 || positions[i].latest < positions[i].earliest)
+            status = UD_FENCED;
+    }
+    if (list) rd_kafka_topic_partition_list_destroy(list);
+    close_consumer(p);
+    if (!status) *length = count;
+    return status;
+}
+
 static const ud_message_api messages = {
     .struct_size = sizeof(messages),
     .abi_version = UD_PLUGIN_ABI,
@@ -1846,6 +1917,13 @@ static const ud_connector_api connector = {
     .set_control = set_control,
     .message = &messages
 };
+
+UD_PLUGIN_EXPORT const ud_message_partition_api *ud_plugin_partition_api(uint32_t version) {
+    static const ud_message_partition_api api = {
+        sizeof(api), UD_PLUGIN_ABI, subscribe_at, partition_positions
+    };
+    return version == UD_PLUGIN_ABI ? &api : NULL;
+}
 
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))

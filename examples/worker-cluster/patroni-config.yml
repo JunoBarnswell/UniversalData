@@ -1,0 +1,31 @@
+scope: universaldata-catalog
+namespace: /universaldata/
+name: catalog-a
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: catalog-a.example.net:8008
+etcd3:
+  hosts: catalog-a.example.net:2379,catalog-b.example.net:2379,catalog-c.example.net:2379
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 5
+    retry_timeout: 5
+    synchronous_mode: true
+    synchronous_mode_strict: true
+    synchronous_node_count: 1
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: catalog-a.example.net:5432
+  data_dir: /var/lib/postgresql/17/catalog
+  bin_dir: /usr/lib/postgresql/17/bin
+watchdog:
+  mode: required
+  device: /dev/watchdog
+  safety_margin: 5

@@ -80,11 +80,13 @@ static async Task WorkerHandshake(string worker)
             }
         }
         async Task Send(System.Diagnostics.Process process,WorkerRequest value) {
+            await WorkerLauncher.WaitReady(process, timeout.Token);
             await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(value,HostPolicy.JsonOptions));
             await process.StandardInput.FlushAsync(timeout.Token);
         }
         foreach (int? staleRevision in new int?[] { null, 2 }) {
             using var legacy=Launch();
+            await WorkerLauncher.WaitReady(legacy, timeout.Token);
             var output=legacy.StandardOutput.ReadToEndAsync(timeout.Token);
             var errors=legacy.StandardError.ReadToEndAsync(timeout.Token);
             var envelope=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(request,HostPolicy.JsonOptions))!.AsObject();

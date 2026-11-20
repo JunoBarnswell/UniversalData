@@ -106,7 +106,7 @@ static ud_status transaction_identity(ud_kafka_checkpoint *state, ud_string pipe
     }
     state->transaction_id[STATE_TRANSACTION_ID_BYTES] = 0;
     memcpy(state->checkpoint_id, state->transaction_id, STATE_TRANSACTION_ID_BYTES);
-    ud_string run = a->execution->options.worker_run_id;
+    ud_string run = a->execution->assignment_count ? a->execution->partition_run : a->execution->options.worker_run_id;
     if (run.length) {
         ud_sha256_init(&hash);
         ud_sha256_update(&hash, digest, sizeof(digest));

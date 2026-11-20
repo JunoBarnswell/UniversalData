@@ -203,6 +203,9 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
         status = bind_ends(source, &subscription, settings.partition_by_worker);
     if (!status)
         status = bind_stage(source, context);
+    const ud_kafka_partition_assignment *assigned = ud_activation_partition(context->activation);
+    if (!status && assigned)
+        subscription.fixed_partition = (uint32_t)assigned->partition + 1;
     if (!status && context->activation->kafka_checkpoint)
         subscription.exclusive_transaction = context->execution->options.worker_members <= 1 &&
             context->activation->consumer_lane_count <= 1;
@@ -228,7 +231,8 @@ static ud_status prepare(void *user, const ud_component_context *context, ud_str
                                                   capabilities, &source->lease);
     }
     if (!status)
-        status = ud_connection_lease_message_subscribe(source->lease, &subscription);
+        status = assigned ? ud_connection_lease_message_subscribe_partition(source->lease,&subscription,assigned->start_offset)
+                          : ud_connection_lease_message_subscribe(source->lease,&subscription);
     if (status)
         dispose(source, status);
     else

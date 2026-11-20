@@ -337,6 +337,10 @@ if(UD_BUILD_HOSTS)
     ${CMAKE_CURRENT_SOURCE_DIR}/management_security.py ${UD_DOTNET}
     ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
   set_tests_properties(management_authenticated_native_worker PROPERTIES TIMEOUT 150)
+  add_test(NAME management_worker_autoscale COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/management_worker_autoscale.py ${UD_DOTNET}
+    ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
+  set_tests_properties(management_worker_autoscale PROPERTIES TIMEOUT 120 LABELS "cluster")
   if(UD_WITH_HTTP)
     add_test(NAME management_multi_process_claim_recovery COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/management_cluster.py ${UD_DOTNET}
@@ -351,7 +355,25 @@ if(UD_BUILD_HOSTS)
         ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll
         ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll ${UD_TEST_OPENSSL})
       set_tests_properties(management_remote_worker_dispatch PROPERTIES TIMEOUT 120 LABELS "cluster")
+      if(UD_WITH_POSTGRESQL)
+        add_test(NAME management_sentinel_ha COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/management_remote_nodes.py ${UD_DOTNET}
+          ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll
+          ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll ${UD_TEST_OPENSSL} --sentinel)
+        set_tests_properties(management_sentinel_ha PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 150 LABELS "cluster")
+      endif()
     endif()
+  endif()
+  if(UD_WITH_POSTGRESQL)
+    add_test(NAME management_catalog_migration COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/management_catalog_migration.py ${UD_DOTNET}
+      ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
+    set_tests_properties(management_catalog_migration PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 180 LABELS "cluster")
+  endif()
+  if(UD_WITH_KAFKA)
+    add_test(NAME management_kafka_elastic COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/management_kafka_elastic.py)
+    set_tests_properties(management_kafka_elastic PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 3600 LABELS "cluster")
   endif()
   add_custom_target(ud_hosting_contracts_test ALL
     COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/hosting_contracts/HostingContracts.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/hosting-contracts VERBATIM)

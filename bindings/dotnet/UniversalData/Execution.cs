@@ -3,6 +3,10 @@ using System.Runtime.InteropServices;
 
 namespace UniversalData;
 
+public sealed record KafkaPartitionInput(int Partition, long StartOffset, bool RequireCheckpoint = false);
+public sealed record KafkaAssignment(string RunId, string Topic, KafkaPartitionInput[] Partitions);
+internal sealed record KafkaPartitionPosition(int Partition, long Earliest, long Latest, long Committed);
+
 public enum ExecutionState
 { Created, Validating, Ready, Running, Draining, Succeeded, Failed, Cancelled, Skipped, RecoveryRequired, Stopped }
 
@@ -32,7 +36,7 @@ internal sealed class Execution : IDisposable
         uint edgeCapacity = 2, uint maxBatchRows = 4096, ulong memoryLimit = 268435456, ulong timeoutMilliseconds = 0, string? stateDirectory = null, bool resume = false, uint maxConcurrency = 1,
         Registry? registry = null, Action<ExecutionEvent>? observe = null, ulong eventSequenceStart = 0,
         uint workerMember = 0, uint workerMembers = 0, uint consumerLanes = 0,
-        bool brokerRestore = false, string? workerRunId = null)
+        bool brokerRestore = false, string? workerRunId = null, KafkaAssignment? assignment = null)
     {
         bool ownedRegistry = false;
         using (var document = System.Text.Json.JsonDocument.Parse(packageJson))
@@ -106,12 +110,42 @@ internal sealed class Execution : IDisposable
                 , Observe = observer is null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(observer)
             };
             IntPtr pointer;
-            Check(registry is null ? Native.ud_execution_create_json(document, ref options, out pointer)
-                                   : registry.CreateExecution(document, ref options, out pointer));
+            if (assignment is not null)
+            {
+                var parts = Array.ConvertAll(assignment.Partitions, part => new Native.KafkaPartitionInputValue
+                {
+                    Partition = part.Partition, StartOffset = part.StartOffset, RequireCheckpoint = part.RequireCheckpoint ? 1 : 0
+                });
+                var runId = Pin(assignment.RunId);
+                var topic = Pin(assignment.Topic);
+                Check(registry is null
+                    ? Native.ud_execution_create_partitioned(document, ref options, runId, topic, parts,(uint)parts.Length,out pointer)
+                    : registry.CreatePartitionedExecution(document,ref options,runId,topic,parts,out pointer));
+            }
+            else Check(registry is null ? Native.ud_execution_create_json(document, ref options, out pointer)
+                                       : registry.CreateExecution(document, ref options, out pointer));
             execution = new ExecutionHandle(pointer, grant, resolver, observer, registry, ownedRegistry);
         }
         catch { if (ownedRegistry) registry?.Dispose(); throw; }
         finally { foreach (var pin in pins) pin.Free(); GC.KeepAlive(grant); GC.KeepAlive(resolver); GC.KeepAlive(observer); GC.KeepAlive(registry); }
+    }
+    internal KafkaPartitionPosition[] PartitionPositions(string connection, string topic, string group)
+    {
+        lock (controller)
+        {
+            Open();
+            using var names = new NativeStrings(connection,topic,group);
+            var storage = new Native.KafkaPartitionPositionValue[64];
+            Check(Native.ud_execution_message_partition_positions(execution,names[0],names[1],names[2],
+                storage,(uint)storage.Length,out var count));
+            var positions = new KafkaPartitionPosition[checked((int)count)];
+            for (int index = 0; index < positions.Length; index++)
+            {
+                var item = storage[index];
+                positions[index] = new(item.Partition,item.Earliest,item.Latest,item.Committed);
+            }
+            return positions;
+        }
     }
 
     private static string Text(Native.StringValue text) => Native.Text(text);
@@ -382,4 +416,29 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_diagnostics(ExecutionHandle execution, out IntPtr text, out uint length);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_destroy(IntPtr execution);
+}
+
+internal static partial class Native
+{
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct KafkaPartitionInputValue
+    {
+        internal int Partition, RequireCheckpoint;
+        internal long StartOffset;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct KafkaPartitionPositionValue
+    {
+        internal int Partition;
+        internal long Earliest, Latest, Committed;
+    }
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_execution_create_partitioned(StringValue document, ref ExecutionOptions options,
+        StringValue run, StringValue topic, [In] KafkaPartitionInputValue[] partitions, uint count, out IntPtr execution);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_execution_message_partition_positions(ExecutionHandle execution, StringValue connection,
+        StringValue topic, StringValue group, [Out] KafkaPartitionPositionValue[] partitions, uint capacity, out uint count);
 }

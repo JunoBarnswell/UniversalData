@@ -22,34 +22,57 @@ public sealed record IdentityUser(string Id, string Tenant, string PasswordHash,
 public sealed record IdentityDocument(int Version, IdentityUser[] Users, Dictionary<string, ResourceGrant[]> Roles);
 
 /// <summary>Reloaded host-owned identities. Password changes invalidate every existing session and queued authority.</summary>
-public sealed class IdentityDirectory(string path)
+public sealed class IdentityDirectory
 {
     private readonly object gate = new();
-    private IdentityDocument Read()
+    private readonly Func<(string? Document, ulong Revision)> read;
+    private readonly Action<string, ulong> write;
+
+    public IdentityDirectory(string path) : this(() =>
     {
         HostFiles.NoLinks(path);
-        var document = JsonSerializer.Deserialize<IdentityDocument>(File.ReadAllText(path), HostPolicy.JsonOptions)
+        return (File.ReadAllText(path), 0);
+    }, (document, _) => HostFiles.WritePrivate(path, System.Text.Encoding.UTF8.GetBytes(document), overwrite: true)) { }
+
+    internal IdentityDirectory(Func<(string? Document, ulong Revision)> read, Action<string, ulong> write)
+    {
+        this.read = read;
+        this.write = write;
+    }
+
+    internal static IdentityDocument Parse(string text)
+    {
+        var document = JsonSerializer.Deserialize<IdentityDocument>(text, HostPolicy.JsonOptions)
             ?? throw new InvalidDataException("Identity directory is empty");
         if (document.Version != 1 || document.Users.Any(user => !HostIdentity.ValidId(user.Id) || !HostIdentity.ValidId(user.Tenant) || user.Stamp.Length < 32) ||
             document.Users.Select(user => user.Id).Distinct(StringComparer.Ordinal).Count() != document.Users.Length)
             throw new InvalidDataException("Identity directory is invalid");
         return document;
     }
+    private (IdentityDocument Document, ulong Revision) Read()
+    {
+        var (document, revision) = read();
+        return (Parse(document ?? throw new IOException("Identity directory is unavailable")), revision);
+    }
+
+    private static HostIdentity Identity(IdentityDocument document, IdentityUser user) =>
+        new(user.Id, user.Tenant, user.Stamp, user.Roles.SelectMany(role =>
+            document.Roles.GetValueOrDefault(role) ?? []).Distinct().ToArray());
     public HostIdentity? Find(string subject, string? stamp = null)
     {
         lock (gate) {
-            var document = Read(); var user = document.Users.SingleOrDefault(value => value.Id == subject && !value.Disabled);
+            var (document, _) = Read(); var user = document.Users.SingleOrDefault(value => value.Id == subject && !value.Disabled);
             if (user is null || stamp is not null && user.Stamp != stamp) return null;
-            return new(user.Id, user.Tenant, user.Stamp, user.Roles.SelectMany(role => document.Roles.GetValueOrDefault(role) ?? []).Distinct().ToArray());
+            return Identity(document, user);
         }
     }
     public HostIdentity? Authenticate(string subject, string password)
     {
         lock (gate) {
-            var document = Read(); var user = document.Users.SingleOrDefault(value => value.Id == subject && !value.Disabled);
+            var (document, _) = Read(); var user = document.Users.SingleOrDefault(value => value.Id == subject && !value.Disabled);
             // Equal-cost verification also for an unknown user; no credential or compiler text is logged.
             bool valid = Verify(password, user?.PasswordHash ?? DummyHash);
-            return valid && user is not null ? Find(user.Id, user.Stamp) : null;
+            return valid && user is not null ? Identity(document, user) : null;
         }
     }
     private static readonly string DummyHash = HashPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
@@ -75,12 +98,14 @@ public sealed class IdentityDirectory(string path)
     public void ChangePassword(HostIdentity identity, string currentPassword, string password)
     {
         lock (gate) {
-            if (Authenticate(identity.Subject, currentPassword)?.Stamp != identity.Stamp)
+            var (document, revision) = Read();
+            var user = document.Users.SingleOrDefault(user => user.Id == identity.Subject && !user.Disabled && user.Stamp == identity.Stamp);
+            if (user is null || !Verify(currentPassword,user.PasswordHash))
                 throw new UniversalDataException((int)StatusCode.Auth, "Current credential is invalid");
-            var document = Read(); var hash = HashPassword(password);
+            var hash = HashPassword(password);
             document = document with { Users = document.Users.Select(user => user.Id == identity.Subject
                 ? user with { PasswordHash = hash, Stamp = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) } : user).ToArray() };
-            HostFiles.WritePrivate(path, JsonSerializer.SerializeToUtf8Bytes(document, HostPolicy.JsonOptions), overwrite: true);
+            write(JsonSerializer.Serialize(document, HostPolicy.JsonOptions), revision);
         }
     }
 }

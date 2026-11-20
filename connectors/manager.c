@@ -722,6 +722,13 @@ ud_status ud_connection_lease_message_subscribe(ud_connection_lease *l,
     UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
     return lease_operation_end(l, ud_connection_message_subscribe(l->connection, options));
 }
+ud_status ud_connection_lease_message_subscribe_partition(ud_connection_lease *l,
+    const ud_message_subscription *options, int64_t start) {
+    if (!l || !l->connection || !l->messaging || l->read_only)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
+    return lease_operation_end(l, ud_connection_message_subscribe_partition(l->connection, options, start));
+}
 ud_status ud_connection_lease_message_receive(ud_connection_lease *l, uint32_t timeout_ms,
                                               ud_message *out) {
     if (!l || !l->connection || !l->messaging || l->read_only)
@@ -787,6 +794,13 @@ ud_status ud_connection_lease_message_visit_committed(ud_connection_lease *l, ud
     UD_TRY(lease_operation_begin(l, UD_ACCESS_READ));
     return lease_operation_end(l, ud_connection_message_visit_committed(l->connection, topic,
                                                                          partition, user, visit));
+}
+ud_status ud_connection_lease_message_partition_positions(ud_connection_lease *l, ud_string topic, ud_string group,
+    ud_message_partition_position *positions, uint32_t capacity, uint32_t *count) {
+    if (!l || !l->connection)
+        return UD_UNSUPPORTED;
+    UD_TRY(lease_operation_begin(l, UD_ACCESS_DISCOVER));
+    return lease_operation_end(l, ud_connection_message_partition_positions(l->connection,topic,group,positions,capacity,count));
 }
 ud_status ud_connection_lease_message_verify_epoch(ud_connection_lease *l,
                                                     const ud_message_epoch *epoch) {

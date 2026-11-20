@@ -8,3 +8,8 @@ public sealed record WorkerNodeCapacity(uint MaxCpu, uint MaxProcesses, ulong Ma
         Tenants.Distinct(StringComparer.Ordinal).Count() == Tenants.Length && Inventory.Count == Tenants.Length &&
         Tenants.All(tenant => Inventory.TryGetValue(tenant, out var inventory) && inventory.Valid);
 }
+
+public sealed record WorkerNodeExecution(string MemberId, ulong Generation, string Lease, int ProcessId,
+    bool Started, ulong Produced);
+
+public sealed record WorkerNodeHeartbeat(WorkerCapacityStatus Capacity, WorkerNodeExecution[] Executions);

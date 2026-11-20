@@ -8,6 +8,9 @@ required += ["UD_TEST_" + broker + "_CONFIG" for broker in (
     "ACTIVEMQ_CLASSIC", "ACTIVEMQ_ARTEMIS", "RABBITMQ", "ROCKETMQ", "KAFKA", "KAFKA_REGISTRY", "KAFKA_TAKEOVER")]
 required += ["UD_TEST_" + feature + "_CONFIG" for feature in ("FTP", "SFTP", "SMTP", "S3", "AZURE_BLOB", "ADLS", "SSAS")]
 required += ["UD_SSIS_GOLDEN_MANIFEST", "UD_SSIS_NATIVE_OBSERVATIONS"]
+required += ["UD_TEST_CATALOG_POSTGRESQL_CONNECTION_FILE", "UD_TEST_CLUSTER_KAFKA_ELASTIC_CONFIG"]
+if sys.platform.startswith("linux"):
+    required += ["UD_TEST_SENTINEL_POSTGRESQL_CONNECTION_FILE"]
 if sys.platform == "win32":
     required += ["UD_TEST_WMI_CONFIG"]
 missing = [name for name in required if not os.environ.get(name) or not pathlib.Path(os.environ[name]).is_file()]

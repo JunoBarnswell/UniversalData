@@ -266,8 +266,9 @@ ud_status ud_activation_validate_definition(ud_activation *e, uint32_t depth) {
     }
     return UD_OK;
 }
-ud_status ud_execution_create_json(ud_string json, const ud_execution_options *options,
-                                   ud_execution **out) {
+static ud_status create_execution(ud_string json, const ud_execution_options *options,
+    ud_string partition_run, ud_string partition_topic,
+    const ud_kafka_partition_assignment *assignments, uint32_t assignment_count, ud_execution **out) {
     if (!out)
         return UD_INVALID;
     *out = NULL;
@@ -391,6 +392,16 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
         s = copy_string(ctx, options->state_directory, &e->options.state_directory);
     if (!s && options->worker_run_id.length)
         s = copy_string(ctx, options->worker_run_id, &e->options.worker_run_id);
+    if (!s && assignment_count) {
+        e->assignments = ud_alloc(ctx, assignment_count * sizeof(*assignments));
+        if (!e->assignments) s = UD_RESOURCE;
+        else {
+            memcpy(e->assignments, assignments, assignment_count * sizeof(*assignments));
+            e->assignment_count = assignment_count;
+            s = copy_string(ctx, partition_run, &e->partition_run);
+            if (!s) s = copy_string(ctx, partition_topic, &e->partition_topic);
+        }
+    }
     if (!s)
         s = ud_package_create(ctx, json, &e->package);
     e->root.package = e->package;
@@ -460,6 +471,38 @@ ud_status ud_execution_create_json(ud_string json, const ud_execution_options *o
     *out = e;
     return UD_OK;
 }
+ud_status ud_execution_create_json(ud_string json, const ud_execution_options *options, ud_execution **out) {
+    return create_execution(json, options, (ud_string){0}, (ud_string){0}, NULL, 0, out);
+}
+
+ud_status ud_execution_create_partitioned(ud_string json, const ud_execution_options *options,
+    ud_string run, ud_string topic, const ud_kafka_partition_assignment *parts, uint32_t count, ud_execution **out) {
+    if (!out) return UD_INVALID;
+    *out = NULL;
+    if (!options || !parts || !count || count > 64 || count > options->max_concurrency ||
+        options->worker_members || options->broker_restore || options->resume ||
+        !run.data || !run.length || run.length > 255 || memchr(run.data, 0, run.length) ||
+        !topic.data || !topic.length || topic.length > 249 || memchr(topic.data, 0, topic.length))
+        return UD_INVALID;
+    for (uint32_t i = 0; i < count; i++)
+        if (parts[i].partition < 0 || parts[i].partition >= 65536 || parts[i].start_offset < 0 ||
+            (i && parts[i - 1].partition >= parts[i].partition) ||
+            parts[i].require_checkpoint < 0 || parts[i].require_checkpoint > 1)
+            return UD_INVALID;
+    return create_execution(json, options, run, topic, parts, count, out);
+}
+
+ud_status ud_execution_message_partition_positions(ud_execution *e, ud_string connection,
+    ud_string topic, ud_string group, ud_message_partition_position *positions, uint32_t capacity, uint32_t *count) {
+    if (!e || atomic_load(&e->state) != UD_EXEC_READY) return UD_BUSY;
+    ud_connection_lease *lease = NULL;
+    ud_status status = ud_activation_acquire_connection(&e->root, connection,
+        UD_CONNECT_MESSAGE_SUBSCRIBE | UD_CONNECT_MESSAGE_TRANSACTION, &lease);
+    if (!status) status = ud_connection_lease_message_partition_positions(lease,topic,group,positions,capacity,count);
+    ud_status closed = ud_connection_lease_release(lease);
+    return status ? status : closed;
+}
+
 ud_status ud_execution_create(const ud_package *p, const ud_execution_options *o,
                               ud_execution **out) {
     if (!p)
@@ -734,6 +777,9 @@ ud_status ud_execution_destroy(ud_execution *e) {
         e->options.execution_id = (ud_string){0};
         ud_free((void *)e->options.state_directory.data);
         e->options.state_directory = (ud_string){0};
+        ud_free(e->assignments);
+        ud_free((void *)e->partition_run.data);
+        ud_free((void *)e->partition_topic.data);
         ud_free((void *)e->options.worker_run_id.data);
         e->options.worker_run_id = (ud_string){0};
         ud_bytes_clear(&e->pipeline_reports);

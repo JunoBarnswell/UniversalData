@@ -39,6 +39,7 @@ static class WorkerManagedRecovery
                 }
             }
             async Task<JsonElement> Start(Process process) {
+                await WorkerLauncher.WaitReady(process, timeout.Token);
                 await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request,HostPolicy.JsonOptions)); await process.StandardInput.FlushAsync(timeout.Token);
                 var ready = await Frame(process,"ready");
                 await process.StandardInput.WriteLineAsync("start"); await process.StandardInput.FlushAsync(timeout.Token); return ready;
