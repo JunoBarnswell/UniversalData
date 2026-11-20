@@ -91,19 +91,34 @@ def assemble(args):
 </Project>
 """, encoding="utf-8")
         spec = root / "runtime.nuspec"
-        files = [("worker/**/*", f"runtimes/{args.rid}/worker"),
-                 ("native/*", f"runtimes/{args.rid}/native"), (targets.name, "buildTransitive")]
+        # NuGet preserves the source directory below a recursive wildcard. Target its parent
+        # so WorkerSession and native asset resolution see the expected flat package paths.
+        files = [("worker/**/*", f"runtimes/{args.rid}"),
+                 ("native/**/*", f"runtimes/{args.rid}"), (targets.name, "buildTransitive")]
         if args.licenses:
             shutil.copytree(args.licenses, root / "licenses")
-            files.append(("licenses/**/*", "licenses"))
+            files.append(("licenses/**/*", "."))
         elif args.complete:
             raise ValueError("Complete runtime packages require native dependency notices")
         nuspec(spec, identity, version, "Self-contained UniversalData Worker and native runtime", files)
         pack(spec, args.output, root)
 
         subprocess.run(["dotnet", "build", str(SDK), "-c", "Release"], cwd=ROOT, check=True)
-        subprocess.run(["dotnet", "pack", str(SDK), "-c", "Release", "--no-build", "--no-restore",
-                        "-p:IncludeUniversalDataRuntimeDependencies=true", "-o", str(args.output)], cwd=ROOT, check=True)
+        if args.single_rid_feed:
+            sdk_spec = ET.parse(SDK.with_suffix(".nuspec"))
+            sdk_spec.find("metadata/version").text = version
+            group = sdk_spec.find("metadata/dependencies/group")
+            for dependency in list(group):
+                if dependency.get("id") == identity:
+                    dependency.set("version", f"[{version}]")
+                else:
+                    group.remove(dependency)
+            local_spec = root / "UniversalData.nuspec"
+            sdk_spec.write(local_spec, encoding="utf-8", xml_declaration=True)
+            pack(local_spec, args.output, SDK.parent)
+        else:
+            subprocess.run(["dotnet", "pack", str(SDK), "-c", "Release", "--no-build", "--no-restore",
+                            "-p:IncludeUniversalDataRuntimeDependencies=true", "-o", str(args.output)], cwd=ROOT, check=True)
     archives = [args.output / f"{name}.{version}.nupkg" for name in ("UniversalData", identity)]
     manifest = {"version": version, "rid": args.rid, "drivers": enabled,
                 "packages": [{"name": path.name, "bytes": path.stat().st_size,
@@ -123,4 +138,6 @@ if __name__ == "__main__":
     parser.add_argument("--licenses", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--complete", action="store_true")
+    parser.add_argument("--single-rid-feed", action="store_true",
+                        help="Build a local feed whose SDK depends only on the selected runtime")
     assemble(parser.parse_args())

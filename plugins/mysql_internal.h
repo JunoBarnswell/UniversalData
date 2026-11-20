@@ -43,6 +43,7 @@ typedef struct mysql_state {
     char *host_name, *user, *password, *database, *ca, *cert, *key;
     uint32_t port, timeout;
     int utc, transaction, broken, bulk_allowed, cursor_readonly, scalar;
+    bool ssl_disabled;
     int cleanup, xa_state;
     char branch_id[65];
     unsigned int record_code;

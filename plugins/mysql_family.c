@@ -1,4 +1,5 @@
 #include "mysql_internal.h"
+#include <ctype.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <math.h>
@@ -1178,20 +1179,20 @@ static MYSQL *connect_session(mysql_state *p, ud_status *status) {
     mysql_options(db, MYSQL_OPT_RECONNECT, &reconnect);
 #endif
 #if defined(UD_MYSQL_CLIENT)
-    unsigned int mode = SSL_MODE_VERIFY_IDENTITY;
+    unsigned int mode = p->ssl_disabled ? SSL_MODE_DISABLED : SSL_MODE_VERIFY_IDENTITY;
     if (mysql_options(db, MYSQL_OPT_SSL_MODE, &mode)) {
         mysql_close(db);
         return NULL;
     }
 #else
-    ud_mysql_bool yes = 1;
-    if (mysql_options(db, MYSQL_OPT_SSL_ENFORCE, &yes) ||
-        mysql_options(db, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &yes)) {
+    ud_mysql_bool use_tls = !p->ssl_disabled;
+    if (mysql_options(db, MYSQL_OPT_SSL_ENFORCE, &use_tls) ||
+        mysql_options(db, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &use_tls)) {
         mysql_close(db);
         return NULL;
     }
 #endif
-    if (mysql_ssl_set(db, p->key, p->cert, p->ca, NULL, NULL)) {
+    if (!p->ssl_disabled && mysql_ssl_set(db, p->key, p->cert, p->ca, NULL, NULL)) {
         mysql_close(db);
         return NULL;
     }
@@ -1201,7 +1202,7 @@ static MYSQL *connect_session(mysql_state *p, ud_status *status) {
         mysql_close(db);
         return NULL;
     }
-    if (!mysql_get_ssl_cipher(db)) {
+    if (!p->ssl_disabled && !mysql_get_ssl_cipher(db)) {
         *status = UD_AUTH;
         mysql_close(db);
         return NULL;
@@ -1786,6 +1787,19 @@ static ud_status config_string(mysql_state *p, const ud_json *j, const char *key
     }
     return status;
 }
+static ud_status config_option(const ud_host_api *h, const ud_json *value, const char *expected) {
+    const char *text;
+    uint32_t length;
+    if (h->json_kind(value) != UD_JSON_STRING)
+        return UD_SCHEMA;
+    UD_TRY(h->json_text(value, &text, &length));
+    if (length != strlen(expected))
+        return UD_UNSUPPORTED;
+    for (uint32_t i = 0; i < length; i++)
+        if (tolower((unsigned char)text[i]) != expected[i])
+            return UD_UNSUPPORTED;
+    return UD_OK;
+}
 ud_status ud_mysql_initialize(const ud_host_api *h, const char *configuration, uint32_t length,
                               void **out) {
     *out = NULL;
@@ -1803,15 +1817,26 @@ ud_status ud_mysql_initialize(const ud_host_api *h, const char *configuration, u
     ud_mutex_init(&p->cancellation);
     ud_json *j = NULL;
     ud_status s = h->json_parse(h->context, configuration, length, &j, NULL);
-    static const char *keys[] = {"host", "port", "user", "password",          "database",
-                                 "ca",   "cert", "key",  "timestampTimezone", "timeoutSeconds"};
+    static const char *keys[] = {"host", "port", "user", "password", "database", "ca",
+                                 "cert", "key", "timestampTimezone", "timeoutSeconds",
+                                 "charset", "sslMode"};
     if (!s)
-        s = h->json_keys(j, keys, 10);
+        s = h->json_keys(j, keys, sizeof(keys) / sizeof(keys[0]));
+    const ud_json *charset = !s ? h->json_find(j, "charset", 7) : NULL;
+    if (charset)
+        s = config_option(h, charset, "utf8mb4");
+    const ud_json *ssl = !s ? h->json_find(j, "sslMode", 7) : NULL;
+    if (ssl) {
+        s = config_option(h, ssl, "none");
+        p->ssl_disabled = !s;
+    }
     const char *names[] = {"host", "user", "password", "database", "ca", "cert", "key"};
     char **targets[] = {&p->host_name, &p->user, &p->password, &p->database,
                         &p->ca,        &p->cert, &p->key};
     for (uint32_t i = 0; !s && i < 7; i++)
-        s = config_string(p, j, names[i], i < 5, targets[i]);
+        s = config_string(p, j, names[i], i < 4 || (i == 4 && !p->ssl_disabled), targets[i]);
+    if (!s && p->ssl_disabled && strcmp(p->host_name, "127.0.0.1") && strcmp(p->host_name, "::1"))
+        s = UD_UNSUPPORTED;
     const char *numkeys[] = {"port", "timeoutSeconds"};
     for (uint32_t i = 0; !s && i < 2; i++) {
         const ud_json *v = h->json_find(j, numkeys[i], (uint32_t)strlen(numkeys[i]));

@@ -155,8 +155,10 @@ static const char *provider_key(int32_t dialect, const char *input) {
     }
     if (dialect == UD_SQL_MYSQL || dialect == UD_SQL_MARIADB) {
         if (!strcmp(input, "port") || !strcmp(input, "ca") || !strcmp(input, "cert") ||
-            !strcmp(input, "key"))
+            !strcmp(input, "key") || !strcmp(input, "charset"))
             return input;
+        if (!strcmp(input, "sslmode"))
+            return "sslMode";
         if (!strcmp(input, "sslca") || !strcmp(input, "sslcert") || !strcmp(input, "sslkey"))
             return input + 3;
         if (!strcmp(input, "connectiontimeout") || !strcmp(input, "connecttimeout") ||
