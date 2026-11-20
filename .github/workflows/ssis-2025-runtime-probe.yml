@@ -1,0 +1,47 @@
+name: SSIS 2025 acceptance runtime
+on:
+  push:
+    branches: [codex/ssis-golden-fixture-20261120]
+permissions:
+  contents: read
+jobs:
+  microsoft-ssis:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Verify or provision Microsoft SQL Server 2025 Integration Services
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtime = Join-Path $env:ProgramFiles 'Microsoft SQL Server\170\DTS\Binn\DTExec.exe'
+          if (!(Test-Path $runtime)) {
+            $media = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'sql2025-media')
+            $download = Join-Path $env:RUNNER_TEMP 'SQL2025-SSEI-EntDev.exe'
+            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/?linkid=2344711&clcid=0x409' -OutFile $download
+            $signature = Get-AuthenticodeSignature $download
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
+              throw 'The Microsoft Developer media downloader has an invalid signature.'
+            }
+            $result = Start-Process $download -Wait -PassThru -ArgumentList "/Action=Download /MediaType=ISO /MediaPath=`"$($media.FullName)`" /Quiet"
+            if ($result.ExitCode -ne 0) { throw "SQL Server media download returned $($result.ExitCode)" }
+            $image = Get-ChildItem $media -Filter '*.iso' | Select-Object -First 1
+            if (!$image) { throw 'SQL Server Developer media is missing.' }
+            $volume = Mount-DiskImage -ImagePath $image.FullName -PassThru | Get-Volume
+            try {
+              $setup = Join-Path "$($volume.DriveLetter):\" 'setup.exe'
+              $result = Start-Process $setup -Wait -PassThru -ArgumentList '/Q /ACTION=Install /FEATURES=IS /IACCEPTSQLSERVERLICENSETERMS /UpdateEnabled=False /INDICATEPROGRESS'
+              if ($result.ExitCode -notin 0,3010) { throw "SSIS setup returned $($result.ExitCode)" }
+            } finally {
+              Dismount-DiskImage -ImagePath $image.FullName | Out-Null
+            }
+          }
+          if (!(Test-Path $runtime)) { throw 'Microsoft SSIS 2025 DTExec is unavailable.' }
+          Get-Item $runtime | ForEach-Object { $_.VersionInfo | Select-Object FileVersion, ProductVersion | Format-List }
+          Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' | Select-Object ProductName,CurrentBuild,UBR | Format-List
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.VisualStudio.Component.SQL.SSDT -property installationVersion
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ssis-2025-setup-evidence
+          path: C:\Program Files\Microsoft SQL Server\170\Setup Bootstrap\Log\Summary.txt
+          if-no-files-found: ignore
