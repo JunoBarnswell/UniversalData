@@ -36,6 +36,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check out the pinned CORE dependency registry
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: d015e31e90838a4c9dfa3eed45979bc70d9357fc
+          path: build/vcpkg
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -54,14 +61,22 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
           python scripts/fetch_deps.py --platform ${{ runner.os == 'Windows' && 'windows' || 'linux' }} --output build/deps
-          vcpkg install icu:x64-${{ runner.os == 'Windows' && 'windows' || 'linux' }} pcre2:x64-${{ runner.os == 'Windows' && 'windows' || 'linux' }} expat:x64-${{ runner.os == 'Windows' && 'windows' || 'linux' }} zlib:x64-${{ runner.os == 'Windows' && 'windows' || 'linux' }}
+          $triplet = 'x64-' + '${{ runner.os == 'Windows' && 'windows' || 'linux' }}'
+          if ($IsWindows) {
+            & ./build/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+            $udVcpkg = './build/vcpkg/vcpkg.exe'
+          } else {
+            & ./build/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+            $udVcpkg = './build/vcpkg/vcpkg'
+          }
+          & $udVcpkg --vcpkg-root "$PWD/build/vcpkg" install "icu:$triplet" "pcre2:$triplet" "expat:$triplet" "zlib:$triplet"
       - name: Native, JNI and .NET 10 product hosts
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'; $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r tests/requirements.txt
           $triplet = 'x64-' + '${{ runner.os == 'Windows' && 'windows' || 'linux' }}'
-          cmake -S . -B build/core -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=$triplet -DUD_BUILD_PROFILE=CORE -DUD_BUILD_HOSTS=ON -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$PWD/build/deps/sqlite/sqlite-amalgamation-3490100" -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build/core -DCMAKE_TOOLCHAIN_FILE="$PWD/build/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=$triplet -DUD_BUILD_PROFILE=CORE -DUD_BUILD_HOSTS=ON -DUD_BUILD_JNI=ON -DUD_WITH_SQLITE=ON -DUD_SQLITE_AMALGAMATION="$PWD/build/deps/sqlite/sqlite-amalgamation-3490100" -DCMAKE_BUILD_TYPE=Release
           cmake --build build/core --config Release --parallel 4
           ctest --test-dir build/core -C Release --output-on-failure --parallel 4 --no-tests=error --output-junit core-results.xml -LE 'real-integration|ssis-golden'
           python scripts/ctest_release_gate.py build/core/core-results.xml
