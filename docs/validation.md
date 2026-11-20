@@ -34,6 +34,8 @@ python tests/web_host.py --dotnet dotnet \
 
 测试通过记为 Pass，断言或已运行的性能门槛不满足记为 Fail，缺独立驱动或验收库记为 Blocked。结果以具体构建和报告为证。
 
+本轮 Linux 实库、Studio 和批量性能结果见 [ABI 14 SQL ETL Linux 验收](acceptance/evidence/sql-etl-linux-abi14/README.md)。
+
 Windows 运行库专项使用只含 Windows 系统目录的 `PATH`，逐进程加载原生库、各宿主目录中的同一原生库，并通过原生插件入口装载已启用的 SQL 连接器。对应命令为 `ctest --test-dir build/core -C Release -R sql_etl_windows_runtime --output-on-failure --no-tests=error`。数据库连接和读写以各自的实库用例验收。
 
 ### 历史 Windows 验收
