@@ -32,7 +32,7 @@ SQLite 每路 100,000 行、1,024 字节负载、四并发和三次试验。512 
 - Linux CORE 86 项和 PRODUCT 88 项常规 CTest 全部通过。两个独立 mTLS Worker 节点执行普通作业，核验节点容量、派发、参数传输和 HTTP 结果入库。Chromium 核验 Studio 的 SQL 源、强类型 C# 转换、SQL 目标和 Worker 中断恢复。
 - SQLite、PostgreSQL、SQL Server、MySQL、MariaDB 和 Oracle 通过强类型 SQL 功能验证。五个有日志源的数据库均通过 CDC 验证，包含 Oracle 26ai Free `23.26.4.0.0` 的 TCPS、归档日志和 LogMiner。基于进程中断的单驱动部分提交恢复及 SQL Server 与 PostgreSQL 混合恢复已在实库通过。
 - MySQL 8.4.13 的 24 个 CSV/XLSX 工作流通过逐行回读，覆盖每批一行、异常行、写入冲突、部分提交及进程中断恢复。每个输入 50,000 行，单行批次用时 1,127.60 秒，已提交与已确认行数均为 50,011（含汇总行）。 [MySQL 工作流结果](mysql-ssis.json)
-- 独立 .NET 8.0.31 应用从实际 Linux 原生运行时包还原，加载实际发行 SDK 程序集，通过 SQLite 强类型读写与 HTTP 200 前置任务，逐行核验 35 行。跨平台 `PackageReference` 完整验收仍需要 Windows x64 运行时包、两平台六库环境和独立发行门禁。
+- 独立 .NET 8.0.31 应用从实际 Linux 原生运行时包还原，加载实际发行 SDK 程序集，通过 SQLite 强类型读写与 HTTP 200 前置任务，逐行核验 35 行。随包的六库驱动均通过实际连通查询，ODBC 和 OCI 使用宿主安装的供应商客户端与 TLS 信任配置。跨平台 `PackageReference` 完整验收仍需要 Windows x64 运行时包和独立发行门禁。
 
 | Linux 安装验证使用的包 | SHA-256 |
 | --- | --- |

@@ -16,7 +16,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 def source_hash():
     files = [ROOT / name for name in (
         "CMakeLists.txt", "CMakePresets.json", "VERSION", ".github/workflows/ci.yml",
-        "Directory.Build.props", "Directory.Build.targets", "UniversalData.sln", ".github/workflows/publish-nuget.yml")]
+        "Directory.Build.props", "Directory.Build.targets", "UniversalData.sln", "global.json",
+        ".github/workflows/publish-nuget.yml")]
     for folder in ("include", "components", "engines", "connectors", "catalog", "plugins",
                    "hosts", "products", "bindings", "cmake", "tests", "examples", "scripts", "packaging", "metadata", "benchmarks"):
         files.extend(p for p in (ROOT / folder).rglob("*") if p.is_file()
