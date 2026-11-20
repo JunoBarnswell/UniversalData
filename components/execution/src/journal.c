@@ -6,6 +6,7 @@
 #define SEGMENT_FRAMES UINT64_C(2048)
 #define COMMIT_MARKER UINT64_C(0x35444e45544d4355)
 #define FRAME_LIMIT UINT64_C(16777216)
+#define FACT_GROUP_SIZE 128u
 typedef struct journal_entry {
     uint64_t kind, hash, owner_hash;
     ud_string key, owner;
@@ -17,6 +18,7 @@ struct ud_journal {
     char *directory, *segment;
     void *writer;
     uint64_t sequence, segment_start, segment_bytes, segment_frames, snapshot_sequence;
+    uint64_t snapshot_bytes, pending_bytes;
     uint8_t previous[32];
     uint8_t acknowledged_hash[32];
     uint64_t acknowledged;
@@ -253,6 +255,12 @@ static ud_status new_segment(ud_journal *journal) {
     }
     return status;
 }
+static void close_segment(ud_journal *journal) {
+    ud_free(journal->segment);
+    journal->segment = NULL;
+    journal->segment_bytes = journal->segment_frames = 0;
+}
+
 static ud_status publish_bytes(ud_journal *journal, const char *target, const ud_bytes *bytes,
                                int replace) {
     size_t length = strlen(target);
@@ -420,6 +428,7 @@ static ud_status compact(ud_journal *journal) {
         status = named_path(journal, "snapshot", journal->sequence, "uds", &path);
     if (!status)
         status = publish_bytes(journal, path, &snapshot, 0);
+    uint64_t snapshot_bytes = snapshot.size;
     ud_bytes_clear(&snapshot);
     ud_bytes head = {.ctx = journal->ctx};
     if (!status)
@@ -447,10 +456,10 @@ static ud_status compact(ud_journal *journal) {
      * immediately preceding snapshot for auditing, never as fallback. */
     uint64_t previous_snapshot = journal->snapshot_sequence;
     journal->snapshot_sequence = journal->sequence;
+    journal->snapshot_bytes = snapshot_bytes;
+    journal->pending_bytes = 0;
     journal->metrics.snapshots++;
-    ud_free(journal->segment);
-    journal->segment = NULL;
-    journal->segment_bytes = journal->segment_frames = 0;
+    close_segment(journal);
     char **names = NULL;
     uint32_t count = 0;
     UD_TRY(ud_list(journal->ctx, journal->directory, ".udg", &names, &count));
@@ -528,6 +537,8 @@ ud_status ud_journal_append(ud_journal *journal, const ud_journal_record *record
         uint64_t length = bytes.size - 8;
         for (unsigned i = 0; i < 8; i++)
             bytes.data[i] = (uint8_t)(length >> (i * 8));
+        if (journal->segment_bytes >= SEGMENT_BYTES || journal->segment_frames >= SEGMENT_FRAMES)
+            close_segment(journal);
         status = new_segment(journal);
         if (!status)
             status = ud_append_file(journal->ctx, journal->segment, bytes.data, bytes.size);
@@ -542,8 +553,13 @@ ud_status ud_journal_append(ud_journal *journal, const ud_journal_record *record
         memcpy(journal->previous, digest, 32);
         journal->segment_bytes += bytes.size;
         journal->segment_frames++;
+        journal->pending_bytes += bytes.size;
         apply(journal, records, prepared, count);
-        if (journal->segment_bytes >= SEGMENT_BYTES || journal->segment_frames >= SEGMENT_FRAMES) {
+        /* Rotating the bounded segments does not require rewriting the live index.
+         * Compact when enough durable log accumulates to pay for the last snapshot. */
+        uint64_t compact_bytes = journal->snapshot_bytes > SEGMENT_BYTES
+                                     ? journal->snapshot_bytes : SEGMENT_BYTES;
+        if (journal->pending_bytes >= compact_bytes) {
             status = compact(journal);
             if (status)
                 journal->failed = 1;
@@ -659,6 +675,8 @@ static ud_status read_head(ud_journal *journal, int *present) {
         status = decode_records(journal, &bytes, count);
     if (!status && bytes.pos != bytes.size)
         status = UD_CORRUPT;
+    if (!status)
+        journal->snapshot_bytes = bytes.size + 32;
     ud_bytes_clear(&bytes);
     return status;
 }
@@ -733,6 +751,7 @@ static ud_status replay_segment(ud_journal *journal, const char *name, uint64_t 
         journal->segment_start = first;
         journal->segment_bytes = bytes.size;
         journal->segment_frames = frames;
+        journal->pending_bytes += bytes.size;
     }
     ud_free(path);
     ud_bytes_clear(&bytes);
@@ -844,6 +863,22 @@ ud_status ud_journal_retire_owner(ud_journal *journal, ud_string owner) {
     ud_journal_record record = {.owner = owner};
     return ud_journal_append(journal, &record, 1);
 }
+
+static void clear_fact_records(ud_journal_record *records, uint32_t count) {
+    for (uint32_t index = 0; index < count; index++) {
+        ud_free((void *)records[index].payload.data);
+        ud_free((void *)records[index].key.data);
+        ud_free((void *)records[index].owner.data);
+    }
+}
+
+static ud_status flush_fact_group(ud_journal *journal, ud_journal_record *group, uint32_t *count) {
+    ud_status status = *count ? ud_journal_append(journal, group, *count) : UD_OK;
+    clear_fact_records(group, *count);
+    *count = 0;
+    return status;
+}
+
 ud_status ud_journal_publish_owner(ud_journal *journal, uint64_t pending_kind, ud_string owner) {
     if (!journal || !pending_kind || !owner.data || !owner.length)
         return UD_INVALID;
@@ -869,6 +904,9 @@ ud_status ud_journal_publish_owner(ud_journal *journal, uint64_t pending_kind, u
     }
     if (!status && count)
         qsort(facts, count, sizeof(*facts), fact_order);
+    ud_journal_record group[FACT_GROUP_SIZE];
+    uint32_t grouped = 0;
+    uint64_t group_bytes = 0;
     for (uint32_t index = 0; !status && index < count; index++) {
         if (!facts[index].order || (index && facts[index].order == facts[index - 1].order)) {
             status = UD_CORRUPT;
@@ -923,15 +961,36 @@ ud_status ud_journal_publish_owner(ud_journal *journal, uint64_t pending_kind, u
                 status = UD_CORRUPT;
         }
         /* Every key/owner is copied before a mutation can retire its index entry. */
-        if (!status)
-            status = ud_journal_append(journal, decoded, size);
-        for (uint32_t record = 0; record < size; record++) {
-            ud_free((void *)decoded[record].payload.data);
-            ud_free((void *)decoded[record].key.data);
-            ud_free((void *)decoded[record].owner.data);
+        if (!status && size == 1 && decoded[0].kind) {
+            uint64_t bytes = UINT64_C(32) + decoded[0].key.length + decoded[0].owner.length +
+                             decoded[0].payload.length;
+            int flush = grouped == FACT_GROUP_SIZE || group_bytes + bytes > FRAME_LIMIT / 2;
+            for (uint32_t record = 0; !flush && record < grouped; record++)
+                flush = group[record].kind == decoded[0].kind &&
+                        equal(group[record].key, decoded[0].key);
+            if (flush) {
+                status = flush_fact_group(journal, group, &grouped);
+                group_bytes = 0;
+            }
+            if (!status) {
+                group[grouped++] = decoded[0];
+                group_bytes += bytes;
+                decoded[0] = (ud_journal_record){0};
+            }
+        } else if (!status) {
+            /* Keep each retirement and multi-record envelope at its existing boundary. */
+            status = flush_fact_group(journal, group, &grouped);
+            group_bytes = 0;
+            if (!status)
+                status = ud_journal_append(journal, decoded, size);
         }
+        clear_fact_records(decoded, size);
         ud_free(decoded);
     }
+    if (!status)
+        status = flush_fact_group(journal, group, &grouped);
+    else
+        clear_fact_records(group, grouped);
     for (uint32_t index = 0; index < at; index++)
         ud_free((void *)facts[index].key.data);
     ud_free(facts);
