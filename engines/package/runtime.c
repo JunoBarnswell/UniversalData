@@ -918,6 +918,19 @@ ud_status ud_connection_field_namespace(ud_activation *a, ud_string connection, 
     ud_string project = {0};
     const ud_json *p = ud_member(a->package->document, "project");
     ud_status status = p ? ud_json_string(ud_member(p, "id"), &project) : UD_OK;
+    const ud_json *deployment = ud_member(a->package->document, "deployment");
+    if (!status && p && deployment && !ud_json_size(ud_member(p, "parameters")) &&
+        !ud_json_size(ud_member(p, "variables")) && !ud_json_size(ud_member(p, "connections"))) {
+        /* A Studio publication adds an empty catalog project around the same package. */
+        static const char prefix[] = "deployment-project/";
+        size_t prefix_length = sizeof(prefix) - 1;
+        ud_string id = {0};
+        status = ud_json_string(ud_member(deployment, "id"), &id);
+        if (!status && project.length == prefix_length + id.length &&
+            !memcmp(project.data, prefix, prefix_length) &&
+            !memcmp(project.data + prefix_length, id.data, id.length))
+            project = (ud_string){0};
+    }
     ud_string parts[] = {a->execution->options.tenant, project, a->package->id, connection, table};
     for (uint32_t i = 0; !status && i < 5; i++)
         status = ud_put_string(&data, parts[i].data, parts[i].length);

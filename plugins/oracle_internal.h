@@ -36,7 +36,7 @@ typedef struct oracle {
     int cleanup, participant_enabled, branch_state;
     char branch_id[65];
     sb4 record_code;
-    OCITrans *branch_handle;
+    OCITrans *local_transaction, *branch_handle;
     atomic_int cancelled;
     ud_mutex ownership;
     void *user;

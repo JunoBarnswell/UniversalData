@@ -373,9 +373,11 @@ ud_status ud_sql_session_transaction(ud_sql_session *session, int32_t operation,
             return UD_BUSY;
         UD_TRY(ud_sql_session_read_close(session));
     }
-    if (operation == UD_SQL_SESSION_BEGIN && !isolation)
-        isolation = UD_ISOLATION_SERIALIZABLE;
     UD_TRY(acquire_lease(session));
+    if (operation == UD_SQL_SESSION_BEGIN && !isolation)
+        isolation = ud_connection_lease_dialect(session->lease) == UD_SQL_ORACLE
+                        ? UD_ISOLATION_READ_COMMITTED
+                        : UD_ISOLATION_SERIALIZABLE;
     ud_status status = ud_connection_lease_sql_transaction(session->lease, operation, isolation);
     if (!status) {
         session->transaction = operation == UD_SQL_SESSION_BEGIN;

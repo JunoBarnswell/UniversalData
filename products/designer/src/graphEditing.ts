@@ -57,11 +57,11 @@ export function removeGraphNodes(
     layout: document.layout
       ? {
           ...document.layout,
-          nodes: document.layout.nodes.filter(
+          nodes: document.layout.nodes?.filter(
             (node) =>
               retained(node.flow) && (node.flow !== flow || !ids.has(node.id)),
           ),
-          viewports: document.layout.viewports.filter((view) =>
+          viewports: document.layout.viewports?.filter((view) =>
             retained(view.flow),
           ),
         }
@@ -125,12 +125,12 @@ export function duplicateGraphNodes(
       layout: {
         ...layout,
         nodes: [
-          ...layout.nodes,
+          ...(layout.nodes ?? []),
           ...nodes.map((node, index) => {
             const original = [...names].find(
                 ([, next]) => next === node.id,
               )![0],
-              position = layout.nodes.find(
+              position = layout.nodes?.find(
                 (node) => node.id === original && node.flow === flow,
               );
             return {

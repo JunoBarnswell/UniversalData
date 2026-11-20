@@ -94,8 +94,8 @@ export interface PackageDocument {
   layout?: {
     label?: string;
     version: number;
-    nodes: { flow: string; id: string; x: number; y: number; label?: string }[];
-    viewports: { flow: string; x: number; y: number; zoom: number }[];
+    nodes?: { flow: string; id: string; x: number; y: number; label?: string }[];
+    viewports?: { flow: string; x: number; y: number; zoom: number }[];
   };
 }
 export interface RunState {

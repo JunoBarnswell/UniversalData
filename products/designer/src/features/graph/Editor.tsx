@@ -325,7 +325,7 @@ function EditorCanvas({
   function label(id: string) {
     const node = items.find((node) => node.id === id);
     return (
-      document.layout?.nodes.find(
+      document.layout?.nodes?.find(
         (node) => node.flow === flow && node.id === id,
       )?.label ??
       (node?.component === "sql.destination" && node.config.table
@@ -344,7 +344,7 @@ function EditorCanvas({
           ?.trees.flatMap((tree) => tree.nodes) ??
         []);
   const nodes: FlowNodeValue[] = items.map((node, index) => {
-    const layout = document.layout?.nodes.find(
+    const layout = document.layout?.nodes?.find(
         (value) => value.flow === flow && value.id === node.id,
       ),
       bound = boundById.get(node.id),
@@ -713,7 +713,7 @@ function EditorCanvas({
       layout: {
         ...layout,
         nodes: [
-          ...layout.nodes.filter(
+          ...(layout.nodes ?? []).filter(
             (node) => node.id !== id || node.flow !== flow,
           ),
           { flow, id, ...position, ...(name ? { label: name } : {}) },
@@ -1061,7 +1061,7 @@ function EditorCanvas({
           nodes: [],
           viewports: [],
         };
-        let nodes = layout.nodes;
+        let nodes = layout.nodes ?? [];
         for (const update of positions)
           if (update.type === "position" && update.position) {
             const old = nodes.find(
@@ -1192,7 +1192,7 @@ function EditorCanvas({
       control &&
       tasks!.constraints.find((edge) => constraintId(edge) === selectedEdge),
     viewport = draftViewport ??
-      document.layout?.viewports.find((value) => value.flow === flow) ?? {
+      document.layout?.viewports?.find((value) => value.flow === flow) ?? {
         x: 0,
         y: 0,
         zoom: 1,
@@ -1702,7 +1702,7 @@ function EditorCanvas({
                   withPosition(
                     current,
                     item.id,
-                    document.layout?.nodes.find(
+                    document.layout?.nodes?.find(
                       (node) => node.flow === flow && node.id === item.id,
                     ) ?? { x: 70, y: 140 },
                     value,

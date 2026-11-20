@@ -21,6 +21,17 @@ SQLite 的端到端对照用同一份数据分别运行快照和流式作业，�
 python tests/sql_streaming_etl.py --cli <ud_cli> --sqlite <sqlite-plugin> --performance-json <report-json>
 ```
 
+Studio 的 Chromium 验收使用隔离的 SQLite 源库、目标库和按摘要授权的 C# 转换。启用 SQL 路径时，浏览器会保存流式模式、重新打开作业、预览原生源、发布并执行，再比对目标数据和运行历史。
+
+```bash
+python tests/web_host.py --dotnet dotnet \
+  --management build/core/hosts/product/management/UniversalData.Management.dll \
+  --worker build/core/hosts/product/worker/ud_worker.dll \
+  --sqlite-plugin build/core/plugins/ud_connector_sqlite.so \
+  --managed-sql-module build/core/tests/managed-sql/ManagedSql.dll \
+  --evidence build/core/browser
+```
+
 测试通过记为 Pass，断言或已运行的性能门槛不满足记为 Fail，缺独立驱动或验收库记为 Blocked。结果以具体构建和报告为证。
 
 Windows 运行库专项使用只含 Windows 系统目录的 `PATH`，逐进程加载原生库、各宿主目录中的同一原生库，并通过原生插件入口装载已启用的 SQL 连接器。对应命令为 `ctest --test-dir build/core -C Release -R sql_etl_windows_runtime --output-on-failure --no-tests=error`。数据库连接和读写以各自的实库用例验收。

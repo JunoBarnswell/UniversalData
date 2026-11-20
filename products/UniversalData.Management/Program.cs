@@ -96,7 +96,6 @@ api.MapPost("/schema",async (DiscoveryRequest request,HttpContext context) => {
 });
 api.MapPost("/preview",async (PreviewRequest request,HttpContext context) => {
     var document=DesignerWorkspace.InspectionPackage(request.Package,true);
-    if(request.Package.TryGetProperty("extensions",out var extensions)&&extensions.GetArrayLength()!=0)return Results.BadRequest(new {error="Preview cannot load extensions"});
     var pipeline=request.Package.GetProperty("dataFlows").EnumerateArray().Single(flow=>flow.GetProperty("id").GetString()==request.PipelineId).Clone();
     using var package=JsonDocument.Parse(document.ToJsonString());
     return await Inspect(context,"preview",package.RootElement,JsonSerializer.SerializeToElement(new {pipeline,request.ComponentId,request.SourceRows,request.SampleRows},HostPolicy.JsonOptions),"package.preview");

@@ -188,6 +188,7 @@ static ud_status prepare_value(oracle *p, const ud_value *v, cell *c) {
         data = c->data;
     } else
         return UD_UNSUPPORTED;
+    c->length = v->is_null ? 0 : (uint32_t)size;
     c->data = data == &c->integer || data == &c->real || data == &c->descriptor ? NULL : data;
     return UD_OK;
 }
@@ -427,6 +428,9 @@ static ud_status bind_array_values(oracle *p, OCIStmt *stmt, const ud_write_opti
                                               array->values, array->value_size, array->type,
                                               array->indicators, array->lengths, array->codes,
                                               0, NULL, OCI_DEFAULT));
+        if (!status)
+            status = failure(p, OCIBindArrayOfStruct(array->bind, p->error, (ub4)array->value_size,
+                sizeof(*array->indicators), sizeof(*array->lengths), sizeof(*array->codes)));
     }
     cells_clear(p, prepared, (uint32_t)((size_t)rows * count));
     p->host.deallocate(inputs);
@@ -588,6 +592,24 @@ ud_status ud_oci_read_open(void *state, const ud_read_options *o, const ud_batch
                                            .name_length = length,
                                            .type = oracle_result_type(native),
                                            .nullable = 1};
+                if (!s && fields[i].type == UD_DECIMAL128) {
+                    ub2 precision = 0;
+                    sb1 scale = 0;
+                    s = failure(p, OCIAttrGet(param, OCI_DTYPE_PARAM, &precision, NULL,
+                                              OCI_ATTR_PRECISION, p->error));
+                    if (!s)
+                        s = failure(p, OCIAttrGet(param, OCI_DTYPE_PARAM, &scale, NULL,
+                                                  OCI_ATTR_SCALE, p->error));
+                    if (!s && scale == -127)
+                        fields[i].type = UD_UTF8; /* Oracle NUMBER with no fixed scale. */
+                    else if (!s) {
+                        int digits = precision ? precision : 38;
+                        if (scale < 0)
+                            digits -= scale;
+                        fields[i].scale = scale > 0 ? scale : 0;
+                        fields[i].precision = digits > fields[i].scale ? digits : fields[i].scale;
+                    }
+                }
                 if (param)
                     OCIDescriptorFree(param, OCI_DTYPE_PARAM);
             }
@@ -901,8 +923,8 @@ static ud_status discover(void *state, ud_string table, ud_batch **out) {
                     {.name = "default", .name_length = 7, .type = UD_UTF8, .nullable = 1},
                     {.name = "identity", .name_length = 8, .type = UD_BOOL}};
     const char *sql =
-        "SELECT c.column_name AS \"name\",CASE WHEN c.data_type='NUMBER' THEN "
-        "'NUMBER('||c.data_precision||','||c.data_scale||')' WHEN c.data_type='DATE' THEN "
+        "SELECT c.column_name AS \"name\",CASE WHEN c.data_type='NUMBER' AND c.data_scale IS NOT NULL THEN "
+        "'NUMBER('||NVL(c.data_precision,38)||','||c.data_scale||')' WHEN c.data_type='DATE' THEN "
         "'DATE_UTC' WHEN c.data_type LIKE 'TIMESTAMP%' AND c.data_type NOT LIKE '%TIME ZONE%' THEN "
         "'TIMESTAMP_UTC' ELSE c.data_type END AS \"declared_type\",CASE WHEN c.nullable='Y' THEN 1 "
         "ELSE 0 END AS \"nullable\",NVL((SELECT k.position FROM all_constraints a JOIN "
@@ -973,10 +995,18 @@ static ud_status begin(void *state, int32_t isolation) {
         return UD_BUSY;
     if (isolation == UD_ISOLATION_REPEATABLE_READ)
         return UD_UNSUPPORTED;
-    ud_status s = failure(p, OCITransStart(p->service, p->error, 0,
-                                           OCI_TRANS_NEW | (isolation == UD_ISOLATION_SERIALIZABLE
-                                                                ? OCI_TRANS_SERIALIZABLE
-                                                                : 0)));
+    ud_status s = UD_OK;
+    if (!p->local_transaction)
+        s = failure(p, OCIHandleAlloc(p->env, (void **)&p->local_transaction,
+                                      OCI_HTYPE_TRANS, 0, NULL));
+    if (!s)
+        s = failure(p, OCIAttrSet(p->service, OCI_HTYPE_SVCCTX, p->local_transaction,
+                                  0, OCI_ATTR_TRANS, p->error));
+    if (!s)
+        s = failure(p, OCITransStart(p->service, p->error, 0,
+                                      OCI_TRANS_NEW | (isolation == UD_ISOLATION_SERIALIZABLE
+                                                           ? OCI_TRANS_SERIALIZABLE
+                                                           : 0)));
     if (!s)
         p->transaction = 1;
     return s;
@@ -1295,7 +1325,9 @@ static ud_status validate_target(oracle *p, const ud_write_options *o, const ud_
                 ud_field actual = {0};
                 s = p->host.field_from_sql((ud_string){type.text, type.text_length}, UD_SQL_ORACLE,
                                            &actual);
-                if (!s && (actual.type != field.type ||
+                int integer_as_number = actual.type == UD_DECIMAL128 && !actual.scale &&
+                                        (field.type == UD_INT64 || field.type == UD_UINT64);
+                if (!s && ((actual.type != field.type && !integer_as_number) ||
                            (field.type == UD_DECIMAL128 &&
                             (actual.scale != field.scale || actual.precision < field.precision))))
                     s = UD_SCHEMA;
@@ -1403,7 +1435,8 @@ static ud_status write_batch(void *state, ud_string tenant, const ud_write_optio
     if (receipted && !digest)
         return UD_INVALID;
     int own = !p->transaction;
-    ud_status s = own ? begin(p, UD_ISOLATION_SERIALIZABLE) : UD_OK;
+    int32_t isolation = receipted ? UD_ISOLATION_SERIALIZABLE : UD_ISOLATION_READ_COMMITTED;
+    ud_status s = own ? begin(p, isolation) : UD_OK;
     if (!s && o->mode == UD_WRITE_CHANGESET && o->current_column != UINT32_MAX) {
         char *table = plugin_identifier(&p->host, o->table);
         size_t n = table ? strlen(table) + 40 : 0;
@@ -1632,6 +1665,8 @@ void ud_oci_destroy(void *state) {
     ud_mutex_unlock(&p->ownership);
     if (p->branch_handle)
         OCIHandleFree(p->branch_handle, OCI_HTYPE_TRANS);
+    if (p->local_transaction)
+        OCIHandleFree(p->local_transaction, OCI_HTYPE_TRANS);
     if (p->error)
         OCIHandleFree(p->error, OCI_HTYPE_ERROR);
     if (p->env)

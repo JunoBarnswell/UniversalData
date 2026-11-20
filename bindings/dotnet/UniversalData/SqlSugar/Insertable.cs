@@ -13,7 +13,7 @@ internal sealed class Insertable<T> : IInsertable<T>
     {
         var members = mapping.Members.Where(member => !member.IsIdentity && !member.IgnoreInsert).ToArray();
         if (members.Length == 0) throw new InvalidOperationException($"Entity '{mapping.EntityType.FullName}' has no insertable members.");
-        return client.Write(SqlNative.WriteAppend, SqlNative.LoadAuto, mapping, members, entities, []);
+        return client.Write(SqlNative.WriteAppend, SqlNative.LoadParameters, mapping, members, entities, []);
     }
 
     public Task<int> ExecuteCommandAsync(CancellationToken cancellationToken = default)

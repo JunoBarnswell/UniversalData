@@ -25,6 +25,8 @@ foreach (var batch in source.Queryable<Order>()
 
 `decimal` 默认按精度 38、28 位小数传递。可以用 `[SugarColumn(Length = 38, DecimalDigits = 0)]` 映射整数列。SQLite 的 `decimal` 目标列使用 `TEXT` 保留完整精度。数值超出可精确表示的范围时报告列名。
 
+Oracle 的原始查询返回固定刻度的 `NUMBER` 时，读取器保留驱动提供的精度和刻度。驱动报告刻度可变时，读取器保留十进制文本，调用方可按业务类型转换。Oracle 的 `Ado.BeginTran()` 默认使用 `ReadCommitted`，也可通过重载显式选择隔离级别。
+
 `Insertable`、`Updateable` 和 `Deleteable` 接收单个对象或一批对象。`Fastest<T>()` 使用相同的原生写入入口。`PageSize` 指定物理执行的分块上限，整个 SDK 批量调用仍属于一个事务。按键更新和删除使用实体声明的主键。显式事务中的批量失败要求回滚。驱动的 `CommitUnknown` 需要先核实数据库状态。
 
 `examples/dotnet-data` 的 `--sql-etl` 示例从源读取 `example_orders`，去除 `Name` 两端的空白，再批量写入目标的同名表。为源和目标分别准备 JSON 配置文件，每个文件包含 `dbType`、`connectionString` 和 `pluginPath`。在已加载对应 ABI 14 原生库的环境中运行下列命令。

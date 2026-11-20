@@ -22,7 +22,7 @@ public static class DesignerWorkspace
         var value = JsonNode.Parse(package.GetRawText())!.AsObject();
         value["controlFlow"] = new JsonObject { ["tasks"] = new JsonArray(), ["constraints"] = new JsonArray() };
         value["dataFlows"] = new JsonArray(); value.Remove("layout"); value.Remove("eventHandlers"); value.Remove("policy");value.Remove("extensions");if(!preserveCaches)value.Remove("caches");
-        // Preview cannot invoke user modules. Other inspections retain their established module entry.
+        // Native preview binds the selected component's dependencies using the built-in registry.
         return value;
     }
     private static string Digest(string value)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();

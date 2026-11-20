@@ -649,7 +649,14 @@ ud_status ud_odbc_read_open(void *state, const ud_read_options *o, const ud_batc
         else {
             char *utf = NULL;
             uint32_t n = 0;
-            s = utf8(p, name, (uint32_t)length, &utf, &n);
+            if (!schema && !length) {
+                char generated[32];
+                n = (uint32_t)snprintf(generated, sizeof(generated), "column%u", (unsigned)i + 1);
+                utf = plugin_string(&p->host, generated, n);
+                if (!utf)
+                    s = UD_RESOURCE;
+            } else
+                s = utf8(p, name, (uint32_t)length, &utf, &n);
             if (schema) {
                 ud_field expected;
                 if (!s)

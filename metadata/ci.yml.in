@@ -70,7 +70,7 @@ jobs:
         run: |
           python -m pip install -r tests/requirements-browser.txt
           python -m playwright install --with-deps chromium
-          python tests/web_host.py --dotnet dotnet --management build/core/hosts/product/management/UniversalData.Management.dll --worker build/core/hosts/product/worker/ud_worker.dll --evidence build/core/browser
+          python tests/web_host.py --dotnet dotnet --management build/core/hosts/product/management/UniversalData.Management.dll --worker build/core/hosts/product/worker/ud_worker.dll --sqlite-plugin build/core/plugins/ud_connector_sqlite.so --managed-sql-module build/core/tests/managed-sql/ManagedSql.dll --evidence build/core/browser
       - uses: actions/upload-artifact@v4
         if: always()
         with:

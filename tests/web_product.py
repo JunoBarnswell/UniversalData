@@ -9,11 +9,13 @@ import json
 import os
 import pathlib
 import signal
+import sqlite3
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from contextlib import closing
 from playwright.sync_api import sync_playwright, expect
 from product_version import PROTOCOL_VERSION
 
@@ -22,6 +24,7 @@ parser.add_argument('--url', required=True)
 parser.add_argument('--root', required=True, type=pathlib.Path)
 parser.add_argument('--evidence', required=True, type=pathlib.Path)
 parser.add_argument('--browser-executable', type=pathlib.Path)
+parser.add_argument('--sql-fixture', type=pathlib.Path)
 parser.add_argument('--subject', default='acceptance')
 args = parser.parse_args()
 password = os.environ['UD_BROWSER_PASSWORD']
@@ -49,7 +52,8 @@ def wait_run(ticket, state):
         if run['state'] == state:
             return run
         if run['state'] in ('Failed', 'Cancelled', 'Succeeded'):
-            raise AssertionError((state, run))
+            history = api('GET', '/logs?executionId=' + run['executionId']) if run['executionId'] else []
+            raise AssertionError((state, run, history))
         time.sleep(.1)
     raise AssertionError((state, run))
 
@@ -108,12 +112,88 @@ with sync_playwright() as playwright:
         input_=workspace.locator(f'.react-flow__node[data-id="{right}"] .react-flow__handle.target').first
         output.drag_to(input_, timeout=10000)
         expect(workspace.locator('.react-flow__edge')).to_have_count(count+1)
+
+    def sql_etl_journey():
+        fixture = json.loads(args.sql_fixture.read_text(encoding='utf-8'))
+        name = identity + '-sql'
+        document = dict(version=PROTOCOL_VERSION, id=name, connections=fixture['connections'],
+                        dataFlows=[], layout=dict(version=PROTOCOL_VERSION, label=name),
+                        controlFlow=dict(tasks=[], constraints=[]))
+        schema = api('POST', '/schema', dict(package=document, connection='source', table='etl_rows'))
+        document['extensions'] = [fixture['extension']]
+        document['controlFlow']['tasks'] = [dict(id='copy', kind='dataFlow', config=dict(pipeline='rows'))]
+        document['dataFlows'] = [dict(id='rows', components=[
+            dict(id='read', component='sql.source', config=dict(connection='source', table='etl_rows',
+                schema=schema, batchSize=4)),
+            dict(id='transform', component='managed.uppercase', config={}),
+            dict(id='write', component='sql.destination', config=dict(connection='target', table='etl_rows',
+                mode='append', delivery='response')),
+        ], paths=[
+            {'from': 'read', 'output': 0, 'to': 'transform', 'input': 0},
+            {'from': 'transform', 'output': 0, 'to': 'write', 'input': 0},
+        ])]
+        api('PUT', f'/packages/{name}/versions/1', document)
+        page.reload(wait_until='domcontentloaded')
+
+        def open_package():
+            page.get_by_role('button', name='项目', exact=True).click()
+            page.get_by_role('row').filter(has_text=name).get_by_role('button', name='打开工作台').click()
+            select_node('read')
+            page.locator('.workspace-panel:not([hidden])').get_by_text('专业连接与提交选项', exact=True).click()
+            return page.get_by_role('combobox', name='读取方式', exact=True)
+
+        mode = open_package()
+        expect(mode).to_have_value('"snapshot"')
+        with page.expect_response(lambda result: result.url.endswith(f'/api/drafts/{name}')
+                                  and result.request.method == 'PUT') as draft:
+            mode.select_option(label='stream')
+        assert draft.value.ok, draft.value.status
+        page.reload(wait_until='domcontentloaded')
+        expect(open_package()).to_have_value('"stream"')
+
+        target = fixture['connections'][1]['resource']
+        with page.expect_response(lambda result: result.url.endswith('/api/preview')) as preview:
+            page.get_by_role('button', name='预览', exact=True).click()
+        assert preview.value.ok, preview.value.status
+        samples = preview.value.json()
+        assert samples['result'] == 0 and any(item['component'] == 'read' and item['totalRows'] > 0
+                                              for item in samples['snapshot']['preview']), samples
+        with closing(sqlite3.connect(target)) as db:
+            assert db.execute('SELECT COUNT(*) FROM etl_rows').fetchone() == (0,)
+        save('sql-stream-preview.png')
+        page.get_by_role('button', name='发布版本', exact=True).click()
+        page.get_by_text('已发布 v2，等待正式执行', exact=True).wait_for(timeout=30000)
+        published = api('GET', f'/packages/{name}/versions/2')
+        assert published['dataFlows'][0]['components'][0]['config']['readMode'] == 'stream'
+        page.get_by_role('button', name='正式执行', exact=True).click()
+        confirm = page.get_by_role('dialog', name='确认正式执行')
+        confirm.get_by_label('确认正式业务写入').check()
+        with page.expect_response(lambda result: result.url.endswith('/api/executions')
+                                  and result.request.method == 'POST') as sent:
+            confirm.get_by_role('button', name='确认正式执行', exact=True).click()
+        run = wait_run(sent.value.json()['id'], 'Succeeded')
+        assert run['requiresJournal'] is False and run['executionId'], run
+        with closing(sqlite3.connect(target)) as db:
+            rows = db.execute('SELECT id, label FROM etl_rows ORDER BY id').fetchall()
+        assert rows == [(i, f'数据-{i}-ORDER') for i in range(1, 36)], rows
+        page.get_by_role('button', name='执行', exact=True).click()
+        page.get_by_role('row').filter(has_text=run['executionId']).get_by_role('button', name='查看', exact=True).click()
+        expect(page.get_by_role('button', name='恢复', exact=True)).to_have_count(0)
+        save('sql-stream-execution.png')
+        print('Studio SQL Source, typed C# transform and SQL Destination passed', flush=True)
+        return dict(executionId=run['executionId'], requiresJournal=run['requiresJournal'], rows=len(rows),
+                    checksum=__import__('hashlib').sha256(json.dumps(rows, ensure_ascii=False).encode()).hexdigest())
+
     try:
         page.goto(args.url)
         page.get_by_role('textbox', name='账户', exact=True).fill(args.subject)
         page.get_by_label('密码', exact=True).fill(password)
         page.get_by_role('button', name='登录', exact=True).click()
         page.get_by_role('heading', name='项目与数据任务', exact=True).wait_for()
+        sql_etl = None
+        if args.sql_fixture:
+            sql_etl = sql_etl_journey()
+            page.reload(wait_until='domcontentloaded')
         page.get_by_role('button', name='从 CSV / Excel 导入', exact=True).click()
         wizard=page.get_by_role('dialog', name='文件导入向导')
         wizard.get_by_label('上传数据文件').set_input_files(source)
@@ -156,15 +236,10 @@ with sync_playwright() as playwright:
         persisted=next(node for node in draft['document']['dataFlows'][0]['components'] if node['id']==sql_source_id)
         sql_read_mode_saved=persisted['config']['readMode']=='stream'
         assert sql_read_mode_saved,persisted
-        # Close the original dirty tab before reopening the persisted draft. Keeping
-        # it open leaves two ReactFlow providers for one package and the newly opened
-        # provider can remain measured while its panel is hidden.
-        page.get_by_role('button',name='设计工作台',exact=True).click()
-        page.once('dialog',accept_dialog)
-        page.get_by_role('button',name='关闭 '+identity,exact=True).last.click()
+        page.reload(wait_until='domcontentloaded')
         page.get_by_role('button',name='项目',exact=True).click()
         page.get_by_role('heading',name='项目与数据任务',exact=True).wait_for()
-        page.get_by_role('row').filter(has_text=identity).get_by_role('button',name='打开工作台',exact=True).click()
+        page.get_by_role('row').filter(has=page.get_by_role('cell', name=identity, exact=True)).get_by_role('button',name='打开工作台',exact=True).click()
         select_node(sql_source_id)
         page.locator('.workspace-panel:not([hidden])').get_by_text('专业连接与提交选项',exact=True).click()
         reopened_read_mode=page.get_by_role('combobox',name='读取方式',exact=True)
@@ -232,7 +307,7 @@ with sync_playwright() as playwright:
         logs=api('GET','/logs?executionId='+recovered['executionId']);assert logs and len({entry['revision'] for entry in logs})==len(logs)
         save('executions.png')
         page.get_by_role('button',name='作业',exact=True).click();page.get_by_role('heading',name='作业管理',exact=True).wait_for()
-        page.get_by_role('button',name='项目',exact=True).click();page.get_by_role('row').filter(has_text=identity).get_by_role('button',name='打开工作台').click()
+        page.get_by_role('button',name='项目',exact=True).click();page.get_by_role('row').filter(has=page.get_by_role('cell', name=identity, exact=True)).get_by_role('button',name='打开工作台').click()
         expect(page.locator('.workspace-panel:not([hidden])').get_by_label('作业包名称')).to_have_value(identity)
         print('Studio 4 theme and command journey',flush=True)
         page.get_by_label('主题',exact=True).select_option('dark')
@@ -289,7 +364,7 @@ with sync_playwright() as playwright:
         (args.evidence/'browser.json').write_text(json.dumps(dict(status='Passed',packageId=package_id,sourceDiscovery=True,noJsonEditor=True,
             nativeFormulaCompile=True,nativeBeforeAfter=True,dragUndoRedo=True,currentDraftPublication=True,publishDoesNotExecute=True,previewDoesNotWrite=True,
             definitionBreakpoint=True,nativeStep=True,actualWorkerTermination=True,resumeSameNativeId=True,sqlReadModeSaved=sql_read_mode_saved,
-            sqlReadModeReopened=sql_read_mode_reopened,formalRequiresJournal=formal_requires_journal,outputSignature=__import__('hashlib').sha256(output.read_bytes()).hexdigest(),
+            sqlReadModeReopened=sql_read_mode_reopened,sqlEtl=sql_etl,formalRequiresJournal=formal_requires_journal,outputSignature=__import__('hashlib').sha256(output.read_bytes()).hexdigest(),
             studio4Tabs=True,commandMenu=True,themes=True,density=True,browserErrors=errors,consoleMessages=console,httpErrors=http,browserPlugin='Browser plugin not available'),indent=2))
     except BaseException:
         (args.evidence/'failure-original.txt').write_text(__import__('traceback').format_exc())

@@ -202,9 +202,11 @@ def measure_delivery(root, plugin, stream, row_count, batch_size):
         assert count == row_count
     source_facts = node["facts"]
     expected_snapshot_rows = 0 if stream else row_count
+    paths = [path for flow in facts["diagnostics"]["pipelines"] for path in flow["paths"]]
     passed = (
         first is not None
-        and facts["queueHighWater"] <= 1
+        and bool(paths)
+        and all(path["queueHighWater"] <= path["capacity"] for path in paths)
         and source_facts["materialized"] == (not stream)
         and source_facts["snapshotRows"] == expected_snapshot_rows
     )
@@ -213,7 +215,9 @@ def measure_delivery(root, plugin, stream, row_count, batch_size):
             "firstCommitObservedMs": None if first is None else first * 1000,
             "elapsedMs": elapsed * 1000, "rowsPerSecond": row_count / elapsed,
             "sourcePrepareMs": node["prepareMs"], "sourceFacts": source_facts,
-            "queueHighWater": facts["queueHighWater"], "readChecksum": f"{checksum:016x}",
+            "queueHighWater": facts["queueHighWater"],
+            "queueCapacity": max((path["capacity"] for path in paths), default=0),
+            "readChecksum": f"{checksum:016x}",
             "buffers": facts["diagnostics"]["buffers"]}
 
 

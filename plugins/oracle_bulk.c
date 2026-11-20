@@ -107,10 +107,10 @@ ud_status ud_oci_bulk_stage(oracle *owner, const ud_write_options *options, cons
     }
     uint8_t random[16];
     ud_status status = owner->host.random_bytes(owner->host.context, random, sizeof(random));
-    char name[64] = "ud_sdk_load_";
+    char name[64] = "UD_SDK_LOAD_";
     size_t prefix = strlen(name);
     for (uint32_t index = 0; !status && index < sizeof(random); index++)
-        snprintf(name + prefix + index * 2, 3, "%02x", random[index]);
+        snprintf(name + prefix + index * 2, 3, "%02X", random[index]);
     if (!status) {
         stage->length = (uint32_t)strlen(name);
         stage->data = plugin_string(&owner->host, name, stage->length);
@@ -150,9 +150,16 @@ ud_status ud_oci_bulk_stage(oracle *owner, const ud_write_options *options, cons
         if (!status)
             status = result(
                 p, OCIParamGet(list, OCI_DTYPE_PARAM, p->error, (void **)&parameter, column + 1));
+        char *quoted = !status
+                           ? plugin_identifier(&p->host, (ud_string){field.name, field.name_length})
+                           : NULL;
+        if (!status && !quoted)
+            status = UD_RESOURCE;
         if (!status)
-            status = result(p, OCIAttrSet(parameter, OCI_DTYPE_PARAM, (void *)field.name,
-                                          field.name_length, OCI_ATTR_NAME, p->error));
+            status = result(p, OCIAttrSet(parameter, OCI_DTYPE_PARAM, quoted,
+                                          (ub4)strlen(quoted), OCI_ATTR_NAME, p->error));
+        if (quoted)
+            p->host.deallocate(quoted);
         ub2 type = field.type == UD_BINARY ? SQLT_BIN : SQLT_CHR;
         if (!status)
             status = result(

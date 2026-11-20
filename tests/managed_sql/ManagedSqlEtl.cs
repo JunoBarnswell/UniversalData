@@ -37,10 +37,7 @@ internal static class ManagedSqlEtl
                 Require(Convert.ToInt64(before.Ado.GetScalar("SELECT COUNT(*) FROM etl_rows"),
                     CultureInfo.InvariantCulture) == 0, "Preview left the destination empty");
             using var registry = new Registry();
-            registry.RegisterComponent(new ManagedComponentDefinition(
-                "managed.uppercase", "Uppercase order label", ComponentCategory.Transform, 1, 1, "{}",
-                (_, inputs) => [inputs[0]], () => new ManagedRowTransform(),
-                SynchronousInput: 0, ThreadSafe: true, StreamSafe: true));
+            new ManagedSqlModule().Register(registry);
             using (var execution = new Execution(document, "sql-etl", Authorize, resolve: Resolve,
                        registry: registry, maxBatchRows: 4))
             {
