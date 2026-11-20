@@ -1,6 +1,6 @@
 # UniversalData 7.0 Linux Release 验收
 
-2026-11-20 使用 Linux x64 Release、ABI 15、Worker 协议 4 和 Catalog 修订 2。测试使用独立进程、TLS 和隔离数据库。源码指纹为 `a6cfb63f9d6bfb806fe3124edff68e775574f888163f30a1dc957532d184117a`。
+2026-11-20 使用 Linux x64 Release、ABI 15、Worker 协议 4 和 Catalog 修订 2。测试使用独立进程、TLS 和隔离数据库。运行时提交为 `d4fe2be`，对应源码指纹为 `a6cfb63f9d6bfb806fe3124edff68e775574f888163f30a1dc957532d184117a`。
 
 ## 原先受阻的十项
 
@@ -25,10 +25,13 @@ C# 从源 Worker 读取 4,096 行的批次，转换文本和 Decimal，由目标
 
 同一跨进程实现启用缓冲池前约分配 5.15 GB，启用后减少约 38%。各进程分别采样峰值，累计分配覆盖写入阶段的全部托管线程。 [SQLite](sqlite-10000000.json) · [PostgreSQL](postgresql-10000000.json)
 
+SQLite 每路 100,000 行、1,024 字节负载、四并发和三次试验。512 行批次的插入、更新和删除耗时中位数对应加速分别为 7.46、4.83 和 5.35 倍，批次间读取校验值一致。 [SQLite 四并发](sqlite-wide-4.json)
+
 ## 产品验证范围
 
 - Linux CORE 86 项和 PRODUCT 88 项常规 CTest 全部通过。两个独立 mTLS Worker 节点执行普通作业，核验节点容量、派发、参数传输和 HTTP 结果入库。Chromium 核验 Studio 的 SQL 源、强类型 C# 转换、SQL 目标和 Worker 中断恢复。
-- SQLite、PostgreSQL、SQL Server、MySQL 和 MariaDB 通过强类型 SQL 功能验证。PostgreSQL、SQL Server、MySQL 和 MariaDB CDC 通过实库验证。基于进程中断的单驱动部分提交恢复及 SQL Server 与 PostgreSQL 混合恢复也已实测。Oracle ABI 15 的实库门禁因本地容器初始化空间不足受阻。
+- SQLite、PostgreSQL、SQL Server、MySQL、MariaDB 和 Oracle 通过强类型 SQL 功能验证。五个有日志源的数据库均通过 CDC 验证，包含 Oracle 26ai Free `23.26.4.0.0` 的 TCPS、归档日志和 LogMiner。基于进程中断的单驱动部分提交恢复及 SQL Server 与 PostgreSQL 混合恢复已在实库通过。
+- MySQL 8.4.13 的 24 个 CSV/XLSX 工作流通过逐行回读，覆盖每批一行、异常行、写入冲突、部分提交及进程中断恢复。每个输入 50,000 行，单行批次用时 1,127.60 秒，已提交与已确认行数均为 50,011（含汇总行）。 [MySQL 工作流结果](mysql-ssis.json)
 - 独立 .NET 8.0.31 应用从实际 Linux 原生运行时包还原，加载实际发行 SDK 程序集，通过 SQLite 强类型读写与 HTTP 200 前置任务，逐行核验 35 行。跨平台 `PackageReference` 完整验收仍需要 Windows x64 运行时包、两平台六库环境和独立发行门禁。
 
 | Linux 安装验证使用的包 | SHA-256 |

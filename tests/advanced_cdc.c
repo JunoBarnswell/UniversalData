@@ -145,8 +145,11 @@ int main(int argc, char **argv) {
     fputs("opening CDC\n", stderr);
     ud_status opened = ud_connection_cdc_open(c, &o);
     /* A newly created Oracle table needs to become visible at the flashback SCN. */
-    for (uint32_t turn = 0; dialect == UD_SQL_ORACLE && opened == UD_FENCED &&
-                            strstr(ud_error(ctx), "Oracle code 1466") && turn < 1000; turn++) {
+    for (uint32_t turn = 0; dialect == UD_SQL_ORACLE && opened == UD_FENCED && turn < 1000; turn++) {
+        ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION};
+        OK(ud_error_details(ctx, &detail));
+        if (detail.source != UD_ERROR_DATABASE || detail.native_code != 1466)
+            break;
         wait_for_log();
         opened = ud_connection_cdc_open(c, &o);
     }
