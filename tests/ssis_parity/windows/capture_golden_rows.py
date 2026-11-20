@@ -19,7 +19,11 @@ def capture(root, row_count):
     with (root / "output.csv").open(encoding="cp1252", newline="") as stream, (
         root / "observations.ndjson"
     ).open("w", encoding="utf-8", newline="\n") as output:
-        for identity, numeric, label in csv.reader(stream):
+        rows = csv.reader(stream)
+        header = next(rows)
+        if header != ["id", "calculated", "normalized"]:
+            raise ValueError(f"Unexpected Microsoft SSIS output columns: {header!r}")
+        for identity, numeric, label in rows:
             row = int(identity)
             assert 1 <= row <= row_count and row not in seen
             seen.add(row)
