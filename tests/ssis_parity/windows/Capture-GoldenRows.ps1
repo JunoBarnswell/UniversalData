@@ -13,7 +13,7 @@ if (!(Test-Path $runtime)) { throw 'Microsoft SSIS 2025 DTExec is required.' }
 $env:PATH = "$(Split-Path $runtime);$env:PATH"
 $requested = @('Microsoft.SqlServer.ManagedDTS.dll', 'Microsoft.SqlServer.DTSPipelineWrap.dll',
     'Microsoft.SqlServer.DTSRuntimeWrap.dll', 'Microsoft.SqlServer.PipelineHost.dll')
-$locations = @($sql, "$env:windir\Microsoft.NET\assembly\GAC_MSIL")
+$locations = @($sql, "$env:windir\Microsoft.NET\assembly\GAC_MSIL", "$env:windir\Microsoft.NET\assembly\GAC_64", "$env:windir\Microsoft.NET\assembly\GAC_32")
 $assemblies = foreach ($name in $requested) {
     $match = Get-ChildItem $locations -Recurse -Filter $name -File -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName.StartsWith($sql) -or $_.Directory.Name -match '^v4\.0_17\.' } |
