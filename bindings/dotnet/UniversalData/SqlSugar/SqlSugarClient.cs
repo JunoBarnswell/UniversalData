@@ -95,7 +95,8 @@ public sealed class SqlSugarClient : IDisposable
         return new(reply.Code, null, reply.Error);
     }
 
-    internal int WorkerProcessId => worker?.ProcessId ?? Environment.ProcessId;
+    /// <summary>The process that hosts this SQL session.</summary>
+    public int WorkerProcessId => worker?.ProcessId ?? Environment.ProcessId;
     internal IntPtr DataContext => data.DangerousGetHandle();
     internal uint ReadBatchSize => config.ReadBatchSize == 0 ? 512 : config.ReadBatchSize;
     internal uint WriteChunkRows => config.WriteChunkRows == 0 ? 512 : config.WriteChunkRows;
