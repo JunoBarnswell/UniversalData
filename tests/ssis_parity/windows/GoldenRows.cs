@@ -8,6 +8,8 @@ using Microsoft.SqlServer.Dts.Runtime.Wrapper;
 using Application = Microsoft.SqlServer.Dts.Runtime.Application;
 using DataType = Microsoft.SqlServer.Dts.Runtime.Wrapper.DataType;
 using Package = Microsoft.SqlServer.Dts.Runtime.Package;
+using TaskHost = Microsoft.SqlServer.Dts.Runtime.TaskHost;
+using ConnectionManager = Microsoft.SqlServer.Dts.Runtime.ConnectionManager;
 
 public static class GoldenRows
 {
