@@ -31,7 +31,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
         var privateFiles = policy.CredentialFiles.Values.Concat(policy.IdentityFile is null ? [] : new[] { policy.IdentityFile }).Append(path);
         if (privateFiles.Any(file => policy.FileRoots.Concat(policy.PluginRoots).Any(root => Inside(file,root))))
             throw new InvalidDataException("Host policy and credential files must be outside every package/plugin directory");
-        return policy;
+        return policy with { DataDirectory = Path.GetFullPath(policy.DataDirectory) };
     }
     public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) {
         RespectNullableAnnotations = true, RespectRequiredConstructorParameters = true };
@@ -74,14 +74,17 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     {
         if (!Path.IsPathFullyQualified(resource) || !Path.IsPathFullyQualified(root)) return false;
         var target = Path.GetFullPath(resource); var parent = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return target.Equals(parent, comparison) || target.StartsWith(parent + Path.DirectorySeparatorChar, comparison);
+        return target.Equals(parent, PathComparison) || target.StartsWith(parent + Path.DirectorySeparatorChar, PathComparison);
     }
+    private static StringComparison PathComparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+    private static bool SamePath(string resource, string path) => Path.IsPathFullyQualified(resource) &&
+        Path.GetFullPath(resource).Equals(Path.GetFullPath(path), PathComparison);
+
     public bool Authorize(string tenant, string resource, ConnectionAccess access)
     {
         if (tenant != Tenant) return false;
         if (access is ConnectionAccess.CheckpointOpen or ConnectionAccess.CheckpointRead or ConnectionAccess.CheckpointWrite)
-            return StateDirectory is not null && Path.IsPathFullyQualified(resource) && Path.GetFullPath(resource) == Path.GetFullPath(StateDirectory);
+            return StateDirectory is not null && SamePath(resource, StateDirectory);
         if (access == ConnectionAccess.Execute && Inside(resource,Path.Combine(DataDirectory,"assemblies")))
             return Identity.Allows("script.load",resource);
         // A parameter/connection cannot turn a product-private path into a data source.
@@ -111,8 +114,10 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     }
     public Catalog OpenCatalog()
     {
-        Directory.CreateDirectory(DataDirectory); HostFiles.NoLinks(CatalogDirectory);
-        return new(CatalogDirectory, Tenant, (tenant,resource,_) => tenant == Tenant && Path.GetFullPath(resource) == CatalogDirectory);
+        string catalogDirectory = Path.GetFullPath(CatalogDirectory);
+        Directory.CreateDirectory(DataDirectory);
+        HostFiles.NoLinks(catalogDirectory);
+        return new(catalogDirectory, Tenant, (tenant, resource, _) => tenant == Tenant && SamePath(resource, catalogDirectory));
     }
     public bool RequiresIsolation(string packageJson)
     {

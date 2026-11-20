@@ -58,6 +58,8 @@ def package(root,count=10003,duplicates='first'):
     (root/'package.json').write_text(json.dumps(doc));return doc,normal,errors
 
 def run(root,resume=False,kill=0,after=1,component='',expected=0,workers=4,deny='',memory=67108864):
+    operation = 'resume' if resume else 'interrupt' if kill and after > 0 else 'execute'
+    print(f'{root.name}: {operation}', flush=True)
     result=subprocess.run([DRIVER,str(root/'package.json'),str(root/'state'),str(int(resume)),str(workers),str(kill),str(after),component,str(memory),str(deny)],capture_output=True,text=True,timeout=180)
     if kill and after>0: assert result.returncode==91,(result.stdout,result.stderr);return
     assert result.returncode==0,(result.stdout,result.stderr)

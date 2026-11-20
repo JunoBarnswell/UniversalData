@@ -15,6 +15,9 @@ try {
         ["a"] = new([Path.Combine(resources,"a")],[],[modules],["database"]),["b"] = new([Path.Combine(resources,"b")],[],[modules],[]) });
     var admin = new HostIdentity("administrator","a",new string('a',64),[new("*","*")]);
     var scope = root.Bind(admin); var other = root.Bind(HostIdentity.Operator("b"));
+    var catalogAlias = scope with { DataDirectory = Path.Combine(scope.DataDirectory, ".") };
+    using (var catalog = catalogAlias.OpenCatalog())
+        Require(catalog.Get(CatalogKind.Audit, "unwritten", 1) is null, "Equivalent Catalog directory was rejected");
     Require(scope.Authorize("a",Path.Combine(resources,"a","file.csv"),ConnectionAccess.Write),"Authorized tenant resource denied");
     Require(!scope.Authorize("b",Path.Combine(resources,"a","file.csv"),ConnectionAccess.Read),"Tenant identity bypass");
     Require(!scope.Authorize("a",Path.Combine(resources,"b","file.csv"),ConnectionAccess.Read),"Cross tenant file access");

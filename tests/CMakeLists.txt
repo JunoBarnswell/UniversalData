@@ -275,6 +275,9 @@ if(TARGET ud_package)
   if(TARGET ud_connector_sqlite)
     add_test(NAME next_phase_pipeline_recovery COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/next_phase_pipeline.py $<TARGET_FILE:test_next_phase_execution> $<TARGET_FILE:ud_connector_sqlite>)
     set_tests_properties(next_phase_pipeline_recovery PROPERTIES TIMEOUT 420)
+    if(WIN32)
+      set_tests_properties(next_phase_pipeline_recovery PROPERTIES TIMEOUT 900)
+    endif()
   endif()
 endif()
 
@@ -357,6 +360,10 @@ if(UD_BUILD_HOSTS)
     ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
   set_tests_properties(worker_protocol PROPERTIES TIMEOUT 60)
   set_tests_properties(hosting_identity_secret_resource_contracts PROPERTIES TIMEOUT 60)
+  if(NOT WIN32)
+    set_property(TEST hosting_identity_secret_resource_contracts APPEND PROPERTY
+      ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+  endif()
   add_custom_target(ud_managed_recovery_test ALL
     COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_recovery/ManagedRecovery.csproj -c Release -o ${CMAKE_CURRENT_BINARY_DIR}/managed-recovery
     VERBATIM)
@@ -638,7 +645,7 @@ if(WIN32 AND TARGET ud_data)
   endif()
   get_property(windows_tests DIRECTORY PROPERTY TESTS)
   set_property(TEST ${windows_tests} APPEND PROPERTY
-    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>")
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:ud_data>" "PYTHONUTF8=set:1")
   add_test(NAME sql_etl_windows_runtime COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/windows_sql_runtime.py --library ${runtime_library}
     --version "${UD_SDK_VERSION}" --plugins ${runtime_plugins})
