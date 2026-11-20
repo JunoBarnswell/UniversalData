@@ -26,6 +26,8 @@ Run it with `--fixture path/to/mariadb.fixture.json`. The acceptance entity is d
 `--stream-copy` 使用两个 SDK 会话，生成输入表并运行强类型读取、Unicode 字符串转换、十进制运算和原生批量写入。计时从打开读取游标开始，到目标事务提交结束。随后遍历目标全部记录，核对业务值、行数和校验值。
 
 ```bash
+cmake --build build/product --config Release --target ud_managed_sql_test
+LD_LIBRARY_PATH="$PWD/build/product${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
 dotnet build/product/tests/managed-sql/ManagedSql.dll --stream-copy \
   --provider postgresql --connection-file "$UD_TEST_POSTGRESQL_CONFIG" \
   --plugin "$PWD/build/product/plugins/ud_connector_postgresql.so" \

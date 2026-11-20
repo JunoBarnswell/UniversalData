@@ -36,6 +36,8 @@ python tests/web_host.py --dotnet dotnet \
 
 本轮 Linux 实库、Studio 和批量性能结果见 [ABI 14 SQL ETL Linux 验收](acceptance/evidence/sql-etl-linux-abi14/README.md)。
 
+C# 千万行流式写入、CDC、事务恢复和 SSIS 的跟进结果见 [ABI 14 跟进验收](acceptance/evidence/sql-etl-linux-abi14/follow-up.md)。
+
 Windows 运行库专项使用只含 Windows 系统目录的 `PATH`，逐进程加载原生库、各宿主目录中的同一原生库，并通过原生插件入口装载已启用的 SQL 连接器。对应命令为 `ctest --test-dir build/core -C Release -R sql_etl_windows_runtime --output-on-failure --no-tests=error`。数据库连接和读写以各自的实库用例验收。
 
 ### 历史 Windows 验收

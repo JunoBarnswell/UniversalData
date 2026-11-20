@@ -1,5 +1,7 @@
 # ABI 14 SQL ETL Linux 验收
 
+后续修复及千万行压力测试见 [跟进验收](follow-up.md)。
+
 基于 GitHub `main` 的 `d891d10b89820579edc419fa22363e57aa42adbe`，验证源码提交为 `ae47eb9771bd33ff049649fbcfee98fc5a155058`。Linux 使用 Debian 13 x86-64、GCC 14、CMake 3.31、.NET SDK 10.0.404、JDK 17 和 Chromium 154。性能数值来自验收期间的候选 Release 构建。全部测量使用隔离库。
 
 ## 功能
