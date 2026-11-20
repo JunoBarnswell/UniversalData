@@ -127,6 +127,9 @@ int main(int argc, char **argv) {
         memset(branches[index].digest, index + 17, sizeof(branches[index].digest));
     }
     const char *tables[2] = {"ud_tx_participant_a", "ud_tx_participant_b"};
+    for (uint32_t index = 0; index < 2; index++)
+        if (ud_connection_dialect(connections[index]) == UD_SQL_ORACLE)
+            tables[index] = index ? "UD_TX_PARTICIPANT_B" : "UD_TX_PARTICIPANT_A";
     if (!strcmp(argv[3], "setup")) {
         for (uint32_t index = 0; index < 2; index++) {
             /* Fixture owns these two dedicated tables; receipt generations remain intact. */

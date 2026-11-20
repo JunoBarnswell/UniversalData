@@ -31,7 +31,7 @@ static ud_status failure(oracle *p, sword rc) {
     char safe[80];
     snprintf(safe, sizeof(safe), "OCI operation failed (Oracle code %ld)", (long)code);
     p->host.report(p->host.context, UD_IO, safe);
-    if (code == 1291 || code == 1284 || code == 1327 || code == 1555)
+    if (code == 1291 || code == 1284 || code == 1327 || code == 1466 || code == 1555)
         return UD_FENCED;
     if (code == 1013)
         return UD_CANCELLED;
@@ -1083,11 +1083,54 @@ static ud_status provision(void *state) {
                             "WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;");
     return status;
 }
+enum { XA_ENDED = -1, ORACLE_XA_FORMAT = 0x55440e01 };
+
+static void transaction_hex(const void *data, uint32_t bytes, char *out) {
+    static const char digits[] = "0123456789abcdef";
+    const uint8_t *value = data;
+    for (uint32_t i = 0; i < bytes; i++) {
+        out[2 * i] = digits[value[i] >> 4];
+        out[2 * i + 1] = digits[value[i] & 15];
+    }
+    out[2 * bytes] = 0;
+}
+
+static ud_status xa_command(oracle *p, const ud_transaction_branch *branch,
+                            const char *operation, const char *arguments) {
+    char sql[512];
+    snprintf(sql, sizeof(sql),
+             "DECLARE r PLS_INTEGER; BEGIN r:=DBMS_XA.XA_%s("
+             "DBMS_XA_XID(%d,HEXTORAW('%.64s'),HEXTORAW('01'))%s); "
+             "IF r!=0 THEN RAISE_APPLICATION_ERROR(-20001,'Native Oracle XA operation failed'); "
+             "END IF; END;", operation, ORACLE_XA_FORMAT, branch->id.data, arguments);
+    return literal(p, sql);
+}
+
+static ud_status xa_rollback_active(oracle *p, const ud_transaction_branch *branch) {
+    ud_status status = UD_OK;
+    if (p->branch_state == UD_TX_ACTIVE) {
+        status = xa_command(p, branch, "END", ",DBMS_XA.TMFAIL");
+        if (!status) {
+            p->transaction = 0;
+            p->branch_state = XA_ENDED;
+        }
+    }
+    if (!status)
+        status = xa_command(p, branch, "ROLLBACK", "");
+    if (!status) {
+        p->branch_state = 0;
+        memset(p->branch_id, 0, sizeof(p->branch_id));
+        status = ud_oci_bulk_cleanup(p);
+    }
+    return status;
+}
+
 static ud_status transaction_recover(void *state, const ud_transaction_branch *branch,
                                      int32_t *result) {
     oracle *p = state;
     *result = UD_TX_UNKNOWN;
-    if (p->branch_state == UD_TX_ACTIVE && !memcmp(p->branch_id, branch->id.data, 64)) {
+    if ((p->branch_state == UD_TX_ACTIVE || p->branch_state == XA_ENDED) &&
+        !memcmp(p->branch_id, branch->id.data, 64)) {
         *result = UD_TX_ACTIVE;
         return UD_OK;
     }
@@ -1096,10 +1139,14 @@ static ud_status transaction_recover(void *state, const ud_transaction_branch *b
     ud_string argument = branch->id;
     ud_field fields[] = {{.name = "gtrid", .name_length = 5, .type = UD_BINARY}};
     ud_batch *rows = NULL;
-    ud_status status = ud_oci_query(p,
-                                    "SELECT x.gtrid AS \"gtrid\" FROM TABLE(DBMS_XA.XA_RECOVER) x "
-                                    "WHERE x.formatid=1 AND x.gtrid=UTL_RAW.CAST_TO_RAW(:p1)",
-                                    &argument, 1, fields, 1, &rows);
+    char sql[352];
+    snprintf(sql, sizeof(sql),
+             "SELECT x.gtrid AS \"gtrid\" FROM TABLE(DBMS_XA.XA_RECOVER) x "
+             "WHERE (x.formatid=%d AND x.gtrid=HEXTORAW(:p1) AND x.bqual=HEXTORAW('01')) "
+             "OR (x.formatid=1 AND x.gtrid=UTL_RAW.CAST_TO_RAW(:p2) "
+             "AND (x.bqual=HEXTORAW('01') OR x.bqual IS NULL))", ORACLE_XA_FORMAT);
+    ud_string arguments[] = {argument, argument};
+    ud_status status = ud_oci_query(p, sql, arguments, 2, fields, 1, &rows);
     if (!status && p->host.rows(rows) > 1)
         status = UD_CORRUPT;
     if (!status && p->host.rows(rows) == 1)
@@ -1139,62 +1186,33 @@ static ud_status transaction_begin(void *state, const ud_transaction_branch *bra
         return UD_BUSY;
     if (branch->isolation == UD_ISOLATION_REPEATABLE_READ)
         return UD_UNSUPPORTED;
-    if (p->branch_handle) {
-        OCIHandleFree(p->branch_handle, OCI_HTYPE_TRANS);
-        p->branch_handle = NULL;
-    }
-    ud_status status =
-        failure(p, OCIHandleAlloc(p->env, (void **)&p->branch_handle, OCI_HTYPE_TRANS, 0, NULL));
-    XID xid = {.formatID = 1, .gtrid_length = 64, .bqual_length = 0};
-    memcpy(xid.data, branch->id.data, 64);
-    if (!status)
-        status = failure(p, OCIAttrSet(p->branch_handle, OCI_HTYPE_TRANS, &xid, sizeof(xid),
-                                       OCI_ATTR_XID, p->error));
-    if (!status)
-        status = failure(p, OCIAttrSet(p->service, OCI_HTYPE_SVCCTX, p->branch_handle, 0,
-                                       OCI_ATTR_TRANS, p->error));
-    if (!status)
-        status = failure(p, OCITransStart(p->service, p->error, 60,
-                                          OCI_TRANS_NEW | OCI_TRANS_LOOSE |
-                                              (branch->isolation == UD_ISOLATION_SERIALIZABLE
-                                                   ? OCI_TRANS_SERIALIZABLE
-                                                   : OCI_TRANS_READWRITE)));
+    /* Start, end, prepare and resolve in one XA interface. The database
+     * recovery service can then resolve the XID across OCI sessions. */
+    ud_status status = xa_command(p, branch, "START", ",DBMS_XA.TMNOFLAGS");
     if (!status) {
-        p->transaction = 1;
+        p->transaction = branch->isolation;
         p->branch_state = UD_TX_ACTIVE;
         memcpy(p->branch_id, branch->id.data, 64);
         p->branch_id[64] = 0;
     }
-    static const char alphabet[] = "0123456789abcdef";
     char identity[129], digest[65];
-    for (uint32_t index = 0; index < 64; index++) {
-        unsigned byte = (unsigned char)branch->id.data[index];
-        identity[2 * index] = alphabet[byte >> 4];
-        identity[2 * index + 1] = alphabet[byte & 15];
-    }
-    identity[128] = 0;
-    for (uint32_t index = 0; index < 32; index++) {
-        digest[2 * index] = alphabet[branch->digest[index] >> 4];
-        digest[2 * index + 1] = alphabet[branch->digest[index] & 15];
-    }
-    digest[64] = 0;
+    transaction_hex(branch->id.data, 64, identity);
+    transaction_hex(branch->digest, 32, digest);
     char statement_text[384];
     snprintf(statement_text, sizeof(statement_text),
              "INSERT INTO ud_sdk_tx_receipts_v11(branch_id,digest) "
              "VALUES(HEXTORAW('%s'),HEXTORAW('%s'))",
              identity, digest);
+    if (!status && branch->isolation == UD_ISOLATION_SERIALIZABLE)
+        status = literal(p, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
     if (!status)
         status = literal(p, statement_text);
-    if (status && p->transaction) {
+    if (status && p->branch_state == UD_TX_ACTIVE) {
         p->cleanup = 1;
-        ud_status rolled_back = rollback(p);
+        ud_status rolled_back = xa_rollback_active(p, branch);
         p->cleanup = 0;
         if (rolled_back)
             status = UD_COMMIT_UNKNOWN;
-        else {
-            p->branch_state = 0;
-            memset(p->branch_id, 0, sizeof(p->branch_id));
-        }
     }
     return status;
 }
@@ -1202,46 +1220,39 @@ static ud_status transaction_prepare(void *state, const ud_transaction_branch *b
     oracle *p = state;
     if (p->branch_state != UD_TX_ACTIVE || memcmp(p->branch_id, branch->id.data, 64))
         return UD_FENCED;
-    ud_status status = failure(p, OCITransPrepare(p->service, p->error, OCI_DEFAULT));
+    ud_status status = xa_command(p, branch, "END", ",DBMS_XA.TMSUCCESS");
     if (!status) {
         p->transaction = 0;
-        p->branch_state = UD_TX_PREPARED;
+        p->branch_state = XA_ENDED;
+        status = xa_command(p, branch, "PREPARE", "");
     }
     if (!status)
-        status = failure(p, OCITransDetach(p->service, p->error, OCI_DEFAULT));
+        p->branch_state = UD_TX_PREPARED;
     return status;
 }
 static ud_status transaction_resolve(void *state, const ud_transaction_branch *branch,
                                      int32_t decision) {
     oracle *p = state;
-    if (p->branch_state == UD_TX_ACTIVE) {
+    if (p->branch_state == UD_TX_ACTIVE || p->branch_state == XA_ENDED) {
         if (decision != UD_TX_ROLLBACK || memcmp(p->branch_id, branch->id.data, 64))
             return UD_FENCED;
         p->cleanup = 1;
-        ud_status status = rollback(p);
+        ud_status status = xa_rollback_active(p, branch);
         p->cleanup = 0;
-        if (!status) {
-            p->branch_state = 0;
-            memset(p->branch_id, 0, sizeof(p->branch_id));
-            status = ud_oci_bulk_cleanup(p);
-        }
         return status;
     }
-    /* DBMS_XA resolves a prepared OCI XID from a fresh authenticated session. */
-    static const char alphabet[] = "0123456789abcdef";
-    char identity[129];
-    for (uint32_t index = 0; index < 64; index++) {
-        unsigned byte = (unsigned char)branch->id.data[index];
-        identity[2 * index] = alphabet[byte >> 4];
-        identity[2 * index + 1] = alphabet[byte & 15];
-    }
-    identity[128] = 0;
-    char statement_text[384];
+    /* Resolve the provider's XID, including branches created with the legacy encoding. */
+    char statement_text[672];
     snprintf(statement_text, sizeof(statement_text),
-             "DECLARE r PLS_INTEGER; BEGIN r:=DBMS_XA.XA_%s(DBMS_XA_XID(1,HEXTORAW('%s'),NULL)%s); "
+             "DECLARE r PLS_INTEGER; id VARCHAR2(64):='%.64s'; xid DBMS_XA_XID; BEGIN "
+             "SELECT VALUE(x) INTO xid FROM TABLE(DBMS_XA.XA_RECOVER) x "
+             "WHERE (x.formatid=%d AND x.gtrid=HEXTORAW(id) AND x.bqual=HEXTORAW('01')) "
+             "OR (x.formatid=1 AND x.gtrid=UTL_RAW.CAST_TO_RAW(id) "
+             "AND (x.bqual=HEXTORAW('01') OR x.bqual IS NULL)); "
+             "r:=DBMS_XA.XA_%s(xid%s); "
              "IF r!=0 THEN RAISE_APPLICATION_ERROR(-20001,'Native transaction resolution failed'); "
              "END IF; END;",
-             decision == UD_TX_COMMIT ? "COMMIT" : "ROLLBACK", identity,
+             branch->id.data, ORACLE_XA_FORMAT, decision == UD_TX_COMMIT ? "COMMIT" : "ROLLBACK",
              decision == UD_TX_COMMIT ? ",FALSE" : "");
     p->cleanup = 1;
     ud_status status = literal(p, statement_text);
@@ -1669,8 +1680,6 @@ void ud_oci_destroy(void *state) {
         OCILogoff(p->service, p->error);
     p->service = NULL;
     ud_mutex_unlock(&p->ownership);
-    if (p->branch_handle)
-        OCIHandleFree(p->branch_handle, OCI_HTYPE_TRANS);
     if (p->local_transaction)
         OCIHandleFree(p->local_transaction, OCI_HTYPE_TRANS);
     if (p->error)

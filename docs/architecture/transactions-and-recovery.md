@@ -10,9 +10,11 @@ CDC 源可配置 `microBatchRows`、`microBatchMs`。两项省略时每笔源事
 
 SQL 目标按输入批检查初始前像并记录收据。需要整个 epoch 在目标上原子提交时，由 Data Flow 的 `transaction.scope = "epoch"` 协调。源在目标确认和 checkpoint 持久化后推进日志位置。提交后中断时，恢复流程重放已封存数据，核对已有收据，并确认最后一个完整事务的位置。
 
-PostgreSQL 使用 PREPARE TRANSACTION，并检查 max_prepared_transactions；MySQL/MariaDB 使用 XA START/END/PREPARE/COMMIT/ROLLBACK；OCI 使用真实 XID、OCITransPrepare 和 DBMS_XA 恢复。Native 分支 ID、配置指纹和同事务的分支回执证明提交。准备列表中找不到分支本身不能证明提交。不具备参与能力的 SQL Server/ODBC 资源不能冒充全局事务参与者。
+PostgreSQL 使用 PREPARE TRANSACTION 并检查 max_prepared_transactions。MySQL/MariaDB 使用 XA START/END/PREPARE/COMMIT/ROLLBACK。Oracle 通过 OCI 使用 DBMS_XA 完成分支生命周期，将 64 个十六进制字符组成的 Native 分支 ID 编码为 32 字节 XID。Native 分支 ID、配置指纹和同事务的分支回执证明提交。缺少可验证的分支回执时，提交结果保持不确定。SQL Server/ODBC 需要通过驱动的 XA 能力探测才能成为参与者。
 
 Task Done、批次 Done、游标、枚举器和 Epoch 在未决事务内先存为有序暂存事实。共同提交后才发布；回滚仅退役暂存事实。持久 COMMIT 决定后禁止改为回滚。恢复没有决定的分支时先持久化回滚决定；存在决定时按决定逐个恢复，即使一个资源不可用，也尝试其他参与者。任何无法证明的提交进入 RecoveryRequired，停止源确认和自动重放。
+
+Journal 按固定上限滚动日志段，累计的日志大小达到前一快照的规模后再压缩。发布已提交事实时，连续且键互异的事实可同帧持久化，同键更新和带退役动作的记录按顺序生效。
 
 SQL 目标的记录错误在真实事务保护下使用 savepoint 隔离。先尝试批量写入，记录错误回滚该尝试后使用原生参数绑定逐行处理。正常目标和错误目标均须属于声明参与者。转换、截断和业务约束可重定向；连接中断、取消、超时、语句/Schema 执行故障以及提交不明保持失败。原始输入只有明确启用才保留。
 

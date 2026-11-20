@@ -3,7 +3,6 @@
 #include "common.h"
 #include "../components/foundation/thread.h"
 #include <oci.h>
-#include <xa.h>
 #include <stdatomic.h>
 typedef struct cell {
     OCIBind *bind;
@@ -36,7 +35,7 @@ typedef struct oracle {
     int cleanup, participant_enabled, branch_state;
     char branch_id[65];
     sb4 record_code;
-    OCITrans *local_transaction, *branch_handle;
+    OCITrans *local_transaction;
     atomic_int cancelled;
     ud_mutex ownership;
     void *user;

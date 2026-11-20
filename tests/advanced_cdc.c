@@ -94,7 +94,8 @@ int main(int argc, char **argv) {
                             "NVARCHAR(128),rev BIGINT NOT NULL)"
                       : dialect == UD_SQL_ORACLE
                           ? "CREATE TABLE \"ud_advanced_cdc\"(\"id\" NUMBER(19,0) NOT NULL PRIMARY "
-                            "KEY,\"name\" NVARCHAR2(128),\"rev\" NUMBER(19,0) NOT NULL)"
+                            "KEY,\"name\" NVARCHAR2(128),\"rev\" NUMBER(19,0) NOT NULL) "
+                            "SEGMENT CREATION IMMEDIATE"
                           : "CREATE TABLE ud_advanced_cdc(id BIGINT NOT NULL PRIMARY KEY,name "
                             "TEXT,rev BIGINT NOT NULL)";
     if (dialect == UD_SQL_SQLSERVER)
@@ -142,7 +143,14 @@ int main(int argc, char **argv) {
     if (dialect == UD_SQL_POSTGRESQL)
         o.slot = str("ud_advanced_slot");
     fputs("opening CDC\n", stderr);
-    OK(ud_connection_cdc_open(c, &o));
+    ud_status opened = ud_connection_cdc_open(c, &o);
+    /* A newly created Oracle table needs to become visible at the flashback SCN. */
+    for (uint32_t turn = 0; dialect == UD_SQL_ORACLE && opened == UD_FENCED &&
+                            strstr(ud_error(ctx), "Oracle code 1466") && turn < 1000; turn++) {
+        wait_for_log();
+        opened = ud_connection_cdc_open(c, &o);
+    }
+    OK(opened);
     ud_string snapshot = {0}, position = {0};
     fputs("snapshot\n", stderr);
     OK(collect(c, 1, 1, &snapshot));

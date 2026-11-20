@@ -15,7 +15,7 @@
 struct ud_oracle_cdc {
     oracle *owner;
     ud_batch *schema, *log_schema, *chunk;
-    char *table, *schema_name, *table_name, *transaction;
+    char *table, *schema_name, *table_name, *transaction, *container;
     uint8_t *temporal;
     uint64_t dbid, incarnation, position, confirmed, floor, next_floor, high, transaction_scn;
     char xid[17], confirmed_xid[17];
@@ -228,8 +228,8 @@ static ud_status preflight(struct ud_oracle_cdc *c) {
 static ud_status start_window(struct ud_oracle_cdc *c) {
     oracle *p = c->owner;
     TRY(unsigned_value(p,
-                       "SELECT NVL(MIN(start_scn),(SELECT current_scn FROM v$database)) AS "
-                       "\"value\" FROM v$transaction",
+                       "SELECT COALESCE((SELECT MIN(start_scn) FROM v$transaction),current_scn) AS "
+                       "\"value\" FROM v$database",
                        &c->next_floor));
     TRY(unsigned_value(p, "SELECT current_scn AS \"value\" FROM v$database", &c->high));
     if (c->high < c->position)
@@ -303,7 +303,7 @@ static ud_status start_window(struct ud_oracle_cdc *c) {
  * and undo. Repeated placeholders have distinct positional binds in OCI. */
 static ud_status projection(struct ud_oracle_cdc *c, char **sql_out, ud_batch **parameters) {
     oracle *p = c->owner;
-    uint32_t columns = p->host.columns(c->schema), count = 8 + columns * 7;
+    uint32_t columns = p->host.columns(c->schema), count = 10 + columns * 7;
     size_t capacity = 4096 + (size_t)columns * 2000;
     ud_value *values = p->host.allocate(p->host.context, count * sizeof(*values));
     char *text = p->host.allocate(p->host.context, capacity);
@@ -314,19 +314,25 @@ static ud_status projection(struct ud_oracle_cdc *c, char **sql_out, ud_batch **
     }
     ud_status status = UD_OK;
     uint32_t made = 0;
+    /* Stored redo names in the root use the ordinary three-part identifier. */
+    const char *container = c->container && strcmp(c->container, "CDB$ROOT") ? c->container : NULL;
     for (uint32_t i = 0; !status && i < columns; i++) {
         ud_field field;
         status = p->host.field(c->schema, i, &field);
         if (status)
             break;
-        size_t n = strlen(c->schema_name) + strlen(c->table_name) + field.name_length + 3;
-        char *path = p->host.allocate(p->host.context, n);
+        char *name = plugin_identifier(&p->host, (ud_string){field.name, field.name_length});
+        size_t prefix = container ? strlen(container) + 1 : 0;
+        size_t n = name ? prefix + strlen(c->table) + strlen(name) + 2 : 0;
+        char *path = n ? p->host.allocate(p->host.context, n) : NULL;
+        if (path)
+            snprintf(path, n, "%s%s%s.%s", container ? container : "",
+                     container ? ":" : "", c->table, name);
+        p->host.deallocate(name);
         if (!path) {
             status = UD_RESOURCE;
             break;
         }
-        snprintf(path, n, "%s.%s.%.*s", c->schema_name, c->table_name, (int)field.name_length,
-                 field.name);
         values[i] =
             (ud_value){.type = UD_UTF8, .text = path, .text_length = (uint32_t)strlen(path)};
         for (uint32_t j = 0; j < 6; j++)
@@ -412,14 +418,20 @@ static ud_status projection(struct ud_oracle_cdc *c, char **sql_out, ud_batch **
                                       .text_length = (uint32_t)strlen(c->schema_name)};
         values[base + 7] = (ud_value){
             .type = UD_UTF8, .text = c->table_name, .text_length = (uint32_t)strlen(c->table_name)};
+        values[base + 8] = (ud_value){.type = UD_UTF8, .text = c->container,
+                                     .text_length = c->container ? (uint32_t)strlen(c->container) : 0,
+                                     .is_null = c->container == NULL};
+        values[base + 9] = values[base + 8];
         base++;
         int n =
             snprintf(text + at, capacity - at,
                      " FROM V$LOGMNR_CONTENTS WHERE (((COMMIT_SCN>:p%u OR (COMMIT_SCN=:p%u AND "
                      "RAWTOHEX(XID)>:p%u)) AND COMMIT_SCN<=:p%u) OR (OPERATION_CODE=5 AND SCN>:p%u "
-                     "AND SCN<=:p%u)) AND SEG_OWNER=:p%u AND TABLE_NAME=:p%u ORDER BY "
+                     "AND SCN<=:p%u)) AND SEG_OWNER=:p%u AND TABLE_NAME=:p%u "
+                     "AND (:p%u IS NULL OR NVL(SRC_CON_NAME,'CDB$ROOT')=:p%u) ORDER BY "
                      "\"commitScn\",\"xid\",SCN,RS_ID,SSN",
-                     base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7);
+                     base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7,
+                     base + 8, base + 9);
         if (n < 0 || (size_t)n >= capacity - at)
             status = UD_RESOURCE;
         if (!status)
@@ -477,9 +489,16 @@ static ud_status append_change(struct ud_oracle_cdc *c, ud_batch *after, ud_batc
     TRY(p->host.get(c->chunk, row, 3, &validity));
     TRY(p->host.get(c->chunk, row, 4, &continued));
     TRY(p->host.get(c->chunk, row, 5, &missing));
-    if (validity.is_null || continued.is_null || missing.is_null || validity.integer ||
-        continued.integer || missing.integer)
-        return UD_UNSUPPORTED;
+    if (validity.is_null || continued.is_null || missing.is_null)
+        return UD_CORRUPT;
+    if (validity.integer || continued.integer || missing.integer) {
+        char message[160];
+        snprintf(message, sizeof(message),
+                 "Oracle LogMiner cannot reconstruct the row (status %lld, continued %lld, "
+                 "missing before columns %lld)", (long long)validity.integer,
+                 (long long)continued.integer, (long long)missing.integer);
+        return p->host.report(p->host.context, UD_UNSUPPORTED, message);
+    }
     if (operation.integer == 5)
         return UD_INCOMPATIBLE;
     if (operation.integer < 1 || operation.integer > 3)
@@ -514,7 +533,8 @@ ud_status ud_oracle_cdc_open(void *state, const ud_cdc_options *o) {
     if (!o->schema || !o->table.length || p->host.columns(o->schema) > 4096)
         return UD_SCHEMA;
     const char *dot = memchr(o->table.data, '.', o->table.length);
-    if (!dot || memchr(dot + 1, '.', o->table.length - (uint32_t)(dot - o->table.data) - 1))
+    if (dot && (dot == o->table.data || dot + 1 == o->table.data + o->table.length ||
+                memchr(dot + 1, '.', (size_t)(o->table.data + o->table.length - dot - 1))))
         return UD_SCHEMA;
     struct ud_oracle_cdc *c = p->host.allocate(p->host.context, sizeof(*c));
     if (!c)
@@ -522,9 +542,22 @@ ud_status ud_oracle_cdc_open(void *state, const ud_cdc_options *o) {
     p->cdc = c;
     c->owner = p;
     c->batch_rows = o->batch_rows;
-    c->schema_name = plugin_string(&p->host, o->table.data, (uint32_t)(dot - o->table.data));
-    c->table_name =
-        plugin_string(&p->host, dot + 1, o->table.length - (uint32_t)(dot - o->table.data) - 1);
+    ud_status status = UD_OK;
+    if (dot) {
+        c->schema_name = plugin_string(&p->host, o->table.data, (uint32_t)(dot - o->table.data));
+        c->table_name =
+            plugin_string(&p->host, dot + 1, o->table.length - (uint32_t)(dot - o->table.data) - 1);
+    } else {
+        ud_value owner = {0};
+        status = scalar(p, "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') AS \"value\" FROM dual",
+                        UD_UTF8, &owner);
+        if (!status && (owner.is_null || !owner.text_length))
+            status = UD_SCHEMA;
+        if (!status)
+            c->schema_name = plugin_string(&p->host, owner.text, owner.text_length);
+        p->host.deallocate((void *)owner.text);
+        c->table_name = plugin_string(&p->host, o->table.data, o->table.length);
+    }
     char *owner = c->schema_name
                       ? plugin_identifier(
                             &p->host, (ud_string){c->schema_name, (uint32_t)strlen(c->schema_name)})
@@ -541,7 +574,8 @@ ud_status ud_oracle_cdc_open(void *state, const ud_cdc_options *o) {
     p->host.deallocate(table);
     ud_field *fields = NULL;
     uint32_t columns = p->host.columns(o->schema);
-    ud_status status = c->table ? plugin_fields(&p->host, o->schema, &fields) : UD_RESOURCE;
+    if (!status)
+        status = c->table ? plugin_fields(&p->host, o->schema, &fields) : UD_RESOURCE;
     if (!status)
         status = p->host.batch_create(p->host.context, fields, columns, 0, &c->schema);
     ud_field *log = p->host.allocate(p->host.context, (6 + columns * 2) * sizeof(*log));
@@ -586,12 +620,23 @@ ud_status ud_oracle_cdc_open(void *state, const ud_cdc_options *o) {
     if (!status)
         status = unsigned_value(p, "SELECT resetlogs_change# AS \"value\" FROM v$database",
                                 &c->incarnation);
+    if (!status) {
+        ud_value container = {0};
+        status = scalar(p, "SELECT CASE WHEN cdb='YES' THEN SYS_CONTEXT('USERENV','CON_NAME') "
+                           "END AS \"value\" FROM v$database", UD_UTF8, &container);
+        if (!status && !container.is_null) {
+            c->container = plugin_string(&p->host, container.text, container.text_length);
+            if (!c->container)
+                status = UD_RESOURCE;
+        }
+        p->host.deallocate((void *)container.text);
+    }
     if (!status)
         status = preflight(c);
     if (!status && o->mode == UD_CDC_SNAPSHOT_STREAM) {
         status = unsigned_value(p,
-                                "SELECT NVL(MIN(start_scn),(SELECT current_scn FROM v$database)) "
-                                "AS \"value\" FROM v$transaction",
+                                "SELECT COALESCE((SELECT MIN(start_scn) FROM v$transaction),current_scn) "
+                                "AS \"value\" FROM v$database",
                                 &c->floor);
         if (!status)
             status =
@@ -732,7 +777,6 @@ ud_status ud_oracle_cdc_next(void *state, ud_cdc_event *out) {
         c->in_transaction = 1;
         c->transaction_scn = (uint64_t)scn.integer;
         p->host.deallocate(c->transaction);
-        p->host.deallocate(c->temporal);
         c->transaction = plugin_string(&p->host, xid.text, 16);
         out->kind = UD_CDC_BEGIN;
         out->transaction_id = (ud_string){plugin_string(&p->host, xid.text, 16), 16};
@@ -809,6 +853,7 @@ ud_status ud_oracle_cdc_close(void *state) {
     p->host.deallocate(c->table);
     p->host.deallocate(c->transaction);
     p->host.deallocate(c->temporal);
+    p->host.deallocate(c->container);
     p->host.deallocate(c);
     return status;
 }

@@ -815,7 +815,7 @@ ud_status ud_pg_cdc_open(const ud_host_api *h, const char *config, const ud_cdc_
                       o->field_namespace.data ? o->field_namespace.length : 13);
     if (!p->field_namespace)
         s = UD_RESOURCE;
-    if (!p->slot || !p->publication || !p->table)
+    if (!s && (!p->slot || !p->publication || !p->table))
         s = UD_RESOURCE;
     ud_field *f = NULL;
     if (!s)
