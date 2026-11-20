@@ -272,7 +272,7 @@ int main(int argc, char **argv) {
         : dialect == UD_SQL_ORACLE
             ? "CREATE TABLE \"ud_advanced_rows\"(\"id\" NUMBER(19,0) NOT NULL PRIMARY KEY,\"name\" "
               "NVARCHAR2(128),\"amount\" NUMBER(30,6),\"payload\" BLOB,\"stamp\" TIMESTAMP(6) WITH "
-              "TIME ZONE,\"flag\" NUMBER(1,0) NOT NULL)"
+              "TIME ZONE,\"flag\" NUMBER(1,0) NOT NULL) SEGMENT CREATION IMMEDIATE"
             : "CREATE TABLE ud_advanced_rows(id BIGINT NOT NULL PRIMARY KEY,name TEXT,amount "
               "NUMERIC(30,6),payload BYTEA,stamp TIMESTAMPTZ,flag BOOLEAN NOT NULL)";
     if (!resume) {

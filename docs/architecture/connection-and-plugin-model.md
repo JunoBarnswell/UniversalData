@@ -21,6 +21,8 @@ Registry 持有组件描述和回调，Execution 租用其快照；有活动实�
 
 独立行命令使用 Serializable 事务。已有事务使用 Savepoint；物理连接锁覆盖建立 Savepoint、执行及释放/回滚的完整过程。驱动的 `savepoint` 原语执行 Native 编译的控制语句；普通用户 SQL 不能借此执行事务控制。驱动必须声明 `TRANSACTIONAL_DML` 并提供该原语，才能接受行命令。
 
+Oracle 的 Serializable 事务无法向延迟分配且尚未分配段的表首次插入。新建行命令目标表时，使用 `SEGMENT CREATION IMMEDIATE` 预先分配段。
+
 只有已知 Rejected 且属于可恢复记录错误的结果可以 redirect/ignore。连接中断、超时、取消、未知提交与 Journal 故障仍导致真实执行失败。`fail` 停止处理；独立行事务中之前已提交的行保留。需要整体事务的 Package 必须显式使用具备真实参与能力的事务资源。
 
 SQL 仅接受一个 DML 语句；事务控制、DDL、过程批次、可执行注释及无法确定转义方式的文本在副作用前拒绝。一般 SQL Task 继续承担管理语句与其他明确声明的外部效果。MySQL 无参数语句使用文本协议；类型化参数使用 prepared 协议，支持其不能 prepare 的 DDL，同时不对数据参数做字符串拼接。
