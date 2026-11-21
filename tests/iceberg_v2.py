@@ -28,6 +28,7 @@ import uuid
 import xml.etree.ElementTree as ET
 
 from product_version import PROTOCOL_VERSION
+from journal_frames import committed_records
 
 
 FIELD_IDS = {
@@ -632,7 +633,7 @@ def s3_case_resource(resource, namespace):
             "UD_TEST_ICEBERG_S3_RESOURCE must be an absolute HTTPS path-style URL"
         )
     path = parsed.path.strip("/")
-    if "/" not in path:
+    if not path:
         raise AssertionError(
             "UD_TEST_ICEBERG_S3_RESOURCE must contain bucket and optional prefix"
         )
@@ -702,10 +703,10 @@ def s3_smoke(args, root, files, source_db, namespace, storage):
         s3_crash_boundary(args, root, namespace, storage, ca, recovery_credentials, phase, event, count)
 
 
-def active_multipart_uploads(args, root, storage, table_location):
+def s3_list(args, root, storage, table_location, query_parameters, result_tag):
     endpoint = urllib.parse.urlsplit(storage)
     table = urllib.parse.urlsplit(table_location)
-    query = "uploads=&" + urllib.parse.urlencode({"prefix": table.path.lstrip("/") + "/"})
+    query = urllib.parse.urlencode({"prefix": table.path.lstrip("/") + "/", **query_parameters})
     url = urllib.parse.urlunsplit((endpoint.scheme, endpoint.netloc, "/" + table.netloc, query, ""))
     curl_config = root / "multipart-inspection.curl"
     curl_config.touch(mode=0o600)
@@ -716,7 +717,7 @@ def active_multipart_uploads(args, root, storage, table_location):
     if args.s3_ca:
         cmd += ["--cacert", str(args.s3_ca)]
     result = subprocess.run([*cmd, url], capture_output=True, check=True, timeout=35)
-    return ET.fromstring(result.stdout).findall("{*}Upload")
+    return ET.fromstring(result.stdout).findall("{*}" + result_tag)
 
 
 def s3_crash_boundary(args, root, namespace, storage, ca, credentials, phase, event, count):
@@ -724,9 +725,10 @@ def s3_crash_boundary(args, root, namespace, storage, ca, credentials, phase, ev
     case.mkdir()
     source = case / "source.db"
     if phase == "multipart":
-        random_bytes = random.Random(11)
-        rows = [(index, base64.b64encode(random_bytes.randbytes(96 * 1024)).decode("ascii"), 70)
-                for index in range(128)]
+        # Keep the Native Journal blob below 16 MiB while forcing a Parquet
+        # object with over 8 MiB of data after compression.
+        data = random.Random(11).randbytes(11 * 1024 * 1024)
+        rows = [(7, base64.b64encode(data).decode("ascii"), 70)]
     else:
         rows = [(7, "recovered", 70)]
     create_source(source, rows)
@@ -744,8 +746,20 @@ def s3_crash_boundary(args, root, namespace, storage, ca, credentials, phase, ev
     before = catalog_state(args.catalog, namespace, table, storage, args.catalog_user, args.catalog_password)
     assert len(before["snapshotIds"]) == int(phase == "before_receipt"), (phase, before)
     location = before["metadata"]["location"]
+    objects = s3_list(args, root, storage, location, {"list-type": "2"}, "Contents")
+    data_files = [item.findtext("{*}Key") for item in objects
+                  if item.findtext("{*}Key", "").endswith(".parquet")]
     if phase == "multipart":
-        assert len(active_multipart_uploads(args, root, storage, location)) == 1, location
+        pending = [(key.decode(), record["uploadId"]) for _, key, record in committed_records(state)
+                   if isinstance(record, dict) and record.get("state") == "pending" and record.get("uploadId")]
+        assert len(pending) == 1 and pending[0][0].startswith(location + "/"), location
+        object_location, upload_id = pending[0]
+        # MinIO lists multipart uploads by the complete object key.
+        query = {"uploads": "", "prefix": urllib.parse.urlsplit(object_location).path.lstrip("/")}
+        uploads = s3_list(args, root, storage, location, query, "Upload")
+        assert [entry.findtext("{*}UploadId") for entry in uploads] == [upload_id] and not data_files, location
+    else:
+        assert len(data_files) == 1, (phase, data_files)
     facts = run_observer(args, package, state, resume=True, memory_limit=memory_limit)
     assert facts["committed"] == facts["acknowledged"] == len(rows), (phase, facts)
     after = catalog_state(args.catalog, namespace, table, storage, args.catalog_user, args.catalog_password)
@@ -755,7 +769,7 @@ def s3_crash_boundary(args, root, namespace, storage, ca, credentials, phase, ev
     summary = after["metadata"]["snapshots"][0]["summary"]
     assert len(summary["universaldata.commit.id"]) == len(summary["universaldata.commit.digest"]) == 64, summary
     if phase == "multipart":
-        assert not active_multipart_uploads(args, root, storage, location), location
+        assert not s3_list(args, root, storage, location, query, "Upload"), location
     name = ".".join(quote_identifier(part) for part in (args.trino_catalog, namespace, table))
     observed = trino_query(args.trino, f'SELECT id, lower(to_hex(sha256(to_utf8("value")))), amount FROM {name} ORDER BY id',
                            args.trino_catalog, namespace, args.trino_user, args.trino_password)

@@ -71,6 +71,7 @@ ud_status ud_open_regular(ud_context *, const char *, FILE **);
 ud_status ud_remove_file(ud_context *, const char *);
 ud_status ud_flush(ud_context *, FILE *);
 ud_status ud_sync_parent(ud_context *, const char *);
+void ud_hash(const void *, size_t, uint8_t[32]);
 FILE *ud_fopen(const char *, const char *);
 int ud_seek(FILE *, uint64_t);
 int64_t ud_tell(FILE *);
@@ -281,16 +282,21 @@ static bool path_has_prefix(std::string_view path, std::string_view root) {
     return path[root.size()] == '/';
 }
 
-static std::string clean_idempotency_key(std::string_view prefix, std::string_view value) {
-    std::string key(prefix);
-    key.push_back('-');
-    key.reserve(key.size() + value.size());
-    for (unsigned char c : value) {
-        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-            (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == ':')
-            key.push_back(static_cast<char>(c));
-        else
-            key.push_back('_');
+static std::string catalog_idempotency_key(std::string_view url, std::string_view token,
+                                           std::string_view body) {
+    uint8_t hash[32];
+    ud_hash(body.data(), body.size(), hash);
+    std::string input(url);
+    input.push_back('\n');
+    input.append(token);
+    input.append(reinterpret_cast<const char*>(hash), sizeof(hash));
+    ud_hash(input.data(), input.size(), hash);
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string key = "ud-";
+    key.reserve(3 + sizeof(hash) * 2);
+    for (uint8_t byte : hash) {
+        key.push_back(digits[byte >> 4]);
+        key.push_back(digits[byte & 15]);
     }
     return key;
 }
@@ -573,10 +579,9 @@ class NativeCatalog final : public iceberg::Catalog,
         if (options_.check && options_.check(options_.user) != UD_OK)
             return iceberg::IOError("Iceberg operation cancelled");
         std::string idempotency;
-        {
+        if (method == "POST") {
             std::lock_guard<std::mutex> lock(mutex_);
-            idempotency = commit_token_.empty() ? clean_idempotency_key("ud-catalog", url)
-                                                : clean_idempotency_key("ud-commit", commit_token_);
+            idempotency = catalog_idempotency_key(url, commit_token_, body);
         }
         ud_http_options request{sizeof(request), UD_ABI_VERSION,
                                 {method.data(), static_cast<uint32_t>(method.size())},

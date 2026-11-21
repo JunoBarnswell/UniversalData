@@ -1,6 +1,5 @@
 """Real PostgreSQL CDC epoch recovery and keyed SQL scan proof."""
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,6 +10,7 @@ import tempfile
 import time
 import uuid
 
+from journal_frames import committed_records
 
 FIXTURE_ID = uuid.uuid4().hex[:12]
 SOURCE = f"ud_etl_cdc_source_{FIXTURE_ID}"
@@ -113,33 +113,6 @@ def discover(args, document, table):
     )
     assert result.returncode == 0, (result.returncode, result.stderr)
     return json.loads(discovered.read_text(encoding="utf-8"))["fields"]
-
-
-def committed_records(state):
-    """Read intact append-only journal frames, using the native length framing."""
-    for path in sorted(state.rglob("segment-*.udg")):
-        data = path.read_bytes()
-        offset = 0
-        while offset < len(data):
-            length, = struct.unpack_from("<Q", data, offset)
-            frame = data[offset + 8:offset + 8 + length]
-            assert len(frame) == length and frame[-8:] == b"UCMTEND5", path.name
-            assert hashlib.sha256(frame[:-40]).digest() == frame[-40:-8], path.name
-            count, = struct.unpack_from("<Q", frame, 48)
-            at = 56
-            for _ in range(count):
-                kind, = struct.unpack_from("<Q", frame, at)
-                at += 8
-                items = []
-                for _ in range(3):
-                    size, = struct.unpack_from("<Q", frame, at)
-                    at += 8
-                    items.append(frame[at:at + size])
-                    at += size
-                if items[2]:
-                    yield kind, json.loads(items[2])
-            assert at == len(frame) - 40
-            offset += length + 8
 
 
 def wal_commits(args):
@@ -271,7 +244,7 @@ def cdc(args, root):
         package["dataFlows"][0]["components"][0]["config"]["schema"]["fields"] = fields
         document.write_text(json.dumps(package), encoding="utf-8")
         native(args, document, state, crash=True)
-        intents = [payload for kind, payload in committed_records(state)
+        intents = [payload for kind, _, payload in committed_records(state)
                    if kind == 11 and "cuts" in payload]
         assert len(intents) == 1 and intents[0]["epoch"] == 1, intents
         cuts = intents[0]["cuts"]
@@ -297,7 +270,7 @@ def cdc(args, root):
         resumed = native(args, document, state, resume=True)
         flow = next(flow for flow in resumed["diagnostics"]["pipelines"] if flow["id"] == "etl")
         assert flow["confirmedEpoch"] == 1, flow
-        completed = [payload for kind, payload in committed_records(state) if kind == 14]
+        completed = [payload for kind, _, payload in committed_records(state) if kind == 14]
         assert [payload["epoch"] for payload in completed] == [1], completed
         assert json.loads(completed[0]["sources"][0]["position"]) == final_position, completed
         receipts = rows(args, receipt_sql)
