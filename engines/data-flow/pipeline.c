@@ -4,7 +4,8 @@
 #include "ud/partition.h"
 #include "../../components/execution/state.h"
 #include "../package/kafka_checkpoint.h"
-static ud_status node_failed(node *n, ud_status result, const char *stage) {
+#include "../package/incremental.h"
+ud_status ud_pipeline_node_failed(node *n, ud_status result, const char *stage) {
     ud_execution_capture_error(n->activation.execution, result);
     atomic_store(&n->result, result);
     atomic_store(&n->state, UD_EXEC_FAILED);
@@ -771,188 +772,6 @@ static ud_status route(void *user, uint32_t port, ud_batch *batch) {
     ud_batch_destroy(identified);
     return status;
 }
-static ud_status validate_live_sql_effects(physical_plan *p) {
-    int live_sql = 0;
-    for (uint32_t index = 0; index < p->count; index++) {
-        const node *n = p->nodes + index;
-        ud_string mode = {0};
-        if (ud_named(n->descriptor.id, "sql.source") &&
-            !ud_json_string(ud_member(n->configuration, "readMode"), &mode) &&
-            ud_named(mode, "stream"))
-            live_sql = 1;
-    }
-    if (!live_sql)
-        return UD_OK;
-    for (uint32_t index = 0; index < p->count; index++) {
-        node *n = p->nodes + index;
-        int category = n->descriptor.category;
-        uint32_t effects = n->descriptor.effects;
-        /* A synchronous transform can inherit its input plan, including the
-         * source's read effect. Only the transform's own effects apply here. */
-        if (n->descriptor.describe_plan)
-            effects |= n->binding.effects;
-        int memory_output = ud_named(n->descriptor.id, "result.destination") ||
-                            ud_named(n->descriptor.id, "discard");
-        if ((category == UD_COMPONENT_SOURCE && !ud_named(n->descriptor.id, "sql.source")) ||
-            (category == UD_COMPONENT_DESTINATION && !memory_output &&
-             !ud_named(n->descriptor.id, "sql.destination")))
-            return node_failed(n, UD_UNSUPPORTED, "streaming SQL requires SQL or in-memory output");
-        if (category == UD_COMPONENT_DESTINATION && (effects & UD_EFFECT_RECEIPTED))
-            return node_failed(n, UD_UNSUPPORTED, "a live SQL source cannot request recovery receipts");
-        /* SQL Command owns its per-record database transaction and can deliver
-         * its result without a Journal. The transform restriction applies to
-         * other components that could retain state or write outside this path. */
-        if (category == UD_COMPONENT_TRANSFORM && !ud_named(n->descriptor.id, "sql.command") &&
-            ((n->descriptor.capabilities &
-              (UD_COMPONENT_STATEFUL | UD_COMPONENT_BLOCKING | UD_COMPONENT_PARTIALLY_BLOCKING)) ||
-             (effects &
-              (UD_EFFECT_EXTERNAL_READ | UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_TRANSACTIONAL |
-               UD_EFFECT_RECEIPTED | UD_EFFECT_SOURCE_ACK))))
-            return node_failed(n, UD_UNSUPPORTED,
-                               "streaming SQL requires stateless transforms without external effects");
-    }
-    return UD_OK;
-}
-
-static ud_status validate_effects(physical_plan *p) {
-    UD_TRY(validate_live_sql_effects(p));
-    uint8_t *reachable = ud_alloc(p->execution->execution->ctx, p->count);
-    if (!reachable)
-        return UD_RESOURCE;
-    ud_status status = UD_OK;
-    int epochs = 0, other_confirming_sources = 0;
-    for (uint32_t index = 0; index < p->count; index++) {
-        const node *n = p->nodes + index;
-        if (n->descriptor.category == UD_COMPONENT_SOURCE && n->descriptor.confirm_epoch) {
-            epochs = 1;
-            other_confirming_sources |= (n->binding.effects & UD_EFFECT_SOURCE_ACK) == 0;
-        }
-    }
-    p->allow_replayable_publish = !other_confirming_sources;
-    for (uint32_t index = 0; !status && index < p->count; index++) {
-        node *n = p->nodes + index;
-        int publish = p->allow_replayable_publish && (n->binding.effects & UD_EFFECT_REPLAYABLE_PUBLISH);
-        if ((p->execution->execution->options.state_directory.length &&
-             !(n->descriptor.capabilities & UD_COMPONENT_REPLAY_SAFE) && !publish) ||
-            (epochs && !ud_pipeline_epoch_target_supported(p, n))) {
-            status = UD_UNSUPPORTED;
-            break;
-        }
-        if (n->descriptor.category == UD_COMPONENT_SOURCE && n->descriptor.confirm_epoch &&
-            p->execution->transaction_serial && !p->execution->transaction_epoch) {
-            status = UD_UNSUPPORTED;
-            break;
-        }
-        int cache_build = ud_named(n->descriptor.id, "cacheBuild");
-        uint64_t overlap = 0;
-        const ud_json *incremental = ud_member(n->configuration, "incremental");
-        if (ud_member(incremental, "overlap"))
-            status = ud_json_uint(ud_member(incremental, "overlap"), &overlap);
-        int redirect = 0;
-        int policy = UD_ERROR_FAIL;
-        if (!status)
-            status = ud_error_policy(n->configuration, "errorPolicy", UD_ERROR_FAIL, &policy);
-        redirect = policy == UD_ERROR_REDIRECT;
-        const ud_json *rules = ud_member(n->configuration, "rules");
-        for (uint32_t r = 0; !status && r < ud_json_size(rules); r++) {
-            int effective = policy;
-            status = ud_error_policy(ud_json_at(rules, r), "policy", policy, &effective);
-            redirect |= effective == UD_ERROR_REDIRECT;
-        }
-        ud_string reference = {0};
-        if (!status && cache_build) {
-            ud_string id;
-            status = ud_json_string(ud_member(n->configuration, "cache"), &id);
-            ud_batch *schema = NULL;
-            int cache_policy = 0;
-            if (!status)
-                status = ud_asset_schema(n->activation.parent, id, &schema, NULL, &cache_policy);
-            ud_batch_destroy(schema);
-            redirect |= cache_policy == UD_ERROR_REDIRECT;
-            if (!status)
-                status = ud_asset_source(n->activation.parent, id, &reference);
-        }
-        if (!status && redirect) {
-            int connected = 0;
-            for (uint32_t i = 0; i < n->output_edges; i++)
-                if ((int32_t)p->edges[n->outputs[i]].output == n->descriptor.error_output)
-                    connected = 1;
-            if (!connected && !p->execution->execution->preview_pipeline)
-                status = UD_SCHEMA;
-        }
-        if (status || (!cache_build && !overlap))
-            continue;
-        memset(reachable, 0, p->count);
-        reachable[index] = 1;
-        for (uint32_t round = 0; round < p->count; round++) {
-            int changed = 0;
-            for (uint32_t i = 0; i < p->paths; i++) {
-                edge *v = p->edges + i;
-                uint32_t from = cache_build ? v->to : v->from, to = cache_build ? v->from : v->to;
-                if (reachable[from] && !reachable[to]) {
-                    reachable[to] = 1;
-                    changed = 1;
-                }
-            }
-            if (!changed)
-                break;
-        }
-        for (uint32_t i = 0; !status && i < p->count; i++)
-            if (reachable[i] && i != index) {
-                node *other = p->nodes + i;
-                if (cache_build && other->descriptor.category == UD_COMPONENT_SOURCE) {
-                    ud_string id = {0};
-                    status = ud_json_string(ud_member(other->configuration, "connection"), &id);
-                    if (!status && !ud_same(reference, id))
-                        status = UD_SCHEMA;
-                }
-                if (overlap && other->descriptor.category == UD_COMPONENT_DESTINATION) {
-                    const ud_json *keys = ud_member(other->configuration, "keys");
-                    if (!(other->binding.effects & UD_EFFECT_KEYED_REPLACE) ||
-                        ud_json_kind(keys) != UD_JSON_ARRAY || !ud_json_size(keys))
-                        status = UD_UNSUPPORTED;
-                    /* Every cursor key must survive in a declared upsert key's lineage. */
-                    const ud_json *source_keys = ud_member(incremental, "keys");
-                    node *producer = other->inputs[0] == UINT32_MAX
-                                         ? NULL
-                                         : p->nodes + p->edges[other->inputs[0]].from;
-                    const ud_batch *sink_schema =
-                        producer ? producer->schemas[p->edges[other->inputs[0]].output] : NULL;
-                    for (uint32_t k = 0; !status && k < ud_json_size(source_keys); k++) {
-                        ud_string name;
-                        status = ud_json_string(ud_json_at(source_keys, k), &name);
-                        ud_id id = {0};
-                        int found = 0;
-                        for (uint32_t c = 0; !status && c < n->schemas[0]->columns; c++) {
-                            const ud_field *f = &n->schemas[0]->column[c].field;
-                            char text[33];
-                            ud_id_format(f->identity, text);
-                            if ((name.length == f->name_length &&
-                                 !memcmp(name.data, f->name, name.length)) ||
-                                (name.length == 32 && !memcmp(name.data, text, 32)))
-                                id = f->identity;
-                        }
-                        for (uint32_t key = 0; !status && key < ud_json_size(keys); key++) {
-                            uint64_t c;
-                            status = ud_json_uint(ud_json_at(keys, key), &c);
-                            if (!status && (!sink_schema || c >= sink_schema->columns))
-                                status = UD_SCHEMA;
-                            if (!status) {
-                                const ud_field *f = &sink_schema->column[c].field;
-                                found |= !ud_id_compare(f->identity, id);
-                                for (uint32_t origin = 0; origin < f->lineage_count; origin++)
-                                    found |= !ud_id_compare(f->lineage[origin], id);
-                            }
-                        }
-                        if (!status && !found)
-                            status = UD_UNSUPPORTED;
-                    }
-                }
-            }
-    }
-    ud_free(reachable);
-    return status;
-}
 static ud_status configure_plan(physical_plan *p, const ud_json *definition, emit_target *targets) {
     ud_activation *e = p->execution;
     (void)definition;
@@ -1090,7 +909,7 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                     !(n->descriptor.capabilities & UD_COMPONENT_CONTINUOUS))))
             s = UD_SCHEMA;
         if (s)
-            return node_failed(n, s, "schema/plan binding");
+            return ud_pipeline_node_failed(n, s, "schema/plan binding");
         if (ud_member(n->configuration, "errorPolicy")) {
             ud_string policy;
             UD_TRY(ud_json_string(ud_member(n->configuration, "errorPolicy"), &policy));
@@ -1112,14 +931,14 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
             !(n->descriptor.capabilities & UD_COMPONENT_STREAM_SAFE) &&
             !(n->descriptor.category == UD_COMPONENT_DESTINATION &&
               (n->binding.effects & (UD_EFFECT_RECEIPTED | UD_EFFECT_IDEMPOTENT))))
-            return node_failed(n, UD_UNSUPPORTED,
+            return ud_pipeline_node_failed(n, UD_UNSUPPORTED,
                                "unbounded input requires window/TTL or bounded reference state");
         if (ud_member(n->configuration, "latePolicy")) {
             ud_string policy;
             UD_TRY(ud_json_string(ud_member(n->configuration, "latePolicy"), &policy));
             if (ud_named(policy, "redirect") && !(n->context.connected_outputs & UINT64_C(2)) &&
                 !e->execution->preview_pipeline)
-                return node_failed(n, UD_SCHEMA, "late redirect requires connected output 1");
+                return ud_pipeline_node_failed(n, UD_SCHEMA, "late redirect requires connected output 1");
         }
         if (e->execution->preview_pipeline) {
             uint32_t forbidden = UD_EFFECT_EXTERNAL_WRITE;
@@ -1130,6 +949,9 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
         }
         n->binding.state_version = n->descriptor.state_version;
         for (uint32_t j = 0; j < n->descriptor.outputs; j++) {
+            if (!n->schemas[j] || n->schemas[j]->ctx != e->execution->ctx || n->schemas[j]->rows)
+                return UD_SCHEMA;
+            UD_TRY(ud_batch_seal(n->schemas[j]));
             n->ports.outputs[j].schema = n->schemas[j];
             if ((int32_t)j != n->descriptor.error_output) {
                 n->ports.outputs[j].sort = n->binding.sort;
@@ -1139,13 +961,10 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                        sizeof(n->binding.partition_keys));
             }
         }
-        for (uint32_t j = 0; j < n->descriptor.outputs; j++)
-            if (!n->schemas[j] || n->schemas[j]->ctx != e->execution->ctx || n->schemas[j]->rows)
-                return UD_SCHEMA;
     }
     UD_TRY(ud_pipeline_kafka_bind(p, definition));
     UD_TRY(ud_pipeline_parallel_bind(p, definition));
-    return validate_effects(p);
+    return ud_pipeline_validate_contract(p);
 }
 ud_status ud_pipeline_bind_validate(ud_activation *e, const ud_json *definition) {
     physical_plan p = {0};
@@ -1297,7 +1116,7 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
             n->prepare_cpu_ns = ud_thread_cpu_ns() - cpu;
             ud_free(inputs);
             if (s)
-                return node_failed(n, s, "prepare");
+                return ud_pipeline_node_failed(n, s, "prepare");
             n->opened = 1;
             if (p->kafka && p->epoch_record && n->descriptor.category == UD_COMPONENT_SOURCE)
                 UD_TRY(ud_pipeline_kafka_verify(p, n));
@@ -1349,7 +1168,7 @@ static ud_status prepare(physical_plan *p, const ud_json *definition, emit_targe
                     if (!restored && n->merge_base_sealed && !n->context.recovery_terminal)
                         restored = ud_builtin_seek_output(n->instance, n->produced - n->merge_base_rows);
                     if (restored)
-                        return node_failed(n, restored, "restore");
+                        return ud_pipeline_node_failed(n, restored, "restore");
                 }
                 n->ended = 0;
                 for (uint32_t port = 0; port < n->descriptor.inputs; port++)
@@ -1665,9 +1484,9 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     }
     ud_task_cancel_register(&n->activation, n->instance, n->descriptor.cancel);
     ud_status s = ud_activation_check(&n->activation);
-    /* A requested stop drains acknowledged messages while keeping the last
-     * committed operator state open. Only reaching a Kafka cut ends input. */
-    int suspending = p->kafka && event.kind == UD_COMPONENT_INPUT_END &&
+    /* Draining a live input must leave event-time windows open in the last
+     * checkpoint. A bounded Kafka cut can still finish the stream. */
+    int suspending = (p->continuous_input || p->kafka) && event.kind == UD_COMPONENT_INPUT_END &&
         atomic_load(&e->execution->stop_requested) &&
         !ud_pipeline_kafka_exhausted(p);
     if (!s) {
@@ -1759,7 +1578,7 @@ static ud_status step(physical_plan *p, node *n, int *progress) {
     if (cleanup && !s)
         s = cleanup;
     if (s)
-        s = node_failed(n, s, "processing");
+        s = ud_pipeline_node_failed(n, s, "processing");
     else
         *progress = 1;
     return s;
@@ -1799,7 +1618,9 @@ static ud_status tree_quantum(void *user, uint32_t index) {
 }
 static ud_status execute_lane(ud_activation *activation, const ud_json *definition) {
     physical_plan plan_value = {0};
-    ud_status status = plan(activation, definition, &plan_value);
+    ud_status status = ud_data_flow_is_continuous(definition, &plan_value.continuous_input);
+    if (!status)
+        status = plan(activation, definition, &plan_value);
     emit_target *targets = NULL;
     if (!status) {
         targets = ud_alloc(activation->execution->ctx, plan_value.count * sizeof(*targets));
@@ -1850,7 +1671,7 @@ static ud_status execute_lane(ud_activation *activation, const ud_json *definiti
             component->finish_cpu_ns = ud_thread_cpu_ns() - cpu;
         }
         if (status)
-            status = node_failed(component, status, "finish");
+            status = ud_pipeline_node_failed(component, status, "finish");
     }
     if (!status && ud_pipeline_kafka_terminal_pending(&plan_value))
         status = ud_pipeline_commit_epoch(&plan_value, atomic_load(&plan_value.confirmed_epoch) + 1, 1);
@@ -1859,7 +1680,7 @@ static ud_status execute_lane(ud_activation *activation, const ud_json *definiti
         if (!activation->execution->preview_pipeline && component->descriptor.confirm)
             status = component->descriptor.confirm(component->instance);
         if (status)
-            status = node_failed(component, status, "confirmation");
+            status = ud_pipeline_node_failed(component, status, "confirmation");
     }
     if (targets && plan_value.nodes && plan_value.order) {
         int schemas = 1;
@@ -1895,7 +1716,14 @@ static ud_status execute_lane(ud_activation *activation, const ud_json *definiti
 }
 
 ud_status ud_pipeline_execute(ud_activation *activation, const ud_json *definition) {
-    if (!activation->execution->assignment_count && !ud_member(definition, "parallelism"))
-        return execute_lane(activation, definition);
-    return ud_pipeline_parallel_run(activation, definition, execute_lane);
+    int parallel = activation->execution->assignment_count || ud_member(definition, "parallelism");
+    ud_status status = parallel ? ud_pipeline_parallel_run(activation, definition, execute_lane)
+                                : execute_lane(activation, definition);
+    if (!status && ud_activation_stopping(activation)) {
+        int32_t continuous = 0;
+        status = ud_data_flow_is_continuous(definition, &continuous);
+        if (!status && (continuous || ud_incremental_task(activation)))
+            activation->task_facts |= UD_TASK_SUSPENDED;
+    }
+    return status;
 }

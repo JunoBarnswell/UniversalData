@@ -472,12 +472,13 @@ static ud_status change(ud_bytes *json, int *first, const char *kind, const ud_f
                         int expected, int actual) {
     char id[33], text[224];
     ud_id_format(field->identity, id);
-    int n =
-        snprintf(text, sizeof(text),
-                 "%s{\"kind\":\"%s\",\"columnId\":\"%s\",\"expectedIndex\":%d,\"actualIndex\":%d}",
-                 *first ? "" : ",", kind, id, expected, actual);
+    int n = snprintf(text, sizeof(text),
+                     "%s{\"kind\":\"%s\",\"columnId\":\"%s\",\"expectedIndex\":%d,\"actualIndex\":%d,\"column\":",
+                     *first ? "" : ",", kind, id, expected, actual);
     *first = 0;
-    return ud_bytes_put(json, text, (size_t)n);
+    UD_TRY(ud_bytes_put(json, text, (size_t)n));
+    UD_TRY(ud_json_quote(json, field->name, field->name_length));
+    return ud_bytes_put(json, "}", 1);
 }
 static ud_status nested_changes(ud_bytes *out, int *first, const ud_field *expected,
                                 const ud_field *actual, uint32_t depth) {

@@ -1271,6 +1271,81 @@ ud_status ud_sql_compile_scan(ud_context *ctx, int32_t dialect, ud_string table_
     return status;
 }
 
+ud_status ud_sql_compile_incremental_scan(ud_context *ctx, int32_t dialect, int32_t style,
+                                          const ud_batch *schema, const uint32_t *keys, uint32_t key_count,
+                                          const ud_batch *after, ud_string *sql,
+                                          ud_batch **parameters) {
+    ud_sql_statement statement = {0};
+    writer w = {.ctx = ctx, .text = {.ctx = ctx}, .batch = schema, .parameter_batch = after,
+                .statement = &statement, .dialect = dialect, .style = style};
+    ud_status status = ud_bytes_put(&w.text, sql->data, sql->length);
+    if (!status && after)
+        status = put(&w, " WHERE ");
+    for (uint32_t i = 0; !status && after && i < key_count; i++) {
+        status = column(&w, keys[i], NULL);
+        if (!status)
+            status = put(&w, ">");
+        if (!status)
+            status = parameter(&w, 0, i, UD_SQL_AFTER);
+        if (!status && i + 1 < key_count) {
+            status = put(&w, " OR (");
+            if (!status)
+                status = column(&w, keys[i], NULL);
+            if (!status)
+                status = put(&w, "=");
+            if (!status)
+                status = parameter(&w, 0, i, UD_SQL_AFTER);
+            if (!status)
+                status = put(&w, " AND (");
+        }
+    }
+    for (uint32_t i = 1; !status && after && i < key_count; i++)
+        status = put(&w, "))");
+    if (!status)
+        status = put(&w, " ORDER BY ");
+    for (uint32_t i = 0; !status && i < key_count; i++) {
+        if (i)
+            status = put(&w, ",");
+        if (!status)
+            status = column(&w, keys[i], NULL);
+    }
+    uint32_t count = statement.parameter_count;
+    ud_field *fields = !status && count ? ud_alloc(ctx, count * sizeof(*fields)) : NULL;
+    ud_value *values = !status && count ? ud_alloc(ctx, count * sizeof(*values)) : NULL;
+    char (*names)[24] = !status && count ? ud_alloc(ctx, count * sizeof(*names)) : NULL;
+    if (!status && count && (!fields || !values || !names))
+        status = UD_RESOURCE;
+    for (uint32_t j = 0; !status && j < count; j++) {
+        uint32_t key = statement.parameters[j].column;
+        const ud_field *original = after->schema->fields + key;
+        int length = snprintf(names[j], sizeof(*names), "key%u", j + 1);
+        fields[j] = (ud_field){.name = names[j], .name_length = (uint32_t)length,
+                              .type = original->type, .precision = original->precision,
+                              .scale = original->scale, .timezone = original->timezone,
+                              .timezone_length = original->timezone_length};
+        status = ud_batch_get(after, 0, key, values + j);
+    }
+    if (!status && count)
+        status = ud_batch_create(ctx, fields, count, 1, parameters);
+    if (!status && count)
+        status = ud_batch_append(*parameters, values, count);
+    if (!status && count)
+        status = ud_batch_seal(*parameters);
+    if (!status)
+        status = ud_bytes_put(&w.text, "", 1);
+    if (!status) {
+        ud_free((void *)sql->data);
+        *sql = (ud_string){(const char *)w.text.data, (uint32_t)w.text.size - 1};
+        w.text.data = NULL;
+    }
+    ud_free(fields);
+    ud_free(values);
+    ud_free(names);
+    ud_sql_statement_clear(&statement);
+    ud_bytes_clear(&w.text);
+    return status;
+}
+
 /* Transport grammar is compiled by the same Native SQL owner as parameterized writes. */
 ud_status ud_sql_compile_bulk(ud_context *ctx, int32_t dialect, const ud_write_options *options,
                               const ud_batch *batch, ud_string *out) {

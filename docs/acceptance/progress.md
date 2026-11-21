@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 10.0.0 / ABI 15；SDK 10 candidate for Native SQL connection ownership, shared Worker sessions, typed CDC and durable ETL submission. ABI and Package protocol remain 15。
+SDK 11.0.0 / ABI 15；SDK 11 candidate for unified DataJob, catalog-settled incremental batches, continuous CDC and native Iceberg S3 storage。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 

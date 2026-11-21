@@ -527,6 +527,13 @@ footer,
   padding-bottom: 8px;
   border-bottom: 1px solid var(--panel);
 }
+.node-contract {
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1.4;
+  padding: 4px 0 7px;
+  border-bottom: 1px solid var(--panel);
+}
 .node-port {
   position: relative;
   min-height: 26px;
@@ -555,6 +562,19 @@ footer,
 }
 .node-port.error-output {
   color: var(--danger);
+}
+.node-port.change-retract {
+  color: var(--danger);
+}
+.node-port.change-upsert {
+  color: var(--accent);
+}
+.change-mode {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 8px;
+  color: inherit;
+  text-transform: uppercase;
 }
 .react-flow__handle {
   width: 9px;
@@ -1008,6 +1028,92 @@ footer,
   padding-top: 14px;
   border-top: 1px solid var(--line);
   margin-top: 3px;
+}
+.job-template-dialog {
+  width: min(1080px, 96vw);
+}
+.template-kind-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.template-kind-grid button {
+  justify-content: flex-start;
+  min-height: 42px;
+  text-align: left;
+}
+.template-kind-grid button.selected {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--accent);
+}
+.template-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+.template-connections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.template-connection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px;
+}
+.template-connection legend {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 4px;
+}
+.template-connection label:last-child {
+  grid-column: 1 / -1;
+}
+.job-template-dialog .property-group {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.job-template-dialog .property-group label {
+  margin: 0;
+}
+.job-template-dialog .checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+.job-template-dialog footer .muted {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: auto;
+  font-size: 10px;
+}
+.native-contract {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px;
+  margin: 14px 0;
+  background: var(--panel);
+}
+.native-contract h3 {
+  margin: 0 0 8px;
+}
+.native-contract p {
+  margin: 4px 0;
+  font-size: 11px;
+}
+.native-contract ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.native-diagnostics summary {
+  color: var(--accent);
 }
 .dialog-heading {
   display: flex;
@@ -1753,6 +1859,11 @@ tr.selected {
   }
   .connection-layout {
     grid-template-columns: 200px minmax(0, 1fr);
+  }
+  .template-kind-grid,
+  .template-connections,
+  .template-form-grid {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 640px) {

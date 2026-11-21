@@ -25,26 +25,32 @@ public sealed class DataJobTable<TInput, TRow>
     public DataJob<TInput> Append() => Write("append", []);
 
     public DataJob<TInput> UpsertBy(Expression<Func<TRow, object?>> key,
+        params Expression<Func<TRow, object?>>[] additional) =>
+        Write("upsert", input.KeyOrdinals(step ?? "upsert", key, additional));
+
+    /// <summary>Write Native CDC operations and before images as a changeset.</summary>
+    public DataJob<TInput> ApplyChangesBy(Expression<Func<TRow, object?>> key,
+        params Expression<Func<TRow, object?>>[] additional) =>
+        ApplyChangesBy(key, "before", additional);
+
+    public DataJob<TInput> ApplyChangesBy(Expression<Func<TRow, object?>> key, string beforeField,
         params Expression<Func<TRow, object?>>[] additional)
     {
-        var selectors = additional.Prepend(key);
-        var keys = selectors.Select(selector => new NativeRuleExpression(input.Job.Id,
-            step ?? "upsert", selector).Key()).ToArray();
-        if (keys.Distinct(StringComparer.Ordinal).Count() != keys.Length)
-            throw new ArgumentException("Upsert keys must be distinct.", nameof(additional));
-        var fields = EntityMapping.For<TRow>().Members;
-        return Write("upsert", keys.Select(name => Enumerable.Range(0, fields.Count)
-            .Single(index => fields[index].ColumnName == name)).ToArray());
+        ArgumentException.ThrowIfNullOrWhiteSpace(beforeField);
+        return Write("changeset", input.KeyOrdinals(step ?? "changeset", key, additional), beforeField);
     }
 
-    private DataJob<TInput> Write(string mode, int[] keys)
+    private DataJob<TInput> Write(string mode, int[] keys, string? beforeField = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(table);
         var graph = input.Job.Graph;
         graph.Use(target, DataJobSourceRole.Database);
         string name = graph.Step(step, mode);
         graph.Plan.SqlDestination(name, target, table, mode, null,
-            keys.Length == 0 ? null : keys, durable ? "receipt" : "response", durable && provisionReceipts, input.Flow)
+            keys.Length == 0 ? null : keys, durable ? "receipt" : "response", durable && provisionReceipts, input.Flow);
+        if (beforeField is not null)
+            graph.ComponentConfig(input.Flow, name, "beforeField", beforeField);
+        graph.Plan
             .Connect(input.Flow, input.Step, name, input.Port);
         return input.Job;
     }

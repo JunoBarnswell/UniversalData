@@ -1,0 +1,71 @@
+{
+  "version": 15,
+  "id": "v11-orders-payments-shops-iceberg",
+  "connections": [
+    { "id": "orders", "driver": "postgresql", "resource": "", "credentialReference": "" },
+    { "id": "payments", "driver": "kafka", "resource": "", "credentialReference": "" },
+    { "id": "shops", "driver": "mysql", "resource": "", "credentialReference": "" },
+    { "id": "target", "driver": "sqlite", "resource": "", "credentialReference": "" },
+    { "id": "catalog", "driver": "http", "resource": "https://catalog.example/v1", "credentialReference": "host-catalog" },
+    { "id": "warehouse", "driver": "s3", "resource": "https://s3.example/bucket/prefix", "credentialReference": "host-aws-sigv4" }
+  ],
+  "caches": [{
+    "id": "shops",
+    "sourceConnection": "shops",
+    "schema": { "version": 15, "fields": [
+      { "name": "shop_id", "type": "int64", "nullable": false },
+      { "name": "shop_name", "type": "utf8", "nullable": false }
+    ]},
+    "keys": [0],
+    "scope": "execution"
+  }],
+  "controlFlow": {
+    "tasks": [
+      { "id": "buildShops", "kind": "dataFlow", "config": { "pipeline": "buildShops" } },
+      { "id": "metric", "kind": "dataFlow", "config": { "pipeline": "metric" } }
+    ],
+    "constraints": [{ "from": "buildShops", "to": "metric", "on": "success" }]
+  },
+  "dataFlows": [
+    {
+      "id": "buildShops",
+      "components": [
+        { "id": "shopSource", "component": "sql.source", "config": { "connection": "shops", "table": "shops", "schema": { "version": 15, "fields": [{ "name": "shop_id", "type": "int64", "nullable": false }, { "name": "shop_name", "type": "utf8", "nullable": false }] }, "sql": "SELECT shop_id, shop_name FROM shops", "batchSize": 16, "schemaPolicy": { "policy": "explicitMapping", "mapping": [{ "expected": "shop_id", "actual": "shop_id" }, { "expected": "shop_name", "actual": "shop_name" }] } } },
+        { "id": "shopCache", "component": "cacheBuild", "config": { "cache": "shops", "mapping": [0, 1] } }
+      ],
+      "paths": [{ "from": "shopSource", "output": 0, "to": "shopCache", "input": 0 }]
+    },
+    {
+      "id": "metric",
+      "components": [
+        { "id": "orders", "component": "postgresql.cdc.source", "config": { "connection": "orders", "table": "orders", "mode": "snapshotAndStream", "slot": "ud_orders_slot", "publication": "ud_orders_publication", "appendOnly": true, "schema": { "version": 15, "fields": [{ "name": "order_id", "type": "int64", "nullable": false, "keyOrder": 1 }, { "name": "shop_id", "type": "int64", "nullable": false }, { "name": "order_time", "type": "int64", "nullable": false }] } } },
+        { "id": "orderTime", "component": "eventTime", "config": { "field": "order_time", "lagMicros": 86400000000 } },
+        { "id": "payments", "component": "mq.source", "config": { "connection": "payments", "targetType": "topic", "address": "payments", "format": "json", "group": "metrics-payments", "initialPosition": "earliest", "partition": 0, "schema": { "version": 15, "fields": [{ "name": "event_id", "type": "utf8", "nullable": false }, { "name": "order_id", "type": "int64", "nullable": false }, { "name": "event_time", "type": "int64", "nullable": false }, { "name": "net_amount", "type": "int64", "nullable": false }, { "name": "kind", "type": "utf8", "nullable": false }] } } },
+        { "id": "paymentTime", "component": "eventTime", "config": { "field": "event_time", "lagMicros": 86400000000 } },
+        { "id": "deduplicate", "component": "eventDeduplicate", "config": { "keys": ["event_id"], "timeField": "event_time", "ttlMicros": 86400000000, "stateBytes": 65536 } },
+        { "id": "deduplicatedTime", "component": "eventTime", "config": { "field": "event_time", "lagMicros": 86400000000 } },
+        { "id": "join", "component": "eventJoin", "config": { "leftKeys": ["order_id"], "rightKeys": ["order_id"], "leftTimeField": "order_time", "rightTimeField": "event_time", "withinMicros": 1000, "stateBytes": 65536 } },
+        { "id": "shops", "component": "cacheLookup", "config": { "cache": "shops", "keys": [1], "errorPolicy": "fail" } },
+        { "id": "lookupTime", "component": "eventTime", "config": { "field": "event_time", "lagMicros": 86400000000 } },
+        { "id": "window", "component": "eventWindow", "config": { "mode": "tumbling", "timeField": "event_time", "sizeMicros": 1000, "allowedLatenessMicros": 0, "latePolicy": "fail", "emit": "final", "plan": { "version": 15, "group": ["shop_id"], "aggregates": [{ "function": "sum", "column": "net_amount", "name": "net_total" }] } } },
+        { "id": "fanout", "component": "multicast", "config": { "outputs": ["SQL 指标", "Iceberg 指标"] } },
+        { "id": "sqlMetric", "component": "sql.destination", "config": { "connection": "target", "table": "metric", "mode": "upsert", "keys": [0, 1, 2], "delivery": "receipt", "provisionReceipts": true } },
+        { "id": "icebergMetric", "component": "iceberg.destination", "config": { "connection": "catalog", "storageConnection": "warehouse", "namespace": "metrics", "table": "net_metric", "mode": "upsert", "keys": [0, 1, 2] } }
+      ],
+      "paths": [
+        { "from": "orders", "output": 0, "to": "orderTime", "input": 0 },
+        { "from": "payments", "output": 0, "to": "paymentTime", "input": 0 },
+        { "from": "paymentTime", "output": 0, "to": "deduplicate", "input": 0 },
+        { "from": "deduplicate", "output": 0, "to": "deduplicatedTime", "input": 0 },
+        { "from": "orderTime", "output": 0, "to": "join", "input": 0 },
+        { "from": "deduplicatedTime", "output": 0, "to": "join", "input": 1 },
+        { "from": "join", "output": 0, "to": "shops", "input": 0 },
+        { "from": "shops", "output": 0, "to": "lookupTime", "input": 0 },
+        { "from": "lookupTime", "output": 0, "to": "window", "input": 0 },
+        { "from": "window", "output": 0, "to": "fanout", "input": 0 },
+        { "from": "fanout", "output": 0, "to": "sqlMetric", "input": 0 },
+        { "from": "fanout", "output": 1, "to": "icebergMetric", "input": 0 }
+      ]
+    }
+  ]
+}

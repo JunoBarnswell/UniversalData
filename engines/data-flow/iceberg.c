@@ -1,6 +1,8 @@
 #include "builtins_internal.h"
 
 #include "../../connectors/iceberg_table.h"
+#include "../../connectors/network.h"
+#include "../../connectors/s3_object.h"
 #include "ud/http.h"
 
 #include <limits.h>
@@ -18,6 +20,7 @@ typedef struct iceberg_component {
     ud_batch *schema;
     ud_connection_lease *catalog;
     ud_connection_lease *storage;
+    ud_string s3_root;
     ud_iceberg_table *table;
     uint32_t *keys;
     uint32_t key_count;
@@ -184,6 +187,11 @@ static ud_status request(void *user, const ud_http_options *options, ud_http_res
 
 static ud_status authorize_file(void *user, ud_string location, int32_t action) {
     iceberg_component *component = user;
+    if (location.length >= 5 && !memcmp(location.data, "s3://", 5)) {
+        if (!component || !component->storage)
+            return UD_AUTH;
+        return ud_s3_object_authorize(&component->context, component->storage, location, action);
+    }
     ud_string root = {0};
     if (!component || !component->storage || !location.length ||
         ud_connection_lease_path(component->storage, &root) != UD_OK || !root.length)
@@ -297,6 +305,9 @@ static ud_status open_table(iceberg_component *component, const ud_batch *schema
         .struct_size = sizeof(options),
         .abi_version = UD_ABI_VERSION,
         .memory = component->context.memory,
+        .context = &component->context,
+        .buffers = component->context.execution->buffers,
+        .storage_lease = component->storage,
         .user = component,
         .catalog_url = catalog_url,
         .catalog_warehouse = warehouse,
@@ -313,6 +324,8 @@ static ud_status open_table(iceberg_component *component, const ud_batch *schema
     return UD_OK;
 
 cleanup:
+    ud_free((void *)component->s3_root.data);
+    component->s3_root = (ud_string){0};
     if (component->storage) {
         ud_connection_lease_release(component->storage);
         component->storage = NULL;
@@ -349,7 +362,12 @@ static ud_status output_schema(iceberg_component *component, const ud_batch *inp
 static ud_status read_lease_resources(iceberg_component *component, ud_string *catalog_url,
                                       ud_string *storage_root) {
     UD_TRY(ud_http_connection_resource(component->catalog, catalog_url));
-    return ud_connection_lease_path(component->storage, storage_root);
+    ud_status status = ud_connection_lease_path(component->storage, storage_root);
+    if (!status)
+        return UD_OK;
+    UD_TRY(ud_s3_object_root(component->context.memory, component->storage, &component->s3_root));
+    *storage_root = component->s3_root;
+    return UD_OK;
 }
 
 static ud_status open_source_scan(iceberg_component *component, int64_t expected,
@@ -729,8 +747,16 @@ static ud_status write_rows(iceberg_component *component, const ud_batch *rows,
                                              (ud_string){0}, &record, &record_length);
         if (status == UD_END)
             status = UD_OK;
-        else if (!status)
-            submitted = 1;
+        else if (!status) {
+            ud_json *submission = NULL;
+            status = ud_json_parse(component->context.memory, record, record_length, &submission, NULL);
+            ud_string value = {0};
+            if (!status)
+                status = ud_json_text(ud_member(submission, "submitted"), &value.data, &value.length);
+            if (!status)
+                submitted = named(value, "true");
+            ud_json_destroy(submission);
+        }
         ud_free(record);
     }
     if (!status && !completed && !replay)
@@ -744,7 +770,16 @@ static ud_status write_rows(iceberg_component *component, const ud_batch *rows,
                      : ud_iceberg_table_apply(component->table, rows, before, actions,
                                               rows->rows, identity, encoded_digest, replay, submitted);
         component->publishing = (ud_string){0};
+        if (status == UD_FENCED && component->submission_recorded) {
+            const ud_string state = {"{\"submitted\":false}", sizeof("{\"submitted\":false}") - 1};
+            if (!ud_checkpoint_snapshot_seal(component->context.activation, identity, state))
+                ud_fail(component->context.memory, UD_COMMIT_UNKNOWN,
+                        "Iceberg Catalog rejected the conflicting snapshot. Resume to rebind the table.");
+            return UD_COMMIT_UNKNOWN;
+        }
         if (status && (component->submission_recorded || status == UD_COMMIT_UNKNOWN))
+            return UD_COMMIT_UNKNOWN;
+        if (component->s3_root.length && (status == UD_IO || status == UD_TRANSIENT || status == UD_TIMEOUT))
             return UD_COMMIT_UNKNOWN;
         ud_command_result outcome = {.struct_size = sizeof(outcome),
                                      .abi_version = UD_ABI_VERSION,
@@ -855,6 +890,7 @@ static void dispose(void *instance, ud_status outcome) {
     if (component->read_open)
         ud_iceberg_table_read_close(component->table);
     ud_iceberg_table_close(component->table);
+    ud_free((void *)component->s3_root.data);
     ud_connection_lease_release(component->storage);
     ud_connection_lease_release(component->catalog);
     ud_batch_destroy(component->schema);

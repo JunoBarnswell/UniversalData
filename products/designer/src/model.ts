@@ -152,13 +152,16 @@ export interface RunState {
   packageId: string;
   packageRevision: string;
   state: string;
+  allowedActions?: ("stop" | "cancel" | "resume")[];
+  /** Management projection for same-ID recovery after an unknown commit. */
+  canResume?: boolean;
   requiresJournal?: boolean;
   queueReason?: string;
   queueWaitMs?: number;
   executionId: string;
   result: number;
   failure?: { result: number; phase: string; errorType: string; detail?: {
-    source: number; cause: number; nativeCode?: number; sqlState?: string; httpStatus?: number; exitCode?: number;
+    source: number; cause: number; message?: string; nativeCode?: number; sqlState?: string; httpStatus?: number; exitCode?: number;
   } };
   timestampMs: number;
   debug?: {
@@ -258,6 +261,22 @@ export interface NativePort {
   direction: number;
   index: number;
   flags: number;
+  /** Native's bound change semantics. Older plans omit this field. */
+  changeMode?: "Append" | "Upsert" | "Retract";
+}
+export type NativeDeliveryVisibility =
+  | "TargetCommit"
+  | "CatalogSnapshot"
+  | "ExternalResponse"
+  | "None";
+export type NativeDeliveryConfirmation =
+  | "Receipt"
+  | "BrokerTransaction"
+  | "Response"
+  | "None";
+export interface NativeDelivery {
+  visibility: NativeDeliveryVisibility;
+  confirmation: NativeDeliveryConfirmation;
 }
 export interface BoundNode {
   result?: number;
@@ -272,10 +291,20 @@ export interface BoundNode {
   ports: NativePort[];
   inputs: (DataSchema | null)[];
   outputs: DataSchema[];
+  /** True when Native can replay the source from its durable boundary. */
+  sourceReplay?: boolean;
+  /** Target visibility and confirmation facts from Native binding. */
+  delivery?: NativeDelivery;
 }
 export interface NativePlan {
   pipelines: { id: string; trees: { nodes: BoundNode[] }[] }[];
   tasks?: { activation: string; httpStatus?: number; responseHeaders?: string; responseHeadersOmitted?: boolean }[];
+  schemas?: {
+    task: string;
+    component: string;
+    result: number;
+    diff: { compatible: boolean; changes: { kind: string; columnId: string; column?: string }[] };
+  }[];
 }
 export const isControlFlow = (flow: string) =>
   flow === "control" || flow.startsWith("control:");
@@ -372,6 +401,7 @@ export interface Deployment {
   packageRevision: string;
   deploymentRevision: string;
   enabled: boolean;
+  environment?: { id: string; revision: string };
 }
 export interface Resources {
   fileRoots: string[];

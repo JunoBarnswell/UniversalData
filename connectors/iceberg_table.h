@@ -2,6 +2,7 @@
 #define UD_ICEBERG_TABLE_H
 
 #include "ud/http.h"
+#include "ud/buffer.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +19,9 @@ typedef struct ud_iceberg_read_options {
 typedef struct ud_iceberg_options {
     uint32_t struct_size, abi_version;
     ud_context *memory;
+    const ud_component_context *context;
+    ud_buffer_manager *buffers;
+    ud_connection_lease *storage_lease;
     void *user;
     ud_string catalog_url, catalog_warehouse, storage_root, namespace_name, table_name;
     ud_status (*request)(void *, const ud_http_options *, ud_http_response *);

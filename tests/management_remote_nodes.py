@@ -162,7 +162,7 @@ def exercise(dotnet, management, worker, openssl, root, postgres=None):
             connections=[dict(id="web", driver="http", resource=origin + "/effect")],
             controlFlow=dict(tasks=[dict(id="post", kind="http.request", config=dict(connection="web", method="POST",
                 body={"$parameter": "payload"}, responseHeaders=["X-Trace"]))], constraints=[]), dataFlows=[])
-        call("/api/packages/remote-work/versions/1", "PUT", document)
+        call("/api/versions", "POST", {"document": document, "expectedPackageRevision": "0"})
         if postgres:
             request = dict(packageId="remote-work",packageRevision="1",requestId="ha-request",
                            parameters=json.dumps(dict(payload="survivor")))

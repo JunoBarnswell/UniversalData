@@ -617,7 +617,8 @@ static ud_status task_result(task_run *run) {
             if (!s && leaked)
                 s = leaked;
             int pending = 0;
-            if (!s && !completed) {
+            int suspended = (a->task_facts & UD_TASK_SUSPENDED) != 0;
+            if (!s && !completed && !suspended) {
                 ud_task_fact(a, UD_TASK_EXECUTED);
                 /* This snapshot joins the transaction's existing Journal facts
                  * before prepare, so its publication and business commit have
@@ -630,7 +631,7 @@ static ud_status task_result(task_run *run) {
             leaked = ud_connections_release_activation(a);
             if (!s && leaked)
                 s = leaked;
-            if (!s && !completed && a->execution->journal && !pending)
+            if (!s && !completed && !suspended && a->execution->journal && !pending)
                 ud_task_fact(a, UD_TASK_DURABLE);
             if (s != UD_TRANSIENT || attempt + 1 == attempts)
                 break;
@@ -681,6 +682,21 @@ static int parallel_task(ud_activation *e, const ud_json *task) {
     ud_component_descriptor d = {.struct_size = sizeof(d), .abi_version = UD_ABI_VERSION};
     return !ud_component_lookup(e, kind, &d) && (d.capabilities & UD_COMPONENT_THREAD_SAFE);
 }
+ud_status ud_control_task_identity(ud_context *ctx, ud_string parent, ud_string id, ud_string *out) {
+    size_t size = (size_t)parent.length + id.length + 48;
+    char *identity = ud_alloc(ctx, size);
+    if (!identity)
+        return UD_RESOURCE;
+    int length = snprintf(identity, size, "%.*s/%u:%.*s;", (int)parent.length,
+                          parent.data ? parent.data : "", id.length, (int)id.length, id.data);
+    if (length < 0 || (size_t)length >= size) {
+        ud_free(identity);
+        return UD_OVERFLOW;
+    }
+    *out = (ud_string){identity, (uint32_t)length};
+    return UD_OK;
+}
+
 static ud_status init_task(ud_activation *parent, const ud_json *definition, task_run *run) {
     ud_activation *a = &run->activation;
     a->execution = parent->execution;
@@ -711,18 +727,7 @@ static ud_status init_task(ud_activation *parent, const ud_json *definition, tas
     a->task_definition = definition;
     ud_string id = {0};
     UD_TRY(ud_json_string(ud_member(definition, "id"), &id));
-    size_t size = (size_t)parent->task_id.length + id.length + 48;
-    char *identity = ud_alloc(a->execution->ctx, size);
-    if (!identity)
-        return UD_RESOURCE;
-    int length = snprintf(identity, size, "%.*s/%u:%.*s;", (int)parent->task_id.length,
-                          parent->task_id.data ? parent->task_id.data : "", id.length,
-                          (int)id.length, id.data);
-    if (length < 0 || (size_t)length >= size) {
-        ud_free(identity);
-        return UD_OVERFLOW;
-    }
-    a->task_id = (ud_string){identity, (uint32_t)length};
+    UD_TRY(ud_control_task_identity(a->execution->ctx, parent->task_id, id, &a->task_id));
     if (ud_member(definition, "timeoutMs")) {
         uint64_t ms = 0, now = ud_now_ms();
         UD_TRY(ud_json_uint(ud_member(definition, "timeoutMs"), &ms));
@@ -842,7 +847,7 @@ static ud_status execute_task(void *user, uint32_t index) {
         state = status == UD_COMMIT_UNKNOWN ? UD_EXEC_RECOVERY_REQUIRED
                 : status == UD_CANCELLED    ? UD_EXEC_CANCELLED
                 : status                    ? UD_EXEC_FAILED
-                                            : UD_EXEC_SUCCEEDED;
+                : run->activation.task_facts & UD_TASK_SUSPENDED ? UD_EXEC_STOPPED : UD_EXEC_SUCCEEDED;
     } else if (!status)
         ud_activation_notify(&run->activation, UD_EXEC_SKIPPED, UD_OK);
     else

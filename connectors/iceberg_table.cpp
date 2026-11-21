@@ -128,7 +128,7 @@ static ud_status map_error(const iceberg::Error& error) {
 
 static ud_status mapped_native_error(ud_context* context, const iceberg::Error& error) {
     const ud_status status = map_error(error);
-    if (context && status == UD_UNSUPPORTED && !error.message.empty()) {
+    if (context && !*ud_error(context) && !error.message.empty() && error.message.size() <= 1024) {
         const std::string message = "Iceberg native error: " + error.message;
         ud_context_report(context, status,
                           {message.data(), static_cast<uint32_t>(message.size())});
@@ -311,7 +311,11 @@ class NativeFileIO;
 
 #include "iceberg_input_stream.h"
 
+#include "iceberg_s3_input_stream.h"
+
 #include "iceberg_output_stream.h"
+
+#include "iceberg_s3_output_stream.h"
 
 #include "iceberg_input_file.h"
 
@@ -453,15 +457,15 @@ class NativeCatalog final : public iceberg::Catalog,
                                                            : identity + ":" + digest);
     }
 
-    void SetBeforeCommitStatus(ud_status status) {
+    void SetCommitStatus(std::optional<ud_status> status) {
         std::lock_guard<std::mutex> lock(mutex_);
-        before_commit_status_ = status;
+        commit_status_ = status;
     }
 
-    std::optional<ud_status> TakeBeforeCommitStatus() {
+    std::optional<ud_status> TakeCommitStatus() {
         std::lock_guard<std::mutex> lock(mutex_);
-        auto status = before_commit_status_;
-        before_commit_status_.reset();
+        auto status = commit_status_;
+        commit_status_.reset();
         return status;
     }
 
@@ -501,6 +505,7 @@ class NativeCatalog final : public iceberg::Catalog,
         const iceberg::TableIdentifier& identifier,
         const std::vector<std::unique_ptr<iceberg::TableRequirement>>& requirements,
         const std::vector<std::unique_ptr<iceberg::TableUpdate>>& updates) override {
+        SetCommitStatus(std::nullopt);
         iceberg::rest::CommitTableRequest request;
         request.identifier = identifier;
         for (const auto& requirement : requirements)
@@ -516,13 +521,16 @@ class NativeCatalog final : public iceberg::Catalog,
         if (adds_snapshot && options_.before_commit) {
             const ud_status status = options_.before_commit(options_.user);
             if (status != UD_OK) {
-                SetBeforeCommitStatus(status);
+                SetCommitStatus(status);
                 return iceberg::IOError("Iceberg commit preflight failed");
             }
         }
         auto response = Call("POST", table_endpoint(base_, identifier), body->dump(), "application/json", true);
         if (!response.has_value()) return std::unexpected(response.error());
-        if (response->first == 409) return iceberg::CommitFailed("Iceberg table commit conflict");
+        if (response->first == 409) {
+            if (adds_snapshot) SetCommitStatus(UD_FENCED);
+            return iceberg::CommitFailed("Iceberg table commit conflict");
+        }
         if (response->first == 401 || response->first == 403) return iceberg::NotAuthorized("Iceberg table commit is not authorized");
         if (response->first == 408 || response->first == 429 || response->first >= 500)
             return iceberg::ServiceUnavailable("Iceberg table commit failed transiently");
@@ -583,6 +591,11 @@ class NativeCatalog final : public iceberg::Catalog,
             const bool attempted = response.attempted != 0;
             const int32_t response_code = response.status;
             const bool completed = response.completed != 0;
+            if (commit && attempted &&
+                (!completed || response_code == 408 || response_code >= 500)) {
+                ud_http_response_clear(&response);
+                return iceberg::CommitStateUnknown("Iceberg commit outcome is unknown");
+            }
             if (completed && response_code > 0) {
                 std::string payload = copy_string(response.body);
                 ud_http_response_clear(&response);
@@ -614,7 +627,7 @@ class NativeCatalog final : public iceberg::Catalog,
     std::shared_ptr<NativeFileIO> io_;
     mutable std::mutex mutex_;
     std::string commit_token_;
-    std::optional<ud_status> before_commit_status_;
+    std::optional<ud_status> commit_status_;
 };
 
 struct FieldArena {
@@ -880,7 +893,7 @@ static Result<ud_batch *> project_to_table(ud_iceberg_table* table, const ud_bat
 static ud_status refresh_table(ud_iceberg_table* table) {
     if (!table || !table->table) return UD_INVALID;
     auto status = table->table->Refresh();
-    if (!status.has_value()) return map_error(status.error());
+    if (!status.has_value()) return mapped_native_error(table->options.memory, status.error());
     ud_batch* schema = nullptr;
     auto current_schema = table->table->schema();
     if (!current_schema.has_value()) return map_error(current_schema.error());
@@ -1041,6 +1054,14 @@ static Result<std::vector<uint32_t>> key_columns(const ud_batch* source,
     return columns;
 }
 
+static Result<std::string> data_file_location(iceberg::LocationProvider& locations,
+                                               const iceberg::PartitionSpec& spec,
+                                               const iceberg::PartitionValues& partition,
+                                               std::string_view name) {
+    if (spec.IsUnpartitioned()) return locations.NewDataLocation(name);
+    return locations.NewDataLocation(spec, partition, name);
+}
+
 static Result<std::shared_ptr<iceberg::DataFile>> write_data_file(
     ud_iceberg_table* table, const ud_batch* rows, const std::shared_ptr<iceberg::Schema>& schema,
     const std::shared_ptr<iceberg::PartitionSpec>& spec,
@@ -1048,7 +1069,7 @@ static Result<std::shared_ptr<iceberg::DataFile>> write_data_file(
     if (!rows || ud_batch_rows(rows) == 0) return std::unexpected(iceberg::InvalidArgument("Iceberg data file is empty").error());
     auto location = table->table->location_provider();
     if (!location.has_value()) return std::unexpected(location.error());
-    auto path = (*location)->NewDataLocation(*spec, partition, name);
+    auto path = data_file_location(**location, *spec, partition, name);
     if (!path.has_value()) return std::unexpected(path.error());
     iceberg::DataWriterOptions options{.path = *path, .schema = schema,
                                        .spec = spec, .partition = partition,
@@ -1082,7 +1103,7 @@ static Result<std::shared_ptr<iceberg::DataFile>> write_delete_file(
     if (!rows || ud_batch_rows(rows) == 0) return std::unexpected(iceberg::InvalidArgument("Iceberg delete file is empty").error());
     auto location = table->table->location_provider();
     if (!location.has_value()) return std::unexpected(location.error());
-    auto path = (*location)->NewDataLocation(*spec, partition, name);
+    auto path = data_file_location(**location, *spec, partition, name);
     if (!path.has_value()) return std::unexpected(path.error());
     iceberg::EqualityDeleteWriterOptions options{.path = *path, .schema = key_schema,
         .spec = spec, .partition = partition, .format = iceberg::FileFormatType::kParquet,
@@ -1150,7 +1171,7 @@ static ud_status evolve_missing_columns(ud_iceberg_table* table, const ud_batch*
 
 static ud_status map_catalog_error(ud_iceberg_table* table, const iceberg::Error& error) {
     if (table && table->catalog) {
-        if (auto status = table->catalog->TakeBeforeCommitStatus()) return *status;
+        if (auto status = table->catalog->TakeCommitStatus()) return *status;
     }
     return map_error(error);
 }
@@ -1589,10 +1610,11 @@ static ud_status write_files(ud_iceberg_table* table, const ud_batch* rows,
         auto token = ud_iceberg_partition::group_token(group);
         if (!token.has_value()) return std::unexpected(token.error());
         const std::string group_name = group.spec->IsUnpartitioned() ? std::string() : *token;
-        return (*location)->NewDataLocation(*group.spec, group.partition,
-                                             operation_file_name(table, suffix, group_name));
+        return data_file_location(**location, *group.spec, group.partition,
+                                  operation_file_name(table, suffix, group_name));
     };
-    if (replay) {
+    const ud_string storage = table->options.storage_root;
+    if (replay && !starts_with(std::string_view(storage.data, storage.length), "s3://")) {
         const auto remove_staged = [&](const ud_iceberg_partition::Group& group,
                                        std::string_view suffix) -> ud_status {
             auto path = staged_path(group, suffix);

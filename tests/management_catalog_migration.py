@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory(prefix="ud-catalog-migration-") as directory:
 
         csrf = api("/auth/login",dict(subject="admin",password=password))["csrf"]
         package = dict(version=PROTOCOL_VERSION,id="history",controlFlow=dict(tasks=[],constraints=[]),dataFlows=[])
-        api("/packages/history/versions/1",package,"PUT")
+        api("/versions", {"document": package, "expectedPackageRevision": "0"}, "POST")
         api("/jobs/daily",dict(version=PROTOCOL_VERSION,id="daily",packageId="history",packageRevision="1",
             enabled=True,schedules=[],parameters='{"private":"migration-secret"}'),"PUT")
     finally:

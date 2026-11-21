@@ -616,9 +616,25 @@ endif()
 if(UD_WITH_ICEBERG AND TARGET ud_cli AND TARGET ud_connector_sqlite AND TARGET test_next_phase_execution)
   add_test(NAME integration_iceberg_v2 COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/iceberg_v2.py --cli $<TARGET_FILE:ud_cli>
-    --sqlite $<TARGET_FILE:ud_connector_sqlite> --runner $<TARGET_FILE:test_next_phase_execution>)
-  set_tests_properties(integration_iceberg_v2 PROPERTIES LABELS "real-integration;iceberg;recovery"
+    --sqlite $<TARGET_FILE:ud_connector_sqlite> --runner $<TARGET_FILE:test_next_phase_execution> --filesystem-only)
+  add_test(NAME integration_iceberg_v2_s3 COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/iceberg_v2.py --cli $<TARGET_FILE:ud_cli>
+    --sqlite $<TARGET_FILE:ud_connector_sqlite> --runner $<TARGET_FILE:test_next_phase_execution> --s3-only)
+  set_tests_properties(integration_iceberg_v2 integration_iceberg_v2_s3 PROPERTIES LABELS "real-integration;iceberg;recovery"
     SKIP_RETURN_CODE 77 TIMEOUT 480 RESOURCE_LOCK ud_integration_iceberg)
+endif()
+if(UD_WITH_ICEBERG AND TARGET ud_connector_postgresql AND TARGET ud_connector_mysql AND
+    TARGET ud_connector_kafka AND TARGET ud_connector_sqlite AND TARGET test_next_phase_execution AND
+    TARGET test_next_phase_queries AND TARGET test_ssis_database)
+  add_test(NAME integration_orders_payments_shops_iceberg COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/orders_payments_shops_iceberg.py
+    --runner $<TARGET_FILE:test_next_phase_execution> --discoverer $<TARGET_FILE:test_next_phase_queries>
+    --postgres-plugin $<TARGET_FILE:ud_connector_postgresql> --mysql-helper $<TARGET_FILE:test_ssis_database>
+    --mysql-plugin $<TARGET_FILE:ud_connector_mysql> --kafka-plugin $<TARGET_FILE:ud_connector_kafka>
+    --sqlite $<TARGET_FILE:ud_connector_sqlite>)
+  set_tests_properties(integration_orders_payments_shops_iceberg PROPERTIES
+    LABELS "real-integration;iceberg;cdc;kafka;recovery" SKIP_RETURN_CODE 77 TIMEOUT 480
+    RESOURCE_LOCK "ud_integration_iceberg;ud_integration_mysql;ud_integration_postgresql")
 endif()
 if(TARGET ud_package)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -652,11 +668,15 @@ if(TARGET ud_package)
       COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/managed_sql/ManagedSql.csproj -c Release
         -o ${CMAKE_CURRENT_BINARY_DIR}/managed-sql
       DEPENDS ud_managed_product_test ud_product_hosts VERBATIM)
+    set(schedule_plugins)
+    if(TARGET ud_connector_sqlite)
+      set(schedule_plugins $<TARGET_FILE:ud_connector_sqlite>)
+    endif()
     add_test(NAME jobs_schedule_catalog COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/jobs_schedule.py ${UD_DOTNET}
       ${PROJECT_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll
-      ${PROJECT_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
-    set_tests_properties(jobs_schedule_catalog PROPERTIES LABELS "scheduling" TIMEOUT 75)
+      ${PROJECT_BINARY_DIR}/hosts/product/worker/ud_worker.dll ${schedule_plugins})
+    set_tests_properties(jobs_schedule_catalog PROPERTIES LABELS "scheduling" TIMEOUT 140)
     if(TARGET ud_connector_sqlite)
       add_test(NAME sdk_worker_process_isolation COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/sdk_worker.py ${UD_DOTNET}

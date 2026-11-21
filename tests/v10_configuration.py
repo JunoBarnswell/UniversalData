@@ -279,6 +279,21 @@ def main() -> None:
 
             params = root / "parameters.json"
             params.write_text(json.dumps({"v10-configured": {"Delta": 2}}), encoding="utf-8")
+            preflights = []
+            previews = []
+            for config in (csharp_config, yaml_config):
+                options = ["v10-configured", "--config", str(config), "--params-file", str(params)]
+                bound = json.loads(invoke_cli(cli_command, ["validate", *options], environment).stdout)
+                preview = json.loads(invoke_cli(cli_command, ["preview", *options,
+                                                             "--source-rows", "2", "--sample-rows", "1"],
+                                                environment).stdout)
+                preflights.append(bound["pipelines"])
+                previews.append(preview["snapshot"]["preview"])
+                assert preview["result"] == 0 and preview["sampled"], preview
+            if not preflights[0] or preflights[0] != preflights[1]:
+                raise AssertionError(f"C# and YAML validation disagree: {preflights}")
+            if not previews[0] or previews[0] != previews[1] or read_output(database):
+                raise AssertionError(f"C# and YAML previews must return the same sample without writing: {previews}")
             csharp_run = invoke_cli(cli_command, ["run", "v10-configured", "--config", str(csharp_config),
                                                   "--params-file", str(params)], environment)
             assert_successful_result(csharp_run, 2, database)

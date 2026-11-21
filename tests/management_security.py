@@ -79,9 +79,9 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         package = {'version': PROTOCOL_VERSION, 'id': 'protected-package', 'parameters': {'password': {'type': 'utf8'}},
             'variables': {'counter': {'type': 'int64', 'default': 0}},
             'controlFlow': {'tasks': [{'id': 'set', 'kind': 'set', 'config': {'name': 'counter', 'value': {'literal': 1, 'type': 'int64'}}}], 'constraints': []}, 'dataFlows': []}
-        assert request('reader-a', '/packages/protected-package/versions/1', 'PUT', package)[0] == 403
-        assert request('admin-a', '/packages/protected-package/versions/1', 'PUT', package, csrf=False)[0] == 403
-        assert request('admin-a', '/packages/protected-package/versions/1', 'PUT', package)[0] == 200
+        assert request('reader-a', '/versions', 'POST', {'document': package, 'expectedPackageRevision': '0'})[0] == 403
+        assert request('admin-a', '/versions', 'POST', {'document': package, 'expectedPackageRevision': '0'}, csrf=False)[0] == 403
+        assert request('admin-a', '/versions', 'POST', {'document': package, 'expectedPackageRevision': '0'})[0] == 200
         assert request('admin-b', '/packages/protected-package/versions/1')[0] == 404
         assert request('reader-a', '/executions', 'POST', {'packageId': 'protected-package', 'packageRevision': '1'})[0] == 403
         assert request('reader-a', '/scripts/compile', 'POST', {'source': 'invalid'})[0] == 403

@@ -44,6 +44,54 @@ public sealed class DataJob<TInput> : DataJob
         return new(this, flow, name);
     }
 
+    /// <summary>Load a current dimension snapshot before opening its consumer flow.</summary>
+    public DataJob<TInput> BuildCurrentCache<TDimension>(string cache, string source,
+        Expression<Func<TDimension, object?>> key, string? table = null, string? step = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(cache);
+        Graph.EndFlow();
+        var read = FromTable<TDimension>(source, table);
+        string name = Graph.Step(step, "build-cache");
+        int[] keys = read.KeyOrdinals(name, key, []);
+        Graph.Plan.Cache(cache, source, Schema<TDimension>(includeKeys: true), keys);
+        var mapping = Enumerable.Range(0, EntityMapping.For<TDimension>().Members.Count).ToArray();
+        Graph.Plan.Component(name, "cacheBuild", new { cache, mapping }, read.Flow)
+            .Connect(read.Flow, read.Step, name, read.Port);
+        Graph.EndFlow();
+        return this;
+    }
+
+    /// <summary>Read a provider CDC stream, retaining Native operation and before-image facts.</summary>
+    public DataJobRows<TInput, TRow> FromChanges<TRow>(string source, string? table = null,
+        DataJobChanges? options = null, string? step = null)
+    {
+        Graph.Use(source, DataJobSourceRole.Database);
+        string flow = Graph.StartFlow();
+        string name = Graph.Step(step, "changes");
+        var mapping = EntityMapping.For<TRow>();
+        Graph.ChangeSource(source, name, table ?? mapping.TableName, Schema<TRow>(includeKeys: true),
+            options ?? new(), flow);
+        return new(this, flow, name);
+    }
+
+    /// <summary>Read one fixed Iceberg snapshot through a named storage connection.</summary>
+    public DataJobRows<TInput, TRow> FromIceberg<TRow>(string source, string tableNamespace,
+        string? table = null, long? snapshotId = null, string? storageConnection = null,
+        string? step = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableNamespace);
+        if (storageConnection is not null) ArgumentException.ThrowIfNullOrWhiteSpace(storageConnection);
+        if (snapshotId is <= 0) throw new ArgumentOutOfRangeException(nameof(snapshotId));
+        Graph.Use(source, DataJobSourceRole.Iceberg);
+        string flow = Graph.StartFlow();
+        string name = Graph.Step(step, "iceberg-read");
+        string storage = storageConnection ?? source + "-storage";
+        Graph.Plan.IcebergSource(name, source, storage, tableNamespace, table ?? EntityMapping.For<TRow>().TableName,
+            Schema<TRow>(), snapshotId, pipeline: flow);
+        Graph.StorageComponent(source, name, flow, storageConnection);
+        return new(this, flow, name);
+    }
+
     public DataJobRows<TInput, TRow> FromSql<TRow>(string source, string statement,
         SqlParameterBatch? parameters = null, string? step = null, bool stream = false)
     {

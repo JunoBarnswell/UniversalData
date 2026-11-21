@@ -92,14 +92,9 @@ public sealed partial class DataClient
         bool readResults, CancellationToken cancellation, DataRunReference? execution = null)
     {
         ArgumentNullException.ThrowIfNull(package);
-        cancellation.ThrowIfCancellationRequested();
-        var root = package.Definition;
-        var sources = BindJobSources(root, inventory);
-        uint slots = root.TryGetProperty("policy", out var policy) &&
-            policy.TryGetProperty("maxConcurrency", out var parallelism) ? parallelism.GetUInt32() : 1;
-        return new EtlClient(this).StartAsync((_, _) => Task.FromResult(package), sources, parameters,
-            execution?.RunId ?? Guid.NewGuid().ToString("N"), execution?.JournalTicket ?? Guid.NewGuid().ToString("N"),
-            execution is not null, cancellation, readResults, slots);
+        var reference = execution ?? new DataRunReference(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"));
+        return StartPackageAsync(package, parameters, inventory, readResults, cancellation, reference,
+            execution is not null);
     }
 
     private string Parameters(DataJob job, object? input)

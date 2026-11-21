@@ -164,12 +164,27 @@ static async Task VerifySql(DataClient data, Dictionary<string, string> probes, 
         .FromSql<ProbeRow>("finance", "SELECT fixture_value FROM fixture_probe", stream: true).Return();
     foreach (var (driver, sql) in probes)
     {
-        var probe = Require(new EtlPackageBuilder("probe-" + driver)
-            .Connection("source", "ud:" + driver, driver, driver)
-            .Connection("finance", "ud:sqlite", target, "finance")
-            .SqlSource("read", "source", sql, schema, stream: true)
-            .SqlDestination("write", "finance", "fixture_probe")
-            .Connect("read", "write").DataFlow().Build());
+        var probe = Require(Package.FromJson(JsonSerializer.Serialize(new
+        {
+            version = ProductInfo.Protocol,
+            id = "probe-" + driver,
+            connections = new[]
+            {
+                new { id = "source", driver = "ud:" + driver, resource = driver, credentialReference = driver },
+                new { id = "finance", driver = "ud:sqlite", resource = target, credentialReference = "finance" }
+            },
+            controlFlow = new { tasks = new[] { new { id = "run", kind = "dataFlow", config = new { pipeline = "main" } } }, constraints = Array.Empty<object>() },
+            dataFlows = new[] { new
+            {
+                id = "main",
+                components = new object[]
+                {
+                    new { id = "read", component = "sql.source", config = new { connection = "source", sql, readMode = "stream", schema, batchSize = 4096 } },
+                    new { id = "write", component = "sql.destination", config = new { connection = "finance", table = "fixture_probe", mode = "append" } }
+                },
+                paths = new[] { new { from = "read", output = 0, to = "write", input = 0 } }
+            } }
+        })));
         if ((await data.RunAsync(probe, cancellationToken: token)).CommittedRows != 1)
             throw new InvalidOperationException($"The installed {driver} connector returned no row");
         int rows = 0;

@@ -26,9 +26,9 @@ public sealed class EtlRun : IAsyncDisposable
     public string JournalTicket { get; }
     public int WorkerProcessId => worker.ProcessId;
 
-    public async Task<JsonElement> ProgressAsync(CancellationToken cancellationToken = default) =>
-        EtlClient.Read(await RequestAsync("etl.progress", false, cancellationToken).ConfigureAwait(false),
-            "Native ETL progress is unavailable");
+    public async Task<DataRunProgress> ProgressAsync(CancellationToken cancellationToken = default) =>
+        DataRunProgress.Read(DataClient.Read(await RequestAsync("etl.progress", false, cancellationToken)
+            .ConfigureAwait(false), "Native ETL progress is unavailable"));
 
     /// <summary>Cancels only the caller's wait. Use CancelAsync to stop the Native execution.</summary>
     public async Task<ExecutionMetrics> WaitAsync(CancellationToken cancellationToken = default)
@@ -38,7 +38,7 @@ public sealed class EtlRun : IAsyncDisposable
             var response = await RequestAsync("etl.wait", true, cancellationToken).ConfigureAwait(false);
             if (response.Code == StatusCode.Busy) continue;
             var metrics = response.Value?.Deserialize<ExecutionMetrics>(WorkerProtocol.Json);
-            EtlClient.Check(response, "Native ETL execution failed", new(Id, JournalTicket: JournalTicket), metrics);
+            DataClient.Check(response, "Native ETL execution failed", new(Id, JournalTicket: JournalTicket), metrics);
             if (metrics is null)
                 throw new DataExecutionException((int)StatusCode.CommitUnknown, "Native ETL completion was not reported",
                     new(Id, JournalTicket: JournalTicket), new(ErrorSource.Worker, StatusCode.Protocol, "Missing ETL metrics"));
@@ -75,7 +75,7 @@ public sealed class EtlRun : IAsyncDisposable
                 cancellation.ThrowIfCancellationRequested();
                 var metrics = response.Response.Value?.ValueKind == JsonValueKind.Object && response.Response.Code != StatusCode.Ok
                     ? response.Response.Value?.Deserialize<ExecutionMetrics>(WorkerProtocol.Json) : null;
-                EtlClient.Check(response.Response, "Native ETL result read failed",
+                DataClient.Check(response.Response, "Native ETL result read failed",
                     new(Id, JournalTicket: JournalTicket), metrics);
                 if (response.Batch is null)
                     throw new DataExecutionException((int)StatusCode.Protocol,
@@ -89,12 +89,17 @@ public sealed class EtlRun : IAsyncDisposable
         }
     }
 
-    public async Task<JsonElement> DiagnosticsAsync(CancellationToken cancellationToken = default) =>
-        EtlClient.Read(await RequestAsync("etl.diagnostics", false, cancellationToken).ConfigureAwait(false),
-            "Native ETL diagnostics are unavailable");
+    public async Task<DataRunDiagnostic> DiagnosticsAsync(CancellationToken cancellationToken = default) =>
+        DataRunDiagnostic.Read(DataClient.Read(await RequestAsync("etl.diagnostics", false, cancellationToken)
+            .ConfigureAwait(false), "Native ETL diagnostics are unavailable"));
+
+    /// <summary>Requests a graceful Native drain. The caller remains attached until the run reaches terminal state.</summary>
+    public async Task StopAsync(CancellationToken cancellationToken = default) =>
+        DataClient.Check(await RequestAsync("etl.stop", true, cancellationToken).ConfigureAwait(false),
+            "Native ETL stop could not be confirmed", new(Id, JournalTicket: JournalTicket));
 
     public async Task CancelAsync(CancellationToken cancellationToken = default) =>
-        EtlClient.Check(await RequestAsync("etl.cancel", true, cancellationToken).ConfigureAwait(false),
+        DataClient.Check(await RequestAsync("etl.cancel", true, cancellationToken).ConfigureAwait(false),
             "Native ETL cancellation could not be confirmed", new(Id, JournalTicket: JournalTicket));
 
     private async Task<WorkerResponseFrame> RequestAsync(string operation, bool mayWrite,

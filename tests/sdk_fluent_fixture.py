@@ -302,23 +302,72 @@ def management_cdc(dotnet, program, worker, management, postgres_plugin, sqlite_
                                               {"requestId": request_id})
                     assert second["id"] == first["id"] and second["runId"] == first["runId"], (first, second)
                     run_id = first["runId"]
-                    deadline = time.monotonic() + 120
-                    while True:
-                        status = _management_call(client, csrf, address, "/api/executions/" + run_id)
-                        if status["state"] not in ("Queued", "Claimed", "Running"):
+                    run_path = "/api/executions/" + run_id
+
+                    def wait_for_change(expected):
+                        deadline = time.monotonic() + 40
+                        while time.monotonic() < deadline:
+                            status = _management_call(client, csrf, address, run_path)
+                            assert status["state"] in ("Queued", "Claimed", "Running"), status
+                            with closing(sqlite3.connect(target)) as database:
+                                rows = database.execute("SELECT id,label,value FROM output ORDER BY id").fetchall()
+                            if status["state"] == "Running" and rows == expected:
+                                return status
+                            time.sleep(.2)
+                        raise AssertionError((status, rows, expected))
+
+                    def drain():
+                        _management_call(client, csrf, address, run_path + "/stop", "POST")
+                        deadline = time.monotonic() + 15
+                        while time.monotonic() < deadline:
+                            status = _management_call(client, csrf, address, run_path)
+                            workers = _management_call(client, csrf, address, "/api/workers")
+                            if status["state"] == "Stopped" and not any(node["activeProcesses"] for node in workers):
+                                assert status["canResume"], status
+                                return status
+                            time.sleep(.2)
+                        raise AssertionError(status)
+
+                    status = wait_for_change([(1, "after", 11)])
+                    assert status["continuous"], status
+                    native_id = status["executionId"]
+                    assert drain()["executionId"] == native_id
+                    query(f"""BEGIN;
+                        UPDATE {source_table} SET id=4, value=12 WHERE id=1;
+                        INSERT INTO {source_table} VALUES (3, 'new', 30);
+                        COMMIT;""")
+                    resumed = _management_call(client, csrf, address, run_path + "/resume", "POST")
+                    assert resumed["executionId"] == native_id, resumed
+                    assert wait_for_change([(3, "new", 30), (4, "after", 12)])["executionId"] == native_id
+                    query(f"ALTER TABLE {source_table} ADD COLUMN ignored text;")
+                    query(f"UPDATE {source_table} SET value=13 WHERE id=4;")
+                    expected = [(3, "new", 30), (4, "after", 13)]
+                    assert wait_for_change(expected)["executionId"] == native_id
+                    assert query(f"SELECT id || E'\\t' || label || E'\\t' || value FROM {source_table} ORDER BY id") == "3\tnew\t30\n4\tafter\t13"
+                    query(f"ALTER TABLE {source_table} DROP COLUMN value;")
+                    query(f"INSERT INTO {source_table}(id,label) VALUES (5,'rejected schema');")
+                    deadline = time.monotonic() + 40
+                    while time.monotonic() < deadline:
+                        stopped = _management_call(client, csrf, address, run_path)
+                        if stopped["state"] in ("Failed", "RecoveryRequired"):
                             break
-                        if time.monotonic() >= deadline:
-                            raise AssertionError(status)
                         time.sleep(.2)
-                    assert status["state"] == "Succeeded", status
+                    assert stopped["state"] == "Failed" and stopped["result"] == 10, stopped
+                    facts = _management_call(client, csrf, address, run_path + "/metrics")
+                    changes = facts["diagnostics"]["schemas"]
+                    assert any(any(column.get("column") == "ignored" and column["kind"] == "Added"
+                                   for column in item["diff"]["changes"])
+                               for item in changes if item["diff"]["compatible"]), changes
+                    assert any(any(column.get("column") == "value" and column["kind"] == "Removed"
+                                   for column in item["diff"]["changes"])
+                               for item in changes if not item["diff"]["compatible"]), changes
                     history = _management_call(client, csrf, address,
                                                "/api/jobs/sdk-fluent-management-cdc/occurrences")
                     assert len(history) == 1 and history[0]["runId"] == run_id, history
                     with closing(sqlite3.connect(target)) as database:
                         rows = database.execute("SELECT id, label, value FROM output ORDER BY id").fetchall()
-                    assert rows == [(1, "after", 11)], rows
-                    assert query(f"SELECT id || E'\\t' || label || E'\\t' || value FROM {source_table} ORDER BY id") == "1\tafter\t11"
-                    print("Typed PostgreSQL TLS CDC -> Management job -> Worker process lifetime -> SQLite independent readback passed")
+                    assert rows == expected, rows
+                    print("Typed TLS CDC survived client exit, resumed its original execution, applied key changes and safe DDL, and rejected a dropped projected field")
                 finally:
                     if service.poll() is None:
                         service.terminate()

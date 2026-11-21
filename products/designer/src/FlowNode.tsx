@@ -15,7 +15,7 @@ import {
   TriangleAlert,
   Braces,
 } from "lucide-react";
-import type { NativePort } from "./model";
+import type { NativeDelivery, NativePort } from "./model";
 export type FlowNodeValue = Node<
   {
     label: string;
@@ -30,6 +30,8 @@ export type FlowNodeValue = Node<
     stale?: boolean;
     runtime?:string;
     failed?: boolean;
+    sourceReplay?: boolean;
+    delivery?: NativeDelivery;
   },
   "component"
 >;
@@ -83,6 +85,13 @@ export const FlowNode = memo(function FlowNode({
         {data.failed ? <TriangleAlert size={16} /> : null}
       </div>
       {data.runtime?<div className="node-fields" role="status">{data.runtime}</div>:null}
+      {data.sourceReplay !== undefined || data.delivery ? (
+        <div className="node-contract" role="status">
+          {data.sourceReplay === true ? "可重放" : data.sourceReplay === false ? "不可重放" : ""}
+          {data.sourceReplay !== undefined && data.delivery ? " · " : ""}
+          {data.delivery ? `${data.delivery.visibility} / ${data.delivery.confirmation}` : ""}
+        </div>
+      ) : null}
       <div className="node-fields">
         {data.inputFields === undefined
           ? "待绑定字段"
@@ -99,7 +108,7 @@ export const FlowNode = memo(function FlowNode({
           const error = Boolean(port ? port.flags & 2 : index === data.error);
           return (
             <div
-              className={error ? "node-port error-output" : "node-port"}
+              className={`${error ? "node-port error-output" : "node-port"}${port?.changeMode ? ` change-${port.changeMode.toLowerCase()}` : ""}`}
               key={port?.id ?? index}
             >
               <span>
@@ -109,6 +118,7 @@ export const FlowNode = memo(function FlowNode({
                     : data.outputs === 1
                       ? "输出"
                       : `输出 ${index + 1}`)}
+                {port?.changeMode ? <small className="change-mode">{port.changeMode}</small> : null}
               </span>
               <b>
                 {data.portRows?.[index] === undefined

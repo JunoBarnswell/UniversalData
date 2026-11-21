@@ -13,4 +13,9 @@ public sealed record RunState(int Version, string Id, string PackageId, string P
     bool BrokerRestore = false, string? JournalTicket = null, long RecoverySafeAfterMs = 0,
     bool RequiresJournal = true, string? RequestDigest = null, bool StartAuthorized = false,
     string? AgentBootId = null, ulong TaskGeneration = 0, string? DispatchLeaseId = null, ulong ReportSequence = 0,
-    KafkaElasticity? Elastic = null, KafkaElasticState? ElasticPlan = null, KafkaAssignment? Assignment = null);
+    KafkaElasticity? Elastic = null, KafkaElasticState? ElasticPlan = null, KafkaAssignment? Assignment = null,
+    bool Incremental = false, bool Continuous = false)
+{
+    internal bool Recoverable => State == "RecoveryRequired" || Continuous && State == "Stopped" ||
+        Incremental && (StartAuthorized || Resume) && State is ("Failed" or "Cancelled" or "Stopped");
+}

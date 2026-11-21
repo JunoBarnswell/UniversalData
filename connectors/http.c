@@ -44,6 +44,7 @@ typedef struct transfer {
     ud_bytes body, header_bytes;
     uint64_t retry_after;
     const ud_json *response_headers;
+    int capture_headers;
     const ud_json *request_header_definitions;
     const struct curl_slist *request_headers;
     uint32_t credential_header_count;
@@ -154,6 +155,8 @@ static int contains_value(const char *text, size_t length, const char *value) {
 
 static int reflects_credentials(const transfer *t, const char *line, size_t length) {
     const char *separator = memchr(line, ':', length);
+    if (!separator)
+        return 0;
     const char *text = separator + 1;
     length -= (size_t)(text - line);
     uint32_t index = 0;
@@ -195,7 +198,8 @@ static size_t header(char *ptr, size_t size, size_t count, void *user) {
     }
     if (n >= 5 && !memcmp(ptr, "HTTP/", 5))
         t->header_bytes.size = 0;
-    if (selected_header(t->response_headers, ptr, n) && !reflects_credentials(t, ptr, n)) {
+    if ((t->capture_headers || selected_header(t->response_headers, ptr, n)) &&
+        !reflects_credentials(t, ptr, n)) {
         t->status = ud_bytes_put(&t->header_bytes, ptr, n);
         if (t->status)
             return 0;
@@ -886,7 +890,7 @@ static ud_status network_auth(const ud_component_context *context, ud_connection
                               const ud_network_options *options, CURL *easy,
                               transfer *transfer_state, struct curl_slist **headers,
                               ud_json **document, char **trust_path, char **key_path,
-                              char *strings[5]) {
+                              char **ca_connection, char *strings[5]) {
     ud_string secret = {0};
     ud_status status = ud_http_connection_credentials(connection, &secret);
     if (!status && secret.length)
@@ -899,9 +903,10 @@ static ud_status network_auth(const ud_component_context *context, ud_connection
                                  "bearerToken",
                                  "knownHostsConnection",
                                  "privateKeyConnection",
-                                 "keyPassphrase"};
+                                 "keyPassphrase",
+                                 "caConnection"};
     if (!status && *document)
-        status = ud_json_keys(*document, keys, 8);
+        status = ud_json_keys(*document, keys, 9);
     const char *names[] = {"username", "password", "awsSigV4", "bearerToken", "keyPassphrase"};
     for (uint32_t at = 0; !status && at < 5; at++) {
         const ud_json *value = ud_member(*document, names[at]);
@@ -915,6 +920,18 @@ static ud_status network_auth(const ud_component_context *context, ud_connection
         if (!status) {
             strings[at] = ud_strdup_n(context->memory, text.data, text.length);
             if (!strings[at])
+                status = UD_RESOURCE;
+        }
+    }
+    if (!status && ud_member(*document, "caConnection")) {
+        ud_string id;
+        status = ud_json_string(ud_member(*document, "caConnection"), &id);
+        if (!status && (!id.length || id.length > 32768 || !clean_text(id) ||
+                        memchr(id.data, 0, id.length)))
+            status = UD_SCHEMA;
+        if (!status) {
+            *ca_connection = ud_strdup_n(context->memory, id.data, id.length);
+            if (!*ca_connection)
                 status = UD_RESOURCE;
         }
     }
@@ -1020,7 +1037,228 @@ static ud_status network_perform(CURL *easy, transfer *transfer_state, const cha
         status = UD_COMMIT_UNKNOWN;
     return status;
 }
+
+static ud_status network_s3_headers(ud_context *memory, struct curl_slist **headers,
+                                    const ud_network_s3_options *options) {
+    ud_status status = add_header(headers, "Expect:");
+    const ud_string values[] = {options->range, options->content_type, options->idempotency_key,
+                                options->if_none_match, options->metadata_digest};
+    const char *names[] = {"Range: ", "Content-Type: ", "Idempotency-Key: ",
+                           "If-None-Match: ", "x-amz-meta-universaldata-sha256: "};
+    for (uint32_t i = 0; !status && i < sizeof(values) / sizeof(*values); i++) {
+        if (!values[i].length)
+            continue;
+        ud_bytes line = {.ctx = memory, .limit = 65536};
+        status = ud_bytes_put(&line, names[i], strlen(names[i]));
+        if (!status)
+            status = ud_bytes_put(&line, values[i].data, values[i].length);
+        if (!status)
+            status = ud_bytes_put(&line, "", 1);
+        if (!status)
+            status = add_header(headers, (char *)line.data);
+        ud_bytes_clear(&line);
+    }
+    return status;
+}
+
+ud_status ud_network_s3_call(const ud_component_context *context,
+                             ud_connection_lease *connection,
+                             const ud_network_s3_options *options,
+                             ud_network_s3_result *result) {
+    if (!context || !connection || !options || !result ||
+        options->struct_size != sizeof(*options) || options->abi_version != UD_ABI_VERSION)
+        return UD_INVALID;
+    *result = (ud_network_s3_result){0};
+#ifndef UD_WITH_HTTP
+    return UD_UNSUPPORTED;
+#else
+    if (!options->method.length || options->method.length > 16 || !options->url.length ||
+        !options->timeout || options->timeout > 86400000 || !options->maximum ||
+        options->maximum > INT64_MAX || !clean_text(options->method) ||
+        !clean_text(options->url) || !clean_text(options->range) ||
+        !clean_text(options->content_type) || !clean_text(options->idempotency_key) ||
+        !clean_text(options->if_none_match) || !clean_text(options->metadata_digest) ||
+        (options->file && options->body.length))
+        return UD_SCHEMA;
+    const int upload_request = options->file && ud_named(options->method, "PUT");
+    if ((upload_request && options->file_size > INT64_MAX) ||
+        (options->file && !upload_request && !ud_named(options->method, "GET")))
+        return UD_SCHEMA;
+    ensure_initialized();
+    if (!initialized)
+        return UD_UNSUPPORTED;
+    char *url = ud_strdup_n(context->memory, options->url.data, options->url.length);
+    if (!url)
+        return UD_RESOURCE;
+    ud_status status = network_url(url, UD_NETWORK_S3);
+    char *method = !status ? ud_strdup_n(context->memory, options->method.data,
+                                         options->method.length) : NULL;
+    if (!status && !method)
+        status = UD_RESOURCE;
+    CURL *easy = !status ? curl_easy_init() : NULL;
+    if (!status && !easy)
+        status = UD_RESOURCE;
+    transfer state = {.execution = context->activation,
+                      .connection = connection,
+                      .maximum = options->maximum,
+                      .deadline = options->timeout > UINT64_MAX - ud_now_ms()
+                                      ? UINT64_MAX
+                                      : ud_now_ms() + options->timeout,
+                      .network_action = options->action,
+                      .file = options->file,
+                      .file_lease = options->file_lease,
+                      .file_action = upload_request ? UD_ACCESS_READ : UD_ACCESS_WRITE,
+                      .capture_headers = 1,
+                      .body = {.ctx = context->memory, .limit = (size_t)options->maximum},
+                      .header_bytes = {.ctx = context->memory, .limit = 65536}};
+    if (!status)
+        status = check(&state);
+    if (!status && upload_request) {
+        if (ud_seek(options->file, options->file_offset) != 0)
+            status = UD_IO;
+        else
+            state.upload_size = options->file_size;
+    }
+    if (!status)
+        status = configure_transport(easy, &state, url, "http,https", options->timeout);
+    struct curl_slist *headers = NULL;
+    ud_json *auth = NULL;
+    char *trust_path = NULL, *key_path = NULL, *ca_connection = NULL, *strings[5] = {0};
+    ud_bytes ca = {.ctx = context->memory, .limit = 1048576};
+    ud_network_options network_options = {.protocol = UD_NETWORK_S3,
+                                          .timeout = options->timeout,
+                                          .maximum = options->maximum};
+    if (!status)
+        status = network_auth(context, connection, &network_options, easy, &state, &headers,
+                              &auth, &trust_path, &key_path, &ca_connection, strings);
+    if (!status) {
+        const ud_string ca_id = options->ca.length ? options->ca : ca_connection
+                                    ? (ud_string){ca_connection, (uint32_t)strlen(ca_connection)}
+                                    : (ud_string){0};
+        status = load_ca(context->activation, ca_id, &ca);
+    }
+    struct curl_blob trust = {ca.data, ca.size, CURL_BLOB_NOCOPY};
+#define SET(option, value)                                                                         \
+    do {                                                                                           \
+        if (!status && curl_easy_setopt(easy, option, value) != CURLE_OK)                          \
+            status = UD_IO;                                                                        \
+    } while (0)
+    if (ca.size)
+        SET(CURLOPT_CAINFO_BLOB, &trust);
+    SET(CURLOPT_CUSTOMREQUEST, method);
+    if (ud_named(options->method, "HEAD"))
+        SET(CURLOPT_NOBODY, 1L);
+    if (options->body.length) {
+        SET(CURLOPT_POSTFIELDS, options->body.data);
+        SET(CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)options->body.length);
+    }
+    if (upload_request) {
+        SET(CURLOPT_UPLOAD, 1L);
+        SET(CURLOPT_READFUNCTION, upload);
+        SET(CURLOPT_READDATA, &state);
+        SET(CURLOPT_INFILESIZE_LARGE, (curl_off_t)state.upload_size);
+    }
+    if (!status)
+        status = network_s3_headers(context->memory, &headers, options);
+    SET(CURLOPT_HTTPHEADER, headers);
+    ud_network_result network_result = {0};
+    if (!status)
+        status = network_perform(easy, &state, url, &network_result, 1);
+    result->attempted = network_result.attempted;
+    result->completed = network_result.completed;
+    result->status = network_result.status;
+    result->transport_code = state.transport_code;
+    result->bytes = network_result.bytes;
+    curl_off_t content_length = -1;
+    if (easy && curl_easy_getinfo(easy, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &content_length) == CURLE_OK &&
+        content_length >= 0)
+        result->content_length = (uint64_t)content_length;
+    if (network_result.completed) {
+        result->body = (ud_string){(const char *)state.body.data, (uint32_t)state.body.size};
+        state.body.data = NULL;
+        result->headers =
+            (ud_string){(const char *)state.header_bytes.data, (uint32_t)state.header_bytes.size};
+        state.header_bytes.data = NULL;
+    }
+#undef SET
+    if (easy)
+        curl_easy_cleanup(easy);
+    clear_headers(headers);
+    ud_json_destroy(auth);
+    ud_bytes_clear(&state.body);
+    ud_bytes_clear(&state.header_bytes);
+    ud_bytes_clear(&ca);
+    (void)ud_connection_lease_release(state.trust_lease);
+    (void)ud_connection_lease_release(state.key_lease);
+    for (uint32_t at = 0; at < 5; at++)
+        ud_free(strings[at]);
+    ud_free(trust_path);
+    ud_free(key_path);
+    ud_free(ca_connection);
+    ud_free(method);
+    ud_free(url);
+    return status;
 #endif
+}
+
+static ud_status network_file_open(const ud_component_context *context, const ud_network_options *options,
+                                   FILE **file, uint64_t *size) {
+    if (!options->path)
+        return UD_SCHEMA;
+    if (!options->upload) {
+        UD_TRY(ud_path_no_symlinks(context->memory, options->path));
+        *file = ud_fopen(options->path, "wb");
+        return *file ? UD_OK : UD_IO;
+    }
+    UD_TRY(ud_open_regular(context->memory, options->path, file));
+#ifdef _WIN32
+    if (_fseeki64(*file, 0, SEEK_END))
+#else
+    if (fseeko(*file, 0, SEEK_END))
+#endif
+        return UD_IO;
+    int64_t length = ud_tell(*file);
+    if (length < 0 || (uint64_t)length > options->maximum)
+        return UD_RESOURCE;
+    *size = (uint64_t)length;
+    return ud_seek(*file, 0) ? UD_IO : UD_OK;
+}
+
+static ud_status network_s3_file(const ud_component_context *context, ud_connection_lease *connection,
+                                 const ud_network_options *options, ud_network_result *result) {
+    ud_network_s3_options operation = {
+        .struct_size = sizeof(operation), .abi_version = UD_ABI_VERSION,
+        .method = options->upload ? (ud_string){"PUT", 3} : (ud_string){"GET", 3},
+        .action = options->upload ? UD_ACCESS_WRITE : UD_ACCESS_READ,
+        .file_lease = options->file, .ca = options->ca, .content_type = options->content_type,
+        .if_none_match = options->upload && !options->overwrite ? (ud_string){"*", 1} : (ud_string){0},
+        .timeout = options->timeout, .maximum = options->upload ? 1048576 : options->maximum};
+    UD_TRY(ud_network_connection_resource(connection, &operation.url));
+    ud_status status = ud_connection_lease_authorize(connection, operation.action);
+    if (!status && options->file)
+        status = ud_connection_lease_authorize(options->file, options->upload ? UD_ACCESS_READ : UD_ACCESS_WRITE);
+    if (!status)
+        status = network_file_open(context, options, &operation.file, &operation.file_size);
+    ud_network_s3_result response = {0};
+    if (!status)
+        status = ud_network_s3_call(context, connection, &operation, &response);
+    *result = (ud_network_result){response.attempted, response.completed, response.status, response.bytes};
+    if (!status && !options->upload)
+        status = ud_flush(context->memory, operation.file);
+    if (operation.file && fclose(operation.file) && !status)
+        status = UD_IO;
+    ud_network_s3_result_clear(&response);
+    return status;
+}
+
+#endif
+void ud_network_s3_result_clear(ud_network_s3_result *result) {
+    if (!result)
+        return;
+    ud_free((void *)result->body.data);
+    ud_free((void *)result->headers.data);
+    memset(result, 0, sizeof(*result));
+}
 ud_status ud_network_call(const ud_component_context *context, ud_connection_lease *connection,
                           const ud_network_options *options, ud_network_result *result) {
     if (!context || !connection || !options || !result)
@@ -1035,6 +1273,8 @@ ud_status ud_network_call(const ud_component_context *context, ud_connection_lea
         return UD_SCHEMA;
     if (options->upload && ud_transaction_active(context->activation))
         return UD_UNSUPPORTED; /* This resource cannot prepare a transaction. */
+    if (options->protocol == UD_NETWORK_S3)
+        return network_s3_file(context, connection, options, result);
     ensure_initialized();
     if (!initialized)
         return UD_UNSUPPORTED;
@@ -1081,34 +1321,7 @@ ud_status ud_network_call(const ud_component_context *context, ud_connection_lea
     if (!status)
         status = check(&state);
     if (!status && options->path) {
-        if (options->upload) {
-            status = ud_open_regular(context->memory, options->path, &state.file);
-            if (!status && ud_seek(state.file, 0))
-                status = UD_IO;
-            if (!status) {
-#ifdef _WIN32
-                if (_fseeki64(state.file, 0, SEEK_END))
-                    status = UD_IO;
-#else
-                if (fseeko(state.file, 0, SEEK_END))
-                    status = UD_IO;
-#endif
-                int64_t length = !status ? ud_tell(state.file) : -1;
-                if (length < 0 || (uint64_t)length > options->maximum)
-                    status = UD_RESOURCE;
-                else
-                    state.upload_size = (uint64_t)length;
-                if (!status && ud_seek(state.file, 0))
-                    status = UD_IO;
-            }
-        } else {
-            /* The task passes its already reserved Native generation path. */
-            status = ud_path_no_symlinks(context->memory, options->path);
-            if (!status)
-                state.file = ud_fopen(options->path, "wb");
-            if (!state.file)
-                status = status ? status : UD_IO;
-        }
+        status = network_file_open(context, options, &state.file, &state.upload_size);
     } else if (!status && options->protocol == UD_NETWORK_SMTP) {
         state.upload_bytes = (const uint8_t *)options->message.data;
         state.upload_size = options->message.length;
@@ -1118,13 +1331,21 @@ ud_status ud_network_call(const ud_component_context *context, ud_connection_lea
         status = configure_transport(easy, &state, url, protocols, options->timeout);
     ud_json *auth = NULL;
     struct curl_slist *headers = NULL, *recipients = NULL;
-    char *trust_path = NULL, *key_path = NULL, *strings[5] = {0}, *sender = NULL;
+    char *trust_path = NULL, *key_path = NULL, *ca_connection = NULL, *strings[5] = {0},
+         *sender = NULL;
     ud_bytes ca = {.ctx = context->memory, .limit = 1048576};
     if (!status)
         status = network_auth(context, connection, options, easy, &state, &headers, &auth,
-                              &trust_path, &key_path, strings);
-    if (!status)
-        status = load_ca(context->activation, options->ca, &ca);
+                              &trust_path, &key_path, &ca_connection, strings);
+    if (!status) {
+        const ud_string ca_id = options->ca.length
+                                    ? options->ca
+                                    : ca_connection
+                                          ? (ud_string){ca_connection,
+                                                        (uint32_t)strlen(ca_connection)}
+                                          : (ud_string){0};
+        status = load_ca(context->activation, ca_id, &ca);
+    }
     struct curl_blob trust = {ca.data, ca.size, CURL_BLOB_NOCOPY};
 #define SET(option, value)                                                                         \
     do {                                                                                           \
@@ -1250,6 +1471,7 @@ ud_status ud_network_call(const ud_component_context *context, ud_connection_lea
         ud_free(strings[at]);
     ud_free(trust_path);
     ud_free(key_path);
+    ud_free(ca_connection);
     ud_free(sender);
     ud_free(operation_url);
     ud_free(url);

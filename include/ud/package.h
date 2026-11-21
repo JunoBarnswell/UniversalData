@@ -11,6 +11,7 @@ typedef struct ud_package ud_package;
 typedef struct ud_sql_session ud_sql_session;
 typedef struct ud_connection_pool ud_connection_pool;
 UD_API ud_status ud_package_requires_journal(const ud_package *, int32_t *);
+UD_API ud_status ud_package_is_continuous(const ud_package *, int32_t *);
 UD_API ud_status ud_execution_sql_session_open(ud_execution *, ud_string connection,
                                                  ud_sql_session **);
 /* Borrows the enrolled physical connection until the handle is closed. Close
@@ -130,6 +131,12 @@ UD_API ud_status ud_execution_bind_connector(ud_execution *, ud_string logical_i
 /* Host defaults cap each source and govern wait when the Package has no explicit acquisition timeout. */
 UD_API ud_status ud_execution_set_connection_limits(ud_execution *, uint32_t max_connections_per_source,
                                                    uint32_t default_wait_ms);
+/* Bind a Catalog-owned lower bound before start, or recover with the same bound.
+ * Its values are part of the frozen Journal identity, never public diagnostics. */
+UD_API ud_status ud_execution_set_incremental(ud_execution *, ud_string binding);
+/* Owned confirmation from the successful execution's Native Journal. END if
+ * there is no confirmed managed cursor. The result is for Catalog settlement. */
+UD_API ud_status ud_execution_incremental_confirmation(ud_execution *, char **, uint32_t *);
 /* Owns physical connector sessions while each Execution retains its own grants,
  * credential resolver, cancellation and Journal. Destroy only after every
  * borrowing Execution (and any borrowed result) has been released. */

@@ -9,10 +9,12 @@ if(UD_WITH_ICEBERG)
   list(APPEND src ${PROJECT_SOURCE_DIR}/connectors/iceberg_table.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/iceberg.c)
 endif()
-list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/debug.c ${CMAKE_CURRENT_SOURCE_DIR}/preview.c ${CMAKE_CURRENT_SOURCE_DIR}/file_inspection.c ${CMAKE_CURRENT_SOURCE_DIR}/definition.c ${CMAKE_CURRENT_SOURCE_DIR}/file_generation.c)
+list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/debug.c ${CMAKE_CURRENT_SOURCE_DIR}/preview.c ${CMAKE_CURRENT_SOURCE_DIR}/file_inspection.c ${CMAKE_CURRENT_SOURCE_DIR}/definition.c ${CMAKE_CURRENT_SOURCE_DIR}/file_generation.c
+  ${PROJECT_SOURCE_DIR}/connectors/s3_object.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/network.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/wmi.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/sqlserver.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/column_file.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/avro.c ${PROJECT_SOURCE_DIR}/connectors/avro.c)
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_diagnostics.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_contract.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_frontier.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/pipeline_epoch.c
   ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/kafka_stage.c
@@ -24,6 +26,7 @@ if(UD_WITH_XML)
   list(APPEND src ${PROJECT_SOURCE_DIR}/connectors/xml.c ${CMAKE_CURRENT_SOURCE_DIR}/../control-flow/xml.c ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/xml.c)
 endif()
 list(APPEND src ${CMAKE_CURRENT_SOURCE_DIR}/../data-flow/results.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/incremental.c ${PROJECT_SOURCE_DIR}/catalog/incremental.c
   ${PROJECT_SOURCE_DIR}/catalog/job_calendar.c ${PROJECT_SOURCE_DIR}/catalog/dispatch.c
   ${PROJECT_SOURCE_DIR}/catalog/placement.c ${PROJECT_SOURCE_DIR}/catalog/publication.c)
 ud_component(ud_package Package ${src})

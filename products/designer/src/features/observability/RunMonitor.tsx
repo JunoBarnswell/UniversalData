@@ -3,6 +3,7 @@ import { Pause, Play, SkipForward } from "lucide-react";
 import { executionFeed, type FeedMode } from "./executionFeed";
 import { api, post } from "../../api";
 import { DataGrid } from "../../DataGrid";
+import { Button } from "../../shared/design-system/Controls";
 import {
   executionStateName,
   failurePhase,
@@ -124,6 +125,14 @@ export function RunMonitor({
       setError(String(error));
     }
   }
+  async function runAction(action: "stop" | "cancel" | "resume") {
+    try {
+      if (action === "resume") await post(`/executions/${ticket}/resume`);
+      else await post(`/executions/${ticket}/${action}`);
+    } catch (failure) {
+      setError(String(failure));
+    }
+  }
   const rows: (ProgressNode & { pipeline: string })[] =
     facts?.progress?.pipelines.flatMap((pipeline) =>
       pipeline.nodes.map((node) => ({ ...node, pipeline: pipeline.id })),
@@ -140,6 +149,16 @@ export function RunMonitor({
         (edge) => `${edge.pipeline}/${edge.component}/${edge.port}` === port,
       ) ?? edges[0];
   const metrics = facts?.metrics ?? {};
+  const allowed = new Set(run?.allowedActions ?? (
+    run?.state === "Running" ? ["stop", "cancel"] :
+      run?.state === "RecoveryRequired" ? ["resume", "cancel"] :
+        ["Queued", "Claimed"].includes(run?.state ?? "") ? ["cancel"] : []
+  ));
+  if (run?.canResume === true) allowed.add("resume");
+  if (run?.canResume === false) allowed.delete("resume");
+  const diagnosticNodes = facts?.diagnostics?.pipelines.flatMap((pipeline) =>
+    pipeline.trees.flatMap((tree) => tree.nodes.map((node) => ({ ...node, pipeline: pipeline.id }))),
+  ) ?? [];
   return (
     <section className={`run-monitor${compact ? " compact" : ""}`}>
       <p className="feed-status" role="status">
@@ -151,17 +170,13 @@ export function RunMonitor({
             ? `${caption ?? `${run.packageId} v${run.packageRevision}`} · ${executionStateName(run)}`
             : "读取 Native 执行事实…"}
         </h3>
-        {run?.state === "Running" ? (
-          <button
-            onClick={() =>
-              void post(`/executions/${ticket}/stop`).catch((error) =>
-                setError(String(error)),
-              )
-            }
-          >
+        {allowed.has("stop") ? (
+          <Button onClick={() => void runAction("stop")}>
             停止并排空
-          </button>
+          </Button>
         ) : null}
+        {allowed.has("cancel") ? <Button onClick={() => void runAction("cancel")}>取消执行</Button> : null}
+        {allowed.has("resume") ? <Button className="primary" onClick={() => void runAction("resume")}>恢复同一执行</Button> : null}
         {run?.debug ? (
           <div className="inline-actions">
             <button
@@ -200,8 +215,18 @@ export function RunMonitor({
           {run.failure.detail?.sqlState ? ` · SQLSTATE ${run.failure.detail.sqlState}` : ""}
           {run.failure.detail?.httpStatus ? ` · HTTP ${run.failure.detail.httpStatus}` : ""}
           {run.failure.detail?.exitCode != null ? ` · Worker 退出码 ${run.failure.detail.exitCode}` : ""}
+          {run.failure.detail?.message ? ` · ${run.failure.detail.message}` : ""}
         </p>
       ) : null}
+      {facts?.diagnostics?.schemas?.map((schema, index) => (
+        <details key={`${schema.task}/${schema.component}/${index}`} open={!schema.diff.compatible}>
+          <summary>{schema.task} / {schema.component} · {schema.diff.compatible ? "结构变更已接受" : "结构变更待处理"}</summary>
+          <ul>{schema.diff.changes.map((change, position) => (
+            <li key={`${change.columnId}/${position}`}>{change.column ?? change.columnId} · {change.kind}</li>
+          ))}</ul>
+          {!schema.diff.compatible ? <p>核对源表字段、主键和最后确认位点。需要修改作业契约时，发布新版本并明确起点。</p> : null}
+        </details>
+      ))}
       {facts?.diagnostics?.tasks?.filter(task => task.httpStatus !== undefined).map((task, index) => (
         <details key={`${task.activation}/${index}`}>
           <summary>{task.activation} · HTTP {task.httpStatus}</summary>
@@ -232,6 +257,23 @@ export function RunMonitor({
             ? "这是普通流式执行，未建立 Native Journal；已知提交量保留在历史中，不能恢复或重放。"
             : "提交状态未确认。等待 Native 回执与 Journal 恢复，不能将重试视为已提交。"}
         </p>
+      ) : null}
+      {diagnosticNodes.length ? (
+        <details className="native-diagnostics">
+          <summary>Native 诊断与目标承诺</summary>
+          <div className="data-grid-scroll">
+            <table>
+              <thead><tr><th>Pipeline / 节点</th><th>结果</th><th>源重放</th><th>可见性</th><th>确认</th></tr></thead>
+              <tbody>{diagnosticNodes.map((node) => <tr key={`${node.pipeline}/${node.id}`}>
+                <td>{node.pipeline} / {node.id}</td>
+                <td>{node.result ?? 0}</td>
+                <td>{node.sourceReplay === undefined ? "—" : node.sourceReplay ? "支持" : "不支持"}</td>
+                <td>{node.delivery?.visibility ?? "—"}</td>
+                <td>{node.delivery?.confirmation ?? "—"}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </details>
       ) : null}
       <div className="data-grid-scroll">
         <table>

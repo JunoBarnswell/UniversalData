@@ -142,7 +142,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
         var package = prepared ?? NativePackageDefinition.Read(packageJson, MemoryLimit);
         if (!Isolated && RequiresIsolation(package.Document))
             throw new UniversalDataException((int)StatusCode.Auth, "Untrusted module requires an isolated Worker");
-        var limits = ResolveExecutionLimits(package.Document,
+        var limits = ResolveExecutionLimits(package.Document, package.IsContinuous,
             enforceConcurrency: executionId.Length != 0 && shard is null);
         bool requiresJournal = package.RequiresJournal;
         if (resume && !requiresJournal)
@@ -188,12 +188,12 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
         }
     }
 
-    private NativeExecutionLimits ResolveExecutionLimits(JsonElement package, bool enforceConcurrency)
+    private NativeExecutionLimits ResolveExecutionLimits(JsonElement package, bool continuous, bool enforceConcurrency)
     {
         uint batchRows = 4096;
         uint edgeCapacity = 2;
         ulong memoryBytes = MemoryLimit;
-        ulong timeoutMilliseconds = checked(ExecutionTimeoutSeconds * 1000UL);
+        ulong timeoutMilliseconds = continuous ? 0 : checked(ExecutionTimeoutSeconds * 1000UL);
         uint maxConcurrency = MaxConcurrency;
         if (package.TryGetProperty("policy", out var policy) &&
             policy.ValueKind == JsonValueKind.Object)

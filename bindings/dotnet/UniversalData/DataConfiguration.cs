@@ -44,6 +44,7 @@ public sealed class DataConfiguration
     private readonly string[] assemblyPaths;
     private readonly string[] projectPaths;
     private readonly Dictionary<string, string> managementHeaders;
+    private readonly JobEnvironmentReference? managementEnvironment;
 
     private DataConfiguration(
         string configPath,
@@ -63,7 +64,8 @@ public sealed class DataConfiguration
         string? managementBearerToken,
         string? managementCookie,
         string? managementCsrf,
-        Dictionary<string, string> managementHeaders)
+        Dictionary<string, string> managementHeaders,
+        JobEnvironmentReference? managementEnvironment)
     {
         this.configPath = configPath;
         this.hostPolicyPath = hostPolicyPath;
@@ -83,6 +85,7 @@ public sealed class DataConfiguration
         ManagementCookie = managementCookie;
         ManagementCsrf = managementCsrf;
         this.managementHeaders = managementHeaders;
+        this.managementEnvironment = managementEnvironment;
     }
 
     /// <summary>Absolute path of the YAML file that supplied this configuration.</summary>
@@ -117,6 +120,9 @@ public sealed class DataConfiguration
 
     /// <summary>Additional externally supplied Management headers.</summary>
     public IReadOnlyDictionary<string, string> ManagementHeaders => managementHeaders;
+
+    /// <summary>Optional immutable environment binding used by publication commands.</summary>
+    public JobEnvironmentReference? ManagementEnvironment => managementEnvironment;
 
     /// <summary>Names of the YAML jobs in declaration order.</summary>
     public IReadOnlyCollection<string> JobIds => jobs.Keys;
@@ -158,7 +164,7 @@ public sealed class DataConfiguration
         return new DataConfiguration(config, hostPolicy.Path, hostPolicy.Tenant,
             parsedSources, parsedJobs, revisions, options, parsedSchedules, parameters, copiedOverrides,
             parsedWorker, parsedAssemblies, parsedProjects, management.BaseUrl, management.BearerToken,
-            management.Cookie, management.Csrf, management.Headers);
+            management.Cookie, management.Csrf, management.Headers, management.Environment);
     }
 
     /// <summary>
@@ -492,7 +498,8 @@ public sealed class DataConfiguration
             string name = RequiredString(source, "id", "name");
             EnsureKnown(source, "source", "id", "name", "kind", "connectionString", "connection",
                 "resource", "credentialReference", "baseUri", "nativeConnectionString", "initialRevision",
-                "provisionTransactionReceipts", "storageRoot", "catalogWarehouse", "url");
+                "provisionTransactionReceipts", "storageRoot", "catalogWarehouse", "storageConnection",
+                "url");
             if (!result.TryAdd(name, ParseSource(name, source, directory)))
                 throw new InvalidDataException($"Duplicate source '{name}'");
         }
@@ -504,7 +511,8 @@ public sealed class DataConfiguration
         if (string.IsNullOrWhiteSpace(name)) throw new InvalidDataException("A source name cannot be empty");
         EnsureKnown(source, $"source '{name}'", "id", "name", "kind", "connectionString", "connection",
             "resource", "credentialReference", "baseUri", "nativeConnectionString", "initialRevision",
-            "provisionTransactionReceipts", "storageRoot", "catalogWarehouse", "url");
+            "provisionTransactionReceipts", "storageRoot", "catalogWarehouse", "storageConnection",
+            "url");
         DataSourceKind kind = ParseSourceKind(RequiredString(source, "kind"));
         string connection = OptionalString(source, "connectionString", "connection") ?? "";
         string? resource = OptionalString(source, "resource");
@@ -514,9 +522,12 @@ public sealed class DataConfiguration
         ulong revision = OptionalUInt64(source, 1, "initialRevision")!.Value;
         bool receipts = OptionalBoolean(source, false, "provisionTransactionReceipts");
         string? storage = OptionalString(source, "storageRoot");
-        if (storage is not null) storage = ResolvePath(storage, directory);
+        if (storage is not null && !(Uri.TryCreate(storage, UriKind.Absolute, out var storageUri) &&
+            storageUri.Scheme is "http" or "https")) storage = ResolvePath(storage, directory);
         string? warehouse = OptionalString(source, "catalogWarehouse");
-        return new(name, kind, connection, resource, credential, baseUri, native, revision, receipts, storage, warehouse);
+        string? storageConnection = OptionalString(source, "storageConnection");
+        return new(name, kind, connection, resource, credential, baseUri, native, revision, receipts, storage,
+            warehouse, storageConnection);
     }
 
     private static DataSourceKind ParseSourceKind(string value) => value.Trim().ToLowerInvariant() switch
@@ -529,6 +540,7 @@ public sealed class DataConfiguration
         "sqlite" => DataSourceKind.Sqlite,
         "http" or "https" or "rest" => DataSourceKind.Http,
         "iceberg" => DataSourceKind.Iceberg,
+        "s3" or "s3-compatible" => DataSourceKind.S3,
         "kafka" => DataSourceKind.Kafka,
         "rabbit" or "rabbitmq" or "rabbit-mq" => DataSourceKind.RabbitMq,
         "rocket" or "rocketmq" or "rocket-mq" => DataSourceKind.RocketMq,
@@ -759,9 +771,10 @@ public sealed class DataConfiguration
 
     private static DataConfigurationManagement ReadManagement(JsonObject root)
     {
-        if (!TryGet(root, "management", out var node)) return new DataConfigurationManagement(null, null, null, null, new(StringComparer.OrdinalIgnoreCase));
+        if (!TryGet(root, "management", out var node))
+            return new DataConfigurationManagement(null, null, null, null, new(StringComparer.OrdinalIgnoreCase), null);
         JsonObject value = RequireObject(node, "management");
-        EnsureKnown(value, "management", "baseUrl", "url", "bearerToken", "token", "cookie", "csrf", "headers");
+        EnsureKnown(value, "management", "baseUrl", "url", "bearerToken", "token", "cookie", "csrf", "headers", "environment");
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (TryGet(value, "headers", out var headerNode))
         {
@@ -769,8 +782,15 @@ public sealed class DataConfiguration
             foreach (var pair in headerMap)
                 headers[pair.Key] = RequiredScalarString(pair.Value, $"management.headers.{pair.Key}");
         }
+        JobEnvironmentReference? environment = null;
+        if (TryGet(value, "environment", out var environmentNode))
+        {
+            JsonObject binding = RequireObject(environmentNode, "management.environment");
+            EnsureKnown(binding, "management.environment", "id", "revision");
+            environment = new(RequiredString(binding, "id"), RequiredString(binding, "revision"));
+        }
         return new DataConfigurationManagement(OptionalString(value, "baseUrl", "url"), OptionalString(value, "bearerToken", "token"),
-            OptionalString(value, "cookie"), OptionalString(value, "csrf"), headers);
+            OptionalString(value, "cookie"), OptionalString(value, "csrf"), headers, environment);
     }
 
     private static JsonObject ReadObject(string path)

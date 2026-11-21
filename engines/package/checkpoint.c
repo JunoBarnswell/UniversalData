@@ -408,6 +408,14 @@ ud_status ud_checkpoint_open(ud_execution *e) {
         s = ud_put_u64(&identity, e->options.consumer_lanes);
     if (!s && e->options.worker_run_id.length)
         s = ud_put_string(&identity, e->options.worker_run_id.data, e->options.worker_run_id.length);
+    if (!s && e->incremental_binding) {
+        char *binding = NULL;
+        uint32_t size = 0;
+        s = ud_json_serialize(e->incremental_binding, &binding, &size);
+        if (!s)
+            s = ud_put_string(&identity, binding, size);
+        ud_free(binding);
+    }
     uint8_t digest[32];
     char encoded[65], payload[160]; int payload_length = 0;
     if (!s) {
@@ -882,6 +890,26 @@ ud_status ud_checkpoint_cursor(ud_activation *a, ud_string component, ud_string 
     }
     ud_bytes_clear(&key);
     checkpoint_after(a, status);
+    return status;
+}
+ud_status ud_checkpoint_cursor_read(ud_activation *a, ud_string component, char **out,
+                                    uint32_t *length) {
+    *out = NULL;
+    *length = 0;
+    checkpoint_journal *j = a->execution->journal;
+    if (!j)
+        return UD_END;
+    ud_bytes key = {.ctx = a->execution->ctx};
+    ud_status status = snapshot_key(a, component, 0, 0, &key);
+    if (!status) {
+        ud_mutex_lock(&a->execution->journal_lock);
+        const ud_json *record = find(j, RECORD_CURSOR,
+                                     (ud_string){(const char *)key.data, (uint32_t)key.size});
+        const ud_json *cursor = ud_member(record, "cursor");
+        status = cursor ? ud_json_serialize(cursor, out, length) : UD_END;
+        ud_mutex_unlock(&a->execution->journal_lock);
+    }
+    ud_bytes_clear(&key);
     return status;
 }
 ud_status ud_checkpoint_schema_event(ud_activation *a, ud_string component,

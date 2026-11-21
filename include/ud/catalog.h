@@ -92,6 +92,22 @@ typedef struct ud_catalog_job_occurrence {
  * run in one transaction. A backfill advances an existing occurrence revision. */
 UD_API ud_status ud_catalog_publish_occurrence(ud_catalog *, const ud_catalog_job_occurrence *,
                                                const ud_catalog_lease *job_lease);
+/* Freeze the selected job cursor and claim its run in one write transaction.
+ * package is the resolved immutable binding. END identifies a nonincremental
+ * run. BUSY retains a previous unsettled run, including expired Worker leases.
+ * binding is owned JSON for the authorized Worker; it may contain key values. */
+UD_API ud_status ud_catalog_incremental_claim(ud_catalog *, const ud_catalog_lease *, uint64_t revision,
+                                              ud_string run_document, ud_string package, ud_string parameters,
+                                              char **binding, uint32_t *length);
+/* Settle the same run and its confirmed position atomically. A null after in
+ * a successful Native proof preserves the lower bound. Missing proof may only
+ * release a terminal run whose previous state never authorized execution. */
+UD_API ud_status ud_catalog_incremental_settle(ud_catalog *, const ud_catalog_lease *, uint64_t revision,
+                                               ud_string run_document, ud_string proof);
+/* Look up a committed receipt by the same subject, request id and content
+ * identity used by publication. UD_END means no publication owns this id. */
+UD_API ud_status ud_catalog_find_publication(ud_catalog *, ud_string request_id, ud_string subject,
+                                            ud_string fingerprint, char **receipt, uint32_t *length);
 /* Atomically publish one package version, its project/deployment binding, the
  * scheduler job and (optionally) one queued occurrence/run. request_id and
  * subject form the tenant-scoped idempotency identity; fingerprint is the

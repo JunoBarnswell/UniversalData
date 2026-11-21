@@ -91,6 +91,7 @@ export function ExecutionConfirmation({
           包 <strong>{document.layout?.label ?? deployment.packageId}</strong> ·
           固定版本 <strong>v{deployment.packageRevision}</strong> · 发布 v
           {deployment.deploymentRevision}
+          {deployment.environment ? ` · 环境 ${deployment.environment.id} r${deployment.environment.revision}` : ""}
         </p>
         <table>
           <thead>

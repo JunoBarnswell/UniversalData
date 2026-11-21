@@ -39,7 +39,7 @@ public static class SdkWorkerFailure
                     SELECT 2 WHERE length(hex(randomblob(16777216))) > 0
                     """);
             var package = data.Compile(interrupted, publish: true);
-            await using (var doomed = await new EtlClient(data).StartAsync(package))
+            await using (var doomed = await data.StartAsync(package))
             {
                 if (doomed.WorkerProcessId == Environment.ProcessId)
                     throw new InvalidOperationException("The request did not leave the application process");

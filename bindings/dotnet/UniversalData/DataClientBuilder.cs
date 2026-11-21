@@ -78,10 +78,34 @@ public sealed class DataClientBuilder
         AddDatabase(name, DataSourceKind.Sqlite, connectionString, configure);
     public DataClientBuilder AddHttp(string name, Uri baseUri) => AddSource(new(name, DataSourceKind.Http, "", baseUri: baseUri));
 
-    public DataClientBuilder AddIceberg(string name, Uri catalog, string storageRoot,
-        string? warehouse = null, string? credentialReference = null) =>
+    public DataClientBuilder AddIceberg(string name, Uri catalog, string? storageRoot = null,
+        string? warehouse = null, string? credentialReference = null, string? storageConnection = null) =>
         AddSource(new(name, DataSourceKind.Iceberg, "", credentialReference: credentialReference,
-            baseUri: catalog, storageRoot: storageRoot, catalogWarehouse: warehouse));
+            baseUri: catalog, storageRoot: storageRoot, catalogWarehouse: warehouse,
+            storageConnection: storageConnection));
+
+    /// <summary>Registers an S3-compatible object-store resource for named Iceberg storage.</summary>
+    public DataClientBuilder AddS3(string name, Uri endpoint, string bucket, string prefix,
+        string credentialReference)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(bucket);
+        ArgumentNullException.ThrowIfNull(prefix);
+        ArgumentException.ThrowIfNullOrWhiteSpace(credentialReference);
+        if (!endpoint.IsAbsoluteUri || endpoint.Scheme != "https" || endpoint.UserInfo.Length != 0 ||
+            endpoint.Query.Length != 0 || endpoint.Fragment.Length != 0)
+            throw new ArgumentException("S3 endpoint must be an absolute TLS URI", nameof(endpoint));
+        string normalizedBucket = bucket.Trim('/');
+        if (normalizedBucket.Length == 0 || normalizedBucket.Contains('/'))
+            throw new ArgumentException("S3 bucket must be one non-empty path segment", nameof(bucket));
+        string normalizedPrefix = prefix.Trim('/');
+        if (normalizedPrefix.Split('/', StringSplitOptions.RemoveEmptyEntries).Any(segment => segment is "." or ".."))
+            throw new ArgumentException("S3 prefix cannot contain traversal segments", nameof(prefix));
+        string resource = endpoint.AbsoluteUri.TrimEnd('/') + "/" + normalizedBucket +
+            (normalizedPrefix.Length == 0 ? "" : "/" + normalizedPrefix);
+        return AddSource(new(name, DataSourceKind.S3, "", resource: resource,
+            credentialReference: credentialReference));
+    }
 
     public DataClientBuilder ConfigureWorkers(Action<DataWorkerOptions> configure)
     {

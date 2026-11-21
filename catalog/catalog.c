@@ -169,17 +169,17 @@ static ud_status open_sqlite(ud_catalog *c) {
         status = pragma_integer(c, "PRAGMA application_id", &application);
     if (!status)
         status = pragma_integer(c, "PRAGMA user_version", &version);
-    if (!status && (application || version) &&
+    if (!status && application &&
         (application != CATALOG_APPLICATION_ID ||
          (version != UD_CONFIG_VERSION && version != CATALOG_STORAGE_PREVIOUS &&
           version != CATALOG_STORAGE_VERSION &&
           version != CATALOG_ABI14_STORAGE)))
         status = UD_INCOMPATIBLE;
-    if (!status && !application && !version) {
+    if (!status && !application) {
         status = ud_catalog_sql(c, "BEGIN IMMEDIATE");
         /* A competing first opener may have initialized the file while this
-         * handle waited. Existing catalogs never need a writer transaction
-         * merely to open a read/query handle. */
+         * handle waited or between the two autocommit PRAGMA reads. Only
+         * retry the initially unclaimed header under the writer lock. */
         if (!status)
             status = pragma_integer(c, "PRAGMA application_id", &application);
         if (!status)

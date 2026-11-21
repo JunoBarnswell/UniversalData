@@ -97,7 +97,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
     }
     private void Save(RunState value,CatalogLease? supplied = null)
     {
-        Write("run/"+value.Id,value.Revision,JsonSerializer.Serialize(value with { Id="run/"+value.Id },HostPolicy.JsonOptions),supplied);
+        Write("run/"+value.Id,value.Revision,RunDocument(value),supplied);
         states[value.Id] = value;
     }
     private void Save(JobState value)
@@ -137,10 +137,11 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         foreach(string ticket in running) CancelProcess(ticket);
         return Task.FromResult(state);
     }
-    private void CheckDeployment(string? id,string? revision,string packageId,string packageRevision)
+    private void CheckDeployment(string? id,string? revision,string packageId,string packageRevision, bool recovering = false)
     {
         if ((id is null) != (revision is null)) throw new ArgumentException("Deployment identity and revision must be supplied together");
-        if (id is not null && (!deployments.TryGetValue(id,out var state) || !state.Enabled || state.DeploymentRevision != revision || state.PackageId != packageId || state.PackageRevision != packageRevision))
+        if (id is not null && (!deployments.TryGetValue(id,out var state) || !state.Enabled || state.PackageId != packageId ||
+            !recovering && (state.DeploymentRevision != revision || state.PackageRevision != packageRevision)))
             throw new ArgumentException("Deployment binding is inactive or stale");
     }
     private string ParametersReference(string parameters)
@@ -188,7 +189,8 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 return SameRequest(existing, fingerprint);
             var state = new RunState(ProductInfo.Protocol,id,request.PackageId,request.PackageRevision,ParametersReference(request.Parameters),"Queued",identity.Subject,identity.Stamp,ControlReference(),
                 TimestampMs:Now,Debug:request.Debug?.Clone(),DeploymentId:request.DeploymentId,DeploymentRevision:request.DeploymentRevision,
-                Parallelism: parallelism, RequiresJournal: requiresJournal, RequestDigest: fingerprint, Elastic: request.Elastic);
+                Parallelism: parallelism, RequiresJournal: requiresJournal, RequestDigest: fingerprint, Elastic: request.Elastic,
+                Continuous: nativePackage.IsContinuous);
             try { Save(state); return state; }
             catch (UniversalDataException error) when (fingerprint is not null && error.Code is StatusCode.Fenced or StatusCode.Busy)
             {
@@ -211,7 +213,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             using (var nativePackage = new NativePackage(packageText, policy.MemoryLimit))
                 if (!nativePackage.RequiresJournal)
                     throw new ArgumentException("This stream execution has no Native Journal and cannot be resumed");
-            if (state.ParentId is not null || state.State != "RecoveryRequired" || workers.ContainsKey(id) || remoteWorkers.ContainsKey(id) || Alive(state) ||
+            if (state.ParentId is not null || !state.Recoverable || workers.ContainsKey(id) || remoteWorkers.ContainsKey(id) || Alive(state) ||
                 catalog.LeaseActive(CatalogKind.Audit,"run/"+id) ||
                 state.MemberIds is null && state.ExecutionId.Length == 0 ||
                 state.MemberIds is { } members && members.Any(member => catalog.LeaseActive(CatalogKind.Audit,"run/"+member) ||
@@ -630,7 +632,8 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         if (lease is null)
             return;
         using var group = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        group.CancelAfter(TimeSpan.FromSeconds(policy.ExecutionTimeoutSeconds + policy.CancellationGraceSeconds));
+        if (!run.Continuous)
+            group.CancelAfter(TimeSpan.FromSeconds(policy.ExecutionTimeoutSeconds + policy.CancellationGraceSeconds));
         using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(group.Token);
         var heartbeat = HoldGroupLease(lease, group, heartbeatStop.Token);
         var running = new List<Task<RunState>>(pending.Length);
@@ -649,7 +652,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                         Revision=checked(run.Revision+1),TimestampMs=Now }, lease);
                     return;
                 }
-                CheckDeployment(run.DeploymentId, run.DeploymentRevision, run.PackageId, run.PackageRevision);
+                CheckDeployment(run.DeploymentId, run.DeploymentRevision, run.PackageId, run.PackageRevision, run.Resume);
                 run = PrepareMembers(catalog, lease, run, plan, memberIds, pending, reservation.Placements);
             }
 
@@ -681,7 +684,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 lock (gate)
                 {
                     var parent = Get(run.Id);
-                    CheckDeployment(parent.DeploymentId, parent.DeploymentRevision, parent.PackageId, parent.PackageRevision);
+                    CheckDeployment(parent.DeploymentId, parent.DeploymentRevision, parent.PackageId, parent.PackageRevision, parent.Resume);
                     if (Control(catalog, parent) is not null)
                         throw new OperationCanceledException("The run was stopped before its Workers were ready");
                     Save(parent with { State = "Running", Revision = checked(parent.Revision + 1), TimestampMs = Now }, lease);
@@ -766,7 +769,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     DeploymentId: run.DeploymentId, DeploymentRevision: run.DeploymentRevision,
                     Attempt: run.Attempt, Parallelism: plan, ParentId: run.Id,
                     Shard: shard, Placement: placement, HomeNodeId: placement.NodeId,
-                    RequiresJournal: run.RequiresJournal)
+                    RequiresJournal: run.RequiresJournal, Continuous: run.Continuous)
                 : previous with { State = "Queued", Subject = run.Subject, SubjectStamp = run.SubjectStamp,
                     Attempt = run.Attempt, Resume = previous.ExecutionId.Length != 0, Failure = null,
                     BrokerRestore = run.BrokerRestore && previous.ExecutionId.Length != 0,
@@ -774,7 +777,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                         ? Guid.NewGuid().ToString("N") : previous.JournalTicket,
                     ExecutionRevision = previous.ExecutionId.Length == 0 ? 0 : catalog.LatestRevision(CatalogKind.Execution, previous.ExecutionId),
                     Owner = null, ProcessId = null, Shard = shard, Placement = placement,
-                    RequiresJournal = run.RequiresJournal, Revision = checked(previous.Revision + 1),
+                    RequiresJournal = run.RequiresJournal, Continuous = run.Continuous, Revision = checked(previous.Revision + 1),
                     TimestampMs = Now };
             Save(member);
         }
@@ -848,6 +851,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
     {
         RunState state;
         CatalogLease lease;
+        JsonElement? incremental = null;
         if (continuation is not null)
         {
             state = continuation;
@@ -868,15 +872,32 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             state=Get(id);
             if (state.State!="Queued") { barrier?.Fail();leases.TryRemove(lease.Id,out _);catalog.ReleaseLease(lease);return; }
             if (Control(catalog, state) is { } action) {
-                Save(state with { State=action=="cancel"?"Cancelled":"Stopped", Result=action=="cancel"?(int)StatusCode.Cancelled:0,
-                    Revision=checked(state.Revision+1),TimestampMs=Now });
+                RecordTerminal(catalog, lease, state with { State=action=="cancel"?"Cancelled":"Stopped",
+                    Result=action=="cancel"?(int)StatusCode.Cancelled:0,
+                    Revision=checked(state.Revision+1),TimestampMs=Now }, beforeStart: !state.StartAuthorized);
                 barrier?.Fail(); leases.TryRemove(lease.Id,out _);catalog.ReleaseLease(lease);return;
             }
-            CheckDeployment(state.DeploymentId,state.DeploymentRevision,state.PackageId,state.PackageRevision);
-            state = state with { State = "Claimed",Owner = owner,Placement = placement, StartAuthorized = false,
+            CheckDeployment(state.DeploymentId,state.DeploymentRevision,state.PackageId,state.PackageRevision,state.Resume);
+            var claimed = state with { State = "Claimed",Owner = owner,Placement = placement, StartAuthorized = false,
                 AgentBootId=null,DispatchLeaseId=null,ReportSequence=0,TaskGeneration=lease.Generation,
                 HomeNodeId = placement.Remote ? placement.NodeId : state.HomeNodeId,
-                Revision = checked(state.Revision + 1),TimestampMs = Now }; Save(state);
+                Revision = checked(state.Revision + 1),TimestampMs = Now };
+            state = ClaimRun(catalog, lease, claimed, out incremental);
+            } catch (UniversalDataException error) when (state.JobId is not null && error.Code == StatusCode.Busy) {
+                queueReasons[id] = "IncrementalOwner";
+                barrier?.Fail(); leases.TryRemove(lease.Id,out _); catalog.ReleaseLease(lease);
+                return;
+            } catch (UniversalDataException error) when (state.JobId is not null &&
+                error.Code is StatusCode.Incompatible or StatusCode.Unsupported or StatusCode.Schema) {
+                try {
+                    Save(state with { State=state.Incremental ? "RecoveryRequired" : "Failed", Result=error.Status,
+                        Failure=new RunFailure(error.Status, "incremental.claim", nameof(ClaimRun),
+                            new(ErrorSource.Native, error.Code, error.Code == StatusCode.Incompatible
+                                ? "Incremental binding changed. Publish an explicit starting position."
+                                : "The scheduled incremental source cannot acquire a confirmed cursor.")),
+                        Revision=checked(state.Revision+1),TimestampMs=Now },lease);
+                } finally { barrier?.Fail(); leases.TryRemove(lease.Id,out _); catalog.ReleaseLease(lease); }
+                return;
             } catch (ArgumentException error) {
                 var decision = RetryDecision(state, state.Resume ? (int)StatusCode.CommitUnknown :
                     (int)StatusCode.Invalid, resumed:state.Resume, brokerRestore:state.BrokerRestore,
@@ -895,7 +916,9 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         WorkerSupervisor.Lease? localWorker = null;
         RemoteWorkerSession? remote = null;
         bool startSent = continuation is not null, terminalRecorded = false, reattach = false;
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation); deadline.CancelAfter(TimeSpan.FromSeconds(policy.ExecutionTimeoutSeconds + policy.CancellationGraceSeconds));
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        if (continuation is null || !state.Continuous)
+            deadline.CancelAfter(TimeSpan.FromSeconds(policy.ExecutionTimeoutSeconds + policy.CancellationGraceSeconds));
         using var heartbeatStop=CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
         int cancelled=0;
         var controlState = state;
@@ -946,8 +969,15 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             JsonElement? snapshot = null;
             if (state.DeploymentId is not null) {
                 using var documents = JsonDocument.Parse(catalog.BindingSnapshot(state.DeploymentId,ulong.Parse(state.DeploymentRevision!),state.PackageId));
+                bool selected = false;
+                ulong packageRevision = ulong.Parse(state.PackageRevision);
                 foreach(var document in documents.RootElement.EnumerateArray())
-                    if (document.GetProperty("kind").GetInt32() == (int)CatalogKind.Package) identity.Require("package.execute",document.GetProperty("id").GetString()!);
+                    if (document.GetProperty("kind").GetInt32() == (int)CatalogKind.Package) {
+                        string packageId = document.GetProperty("id").GetString()!;
+                        identity.Require("package.execute",packageId);
+                        selected |= packageId == state.PackageId && document.GetProperty("revision").GetUInt64() == packageRevision;
+                    }
+                if (!selected) throw new InvalidDataException("Immutable deployment does not address the queued package revision");
                 snapshot = documents.RootElement.Clone();
             }
             bool isolated = scoped.RequiresIsolation(package) || snapshot is { } documentsSnapshot && documentsSnapshot.EnumerateArray().Any(document =>
@@ -961,7 +991,8 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 BindingSnapshot:snapshot,DeploymentId:state.DeploymentId,DeploymentRevision:state.DeploymentRevision is null ? 0 : ulong.Parse(state.DeploymentRevision),
                 Budget: budget, Shard: state.Shard ?? (state.Assignment is null && state.Parallelism is { } plan && plan.ConsumerLanesPerWorker > 1
                     ? new WorkerShard(0,1,plan.ConsumerLanesPerWorker) : null),
-                BrokerRestore:state.BrokerRestore, JournalTicket:state.JournalTicket, Assignment:state.Assignment);
+                BrokerRestore:state.BrokerRestore, JournalTicket:state.JournalTicket, Assignment:state.Assignment,
+                Incremental:incremental, Continuous:state.Continuous);
             if (placement.Remote) {
                 remote = await remoteNodes.StartAsync(placement, request, id, lease.Generation, deadline.Token);
                 remoteWorkers[id] = remote;remoteState.TrySetResult(remote);
@@ -1006,7 +1037,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
             reports.BindReady(nativeId);
             lock(gate) {
                 if (Get(id).State != "Claimed" || Get(id).Owner != owner) return;
-                CheckDeployment(state.DeploymentId,state.DeploymentRevision,state.PackageId,state.PackageRevision);
+                CheckDeployment(state.DeploymentId,state.DeploymentRevision,state.PackageId,state.PackageRevision,state.Resume);
                 if (Control(catalog, state) is not null) {
                     Interlocked.Exchange(ref cancelled,1);
                     throw new OperationCanceledException("Dispatch was cancelled before Native start");
@@ -1034,6 +1065,10 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 await remote.RenewAsync(deadline.Token);
             }
             await SendPipe("start",deadline.Token);
+            if (state.Continuous)
+                lock (gate)
+                    if (Volatile.Read(ref cancelled) == 0)
+                        deadline.CancelAfter(Timeout.InfiniteTimeSpan);
             var terminal = await reports.ReadAsync("terminal", deadline.Token);
             if (terminal.GetProperty("executionId").GetString() != nativeId) throw new InvalidDataException("Worker terminal identity differs");
             var terminalRecord = terminal.GetProperty("record");
@@ -1077,7 +1112,9 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     state = state with { Resume = true,ExecutionRevision = catalog.LatestRevision(CatalogKind.Execution,nativeId),
                         Attempt = checked(state.Attempt + 1), NotBeforeMs = terminalDecision.NotBeforeMilliseconds,
                         ProcessId = null, Owner = null, Failure = null };
-                Save(state);
+                var proof = terminal.TryGetProperty("incremental", out var confirmation) &&
+                    confirmation.ValueKind == JsonValueKind.Object ? confirmation : (JsonElement?)null;
+                RecordTerminal(catalog, lease, state, proof);
             }
             terminalRecorded = true;
             if (remote is null) await process!.WaitForExitAsync(deadline.Token);
@@ -1116,13 +1153,14 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 string nextState = RetryState(decision.State);
                 var nextFailure = decision.Result == StatusCode.Ok ? null :
                     new RunFailure((int)decision.Result, failure.Phase, failure.ErrorType, failure.Detail);
-                Save(current with {
+                using var settlement = policy.OpenCatalog();
+                RecordTerminal(settlement, lease, current with {
                 State = nextState, Result = (int)decision.Result, Failure=nextFailure,
                 Placement=retryPlacement && !current.Resume ? null : current.Placement,
                 NotBeforeMs=retryPlacement ? decision.NotBeforeMilliseconds : current.NotBeforeMs,
                 RecoverySafeAfterMs=decision.State == NativeRunState.RecoveryRequired && placement.Remote
                     ? checked((long)leases.GetValueOrDefault(lease.Id,lease).UntilMilliseconds) : 0,
-                Revision = checked(current.Revision + 1),TimestampMs = Now }); } } }
+                Revision = checked(current.Revision + 1),TimestampMs = Now }, beforeStart: !unknown); } } }
             catch(UniversalDataException fenced) when(fenced.Code==StatusCode.Fenced) { /* New owner will reconcile unknown effects. */ }
         } finally {
             barrier?.Fail();

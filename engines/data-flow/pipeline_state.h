@@ -14,6 +14,7 @@ typedef struct execution_tree {
     uint32_t offset, count;
     uint64_t ready_ms, first_ms, end_ms, quanta, busy, callback_ms, cpu_ns;
 } execution_tree;
+enum { UD_CHANGES_APPEND, UD_CHANGES_UPSERT, UD_CHANGES_RETRACT };
 typedef struct node {
     ud_string id;
     ud_component_descriptor descriptor;
@@ -36,6 +37,8 @@ typedef struct node {
     ud_component_context context;
     ud_component_plan binding, *input_plans;
     ud_component_ports ports;
+    int change_mode, source_replay;
+    const char *visibility, *confirmation;
     uint64_t steps, processed, produced, rejected, wait_input, wait_capacity, callback_ms, cpu_ns,
         first_ms, end_ms, ready_ms, prepare_ms, prepare_cpu_ns, finish_ms, finish_cpu_ns,
         blocked_ms, input_wait_ms, capacity_wait_ms;
@@ -62,6 +65,7 @@ typedef struct physical_plan {
     ud_mutex epoch_lock;
     int epoch_lock_ready;
     int allow_replayable_publish;
+    int32_t continuous_input;
     ud_string kafka_connection, kafka_topic, kafka_group;
     uint32_t kafka_sources;
     int32_t kafka_partition;
@@ -74,6 +78,9 @@ typedef struct physical_plan {
     uint64_t sampled_ms;
 } physical_plan;
 ud_status ud_pipeline_plan_json(physical_plan *, ud_bytes *, int, ud_status);
+ud_status ud_pipeline_node_failed(node *, ud_status, const char *);
+ud_status ud_pipeline_validate_contract(physical_plan *);
+int ud_pipeline_port_change(const node *, uint32_t);
 uint64_t ud_pipeline_input_mask(const physical_plan *, const node *, int);
 int ud_pipeline_epoch_target_supported(const physical_plan *, const node *);
 ud_status ud_pipeline_epoch_component_key(physical_plan *, node *, char [65]);

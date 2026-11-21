@@ -91,6 +91,8 @@ struct ud_execution {
     ud_registry *registry, *external;
     ud_json *parameters;
     uint8_t parameters_fingerprint[32];
+    ud_json *incremental_binding, *incremental_confirmation;
+    ud_string incremental_task_id;
     ud_string deployment_metadata; /* Immutable, cached before cancellation. */
     ud_activation root;
     atomic_int state, result, stop_requested;
@@ -189,7 +191,10 @@ ud_status ud_component_lookup(ud_activation *, ud_string, ud_component_descripto
 void ud_activation_notify_kind(ud_activation *, int32_t kind, ud_execution_state, ud_status);
 void ud_activation_notify(ud_activation *, ud_execution_state, ud_status);
 void ud_execution_capture_error(ud_execution *, ud_status);
-enum { UD_TASK_EXECUTED = 1, UD_TASK_DURABLE = 2, UD_TASK_UNCERTAIN = 4, UD_TASK_RESUMED = 8 };
+enum { UD_TASK_EXECUTED = 1, UD_TASK_DURABLE = 2, UD_TASK_UNCERTAIN = 4,
+       UD_TASK_RESUMED = 8, UD_TASK_SUSPENDED = 16 };
+ud_status ud_data_flow_is_continuous(const ud_json *, int32_t *);
+ud_status ud_control_task_identity(ud_context *, ud_string parent, ud_string id, ud_string *out);
 void ud_task_cancel_register(ud_activation *, void *, void (*)(void *));
 void ud_task_cancel_unregister(ud_activation *);
 void ud_task_fact(ud_activation *, uint32_t);

@@ -55,7 +55,8 @@ _ = Task.Run(async () =>
 {
     var grace = TimeSpan.FromSeconds(Math.Min(policy.CancellationGraceSeconds, 5));
     using var stop = CancellationTokenSource.CreateLinkedTokenSource(watchdog.Token, guardianLost.Token);
-    try { await Task.Delay(TimeSpan.FromSeconds(policy.ExecutionTimeoutSeconds), stop.Token); }
+    var lifetime = request.Continuous ? Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(policy.ExecutionTimeoutSeconds);
+    try { await Task.Delay(lifetime, stop.Token); }
     catch (OperationCanceledException) { }
     try
     {
@@ -182,6 +183,8 @@ phase="native.create";
 string? journalDirectory = requiresJournal ? directory : null;
 using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,journalDirectory,request.Resume,observe:Observe,eventSequenceStart:eventSequence,
     shard:request.Shard,brokerRestore:request.BrokerRestore,assignment:request.Assignment,connections:connections);
+if (request.Incremental is { } incremental)
+    executionRun.BindIncremental(incremental.GetRawText());
 phase="native.debug";
 if (request.Debug is { } debug) executionRun.ConfigureDebug(debug.GetRawText());
 using var controls = new CancellationTokenSource();
@@ -230,9 +233,11 @@ try {
         }
     } catch (UniversalDataException error) { resultCode = error.Status; resultDetail = error.Detail; }
     var metrics = executionRun.Metrics;
+    string? confirmation = executionRun.IncrementalConfirmation();
     ulong terminalRevision = checked(currentRevision + 1); catalog.Record(executionRun,terminalRevision);
     Reply(new { version = ProductInfo.Protocol, kind = "terminal", ticket = request.Ticket, executionId = executionRun.Id,
         state = metrics.State.ToString(), result = resultCode, error = resultDetail, metrics, revision = terminalRevision,
+        incremental = confirmation is null ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(confirmation),
         record = JsonSerializer.Deserialize<JsonElement>(catalog.Get(CatalogKind.Execution,executionRun.Id,terminalRevision)!),
         debug = request.Debug is null ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(secretFilter.Json(executionRun.DebugSnapshot())) });
     return resultCode == 0 ? 0 : 1;

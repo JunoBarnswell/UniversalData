@@ -81,8 +81,9 @@ import {
 import {
   removeGraphNodes,
   duplicateGraphNodes,
-  templateNodes,
 } from "../../graphEditing";
+import { JobTemplateDialog } from "../../JobTemplateDialog";
+import type { BuiltTemplate, TemplatePublishOptions } from "../../examples/templates";
 const nodeTypes = { component: FlowNode };
 const constraintId = (edge: { from: string; to: string; on: string }) =>
   `constraint/${encode([edge.from, edge.to, edge.on])}`;
@@ -183,6 +184,7 @@ function EditorCanvas({
     [documentOpen, setDocumentOpen] = useState(false),
     [versionsOpen, setVersionsOpen] = useState(false),
     [testOpen, setTestOpen] = useState(false),
+    [templateOpen, setTemplateOpen] = useState(false),
     [commandsOpen, setCommandsOpen] = useState(false);
   const [versions, setVersions] = useState<CatalogDocument<PackageDocument>[]>(
       [],
@@ -212,6 +214,7 @@ function EditorCanvas({
     }>(),
     [confirmation, setConfirmation] = useState(false);
   const [draftSavedText, setDraftSavedText] = useState<string>();
+  const [templatePublish, setTemplatePublish] = useState<TemplatePublishOptions>();
   const [remoteDraft, setRemoteDraft] = useState<DraftRecord>();
   const [draftMessage, setDraftMessage] = useState("草稿尚未保存"),
     [draftReady, setDraftReady] = useState(!request?.document),
@@ -386,6 +389,8 @@ function EditorCanvas({
         runtime: live
           ? `${live.boundedness ? "持续" : "有界"}${live.idle ? " · 空闲" : ""} · ${live.rateRowsPerSecond?.toFixed(1) ?? "—"} 行/秒`
           : undefined,
+        sourceReplay: bound?.sourceReplay,
+        delivery: bound?.delivery,
         stale,
         failed: Boolean((bound?.result ?? 0) || (live?.result ?? 0)),
       },
@@ -660,7 +665,13 @@ function EditorCanvas({
             requestId: crypto.randomUUID(),
             document: snapshot,
             expectedPackageRevision: expected,
-            schedules: [],
+            schedules: templatePublish?.schedules ?? [],
+            ...(templatePublish?.environment
+              ? { environment: templatePublish.environment }
+              : {}),
+            ...(templatePublish?.parameters
+              ? { parameters: encode(templatePublish.parameters) }
+              : {}),
             run: false,
           });
           baseRevisions.current.set(snapshot.id, result.revision);
@@ -679,7 +690,7 @@ function EditorCanvas({
         setBusy(false);
       }
     },
-    [registerPlan, document],
+    [registerPlan, document, templatePublish],
   );
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -855,6 +866,7 @@ function EditorCanvas({
       name,
     );
     edit(() => next);
+    setTemplatePublish(undefined);
     if (sample) {
       setPreview({ text: executionText(next), flow, value: sample });
       setPlan({
@@ -996,52 +1008,6 @@ function EditorCanvas({
     edit(() => result.document);
     setSelectedNodes(result.ids);
   }
-  function insertTemplate(kind: "derive-split" | "dimensions") {
-    const template = templateNodes(kind);
-    if (template.nodes.some((node) => !catalog.has(node.component))) {
-      setMessage("当前宿主没有模板所需的 Native 组件");
-      return;
-    }
-    edit((current) => {
-      let next = {
-        ...current,
-        dataFlows: current.dataFlows.map((graph) =>
-          graph.id === flow
-            ? {
-                ...graph,
-                components: [...graph.components, ...template.nodes],
-                paths: [
-                  ...graph.paths,
-                  ...template.paths,
-                  ...(selected &&
-                  !graph.paths.some((path) => path.from === selected)
-                    ? [
-                        {
-                          from: selected,
-                          output: 0,
-                          to: template.nodes[0].id,
-                          input: 0,
-                        },
-                      ]
-                    : []),
-                ],
-              }
-            : graph,
-        ),
-      };
-      template.nodes.forEach((node, index) => {
-        next = withPosition(
-          next,
-          node.id,
-          { x: 100 + (index % 2) * 330, y: 170 + Math.floor(index / 2) * 230 },
-          template.labels[node.id],
-        );
-      });
-      return next;
-    });
-    setSelectedNodes([template.nodes[0].id]);
-    setInspectorOpen(true);
-  }
   const changes = useCallback(
     (updates: NodeChange[]) => {
       for (const update of updates)
@@ -1179,6 +1145,7 @@ function EditorCanvas({
     setDraftReady(true);
     setDraftConflict(false);
     setPublished(undefined);
+    setTemplatePublish(undefined);
   }
   function newFlow() {
     const id = `flow-${crypto.randomUUID()}`;
@@ -1257,6 +1224,7 @@ function EditorCanvas({
             label: "连接中心",
             run: () => setConnectionsOpen(true),
           },
+          { id: "templates", label: "使用作业模板", run: () => setTemplateOpen(true) },
           { id: "layout", label: "自动布局", run: layout },
           { id: "undo", label: "撤销", run: undo, disabled: !history.canUndo },
           { id: "redo", label: "重做", run: redo, disabled: !history.canRedo },
@@ -1318,6 +1286,11 @@ function EditorCanvas({
               : "尚无保存版本"}
             {published
               ? ` · 已发布 v${published.deployment.packageRevision}`
+              : ""}
+            {templatePublish?.environment
+              ? ` · 环境 ${templatePublish.environment.id} r${templatePublish.environment.revision}`
+              : published?.deployment.environment
+                ? ` · 环境 ${published.deployment.environment.id} r${published.deployment.environment.revision}`
               : ""}
           </small>
         </div>
@@ -1382,6 +1355,9 @@ function EditorCanvas({
         >
           组件目录
         </button>
+        <Button onClick={() => setTemplateOpen(true)}>
+          模板
+        </Button>
         <button onClick={() => setImportOpen(true)} disabled={control}>
           <FileInput size={15} />
           导入文件
@@ -1448,7 +1424,6 @@ function EditorCanvas({
           search={search}
           setSearch={setSearch}
           add={add}
-          template={insertTemplate}
         />
         <ResizeHandle
           label="调整组件目录宽度"
@@ -1812,6 +1787,27 @@ function EditorCanvas({
           }}
         />
       ) : null}
+      {templateOpen ? (
+        <JobTemplateDialog
+          document={document}
+          close={() => setTemplateOpen(false)}
+          complete={(template: BuiltTemplate) => {
+            edit(() => template.document);
+            baseRevisions.current.set(template.document.id, "0");
+            draftRevisions.current.set(template.document.id, "0");
+            setTemplatePublish(template.publish);
+            setPublished(undefined);
+            setPlan(undefined);
+            setPreview(undefined);
+            setBinding({});
+            setSelectedNodes([]);
+            setSelectedEdge(undefined);
+            setFlow(template.document.dataFlows[0]?.id ?? "control");
+            setTemplateOpen(false);
+            setMessage("模板已应用；请先执行 Native 校验");
+          }}
+        />
+      ) : null}
       {versionsOpen ? (
         <div className="modal-backdrop">
           <section
@@ -1905,6 +1901,7 @@ function EditorCanvas({
             setDocumentOpen(false);
             setPlan(undefined);
             setBinding({});
+            setTemplatePublish(undefined);
           }}
         />
       ) : null}

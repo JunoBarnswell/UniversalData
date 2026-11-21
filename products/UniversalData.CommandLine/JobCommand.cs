@@ -19,7 +19,7 @@ internal static class JobCommand
         }
         if (options.Help)
         {
-            Console.WriteLine("usage: ud_cli run|publish|export JOB_ID [--config FILE] [--params-file FILE] [--set NAME=VALUE]");
+            Console.WriteLine("usage: ud_cli run|publish|export|validate|preview|status|stop|cancel|resume JOB_ID [options]");
             return 0;
         }
 
@@ -30,6 +30,12 @@ internal static class JobCommand
             {
                 "export" => await ExportAsync(configuration, options, cancellation).ConfigureAwait(false),
                 "publish" => await PublishAsync(configuration, options, cancellation).ConfigureAwait(false),
+                "validate" => await ValidateAsync(configuration, options, cancellation).ConfigureAwait(false),
+                "preview" => await PreviewAsync(configuration, options, cancellation).ConfigureAwait(false),
+                "status" => await ExecutionCommandAsync(configuration, options, "status", cancellation).ConfigureAwait(false),
+                "stop" => await ExecutionCommandAsync(configuration, options, "stop", cancellation).ConfigureAwait(false),
+                "cancel" => await ExecutionCommandAsync(configuration, options, "cancel", cancellation).ConfigureAwait(false),
+                "resume" => await ExecutionCommandAsync(configuration, options, "resume", cancellation).ConfigureAwait(false),
                 _ => await RunLocalAsync(configuration, options, cancellation).ConfigureAwait(false)
             };
         }
@@ -96,16 +102,70 @@ internal static class JobCommand
         JobSchedule[] schedules = configuration.Schedules(options.JobId);
         bool hasSchedules = schedules.Length != 0;
         string? parameters = options.Run || hasSchedules ? configuration.Parameters(options.JobId) : null;
-        using var document = JsonDocument.Parse(package.ToJson());
-        var request = new JobPublicationRequest(requestId, document.RootElement.Clone(), expectedRevision,
-            schedules.Length == 0 ? null : schedules,
-            options.Run, parameters);
         string? csrf = options.Csrf ?? configuration.ManagementCsrf ?? Environment.GetEnvironmentVariable("UD_MANAGEMENT_CSRF");
-        var result = await new EtlManagementClient(http, csrf)
-            .PublishJobAsync(request, cancellation).ConfigureAwait(false);
+        JobEnvironmentReference? environment = options.EnvironmentId is null ? configuration.ManagementEnvironment :
+            new JobEnvironmentReference(options.EnvironmentId, options.EnvironmentRevision!);
+        var result = await client.PublishAsync(package, new EtlManagementClient(http, csrf),
+            new JobPublicationOptions(requestId, expectedRevision, schedules.Length == 0 ? null : schedules,
+                options.Run, parameters, environment), cancellation)
+            .ConfigureAwait(false);
         if (!result.IsSuccess)
             return Report(new(result.Code, result.Error));
         Console.WriteLine(JsonSerializer.Serialize(result.Value, HostPolicy.JsonOptions));
+        return 0;
+    }
+
+    private static async Task<int> ValidateAsync(DataConfiguration configuration,
+        JobCommandOptions options, CancellationToken cancellation)
+    {
+        await using var client = configuration.CreateClient();
+        Package package = ResolvePackage(configuration, client, options.JobId, publish: false);
+        var result = await client.ValidateAsync(package, configuration.Parameters(options.JobId), cancellation)
+            .ConfigureAwait(false);
+        Console.WriteLine(result.GetRawText());
+        return result.IsValid ? 0 : 1;
+    }
+
+    private static async Task<int> PreviewAsync(DataConfiguration configuration,
+        JobCommandOptions options, CancellationToken cancellation)
+    {
+        await using var client = configuration.CreateClient();
+        Package package = ResolvePackage(configuration, client, options.JobId, publish: false);
+        var result = await client.PreviewAsync(package, configuration.Parameters(options.JobId), options.SourceRows,
+            options.SampleRows, cancellation).ConfigureAwait(false);
+        Console.WriteLine(result.GetRawText());
+        return result.GetProperty("result").GetInt32() == 0 ? 0 : 1;
+    }
+
+    private static async Task<int> ExecutionCommandAsync(DataConfiguration configuration,
+        JobCommandOptions options, string command, CancellationToken cancellation)
+    {
+        string baseUrl = options.ManagementBaseUrl ?? configuration.ManagementBaseUrl ??
+            Environment.GetEnvironmentVariable("UD_MANAGEMENT_URL") ??
+            throw new ArgumentException($"{command} requires --management-url or management.baseUrl");
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) || baseUri.Scheme is not ("http" or "https"))
+            throw new ArgumentException("Management URL must be an absolute HTTP or HTTPS URI");
+        using var http = new HttpClient { BaseAddress = baseUri };
+        ConfigureManagement(http, configuration, options);
+        string? csrf = options.Csrf ?? configuration.ManagementCsrf ?? Environment.GetEnvironmentVariable("UD_MANAGEMENT_CSRF");
+        var management = new EtlManagementClient(http, csrf);
+        string id = options.ExecutionId ?? options.JobId;
+        Result result;
+        object? value = null;
+        switch (command)
+        {
+            case "status":
+                var status = await management.ExecutionAsync(id, cancellation).ConfigureAwait(false);
+                result = new(status.Code, status.Error); value = status.Value; break;
+            case "stop": result = await management.StopExecutionAsync(id, cancellation).ConfigureAwait(false); break;
+            case "cancel": result = await management.CancelExecutionAsync(id, cancellation).ConfigureAwait(false); break;
+            case "resume":
+                var resumed = await management.ResumeExecutionAsync(id, cancellation).ConfigureAwait(false);
+                result = new(resumed.Code, resumed.Error); value = resumed.Value; break;
+            default: throw new ArgumentOutOfRangeException(nameof(command));
+        }
+        if (!result.IsSuccess) return Report(result);
+        Console.WriteLine(JsonSerializer.Serialize(value is null ? result : value, HostPolicy.JsonOptions));
         return 0;
     }
 

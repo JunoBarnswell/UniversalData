@@ -1,18 +1,22 @@
 """Real Iceberg v2 REST/Trino acceptance for Native source and destination.
 
 The fixture deliberately has no in-process catalog or file-service double.  The
-Native package talks to the configured REST catalog and local Iceberg files;
-Trino reads the same table through its ``/v1/statement`` endpoint.  The
-optional observer executable is the existing ``test_next_phase_execution``
-runner, used only to terminate a real Native execution at a journal boundary.
+Native package talks to the configured REST catalog and local Iceberg files by
+default. The ``UD_TEST_ICEBERG_S3_*`` variables run real S3 writes, reads and
+same-execution recovery. Trino reads the same table through its
+``/v1/statement`` endpoint.  The optional observer executable is the existing
+``test_next_phase_execution`` runner, used only to terminate a real Native
+execution at a journal boundary.
 """
 
 import argparse
 from contextlib import closing
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
+import random
 import shutil
 import sqlite3
 import subprocess
@@ -21,6 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import xml.etree.ElementTree as ET
 
 from product_version import PROTOCOL_VERSION
 
@@ -31,6 +36,7 @@ FIELD_IDS = {
     "amount": "00000000000000000000000000000003",
 }
 BEFORE_CHECKPOINT = 2
+AFTER_CHECKPOINT = 3
 TARGET_COMMITTED = 4
 AUTH_DENIED = 13
 
@@ -384,12 +390,22 @@ def sql_connection(identifier, plugin, database, reference):
 
 def package_document(plugin, catalog, storage, source_db, namespace, table,
                      mode="append", renamed=False, source=False, snapshot_id=None,
-                     sink_db=None, runner=False, execution_id=None):
+                     sink_db=None, runner=False, execution_id=None,
+                     storage_credential=None):
     source_reference = "fixture" if runner else "source-config"
     sink_reference = "fixture" if runner else "sink-config"
+    storage_value = str(storage)
+    storage_url = urllib.parse.urlsplit(storage_value)
+    storage_connection = {
+        "id": "storage",
+        "driver": "s3" if storage_url.scheme in ("http", "https") else "file",
+        "resource": storage_value,
+    }
+    if storage_credential:
+        storage_connection["credentialReference"] = storage_credential
     connections = [
         {"id": "catalog", "driver": "http", "resource": catalog},
-        {"id": "storage", "driver": "file", "resource": str(storage)},
+        storage_connection,
     ]
     if source:
         connections.append(sql_connection("sink", plugin, sink_db, sink_reference))
@@ -444,7 +460,8 @@ def package_document(plugin, catalog, storage, source_db, namespace, table,
     }
 
 
-def write_cli_policy(root, plugin, catalog, storage, source_db=None, sink_db=None):
+def write_cli_policy(root, plugin, catalog, storage, source_db=None, sink_db=None,
+                     storage_credentials=None):
     root.mkdir(parents=True, exist_ok=True)
     source_config = root / "source-credential.txt"
     sink_config = root / "sink-credential.txt"
@@ -459,12 +476,25 @@ def write_cli_policy(root, plugin, catalog, storage, source_db=None, sink_db=Non
         credentials["source-config"] = str(source_config)
     if sink_db is not None:
         credentials["sink-config"] = str(sink_config)
-    file_roots = {str(storage), *(str(db.parent) for db in (source_db, sink_db) if db is not None)}
+    storage_value = str(storage)
+    storage_url = urllib.parse.urlsplit(storage_value)
+    if storage_credentials is not None:
+        storage_config = root / "storage-credential.json"
+        storage_config.write_text(json.dumps(storage_credentials), encoding="utf-8")
+        credentials["storage-config"] = str(storage_config)
+    file_roots = {
+        *(str(db.parent) for db in (source_db, sink_db) if db is not None),
+    }
+    network_origins = [network_origin]
+    if storage_url.scheme in ("http", "https"):
+        network_origins.append(f"{storage_url.scheme}://{storage_url.netloc}")
+    else:
+        file_roots.add(storage_value)
     return {
         "dataDirectory": str(root / "state"),
         "fileRoots": sorted(file_roots),
         "pluginRoots": [str(Path(plugin).resolve().parent)],
-        "networkOrigins": [network_origin],
+        "networkOrigins": sorted(set(network_origins)),
         "credentialFiles": credentials,
     }
 
@@ -493,14 +523,14 @@ def run_cli(args, package, policy, state, execution_id, resume=False, expected_s
 
 
 def run_observer(args, package, state, event_kind=0, event_count=1,
-                 component="destination", resume=False, expect_crash=False):
+                 component="destination", resume=False, expect_crash=False, memory_limit=67108864):
     state.mkdir(parents=True, exist_ok=True)
     package_file = state.parent / "observer-package.json"
     package_file.write_text(json.dumps(package), encoding="utf-8")
     state.mkdir(parents=True, exist_ok=True)
     result = subprocess.run([
         str(args.runner), str(package_file), str(state), str(int(resume)), "2",
-        str(-1 if resume else event_kind), str(event_count), component,
+        str(-1 if resume else event_kind), str(event_count), component, str(memory_limit),
     ], capture_output=True, text=True, timeout=180)
     if expect_crash:
         assert result.returncode == 91, (result.returncode, result.stdout, result.stderr)
@@ -595,6 +625,145 @@ def load_external_catalog(raw):
     return raw, {}
 
 
+def s3_case_resource(resource, namespace):
+    parsed = urllib.parse.urlsplit(resource.rstrip("/"))
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise AssertionError(
+            "UD_TEST_ICEBERG_S3_RESOURCE must be an absolute HTTPS path-style URL"
+        )
+    path = parsed.path.strip("/")
+    if "/" not in path:
+        raise AssertionError(
+            "UD_TEST_ICEBERG_S3_RESOURCE must contain bucket and optional prefix"
+        )
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc,
+                                    "/" + path + "/" + namespace,
+                                    "", ""))
+
+
+def s3_smoke(args, root, files, source_db, namespace, storage):
+    """Run a focused real object-store write/read through Native and Trino."""
+    credentials = dict(getattr(args, "s3_credentials", {}))
+    credentials.update({
+        "username": args.s3_access_key,
+        "password": args.s3_secret_key,
+        "awsSigV4": "aws:amz:" + args.s3_region + ":s3",
+    })
+    ca = None
+    if args.s3_ca:
+        ca = files / "storage-ca.pem"
+        shutil.copyfile(args.s3_ca, ca)
+        credentials["caConnection"] = "storage-ca"
+    table = "orders_s3"
+    for name in (namespace,):
+        qualified = ".".join(quote_identifier(value) for value in
+                               (args.trino_catalog, name))
+        trino_query(args.trino, "CREATE SCHEMA IF NOT EXISTS " + qualified,
+                    args.trino_catalog, "default", args.trino_user,
+                    args.trino_password)
+    policy = write_cli_policy(root / "s3-policy", args.sqlite, args.catalog,
+                              storage, source_db=source_db,
+                              storage_credentials=credentials)
+    package = package_document(args.sqlite, args.catalog, storage, source_db,
+                               namespace, table, storage_credential="storage-config")
+    if ca:
+        package["connections"].append(dict(id="storage-ca", driver="file", resource=str(ca)))
+    run_cli(args, package, policy, root / "s3-state", "iceberg-s3-smoke")
+    assert trino_rows(args, namespace, table) == [(1, "alpha", 10), (2, "beta", 20)]
+    status, payload = http_json(catalog_endpoint(args.catalog, namespace, table),
+                                user=args.catalog_user,
+                                password=args.catalog_password)
+    assert 200 <= status < 300, (status, payload)
+    metadata_location = payload.get("metadata-location") or payload.get("metadataLocation")
+    assert metadata_location and metadata_location.startswith("s3://"), payload
+
+    sink = files / "s3-sink.db"
+    create_sink(sink)
+    source_package = package_document(
+        args.sqlite, args.catalog, storage, None, namespace, table, source=True,
+        sink_db=sink, storage_credential="storage-config")
+    if ca:
+        source_package["connections"].append(dict(id="storage-ca", driver="file", resource=str(ca)))
+    source_policy = write_cli_policy(
+        root / "s3-source-policy", args.sqlite, args.catalog, storage,
+        sink_db=sink, storage_credentials=credentials)
+    run_cli(args, source_package, source_policy, root / "s3-source-state",
+            "iceberg-s3-source")
+    assert sqlite_rows(sink, "sink_rows") == [(1, "alpha", 10), (2, "beta", 20)]
+    print("Iceberg v2 Native real S3 smoke: SigV4 destination upload, REST snapshot "
+          "visibility, Trino readback, and bounded Native S3 source read passed",
+          flush=True)
+    recovery_credentials = root / "s3-recovery-credentials.json"
+    recovery_credentials.touch(mode=0o600)
+    recovery_credentials.write_text(json.dumps(credentials), encoding="utf-8")
+    for phase, event, count in (("before_catalog", BEFORE_CHECKPOINT, 2),
+                                ("before_receipt", BEFORE_CHECKPOINT, 3),
+                                ("multipart", AFTER_CHECKPOINT, 2)):
+        s3_crash_boundary(args, root, namespace, storage, ca, recovery_credentials, phase, event, count)
+
+
+def active_multipart_uploads(args, root, storage, table_location):
+    endpoint = urllib.parse.urlsplit(storage)
+    table = urllib.parse.urlsplit(table_location)
+    query = "uploads=&" + urllib.parse.urlencode({"prefix": table.path.lstrip("/") + "/"})
+    url = urllib.parse.urlunsplit((endpoint.scheme, endpoint.netloc, "/" + table.netloc, query, ""))
+    curl_config = root / "multipart-inspection.curl"
+    curl_config.touch(mode=0o600)
+    curl_config.write_text("user = " + json.dumps(f"{args.s3_access_key}:{args.s3_secret_key}") + "\n",
+                           encoding="utf-8")
+    cmd = ["curl", "--fail", "--silent", "--show-error", "--max-time", "30", "--config", str(curl_config),
+           "--aws-sigv4", "aws:amz:" + args.s3_region + ":s3"]
+    if args.s3_ca:
+        cmd += ["--cacert", str(args.s3_ca)]
+    result = subprocess.run([*cmd, url], capture_output=True, check=True, timeout=35)
+    return ET.fromstring(result.stdout).findall("{*}Upload")
+
+
+def s3_crash_boundary(args, root, namespace, storage, ca, credentials, phase, event, count):
+    case = root / phase
+    case.mkdir()
+    source = case / "source.db"
+    if phase == "multipart":
+        random_bytes = random.Random(11)
+        rows = [(index, base64.b64encode(random_bytes.randbytes(96 * 1024)).decode("ascii"), 70)
+                for index in range(128)]
+    else:
+        rows = [(7, "recovered", 70)]
+    create_source(source, rows)
+    table = "recovery_" + phase
+    package = package_document(args.sqlite, args.catalog, storage, source, namespace, table,
+                               runner=True, execution_id="iceberg-s3-" + phase,
+                               storage_credential="file:" + str(credentials))
+    if ca:
+        package["connections"].append(dict(id="storage-ca", driver="file", resource=str(ca)))
+    package["dataFlows"][0]["components"][0]["config"]["batchSize"] = len(rows)
+    state = case / "state"
+    memory_limit = 1024 * 1024 * 1024
+    run_observer(args, package, state, event_kind=event, event_count=count, expect_crash=True,
+                 memory_limit=memory_limit)
+    before = catalog_state(args.catalog, namespace, table, storage, args.catalog_user, args.catalog_password)
+    assert len(before["snapshotIds"]) == int(phase == "before_receipt"), (phase, before)
+    location = before["metadata"]["location"]
+    if phase == "multipart":
+        assert len(active_multipart_uploads(args, root, storage, location)) == 1, location
+    facts = run_observer(args, package, state, resume=True, memory_limit=memory_limit)
+    assert facts["committed"] == facts["acknowledged"] == len(rows), (phase, facts)
+    after = catalog_state(args.catalog, namespace, table, storage, args.catalog_user, args.catalog_password)
+    assert len(after["snapshotIds"]) == 1, (phase, after)
+    if before["snapshotIds"]:
+        assert after["snapshotIds"] == before["snapshotIds"], (phase, before, after)
+    summary = after["metadata"]["snapshots"][0]["summary"]
+    assert len(summary["universaldata.commit.id"]) == len(summary["universaldata.commit.digest"]) == 64, summary
+    if phase == "multipart":
+        assert not active_multipart_uploads(args, root, storage, location), location
+    name = ".".join(quote_identifier(part) for part in (args.trino_catalog, namespace, table))
+    observed = trino_query(args.trino, f'SELECT id, lower(to_hex(sha256(to_utf8("value")))), amount FROM {name} ORDER BY id',
+                           args.trino_catalog, namespace, args.trino_user, args.trino_password)
+    expected = [[index, hashlib.sha256(value.encode()).hexdigest(), amount] for index, value, amount in rows]
+    assert observed == expected, (phase, observed)
+    print(f"Iceberg S3 recovery at {phase}: one snapshot, {len(rows)} acknowledged rows, exact Trino readback", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cli", type=Path, required=True)
@@ -613,7 +782,48 @@ def main():
     parser.add_argument("--trino-password", default=os.environ.get("UD_TEST_TRINO_PASSWORD"))
     parser.add_argument("--catalog-user", default=os.environ.get("UD_TEST_ICEBERG_USER"))
     parser.add_argument("--catalog-password", default=os.environ.get("UD_TEST_ICEBERG_PASSWORD"))
+    parser.add_argument("--s3-resource", default=os.environ.get("UD_TEST_ICEBERG_S3_RESOURCE"))
+    parser.add_argument("--s3-ca", type=Path, default=os.environ.get("UD_TEST_ICEBERG_S3_CA"))
+    storage_mode = parser.add_mutually_exclusive_group()
+    storage_mode.add_argument("--filesystem-only", action="store_true")
+    storage_mode.add_argument("--s3-only", action="store_true")
+    parser.add_argument("--s3-region", default=os.environ.get("UD_TEST_ICEBERG_S3_REGION"))
+    parser.add_argument("--s3-access-key",
+                        default=os.environ.get("UD_TEST_ICEBERG_S3_ACCESS_KEY"))
+    parser.add_argument("--s3-secret-key",
+                        default=os.environ.get("UD_TEST_ICEBERG_S3_SECRET_KEY"))
     args = parser.parse_args()
+    if args.filesystem_only:
+        args.s3_resource = None
+        args.s3_ca = None
+    if args.s3_only and not args.s3_resource:
+        print("Blocked: UD_TEST_ICEBERG_S3_RESOURCE is unavailable")
+        return 77
+    if args.s3_resource:
+        args.catalog = os.environ.get("UD_TEST_ICEBERG_S3_CATALOG") or args.catalog
+        args.trino = os.environ.get("UD_TEST_ICEBERG_S3_TRINO_URL") or args.trino
+
+    credential_file = os.environ.get("UD_TEST_ICEBERG_S3_CREDENTIALS") if args.s3_resource else None
+    args.s3_credentials = {}
+    if credential_file:
+        credential_path = Path(credential_file)
+        if not credential_path.is_file():
+            print("Blocked: UD_TEST_ICEBERG_S3_CREDENTIALS is unavailable")
+            return 77
+        credentials = json.loads(credential_path.read_text(encoding="utf-8"))
+        if not isinstance(credentials, dict):
+            print("Blocked: UD_TEST_ICEBERG_S3_CREDENTIALS must contain an object")
+            return 77
+        args.s3_credentials = {
+            key: credentials[key]
+            for key in ("username", "password", "awsSigV4", "headers", "caConnection")
+            if key in credentials
+        }
+        args.s3_access_key = args.s3_access_key or credentials.get("username")
+        args.s3_secret_key = args.s3_secret_key or credentials.get("password")
+        sigv4 = credentials.get("awsSigV4", "")
+        if not args.s3_region and isinstance(sigv4, str) and sigv4.startswith("aws:amz:"):
+            args.s3_region = sigv4[8:].split(":", 1)[0]
 
     catalog, catalog_config = load_external_catalog(args.catalog)
     if not catalog:
@@ -622,8 +832,17 @@ def main():
     if not args.trino:
         print("Blocked: UD_TEST_TRINO_URL is unavailable")
         return 77
-    if not args.storage:
+    if not args.storage and not args.s3_resource:
         print("Blocked: UD_TEST_ICEBERG_STORAGE is unavailable")
+        return 77
+    if args.s3_resource and not all((args.s3_region, args.s3_access_key, args.s3_secret_key)):
+        print("Blocked: S3 resource requires region, access key, and secret key")
+        return 77
+    if args.s3_resource and not shutil.which("curl"):
+        print("Blocked: curl is required to independently inspect S3 multipart uploads")
+        return 77
+    if args.s3_ca and not args.s3_ca.is_file():
+        print("Blocked: the configured S3 CA file is unavailable")
         return 77
     if not args.cli.is_file() or not args.sqlite.is_file():
         print("Blocked: CLI or SQLite Native connector is unavailable")
@@ -638,10 +857,13 @@ def main():
     args.sqlite = args.sqlite.resolve()
     args.cli = args.cli.resolve()
     args.runner = args.runner.resolve()
-    args.storage = args.storage.resolve()
-    args.storage.mkdir(parents=True, exist_ok=True)
-    storage_case = args.storage / ("ud-iceberg-v2-" + uuid.uuid4().hex)
-    storage_case.mkdir()
+    if args.storage:
+        args.storage = args.storage.resolve()
+        args.storage.mkdir(parents=True, exist_ok=True)
+    storage_case = None
+    if not args.s3_resource:
+        storage_case = args.storage / ("ud-iceberg-v2-" + uuid.uuid4().hex)
+        storage_case.mkdir()
 
     try:
         with tempfile.TemporaryDirectory(prefix="ud-iceberg-v2-") as temporary:
@@ -650,6 +872,10 @@ def main():
             files.mkdir()
             source_db = files / "source.db"
             create_source(source_db, [(1, "alpha", 10), (2, "beta", 20)])
+            if args.s3_resource:
+                storage = s3_case_resource(args.s3_resource, args.namespace)
+                s3_smoke(args, root, files, source_db, args.namespace, storage)
+                return 0
             policy = write_cli_policy(root, args.sqlite, args.catalog, storage_case,
                                       source_db=source_db)
             table = "orders"
@@ -721,7 +947,8 @@ def main():
                   "and recovery after the upload and before the local commit receipt passed")
             return 0
     finally:
-        shutil.rmtree(storage_case, ignore_errors=True)
+        if storage_case is not None:
+            shutil.rmtree(storage_case, ignore_errors=True)
 
 
 if __name__ == "__main__":

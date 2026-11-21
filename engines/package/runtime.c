@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #endif
 #include "internal.h"
+#include "incremental.h"
 #include "ud/connection_manager.h"
 #ifdef _WIN32
 #include <process.h>
@@ -604,6 +605,8 @@ static ud_status execute(ud_execution *e) {
             s = e->preview_pipeline ? ud_pipeline_execute(&e->root, e->preview_pipeline)
                                     : ud_activation_run_definition(&e->root);
     }
+    if (!s)
+        s = ud_incremental_capture(e);
     if (s == UD_BUSY)
         s = UD_TRANSIENT; /* Terminal lock contention must not look like wait. */
     if (!s) {
@@ -903,6 +906,9 @@ ud_status ud_execution_destroy(ud_execution *e) {
         ud_debug_destroy(e);
         ud_json_destroy(e->preview_pipeline);
         e->preview_pipeline = NULL;
+        ud_json_destroy(e->incremental_binding);
+        ud_json_destroy(e->incremental_confirmation);
+        ud_free((void *)e->incremental_task_id.data);
         e->disposed = 1;
     }
     if (ud_memory_used(ctx) != ud_allocation_bytes(e)) {

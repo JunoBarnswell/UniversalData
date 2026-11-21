@@ -3,9 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace UniversalData;
 
-public sealed class EtlPackageBuilder(string id)
+internal sealed class EtlPackageBuilder(string id)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
         { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 
     private readonly List<object> connections = [];
@@ -14,6 +14,7 @@ public sealed class EtlPackageBuilder(string id)
     private readonly List<object> tasks = [];
     private readonly List<object> constraints = [];
     private readonly List<JsonElement> modules = [];
+    private readonly Dictionary<string, object> caches = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JsonElement> variables = new(StringComparer.Ordinal);
     private readonly HashSet<string> connectionIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> taskIds = new(StringComparer.Ordinal);
@@ -22,7 +23,7 @@ public sealed class EtlPackageBuilder(string id)
     private readonly HashSet<string> taskPipelines = new(StringComparer.Ordinal);
     private string? error;
 
-    public EtlPackageBuilder Connection(string name, string driver, string resource,
+    internal EtlPackageBuilder Connection(string name, string driver, string resource,
         string? credentialReference = null, OAuth2Connection? oauth2 = null)
     {
         if (string.IsNullOrWhiteSpace(name) || !connectionIds.Add(name))
@@ -42,74 +43,62 @@ public sealed class EtlPackageBuilder(string id)
             readMode = stream ? "stream" : "snapshot", batchSize, parameters,
             schemaPolicy = table is null ? null : new { policy = schemaPolicy } }, pipeline);
 
-    public EtlPackageBuilder ChangeSource(string name, string connection, DataSourceKind provider, string table,
-        JsonElement schema, EtlChangeOptions options)
+    internal EtlPackageBuilder ChangeSource(string name, string connection, string table,
+        JsonElement schema, DataJobChanges options, string pipeline = "main")
     {
         ArgumentNullException.ThrowIfNull(options);
-        string component = provider switch
-        {
-            DataSourceKind.PostgreSql => "postgresql.cdc.source",
-            DataSourceKind.MySql => "mysql.cdc.source",
-            DataSourceKind.MariaDb => "mariadb.cdc.source",
-            DataSourceKind.SqlServer => "sqlserver.cdc.source",
-            DataSourceKind.Oracle => "oracle.cdc.source",
-            _ => throw new UniversalDataException((int)StatusCode.Unsupported, "The provider has no Native CDC source")
-        };
-        if ((provider is DataSourceKind.MySql or DataSourceKind.MariaDb) && options.ServerId is null or 0)
-            throw new ArgumentException("MySQL and MariaDB CDC require a distinct replication server ID", nameof(options));
-        if (options.Position is not null)
-            ArgumentException.ThrowIfNullOrWhiteSpace(options.Position);
-        return Component(name, component, new
+        return Component(name, "cdc.source", new
         {
             connection, table, schema,
-            mode = options.Position is null ? "snapshotAndStream" : "stream",
+            mode = options.Mode ?? (options.Position is null ? "snapshotAndStream" : "stream"),
             options.Position, options.Slot, options.Publication, options.ServerId,
             options.MaxTransactions, options.MicroBatchRows,
-            microBatchMs = options.MicroBatchMilliseconds, schemaPolicy = new { policy = "compatible" }
-        });
+            microBatchMs = options.MicroBatchMilliseconds, appendOnly = options.AppendOnly,
+            schemaPolicy = new { policy = "compatible" }
+        }, pipeline);
     }
 
-    public EtlPackageBuilder RestSource(string name, string connection, JsonElement schema,
+    internal EtlPackageBuilder RestSource(string name, string connection, JsonElement schema,
         string? url = null, HttpHeaderDefinition[]? headers = null, uint batchSize = 4096,
         string? caConnection = null, string? rowsField = null, string? cursorField = null,
         string? cursorParameter = null) => Component(name, "rest.source", new { connection, schema,
             url, headers, batchSize, caConnection, rowsField, cursorField, cursorParameter });
 
-    public EtlPackageBuilder CSharpTransform(string name, string registeredComponent, JsonElement configuration) =>
+    internal EtlPackageBuilder CSharpTransform(string name, string registeredComponent, JsonElement configuration) =>
         Component(name, registeredComponent, configuration);
 
-    public EtlPackageBuilder SqlDestination(string name, string connection, string table, string mode = "append") =>
+    internal EtlPackageBuilder SqlDestination(string name, string connection, string table, string mode = "append") =>
         SqlDestination(name, connection, table, mode, null, null, null, null);
 
     internal EtlPackageBuilder SqlDestination(string name, string connection, string table, string mode,
         SqlColumnMapping[]? mapping, int[]? keys, string? delivery, bool? provisionReceipts, string pipeline = "main") =>
         Component(name, "sql.destination", new { connection, table, mode, mapping, keys, delivery,
-            provisionReceipts, beforeField = mode == "changeset" ? "before" : null }, pipeline);
+            provisionReceipts }, pipeline);
 
-    public EtlPackageBuilder IcebergDestination(string name, string connection, string storageConnection,
+    internal EtlPackageBuilder IcebergDestination(string name, string connection, string storageConnection,
         string tableNamespace, string table, string mode = "append", int[]? keys = null,
-        string? warehouse = null, string? beforeField = null) =>
+        string? warehouse = null, string? beforeField = null, string pipeline = "main") =>
         Component(name, "iceberg.destination", new
         {
             connection, storageConnection, @namespace = tableNamespace, table, mode,
             keys = keys is { Length: > 0 } ? keys : null, warehouse, beforeField
-        });
+        }, pipeline);
 
-    public EtlPackageBuilder IcebergSource(string name, string connection, string storageConnection,
+    internal EtlPackageBuilder IcebergSource(string name, string connection, string storageConnection,
         string tableNamespace, string table, JsonElement schema, long? snapshotId = null,
-        uint? batchSize = null, string? warehouse = null) =>
+        uint? batchSize = null, string? warehouse = null, string pipeline = "main") =>
         Component(name, "iceberg.source", new
         {
             connection, storageConnection, @namespace = tableNamespace, table, schema, snapshotId, batchSize, warehouse
-        });
+        }, pipeline);
 
-    public EtlPackageBuilder SqlCommand(string name, string connection, string statement,
+    internal EtlPackageBuilder SqlCommand(string name, string connection, string statement,
         IReadOnlyList<uint> parameters) => Component(name, "sql.command", new { connection, statement, parameters });
 
-    public EtlPackageBuilder ExecuteSql(string name, string connection, string statement,
+    internal EtlPackageBuilder ExecuteSql(string name, string connection, string statement,
         SqlParameterBatch? parameters = null) => Task(name, "sql.execute", new { connection, statement, parameters });
 
-    public EtlPackageBuilder HttpTask(string name, HttpRequestDefinition request) => Task(name, "http.request", request);
+    internal EtlPackageBuilder HttpTask(string name, HttpRequestDefinition request) => Task(name, "http.request", request);
 
     public EtlPackageBuilder DataFlow(string name = "run") => DataFlow(name, "main");
 
@@ -119,14 +108,14 @@ public sealed class EtlPackageBuilder(string id)
         return Task(name, "dataFlow", new { pipeline });
     }
 
-    public EtlPackageBuilder Before(string before, string after, string outcome = "success")
+    internal EtlPackageBuilder Before(string before, string after, string outcome = "success")
     {
         taskEdges.Add((before, after));
         constraints.Add(new { from = before, to = after, @on = outcome });
         return this;
     }
 
-    public EtlPackageBuilder Connect(string from, string to, uint output = 0, uint input = 0) =>
+    internal EtlPackageBuilder Connect(string from, string to, uint output = 0, uint input = 0) =>
         Connect("main", from, to, output, input);
 
     internal EtlPackageBuilder Connect(string pipeline, string from, string to, uint output = 0, uint input = 0)
@@ -136,8 +125,8 @@ public sealed class EtlPackageBuilder(string id)
         return this;
     }
 
-    public EtlPackageBuilder RegisterModule(JsonElement module) { modules.Add(module.Clone()); return this; }
-    public EtlPackageBuilder Variable(string name, JsonElement definition) { variables.Add(name, definition.Clone()); return this; }
+    internal EtlPackageBuilder RegisterModule(JsonElement module) { modules.Add(module.Clone()); return this; }
+    internal EtlPackageBuilder Variable(string name, JsonElement definition) { variables.Add(name, definition.Clone()); return this; }
 
     internal JsonElement DescribeDataFlow() => JsonSerializer.SerializeToElement(Flow("main").Describe(), Json);
 
@@ -166,7 +155,8 @@ public sealed class EtlPackageBuilder(string id)
             version = ProductInfo.Protocol, id, connections = boundConnections is null ? (object)connections : boundConnections,
             controlFlow = new { tasks = controlTasks, constraints },
             dataFlows = pipelines.Select(flow => flow.Describe()).ToArray(),
-            extensions = modules.Count == 0 ? null : modules, variables, parameters, policy
+            extensions = modules.Count == 0 ? null : modules, variables, parameters, policy,
+            caches = caches.Count == 0 ? null : caches.Values.ToArray()
         }, Json));
     }
 
@@ -179,6 +169,18 @@ public sealed class EtlPackageBuilder(string id)
     }
 
     internal void Delivery(string pipeline, object delivery) => Flow(pipeline).Delivery = delivery;
+
+    internal void Cache(string name, string sourceConnection, JsonElement schema, int[] keys)
+    {
+        if (!caches.TryAdd(name, new { id = name, sourceConnection, schema, keys, scope = "execution" }))
+            throw new ArgumentException($"Cache '{name}' is already declared", nameof(name));
+    }
+
+    internal void SetComponentConfig(string pipeline, string component, string property, object? value) =>
+        Flow(pipeline).Extend(component, property, value);
+
+    internal void SetComponentType(string pipeline, string component, string type) =>
+        Flow(pipeline).SetComponentType(component, type);
 
     private EtlDataFlowDefinition Flow(string pipeline)
     {

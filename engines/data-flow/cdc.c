@@ -16,11 +16,12 @@ typedef struct cdc_source {
     ud_component_context context;
     ud_json *config;
     ud_connection_lease *lease;
-    ud_batch *input, *output, *actual, *pending;
+    ud_batch *input, *actual, *pending;
+    const ud_batch *output;
     ud_value *values, *before;
     char *schema_policy;
     uint32_t schema_policy_length;
-    int schema_pending, direct_rows;
+    int schema_pending, direct_rows, append_only;
     ud_buffer_block **blocks;
     uint32_t count, capacity, at, output_at;
     ud_buffer_view *output_view;
@@ -103,7 +104,6 @@ static void dispose(void *instance, ud_status status) {
     ud_free(s->blocks);
     ud_connection_lease_release(s->lease);
     ud_batch_destroy(s->input);
-    ud_batch_destroy(s->output);
     ud_batch_destroy(s->actual);
     ud_batch_destroy(s->pending);
     ud_free(s->values);
@@ -314,7 +314,6 @@ static ud_status load_intent(cdc_source *s, ud_cdc_options *options) {
 static ud_status prepare(void *user, const ud_component_context *c, ud_string text,
                          const ud_batch *const *in, const ud_batch *const *out, void **instance) {
     (void)in;
-    (void)out;
     *instance = NULL;
     if (!c->execution->journal)
         return UD_SCHEMA;
@@ -322,18 +321,22 @@ static ud_status prepare(void *user, const ud_component_context *c, ud_string te
     if (!s)
         return UD_RESOURCE;
     s->context = *c;
+    s->output = out[0];
     s->epoch = c->recovery_epoch;
     ud_status result = ud_json_parse(c->memory, text.data, text.length, &s->config, NULL);
+    const ud_json *append_only = !result ? ud_member(s->config, "appendOnly") : NULL;
+    if (append_only) {
+        ud_string value;
+        result = ud_json_text(append_only, &value.data, &value.length);
+        if (!result)
+            s->append_only = ud_named(value, "true");
+    }
     ud_string connection = {0};
     if (!result)
         result = ud_json_string(ud_member(s->config, "connection"), &connection);
     if (!result)
-        result = schema(c, s->config, &s->input, &s->output);
-    if (!result) {
-        ud_batch_destroy(s->output);
-        s->output = NULL;
-        result = ud_batch_create(c->memory, out[0]->schema->fields, out[0]->columns, 0, &s->output);
-    }
+        result = ud_batch_create(c->memory, s->output->schema->fields,
+                                 s->output->columns - 1, 0, &s->input);
     if (!result)
         result = ud_activation_acquire_connection(
             c->activation, connection, UD_CONNECT_READ | UD_CONNECT_CDC | UD_CONNECT_NATIVE_CDC,
@@ -568,6 +571,9 @@ static ud_status rows(cdc_source *s, const ud_cdc_event *event) {
     for (uint32_t row = 0; !status && row < event->after->rows; row++) {
         status = ud_activation_check(s->context.activation);
         int action = event->operations[row];
+        if (!status && s->append_only && action != UD_CHANGE_INSERT)
+            status = ud_fail(s->context.memory, UD_QUALITY,
+                             "CDC append-only source received a change other than INSERT");
         if (!status && (action < UD_CHANGE_INSERT ||
                         (action > UD_CHANGE_DELETE && action != UD_CHANGE_TRUNCATE)))
             status = UD_CORRUPT;
@@ -819,8 +825,21 @@ static ud_status step(void *instance, const ud_component_event *input) {
         ud_batch_destroy(mapped);
         status = ud_checkpoint_schema_event(s->context.activation, s->context.component_id, &event,
                                             compatible);
+        if (!status && event.after) {
+            char *difference = NULL;
+            uint32_t length = 0;
+            status = ud_schema_compare(s->context.memory, s->input, event.after,
+                                       (ud_string){s->schema_policy, s->schema_policy_length},
+                                       &difference, &length);
+            if (!status)
+                status = ud_schema_report(s->context.activation, (ud_string){difference, length}, compatible);
+            ud_free(difference);
+        }
         if (!status && compatible)
-            status = UD_INCOMPATIBLE;
+            status = compatible == UD_SCHEMA || compatible == UD_INCOMPATIBLE
+                ? ud_fail(s->context.memory, UD_INCOMPATIBLE,
+                          "CDC schema no longer matches the published fields and keys. Input was not confirmed.")
+                : compatible;
         if (!status) {
             status = ud_connection_lease_cdc_rebind(s->lease, event.after, event.schema_version);
             if (status) {
@@ -979,7 +998,8 @@ ud_status ud_cdc_register(ud_registry *registry) {
         "\"table\":{\"type\":\"string\",\"minLength\":1},\"schema\":{\"type\":\"object\"},\"mode\":"
         "{\"type\":\"string\",\"enum\":[\"stream\",\"snapshotAndStream\"],\"default\":"
         "\"snapshotAndStream\"},\"position\":{\"type\":\"string\"},\"slot\":{\"type\":\"string\"},"
-        "\"publication\":{\"type\":\"string\"},\"serverId\":{\"type\":\"integer\",\"minimum\":1,"
+        "\"publication\":{\"type\":\"string\"},\"appendOnly\":{\"type\":\"boolean\",\"default\":false},"
+        "\"serverId\":{\"type\":\"integer\",\"minimum\":1,"
         "\"maximum\":4294967295},\"maxTransactions\":{\"type\":\"integer\",\"minimum\":0,"
         "\"default\":0},\"microBatchRows\":{\"type\":\"integer\",\"minimum\":1},"
         "\"microBatchMs\":{\"type\":\"integer\",\"minimum\":1},\"schemaPolicy\":{\"type\":\"object\"}},\"required\":[\"connection\","
@@ -1004,7 +1024,8 @@ ud_status ud_cdc_register(ud_registry *registry) {
             .synchronous_input = -1,
             .error_output = -1,
             .capabilities =
-                UD_COMPONENT_REPLAY_SAFE | UD_COMPONENT_STATEFUL | UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_CONTINUOUS,
+                UD_COMPONENT_REPLAY_SAFE | UD_COMPONENT_STATEFUL | UD_COMPONENT_THREAD_SAFE |
+                UD_COMPONENT_CONTINUOUS | UD_COMPONENT_PREVIEW_SCHEMA,
             .effects = UD_EFFECT_EXTERNAL_READ,
             .state_version = 2,
             .user = (void *)(intptr_t)dialects[i],

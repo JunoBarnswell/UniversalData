@@ -5,6 +5,9 @@
 #include "ud/error.h"
 #include "../foundation/internal.h"
 #include <stdatomic.h>
+ud_status ud_sql_compile_incremental_scan(ud_context *, int32_t dialect, int32_t parameter_style,
+                                          const ud_batch *schema, const uint32_t *keys, uint32_t key_count,
+                                          const ud_batch *after, ud_string *sql, ud_batch **parameters);
 typedef struct ud_column {
     ud_field field;
     uint8_t *validity;

@@ -207,6 +207,46 @@ public sealed class Catalog : IDisposable
         }
     }
 
+    internal string? FindPublication(string requestId, string subject, string fingerprint)
+    {
+        lock (sync)
+        {
+            Open();
+            using var strings = new NativeStrings(requestId, subject, fingerprint);
+            int status = Native.ud_catalog_find_publication(catalog, strings[0], strings[1], strings[2],
+                out var receipt, out var length);
+            if (status == (int)StatusCode.End) return null;
+            Check(status);
+            return DataOwnership.Text(receipt, length);
+        }
+    }
+
+    internal string? ClaimIncremental(CatalogLease run, ulong revision, string document, string package, string parameters)
+    {
+        lock (sync)
+        {
+            Open();
+            using var strings = new NativeStrings(run.Id, run.Owner, document, package, parameters);
+            var lease = LeaseValue(run, strings[0], strings[1]);
+            int status = Native.ud_catalog_incremental_claim(catalog, ref lease, revision, strings[2],
+                strings[3], strings[4], out var binding, out var length);
+            if (status == (int)StatusCode.End) return null;
+            Check(status);
+            return DataOwnership.Text(binding, length);
+        }
+    }
+
+    internal void SettleIncremental(CatalogLease run, ulong revision, string document, string? confirmation)
+    {
+        lock (sync)
+        {
+            Open();
+            using var strings = new NativeStrings(run.Id, run.Owner, document, confirmation ?? "");
+            var lease = LeaseValue(run, strings[0], strings[1]);
+            Check(Native.ud_catalog_incremental_settle(catalog, ref lease, revision, strings[2], strings[3]));
+        }
+    }
+
     public CatalogLease? TryAcquireLease(CatalogKind kind,string id,string owner,uint durationMilliseconds = 30000,
         string pool = "",uint capacity = 0)
     {
@@ -400,6 +440,15 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int ud_catalog_publish_job(IntPtr catalog, ref CatalogPublicationRequest request,
         out IntPtr receipt, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_catalog_find_publication(IntPtr catalog, StringValue requestId,
+        StringValue subject, StringValue fingerprint, out IntPtr receipt, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_catalog_incremental_claim(IntPtr catalog, ref CatalogLease lease,
+        ulong revision, StringValue document, StringValue package, StringValue parameters, out IntPtr binding, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_catalog_incremental_settle(IntPtr catalog, ref CatalogLease lease,
+        ulong revision, StringValue document, StringValue confirmation);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_open(ContextHandle context, ref CatalogOptions options, out IntPtr catalog);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int ud_catalog_open_postgresql(ContextHandle context, ref CatalogOptions options, StringValue connection, out IntPtr catalog);

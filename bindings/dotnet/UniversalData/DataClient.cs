@@ -34,8 +34,6 @@ public sealed partial class DataClient : IDataClient
         return builder.Build();
     }
 
-    public EtlFlow Etl(string id) => new(this, id);
-
     internal Task<WorkerSession> RentJobWorkerAsync(uint cpuSlots, bool returnsRows, CancellationToken cancellation) =>
         cpuSlots == 1 ? jobSessions.RentAsync(token => OpenWorkerAsync(token), returnsRows, cancellation) :
             OpenWorkerAsync(cancellation, dedicated: true, cpuSlots: cpuSlots);

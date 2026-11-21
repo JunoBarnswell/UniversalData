@@ -41,28 +41,15 @@ export function ComponentPalette({
   search,
   setSearch,
   add,
-  template,
 }: {
   components: Component[];
   control: boolean;
   search: string;
   setSearch: (value: string) => void;
   add: (component: Component) => void;
-  template: (kind: "derive-split" | "dimensions") => void;
 }) {
   return (
     <aside className="component-rail">
-      {!control ? (
-        <section className="template-list">
-          <h3>组件模板</h3>
-          <button onClick={() => template("derive-split")}>
-            字段处理 → 业务分流
-          </button>
-          <button onClick={() => template("dimensions")}>
-            复制 → 双维度统计
-          </button>
-        </section>
-      ) : null}
       <label className="search">
         <Search size={15} />
         <input

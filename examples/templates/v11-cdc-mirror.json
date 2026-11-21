@@ -1,0 +1,47 @@
+{
+  "version": 15,
+  "id": "v11-cdc-mirror",
+  "connections": [
+    { "id": "source", "driver": "postgresql", "resource": "", "credentialReference": "" },
+    { "id": "target", "driver": "postgresql", "resource": "", "credentialReference": "" }
+  ],
+  "controlFlow": {
+    "tasks": [{ "id": "run-main", "kind": "dataFlow", "config": { "pipeline": "main" } }],
+    "constraints": []
+  },
+  "dataFlows": [{
+    "id": "main",
+    "components": [
+      {
+        "id": "changes",
+        "component": "postgresql.cdc.source",
+        "config": {
+          "connection": "source",
+          "table": "orders",
+          "mode": "snapshotAndStream",
+          "slot": "ud_orders_slot",
+          "publication": "ud_orders_publication",
+          "schema": { "version": 15, "fields": [
+            { "name": "id", "type": "int64", "nullable": false, "keyOrder": 1 },
+            { "name": "name", "type": "utf8", "nullable": true },
+            { "name": "updated_at", "type": "int64", "nullable": true }
+          ]}
+        }
+      },
+      {
+        "id": "mirror",
+        "component": "sql.destination",
+        "config": {
+          "connection": "target",
+          "table": "orders",
+          "mode": "changeset",
+          "keys": [0],
+          "beforeField": "before",
+          "delivery": "receipt",
+          "provisionReceipts": true
+        }
+      }
+    ],
+    "paths": [{ "from": "changes", "output": 0, "to": "mirror", "input": 0 }]
+  }]
+}

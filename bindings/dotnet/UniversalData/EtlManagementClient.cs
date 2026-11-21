@@ -11,14 +11,6 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
         CancellationToken cancellation = default) =>
         Send<JobPublicationReceipt>(HttpMethod.Post, "/api/publications", request, cancellation);
 
-    public ValueTask<Result<JsonElement>> PublishAsync(string id, ulong revision, Package package,
-        CancellationToken cancellation = default)
-    {
-        using var document = JsonDocument.Parse(package.ToJson());
-        return Send<JsonElement>(HttpMethod.Put, $"/api/packages/{Segment(id)}/versions/{revision}",
-            document.RootElement.Clone(), cancellation);
-    }
-
     public ValueTask<Result<JsonElement>> SaveJobAsync(JobDefinition job, CancellationToken cancellation = default) =>
         Send<JsonElement>(HttpMethod.Put, $"/api/jobs/{Segment(job.Id)}", job, cancellation);
 
@@ -50,6 +42,13 @@ public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
     public async ValueTask<Result> StopExecutionAsync(string runId, CancellationToken cancellation = default)
     {
         var response = await Send<JsonElement>(HttpMethod.Post, $"/api/executions/{Segment(runId)}/stop",
+            null, cancellation, expectValue: false).ConfigureAwait(false);
+        return new(response.Code, response.Error);
+    }
+
+    public async ValueTask<Result> CancelExecutionAsync(string runId, CancellationToken cancellation = default)
+    {
+        var response = await Send<JsonElement>(HttpMethod.Post, $"/api/executions/{Segment(runId)}/cancel",
             null, cancellation, expectValue: false).ConfigureAwait(false);
         return new(response.Code, response.Error);
     }

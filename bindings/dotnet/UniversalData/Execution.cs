@@ -275,6 +275,30 @@ internal sealed class Execution : IDisposable
         }
     }
 
+    internal void BindIncremental(string json)
+    {
+        Control();
+        lock (controller)
+        {
+            Open();
+            using var strings = new NativeStrings(json);
+            Check(Native.ud_execution_set_incremental(execution, strings[0]));
+        }
+    }
+
+    internal string? IncrementalConfirmation()
+    {
+        Control();
+        lock (controller)
+        {
+            Open();
+            int status = Native.ud_execution_incremental_confirmation(execution, out var proof, out var length);
+            if (status == (int)StatusCode.End) return null;
+            Check(status);
+            return DataOwnership.Text(proof, length);
+        }
+    }
+
     public bool Wait(uint timeoutMilliseconds)
     {
         Control();
@@ -504,6 +528,10 @@ internal static partial class Native
         StringValue logicalId, StringValue path);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_set_connection_limits(
         ExecutionHandle execution, uint maximum, uint defaultWaitMilliseconds);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_execution_set_incremental(ExecutionHandle execution, StringValue binding);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_execution_incremental_confirmation(ExecutionHandle execution, out IntPtr proof, out uint length);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_wait(ExecutionHandle execution, uint timeout);
 

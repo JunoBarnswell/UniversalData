@@ -571,6 +571,16 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
             }
             ud_mutex_unlock(&manager->pool->mutex);
         }
+    } else if (!status && ud_named(l->driver, "s3") && kind == 0) {
+#ifdef UD_WITH_HTTP
+        /* S3 is a lease-backed object endpoint rather than a plugin session.
+         * Keep the existing grant path used by s3 file tasks; typed Iceberg
+         * storage leases additionally advertise the object capabilities. */
+        l->capabilities = UD_CONNECT_READ | UD_CONNECT_APPEND | UD_CONNECT_DELETE |
+                          UD_CONNECT_METADATA;
+#else
+        status = UD_UNSUPPORTED;
+#endif
     } else if (!status && ud_named(l->driver, "http")) {
 #ifdef UD_WITH_HTTP
         l->capabilities = UD_CONNECT_HTTP;

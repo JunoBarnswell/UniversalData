@@ -231,6 +231,21 @@ static ud_status publication_validate(const ud_catalog_publication_request *requ
     return UD_OK;
 }
 
+ud_status ud_catalog_find_publication(ud_catalog *catalog, ud_string request_id, ud_string subject,
+                                      ud_string fingerprint, char **receipt, uint32_t *length) {
+    if (!catalog || !receipt || !length || !publication_string(request_id, 1, 255) ||
+        !publication_string(subject, 1, 255) || !publication_string(fingerprint, 1, 255))
+        return UD_INVALID;
+    ud_catalog_publication_request request = {.request_id = request_id, .subject = subject,
+                                               .fingerprint = fingerprint};
+    ud_catalog_key identity;
+    char identity_id[256];
+    UD_TRY(publication_identity(catalog, &request, &identity, identity_id));
+    int found = 0;
+    ud_status status = publication_existing(catalog, &request, &identity, receipt, length, &found);
+    return status ? status : found ? UD_OK : UD_END;
+}
+
 static ud_status publication_append(ud_catalog *catalog, int kind, ud_string id,
                                     uint64_t revision, ud_string document) {
     ud_catalog_key key = publication_key(kind, id, revision);

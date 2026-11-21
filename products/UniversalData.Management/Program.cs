@@ -158,15 +158,23 @@ api.MapGet("/drafts/{id}",(string id,HttpContext context) => DesignerWorkspace.R
 api.MapGet("/drafts",(HttpContext context)=>Results.Ok(DesignerWorkspace.ListDrafts(Scope(context),Identity(context))));
 api.MapPut("/drafts/{id}",(string id,DraftWrite request,HttpContext context) => Results.Ok(DesignerWorkspace.WriteDraft(Scope(context),Identity(context),id,request)));
 api.MapPost("/versions",(PublicationRequest request,HttpContext context) => Results.Ok(DesignerWorkspace.SaveVersion(Scope(context),Identity(context),request.Document,request.ExpectedPackageRevision)));
+api.MapPut("/environments/{id}/versions", (string id, EnvironmentVersionRequest request, HttpContext context,
+    RunDispatcher dispatcher) => Results.Ok(dispatcher.For(Identity(context)).SaveEnvironment(Identity(context), id, request)));
 api.MapPost("/publications",async (JobPublicationRequest request,HttpContext context,RunDispatcher dispatcher) => {
     var identity = Identity(context);
     string id = request.Document.GetProperty("id").GetString()!;
     identity.Require("package.deploy", id); identity.Require("deployment.write", id);
-    TenantDispatcher.RequireScheduledParameters(request.Document, request.Schedules ?? [], request.Parameters);
-    string? parametersReference = request.Parameters is null ? null : new ParameterVault(Scope(context)).Store(request.Parameters);
-    await InspectValue(context, "validate", request.Document,
-        parametersReference: parametersReference ?? "");
-    return Results.Ok(dispatcher.For(identity).PublishJob(identity, request, parametersReference));
+    var tenant = dispatcher.For(identity);
+    if (tenant.FindPublication(identity, request) is { } committed)
+        return Results.Ok(committed);
+    var prepared = tenant.PreparePublication(identity, request);
+    TenantDispatcher.RequireScheduledParameters(prepared.Package, request.Schedules ?? [], prepared.Parameters);
+    var vault = new ParameterVault(Scope(context));
+    string? parametersReference = request.Parameters is null ? null : vault.Store(request.Parameters);
+    string inspectedParameters = prepared.Parameters is null ? "" :
+        request.Environment is null ? parametersReference! : vault.Store(prepared.Parameters);
+    await InspectValue(context, "validate", prepared.Package, parametersReference: inspectedParameters);
+    return Results.Ok(tenant.PublishJob(identity, request, parametersReference));
 });
 api.MapPost("/tests",async (TestRequest request,HttpContext context,RunDispatcher dispatcher) => {
     var identity=Identity(context);var package=DesignerWorkspace.IsolatedTest(Scope(context),identity,request);
@@ -195,14 +203,6 @@ api.MapGet("/packages/{id}/versions/{revision}",(string id,string revision,HttpC
 api.MapGet("/packages/{id}/latest",(string id,HttpContext context) => {
     Identity(context).Require("package.read",id); using var catalog = Scope(context).OpenCatalog();
     return Results.Ok(new { id,revision = catalog.LatestRevision(CatalogKind.Package,id).ToString(System.Globalization.CultureInfo.InvariantCulture) });
-});
-api.MapPut("/packages/{id}/versions/{revision}",(string id,string revision,JsonElement document,HttpContext context) => {
-    var identity = Identity(context); identity.Require("package.write",id);
-    if (id != document.GetProperty("id").GetString()) throw new ArgumentException("Package identity differs");
-    // Native parsing owns shape/default/type validation; complete binding happens in the same Worker entry.
-    using var package = new NativePackage(document.GetRawText());
-    var scoped = Scope(context); string text = package.ToJson();
-    using var catalog = scoped.OpenCatalog(); catalog.Put(CatalogKind.Package,id,ulong.Parse(revision),text); return Results.Ok(new { id,revision });
 });
 api.MapGet("/executions",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).List(Identity(context)).Select(run => dispatcher.For(Identity(context)).View(run)));
 api.MapGet("/deployments",(HttpContext context,RunDispatcher dispatcher) => dispatcher.For(Identity(context)).Deployments(Identity(context)));

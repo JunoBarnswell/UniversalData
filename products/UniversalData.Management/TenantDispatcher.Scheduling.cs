@@ -215,7 +215,7 @@ public sealed partial class TenantDispatcher
                 TimestampMs: now, JobId: job.Id, DeploymentId: occurrence.DeploymentId,
                 DeploymentRevision: occurrence.DeploymentRevision,
                 Parallelism: WorkerParallelism.Read(package, policy.MaxConcurrency),
-                RequiresJournal: native.RequiresJournal, Elastic: job.Elastic);
+                RequiresJournal: native.RequiresJournal, Elastic: job.Elastic, Continuous: native.IsContinuous);
         }
         var next = job with
         {

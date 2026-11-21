@@ -1,3 +1,9 @@
+# SDK 11.0.0 / ABI 15
+
+- 将 `DataClient.Etl()` 与专用 builder 的声明迁至 `DataJob`。将 `EtlClient` 的运行、预检、预览和恢复调用迁至 `DataClient` 的 `DataJob` 或 `Package` 重载。CDC 镜像使用 `FromChanges<T>` 和 `ApplyChangesBy`。
+- 通过 `POST /api/versions` 保存不可变版本，通过 `POST /api/publications` 冻结作业、环境修订和调度。SDK 发布用 `DataClient.PublishAsync`，管理调用用 `EtlManagementClient.PublishJobAsync`。
+- 使用 SDK 11 重新编译 C# 消费者，部署 Worker 私有修订 10。Native ABI 和 Package 为 15，Journal 格式为 4。升级前在原版本结清不确定的外部提交，并按原归属保留 Catalog、Journal 和数据。 [C# API](api.md)
+
 # SDK 10.0.0 / ABI 15
 
 业务入口是 `IDataClient` 和 `DataJob<TInput>`。将旧委托中的 SQL、HTTP、事务和流水线步骤改为作业声明。原有 `Map(Func<…>)` 改为返回强类型输出的 `Select` 表达式。实体字段仍可使用官方 `SugarColumn` 映射。使用 SDK 10 重新编译应用并部署 Worker 协议修订 9。

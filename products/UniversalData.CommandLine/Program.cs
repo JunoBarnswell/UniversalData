@@ -5,7 +5,8 @@ using UniversalData.Hosting;
 if (args is ["audit-upgrade", var auditPolicy, .. var auditTenant] && auditTenant.Length <= 1)
     return UniversalData.CommandLine.JobUpgradeAudit.Run(auditPolicy, auditTenant.FirstOrDefault() ?? "local");
 
-if (args.Length >= 1 && args[0] is "run" or "publish" or "export")
+if (args.Length >= 1 && args[0] is ("run" or "publish" or "export" or "validate" or "preview" or
+    "status" or "stop" or "cancel" or "resume"))
     return await UniversalData.CommandLine.JobCommand.RunAsync(args);
 
 if (args is ["catalog", "migrate", var mode, var source, var connection, var encryption])
@@ -66,7 +67,7 @@ if (args.Length is 2 or 3 && args[0] == "doctor")
                 return Report(new(package.Code, package.Error));
             await using var data = DataClient.CreateBuilder(path, "local")
                 .ConfigureWorkers(options => options.WorkerPath(worker)).Build();
-            _ = await new EtlClient(data).ExplainAsync(package.Value!);
+            _ = await data.ExplainAsync(package.Value!);
         }
         Console.WriteLine(JsonSerializer.Serialize(new { code = 0, sdk = ProductInfo.Sdk,
             protocol = ProductInfo.Protocol, worker = ProductInfo.WorkerRevision }, HostPolicy.JsonOptions));
@@ -80,7 +81,7 @@ if (args.Length is 2 or 3 && args[0] == "doctor")
 }
 if (args.Length < 3 || args[0] is not ("execute" or "inspect" or "catalog" or "discover" or "compile"))
 {
-    Console.Error.WriteLine("usage: ud_cli run|publish|export JOB_ID [--config FILE] [--params-file FILE] [--set NAME=VALUE] or ud_cli doctor POLICY_FILE [PACKAGE] or ud_cli execute|inspect|catalog|discover|compile POLICY_FILE INPUT_FILE [PARAMETERS_JSON] [EXECUTION_ID] [resume] [CONNECTION] [TABLE]");
+    Console.Error.WriteLine("usage: ud_cli run|publish|export|validate|preview|status|stop|cancel|resume JOB_ID [options] or ud_cli doctor POLICY_FILE [PACKAGE] or ud_cli execute|inspect|catalog|discover|compile POLICY_FILE INPUT_FILE [PARAMETERS_JSON] [EXECUTION_ID] [resume] [CONNECTION] [TABLE]");
     return 2;
 }
 try
@@ -100,7 +101,6 @@ try
     var package = parsed.Value!;
     await using var data = DataClient.CreateBuilder(policyPath, "local")
         .ConfigureWorkers(options => options.WorkerPath(Worker())).Build();
-    var client = new EtlClient(data);
     string parameters = args.Length > 3 ? args[3] : "{}";
     string id = args.Length > 4 ? args[4] : "";
     bool resume = args.Length > 5 && args[5] == "resume";
@@ -110,9 +110,9 @@ try
             throw new ArgumentException("Discovery requires a logical connection");
         var inspected = args[0] switch
         {
-            "catalog" => await client.ComponentCatalogAsync(package, parameters),
-            "discover" => await client.DiscoverSchemaAsync(package, args[6], args.Length > 7 ? args[7] : "", parameters),
-            _ => await client.ExplainAsync(package, parameters)
+            "catalog" => await data.ComponentCatalogAsync(package, parameters),
+            "discover" => await data.DiscoverSchemaAsync(package, args[6], args.Length > 7 ? args[7] : "", parameters),
+            _ => await data.ExplainAsync(package, parameters)
         };
         Console.WriteLine(inspected.GetRawText());
         return 0;
@@ -123,11 +123,11 @@ try
         using var catalog = host.OpenCatalog();
         using var info = JsonDocument.Parse(catalog.Get(CatalogKind.Audit, "cli/" + id, 1)
             ?? throw new ArgumentException("Original CLI Journal was not found"));
-        started = await client.ResumeAsync(package, id, info.RootElement.GetProperty("ticket").GetString()!, parameters);
+        started = await data.ResumeAsync(package, id, info.RootElement.GetProperty("ticket").GetString()!, parameters);
     }
     else
-        started = id.Length == 0 ? await client.StartAsync(package, parameters)
-            : await client.StartNamedAsync(package, parameters, id);
+        started = id.Length == 0 ? await data.StartAsync(package, parameters)
+            : await data.StartNamedAsync(package, parameters, id);
     await using var run = started;
     Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; _ = run.CancelAsync(); };
     ExecutionMetrics result;

@@ -226,7 +226,8 @@ public sealed partial class TenantDispatcher
             {
                 member = new RunState(ProductInfo.Protocol,group.Id,run.PackageId,run.PackageRevision,run.ParametersReference,"Queued",
                     run.Subject,run.SubjectStamp,ControlReference(),TimestampMs:catalog.WorkerClock,ParentId:run.Id,Attempt:run.Attempt,
-                    Parallelism:group.Parallelism,DeploymentId:run.DeploymentId,DeploymentRevision:run.DeploymentRevision,Assignment:new KafkaAssignment(run.Id,plan.Source.Topic,group.Partitions));
+                    Parallelism:group.Parallelism,DeploymentId:run.DeploymentId,DeploymentRevision:run.DeploymentRevision,
+                    Assignment:new KafkaAssignment(run.Id,plan.Source.Topic,group.Partitions), Continuous:run.Continuous);
                 Save(member);
             }
             if (member.State != "Queued" || monitors.ContainsKey(member.Id))

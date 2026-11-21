@@ -4,7 +4,7 @@
 This is intentionally an external-resource test, not a SQLite regression.  A
 run is enabled only when it has a disposable PostgreSQL connection (logical
 CDC over verified TLS), a disposable TLS MySQL connection, a real Kafka topic
-and an Iceberg REST/warehouse/Trino fixture.  The only SQLite file is the
+and an Iceberg REST/S3/Trino fixture. The only SQLite file is the
 independent SQL destination used to inspect Native receipts.
 
 The source fixture is deliberately small and deterministic:
@@ -36,6 +36,7 @@ import uuid
 
 from product_version import PROTOCOL_VERSION
 
+from iceberg_v2 import load_external_catalog, s3_case_resource
 from orders_fixture_support import command, mysql_identifier, quote_identifier
 from orders_kafka_fixture import KafkaFixture
 from orders_mysql_fixture import MySqlFixture
@@ -116,8 +117,13 @@ def package_document(args, pg, mysql, kafka, target, spill, namespace, table):
          "credentialReference": "fixture"},
         {"id": "spill", "driver": "file", "resource": str(spill)},
         {"id": "catalog", "driver": "http", "resource": args.catalog},
-        {"id": "warehouse", "driver": "file", "resource": str(args.storage)},
+        {"id": "warehouse", "driver": "s3", "resource": s3_case_resource(args.s3_resource, namespace),
+         "credentialReference": "file:" + str(args.s3_credentials)},
     ]
+    if args.catalog_credentials is not None:
+        connections[-2]["credentialReference"] = "file:" + str(args.catalog_credentials)
+    if args.s3_ca:
+        connections.append(dict(id="storage-ca", driver="file", resource=str(args.s3_ca)))
 
     build_components = [
         node("shopSource", "sql.source", connection="shops", table=mysql.table,
@@ -132,7 +138,7 @@ def package_document(args, pg, mysql, kafka, target, spill, namespace, table):
     metric_components = [
         node("orders", "postgresql.cdc.source", connection="orders", table=pg.table,
              publication=pg.publication, slot=pg.slot, maxTransactions=1,
-             mode="snapshotAndStream", schema=ORDER_SCHEMA),
+             mode="snapshotAndStream", appendOnly=True, schema=ORDER_SCHEMA),
         node("orderTime", "eventTime", field="order_time", lagMicros=86_400_000_000),
         node("payments", "mq.source", connection="payments", targetType="topic",
              address=kafka.topic, format="json", group=kafka.group,
@@ -361,14 +367,20 @@ def required_args(args):
             missing.append(label + "=" + str(path))
     if not args.mysql_config or not Path(args.mysql_config).is_file():
         missing.append("UD_TEST_ORDERS_MYSQL_CONFIG")
+    if not args.pg_config or not Path(args.pg_config).is_file():
+        missing.append("UD_TEST_ORDERS_PG_CONFIG")
     if not args.kafka_config or not Path(args.kafka_config).is_file():
         missing.append("UD_TEST_ORDERS_KAFKA_CONFIG")
     if not args.catalog:
         missing.append("UD_TEST_ICEBERG_CATALOG")
     if not args.trino:
         missing.append("UD_TEST_TRINO_URL")
-    if not args.storage or not args.storage.is_dir():
-        missing.append("UD_TEST_ICEBERG_STORAGE directory")
+    if not args.s3_resource:
+        missing.append("UD_TEST_ICEBERG_S3_RESOURCE")
+    if not args.s3_credentials or not args.s3_credentials.is_file():
+        missing.append("UD_TEST_ICEBERG_S3_CREDENTIALS")
+    if args.s3_ca and not args.s3_ca.is_file():
+        missing.append("UD_TEST_ICEBERG_S3_CA")
     return missing
 
 
@@ -390,22 +402,25 @@ def main():
     parser.add_argument("--kafka-config", type=Path,
                         default=Path(os.environ["UD_TEST_ORDERS_KAFKA_CONFIG"])
                         if os.environ.get("UD_TEST_ORDERS_KAFKA_CONFIG") else None)
-    parser.add_argument("--catalog", default=os.environ.get("UD_TEST_ICEBERG_CATALOG"))
-    parser.add_argument("--trino", default=os.environ.get("UD_TEST_TRINO_URL"))
+    parser.add_argument("--catalog", default=os.environ.get("UD_TEST_ICEBERG_S3_CATALOG") or
+                        os.environ.get("UD_TEST_ICEBERG_CATALOG"))
+    parser.add_argument("--trino", default=os.environ.get("UD_TEST_ICEBERG_S3_TRINO_URL") or
+                        os.environ.get("UD_TEST_TRINO_URL"))
     parser.add_argument("--trino-user", default=os.environ.get("UD_TEST_TRINO_USER",
                                                                  "ud-orders-payments"))
-    parser.add_argument("--storage", type=Path,
-                        default=Path(os.environ["UD_TEST_ICEBERG_STORAGE"])
-                        if os.environ.get("UD_TEST_ICEBERG_STORAGE") else None)
+    parser.add_argument("--s3-resource", default=os.environ.get("UD_TEST_ICEBERG_S3_RESOURCE"))
+    parser.add_argument("--s3-credentials", type=Path, default=os.environ.get("UD_TEST_ICEBERG_S3_CREDENTIALS"))
+    parser.add_argument("--s3-ca", type=Path, default=os.environ.get("UD_TEST_ICEBERG_S3_CA"))
     args = parser.parse_args()
     if args.discoverer is None:
         args.discoverer = args.runner.parent / "test_next_phase_queries"
     for name in ("runner", "discoverer", "postgres_plugin", "mysql_helper", "mysql_plugin",
                  "kafka_plugin", "sqlite", "pg_config", "mysql_config",
-                 "kafka_config", "storage"):
+                 "kafka_config", "s3_credentials", "s3_ca"):
         value = getattr(args, name)
         if value is not None:
             setattr(args, name, value.resolve())
+    args.catalog, catalog_configuration = load_external_catalog(args.catalog)
     missing = required_args(args)
     if missing:
         print("Blocked real three-source gate; missing: " + ", ".join(missing), flush=True)
@@ -426,6 +441,18 @@ def main():
         target = root / "sql-target.db"
         spill = root / "spill"
         state = root / "state"
+        if args.s3_ca:
+            s3_settings = json.loads(args.s3_credentials.read_text(encoding="utf-8"))
+            s3_settings["caConnection"] = "storage-ca"
+            args.s3_credentials = root / "s3-credentials.json"
+            args.s3_credentials.write_text(json.dumps(s3_settings), encoding="utf-8")
+            args.s3_credentials.chmod(0o600)
+        args.catalog_credentials = None
+        if catalog_configuration.get("user") and catalog_configuration.get("password"):
+            args.catalog_credentials = root / "iceberg-catalog-credentials"
+            args.catalog_credentials.write_text(json.dumps({"username": catalog_configuration["user"],
+                "password": catalog_configuration["password"]}), encoding="utf-8")
+            args.catalog_credentials.chmod(0o600)
         spill.mkdir()
         create_target(target)
         if sum(item["net_amount"] for item in PAYMENTS[:2]) != EXPECTED[-1]:
@@ -477,6 +504,8 @@ def main():
             if iceberg != [EXPECTED]:
                 raise AssertionError("Trino Iceberg readback mismatch: %s" % (iceberg,))
             metadata = iceberg_metadata(args.catalog, namespace, table)
+            if not metadata.get("location", "").startswith("s3://"):
+                raise AssertionError("Expected table location in S3")
             if len(metadata["snapshots"]) != 1:
                 raise AssertionError("resume did not preserve a single Iceberg snapshot")
             print("REAL PG CDC + Kafka + TLS MySQL -> SQL/Iceberg gate passed: "

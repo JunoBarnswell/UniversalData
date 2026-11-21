@@ -2,6 +2,8 @@
 #define UD_CONNECTOR_ICEBERG_FILE_IO_H
 
 /* Private implementation included by iceberg_table.cpp. */
+#include "s3_object.h"
+
 class NativeFileIO final : public iceberg::FileIO {
  public:
     explicit NativeFileIO(const ud_iceberg_options& options)
@@ -56,6 +58,12 @@ class NativeFileIO final : public iceberg::FileIO {
         std::string path;
         auto authorized = Authorize(location, UD_ACCESS_DELETE, false, &path);
         if (!authorized.has_value()) return std::unexpected(authorized.error());
+        if (remote()) {
+            const ud_status status = ud_s3_object_delete(
+                options_.context, options_.storage_lease,
+                {location.data(), static_cast<uint32_t>(location.size())});
+            return status == UD_OK ? Status{} : S3Status(status);
+        }
         const ud_status status = ud_remove_file(options_.memory, path.c_str());
         return status == UD_OK ? Status{} : iceberg::IOError("Iceberg file delete failed");
     }
@@ -109,6 +117,16 @@ class NativeFileIO final : public iceberg::FileIO {
     }
     Status Authorize(std::string_view location, int32_t action, bool create_parent,
                      std::string* actual) const {
+        if (starts_with(location, "s3://")) {
+            if (!remote() || !options_.context || !options_.storage_lease)
+                return iceberg::NotAuthorized("Iceberg S3 storage lease is missing");
+            const ud_status status = ud_s3_object_authorize(
+                options_.context, options_.storage_lease,
+                {location.data(), static_cast<uint32_t>(location.size())}, action);
+            return status == UD_OK ? Status{} : S3Status(status);
+        }
+        if (remote())
+            return iceberg::NotSupported("Iceberg S3 FileIO only supports s3 locations");
         if (remote_uri(location) || (has_uri_scheme(location) && !starts_with(location, "file:")))
             return iceberg::NotSupported("Iceberg FileIO only supports local file locations");
         std::string resolved;
@@ -147,6 +165,7 @@ class NativeFileIO final : public iceberg::FileIO {
         return size;
     }
     Result<std::unique_ptr<iceberg::SeekableInputStream>> OpenInput(std::string_view location) const {
+        if (remote()) return OpenS3Input(location);
         std::string path;
         auto authorized = Authorize(location, UD_ACCESS_READ, false, &path);
         if (!authorized.has_value()) return std::unexpected(authorized.error());
@@ -161,6 +180,19 @@ class NativeFileIO final : public iceberg::FileIO {
         return std::unique_ptr<iceberg::SeekableInputStream>(new NativeInputStream(file, *size));
     }
     Result<int64_t> SizeInput(std::string_view location) const {
+        if (remote()) {
+            if (!options_.context || !options_.storage_lease)
+                return std::unexpected(iceberg::NotAuthorized("Iceberg S3 storage lease is missing").error());
+            uint64_t size = 0;
+            char digest[65] = {0};
+            const ud_status status = ud_s3_object_head(
+                options_.context, options_.storage_lease,
+                {location.data(), static_cast<uint32_t>(location.size())}, &size, digest);
+            if (status) return std::unexpected(S3Status(status).error());
+            if (size > INT64_MAX)
+                return std::unexpected(iceberg::IOError("Iceberg S3 object is too large").error());
+            return static_cast<int64_t>(size);
+        }
         std::string path;
         auto authorized = Authorize(location, UD_ACCESS_READ, false, &path);
         if (!authorized.has_value()) return std::unexpected(authorized.error());
@@ -191,6 +223,18 @@ class NativeFileIO final : public iceberg::FileIO {
     }
     Result<std::unique_ptr<iceberg::PositionOutputStream>> OpenOutput(std::string_view location,
                                                                        bool overwrite) const {
+        if (remote()) {
+            auto authorized = Authorize(location, UD_ACCESS_WRITE, false, nullptr);
+            if (!authorized.has_value()) return std::unexpected(authorized.error());
+            auto* stream = new (std::nothrow) NativeS3OutputStream(
+                options_.context, options_.storage_lease, options_.buffers, std::string(location), overwrite);
+            if (!stream) return std::unexpected(iceberg::IOError("S3 output allocation failed").error());
+            if (!stream->valid()) {
+                delete stream;
+                return std::unexpected(iceberg::IOError("S3 output stage failed").error());
+            }
+            return std::unique_ptr<iceberg::PositionOutputStream>(stream);
+        }
         std::string path;
         auto authorized = Authorize(location, UD_ACCESS_WRITE, true, &path);
         if (!authorized.has_value()) return std::unexpected(authorized.error());
@@ -203,6 +247,33 @@ class NativeFileIO final : public iceberg::FileIO {
         return std::unique_ptr<iceberg::PositionOutputStream>(
             new NativeOutputStream(file, options_.memory, std::move(path)));
     }
+    Result<std::unique_ptr<iceberg::SeekableInputStream>> OpenS3Input(
+        std::string_view location) const {
+        if (!options_.context || !options_.storage_lease)
+            return std::unexpected(iceberg::NotAuthorized("Iceberg S3 storage lease is missing").error());
+        uint64_t size = 0;
+        char digest[65] = {0};
+        const ud_status status = ud_s3_object_head(
+            options_.context, options_.storage_lease,
+            {location.data(), static_cast<uint32_t>(location.size())}, &size, digest);
+        if (status) return std::unexpected(S3Status(status).error());
+        if (size > INT64_MAX)
+            return std::unexpected(iceberg::IOError("Iceberg S3 object is too large").error());
+        return std::unique_ptr<iceberg::SeekableInputStream>(new NativeS3InputStream(
+            options_.context, options_.storage_lease, std::string(location), static_cast<int64_t>(size)));
+    }
+    static Status S3Status(ud_status status) {
+        if (status == UD_AUTH) return iceberg::NotAuthorized("Iceberg S3 object grant denied");
+        if (status == UD_FENCED) return iceberg::AlreadyExists("Iceberg S3 object exists");
+        if (status == UD_BUSY) return iceberg::ServiceUnavailable("Iceberg S3 object is busy");
+        if (status == UD_TRANSIENT || status == UD_TIMEOUT)
+            return iceberg::ServiceUnavailable("Iceberg S3 object is temporarily unavailable");
+        if (status == UD_COMMIT_UNKNOWN)
+            return iceberg::CommitStateUnknown("Iceberg S3 object outcome is unknown");
+        if (status == UD_UNSUPPORTED) return iceberg::NotSupported("Iceberg S3 transport is unavailable");
+        return status == UD_OK ? Status{} : iceberg::IOError("Iceberg S3 object operation failed");
+    }
+    bool remote() const { return starts_with(storage_root_, "s3://"); }
     ud_iceberg_options options_;
     std::string storage_root_;
 };

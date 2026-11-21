@@ -99,7 +99,7 @@ with tempfile.TemporaryDirectory(prefix="ud-worker-supervision-") as directory:
                         schema=discovery["schema"],fileFormat=discovery["metadata"]["options"])),
                     dict(id="write",component="file.csv.destination",config=dict(connection="target",fileMode="overwrite"))],
                     paths=[{"from":"read","to":"write","output":0,"input":0}])]
-                call(f"/api/packages/{name}/versions/1","PUT",package)
+                call("/api/versions", "POST", {"document": package, "expectedPackageRevision": "0"})
 
             def capacity():
                 return call("/api/workers")[0]["capacity"]

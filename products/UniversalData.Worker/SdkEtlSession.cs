@@ -48,7 +48,7 @@ internal sealed class SdkEtlSession(HostPolicy policy,
             case "etl.preview":
                 var pipeline = values.GetProperty("pipeline");
                 var selected = pipeline.GetProperty("components").EnumerateArray()
-                    .Where(node => node.GetProperty("component").GetString() is "sql.source" or "iceberg.source")
+                    .Where(node => node.GetProperty("component").GetString()?.EndsWith(".source", StringComparison.Ordinal) == true)
                     .Select(node => Text(node.GetProperty("config"), "connection")).ToHashSet(StringComparer.Ordinal);
                 var previewSources = ReadSources(values);
                 var previewScope = Scope(previewSources);
@@ -86,6 +86,9 @@ internal sealed class SdkEtlSession(HostPolicy policy,
                 return Complete(request, streamEnd: false);
             case "etl.diagnostics":
                 return JsonReply(request, RequireExecution(request).Diagnostics());
+            case "etl.stop":
+                RequireExecution(request).Stop();
+                return Reply(request, StatusCode.Ok);
             case "etl.cancel":
                 RequireExecution(request).Cancel();
                 return Reply(request, StatusCode.Ok);

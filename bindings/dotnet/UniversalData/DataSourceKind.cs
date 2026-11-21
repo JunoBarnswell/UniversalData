@@ -1,4 +1,4 @@
 namespace UniversalData;
 
 public enum DataSourceKind { PostgreSql, MySql, MariaDb, SqlServer, Oracle, Sqlite, Http, Iceberg,
-    Kafka, RabbitMq, RocketMq, ActiveMq }
+    S3, Kafka, RabbitMq, RocketMq, ActiveMq }

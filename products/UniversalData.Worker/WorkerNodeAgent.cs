@@ -599,7 +599,8 @@ internal sealed class WorkerNodeAgent(
             launch.EventSequence, launch.Debug, ControlReference: control, Isolated: isolated,
             BindingSnapshot: launch.BindingSnapshot, DeploymentId: launch.DeploymentId,
             DeploymentRevision: launch.DeploymentRevision, Budget: launch.GovernProcess ? launch.Budget : null, Shard: launch.Shard,
-            BrokerRestore: launch.BrokerRestore, JournalTicket: launch.JournalTicket, Assignment: launch.Assignment);
+            BrokerRestore: launch.BrokerRestore, JournalTicket: launch.JournalTicket, Assignment: launch.Assignment,
+            Incremental: launch.Incremental, Continuous: launch.Continuous);
     }
 
     private static string[] SharedPaths(IEnumerable<string> local, IEnumerable<string> remote) =>

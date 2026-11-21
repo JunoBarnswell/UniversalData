@@ -1,0 +1,57 @@
+{
+  "version": 15,
+  "id": "v11-batch-incremental",
+  "parameters": {
+    "sourceConnection": { "type": "utf8", "default": "orders" },
+    "targetConnection": { "type": "utf8", "default": "finance" },
+    "sourceTable": { "type": "utf8", "default": "orders" },
+    "targetTable": { "type": "utf8", "default": "orders" }
+  },
+  "connections": [
+    { "id": "orders", "driver": "postgresql", "resource": "", "credentialReference": "" },
+    { "id": "finance", "driver": "postgresql", "resource": "", "credentialReference": "" }
+  ],
+  "controlFlow": {
+    "tasks": [{ "id": "run-main", "kind": "dataFlow", "config": { "pipeline": "main" } }],
+    "constraints": []
+  },
+  "dataFlows": [{
+    "id": "main",
+    "components": [
+      {
+        "id": "orders",
+        "component": "sql.source",
+        "config": {
+          "connection": "orders",
+          "table": "orders",
+          "schema": { "version": 15, "fields": [
+            { "name": "change_sequence", "type": "int64", "nullable": false, "keyOrder": 1 },
+            { "name": "id", "type": "int64", "nullable": false, "keyOrder": 2 },
+            { "name": "amount", "type": "decimal128", "nullable": true }
+          ]},
+          "incremental": {
+            "mode": "composite",
+            "keys": ["change_sequence", "id"],
+            "after": [0, 0],
+            "unique": true,
+            "monotonic": true
+          },
+          "batchSize": 512
+        }
+      },
+      {
+        "id": "finance",
+        "component": "sql.destination",
+        "config": {
+          "connection": "finance",
+          "table": "orders",
+          "mode": "upsert",
+          "keys": [1],
+          "delivery": "receipt",
+          "provisionReceipts": true
+        }
+      }
+    ],
+    "paths": [{ "from": "orders", "output": 0, "to": "finance", "input": 0 }]
+  }]
+}

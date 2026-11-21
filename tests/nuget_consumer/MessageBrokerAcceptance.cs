@@ -98,14 +98,8 @@ internal static class MessageBrokerAcceptance
         }
     }
 
-    private static bool Confirmed(JsonElement progress)
-    {
-        if (!progress.TryGetProperty("pipelines", out var pipelines) ||
-            pipelines.ValueKind != JsonValueKind.Array)
-            return false;
-        return pipelines.EnumerateArray().Any(pipeline =>
-            pipeline.TryGetProperty("confirmedEpoch", out var epoch) && epoch.GetUInt64() > 0);
-    }
+    private static bool Confirmed(DataRunProgress progress) =>
+        progress.Pipelines.Any(pipeline => pipeline.ConfirmedEpoch > 0);
 
     private static async Task<int> CountRowsAsync(string database, CancellationToken cancellation)
     {

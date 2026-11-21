@@ -34,7 +34,7 @@ public sealed partial class DataClient
                 if (plan.Value is not { } package)
                     throw new UniversalDataException((int)plan.Code, "The broker definition is invalid", plan.Error);
                 await using var worker = await OpenWorkerAsync(cancellation).ConfigureAwait(false);
-                var report = await EtlClient.InspectAsync(worker, "messageConnection", package, [registered], "{}", name,
+                var report = await DataClient.InspectAsync(worker, "messageConnection", package, [registered], "{}", name,
                     null, cancellation).ConfigureAwait(false);
                 bool connected = report.GetProperty("capabilities").GetUInt64() != 0;
                 return new(source, connected, connected ? ["MQ"] : []);

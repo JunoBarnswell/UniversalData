@@ -53,14 +53,17 @@ internal static class ManagementCdcCase
                 .CancellationGrace(TimeSpan.FromSeconds(5)))
             .Build();
 
-        var pipeline = data.Etl(JobId)
+        var job = DataJob.Define(JobId)
             .FromChanges<ManagementCdcRow>("source", sourceTable,
-                new EtlChangeOptions(Position: position, Slot: slot, Publication: publication,
-                    MicroBatchRows: 128, MicroBatchMilliseconds: 100, MaxTransactions: 1))
+                new DataJobChanges(Position: position, Slot: slot, Publication: publication,
+                    MicroBatchRows: 128, MicroBatchMilliseconds: 100))
             .ToTable("target", "output")
-            .UpsertBy(row => row.Id);
-        var occurrence = await pipeline.SubmitAsync(management, RequestId, cancellation)
+            .ApplyChangesBy(row => row.Id);
+        var published = await data.PublishAsync(job, management,
+            new JobPublicationOptions(RequestId: RequestId, ExpectedPackageRevision: "0", Run: true), cancellation)
             .ConfigureAwait(false);
+        if (!published.IsSuccess || published.Value?.Occurrence is not { } occurrence)
+            throw new InvalidOperationException($"Management did not queue the typed CDC occurrence ({published.Code}): {published.Error?.Message}");
         if (occurrence.Id.Length == 0 || occurrence.RunId is null || occurrence.State != "Queued")
             throw new InvalidOperationException("Management did not queue the typed CDC occurrence");
 

@@ -102,7 +102,7 @@ with tempfile.TemporaryDirectory(prefix='ud-management-cluster-') as directory:
         package = {'version': PROTOCOL_VERSION, 'id': name, 'connections': [{'id': 'http', 'driver': 'http', 'resource': origin + '/effects'}],
             'controlFlow': {'tasks': [{'id': 'post', 'kind': 'http.request', 'config': {'connection': 'http', 'method': 'POST',
                 'body': name, 'timeoutMs': 30000}}], 'constraints': []}, 'dataFlows': []}
-        assert request(index, '/packages/' + name + '/versions/1', 'PUT', package)[0] == 200
+        assert request(index, '/versions', 'POST', {'document': package, 'expectedPackageRevision': '0'})[0] == 200
         status, run = request(index, '/executions', 'POST', {'packageId': name, 'packageRevision': '1'})
         assert status == 202, (status, run)
         return run['id']

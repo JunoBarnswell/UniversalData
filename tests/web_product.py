@@ -132,7 +132,7 @@ with sync_playwright() as playwright:
             {'from': 'read', 'output': 0, 'to': 'transform', 'input': 0},
             {'from': 'transform', 'output': 0, 'to': 'write', 'input': 0},
         ])]
-        api('PUT', f'/packages/{name}/versions/1', document)
+        api('POST', '/versions', {'document': document, 'expectedPackageRevision': '0'})
         page.reload(wait_until='domcontentloaded')
 
         def open_package():
@@ -203,6 +203,17 @@ with sync_playwright() as playwright:
         save('file-discovery.png')
         wizard.get_by_label('确认文件格式与字段').check()
         wizard.get_by_role('button', name='添加数据源', exact=True).click()
+        page.get_by_role('button', name='模板', exact=True).click()
+        templates = page.get_by_role('dialog', name='新建作业模板')
+        templates.get_by_role('button', name='批量增量同步', exact=True).click()
+        expect(templates.get_by_label('变更序列列')).to_be_visible()
+        templates.get_by_role('button', name='持续 CDC 镜像', exact=True).click()
+        expect(templates.get_by_label('Replication slot')).to_be_visible()
+        templates.get_by_role('button', name='订单支付门店实时指标', exact=True).click()
+        expect(templates.get_by_label('Iceberg Namespace')).to_be_visible()
+        expect(templates.get_by_label('环境修订')).to_be_visible()
+        save('job-templates.png')
+        templates.get_by_role('button', name='关闭模板', exact=True).click()
         page.locator('.workspace-panel:not([hidden])').get_by_label('作业包名称').fill(identity)
         source_id=page.locator('.react-flow__node').first.get_attribute('data-id')
         derived_id=add_component('derive')
@@ -334,7 +345,7 @@ with sync_playwright() as playwright:
             name=identity+'-scale-'+str(count)
             scale=dict(version=PROTOCOL_VERSION,id=name,variables=dict(counter=dict(type='int64',default=0)),dataFlows=[],
                 controlFlow=dict(tasks=[dict(id='step-'+str(index),kind='set',config=dict(name='counter',value=dict(literal=index,type='int64'))) for index in range(count)],constraints=[]))
-            api('PUT','/packages/'+name+'/versions/1',scale)
+            api('POST', '/versions', {'document': scale, 'expectedPackageRevision': '0'})
             page.get_by_role('button',name='项目',exact=True).click()
             started=time.perf_counter()
             page.get_by_role('row').filter(has_text=name).get_by_role('button',name='打开工作台').click()
@@ -365,7 +376,7 @@ with sync_playwright() as playwright:
             nativeFormulaCompile=True,nativeBeforeAfter=True,dragUndoRedo=True,currentDraftPublication=True,publishDoesNotExecute=True,previewDoesNotWrite=True,
             definitionBreakpoint=True,nativeStep=True,actualWorkerTermination=True,resumeSameNativeId=True,sqlReadModeSaved=sql_read_mode_saved,
             sqlReadModeReopened=sql_read_mode_reopened,sqlEtl=sql_etl,formalRequiresJournal=formal_requires_journal,outputSignature=__import__('hashlib').sha256(output.read_bytes()).hexdigest(),
-            studio4Tabs=True,commandMenu=True,themes=True,density=True,browserErrors=errors,consoleMessages=console,httpErrors=http,browserPlugin='Browser plugin not available'),indent=2))
+            studio4Tabs=True,jobTemplates=True,commandMenu=True,themes=True,density=True,browserErrors=errors,consoleMessages=console,httpErrors=http,browserPlugin='Browser plugin not available'),indent=2))
     except BaseException:
         (args.evidence/'failure-original.txt').write_text(__import__('traceback').format_exc())
         print(__import__('traceback').format_exc(),flush=True)

@@ -262,6 +262,24 @@ export function ComponentInspector({
           Native Journal。
         </p>
       ) : null}
+      {boundNode?.sourceReplay !== undefined || boundNode?.delivery ? (
+        <section className="native-contract" aria-label="Native 绑定契约">
+          <h3>Native 绑定事实</h3>
+          {boundNode.sourceReplay !== undefined ? (
+            <p>源重放：{boundNode.sourceReplay ? "支持" : "不支持"}</p>
+          ) : null}
+          {boundNode.delivery ? (
+            <p>目标确认：{boundNode.delivery.visibility} / {boundNode.delivery.confirmation}</p>
+          ) : null}
+          {boundNode.ports.filter((port) => port.changeMode).length ? (
+            <ul>
+              {boundNode.ports.filter((port) => port.changeMode).map((port) => (
+                <li key={`${port.direction}/${port.index}`}>端口 {port.name || port.index}：{port.changeMode}</li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
       <details>
         <summary>组件身份与专业信息</summary>
         <code>{item.id}</code>

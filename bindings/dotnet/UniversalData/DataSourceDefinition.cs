@@ -5,7 +5,7 @@ public sealed class DataSourceDefinition
     public DataSourceDefinition(string name, DataSourceKind kind, string connectionString,
         string? resource = null, string? credentialReference = null, Uri? baseUri = null,
         string? nativeConnectionString = null, ulong initialRevision = 1, bool provisionTransactionReceipts = false,
-        string? storageRoot = null, string? catalogWarehouse = null)
+        string? storageRoot = null, string? catalogWarehouse = null, string? storageConnection = null)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 128 ||
             name.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('_' or '-' or '.')))
@@ -16,11 +16,19 @@ public sealed class DataSourceDefinition
             baseUri.Scheme is not ("http" or "https") || baseUri.UserInfo.Length != 0 ||
             baseUri.Query.Length != 0 || baseUri.Fragment.Length != 0))
             throw new ArgumentException("An HTTP source needs an absolute HTTP base URI", nameof(baseUri));
-        if (kind is not (DataSourceKind.Http or DataSourceKind.Iceberg) && string.IsNullOrWhiteSpace(connectionString) &&
+        if (kind == DataSourceKind.S3 && (string.IsNullOrWhiteSpace(resource) ||
+            !Uri.TryCreate(resource, UriKind.Absolute, out var storageUri) || storageUri.Scheme != "https" ||
+            string.IsNullOrWhiteSpace(storageUri.Host) || storageUri.AbsolutePath.Trim('/').Length == 0 ||
+            storageUri.UserInfo.Length != 0 || storageUri.Query.Length != 0 || storageUri.Fragment.Length != 0))
+            throw new ArgumentException("An S3 source needs an absolute TLS path-style resource URI", nameof(resource));
+        if (kind is not (DataSourceKind.Http or DataSourceKind.Iceberg or DataSourceKind.S3) && string.IsNullOrWhiteSpace(connectionString) &&
             string.IsNullOrEmpty(credentialReference))
             throw new ArgumentException("A database source needs a connection string or credential reference", nameof(connectionString));
-        if (kind == DataSourceKind.Iceberg && (storageRoot is null || !Path.IsPathFullyQualified(storageRoot)))
-            throw new ArgumentException("An Iceberg catalog needs an absolute storage root", nameof(storageRoot));
+        if (kind == DataSourceKind.Iceberg && storageConnection is null &&
+            (storageRoot is null || (!Path.IsPathFullyQualified(storageRoot) &&
+                !(Uri.TryCreate(storageRoot, UriKind.Absolute, out var rootUri) && rootUri.Scheme is "http" or "https"))))
+            throw new ArgumentException("An Iceberg catalog needs an absolute storage root or named storage connection", nameof(storageRoot));
+        if (storageConnection is not null) ArgumentException.ThrowIfNullOrWhiteSpace(storageConnection);
         Name = name;
         Kind = kind;
         ConnectionString = connectionString ?? "";
@@ -30,8 +38,10 @@ public sealed class DataSourceDefinition
         NativeConnectionString = nativeConnectionString;
         InitialRevision = initialRevision;
         ProvisionTransactionReceipts = provisionTransactionReceipts;
-        StorageRoot = storageRoot is null ? null : Path.GetFullPath(storageRoot);
+        StorageRoot = storageRoot is null || Uri.TryCreate(storageRoot, UriKind.Absolute, out var root)
+            ? storageRoot : Path.GetFullPath(storageRoot);
         CatalogWarehouse = catalogWarehouse;
+        StorageConnection = storageConnection;
     }
 
     public string Name { get; }
@@ -45,20 +55,26 @@ public sealed class DataSourceDefinition
     public bool ProvisionTransactionReceipts { get; }
     public string? StorageRoot { get; }
     public string? CatalogWarehouse { get; }
+    /// <summary>Named object-storage connection used by Iceberg source/destination components.</summary>
+    public string? StorageConnection { get; }
     internal bool IsDatabase => Kind is DataSourceKind.PostgreSql or DataSourceKind.MySql or DataSourceKind.MariaDb or
         DataSourceKind.SqlServer or DataSourceKind.Oracle or DataSourceKind.Sqlite;
     internal bool IsMessageBroker => Kind is DataSourceKind.Kafka or DataSourceKind.RabbitMq or
         DataSourceKind.RocketMq or DataSourceKind.ActiveMq;
+    internal bool IsObjectStorage => Kind == DataSourceKind.S3;
 
     private static string DefaultResource(string name, DataSourceKind kind, string connection, Uri? address)
     {
         if (kind == DataSourceKind.Http) return address!.GetLeftPart(UriPartial.Authority);
         if (kind == DataSourceKind.Iceberg) return address!.AbsoluteUri.TrimEnd('/');
+        if (kind == DataSourceKind.S3) return resourceOrName(connection, name);
         if (kind != DataSourceKind.Sqlite || connection.Length == 0) return name;
         var builder = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = connection };
         foreach (var key in new[] { "Data Source", "DataSource", "Filename" })
             if (builder.TryGetValue(key, out var value) && value is string path && Path.IsPathFullyQualified(path))
                 return Path.GetFullPath(path);
         return name;
+
+        static string resourceOrName(string value, string fallback) => value.Length == 0 ? fallback : value;
     }
 }

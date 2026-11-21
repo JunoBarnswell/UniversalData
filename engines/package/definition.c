@@ -10,6 +10,40 @@ static int component_suffix(ud_string value, const char *suffix) {
     return value.length >= length && !memcmp(value.data + value.length - length, suffix, length);
 }
 
+ud_status ud_data_flow_is_continuous(const ud_json *flow, int32_t *continuous) {
+    *continuous = 0;
+    const ud_json *nodes = ud_member(flow, "components");
+    for (uint32_t node = 0; node < ud_json_size(nodes); node++) {
+        const ud_json *component = ud_json_at(nodes, node);
+        ud_string kind;
+        UD_TRY(ud_json_string(ud_member(component, "component"), &kind));
+        const ud_json *config = ud_member(component, "config");
+        if (component_suffix(kind, ".cdc.source")) {
+            uint64_t maximum = 0;
+            const ud_json *limit = ud_member(config, "maxTransactions");
+            if (limit)
+                UD_TRY(ud_json_uint(limit, &maximum));
+            *continuous = maximum == 0;
+        } else if (named(kind, "mq.source")) {
+            *continuous = !ud_member(config, "endOffsets") && !ud_member(config, "fromStage");
+        }
+        if (*continuous)
+            break;
+    }
+    return UD_OK;
+}
+
+ud_status ud_package_is_continuous(const ud_package *package, int32_t *continuous) {
+    if (!package || !package->document || !continuous)
+        return UD_INVALID;
+    *continuous = 0;
+    const ud_json *flows = ud_member(package->document, "dataFlows");
+    for (uint32_t index = 0; index < ud_json_size(flows) && !*continuous; index++) {
+        UD_TRY(ud_data_flow_is_continuous(ud_json_at(flows, index), continuous));
+    }
+    return UD_OK;
+}
+
 /* A stream-only SQL flow has no replay boundary: the live provider cursor is
  * the source of truth and the SQL response sink does not need a receipt table.
  * Every other package keeps the existing Journal contract.  This is deliberately

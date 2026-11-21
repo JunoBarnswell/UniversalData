@@ -1,6 +1,6 @@
 # UniversalData
 
-当前候选版本为 **SDK 10.0.0 / ABI 15**。C# 用 `DataJob` 声明强类型输入、规则和输出，生成由 C17 内核执行的 Native Package。Native Catalog 持有发布、调度、租约和恢复状态。 [C# API](docs/api.md) · [升级说明](docs/breaking-changes.md)
+当前候选版本为 **SDK 11.0.0 / ABI 15**。C# `DataJob`、CLI 和 Designer 共用由 C17 内核执行的 Native Package。Native Catalog 持有发布、调度、运行租约和跨次增量位点。 [C# API](docs/api.md) · [升级说明](docs/breaking-changes.md)
 
 Studio 4 引入事件时间与 Tumbling/Sliding/Session 聚合、原生状态快照与 Spill、持续源空闲停放、优雅停止、Catalog 事实订阅，以及多标签工作台、命令面板和主题。契约及该版本的验收记录见 [Studio 4 PRD](docs/product/studio4-prd.md)、[流批统一设计](docs/architecture/stream-batch-unification.md) 和 [Studio 4 追踪表](docs/acceptance/studio4-traceability.md)。
 

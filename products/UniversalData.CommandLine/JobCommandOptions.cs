@@ -16,19 +16,27 @@ internal sealed record JobCommandOptions(
     string? BearerToken,
     string? Cookie,
     string? Csrf,
+    string? EnvironmentId,
+    string? EnvironmentRevision,
+    string? ExecutionId,
+    uint SourceRows,
+    uint SampleRows,
     bool Run,
     bool Help)
 {
     internal static JobCommandOptions Parse(string[] args)
     {
-        if (args.Length < 2 || args[0] is not ("run" or "publish" or "export"))
-            throw new ArgumentException("usage: ud_cli run|publish|export JOB_ID [--config FILE] [--params-file FILE] [--set NAME=VALUE]");
+        if (args.Length < 2 || args[0] is not ("run" or "publish" or "export" or "validate" or "preview" or
+            "status" or "stop" or "cancel" or "resume"))
+            throw new ArgumentException("usage: ud_cli run|publish|export|validate|preview|status|stop|cancel|resume JOB_ID [options]");
 
         string command = args[0];
         string jobId = args[1];
         if (string.IsNullOrWhiteSpace(jobId)) throw new ArgumentException("A job ID is required");
         string? config = null, parametersFile = null, output = null, requestId = null,
-            expectedRevision = null, managementUrl = null, bearerToken = null, cookie = null, csrf = null;
+            expectedRevision = null, managementUrl = null, bearerToken = null, cookie = null, csrf = null,
+            environmentId = null, environmentRevision = null, executionId = null;
+        uint sourceRows = 1000, sampleRows = 32;
         bool run = false, help = false;
         var overrides = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
 
@@ -53,6 +61,16 @@ internal sealed record JobCommandOptions(
             { bearerToken = ReadValue(args, ref index, inline, "--token"); continue; }
             if (TryOption(argument, "--cookie", out inline)) { cookie = ReadValue(args, ref index, inline, "--cookie"); continue; }
             if (TryOption(argument, "--csrf", out inline)) { csrf = ReadValue(args, ref index, inline, "--csrf"); continue; }
+            if (TryOption(argument, "--environment-id", out inline))
+            { environmentId = ReadValue(args, ref index, inline, "--environment-id"); continue; }
+            if (TryOption(argument, "--environment-revision", out inline))
+            { environmentRevision = ReadValue(args, ref index, inline, "--environment-revision"); continue; }
+            if (TryOption(argument, "--execution-id", out inline) || TryOption(argument, "--run-id", out inline))
+            { executionId = ReadValue(args, ref index, inline, "--execution-id"); continue; }
+            if (TryOption(argument, "--source-rows", out inline))
+            { sourceRows = ParseUInt(ReadValue(args, ref index, inline, "--source-rows"), "--source-rows"); continue; }
+            if (TryOption(argument, "--sample-rows", out inline))
+            { sampleRows = ParseUInt(ReadValue(args, ref index, inline, "--sample-rows"), "--sample-rows"); continue; }
             if (TryOption(argument, "--set", out inline) || TryOption(argument, "--param", out inline) ||
                 TryOption(argument, "--parameter", out inline))
             {
@@ -69,10 +87,18 @@ internal sealed record JobCommandOptions(
         }
 
         if (command == "run" && run) throw new ArgumentException("--run is only valid with publish");
-        if (command == "export" && (run || requestId is not null || expectedRevision is not null))
+        if (command == "export" && (run || requestId is not null || expectedRevision is not null ||
+            environmentId is not null || environmentRevision is not null))
             throw new ArgumentException("export does not accept publish options");
+        if (environmentId is not null ^ environmentRevision is not null)
+            throw new ArgumentException("--environment-id and --environment-revision must be supplied together");
+        if (command is ("status" or "stop" or "cancel" or "resume") && string.IsNullOrWhiteSpace(executionId))
+            executionId = jobId;
+        if (sourceRows is 0 or > 10000 || sampleRows is 0 or > 32 || sampleRows > sourceRows)
+            throw new ArgumentException("preview row limits are outside the Native bounds");
         return new(command, jobId, config, parametersFile, overrides, output, requestId,
-            expectedRevision, managementUrl, bearerToken, cookie, csrf, run, help);
+            expectedRevision, managementUrl, bearerToken, cookie, csrf, environmentId, environmentRevision, executionId,
+            sourceRows, sampleRows, run, help);
     }
 
     private static string ReadValue(string[] args, ref int index, string? inline, string option)
@@ -89,5 +115,13 @@ internal sealed record JobCommandOptions(
         if (argument.StartsWith(prefix, StringComparison.Ordinal)) { inline = argument[prefix.Length..]; return true; }
         inline = null;
         return false;
+    }
+
+    private static uint ParseUInt(string value, string option)
+    {
+        if (!uint.TryParse(value, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            throw new ArgumentException($"{option} requires a non-negative integer");
+        return parsed;
     }
 }

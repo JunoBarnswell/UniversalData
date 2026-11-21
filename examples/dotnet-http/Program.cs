@@ -24,7 +24,7 @@ try
     if (!package.IsSuccess)
         return (int)package.Code;
     await using var data = DataClient.CreateBuilder(policy, "fixture").Build();
-    await using var run = await new EtlClient(data).StartAsync(package.Value!);
+    await using var run = await data.StartAsync(package.Value!);
     var finished = await run.WaitAsync();
     Console.WriteLine(JsonSerializer.Serialize(new { result = (int)StatusCode.Ok, error = (OperationError?)null,
         state = finished.State, executedTasks = finished.ExecutedTasks }));

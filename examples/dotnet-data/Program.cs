@@ -5,10 +5,9 @@ if (args.Length == 4 && args[0] is "--catalog" or "--explain" or "--execute" or 
 {
     var package = Require(Package.FromJson(await File.ReadAllTextAsync(args[1])));
     await using var data = DataClient.CreateBuilder(args[3], "fixture").Build();
-    var client = new EtlClient(data);
     if (args[0] == "--execute")
     {
-        await using var run = await client.StartAsync(package);
+        await using var run = await data.StartAsync(package);
         _ = await run.WaitAsync();
         await File.WriteAllTextAsync(args[2], (await run.DiagnosticsAsync()).GetRawText());
     }
@@ -16,9 +15,9 @@ if (args.Length == 4 && args[0] is "--catalog" or "--explain" or "--execute" or 
     {
         var result = args[0] switch
         {
-            "--catalog" => await client.ComponentCatalogAsync(package),
-            "--instantiate" => await client.InstantiateAsync(package),
-            _ => await client.ExplainAsync(package)
+            "--catalog" => await data.ComponentCatalogAsync(package),
+            "--instantiate" => await data.InstantiateAsync(package),
+            _ => await data.ExplainAsync(package)
         };
         await File.WriteAllTextAsync(args[2], result.GetRawText());
     }
@@ -39,8 +38,7 @@ if (args.Length == 6 && args[0] == "--discover")
 {
     var package = Require(Package.FromJson(await File.ReadAllTextAsync(args[1])));
     await using var data = DataClient.CreateBuilder(args[5], "fixture").Build();
-    var client = new EtlClient(data);
-    await File.WriteAllTextAsync(args[4], (await client.DiscoverSchemaAsync(package, args[2], args[3])).GetRawText());
+    await File.WriteAllTextAsync(args[4], (await data.DiscoverSchemaAsync(package, args[2], args[3])).GetRawText());
     return;
 }
 if (args.Length == 5 && args[0] == "--sql-etl")

@@ -1,7 +1,7 @@
 {
   "generatedFrom": "metadata/product.json",
   "version": 15,
-  "sdkVersion": "10.0.0",
+  "sdkVersion": "11.0.0",
   "abi": 15,
   "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
   "sourceFingerprint": null,

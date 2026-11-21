@@ -1,6 +1,6 @@
-# UniversalData C# SDK 10 / Native ABI 15
+# UniversalData C# SDK 11 / Native ABI 15
 
-安装 `UniversalData` 10.0.0 会还原对应平台的 Runtime、SqlSugarCore 5.1.4.216 和 YamlDotNet 16.3.0。C# 通过命名数据源、强类型输入和行类型声明作业。Worker 接收 Native v15 Package，由 C 内核访问外部系统并执行数据流、控制流和事务。
+`UniversalData` 11.0.0 使用对应平台的 Runtime、SqlSugarCore 5.1.4.216 和 YamlDotNet 16.3.0。C# 通过命名数据源、强类型输入和行类型声明作业。Worker 接收 Native v15 Package，由 C 内核访问外部系统并执行数据流、控制流和事务。
 
 ```csharp
 var syncOrders = DataJob.Define<SyncOrders>("orders.sync")
@@ -38,7 +38,7 @@ SQL 占位符使用目标驱动的语法。`BindParameters` 将作业输入绑�
 
 `Transaction("finance")` 声明单库事务。多库事务通过 `Transaction("orders", "finance")` 声明参与者，由 Native 协调器检查驱动能力并持有参与者连接。SQLite 单库事务使用 `serializable`，其他数据库使用 `readCommitted`。配置 XA 的数据库应具备 Native 文档所列的事务和回执权限。执行状态为 `CommitUnknown` 时保存 `DataExecutionException.Reference`，使用原作业、输入和引用调用 `DataClient.ResumeAsync`。恢复按 Native Journal 的已持久化决定推进。
 
-`StartAsync` 返回 `EtlRun`，可读取进度、诊断和执行指标。`CancelAsync` 停止执行。取消 `WaitAsync` 的令牌会结束调用方等待。直接流式读取使用当前数据库游标，带持久边界的作业按检查点恢复。
+`StartAsync` 返回 `EtlRun`，可读取强类型进度、诊断和执行事件。`StopAsync` 请求排空到确认边界，`CancelAsync` 请求取消执行。取消 `WaitAsync` 的令牌会结束调用方等待。直接流式读取使用当前数据库游标，带持久边界的作业按检查点恢复。
 
 `FromMessages` 和 `ToMessages` 使用 Native Kafka、RabbitMQ、RocketMQ 5、ActiveMQ Classic 和 ActiveMQ Artemis。`FromMessages<TRow>` 读取 `TRow` 声明的消息体字段，对应原生 `mq.source` 的 `includeMetadata: false`。通用消息作业至少交付一次，目标提交后才确认源消息。Kafka 到 Kafka 可声明 `KafkaTransaction(checkpointTopic)`，将输出、位点和检查点一起提交。HTTP 使用 `FromHttp`、`Request` 和 `ToHttp`。`FromHttp` 读取 JSON 数组或带 `rows` 和 `nextCursor` 的分页对象，作业也可指定分页字段名。
 
@@ -70,28 +70,35 @@ C# 作业可声明为开发程序集中的公开静态字段或属性，也可�
 
 ```powershell
 ud_cli export orders.sync --config erp.yaml
+ud_cli validate orders.sync --config erp.yaml
+ud_cli preview orders.sync --config erp.yaml
 ud_cli run orders.sync --config erp.yaml --params-file today.yaml
 ud_cli publish orders.sync --config erp.yaml --run --request-id orders-2026-11-21 --expected-revision 0
 ```
 
-参数依次覆盖作业默认值、参数文件、环境变量、显式命令行参数和本次 C# 输入。环境变量可用 `UD_PARAMETERS_ORDERSSYNC` 提供 JSON 对象，命令行可用 `--set FromId=1000`。发布使用宿主凭据引用。已认证客户端通过一次 `POST /api/publications` 提交不可变 Package、预期修订、调度、参数和可选首跑。重试时复用请求号。确认状态时使用回执中的执行编号和事件订阅。
+参数依次覆盖作业默认值、参数文件、环境变量、显式命令行参数和本次 C# 输入。环境变量可用 `UD_PARAMETERS_ORDERSSYNC` 提供 JSON 对象，命令行可用 `--set FromId=1000`。发布使用宿主凭据引用。已认证客户端通过 `POST /api/publications` 冻结 Package、预期修订、环境修订、调度、参数和可选首跑。可用 `PUT /api/environments/{id}/versions` 保存该作业的环境参数修订。重试时复用请求号。用管理端的执行编号调用 CLI `status`、`stop`、`cancel` 和 `resume`。
 
 作业可通过 `JobExecutionOptions` 或 YAML 的 `execution` 配置 `batchRows`、`edgeCapacity`、`parallelism`、`memoryBytes`、`timeoutMilliseconds`、`maxConnectionsPerSource` 和 `messagePrefetch`。Native 运行进度报告实际选项、批次数和队列高水位。宿主策略决定授权和资源上限。`ConfigureWorkers` 管理本地会话配额，`MaxSessionsPerWorker` 控制同一 Worker 进程可并发承载几个单槽作业。
 
-## CDC、Iceberg 与已构建 Package
+## 批量增量、CDC 与 Iceberg
 
-`DataClient.Etl` 提供表发现、Native 预览、CDC 和 Iceberg 的链式定义。`Select` 编译列投影为 Native 表达式。`FromChanges<T>` 先读取快照，再读取事务日志，指定 `EtlChangeOptions.Position` 可以从所给位点续读。MySQL 与 MariaDB 需要唯一的 `ServerId`。Native changeset 保留前后镜像和删除。
+`IncrementalBy` 在表源声明单调水位和唯一、非空的复合键。托管跨次位点适用于单表源，键的数据库排序须和 Native 比较一致。Native 使用带绑定参数的下界和稳定顺序读取，Catalog 在结算成功执行时保存最后确认的源位点。空批沿用原位点。遇到未结算的写入，可恢复原执行。源或目标绑定变化时发布者需提供明确起点。
+
+`FromChanges<T>` 先读取快照，再读取事务日志，可用 `DataJobChanges.Position` 指定起点。MySQL 与 MariaDB 需要唯一的 `ServerId`。`ApplyChangesBy` 将 Native 操作和前后镜像交给目标按键应用，包括主键值变化。`AppendOnly` 适用于只产生插入的来源，遇到更新或删除会停在确认边界。
 
 ```csharp
-var occurrence = await data.Etl("orders-live")
+var mirror = DataJob.Define("orders-live");
+mirror
     .FromChanges<Order>("orders", "orders", new(Slot: "orders_sub", Publication: "orders_pub"))
     .ToTable("serving", "orders")
-    .UpsertBy(row => row.Id)
-    .SubmitAsync(management, requestId, ct);
+    .ApplyChangesBy(row => row.Id);
+
+var plan = await data.ValidateAsync(mirror, ct);
+var receipt = await data.PublishAsync(mirror, management, new(RequestId: requestId, Run: true), ct);
 ```
 
-`SubmitAsync` 使用同一个原子发布接口。Native Catalog 持有调度和首跑状态，应用结束后 Worker 仍可按计划执行。可以通过 `ExecutionAsync`、`StopExecutionAsync` 或 `ResumeExecutionAsync` 操作返回的 `RunId`。
+Native Binder 会报告源重放能力、端口的 `Append`、`Upsert` 或 `Retract` 语义，以及每个目标的可见性和确认条件。预览 CDC 和 Kafka 时返回结构，源确认位置保持原值。托管连续作业由租约与 Worker 监管。发布后可关闭客户端，之后通过管理接口排空或恢复同一 `RunId`。
 
-`AddIceberg` 注册 REST Catalog 和文件范围。`FromIceberg<T>` 可按指定快照读取。`ToIceberg` 将数据提交为 Iceberg v2 新快照，支持按键应用 changeset。恢复时按执行标识与数据摘要核对已提交快照。`eventWindow` 支持输出带键的窗口插入、更新和删除，检查点保留窗口状态及修订。
+`AddIceberg` 注册 REST Catalog 与文件或 S3 存储范围。S3 用 `AddS3` 注册 HTTPS endpoint、bucket、prefix 与宿主凭据引用，并指定该命名存储。宿主凭据的 `awsSigV4` 使用 `aws:amz:<region>:s3`，私有 CA 可通过 `caConnection` 引用已授权文件。`FromIceberg<T>` 可按快照读取，`ToIceberg` 以 REST Catalog 发布的 Iceberg v2 快照确认写入。恢复按执行标识和数据摘要核对快照。事件时间、去重、有界关联、维表查找和窗口都使用 Native 算子。
 
-使用 `EtlClient` 执行、检查、预览和恢复现有 Native Package，使用 `TestMessageConnectionAsync` 验证已登记的消息连接。Package 的生命周期和线程所有权见 [公共 C ABI](architecture/public-c-abi.md)。
+已有 Native `Package` 可直接传给 `DataClient` 的 `ValidateAsync`、`PreviewAsync`、`RunAsync`、`StartAsync`、`ResumeAsync` 和 `PublishAsync`。使用 `TestMessageConnectionAsync` 验证已登记的消息连接。 [公共 C ABI](architecture/public-c-abi.md)

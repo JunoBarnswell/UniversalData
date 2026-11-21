@@ -63,6 +63,17 @@ ud_status ud_pipeline_plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_s
             UD_TRY(json_number(b, "capabilities", n->descriptor.capabilities));
             UD_TRY(ud_bytes_put(b, ",", 1));
             UD_TRY(json_number(b, "boundedness", n->binding.boundedness));
+            if (n->descriptor.category == UD_COMPONENT_SOURCE) {
+                const char *replay = n->source_replay ? ",\"sourceReplay\":true" : ",\"sourceReplay\":false";
+                UD_TRY(ud_bytes_put(b, replay, strlen(replay)));
+            }
+            if (n->visibility) {
+                UD_TRY(ud_bytes_put(b, ",\"delivery\":{\"visibility\":", sizeof(",\"delivery\":{\"visibility\":") - 1));
+                UD_TRY(ud_json_quote(b, n->visibility, (uint32_t)strlen(n->visibility)));
+                UD_TRY(ud_bytes_put(b, ",\"confirmation\":", sizeof(",\"confirmation\":") - 1));
+                UD_TRY(ud_json_quote(b, n->confirmation, (uint32_t)strlen(n->confirmation)));
+                UD_TRY(ud_bytes_put(b, "}", 1));
+            }
             const char *mode = n->descriptor.capabilities & UD_COMPONENT_BLOCKING ? "blocking"
                                : n->descriptor.capabilities & UD_COMPONENT_PARTIALLY_BLOCKING
                                    ? "partiallyBlocking"
@@ -89,6 +100,12 @@ ud_status ud_pipeline_plan_json(physical_plan *p, ud_bytes *b, int runtime, ud_s
                     UD_TRY(json_number(b, "index", port->index));
                     UD_TRY(ud_bytes_put(b, ",", 1));
                     UD_TRY(json_number(b, "flags", port->flags));
+                    if (direction) {
+                        const char *modes[] = {"Append", "Upsert", "Retract"};
+                        const char *mode = modes[ud_pipeline_port_change(n, k)];
+                        UD_TRY(ud_bytes_put(b, ",\"changeMode\":", sizeof(",\"changeMode\":") - 1));
+                        UD_TRY(ud_json_quote(b, mode, (uint32_t)strlen(mode)));
+                    }
                     if (runtime && direction) {
                         UD_TRY(ud_bytes_put(b, ",", 1));
                         UD_TRY(json_number(b, "rows", atomic_load(n->port_rows + k)));

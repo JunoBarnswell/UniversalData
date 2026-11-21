@@ -48,7 +48,7 @@ assert bundle["version"] == PROTOCOL_VERSION
 csrf = call("/auth/login","POST",fixture["identity"])["csrf"]
 nodes = [node for node in call("/workers") if node["online"] and node["remote"]]
 assert len(nodes) >= 2, nodes
-call(f"/packages/{name}/versions/1","PUT",bundle)
+call("/versions", "POST", {"document": bundle, "expectedPackageRevision": "0"})
 request = dict(packageId=name,packageRevision="1",requestId=uuid.uuid4().hex,
      elastic=dict(minProcesses=1,maxProcesses=3,targetLagPerProcess=10000,maxPartitionsPerProcess=4))
 ticket = call("/executions","POST",request)["id"]

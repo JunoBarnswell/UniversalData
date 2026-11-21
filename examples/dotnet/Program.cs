@@ -20,7 +20,7 @@ try
     if (!package.IsSuccess)
         return Failure(package.Code, package.Error);
     await using var data = DataClient.CreateBuilder(policy, "fixture").Build();
-    await using var run = await new EtlClient(data).StartNamedAsync(package.Value!,
+    await using var run = await data.StartNamedAsync(package.Value!,
         await File.ReadAllTextAsync(args[1]), args[2]);
     var result = await run.WaitAsync();
     Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web)));

@@ -1,5 +1,6 @@
 #include "builtins_internal.h"
 #include "ud/sql.h"
+#include "../package/incremental.h"
 static ud_status sql_record(void *user, ud_batch *batch, ud_status code, uint32_t column,
                             const ud_field *fields, const ud_value *decoded, const ud_value *cells,
                             uint32_t count) {
@@ -242,6 +243,30 @@ static ud_status bind_scan(builtin *b, const ud_json *diff) {
     ud_free(selected);
     return s;
 }
+static ud_status bind_incremental_scan(builtin *b, const ud_batch *actual, int32_t dialect, int32_t style) {
+    ud_cursor *cursor = b->cursor;
+    if (!cursor || !cursor->count || !b->scan_mapping)
+        return UD_INCOMPATIBLE;
+    uint32_t *keys = ud_alloc(b->context.memory, cursor->count * sizeof(*keys));
+    if (!keys)
+        return UD_RESOURCE;
+    ud_status status = UD_OK;
+    for (uint32_t i = 0; !status && i < cursor->count; i++) {
+        uint32_t logical = cursor->keys[i];
+        keys[i] = b->scan_schema ? logical : b->scan_mapping[logical];
+        const ud_field *field = actual->schema->fields + keys[i];
+        if (field->type != UD_INT64 && field->type != UD_UINT64 && field->type != UD_DECIMAL128 &&
+            field->type != UD_DATE32 && field->type != UD_TIME64 && field->type != UD_TIMESTAMP)
+            status = UD_UNSUPPORTED; /* Cursor order must agree with database order without a collation. */
+    }
+    if (!status)
+        status = ud_sql_compile_incremental_scan(b->context.memory, dialect, style, actual,
+                                                  keys, cursor->count, cursor->after,
+                                                  &b->read_sql, &b->parameters);
+    ud_free(keys);
+    return status;
+}
+
 static ud_status bind_predicate(builtin *b) {
     const ud_component_context *c = &b->context;
     const ud_json *where = ud_member(b->config, "where");
@@ -267,6 +292,8 @@ static ud_status bind_predicate(builtin *b) {
     int32_t dialect = ud_connection_lease_dialect(b->lease);
     UD_TRY(ud_sql_compile_scan(c->memory, dialect, table, actual, &b->read_sql));
     int32_t style = ud_connection_lease_parameter_style(b->lease);
+    if (ud_incremental_source(c->activation, c->component_id))
+        return bind_incremental_scan(b, actual, dialect, style);
     /* Only keyed scans can omit raw rows while preserving the source record identity.
        Raw SQL, lossy mappings and possible conversion errors retain native filtering. */
     int proof = b->predicate && b->cursor && b->cursor->count && b->scan_mapping &&
@@ -559,7 +586,8 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
         if (!status) {
             char *json = NULL;
             uint32_t length = 0;
-            status = ud_json_serialize(incremental, &json, &length);
+            status = ud_incremental_cursor_policy(c->activation, c->component_id, incremental,
+                                                  &json, &length);
             if (!status)
                 status =
                     ud_cursor_create(c->memory, b->schema, (ud_string){json, length}, &b->cursor);
@@ -727,7 +755,8 @@ ud_status ud_builtin_source_prepare(builtin *b, uint32_t batch_rows) {
                 b->lease, &options, b->scan_schema ? b->scan_schema :
                                     b->actual_schema ? b->actual_schema : b->schema);
     }
-    if (!status && b->cursor && b->cursor->count) {
+    if (!status && b->cursor && b->cursor->count &&
+        !ud_incremental_source(c->activation, c->component_id)) {
         ud_operator_options options = {.struct_size = sizeof(options),
                                        .abi_version = UD_ABI_VERSION,
                                        .kind = UD_OPERATOR_SORT,
