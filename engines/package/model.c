@@ -202,8 +202,24 @@ ud_status ud_package_check(const ud_package *p) {
     if (policy) {
         static const char *allowed[] = {"maxConcurrency", "buffers",  "connections",
                                         "maxErrorCount",  "maxTrees", "maxPartitions",
-                                        "transaction"};
-        UD_TRY(ud_json_keys(policy, allowed, 7));
+                                        "transaction", "execution"};
+        UD_TRY(ud_json_keys(policy, allowed, 8));
+        const ud_json *execution = ud_member(policy, "execution");
+        if (execution) {
+            static const char *keys[] = {"batchRows", "edgeCapacity", "memoryBytes",
+                "timeoutMilliseconds", "maxConnectionsPerSource", "messagePrefetch"};
+            static const uint64_t maxima[] = {65536, 65536, UINT64_MAX, UINT32_MAX, 64, 256};
+            UD_TRY(ud_json_keys(execution, keys, 6));
+            for (uint32_t i = 0; i < 6; i++) {
+                const ud_json *entry = ud_member(execution, keys[i]);
+                if (entry) {
+                    uint64_t value;
+                    UD_TRY(ud_json_uint(entry, &value));
+                    if (!value || value > maxima[i])
+                        return UD_SCHEMA;
+                }
+            }
+        }
         if (ud_member(policy, "maxConcurrency")) {
             uint64_t concurrency;
             UD_TRY(ud_json_uint(ud_member(policy, "maxConcurrency"), &concurrency));

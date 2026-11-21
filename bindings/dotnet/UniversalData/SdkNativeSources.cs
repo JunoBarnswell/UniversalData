@@ -4,7 +4,30 @@ namespace UniversalData;
 
 internal static class SdkNativeSources
 {
-    private static readonly ConcurrentDictionary<DataSourceKind, string> installedDrivers = new();
+    private static readonly ConcurrentDictionary<(DataSourceKind Kind, string Root), string> installedDrivers = new();
+    private static readonly Dictionary<DataSourceKind, string> driverNames = new()
+    {
+        [DataSourceKind.Sqlite] = "sqlite",
+        [DataSourceKind.PostgreSql] = "postgresql",
+        [DataSourceKind.MySql] = "mysql",
+        [DataSourceKind.MariaDb] = "mariadb",
+        [DataSourceKind.SqlServer] = "odbc",
+        [DataSourceKind.Oracle] = "oracle_oci",
+        [DataSourceKind.Kafka] = "kafka",
+        [DataSourceKind.RabbitMq] = "rabbitmq",
+        [DataSourceKind.RocketMq] = "rocketmq",
+        [DataSourceKind.ActiveMq] = "activemq"
+    };
+
+    internal static IEnumerable<DataSourceKind> PluginKinds => driverNames.Keys;
+
+    internal static DataSourceKind? LogicalDriver(string id)
+    {
+        if (!id.StartsWith("ud:", StringComparison.Ordinal)) return null;
+        foreach (var (kind, name) in driverNames)
+            if (id.AsSpan(3).SequenceEqual(name)) return kind;
+        return null;
+    }
 
     internal static string CredentialReference(SdkSourceBinding binding) => "sdk-source/" + binding.Definition.Name + "/" +
         binding.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -16,27 +39,18 @@ internal static class SdkNativeSources
     internal static string? FindPluginPath(DataSourceKind kind, string? workerPath = null)
     {
         var executable = workerPath ?? Environment.GetEnvironmentVariable("UD_WORKER_PATH");
-        if (!string.IsNullOrWhiteSpace(executable))
-            return LocatePlugin(kind, Path.GetDirectoryName(Path.GetFullPath(executable))!);
-
-        if (installedDrivers.TryGetValue(kind, out string? installed) && File.Exists(installed)) return installed;
-        var path = LocatePlugin(kind, AppContext.BaseDirectory);
-        if (path is not null) installedDrivers[kind] = path;
+        string root = string.IsNullOrWhiteSpace(executable) ? AppContext.BaseDirectory :
+            Path.GetDirectoryName(Path.GetFullPath(executable))!;
+        var key = (kind, root);
+        if (installedDrivers.TryGetValue(key, out string? installed) && File.Exists(installed)) return installed;
+        var path = LocatePlugin(kind, root);
+        if (path is not null) installedDrivers[key] = path;
         return path;
     }
 
     private static string? LocatePlugin(DataSourceKind kind, string workerRoot)
     {
-        var stem = kind switch
-        {
-            DataSourceKind.Sqlite => "ud_connector_sqlite",
-            DataSourceKind.PostgreSql => "ud_connector_postgresql",
-            DataSourceKind.MySql => "ud_connector_mysql",
-            DataSourceKind.MariaDb => "ud_connector_mariadb",
-            DataSourceKind.SqlServer => "ud_connector_odbc",
-            DataSourceKind.Oracle => "ud_connector_oracle_oci",
-            _ => throw new ArgumentException("The named source is not a database", nameof(kind))
-        };
+        var stem = "ud_connector_" + DriverName(kind);
         var name = stem + (OperatingSystem.IsWindows() ? ".dll" : ".so");
         var rid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
         string[] roots = [AppContext.BaseDirectory, workerRoot];
@@ -66,6 +80,6 @@ internal static class SdkNativeSources
         return null;
     }
 
-    internal static SdkNativeConnection Describe(SdkSourceBinding binding, string path) =>
-        new(binding.Definition.Name, path, binding.Definition.Resource, CredentialReference(binding));
+    internal static string DriverName(DataSourceKind kind) => driverNames.TryGetValue(kind, out var name)
+        ? name : throw new ArgumentException("The named source has no Native plugin", nameof(kind));
 }

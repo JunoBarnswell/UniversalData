@@ -14,7 +14,10 @@
   },
   "dotnet": {
     "targetFramework": "net8.0",
-    "productHostFramework": "net10.0"
+    "productHostFramework": "net10.0",
+    "packages": {
+      "YamlDotNet": "16.3.0"
+    }
   },
   "cmake": {
     "minimum": "3.24",

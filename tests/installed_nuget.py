@@ -7,14 +7,17 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCT = json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]
 VERSION = PRODUCT["sdkVersion"]
+RUNTIME_DRIVERS = ("sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci",
+                   "kafka", "rabbitmq", "rocketmq", "activemq")
 
 
-def archives(source):
-    names = ("UniversalData", "UniversalData.Runtime.linux-x64", "UniversalData.Runtime.win-x64")
+def archives(source, runtime_rids=("linux-x64", "win-x64")):
+    names = ("UniversalData", *(f"UniversalData.Runtime.{rid}" for rid in runtime_rids))
     required = {f"{name}.{VERSION}.nupkg" for name in names}
     required.update(f"{package.lower()}.{locked}.nupkg"
                     for package, locked in PRODUCT["dotnetPackages"].items())
@@ -24,13 +27,39 @@ def archives(source):
     return files
 
 
-def hashes(source):
+def hashes(source, runtime_rids):
     results = []
-    for path in archives(source):
+    for path in archives(source, runtime_rids):
         with path.open("rb") as package:
             digest = hashlib.file_digest(package, "sha256").hexdigest()
         results.append({"name": path.name, "bytes": path.stat().st_size, "sha256": digest})
     return results
+
+
+def validate_runtime_archive(source, rid, complete):
+    """Check the native plugin closure that the installed Worker will load."""
+    archive = source / f"UniversalData.Runtime.{rid}.{VERSION}.nupkg"
+    extension = ".dll" if rid == "win-x64" else ".so"
+    worker = "ud_worker.exe" if rid == "win-x64" else "ud_worker"
+    native_prefix = f"runtimes/{rid}/native/"
+    worker_prefix = f"runtimes/{rid}/worker/"
+    drivers = RUNTIME_DRIVERS if complete else ("sqlite",)
+    with zipfile.ZipFile(archive) as package:
+        files = set(package.namelist())
+        required = {worker_prefix + worker} | {
+            native_prefix + f"ud_connector_{driver}{extension}"
+            for driver in drivers}
+        native_assets = {name[len(native_prefix):] for name in files
+                         if name.startswith(native_prefix) and name != native_prefix}
+        worker_assets = {name[len(worker_prefix):] for name in files
+                         if name.startswith(worker_prefix) and name != worker_prefix}
+        licenses = {name for name in files if name.startswith("licenses/") and not name.endswith("/")}
+        if (not required <= files or not native_assets or not licenses
+                or not native_assets <= worker_assets):
+            raise ValueError(f"The {rid} runtime package does not contain its actual plugin closure and notices")
+        for entry in required - {worker_prefix + worker}:
+            if not package.getinfo(entry).file_size:
+                raise ValueError(f"The {rid} runtime package contains an empty plugin: {entry}")
 
 
 def run(args, source):
@@ -50,7 +79,8 @@ def run(args, source):
   <ItemGroup><PackageReference Include="UniversalData" Version="[''' + VERSION + ''']" /></ItemGroup>
 </Project>
 ''', encoding="utf-8")
-        shutil.copyfile(ROOT / "tests/nuget_consumer/Program.cs", work / "Program.cs")
+        for source_file in (ROOT / "tests/nuget_consumer").glob("*.cs"):
+            shutil.copyfile(source_file, work / source_file.name)
         subprocess.run([args.dotnet, "restore", project, "--source", source, "--use-lock-file",
                         "-p:TreatWarningsAsErrors=true"], cwd=work, env=env, check=True, timeout=240)
         lock_hash = hashlib.sha256((work / "packages.lock.json").read_bytes()).hexdigest()
@@ -61,7 +91,16 @@ def run(args, source):
         output = subprocess.check_output(command, cwd=work, env=env, text=True, timeout=120)
     facts = json.loads(output)
     facts["dependencyLockSha256"] = lock_hash
-    if not facts["framework"].startswith("8.") or facts["version"] != VERSION or facts["http"] != 200 or facts["sqliteRows"] != 35:
+    expected_drivers = set(RUNTIME_DRIVERS) if args.complete else {"sqlite"}
+    expected_brokers = {"kafka", "rabbitmq", "rocketmq", "activemq-classic", "activemq-artemis"} if args.complete else set()
+    mq = facts.get("mq", {})
+    mq_ok = set(mq) == expected_brokers and all(
+        item.get("publishedCommitted") == 2 and item.get("consumedCommitted") == 2 and
+        item.get("consumedAcknowledged") == 2 for item in mq.values())
+    if (not facts["framework"].startswith("8.") or facts["version"] != VERSION
+            or facts["http"] != 200 or facts["sqliteRows"] != 35
+            or set(facts.get("drivers", [])) != expected_drivers
+            or set(facts.get("brokers", [])) != expected_brokers or not mq_ok):
         raise ValueError(f"Installed SDK facts differ: {facts}")
     return facts
 
@@ -74,7 +113,10 @@ def main():
     parser.add_argument("--complete", action="store_true")
     args = parser.parse_args()
     source = args.source.resolve()
-    checked = hashes(source)
+    rid = "win-x64" if os.name == "nt" else "linux-x64"
+    required_rids = ("linux-x64", "win-x64") if args.complete else (rid,)
+    validate_runtime_archive(source, rid, args.complete)
+    checked = hashes(source, required_rids)
     facts = run(args, source)
     facts["archives"] = checked
     facts["sourceCommit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()

@@ -20,7 +20,10 @@ internal static class SdkWorker
             CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
         _ = EnforceOwnerExitAsync(lifetime.Token, finished.Token, configuration.Options.CancellationGrace);
         var sessions = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
-        using var slots = new SemaphoreSlim(configuration.Capacity, configuration.Capacity);
+        int[] cpus = OperatingSystem.IsLinux() && configuration.Cooperative && configuration.Options.RequireIsolation
+            ? WorkerProcessLimits.ReadLinuxCpuIds() : [];
+        var slots = new ConcurrentQueue<int>(cpus.Length == configuration.Capacity
+            ? cpus : Enumerable.Repeat(-1, configuration.Capacity));
         uint maxConnections = checked((uint)(configuration.Capacity * configuration.Options.MaxBranchesPerSession *
             configuration.Options.MaxConnectionsPerSource));
         using var pool = new ConnectionPool(maxConnections, policy.MemoryLimit, admission?.File, admission?.MaxSessions ?? 0);
@@ -54,7 +57,7 @@ internal static class SdkWorker
         SdkSessionProtocol.Listen(endpoint, NamedPipeServerStream.MaxAllowedServerInstances);
 
     private static async Task ServeAsync(HostPolicy policy, SdkWorkerConfiguration configuration,
-        ConnectionPool pool, NamedPipeServerStream owner, ConcurrentDictionary<string, byte> sessions, SemaphoreSlim slots,
+        ConnectionPool pool, NamedPipeServerStream owner, ConcurrentDictionary<string, byte> sessions, ConcurrentQueue<int> slots,
         CancellationToken stopping)
     {
         await using var enrolled = owner;
@@ -65,11 +68,18 @@ internal static class SdkWorker
             var frame = await WorkerProtocol.ReadAsync<SdkSessionAssignment>(owner, handshake.Token);
             using var batch = frame.Batch;
             var assignment = frame.Message;
-            if (batch is not null || !SdkSessionProtocol.Authenticate(assignment.Revision, assignment.WorkerCapability, configuration.Capability) ||
-                !Guid.TryParseExact(assignment.SessionId, "N", out _) || assignment.Capability is not { Length: 64 } ||
+            if (batch is not null || !SdkSessionProtocol.Authenticate(assignment.Revision, assignment.WorkerCapability, configuration.Capability))
+                throw SdkSessionHostClient.Failure(StatusCode.Auth, "Invalid SDK Worker assignment authority");
+            if (assignment.ReadyProbe)
+            {
+                await ReportAsync(owner, StatusCode.Ok, handshake.Token);
+                return;
+            }
+            if (!Guid.TryParseExact(assignment.SessionId, "N", out _) || assignment.Capability is not { Length: 64 } ||
                 !SdkSessionProtocol.ValidEndpoint(assignment.Endpoint))
                 throw SdkSessionHostClient.Failure(StatusCode.Auth, "Invalid SDK session assignment");
-            if (!slots.Wait(0)) throw SdkSessionHostClient.Failure(StatusCode.Busy, "SDK Worker session capacity is exhausted");
+            if (!slots.TryDequeue(out int cpu))
+                throw SdkSessionHostClient.Failure(StatusCode.Busy, "SDK Worker session capacity is exhausted");
             bool registered = sessions.TryAdd(assignment.SessionId, 0);
             try
             {
@@ -79,7 +89,7 @@ internal static class SdkWorker
                 using var session = CancellationTokenSource.CreateLinkedTokenSource(stopping);
                 using var finished = new CancellationTokenSource();
                 var cancel = WatchSessionAsync(owner, session, finished.Token);
-                try { await new SdkWorkerSession(policy, configuration, assignment, pool).RunAsync(direct, session); }
+                try { await new SdkWorkerSession(policy, configuration, assignment, pool, cpu).RunAsync(direct, session); }
                 finally
                 {
                     await finished.CancelAsync();
@@ -89,7 +99,7 @@ internal static class SdkWorker
             finally
             {
                 if (registered) sessions.TryRemove(assignment.SessionId, out _);
-                slots.Release();
+                slots.Enqueue(cpu);
             }
             await ReportAsync(owner, StatusCode.Ok, stopping);
         }

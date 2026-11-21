@@ -14,6 +14,7 @@
         <dependency id="MySqlConnector" version="[$MySqlConnector$]" />
         <dependency id="SQLitePCLRaw.lib.e_sqlite3" version="[$SQLitePCLRawlibe_sqlite3$]" />
         <dependency id="System.Security.Cryptography.Pkcs" version="[$SystemSecurityCryptographyPkcs$]" />
+        <dependency id="YamlDotNet" version="[$YamlDotNet$]" />
         <dependency id="UniversalData.Runtime.win-x64" version="[$version$]" />
         <dependency id="UniversalData.Runtime.linux-x64" version="[$version$]" />
       </group>

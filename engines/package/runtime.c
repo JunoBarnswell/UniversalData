@@ -1,7 +1,13 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
 #include "internal.h"
 #include "ud/connection_manager.h"
 #ifdef _WIN32
 #include <process.h>
+#elif defined(__linux__)
+#include <sched.h>
+#include <unistd.h>
 #endif
 static ud_status copy_string(ud_context *ctx, ud_string source, ud_string *out) {
     if ((!source.data && source.length) ||
@@ -617,6 +623,7 @@ static ud_status execute(ud_execution *e) {
     ud_execution_capture_error(e, s);
     atomic_store(&e->result, s);
     atomic_store(&e->state, state);
+    ud_execution_wake_results(e);
     ud_mutex_lock(&e->events_lock);
     ud_condition_wake(&e->finished);
     ud_mutex_unlock(&e->events_lock);
@@ -678,14 +685,57 @@ static void *execution_thread(void *p) {
     return NULL;
 }
 #endif
-ud_status ud_execution_start(ud_execution *e) {
+static ud_status start_execution(ud_execution *e, int cpu) {
     if (!e)
         return UD_INVALID;
-    if (!enter_execution(e, 0))
+#ifdef __linux__
+    pthread_attr_t attributes;
+    pthread_attr_t *launch = NULL;
+    if (cpu >= 0) {
+        long configured_cpus = sysconf(_SC_NPROCESSORS_CONF);
+        size_t count = configured_cpus > CPU_SETSIZE ? (size_t)configured_cpus : CPU_SETSIZE;
+        if ((size_t)cpu >= count)
+            return UD_INVALID;
+        size_t bytes = CPU_ALLOC_SIZE(count);
+        cpu_set_t *mask = CPU_ALLOC(count);
+        if (!mask)
+            return UD_RESOURCE;
+        if (pthread_getaffinity_np(pthread_self(), bytes, mask) || !CPU_ISSET_S(cpu, bytes, mask)) {
+            CPU_FREE(mask);
+            return UD_AUTH;
+        }
+        CPU_ZERO_S(bytes, mask);
+        CPU_SET_S(cpu, bytes, mask);
+        int configured = pthread_attr_init(&attributes);
+        if (!configured) {
+            launch = &attributes;
+            configured = pthread_attr_setaffinity_np(launch, bytes, mask);
+        }
+        CPU_FREE(mask);
+        if (configured) {
+            if (launch)
+                pthread_attr_destroy(launch);
+            return UD_RESOURCE;
+        }
+    }
+#else
+    if (cpu >= 0)
+        return UD_UNSUPPORTED;
+#endif
+    if (!enter_execution(e, 0)) {
+#ifdef __linux__
+        if (launch)
+            pthread_attr_destroy(launch);
+#endif
         return UD_BUSY;
+    }
 #ifdef _WIN32
     e->thread = (HANDLE)_beginthreadex(NULL, 0, execution_thread, e, 0, NULL);
     int failed = !e->thread;
+#elif defined(__linux__)
+    int failed = pthread_create(&e->thread, launch, execution_thread, e) != 0;
+    if (launch)
+        pthread_attr_destroy(launch);
 #else
     int failed = pthread_create(&e->thread, NULL, execution_thread, e) != 0;
 #endif
@@ -696,6 +746,12 @@ ud_status ud_execution_start(ud_execution *e) {
     }
     e->threaded = 1;
     return UD_OK;
+}
+ud_status ud_execution_start(ud_execution *e) {
+    return start_execution(e, -1);
+}
+ud_status ud_execution_start_on_cpu(ud_execution *e, uint32_t cpu) {
+    return cpu > INT32_MAX ? UD_INVALID : start_execution(e, (int)cpu);
 }
 ud_status ud_execution_wait(ud_execution *e, uint32_t timeout) {
     if (!e)
@@ -794,6 +850,7 @@ ud_status ud_execution_destroy(ud_execution *e) {
         e->threaded = 0;
     }
     if (!e->disposed) {
+        ud_execution_destroy_results(e);
         ud_checkpoint_close(e);
         ud_assets_destroy(e);
         ud_source_versions_destroy(e);
@@ -806,6 +863,7 @@ ud_status ud_execution_destroy(ud_execution *e) {
         cleanup = ud_connections_destroy(e);
         if (cleanup)
             return cleanup;
+        ud_execution_destroy_connectors(e);
         ud_scope_leave(&e->root, &e->root.globals);
         ud_scope_leave(&e->root, &e->root.project_scope);
         cleanup = ud_registry_destroy(e->registry);

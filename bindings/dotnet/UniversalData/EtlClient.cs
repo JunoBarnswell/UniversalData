@@ -48,6 +48,10 @@ public sealed class EtlClient(DataClient client)
     public Task<JsonElement> DiscoverSchemaAsync(Package package, string connection, string table, string parameters,
         CancellationToken cancellationToken = default) => InspectAsync("discover", package, parameters, connection, table, cancellationToken);
 
+    public Task<JsonElement> TestMessageConnectionAsync(Package package, string connection,
+        CancellationToken cancellationToken = default) =>
+        InspectAsync("messageConnection", package, "{}", connection, null, cancellationToken);
+
     private async Task<JsonElement> InspectAsync(string operation, Package package, string parameters,
         string? connection, string? table, CancellationToken cancellationToken)
     {
@@ -80,29 +84,31 @@ public sealed class EtlClient(DataClient client)
 
     internal async Task<EtlRun> StartAsync(Func<WorkerSession, CancellationToken, Task<Package>> compile,
         SdkSourceBinding[] sources, string parameters, string id, string ticket, bool resume,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool readResults = false, uint cpuSlots = 1)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         if (!Guid.TryParseExact(ticket, "N", out _))
             throw new ArgumentException("Invalid Native Journal ticket", nameof(ticket));
-        var worker = await client.OpenWorkerAsync(cancellationToken, dedicated: true).ConfigureAwait(false);
+        if (cpuSlots is 0 or > 64) throw new ArgumentOutOfRangeException(nameof(cpuSlots));
+        var worker = await client.RentJobWorkerAsync(cpuSlots, readResults, cancellationToken).ConfigureAwait(false);
         try
         {
             var package = await compile(worker, cancellationToken).ConfigureAwait(false);
             var response = (await worker.InvokeAsync("etl.start", new
             {
-                package = package.ToJson(), id, ticket, resume, parameters, sources
+                package = package.ToJson(), id, ticket, resume, parameters, sources, readResults
             }, mayWrite: true, cancellation: cancellationToken).ConfigureAwait(false)).Response;
             Check(response, "Native ETL start failed", new(id, JournalTicket: ticket));
             if (response.Value is not { } opened || !opened.TryGetProperty("id", out var identity) ||
                 identity.GetString() != id)
                 throw new DataExecutionException((int)StatusCode.CommitUnknown, "Worker returned another execution identity",
                     new(id, JournalTicket: ticket), new(ErrorSource.Worker, StatusCode.Protocol, "ETL execution identity differs"));
-            return new(worker, id, ticket);
+            return new(worker, id, ticket, response.Sequence, readResults, cpuSlots == 1 ? client.ReturnJobWorkerAsync : null);
         }
         catch
         {
-            await worker.DisposeAsync().ConfigureAwait(false);
+            if (cpuSlots == 1) await client.ReturnJobWorkerAsync(worker, readResults, complete: false).ConfigureAwait(false);
+            else await worker.DisposeAsync().ConfigureAwait(false);
             throw;
         }
     }
@@ -118,7 +124,8 @@ public sealed class EtlClient(DataClient client)
         ExecutionMetrics? metrics = null)
     {
         if (response.Code == StatusCode.Ok) return;
-        var description = $"{message} ({response.Code})";
+        var description = response.Error is { Message.Length: > 0 } detail
+            ? $"{message} ({response.Code}): {detail.Message}" : $"{message} ({response.Code})";
         if (run is not null)
         {
             var code = response.Code is StatusCode.WorkerLost or StatusCode.Protocol ? StatusCode.CommitUnknown :

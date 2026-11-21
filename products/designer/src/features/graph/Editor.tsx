@@ -652,11 +652,15 @@ function EditorCanvas({
           setMessage(`已保存版本 v${result.revision}`);
         } else {
           const result = await post<{
+            id: string;
             deployment: Deployment;
             revision: string;
           }>("/publications", {
+            requestId: crypto.randomUUID(),
             document: snapshot,
             expectedPackageRevision: expected,
+            schedules: [],
+            run: false,
           });
           baseRevisions.current.set(snapshot.id, result.revision);
           setSaved({

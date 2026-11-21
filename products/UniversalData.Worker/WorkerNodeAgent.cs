@@ -79,8 +79,13 @@ internal sealed class WorkerNodeAgent(
 
     private static WorkerNodeInventory Inventory(HostPolicy policy)
     {
-        var plugins = policy.PluginRoots.Where(Directory.Exists).SelectMany(path => Directory.EnumerateFiles(path, "ud_connector_*"))
-            .Where(path => policy.Authorize(policy.Tenant, path, ConnectionAccess.Execute)).Distinct(StringComparer.Ordinal).Take(256).ToArray();
+        var logicalPlugins = SdkNativeSources.PluginKinds.Where(kind =>
+            SdkNativeSources.FindPluginPath(kind) is { } path && policy.Authorize(policy.Tenant, path, ConnectionAccess.Open))
+            .Select(kind => "ud:" + SdkNativeSources.DriverName(kind));
+        var plugins = logicalPlugins.Concat(policy.PluginRoots.Where(Directory.Exists)
+            .SelectMany(path => Directory.EnumerateFiles(path, "ud_connector_*"))
+            .Where(path => policy.Authorize(policy.Tenant, path, ConnectionAccess.Execute)))
+            .Distinct(StringComparer.Ordinal).Take(256).ToArray();
         string assemblies = Path.Combine(policy.DataDirectory, "assemblies");
         var hashes = Directory.Exists(assemblies) ? Directory.EnumerateFiles(assemblies, "*.dll")
             .Select(Path.GetFileNameWithoutExtension).Where(hash => hash is { Length: 64 } && hash.All(Uri.IsHexDigit)).Cast<string>() : [];

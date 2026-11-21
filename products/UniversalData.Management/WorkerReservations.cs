@@ -1,4 +1,5 @@
 using UniversalData.Hosting;
+using UniversalData;
 
 namespace UniversalData.Management;
 
@@ -53,98 +54,94 @@ public sealed class WorkerReservations(HostPolicy policy, ProductConfiguration c
     internal WorkerPlacement[]? PlanHandoff(string tenant, System.Text.Json.JsonElement package,
         KafkaElasticGroup[] additions, WorkerPlacement[] retiring)
     {
+        if (additions.Length == 0) return [];
         var nodes = directory.Nodes.Where(node => node.AllowedTenants.Contains(tenant,StringComparer.Ordinal) &&
             Supports(node,tenant,package)).ToArray();
         if (nodes.Length == 0) return null;
-
-        var reserved = new WorkerPlacement[additions.Length];
         lock (gate)
         {
-            var free = new Dictionary<string,(uint Processes,uint Cpu,ulong Memory)>(StringComparer.Ordinal);
-            foreach (var node in nodes)
-            {
-                var old = retiring.Where(place => place.NodeId == node.NodeId && place.Remote).ToArray();
-                uint restoredCpu = old.Aggregate(0U,(total,place) => total + place.Budget.CpuSlots);
-                ulong restoredMemory = old.Aggregate(0UL,(total,place) => total + place.Budget.ProcessMemoryBytes);
-                var used = usage.GetValueOrDefault((node.NodeId,true));
-                var available = node.Capacity;
-                free[node.NodeId] = (
-                    Math.Min(node.MaxProcesses,Math.Min(node.MaxProcesses - Math.Min(node.MaxProcesses,used.Processes),
-                        available?.AvailableProcesses ?? 0) + (uint)old.Length),
-                    Math.Min(node.MaxCpu,Math.Min(node.MaxCpu - Math.Min(node.MaxCpu,used.Cpu),available?.AvailableCpu ?? 0) + restoredCpu),
-                    Math.Min(node.MaxMemoryBytes,Math.Min(node.MaxMemoryBytes - Math.Min(node.MaxMemoryBytes,used.Memory),
-                        available?.AvailableMemoryBytes ?? 0) + restoredMemory));
-            }
-            foreach (int index in Enumerable.Range(0,additions.Length).OrderByDescending(i => additions[i].Partitions.Length))
-            {
-                var budget = Budget(additions[index].Parallelism);
-                var candidate = nodes.Where(node => free[node.NodeId] is var left && left.Processes > 0 &&
-                    left.Cpu >= budget.CpuSlots && left.Memory >= budget.ProcessMemoryBytes)
-                    .OrderByDescending(node => free[node.NodeId].Cpu).FirstOrDefault();
-                if (candidate is null) return null;
-                var remaining = free[candidate.NodeId];
-                free[candidate.NodeId] = (remaining.Processes-1,remaining.Cpu-budget.CpuSlots,
-                    remaining.Memory-budget.ProcessMemoryBytes);
-                reserved[index] = new(candidate.NodeId,true,budget);
-            }
+            var snapshots = nodes.Select(node => PlacementNode(node, true, true, retiring)).ToArray();
+            var budgets = additions.Select(addition => PlacementBudget(Budget(addition.Parallelism))).ToArray();
+            var planned = NativeWorkerPlacement.Plan(budgets[0], policy.MemoryLimit, snapshots, additions.Length,
+                budgets: budgets);
+            if (planned is null) return null;
+            return planned.Select(value => new WorkerPlacement(value.NodeId, value.Remote,
+                new(value.Budget.CpuSlots, value.Budget.NativeMemoryBytes, value.Budget.ProcessMemoryBytes,
+                    value.Budget.ConsumerLanes))).ToArray();
         }
-        return reserved;
     }
 
     private WorkerBudget Budget(WorkerParallelism? plan) => new(plan?.ThreadsPerWorker ?? 1, policy.MemoryLimit,
         checked(policy.MemoryLimit + WorkerSupervisor.ProcessOverhead),plan?.ConsumerLanesPerWorker ?? 1);
 
+    private NativePlacementNode PlacementNode(RemoteWorkerNode node, bool remote, bool eligible,
+        IReadOnlyList<WorkerPlacement>? releasing = null)
+    {
+        var released = releasing?.Where(place => place.Remote && place.NodeId == node.NodeId).ToArray() ?? [];
+        uint releasedCpu = released.Aggregate(0U, (total, place) => checked(total + place.Budget.CpuSlots));
+        ulong releasedMemory = released.Aggregate(0UL, (total, place) => checked(total + place.Budget.ProcessMemoryBytes));
+        var current = usage.GetValueOrDefault((node.NodeId, remote));
+        uint usedCpu = current.Cpu > releasedCpu ? current.Cpu - releasedCpu : 0;
+        uint usedProcesses = current.Processes > (uint)released.Length ? current.Processes - (uint)released.Length : 0;
+        ulong usedMemory = current.Memory > releasedMemory ? current.Memory - releasedMemory : 0;
+        usedCpu = Math.Min(usedCpu, node.MaxCpu);
+        usedProcesses = Math.Min(usedProcesses, node.MaxProcesses);
+        usedMemory = Math.Min(usedMemory, node.MaxMemoryBytes);
+        var capacity = node.Capacity;
+        uint availableProcesses = Math.Min(node.MaxProcesses,
+            capacity?.AvailableProcesses ?? (node.MaxProcesses - usedProcesses));
+        uint availableCpu = Math.Min(node.MaxCpu, capacity?.AvailableCpu ?? (node.MaxCpu - usedCpu));
+        ulong availableMemory = Math.Min(node.MaxMemoryBytes,
+            capacity?.AvailableMemoryBytes ?? (node.MaxMemoryBytes - usedMemory));
+        if (released.Length != 0)
+        {
+            availableProcesses = Math.Min(node.MaxProcesses, checked(availableProcesses + (uint)released.Length));
+            availableCpu = Math.Min(node.MaxCpu, checked(availableCpu + releasedCpu));
+            availableMemory = Math.Min(node.MaxMemoryBytes, checked(availableMemory + releasedMemory));
+        }
+        return new(node.NodeId, remote, remote || supervisor.Ready, eligible, true, node.MaxCpu, node.MaxProcesses,
+            usedCpu, usedProcesses, availableCpu, availableProcesses, node.MaxMemoryBytes,
+            usedMemory, availableMemory);
+    }
+
+    private static NativePlacementBudget PlacementBudget(WorkerBudget budget) =>
+        new(budget.CpuSlots, budget.ConsumerLanes, budget.NativeMemoryBytes, budget.ProcessMemoryBytes);
+
     internal WorkerReservation? TryReserve(string tenant, WorkerParallelism? plan, bool remote, int count,
         IReadOnlyList<WorkerPlacement?>? pinned = null, WorkerPlacement? excluded = null,
         System.Text.Json.JsonElement? package = null)
     {
+        if (count == 0) return new WorkerReservation([], static () => { });
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         var budget = Budget(plan);
         (RemoteWorkerNode Node, bool Remote)[] nodes = [.. (configuration.Cluster
             ? Enumerable.Empty<(RemoteWorkerNode, bool)>() : [(Local(tenant), false)]), .. (remote
             ? directory.Nodes.Where(node => node.AllowedTenants.Contains(tenant, StringComparer.Ordinal) &&
                 (package is null || Supports(node, tenant, package.Value))).Select(node => (node, true))
             : Enumerable.Empty<(RemoteWorkerNode, bool)>())];
-        var placements = new WorkerPlacement[count];
-        var acquired = new List<WorkerPlacement>(count);
+        if (nodes.Length == 0) return null;
         lock (gate)
         {
-            var order = Enumerable.Range(0, count).OrderBy(index => pinned?[index] is null);
-            foreach (int index in order)
+            var snapshots = nodes.Select(candidate => PlacementNode(candidate.Node, candidate.Remote, true)).ToArray();
+            var nativePins = pinned?.Select(pin => pin is null ? (NativePlacementPin?)null : new NativePlacementPin(pin.NodeId, pin.Remote,
+                PlacementBudget(pin.Budget))).ToArray();
+            var nativeExcluded = excluded is { } value
+                ? new NativePlacementPin(value.NodeId, value.Remote, PlacementBudget(value.Budget)) : (NativePlacementPin?)null;
+            var planned = NativeWorkerPlacement.Plan(PlacementBudget(budget), policy.MemoryLimit, snapshots, count,
+                nativePins, nativeExcluded);
+            if (planned is null) return null;
+            var placements = planned.Select(value => new WorkerPlacement(value.NodeId, value.Remote,
+                new(value.Budget.CpuSlots, value.Budget.NativeMemoryBytes, value.Budget.ProcessMemoryBytes,
+                    value.Budget.ConsumerLanes))).ToArray();
+            foreach (var placement in placements)
             {
-                var preferred = pinned?[index];
-                var size = preferred?.Budget ?? excluded?.Budget ?? budget;
-                if (size.NativeMemoryBytes > policy.MemoryLimit)
-                {
-                    Release(acquired);
-                    return null;
-                }
-                foreach (var candidate in nodes.OrderBy(node => usage.GetValueOrDefault((node.Node.NodeId, node.Remote)).Processes))
-                {
-                    var node = candidate.Node;
-                    if (excluded is not null && excluded.NodeId == node.NodeId && excluded.Remote == candidate.Remote ||
-                        preferred is not null && (preferred.NodeId != node.NodeId || preferred.Remote != candidate.Remote))
-                        continue;
-                    var key = (node.NodeId, candidate.Remote);
-                    var current = usage.GetValueOrDefault(key);
-                    if (node.Capacity is { } inventory && (inventory.AvailableProcesses == 0 ||
-                        size.CpuSlots > inventory.AvailableCpu || size.ProcessMemoryBytes > inventory.AvailableMemoryBytes))
-                        continue;
-                    if (current.Processes >= node.MaxProcesses || current.Cpu > node.MaxCpu ||
-                        size.CpuSlots > node.MaxCpu - current.Cpu || current.Memory > node.MaxMemoryBytes ||
-                        size.ProcessMemoryBytes > node.MaxMemoryBytes - current.Memory)
-                        continue;
-                    usage[key] = (current.Cpu + size.CpuSlots, current.Processes + 1, current.Memory + size.ProcessMemoryBytes);
-                    placements[index] = new WorkerPlacement(node.NodeId, candidate.Remote, size);
-                    acquired.Add(placements[index]);
-                    break;
-                }
-                if (placements[index] is not null)
-                    continue;
-                Release(acquired);
-                return null;
+                var key = (placement.NodeId, placement.Remote);
+                var current = usage.GetValueOrDefault(key);
+                usage[key] = (checked(current.Cpu + placement.Budget.CpuSlots),
+                    checked(current.Processes + 1), checked(current.Memory + placement.Budget.ProcessMemoryBytes));
             }
+            return new WorkerReservation(placements, () => { lock (gate) Release(placements.ToList()); });
         }
-        return new WorkerReservation(placements, () => { lock (gate) Release(acquired); });
     }
 
     private void Release(List<WorkerPlacement> placements)

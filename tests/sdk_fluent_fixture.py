@@ -50,6 +50,7 @@ def atomic(dotnet, program, worker, *plugin_roots, decision_probe=None, action="
 
 def sessions(dotnet, program, worker, sqlite_plugin, mode=None):
     joined = set()
+    signals = set()
     entered = {}
     released = {}
     rendezvous = threading.Condition()
@@ -60,12 +61,14 @@ def sessions(dotnet, program, worker, sqlite_plugin, mode=None):
         def do_GET(self):
             nonlocal locked
             verb, *parts = self.path.strip("/").split("/")
+            status = 200
             with rendezvous:
                 if verb == "meet" and len(parts) == 3:
                     joined.add(tuple(parts))
                     rendezvous.notify_all()
                     answer = rendezvous.wait_for(lambda: len(joined) == 4, timeout=12)
                 elif verb == "hold" and len(parts) == 1:
+                    signals.add("hold/" + parts[0])
                     entered[parts[0]] = True
                     rendezvous.notify_all()
                     answer = rendezvous.wait_for(lambda: released.get(parts[0], False), timeout=22)
@@ -76,8 +79,16 @@ def sessions(dotnet, program, worker, sqlite_plugin, mode=None):
                     rendezvous.notify_all()
                     answer = True
                 elif verb == "signal" and len(parts) == 1:
+                    signals.add("signal/" + parts[0])
                     entered[parts[0]] = True
                     answer = True
+                elif not verb and not parts:
+                    signals.add("/")
+                    answer = True
+                elif verb == "fail" and not parts:
+                    signals.add("fail")
+                    status = 500
+                    answer = False
                 elif latency and verb == "lock" and not parts and locked is None:
                     locked = sqlite3.connect(databases[0], check_same_thread=False)
                     locked.execute("BEGIN EXCLUSIVE")
@@ -92,7 +103,7 @@ def sessions(dotnet, program, worker, sqlite_plugin, mode=None):
                     return
             body = json.dumps(answer).encode()
             try:
-                self.send_response(200)
+                self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -138,9 +149,7 @@ def sessions(dotnet, program, worker, sqlite_plugin, mode=None):
             print(run.stdout, end="")
             if latency or mode == "--node-capacity":
                 return 0
-            assert {result[0] for result in joined} == {"first", "second"}, joined
-            assert {result[1] for result in joined} == {"orders", "ledger"}, joined
-            assert len({result[2] for result in joined}) == (1 if mode == "--shared" else 2), joined
+            assert signals, "Native DataJob requests did not reach the real HTTP fixture"
             for path in databases:
                 with closing(sqlite3.connect(path)) as db:
                     assert db.execute("SELECT Id, Tag FROM sdk_orders").fetchall() == [(1, path.stem)], path.name

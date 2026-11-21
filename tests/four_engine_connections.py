@@ -15,7 +15,15 @@ with tempfile.TemporaryDirectory(prefix='ud-four-connections-') as directory:
  children={'tasks':[insert(1),insert(2)],'constraints':[{'from':'insert1','to':'insert2','on':'success'}]}
  txn={'id':'transaction','kind':'sequence','transaction':{'mode':'required','participants':['db']},'config':{},'children':children}
  q=copy.deepcopy(p);q['controlFlow']['tasks']=[txn]
- result=run(q,12,state=r/'unsupported-transaction')
+ result=run(q,0,state=r/'local-transaction')
+ assert connection.execute('SELECT id FROM data ORDER BY id').fetchall()==[(1,),(2,)]
+ connection.execute('DELETE FROM data');connection.commit()
+ q=copy.deepcopy(p);q['variables']['huge']={'type':'int64','default':9223372036854775807}
+ failed=copy.deepcopy(txn)
+ failed['children']['tasks'].append({'id':'overflow','kind':'set','config':{'name':'total','value':{'op':'add','args':[{'ref':'huge'},{'literal':1,'type':'int64'}]}}})
+ failed['children']['constraints'].append({'from':'insert2','to':'overflow','on':'success'})
+ q['controlFlow']['tasks']=[failed]
+ run(q,7,state=r/'local-transaction-rollback')
  assert connection.execute('SELECT COUNT(*) FROM data').fetchone()[0]==0
  q=copy.deepcopy(p);q['controlFlow']['tasks']=[{'id':'items','kind':'foreach','config':{'variable':'statement','items':['INSERT INTO data VALUES(1)','INSERT INTO data VALUES(2)']},
    'children':{'tasks':[{'id':'execute','kind':'sql.execute','config':{'connection':'db','statement':{'$variable':'statement'}}}],'constraints':[]}}]
@@ -57,4 +65,4 @@ with tempfile.TemporaryDirectory(prefix='ud-four-connections-') as directory:
  q=copy.deepcopy(p);q['controlFlow']['tasks']=[{'id':'session','kind':'sql.execute','config':{'connection':'db','statement':'PRAGMA foreign_keys=OFF'}}]
  run(q,13)
  connection.close()
-print('Native pooled session reuse, unsupported participant refusal, Collection/Variable/Query/Schema/File enumerators passed')
+print('Native pooled session reuse, local SQLite transaction, Collection/Variable/Query/Schema/File enumerators passed')

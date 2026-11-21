@@ -45,7 +45,10 @@ public sealed class DataSourceDefinition
     public bool ProvisionTransactionReceipts { get; }
     public string? StorageRoot { get; }
     public string? CatalogWarehouse { get; }
-    internal bool IsDatabase => Kind is not (DataSourceKind.Http or DataSourceKind.Iceberg);
+    internal bool IsDatabase => Kind is DataSourceKind.PostgreSql or DataSourceKind.MySql or DataSourceKind.MariaDb or
+        DataSourceKind.SqlServer or DataSourceKind.Oracle or DataSourceKind.Sqlite;
+    internal bool IsMessageBroker => Kind is DataSourceKind.Kafka or DataSourceKind.RabbitMq or
+        DataSourceKind.RocketMq or DataSourceKind.ActiveMq;
 
     private static string DefaultResource(string name, DataSourceKind kind, string connection, Uri? address)
     {

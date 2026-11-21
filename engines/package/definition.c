@@ -22,7 +22,7 @@ ud_status ud_package_requires_journal(const ud_package *package, int32_t *requir
     const ud_json *flows = ud_member(package->document, "dataFlows");
     if (ud_json_kind(flows) != UD_JSON_ARRAY || !ud_json_size(flows))
         return UD_OK;
-    int stream_source = 0;
+    int stream_source = 0, client_results = 0, external_response_sink = 0;
     for (uint32_t flow_index = 0; flow_index < ud_json_size(flows); flow_index++) {
         const ud_json *flow = ud_json_at(flows, flow_index);
         const ud_json *components = ud_member(flow, "components");
@@ -58,7 +58,12 @@ ud_status ud_package_requires_journal(const ud_package *package, int32_t *requir
             }
             if (component_suffix(kind, ".source"))
                 return UD_OK;
+            if (named(kind, "result.destination")) {
+                client_results = 1;
+                continue;
+            }
             if (named(kind, "sql.destination")) {
+                external_response_sink = 1;
                 const ud_json *delivery_setting = ud_member(config, "delivery");
                 if (delivery_setting) {
                     ud_string delivery_mode = {0};
@@ -84,6 +89,8 @@ ud_status ud_package_requires_journal(const ud_package *package, int32_t *requir
         if (!flow_source)
             return UD_OK;
     }
+    if (client_results && external_response_sink)
+        return UD_OK;
     const ud_json *policy = ud_member(package->document, "policy");
     if (policy && (ud_member(policy, "transaction") || ud_member(policy, "transactions") ||
                    ud_member(policy, "recovery") || ud_member(policy, "durable")))

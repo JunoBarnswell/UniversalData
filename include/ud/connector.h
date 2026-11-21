@@ -39,7 +39,11 @@ enum {
     UD_CONNECT_READ_SNAPSHOT = 33554432, /* Repeatable read-only view across scans. */
     UD_CONNECT_MESSAGE_SUBSCRIBE = 67108864,
     UD_CONNECT_MESSAGE_PUBLISH = 134217728,
-    UD_CONNECT_MESSAGE_TRANSACTION = 268435456
+    UD_CONNECT_MESSAGE_TRANSACTION = 268435456,
+    /* A single-resource durable transaction. This is deliberately distinct
+     * from XA participation: it may never be enlisted with another resource
+     * or an epoch-scoped transaction. */
+    UD_CONNECT_TRANSACTION_LOCAL = 536870912
 };
 enum {
     UD_ISOLATION_READ_COMMITTED = 1, UD_ISOLATION_REPEATABLE_READ, UD_ISOLATION_SERIALIZABLE,

@@ -47,150 +47,208 @@ if (args is not [var policy, var firstDatabase, var secondDatabase, var substitu
 
 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(95));
 var token = deadline.Token;
-await using var data = DataClient.CreateBuilder(policy, "fluent")
-    .AddSqlite("orders", "Data Source=" + firstDatabase)
-    .AddSqlite("ledger", "Data Source=" + secondDatabase)
-    .AddHttp("pricing", new Uri(address))
-    .AddModule(typeof(Jobs).Assembly)
+var builder = DataClient.CreateBuilder(policy, "fluent")
+    .AddSqlite("orders", "Data Source=" + firstDatabase, options => options.ProvisionTransactionReceipts = true)
+    .AddSqlite("ledger", "Data Source=" + secondDatabase);
+Jobs.AddHttpSources(builder, address);
+await using var data = builder
     .ConfigureWorkers(options => options.MaxConcurrentSessions(4).MaxBranchesPerSession(2)
         .MaxConnectionsPerSource(2).ExecutionTimeout(TimeSpan.FromSeconds(15))
         .CancellationGrace(TimeSpan.FromSeconds(2)))
     .Build();
 
-Require(typeof(ISqlSugarClient).Assembly.GetName().Name == "SqlSugar", "The SDK must expose the official SqlSugar assembly");
-Require(data.Sources.List().Count == 3, "Named source registration differs");
+Require(typeof(ISqlSugarClient).Assembly.GetName().Name == "SqlSugar",
+    "The SDK must expose the official SqlSugar assembly");
+Require(data.Sources.List().Count >= 3, "Named source registration differs");
 var probe = await data.Sources.ProbeAsync("orders", token);
 Require(probe.Connected && probe.Source.Revision == 1, "A real SQLite source must be reachable");
+await LocalOrmCase.Run(data, token);
 
-var overlap = await Task.WhenAll(data.RunAsync(Jobs.Overlap, "first", token),
-    data.RunAsync(Jobs.Overlap, "second", token));
-Require(overlap[0].ProcessId != overlap[1].ProcessId && overlap.All(result =>
-    result.ProcessId != Environment.ProcessId && result.Orders == "orders-original" && result.Ledger == "ledger"),
-    "Parallel requests must overlap on separate physical Worker processes");
-
-using var driver = new HttpClient { BaseAddress = new Uri(address), Timeout = TimeSpan.FromSeconds(5) };
-int sessionPid;
-await using (var session = await data.OpenIsolatedSessionAsync(token))
-{
-    sessionPid = session.ProcessId;
-    var before = await session.RunAsync(Jobs.Scope, "orders", token);
-    Require(before.ProcessId == sessionPid && before.Value == "orders-original", "Explicit session must use its leased process");
-
-    var inFlight = session.RunAsync(Jobs.HoldLeaseThenRead, new HeldRead("replace", "orders"), token);
-    var staleBorrow = data.RunAsync(Jobs.WaitThenRead, new HeldRead("stale-borrow", "orders"), token);
-    await Entered(driver, "replace", token);
-    await Entered(driver, "stale-borrow", token);
-    var source = data.Sources.Get("orders");
-    var selected = new DataSourceDefinition("orders", DataSourceKind.Sqlite, "Data Source=" + substitute);
-    Require(data.Sources.Replace("orders", source.Revision, selected).Revision == source.Revision + 1,
-        "A replacement must increment the source revision");
-    try
-    {
-        data.Sources.Replace("orders", source.Revision, selected);
-        throw new InvalidOperationException("A stale registry revision was accepted");
-    }
-    catch (UniversalDataException error) when (error.Code == StatusCode.Fenced) { }
-    await Release(driver, "replace", token);
-    await Release(driver, "stale-borrow", token);
-    Require(await inFlight == "orders-original", "An already-borrowed physical connection must preserve its source");
-    try
-    {
-        await staleBorrow;
-        throw new InvalidOperationException("An old source revision admitted a new physical lease");
-    }
-    catch (UniversalDataException error) when (error.Code is StatusCode.Auth or StatusCode.Fenced) { }
-    var after = await session.RunAsync(Jobs.Scope, "orders", token);
-    Require(after.ProcessId == sessionPid && after.Value == "orders-replacement" && after.StaleScopeRejected,
-        "The next invocation must reuse the PID, refresh source revisions and invalidate the previous context");
-
-    var isolated = session.RunAsync(Jobs.WaitThenRead, new HeldRead("slow", "orders"), token);
-    await Entered(driver, "slow", token);
-    try
-    {
-        var fast = await data.RunAsync(Jobs.Scope, "ledger", token).WaitAsync(TimeSpan.FromSeconds(8), token);
-        Require(fast.ProcessId != sessionPid && fast.Value == "ledger" && !isolated.IsCompleted,
-            "A held HTTP request must leave a different session runnable");
-    }
-    finally { await Release(driver, "slow", token); }
-    Require(await isolated == "orders-replacement", "The held request should still finish in its own session");
-
-    try
-    {
-        await Task.WhenAll(data.RunAsync(Jobs.Fail, token), session.RunAsync(Jobs.VerifyLedger, token));
-        throw new InvalidOperationException("The Worker suppressed the business failure");
-    }
-    catch (DataBusinessException error) when (error.RemoteType == typeof(InvalidOperationException).FullName &&
-        error.Message.Contains("settlement rejected", StringComparison.Ordinal)) { }
-    catch (InvalidOperationException error) when (error.Message == "settlement rejected") { }
-    Require(await session.RunAsync(Jobs.Scope, "ledger", token) is { Value: "ledger", ProcessId: var unchangedPid } && unchangedPid == sessionPid,
-        "A business failure must leave the other Worker session usable");
-
-    await using (var doomed = await data.OpenSessionAsync(token))
-    {
-        Require(doomed.ProcessId != sessionPid, "A physical crash fixture must own an independent process");
-        try
-        {
-            await doomed.RunAsync(Jobs.Crash, token);
-            throw new InvalidOperationException("A crashed Worker reported success");
-        }
-        catch (UniversalDataException error) when (error.Code is StatusCode.WorkerLost or StatusCode.CommitUnknown) { }
-        await session.RunAsync(Jobs.VerifyLedger, token);
-    }
-
-    using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
-    await using (var cancelled = await data.OpenSessionAsync(token))
-    {
-        var hold = cancelled.RunAsync(Jobs.WaitThenRead, new HeldRead("cancel", "ledger"), requestCancellation.Token);
-        await Entered(driver, "cancel", token);
-        requestCancellation.Cancel();
-        try
-        {
-            await hold.WaitAsync(TimeSpan.FromSeconds(8), token);
-            throw new InvalidOperationException("A cancelled Worker returned a result");
-        }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
-        catch (UniversalDataException error) when (error.Code is StatusCode.Cancelled or StatusCode.CommitUnknown) { }
-        finally { await Release(driver, "cancel", token); }
-        await session.RunAsync(Jobs.VerifyLedger, token);
-    }
-
-    await using (var timed = await data.OpenSessionAsync(token))
-    {
-        var timeoutPid = timed.ProcessId;
-        var uncooperative = timed.RunAsync(Jobs.IgnoreCancellation, token);
-        await Entered(driver, "timeout", token);
-        await session.RunAsync(Jobs.VerifyLedger, token);
-        try
-        {
-            await uncooperative.WaitAsync(TimeSpan.FromSeconds(20), token);
-            throw new InvalidOperationException("A deadline did not stop an uncooperative Worker");
-        }
-        catch (DataExecutionException error) when (error.Code == StatusCode.Timeout || error.Detail?.Cause == StatusCode.Timeout) { }
-        await Exited(timeoutPid, token);
-        await session.RunAsync(Jobs.VerifyLedger, token);
-    }
-}
-await Exited(sessionPid, token);
-
+var overlap = await Task.WhenAll(Start(data, Jobs.OverlapOrders, token),
+    Start(data, Jobs.OverlapLedger, token));
 try
 {
-    await data.RunAsync(Jobs.UnsupportedAtomic, atomicMarker, token);
+    Require(overlap[0].WorkerProcessId != overlap[1].WorkerProcessId &&
+        overlap.All(run => run.WorkerProcessId != Environment.ProcessId),
+        "Parallel Native jobs must use separate physical Worker processes");
+    await Task.WhenAll(overlap.Select(run => run.WaitAsync(token)));
+}
+finally { await DisposeAll(overlap); }
+Require(await Jobs.FirstTag(data, Jobs.Orders, token) == "orders-original" &&
+    await Jobs.FirstTag(data, Jobs.Ledger, token) == "ledger",
+    "Parallel Native jobs must preserve independent SQLite reads");
+
+using var driver = new HttpClient { BaseAddress = new Uri(address), Timeout = TimeSpan.FromSeconds(5) };
+var heldReplacement = await Start(data, Jobs.HoldOrdersReplace, token);
+try
+{
+    await Entered(driver, "replace", token);
+    var heldStale = await Start(data, Jobs.HoldOrdersStale, token);
+    try
+    {
+        await Entered(driver, "stale-borrow", token);
+        var source = data.Sources.Get("orders");
+        var selected = new DataSourceDefinition("orders", DataSourceKind.Sqlite,
+            "Data Source=" + substitute);
+        Require(data.Sources.Replace("orders", source.Revision, selected).Revision == source.Revision + 1,
+            "A replacement must increment the source revision");
+        try
+        {
+            data.Sources.Replace("orders", source.Revision, selected);
+            throw new InvalidOperationException("A stale registry revision was accepted");
+        }
+        catch (UniversalDataException error) when (error.Code == StatusCode.Fenced) { }
+        await Release(driver, "replace", token);
+        await Release(driver, "stale-borrow", token);
+        await heldReplacement.WaitAsync(token);
+        try
+        {
+            await heldStale.WaitAsync(token);
+            throw new InvalidOperationException("A stale Native source revision was admitted after replacement");
+        }
+        catch (UniversalDataException error) when (error.Code is StatusCode.Auth or StatusCode.Fenced) { }
+    }
+    finally { await heldStale.DisposeAsync(); }
+}
+finally
+{
+    await ReleaseIfEntered(driver, "replace", token);
+    await heldReplacement.DisposeAsync();
+}
+Require(await Jobs.FirstTag(data, Jobs.Orders, token) == "orders-replacement",
+    "A newly compiled Native job must use the replacement source revision");
+
+var slow = await Start(data, Jobs.HoldOrdersSlow, token);
+try
+{
+    await Entered(driver, "slow", token);
+    var fast = await Start(data, Jobs.OverlapLedger, token);
+    try
+    {
+        Require(fast.WorkerProcessId != slow.WorkerProcessId,
+            "A held HTTP request must leave a different Native Worker runnable");
+        await fast.WaitAsync(token);
+    }
+    finally { await fast.DisposeAsync(); }
+    await Release(driver, "slow", token);
+    await slow.WaitAsync(token);
+}
+finally
+{
+    await ReleaseIfEntered(driver, "slow", token);
+    await slow.DisposeAsync();
+}
+
+var failed = await Start(data, Jobs.Fail, token);
+try
+{
+    await failed.WaitAsync(token);
+    throw new InvalidOperationException("A Native HTTP failure reported success");
+}
+catch (UniversalDataException error) when (error.Code != StatusCode.Ok) { }
+finally { await failed.DisposeAsync(); }
+Require(await Jobs.FirstTag(data, Jobs.Ledger, token) == "ledger",
+    "A failed Native job must leave the next Worker usable");
+
+var doomed = await Start(data, Jobs.HoldCrash, token);
+try
+{
+    await Entered(driver, "crash", token);
+    using (var process = Process.GetProcessById(doomed.WorkerProcessId))
+        process.Kill(entireProcessTree: true);
+    try
+    {
+        await doomed.WaitAsync(token);
+        throw new InvalidOperationException("A killed Native Worker reported success");
+    }
+    catch (UniversalDataException error) when (error.Code is StatusCode.WorkerLost or StatusCode.CommitUnknown) { }
+}
+finally
+{
+    await ReleaseIfEntered(driver, "crash", token);
+    await doomed.DisposeAsync();
+}
+Require(await Jobs.FirstTag(data, Jobs.Ledger, token) == "ledger",
+    "A killed Native Worker must not poison the next job");
+
+var cancelled = await Start(data, Jobs.HoldLedgerCancel, token);
+try
+{
+    await Entered(driver, "cancel", token);
+    await cancelled.CancelAsync(token);
+    await Release(driver, "cancel", token);
+    try
+    {
+        await cancelled.WaitAsync(token);
+        throw new InvalidOperationException("A cancelled Native Worker returned success");
+    }
+    catch (UniversalDataException error) when (error.Code is StatusCode.Cancelled or StatusCode.CommitUnknown) { }
+}
+finally
+{
+    await ReleaseIfEntered(driver, "cancel", token);
+    await cancelled.DisposeAsync();
+}
+Require(await Jobs.FirstTag(data, Jobs.Ledger, token) == "ledger",
+    "Worker cancellation must preserve a subsequent Native job");
+
+var timed = await Start(data, Jobs.HoldTimeout, token);
+try
+{
+    await Entered(driver, "timeout", token);
+    await timed.CancelAsync(token);
+    await Release(driver, "timeout", token);
+    try { await timed.WaitAsync(token); }
+    catch (UniversalDataException error) when (error.Code is StatusCode.Cancelled or StatusCode.CommitUnknown) { }
+}
+finally
+{
+    await ReleaseIfEntered(driver, "timeout", token);
+    await timed.DisposeAsync();
+}
+
+EtlRun? unsupported = null;
+try
+{
+    var run = await Start(data, Jobs.UnsupportedAtomic, token);
+    unsupported = run;
+    await run.WaitAsync(token);
     throw new InvalidOperationException("An Atomic scope admitted independent SQLite participants");
 }
 catch (UniversalDataException error) when (error.Code == StatusCode.Unsupported) { }
-Require(!File.Exists(atomicMarker), "An unsupported Atomic scope must reject admission before invoking business code");
-await data.RunAsync(LocalOrmCase.Run, token);
+finally
+{
+    if (unsupported is not null) await unsupported.DisposeAsync();
+}
+Require(!await Jobs.AtomicProbeExists(data, token) && !File.Exists(atomicMarker),
+    "An unsupported Atomic scope must reject admission before changing either SQLite file");
 
 var last = data.Sources.Disable("orders", data.Sources.Get("orders").Revision);
 Require(!last.Enabled, "A disabled source must be visible in the registry");
 try
 {
-    await data.RunAsync(Jobs.Scope, "orders", token);
-    throw new InvalidOperationException("A new request borrowed a disabled source");
+    await Jobs.FirstTag(data, Jobs.Orders, token);
+    throw new InvalidOperationException("A new Native job borrowed a disabled source");
 }
 catch (UniversalDataException error) when (error.Code is StatusCode.Auth or StatusCode.Fenced or StatusCode.Invalid) { }
 
-Console.WriteLine(JsonSerializer.Serialize(new { Requests = overlap, ReusedProcess = sessionPid, PhysicalCrash = true, AtomicAdmission = true }));
+Console.WriteLine(JsonSerializer.Serialize(new
+{
+    Workers = overlap.Select(run => run.WorkerProcessId).ToArray(),
+    SourceRevision = last.Revision,
+    NativeFailure = true,
+    NativeCancellation = true,
+    AtomicAdmission = true
+}));
+
+static Task<EtlRun> Start(DataClient data, DataJob<object> job, CancellationToken cancellation) =>
+    data.StartAsync(job, new object(), cancellation);
+
+static async Task DisposeAll(IEnumerable<EtlRun> runs)
+{
+    foreach (var run in runs)
+        await run.DisposeAsync();
+}
 
 static async Task Entered(HttpClient driver, string key, CancellationToken cancellation)
 {
@@ -206,14 +264,11 @@ static async Task Release(HttpClient driver, string key, CancellationToken cance
     reply.EnsureSuccessStatusCode();
 }
 
-static async Task Exited(int id, CancellationToken cancellation)
+static async Task ReleaseIfEntered(HttpClient driver, string key, CancellationToken cancellation)
 {
-    try
-    {
-        using var process = Process.GetProcessById(id);
-        await process.WaitForExitAsync(cancellation).WaitAsync(TimeSpan.FromSeconds(6), cancellation);
-    }
-    catch (ArgumentException) { }
+    try { await Release(driver, key, cancellation); }
+    catch (HttpRequestException) { }
+    catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { }
 }
 
 static void Require(bool value, string message)

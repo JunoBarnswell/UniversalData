@@ -89,10 +89,12 @@ app.UseDefaultFiles(); app.UseStaticFiles();
 var api = app.MapGroup("/api").RequireAuthorization();
 HostIdentity Identity(HttpContext context) => context.Identity(identities);
 HostPolicy Scope(HttpContext context) => policy.Bind(Identity(context));
-async Task<JsonElement> InspectValue(HttpContext context,string mode,JsonElement package,JsonElement? payload = null,string permission = "package.read") {
+async Task<JsonElement> InspectValue(HttpContext context,string mode,JsonElement package,JsonElement? payload = null,
+    string permission = "package.read", string parametersReference = "") {
     var identity = Identity(context); string id = package.GetProperty("id").GetString()!; identity.Require(permission,id);
     var scoped = Scope(context); string text = package.GetRawText();
-    var request = new WorkerRequest(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),mode,scoped,identity,text,Payload:payload,Isolated:scoped.RequiresIsolation(text));
+    var request = new WorkerRequest(ProductInfo.Protocol,Guid.NewGuid().ToString("N"),mode,scoped,identity,text,
+        ParametersReference: parametersReference, Payload:payload, Isolated:scoped.RequiresIsolation(text));
     return await supervisor.InspectAsync(request,context.RequestAborted);
 }
 async Task<IResult> Inspect(HttpContext context,string mode,JsonElement package,JsonElement? payload = null,string permission = "package.read") => Results.Json(await InspectValue(context,mode,package,payload,permission));
@@ -156,12 +158,15 @@ api.MapGet("/drafts/{id}",(string id,HttpContext context) => DesignerWorkspace.R
 api.MapGet("/drafts",(HttpContext context)=>Results.Ok(DesignerWorkspace.ListDrafts(Scope(context),Identity(context))));
 api.MapPut("/drafts/{id}",(string id,DraftWrite request,HttpContext context) => Results.Ok(DesignerWorkspace.WriteDraft(Scope(context),Identity(context),id,request)));
 api.MapPost("/versions",(PublicationRequest request,HttpContext context) => Results.Ok(DesignerWorkspace.SaveVersion(Scope(context),Identity(context),request.Document,request.ExpectedPackageRevision)));
-api.MapPost("/publications",async (PublicationRequest request,HttpContext context,RunDispatcher dispatcher) => {
-    var identity=Identity(context);string id=request.Document.GetProperty("id").GetString()!;identity.Require("package.deploy",id);identity.Require("deployment.write",id);
-    await Inspect(context,"validate",request.Document);
-    var saved=DesignerWorkspace.SaveVersion(Scope(context),identity,request.Document,request.ExpectedPackageRevision);
-    using var version=JsonDocument.Parse(JsonSerializer.Serialize(saved,HostPolicy.JsonOptions));string revision=version.RootElement.GetProperty("revision").GetString()!;
-    var deployment=dispatcher.For(identity).Deploy(identity,new(id,id,revision));return Results.Ok(new {deployment,revision,document=request.Document});
+api.MapPost("/publications",async (JobPublicationRequest request,HttpContext context,RunDispatcher dispatcher) => {
+    var identity = Identity(context);
+    string id = request.Document.GetProperty("id").GetString()!;
+    identity.Require("package.deploy", id); identity.Require("deployment.write", id);
+    TenantDispatcher.RequireScheduledParameters(request.Document, request.Schedules ?? [], request.Parameters);
+    string? parametersReference = request.Parameters is null ? null : new ParameterVault(Scope(context)).Store(request.Parameters);
+    await InspectValue(context, "validate", request.Document,
+        parametersReference: parametersReference ?? "");
+    return Results.Ok(dispatcher.For(identity).PublishJob(identity, request, parametersReference));
 });
 api.MapPost("/tests",async (TestRequest request,HttpContext context,RunDispatcher dispatcher) => {
     var identity=Identity(context);var package=DesignerWorkspace.IsolatedTest(Scope(context),identity,request);

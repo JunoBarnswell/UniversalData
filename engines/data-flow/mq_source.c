@@ -46,6 +46,10 @@ static ud_status bind_source(const ud_component_context *context, const ud_json 
                                      UD_MESSAGE_POSITION_REQUIRE;
     uint64_t prefetch, bytes;
     UD_TRY(ud_json_uint(ud_member(config, "prefetch"), &prefetch));
+    const ud_json *execution = ud_member(ud_member(context->activation->package->document, "policy"), "execution");
+    const ud_json *requested = ud_member(execution, "messagePrefetch");
+    if (requested)
+        UD_TRY(ud_json_uint(requested, &prefetch));
     UD_TRY(ud_json_uint(ud_member(config, "maxInFlightBytes"), &bytes));
     if (bytes < settings->maximum_bytes)
         return UD_SCHEMA;

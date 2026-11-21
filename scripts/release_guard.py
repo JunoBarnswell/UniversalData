@@ -12,6 +12,8 @@ from xml.etree import ElementTree as ET
 from product_model import generate, read_model
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+RUNTIME_DRIVERS = ("sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci",
+                   "kafka", "rabbitmq", "rocketmq", "activemq")
 
 def source_hash():
     files = [ROOT / name for name in (
@@ -143,7 +145,7 @@ def assemble_nuget(linux, windows, destination):
 
 
 def verify_nuget_installations(directory, commit, archives, version):
-    drivers = {"sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci"}
+    drivers = set(RUNTIME_DRIVERS)
     for rid in ("linux-x64", "win-x64"):
         evidence = json.loads((directory / f"installed-{rid}.json").read_text())
         lock_hash = evidence.get("dependencyLockSha256", "")
@@ -189,9 +191,19 @@ def check_nuget(directory):
                 worker = "ud_worker.exe" if rid == "win-x64" else "ud_worker"
                 required = {f"runtimes/{rid}/worker/{worker}"} | {
                     f"runtimes/{rid}/native/ud_connector_{driver}{extension}"
-                    for driver in ("sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci")}
-                if not required <= files or not any(name.startswith("licenses/") for name in files):
-                    raise ValueError(f"Runtime inventory or license notices are incomplete in {path.name}")
+                    for driver in RUNTIME_DRIVERS}
+                native_prefix = f"runtimes/{rid}/native/"
+                worker_prefix = f"runtimes/{rid}/worker/"
+                native_assets = {name[len(native_prefix):] for name in files
+                                 if name.startswith(native_prefix) and name != native_prefix}
+                mirrored_worker_assets = {name[len(worker_prefix):] for name in files
+                                         if name.startswith(worker_prefix) and name != worker_prefix}
+                licenses = {name for name in files if name.startswith("licenses/") and not name.endswith("/")}
+                empty_plugins = [name for name in required if "/native/ud_connector_" in name
+                                 and name in files and not bundle.getinfo(name).file_size]
+                if (not required <= files or empty_plugins or not native_assets or not licenses
+                        or not native_assets <= mirrored_worker_assets):
+                    raise ValueError(f"Runtime plugin closure or license notices are incomplete in {path.name}")
             else:
                 spec = ET.fromstring(bundle.read("UniversalData.nuspec"))
                 dependencies = {element.get("id"): element.get("version") for element in

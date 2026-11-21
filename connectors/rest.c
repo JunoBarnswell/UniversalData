@@ -12,7 +12,7 @@ struct ud_rest_reader {
     ud_batch *schema, *page;
     uint32_t row;
     uint64_t pages, maximum_pages;
-    ud_string cursor;
+    ud_string cursor, resolved_url;
     int ended;
 };
 struct ud_rest_target {
@@ -123,8 +123,14 @@ ud_status ud_rest_reader_open(const ud_component_context *c, ud_connection_lease
     ud_status s = copy_config(c->memory, config, &r->config);
     if (!s)
         s = options(r->config, &r->options);
-    if (!s && !r->options.url.length)
-        s = ud_http_connection_resource(lease, &r->options.url);
+    if (!s && (!r->options.url.length || r->options.url.data[0] == '/')) {
+        ud_string base = {0};
+        s = ud_http_connection_resource(lease, &base);
+        if (!s)
+            s = ud_http_resolve_url(c->memory, base, r->options.url, &r->resolved_url);
+        if (!s)
+            r->options.url = r->resolved_url;
+    }
     if (!s)
         s = ud_batch_create(c->memory, schema->schema->fields, schema->columns, 0, &r->schema);
     if (!s && ud_member(config, "maxPages"))
@@ -158,11 +164,16 @@ static ud_status next_page(ud_rest_reader *r) {
         s = ud_json_parse(r->context.memory, response.body.data, response.body.length, &document,
                           NULL);
     ud_string rows_name = {"rows", 4}, cursor_name = {"nextCursor", 10};
-    if (!s && ud_member(r->config, "rowsField"))
-        s = ud_json_string(ud_member(r->config, "rowsField"), &rows_name);
+    const ud_json *rows_field = ud_member(r->config, "rowsField");
+    if (!s && rows_field)
+        s = ud_json_string(rows_field, &rows_name);
     if (!s && ud_member(r->config, "cursorField"))
         s = ud_json_string(ud_member(r->config, "cursorField"), &cursor_name);
-    const ud_json *rows = !s ? ud_json_find(document, rows_name.data, rows_name.length) : NULL;
+    const ud_json *rows = NULL;
+    if (!s)
+        rows = !rows_field && ud_json_kind(document) == UD_JSON_ARRAY
+                   ? document
+                   : ud_json_find(document, rows_name.data, rows_name.length);
     const ud_json *next = !s ? ud_json_find(document, cursor_name.data, cursor_name.length) : NULL;
     char *json = NULL;
     uint32_t length = 0;
@@ -233,6 +244,7 @@ void ud_rest_reader_close(ud_rest_reader *r) {
     ud_batch_destroy(r->schema);
     ud_batch_destroy(r->page);
     ud_free((void *)r->cursor.data);
+    ud_free((void *)r->resolved_url.data);
     ud_json_destroy(r->config);
     ud_free(r);
 }

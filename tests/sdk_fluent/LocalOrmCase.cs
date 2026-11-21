@@ -1,4 +1,3 @@
-using System.Data;
 using SqlSugar;
 using UniversalData;
 
@@ -19,80 +18,66 @@ public sealed class LocalOrmRow
 
 public static class LocalOrmCase
 {
+    private const string Source = "orders";
     private const string Table = "sdk_transaction_entries";
 
-    public static async Task Run(DataContext context, CancellationToken cancellation)
+    public static async Task Run(DataClient client, CancellationToken cancellation)
     {
-        var database = context.Database("orders");
-        await database.UseAsync(db => db.Ado.ExecuteCommandAsync(
-            $"CREATE TABLE {Table} (owner_id INTEGER NOT NULL, entry_id INTEGER NOT NULL, label TEXT, PRIMARY KEY(owner_id, entry_id))"),
-            cancellation);
+        await client.RunAsync(SqlJob("create", $"CREATE TABLE {Table} (owner_id INTEGER NOT NULL, " +
+            $"entry_id INTEGER NOT NULL, label TEXT, PRIMARY KEY(owner_id, entry_id))"), cancellation);
         try
         {
-            await database.TransactionAsync(async (transaction, token) =>
-            {
-                IDataReader? escapedReader = null;
-                ISugarQueryable<LocalOrmRow>? escapedQuery = null;
-                var branch = transaction.Database("orders");
-                await branch.UseAsync(async db =>
-                {
-                    var fastest = db.Fastest<LocalOrmRow>().BatchSize(2);
-                    int copied = await fastest.BulkCopyAsync(
-                    [
-                        new() { Owner = 1, Id = 1, Label = "other owner" },
-                        new() { Owner = 2, Id = 1, Label = "before" },
-                        new() { Owner = 2, Id = 2 }
-                    ]);
-                    int updated = await fastest.BulkUpdateAsync([new() { Owner = 2, Id = 1, Label = "updated" }]);
-                    Require(copied == 3 && updated == 1, "Native Fastest did not preserve compound-key write counts");
-                    await Reject(db.Ado.CommitTranAsync, StatusCode.Unsupported);
-                    await Reject(() => db.Ado.ExecuteCommandAsync($"DROP TABLE {Table}"), StatusCode.Unsupported);
-                    escapedQuery = db.Queryable<LocalOrmRow>();
-                    escapedReader = await db.Ado.GetDataReaderAsync(
-                        $"SELECT entry_id, label FROM {Table} WHERE owner_id = @owner ORDER BY entry_id",
-                        new { owner = 2 });
-                    Require(escapedReader.Read() && escapedReader.GetInt64(0) == 1 && escapedReader.GetString(1) == "updated",
-                        "Parameterized ADO reader did not see the local transaction write");
-                    await Reject(() => db.Ado.GetIntAsync($"SELECT COUNT(*) FROM {Table}"), StatusCode.Busy);
-                }, token);
-                Require(escapedReader?.IsClosed == true, "The callback left an enlisted reader open");
-                try
-                {
-                    _ = await escapedQuery!.ToListAsync();
-                    throw new InvalidOperationException("An enlisted query escaped its database callback");
-                }
-                catch (ObjectDisposedException) { }
+            var visible = DataJob.Define<object>("local-orm-commit").Transaction(Source)
+                .ExecuteSql(Source, $"INSERT INTO {Table} (owner_id, entry_id, label) VALUES " +
+                    "(1, 1, 'other owner'), (2, 1, 'before'), (2, 2, NULL)")
+                .ExecuteSql(Source, $"UPDATE {Table} SET label = 'updated' WHERE owner_id = 2 AND entry_id = 1")
+                .FromSql<LocalOrmRow>(Source,
+                    $"SELECT owner_id, entry_id, label FROM {Table} WHERE owner_id = 2 ORDER BY entry_id")
+                .Return();
+            var inside = await Read(client, visible, cancellation);
+            Require(inside.Count == 2 && inside[0].Label == "updated" && inside[1].Label is null,
+                "A Native transaction query did not see its own SQL writes or preserve NULL");
 
-                var page = await branch.UseAsync(db => db.Queryable<LocalOrmRow>().Where(row => row.Owner == 2)
-                    .OrderBy(row => row.Id).ToPageListAsync(1, 2), token);
-                Require(page.Count == 2 && page[0].Label == "updated" && page[1].Label is null,
-                    "Entity materialization did not preserve the committed column values or NULL");
-            }, cancellation);
+            var committed = await Read(client, Query("local-orm-independent", "SELECT owner_id, entry_id, label " +
+                $"FROM {Table} ORDER BY owner_id, entry_id"), cancellation);
+            Require(committed.Count == 3 && committed[0].Label == "other owner" &&
+                committed[1].Label == "updated" && committed[2].Label is null,
+                "The independent Native SQL oracle observed incorrect committed values");
 
+            var rollback = DataJob.Define<object>("local-orm-rollback").Transaction(Source)
+                .ExecuteSql(Source, $"INSERT INTO {Table} (owner_id, entry_id, label) VALUES (3, 1, 'rollback')")
+                .ExecuteSql(Source, $"INSERT INTO {Table} (owner_id, entry_id, label) VALUES (2, 1, 'duplicate')");
             try
             {
-                await database.TransactionAsync(async (transaction, token) =>
-                {
-                    await transaction.Database("orders").UseAsync(db => db.Fastest<LocalOrmRow>().BulkCopyAsync(
-                        [new() { Owner = 3, Id = 1 }]), token);
-                    throw new InvalidOperationException("rollback local ORM fixture");
-                }, cancellation);
-                throw new InvalidOperationException("A failed business callback returned normally");
+                await client.RunAsync(rollback, cancellation);
+                throw new InvalidOperationException("A failed Native local transaction returned normally");
             }
-            catch (InvalidOperationException error) when (error.Message == "rollback local ORM fixture") { }
-            var rows = await database.UseAsync(db => db.Queryable<LocalOrmRow>().OrderBy(row => new { row.Owner, row.Id })
-                .ToListAsync(), cancellation);
-            Require(rows.Count == 3 && rows[0].Label == "other owner" && rows[1].Label == "updated" && rows[2].Label is null,
-                "The ordinary provider observed incorrect local commit or rollback");
+            catch (UniversalDataException error) when (error.Code is not (StatusCode.CommitUnknown or StatusCode.WorkerLost)) { }
+
+            var afterRollback = await Read(client, Query("local-orm-after-rollback",
+                $"SELECT owner_id, entry_id, label FROM {Table} ORDER BY owner_id, entry_id"), cancellation);
+            Require(afterRollback.Count == 3 && afterRollback.All(row => row.Owner != 3),
+                "The Native journal transaction did not roll back the failed SQL batch");
         }
-        finally { await database.UseAsync(db => db.Ado.ExecuteCommandAsync($"DROP TABLE {Table}"), cancellation); }
+        finally
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            await client.RunAsync(SqlJob("drop", $"DROP TABLE {Table}"), cleanup.Token);
+        }
     }
 
-    private static async Task Reject(Func<Task> action, StatusCode code)
+    private static DataJobQuery<object, LocalOrmRow> Query(string id, string statement) =>
+        DataJob.Define<object>(id).FromSql<LocalOrmRow>(Source, statement, stream: true).Return();
+
+    private static DataJob<object> SqlJob(string action, string statement) =>
+        DataJob.Define<object>($"local-orm-{action}").ExecuteSql(Source, statement);
+
+    private static async Task<List<LocalOrmRow>> Read(DataClient client,
+        DataJobQuery<object, LocalOrmRow> query, CancellationToken cancellation)
     {
-        try { await action(); }
-        catch (UniversalDataException failure) when (failure.Code == code) { return; }
-        throw new InvalidOperationException($"Expected {code} from a guarded transaction operation");
+        var rows = new List<LocalOrmRow>();
+        await foreach (var row in client.RunAsync(query, cancellation)) rows.Add(row);
+        return rows;
     }
 
     private static void Require(bool condition, string message)

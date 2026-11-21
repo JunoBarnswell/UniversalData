@@ -1,6 +1,6 @@
 {
   "generatedFrom": "metadata/product.json",
-  "sdkVersion": "9.0.0",
+  "sdkVersion": "10.0.0",
   "abi": 15,
   "scope": {
     "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",

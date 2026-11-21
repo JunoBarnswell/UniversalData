@@ -132,6 +132,9 @@ struct ud_execution {
     ud_authorize_fn preview_authorize;
     void *preview_authorize_user;
     ud_buffer_manager *buffers;
+    struct ud_result_queue *results;
+    struct ud_connector_binding *connector_bindings;
+    uint32_t max_connections_per_source, connection_wait_ms;
     struct ud_connection_lease *buffer_lease;
     int threaded;
     int disposed;
@@ -142,6 +145,9 @@ struct ud_execution {
     pthread_t thread;
 #endif
 };
+void ud_execution_destroy_results(ud_execution *);
+void ud_execution_wake_results(ud_execution *);
+void ud_execution_destroy_connectors(ud_execution *);
 const ud_json *ud_member(const ud_json *, const char *);
 int ud_named(ud_string, const char *);
 int ud_same(ud_string, ud_string);

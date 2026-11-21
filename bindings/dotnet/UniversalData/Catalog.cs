@@ -79,6 +79,18 @@ public sealed class Catalog : IDisposable
             return DataOwnership.Text(text, length);
         }
     }
+    internal long WorkerClock
+    {
+        get
+        {
+            lock (sync)
+            {
+                Open();
+                Check(Native.ud_catalog_worker_clock(catalog, out var milliseconds));
+                return checked((long)milliseconds);
+            }
+        }
+    }
     public CatalogSnapshot CheckSnapshot(Catalog? target = null, bool import = false)
     {
         if (ReferenceEquals(this,target)) throw new ArgumentException("Source and target Catalog must differ");
@@ -159,6 +171,39 @@ public sealed class Catalog : IDisposable
             };
             var lease = LeaseValue(job, strings[0], strings[1]);
             Check(Native.ud_catalog_publish_occurrence(catalog, ref request, ref lease));
+        }
+    }
+
+    public string PublishJob(string requestId, string subject, string fingerprint,
+        string packageId, string packageDocument, ulong expectedPackageRevision,
+        string projectId, ulong projectRevision, string projectDocument,
+        string deploymentId, ulong deploymentRevision, string deploymentDocument,
+        string deploymentStateId, ulong deploymentStateRevision, string deploymentStateDocument,
+        string jobId, ulong jobRevision, string jobDocument,
+        string? occurrenceId = null, ulong occurrenceRevision = 0, string? occurrenceDocument = null,
+        string? runId = null, ulong runRevision = 0, string? runDocument = null)
+    {
+        lock (sync)
+        {
+            Open();
+            using var strings = new NativeStrings(requestId, subject, fingerprint, packageId,
+                packageDocument, projectId, projectDocument, deploymentId, deploymentDocument,
+                deploymentStateId, deploymentStateDocument, jobId, jobDocument,
+                occurrenceId ?? "", occurrenceDocument ?? "", runId ?? "", runDocument ?? "");
+            var request = new Native.CatalogPublicationRequest
+            {
+                Size = (uint)Marshal.SizeOf<Native.CatalogPublicationRequest>(), Abi = ProductVersion.Abi,
+                RequestId = strings[0], Subject = strings[1], Fingerprint = strings[2],
+                PackageId = strings[3], PackageDocument = strings[4], ExpectedPackageRevision = expectedPackageRevision,
+                ProjectId = strings[5], ProjectDocument = strings[6], ProjectRevision = projectRevision,
+                DeploymentId = strings[7], DeploymentDocument = strings[8], DeploymentRevision = deploymentRevision,
+                DeploymentStateId = strings[9], DeploymentStateDocument = strings[10], DeploymentStateRevision = deploymentStateRevision,
+                JobId = strings[11], JobDocument = strings[12], JobRevision = jobRevision,
+                OccurrenceId = strings[13], OccurrenceDocument = strings[14], OccurrenceRevision = occurrenceRevision,
+                RunId = strings[15], RunDocument = strings[16], RunRevision = runRevision
+            };
+            Check(Native.ud_catalog_publish_job(catalog, ref request, out var receipt, out var length));
+            return DataOwnership.Text(receipt, length);
         }
     }
 
@@ -309,6 +354,7 @@ internal static partial class Native
     [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_lease_renew(IntPtr catalog,ref CatalogLease lease,uint duration,out ulong until);
     [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_lease_release(IntPtr catalog,ref CatalogLease lease);
     [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_lease_active(IntPtr catalog,int kind,StringValue id,out int active);
+    [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_worker_clock(IntPtr catalog,out ulong milliseconds);
     [DllImport(Library,CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_compare_exchange(IntPtr catalog,ref CatalogKey key,StringValue json,ulong expected,ref CatalogLease lease);
     [DllImport(Library,EntryPoint="ud_catalog_compare_exchange",CallingConvention=CallingConvention.Cdecl)] internal static extern int ud_catalog_compare_exchange_unleased(IntPtr catalog,ref CatalogKey key,StringValue json,ulong expected,IntPtr lease);
     [StructLayout(LayoutKind.Sequential)] internal struct CatalogBinding
@@ -332,6 +378,28 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int ud_catalog_publish_occurrence(IntPtr catalog, ref JobOccurrence request,
         ref CatalogLease lease);
+    [StructLayout(LayoutKind.Sequential)] internal struct CatalogPublicationRequest
+    {
+        internal uint Size, Abi;
+        internal StringValue RequestId, Subject, Fingerprint;
+        internal StringValue PackageId, PackageDocument;
+        internal ulong ExpectedPackageRevision;
+        internal StringValue ProjectId, ProjectDocument;
+        internal ulong ProjectRevision;
+        internal StringValue DeploymentId, DeploymentDocument;
+        internal ulong DeploymentRevision;
+        internal StringValue DeploymentStateId, DeploymentStateDocument;
+        internal ulong DeploymentStateRevision;
+        internal StringValue JobId, JobDocument;
+        internal ulong JobRevision;
+        internal StringValue OccurrenceId, OccurrenceDocument;
+        internal ulong OccurrenceRevision;
+        internal StringValue RunId, RunDocument;
+        internal ulong RunRevision;
+    }
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_catalog_publish_job(IntPtr catalog, ref CatalogPublicationRequest request,
+        out IntPtr receipt, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_catalog_open(ContextHandle context, ref CatalogOptions options, out IntPtr catalog);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int ud_catalog_open_postgresql(ContextHandle context, ref CatalogOptions options, StringValue connection, out IntPtr catalog);

@@ -199,6 +199,82 @@ internal sealed class Execution : IDisposable
     public void Start()
     { Control(); lock (controller) { Open(); Check(Native.ud_execution_start(execution)); } }
 
+    internal void StartOnCpu(uint cpu)
+    { Control(); lock (controller) { Open(); Check(Native.ud_execution_start_on_cpu(execution, cpu)); } }
+
+    internal void OpenResults()
+    {
+        Control();
+        lock (controller)
+        {
+            Open();
+            Check(Native.ud_execution_open_results(execution));
+        }
+    }
+
+    internal StatusCode ReadResult(uint timeoutMilliseconds, out WorkerBatchBuffer? batch)
+    {
+        Control();
+        lock (controller)
+        {
+            Open();
+            batch = null;
+            IntPtr wire = IntPtr.Zero;
+            ulong length = 0;
+            var status = (StatusCode)Native.ud_execution_read_result(execution, timeoutMilliseconds,
+                out wire, out length);
+            if (status != StatusCode.Ok)
+            {
+                if (wire != IntPtr.Zero) Native.ud_free(wire);
+                return status;
+            }
+            if (wire == IntPtr.Zero || length == 0 || length > WorkerProtocol.MaximumBatchBytes ||
+                length > int.MaxValue)
+            {
+                if (wire != IntPtr.Zero) Native.ud_free(wire);
+                throw new UniversalDataException((int)StatusCode.Protocol,
+                    "Native result wire exceeded the Worker batch bound");
+            }
+            WorkerBatchBuffer? owned = null;
+            try
+            {
+                owned = new WorkerBatchBuffer((int)length);
+                Marshal.Copy(wire, owned.Bytes, 0, checked((int)length));
+                batch = owned;
+                owned = null;
+                return status;
+            }
+            finally
+            {
+                owned?.Dispose();
+                Native.ud_free(wire);
+            }
+        }
+    }
+
+    internal void BindConnector(string logicalId, string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(logicalId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        Control();
+        lock (controller)
+        {
+            Open();
+            using var strings = new NativeStrings(logicalId, path);
+            Check(Native.ud_execution_bind_connector(execution, strings[0], strings[1]));
+        }
+    }
+
+    internal void LimitConnectionsPerSource(uint maximum, uint defaultWaitMilliseconds)
+    {
+        Control();
+        lock (controller)
+        {
+            Open();
+            Check(Native.ud_execution_set_connection_limits(execution, maximum, defaultWaitMilliseconds));
+        }
+    }
+
     public bool Wait(uint timeoutMilliseconds)
     {
         Control();
@@ -418,6 +494,16 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_execute(ExecutionHandle execution);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_start(ExecutionHandle execution);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_start_on_cpu(ExecutionHandle execution, uint cpu);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_open_results(ExecutionHandle execution);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_read_result(ExecutionHandle execution,
+        uint timeoutMilliseconds, out IntPtr wire, out ulong length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_bind_connector(ExecutionHandle execution,
+        StringValue logicalId, StringValue path);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_set_connection_limits(
+        ExecutionHandle execution, uint maximum, uint defaultWaitMilliseconds);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int ud_execution_wait(ExecutionHandle execution, uint timeout);
 

@@ -95,15 +95,16 @@ public sealed class ManagedBatch : IDisposable
     {
         var count = Rows;
         var input = Pointer;
+        var factory = new EntityRowFactory<T>(selected);
         for (uint row = 0; row < count; row++)
         {
-            object entity = Activator.CreateInstance<T>()!;
-            foreach (var (member, ordinal) in selected)
+            for (int index = 0; index < selected.Count; index++)
             {
+                var (member, ordinal) = selected[index];
                 Check(Native.ud_batch_get_raw(input, row, ordinal, out var value));
-                member.Set(entity, SqlValueCodec.ReadValue(value, member.ValueType, member.ColumnName));
+                factory.Values[index] = SqlValueCodec.ReadValue(value, member.ValueType, member.ColumnName);
             }
-            yield return (T)entity;
+            yield return factory.Materialize();
         }
     }
 }

@@ -333,6 +333,21 @@ endif()
 
 # Advanced SQL/CDC are actual registered acceptance entries, not unregistered
 if(UD_BUILD_HOSTS)
+  if(TARGET ud_cli AND TARGET ud_worker AND TARGET ud_connector_sqlite AND UD_WITH_HTTP)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(UD_V10_CONFIGURATION_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/v10-configuration)
+    add_custom_target(ud_v10_configuration_jobs ALL
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${UD_V10_CONFIGURATION_OUTPUT}
+      COMMAND ${UD_DOTNET} publish ${CMAKE_CURRENT_SOURCE_DIR}/v10_configuration/V10ConfigurationJobs.csproj
+        -c Release -o ${UD_V10_CONFIGURATION_OUTPUT}
+      DEPENDS ud_product_hosts VERBATIM)
+    add_test(NAME v10_shared_configuration_boundary COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/v10_configuration.py ${UD_DOTNET}
+      $<TARGET_FILE:ud_cli> $<TARGET_FILE:ud_worker> $<TARGET_FILE:ud_connector_sqlite>
+      ${UD_V10_CONFIGURATION_OUTPUT}/V10ConfigurationJobs.dll)
+    set_tests_properties(v10_shared_configuration_boundary PROPERTIES TIMEOUT 240
+      LABELS "sdk;sql-etl;configuration")
+  endif()
   add_test(NAME management_authenticated_native_worker COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/management_security.py ${UD_DOTNET}
     ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)

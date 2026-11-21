@@ -8,7 +8,7 @@ using UniversalData.Hosting;
 namespace UniversalData.Worker;
 
 internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration configuration,
-    SdkSessionAssignment assignment, ConnectionPool pool)
+    SdkSessionAssignment assignment, ConnectionPool pool, int cpu)
 {
     internal async Task RunAsync(NamedPipeServerStream pipe, CancellationTokenSource lifetime)
     {
@@ -31,16 +31,15 @@ internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration
             var pump = ReceiveAsync(pipe, inbox.Writer, requests, lifetime, assignment.SessionId);
             try
             {
-                var environment = new SdkExecutionEnvironment(policy.Tenant, Path.Combine(policy.DataDirectory, "sdk-runs"),
-                    configuration.Options.MaxBranchesPerSession, configuration.Options.MaxConnectionsPerSource,
+                var environment = new SdkExecutionEnvironment(policy.Tenant,
                     (resource, access) => policy.Authorize(policy.Tenant, resource, access),
                     Pool: pool,
+                    ConnectionWaitMilliseconds: (uint)Math.Min(3600000, Math.Ceiling(configuration.Options.QueueTimeout.TotalMilliseconds)),
                     Resolve: (resource, reference) => policy.Resolve(policy.Tenant, resource, reference),
-                    CanBorrow: (source, revision) => CanBorrow(configuration.SourceStateFile, source, revision),
-                    ConnectionWait: configuration.Options.QueueTimeout,
-                    MemoryLimit: configuration.Options.MemoryPerSession);
-                using var etl = configuration.Cooperative ? null : new SdkEtlSession(policy, _ => environment);
-                using var modules = new SdkModuleCatalog(configuration.Modules, environment.Authorize);
+                    CanBorrow: (source, revision) => CanBorrow(configuration.SourceStateFile, source, revision));
+                var sessionPolicy = policy with { MemoryLimit = configuration.Options.MemoryPerSession,
+                    MaxConcurrency = configuration.Cooperative ? 1u : policy.MaxConcurrency };
+                using var etl = new SdkEtlSession(sessionPolicy, environment, cpu);
                 await foreach (var invocation in inbox.Reader.ReadAllAsync(lifetime.Token))
                 {
                     var token = invocation.Cancellation.Token;
@@ -48,7 +47,7 @@ internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration
                     timeout.CancelAfter(configuration.Options.ExecutionTimeout);
                     try
                     {
-                        var reply = await DispatchAsync(invocation.Frame, environment, modules, etl, timeout.Token, token);
+                        var reply = Dispatch(invocation.Frame, etl, timeout.Token, token);
                         using (reply.Batch)
                             await WorkerProtocol.WriteAsync(pipe, reply.Message, reply.Batch, lifetime.Token);
                     }
@@ -114,52 +113,24 @@ internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration
         }
     }
 
-    private static async Task<(WorkerResponseFrame Message, WorkerBatchBuffer? Batch)> DispatchAsync(
-        WorkerRequestFrame request, SdkExecutionEnvironment environment, SdkModuleCatalog modules, SdkEtlSession? etl,
+    private static (WorkerResponseFrame Message, WorkerBatchBuffer? Batch) Dispatch(
+        WorkerRequestFrame request, SdkEtlSession etl,
         CancellationToken cancellation, CancellationToken caller)
     {
-        DataRunReference? reference = null;
         try
         {
-            switch (request.Operation)
-            {
-                case "sdk.run":
-                    var invocation = request.Values.Deserialize<SdkInvocation>(WorkerProtocol.Json)
-                        ?? throw new InvalidDataException("Missing SDK invocation");
-                    reference = new(invocation.RunId);
-                    return Reply(request, StatusCode.Ok, await SdkBusinessRuntime.RunAsync(invocation, environment, modules, cancellation));
-                case "sdk.recover":
-                    var recovery = request.Values.Deserialize<SdkRecoveryInvocation>(WorkerProtocol.Json)
-                        ?? throw new InvalidDataException("Missing SDK recovery invocation");
-                    reference = recovery.Reference;
-                    var result = SdkBusinessRuntime.Recover(recovery, environment, cancellation);
-                    return Reply(request, StatusCode.Ok, JsonSerializer.SerializeToElement(result, WorkerProtocol.Json));
-                default:
-                    if (request.Operation.StartsWith("etl.", StringComparison.Ordinal))
-                        return etl is null ? Reply(request, StatusCode.Auth) : etl.Invoke(request, cancellation);
-                    return Reply(request, StatusCode.Protocol);
-            }
-        }
-        catch (DataBusinessException error)
-        {
-            return Reply(request, StatusCode.ManagedComponent, business: new(error.RemoteType, error.Message), reference: error.Reference);
-        }
-        catch (DataExecutionException error)
-        {
-            return Reply(request, error.Code, error: error.Detail, reference: error.Reference);
+            return etl.Invoke(request, cancellation);
         }
         catch (UniversalDataException error)
         {
-            return Reply(request, error.Code, error: error.Detail, reference: reference);
+            return Reply(request, error.Code, error.Detail);
         }
         catch (OperationCanceledException)
         {
-            return Reply(request, caller.IsCancellationRequested ? StatusCode.Cancelled : StatusCode.Timeout, reference: reference);
+            return Reply(request, caller.IsCancellationRequested ? StatusCode.Cancelled : StatusCode.Timeout);
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
-            if (reference is not null && request.Operation == "sdk.run")
-                return Reply(request, StatusCode.ManagedComponent, business: new(error.GetType().FullName ?? error.GetType().Name, error.Message), reference: reference);
             var code = error switch
             {
                 DllNotFoundException or FileNotFoundException => StatusCode.DriverUnavailable,
@@ -168,13 +139,13 @@ internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration
                 IOException => StatusCode.Io,
                 _ => StatusCode.Invalid
             };
-            return Reply(request, code, reference: reference);
+            return Reply(request, code);
         }
     }
 
     private static (WorkerResponseFrame, WorkerBatchBuffer?) Reply(WorkerRequestFrame request, StatusCode code,
-        JsonElement? value = null, OperationError? error = null, SdkRemoteFailure? business = null, DataRunReference? reference = null) =>
-        (new(ProductInfo.WorkerRevision, request.SessionId, request.Sequence, "result", code, value, error, BusinessError: business, RecoveryReference: reference), null);
+        OperationError? error = null) =>
+        (new(ProductInfo.WorkerRevision, request.SessionId, request.Sequence, "result", code, Error: error), null);
 
     private static bool CanBorrow(string statePath, string source, ulong revision)
     {

@@ -4,8 +4,6 @@ using UniversalData;
 namespace FluentAcceptance;
 
 public sealed record HeldRead(string Gate, string Source);
-public sealed record ScopeResult(int ProcessId, string Value, bool StaleScopeRejected);
-public sealed record OverlapResult(int ProcessId, string Orders, string Ledger);
 
 [SugarTable("sdk_orders")]
 public sealed class FixtureRow
@@ -16,97 +14,132 @@ public sealed class FixtureRow
     public string Tag { get; set; } = "";
 }
 
+public sealed class AtomicProbeRow
+{
+    public string Name { get; set; } = "";
+}
+
+/// <summary>
+/// Native package declarations used by the fluent acceptance fixture. The
+/// old callbacks intentionally do not appear here: every operation is a real
+/// SQL/HTTP component in a Native DataJob package.
+/// </summary>
 public static class Jobs
 {
-    private static DataContext? earlierScope;
+    public const string Pricing = "pricing";
+    public const string HoldReplace = "hold-replace";
+    public const string HoldStale = "hold-stale";
+    public const string HoldSlow = "hold-slow";
+    public const string HoldCancel = "hold-cancel";
+    public const string HoldTimeoutSource = "hold-timeout";
+    public const string HoldSharedCancelSource = "hold-shared-cancel";
+    public const string HoldCrashSource = "hold-crash";
+    public const string HoldNodeFirstSource = "hold-node-first";
+    public const string HoldNodeSecondSource = "hold-node-second";
+    public const string FailEndpoint = "fail-endpoint";
 
-    public static async Task<OverlapResult> Overlap(DataContext context, string request, CancellationToken cancellation)
-    {
-        var (left, right) = await context.ParallelAsync(
-            (branch, token) => Join(branch, request, "orders", token),
-            (branch, token) => Join(branch, request, "ledger", token), cancellation);
-        if (!ReferenceEquals(DataContext.Current, context))
-            throw new InvalidOperationException("Parallel execution replaced the ambient parent context");
-        return new(Environment.ProcessId, left, right);
-    }
+    public static readonly DataJob<object> OverlapOrders = Read("overlap-orders", "orders", Pricing);
+    public static readonly DataJob<object> OverlapLedger = Read("overlap-ledger", "ledger", Pricing);
+    public static readonly DataJobQuery<object, FixtureRow> Orders = Query("orders-query", "orders", Pricing);
+    public static readonly DataJobQuery<object, FixtureRow> Ledger = Query("ledger-query", "ledger", Pricing);
+    public static readonly DataJobQuery<object, FixtureRow> Alias = Query("alias-query", "alias", Pricing);
+    public static readonly DataJob<object> AliasWork = Read("alias-work", "alias", Pricing);
+    public static readonly DataJob<object> HoldOrdersReplace = ReadThenHold("hold-orders-replace", "orders", HoldReplace);
+    public static readonly DataJob<object> HoldOrdersStale = Read("hold-orders-stale", "orders", HoldStale);
+    public static readonly DataJob<object> HoldOrdersSlow = Read("hold-orders-slow", "orders", HoldSlow);
+    public static readonly DataJob<object> HoldLedgerCancel = Read("hold-ledger-cancel", "ledger", HoldCancel);
+    public static readonly DataJob<object> HoldTimeout = Read("hold-timeout", "ledger", HoldTimeoutSource);
+    public static readonly DataJob<object> HoldSharedCancel = Read("hold-shared-cancel", "orders", HoldSharedCancelSource);
+    public static readonly DataJob<object> HoldCrash = Read("hold-crash", "orders", HoldCrashSource);
+    public static readonly DataJob<object> HoldNodeFirst = Read("hold-node-first", "orders", HoldNodeFirstSource);
+    public static readonly DataJob<object> HoldNodeSecond = Read("hold-node-second", "alias", HoldNodeSecondSource);
+    public static readonly DataJob<object> Fail = Signal("fail-job", FailEndpoint);
+    public static readonly DataJob<object> Crash = Fail;
+    public static readonly DataJob<object> IgnoreCancellation = Signal("timeout-job", HoldTimeoutSource);
+    public static readonly DataJob<object> UnsupportedAtomic = Unsupported();
+    public static readonly DataJobQuery<object, AtomicProbeRow> AtomicProbe = DataJob.Define("atomic-probe")
+        .FromSql<AtomicProbeRow>("orders",
+            "SELECT name AS Name FROM sqlite_master WHERE type = 'table' AND name = 'sdk_atomic_admission_probe'")
+        .Return();
 
-    private static async Task<string> Join(DataContext branch, string request, string source,
-        CancellationToken cancellation)
+    /// <summary>Registers HTTP connections whose resources are real fixture URLs.</summary>
+    public static void AddHttpSources(DataClientBuilder builder, string origin)
     {
-        if (!ReferenceEquals(DataContext.Current, branch))
-            throw new InvalidOperationException("A parallel branch did not install its own ambient context");
-        var value = await Read(branch, source, cancellation);
-        if (!await branch.Http("pricing").GetAsync<bool>($"meet/{request}/{source}/{Environment.ProcessId}", cancellation))
-            throw new InvalidOperationException("Four concurrent branches did not reach the same rendezvous");
-        return value;
-    }
-
-    public static async Task<ScopeResult> Scope(DataContext context, string source, CancellationToken cancellation)
-    {
-        if (!ReferenceEquals(DataContext.Current, context))
-            throw new InvalidOperationException("A request did not install its ambient context");
-        var previous = Interlocked.Exchange(ref earlierScope, context);
-        var denied = false;
-        if (previous is not null)
+        ArgumentNullException.ThrowIfNull(builder);
+        foreach ((string name, string path) in new[]
         {
-            try { _ = await Read(previous, source, cancellation); }
-            catch (ObjectDisposedException) { denied = true; }
-            if (!denied) throw new InvalidOperationException("A finished request context was still usable");
+            (Pricing, ""), (HoldReplace, "hold/replace"), (HoldStale, "hold/stale-borrow"),
+            (HoldSlow, "hold/slow"), (HoldCancel, "hold/cancel"), (HoldTimeoutSource, "hold/timeout"),
+            (HoldSharedCancelSource, "hold/shared-cancel"), (HoldNodeFirstSource, "hold/node-first"),
+            (HoldNodeSecondSource, "hold/node-second"), (HoldCrashSource, "hold/crash"),
+            (FailEndpoint, "fail")
+        })
+        {
+            var baseUri = new Uri(origin, UriKind.Absolute);
+            var resource = new Uri(baseUri, path).AbsoluteUri;
+            builder.AddSource(new DataSourceDefinition(name, DataSourceKind.Http, "",
+                resource: resource, baseUri: baseUri));
         }
-        return new(Environment.ProcessId, await Read(context, source, cancellation), denied);
     }
 
-    public static async Task<string> WaitThenRead(DataContext context, HeldRead request,
-        CancellationToken cancellation)
+    public static async Task<string> FirstTag(DataClient client,
+        DataJobQuery<object, FixtureRow> query, CancellationToken cancellation)
     {
-        if (!await context.Http("pricing").GetAsync<bool>("hold/" + request.Gate, cancellation))
-            throw new InvalidOperationException("The HTTP fixture could not hold a Worker branch");
-        return await Read(context, request.Source, cancellation);
+        await foreach (var row in client.RunAsync(query, cancellation).WithCancellation(cancellation))
+            return row.Tag;
+        throw new InvalidOperationException("The Native query returned no fixture row.");
     }
 
-    public static Task<string> HoldLeaseThenRead(DataContext context, HeldRead request, CancellationToken cancellation) =>
-        context.Database(request.Source).UseAsync(async (database, token) =>
-        {
-            var before = await database.Queryable<FixtureRow>().Where(row => row.Id == 1).FirstAsync();
-            if (!await context.Http("pricing").GetAsync<bool>("hold/" + request.Gate, token))
-                throw new InvalidOperationException("The HTTP fixture could not keep the physical lease open");
-            var after = await database.Queryable<FixtureRow>().Where(row => row.Id == 1).FirstAsync();
-            if (before.Tag != after.Tag) throw new InvalidOperationException("A borrowed physical connection changed source");
-            return after.Tag;
-        }, cancellation);
-
-    public static async Task VerifyLedger(DataContext context, CancellationToken cancellation)
+    public static async Task<FixtureRow> FirstRow(DataClient client,
+        DataJobQuery<object, FixtureRow> query, CancellationToken cancellation)
     {
-        if (await Read(context, "ledger", cancellation) != "ledger")
-            throw new InvalidOperationException("The surviving Worker returned an unexpected row");
+        await foreach (var row in client.RunAsync(query, cancellation).WithCancellation(cancellation))
+            return row;
+        throw new InvalidOperationException("The Native query returned no fixture row.");
     }
 
-    public static Task Fail(DataContext context, CancellationToken cancellation) =>
-        Task.FromException(new InvalidOperationException("settlement rejected"));
-
-    public static Task Crash(DataContext context, CancellationToken cancellation)
+    public static async Task<bool> AtomicProbeExists(DataClient client, CancellationToken cancellation)
     {
-        Environment.Exit(47);
-        return Task.CompletedTask;
+        await foreach (var _ in client.RunAsync(AtomicProbe, cancellation).WithCancellation(cancellation))
+            return true;
+        return false;
     }
 
-    public static async Task IgnoreCancellation(DataContext context, CancellationToken cancellation)
+    private static DataJob<object> Read(string id, string database, string http)
     {
-        _ = await context.Http("pricing").GetAsync<bool>("signal/timeout", cancellation);
-        await Task.Delay(Timeout.InfiniteTimeSpan);
+        var job = DataJob.Define(id);
+        job.Request(new HttpRequestDefinition(http, ExpectedStatus: 200));
+        job.FromTable<FixtureRow>(database).Discard();
+        return job;
     }
 
-    public static Task UnsupportedAtomic(DataContext context, string marker, CancellationToken cancellation) =>
-        context.Atomic("orders", "ledger").RunAsync((_, _) =>
-        {
-            File.WriteAllText(marker, "unexpected business invocation");
-            return Task.CompletedTask;
-        }, cancellation);
+    private static DataJob<object> ReadThenHold(string id, string database, string http)
+    {
+        var job = DataJob.Define(id);
+        job.FromTable<FixtureRow>(database).Discard();
+        job.Request(new HttpRequestDefinition(http, ExpectedStatus: 200));
+        return job;
+    }
 
-    private static Task<string> Read(DataContext context, string source, CancellationToken cancellation) =>
-        context.Database(source).UseAsync(async (database, _) =>
-        {
-            var row = await database.Queryable<FixtureRow>().Where(value => value.Id == 1).FirstAsync();
-            return row?.Tag ?? throw new InvalidOperationException("The expected database row does not exist");
-        }, cancellation);
+    private static DataJobQuery<object, FixtureRow> Query(string id, string database, string http)
+    {
+        var job = DataJob.Define(id);
+        job.Request(new HttpRequestDefinition(http, ExpectedStatus: 200));
+        return job.FromTable<FixtureRow>(database).Return();
+    }
+
+    private static DataJob<object> Signal(string id, string http)
+    {
+        var job = DataJob.Define(id);
+        job.Request(new HttpRequestDefinition(http, ExpectedStatus: 200));
+        return job;
+    }
+
+    private static DataJob<object> Unsupported()
+    {
+        var job = DataJob.Define("unsupported-atomic").Transaction("orders", "ledger");
+        job.ExecuteSql("orders", "CREATE TABLE sdk_atomic_admission_probe (id INTEGER PRIMARY KEY)");
+        job.ExecuteSql("ledger", "SELECT 1");
+        return job;
+    }
 }

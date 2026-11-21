@@ -49,13 +49,20 @@ if (args.Length == 5 && args[0] == "--sql-etl")
     await using var data = DataClient.CreateBuilder(args[1], "fixture")
         .AddSource(ReadSource("source", args[2]))
         .AddSource(target)
-        .AddModule(typeof(ExampleOrder).Assembly)
         .Build();
-    var source = data.Etl("example-orders").FromTable<ExampleOrder>("source").Stream();
+    var source = DataJob.Define("example-orders")
+        .FromTable<ExampleOrder>("source", stream: true);
     var pipeline = target.Kind == DataSourceKind.Sqlite
-        ? source.Map(ExampleOrderText.Trim).ToTable("target").Append()
-        : source.Map(ExampleOrder.Trim).ToTable("target").Append();
-    var metrics = await pipeline.RunAsync();
+        ? source.Select(order => new ExampleOrderText
+        {
+            Id = order.Id, Name = order.Name.Trim(),
+            Amount = order.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        }).ToTable("target").Append()
+        : source.Select(order => new ExampleOrder
+        {
+            Id = order.Id, Name = order.Name.Trim(), Amount = order.Amount
+        }).ToTable("target").Append();
+    var metrics = await data.RunAsync(pipeline);
     await File.WriteAllTextAsync(args[4], JsonSerializer.Serialize(new { rows = metrics.CommittedRows, mode = "native-typed-stream" }));
     return;
 }

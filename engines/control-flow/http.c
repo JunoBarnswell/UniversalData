@@ -2,7 +2,7 @@
 #include "ud/connection_manager.h"
 #include "ud/http.h"
 typedef struct http_config {
-    ud_string connection, method, body, content_type, ca, status_variable;
+    ud_string connection, method, body, content_type, ca, status_variable, url;
     ud_string body_variable, headers_variable;
     uint64_t timeout, maximum, attempts, delay, expected;
 } http_config;
@@ -22,7 +22,7 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
         .method = {"GET", 3}, .timeout = 60000, .maximum = 1048576, .attempts = 1, .delay = 100};
     UD_TRY(ud_json_parse(c->memory, text.data, text.length, out, NULL));
     static const char *keys[] = {
-        "connection",     "method",           "body",           "contentType",  "caConnection",
+        "connection",     "method",           "body",           "contentType",  "caConnection", "url",
         "timeoutMs",      "maxResponseBytes", "maxAttempts",    "retryDelayMs", "expectedStatus",
         "statusVariable", "bodyVariable",     "headersVariable", "headers", "responseHeaders"};
     ud_status s = ud_json_keys(*out, keys, sizeof(keys) / sizeof(*keys));
@@ -30,9 +30,9 @@ static ud_status read_config(const ud_component_context *c, ud_string text, ud_j
         s = ud_http_validate_headers(ud_member(*out, "headers"), ud_member(*out, "responseHeaders"));
     if (!s)
         s = ud_json_string(ud_member(*out, "connection"), &p->connection);
-    const char *names[] = {"method", "contentType", "caConnection", "statusVariable"};
-    ud_string *strings[] = {&p->method, &p->content_type, &p->ca, &p->status_variable};
-    for (int i = 0; !s && i < 4; i++)
+    const char *names[] = {"method", "contentType", "caConnection", "statusVariable", "url"};
+    ud_string *strings[] = {&p->method, &p->content_type, &p->ca, &p->status_variable, &p->url};
+    for (int i = 0; !s && i < 5; i++)
         if (ud_member(*out, names[i]))
             s = ud_json_string(ud_member(*out, names[i]), strings[i]);
     int readonly = ud_named(p->method, "GET") || ud_named(p->method, "HEAD");
@@ -125,6 +125,7 @@ static ud_status invoke(void *user, const ud_component_context *c, ud_string tex
                                .body = p.body,
                                .content_type = p.content_type,
                                .ca = p.ca,
+                               .url = p.url,
                                .timeout = p.timeout,
                                .maximum = p.maximum,
                                .attempts = p.attempts,
@@ -182,7 +183,7 @@ ud_status ud_http_register(ud_registry *registry) {
         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"connection\"],"
         "\"properties\":{\"connection\":{\"type\":\"string\"},\"method\":{\"enum\":[\"GET\","
         "\"HEAD\",\"POST\",\"PUT\",\"PATCH\",\"DELETE\"]},\"body\":{\"type\":\"string\"},"
-        "\"contentType\":{\"type\":\"string\"},\"caConnection\":{\"type\":\"string\"},"
+        "\"contentType\":{\"type\":\"string\"},\"caConnection\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},"
         "\"timeoutMs\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":86400000},"
         "\"maxResponseBytes\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":67108864},"
         "\"maxAttempts\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":3},"

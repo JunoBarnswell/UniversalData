@@ -70,6 +70,10 @@ UD_API ud_status ud_catalog_lease_adopt(ud_catalog *, const ud_catalog_lease *, 
                                         uint32_t duration_ms, uint64_t *until_ms);
 UD_API ud_status ud_catalog_lease_release(ud_catalog *, const ud_catalog_lease *);
 UD_API ud_status ud_catalog_lease_active(ud_catalog *, int32_t kind, ud_string id, int32_t *active);
+/* Return the Catalog's monotone persisted UTC clock.  A local Catalog advances
+ * it under its writer transaction; a PostgreSQL Catalog observes the value
+ * advanced by the leadership transaction. */
+UD_API ud_status ud_catalog_worker_clock(ud_catalog *, uint64_t *milliseconds);
 /* Append revision expected+1 atomically, or FENCED. After an object first uses
  * a lease, every conditional write requires its current live fencing token.
  * Unconditional versioned documents remain available for immutable Package /
@@ -88,6 +92,34 @@ typedef struct ud_catalog_job_occurrence {
  * run in one transaction. A backfill advances an existing occurrence revision. */
 UD_API ud_status ud_catalog_publish_occurrence(ud_catalog *, const ud_catalog_job_occurrence *,
                                                const ud_catalog_lease *job_lease);
+/* Atomically publish one package version, its project/deployment binding, the
+ * scheduler job and (optionally) one queued occurrence/run. request_id and
+ * subject form the tenant-scoped idempotency identity; fingerprint is the
+ * caller's stable content identity and never contains parameter values. All
+ * documents must use the exact revisions supplied by the caller. A repeated
+ * identity with the same fingerprint returns the original receipt, while a
+ * different fingerprint is fenced. The output is owned JSON released by
+ * ud_free and contains string id/revision, deployment state and occurrence. */
+typedef struct ud_catalog_publication_request {
+    uint32_t struct_size, abi_version;
+    ud_string request_id, subject, fingerprint;
+    ud_string package_id, package_document;
+    uint64_t expected_package_revision;
+    ud_string project_id, project_document;
+    uint64_t project_revision;
+    ud_string deployment_id, deployment_document;
+    uint64_t deployment_revision;
+    ud_string deployment_state_id, deployment_state_document;
+    uint64_t deployment_state_revision;
+    ud_string job_id, job_document;
+    uint64_t job_revision;
+    ud_string occurrence_id, occurrence_document;
+    uint64_t occurrence_revision;
+    ud_string run_id, run_document;
+    uint64_t run_revision;
+} ud_catalog_publication_request;
+UD_API ud_status ud_catalog_publish_job(ud_catalog *, const ud_catalog_publication_request *,
+                                        char **receipt, uint32_t *length);
 /* Owned canonical JSON, released with ud_free. Missing key returns END. */
 UD_API ud_status ud_catalog_get(ud_catalog *, const ud_catalog_key *, char **json,
                                 uint32_t *length);

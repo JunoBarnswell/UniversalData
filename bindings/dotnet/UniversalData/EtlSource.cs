@@ -1,3 +1,5 @@
+using System.Linq.Expressions;
+
 namespace UniversalData;
 
 public sealed class EtlSource<T>
@@ -25,15 +27,11 @@ public sealed class EtlSource<T>
         return new(client, input with { BatchSize = rows });
     }
 
-    /// <summary>Bind a deterministic public static method in a registered assembly to the Native Data Flow.</summary>
-    public EtlMapped<TOutput> Map<TOutput>(Func<T, TOutput> method)
+    public EtlMapped<TOutput> Select<TOutput>(Expression<Func<T, TOutput>> rule)
     {
-        ArgumentNullException.ThrowIfNull(method);
-        var output = typeof(TOutput);
-        if (typeof(Task).IsAssignableFrom(output) || output == typeof(ValueTask) ||
-            output.IsGenericType && output.GetGenericTypeDefinition() == typeof(ValueTask<>))
-            throw new ArgumentException("An ETL mapping must synchronously return a row", nameof(method));
-        return new(client, input with { Map = client.DescribeMethod(method) });
+        ArgumentNullException.ThrowIfNull(rule);
+        var projection = new NativeRuleExpression(input.Id, "select", rule).Projection(typeof(TOutput));
+        return new(client, input with { Projection = projection });
     }
 
     public EtlDestination<T> ToTable(string target) => ToTable(target, EntityMapping.For<T>().TableName);

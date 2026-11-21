@@ -9,19 +9,18 @@ public sealed class EtlPackageBuilder(string id)
         { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 
     private readonly List<object> connections = [];
-    private readonly List<object> components = [];
-    private readonly List<object> paths = [];
+    private readonly Dictionary<string, EtlDataFlowDefinition> flows = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> componentFlows = new(StringComparer.Ordinal);
     private readonly List<object> tasks = [];
     private readonly List<object> constraints = [];
     private readonly List<JsonElement> modules = [];
     private readonly Dictionary<string, JsonElement> variables = new(StringComparer.Ordinal);
     private readonly HashSet<string> connectionIds = new(StringComparer.Ordinal);
-    private readonly HashSet<string> componentIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> taskIds = new(StringComparer.Ordinal);
-    private readonly List<(string From, string To)> componentEdges = [];
+    private readonly List<(string Pipeline, string From, string To)> componentEdges = [];
     private readonly List<(string From, string To)> taskEdges = [];
+    private readonly HashSet<string> taskPipelines = new(StringComparer.Ordinal);
     private string? error;
-    private bool hasDataFlow;
 
     public EtlPackageBuilder Connection(string name, string driver, string resource,
         string? credentialReference = null, OAuth2Connection? oauth2 = null)
@@ -37,10 +36,11 @@ public sealed class EtlPackageBuilder(string id)
         SqlSource(name, connection, null, sql, schema, stream, batchSize, parameters);
 
     internal EtlPackageBuilder SqlSource(string name, string connection, string? table, string? sql,
-        JsonElement schema, bool stream, uint? batchSize, SqlParameterBatch? parameters) =>
+        JsonElement schema, bool stream, uint? batchSize, SqlParameterBatch? parameters, string pipeline = "main",
+        string schemaPolicy = "compatible") =>
         Component(name, "sql.source", new { connection, table, sql, schema,
             readMode = stream ? "stream" : "snapshot", batchSize, parameters,
-            schemaPolicy = table is null ? null : new { policy = "compatible" } });
+            schemaPolicy = table is null ? null : new { policy = schemaPolicy } }, pipeline);
 
     public EtlPackageBuilder ChangeSource(string name, string connection, DataSourceKind provider, string table,
         JsonElement schema, EtlChangeOptions options)
@@ -82,9 +82,9 @@ public sealed class EtlPackageBuilder(string id)
         SqlDestination(name, connection, table, mode, null, null, null, null);
 
     internal EtlPackageBuilder SqlDestination(string name, string connection, string table, string mode,
-        SqlColumnMapping[]? mapping, int[]? keys, string? delivery, bool? provisionReceipts) =>
+        SqlColumnMapping[]? mapping, int[]? keys, string? delivery, bool? provisionReceipts, string pipeline = "main") =>
         Component(name, "sql.destination", new { connection, table, mode, mapping, keys, delivery,
-            provisionReceipts, beforeField = mode == "changeset" ? "before" : null });
+            provisionReceipts, beforeField = mode == "changeset" ? "before" : null }, pipeline);
 
     public EtlPackageBuilder IcebergDestination(string name, string connection, string storageConnection,
         string tableNamespace, string table, string mode = "append", int[]? keys = null,
@@ -111,64 +111,83 @@ public sealed class EtlPackageBuilder(string id)
 
     public EtlPackageBuilder HttpTask(string name, HttpRequestDefinition request) => Task(name, "http.request", request);
 
-    public EtlPackageBuilder DataFlow(string name = "run")
+    public EtlPackageBuilder DataFlow(string name = "run") => DataFlow(name, "main");
+
+    internal EtlPackageBuilder DataFlow(string name, string pipeline)
     {
-        hasDataFlow = true;
-        return Task(name, "dataFlow", new { pipeline = "main" });
+        taskPipelines.Add(pipeline);
+        return Task(name, "dataFlow", new { pipeline });
     }
 
-    public EtlPackageBuilder Before(string before, string after)
+    public EtlPackageBuilder Before(string before, string after, string outcome = "success")
     {
         taskEdges.Add((before, after));
-        constraints.Add(new { from = before, to = after, @on = "success" });
+        constraints.Add(new { from = before, to = after, @on = outcome });
         return this;
     }
 
-    public EtlPackageBuilder Connect(string from, string to, uint output = 0, uint input = 0)
+    public EtlPackageBuilder Connect(string from, string to, uint output = 0, uint input = 0) =>
+        Connect("main", from, to, output, input);
+
+    internal EtlPackageBuilder Connect(string pipeline, string from, string to, uint output = 0, uint input = 0)
     {
-        componentEdges.Add((from, to));
-        paths.Add(new { from, to, output, input });
+        componentEdges.Add((pipeline, from, to));
+        Flow(pipeline).Paths.Add(new { from, to, output, input });
         return this;
     }
 
     public EtlPackageBuilder RegisterModule(JsonElement module) { modules.Add(module.Clone()); return this; }
     public EtlPackageBuilder Variable(string name, JsonElement definition) { variables.Add(name, definition.Clone()); return this; }
 
-    internal JsonElement DescribeDataFlow() => JsonSerializer.SerializeToElement(Pipeline(), Json);
+    internal JsonElement DescribeDataFlow() => JsonSerializer.SerializeToElement(Flow("main").Describe(), Json);
 
-    private object Pipeline() => new { id = "main", components, paths };
+    public Result<Package> Build() => Build(null, null, null);
 
-    public Result<Package> Build()
+    internal Result<Package> Build(IReadOnlyList<SdkNativeConnection>? boundConnections,
+        IReadOnlyDictionary<string, JsonElement>? parameters, object? policy)
     {
-        if (error is null && componentEdges.Any(edge => !componentIds.Contains(edge.From) || !componentIds.Contains(edge.To)))
-            error = "A data-flow path references an unknown component";
-        bool implicitFlow = !hasDataFlow && components.Count != 0 && tasks.Count == 0;
-        if (error is null && hasDataFlow != (components.Count != 0) && !implicitFlow)
-            error = "A data-flow task and its components must be defined together";
-        if (error is null && taskEdges.Any(edge => !taskIds.Contains(edge.From) || !taskIds.Contains(edge.To)))
-            error = "A control-flow constraint references an unknown task";
-        if (error is not null)
-            return new(StatusCode.Schema, null, new(ErrorSource.Native, StatusCode.Schema, error));
+        var pipelines = flows.Values.Where(flow => flow.Components.Count != 0).ToArray();
+        string? validation = error;
+        if (validation is null && componentEdges.Any(edge => componentFlows.GetValueOrDefault(edge.From) != edge.Pipeline ||
+            componentFlows.GetValueOrDefault(edge.To) != edge.Pipeline))
+            validation = "A data-flow path references a component outside its pipeline";
+        bool implicitFlow = tasks.Count == 0 && pipelines is [{ Id: "main" }];
+        if (validation is null && !implicitFlow && !taskPipelines.SetEquals(pipelines.Select(flow => flow.Id)))
+            validation = "Each data-flow task must name a declared pipeline and each pipeline must have a task";
+        if (validation is null && taskEdges.Any(edge => !taskIds.Contains(edge.From) || !taskIds.Contains(edge.To)))
+            validation = "A control-flow constraint references an unknown task";
+        if (validation is not null)
+            return new(StatusCode.Schema, null, new(ErrorSource.Native, StatusCode.Schema, validation));
         var controlTasks = implicitFlow
             ? new object[] { new { id = "run", kind = "dataFlow", config = new { pipeline = "main" } } }
             : tasks.ToArray();
         return Package.FromJson(JsonSerializer.Serialize(new
         {
-            version = ProductInfo.Protocol, id, connections,
+            version = ProductInfo.Protocol, id, connections = boundConnections is null ? (object)connections : boundConnections,
             controlFlow = new { tasks = controlTasks, constraints },
-            dataFlows = components.Count == 0 ? Array.Empty<object>() : new[] { Pipeline() },
-            extensions = modules.Count == 0 ? null : modules, variables
+            dataFlows = pipelines.Select(flow => flow.Describe()).ToArray(),
+            extensions = modules.Count == 0 ? null : modules, variables, parameters, policy
         }, Json));
     }
 
-    private EtlPackageBuilder Component(string name, string type, object config)
+    internal EtlPackageBuilder Component(string name, string type, object config, string pipeline = "main")
     {
-        if (string.IsNullOrWhiteSpace(name) || !componentIds.Add(name))
+        if (string.IsNullOrWhiteSpace(name) || !componentFlows.TryAdd(name, pipeline))
             error = "Component identities must be unique";
-        components.Add(new { id = name, component = type, config });
+        Flow(pipeline).Components.Add(new { id = name, component = type, config });
         return this;
     }
-    private EtlPackageBuilder Task(string name, string kind, object config)
+
+    internal void Delivery(string pipeline, object delivery) => Flow(pipeline).Delivery = delivery;
+
+    private EtlDataFlowDefinition Flow(string pipeline)
+    {
+        if (!flows.TryGetValue(pipeline, out var flow))
+            flows.Add(pipeline, flow = new(pipeline));
+        return flow;
+    }
+
+    internal EtlPackageBuilder Task(string name, string kind, object config)
     {
         if (string.IsNullOrWhiteSpace(name) || !taskIds.Add(name))
             error = "Task identities must be unique";

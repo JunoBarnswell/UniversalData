@@ -40,7 +40,8 @@ public sealed record WorkerNodeInventory(string[] Plugins, string[] CredentialRe
         if (entry.TryGetProperty("driver", out var driver) && driver.ValueKind == JsonValueKind.String &&
             driver.GetString() is { } name)
         {
-            if (AbsolutePath(name) && !Plugins.Any(plugin => plugin.Equals(name,comparison))) return false;
+            if ((AbsolutePath(name) || name.StartsWith("ud:", StringComparison.Ordinal)) &&
+                !Plugins.Any(plugin => plugin.Equals(name, comparison))) return false;
             if (entry.TryGetProperty("resource",out var resource) && resource.ValueKind == JsonValueKind.String &&
                 resource.GetString() is { } path && AbsolutePath(path) &&
                 !FileResources.Any(file => file.Equals(path,comparison)) &&

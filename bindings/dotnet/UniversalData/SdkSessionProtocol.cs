@@ -5,17 +5,17 @@ using System.Text;
 namespace UniversalData;
 
 internal sealed record SdkHostConfiguration(int Revision, string PolicyFile, string Tenant,
-    SdkHostOptions Options, SdkModule[] Modules, string Endpoint, string Capability);
+    SdkHostOptions Options, string Endpoint, string Capability);
 
-internal sealed record SdkWorkerConfiguration(SdkHostOptions Options, SdkModule[] Modules,
+internal sealed record SdkWorkerConfiguration(SdkHostOptions Options,
     string Endpoint, string Capability, string SourceStateFile, int Capacity, bool Cooperative);
 
 internal sealed record SdkPipeAdmission(int Revision, string Capability, string Operation = "open",
     string? SourceName = null, SdkSourceRevision? SourceRevision = null, string? SessionId = null,
-    bool Dedicated = false, bool Poison = false);
+    bool Dedicated = false, bool Poison = false, uint CpuSlots = 1);
 
 internal sealed record SdkSessionAssignment(int Revision, string WorkerCapability, string SessionId,
-    string Endpoint, string Capability);
+    string Endpoint, string Capability, bool ReadyProbe = false);
 
 internal sealed record SdkSourceRevision(ulong Revision, bool Enabled);
 

@@ -68,6 +68,7 @@ ud_status ud_expr_bind_literal(ud_expression *e, expression_node *n, const ud_fi
     ud_field spec = *field;
     spec.name = "literal";
     spec.name_length = 7;
+    spec.nullable = value->is_null != 0;
     spec.identity = (ud_id){0};
     spec.physical_identity = (ud_id){0};
     spec.lineage = NULL;
@@ -395,7 +396,9 @@ ud_status ud_expr_finish(ud_expression *e, expression_node *n) {
         result = (ud_field){.name = "value",
                             .name_length = 5,
                             .type = UD_BOOL,
-                            .nullable = n->op != ISNULL,
+                                .nullable = n->op != ISNULL &&
+                                            (fields[0].nullable ||
+                                             (n->argument_count == 2 && fields[1].nullable)),
                             .scalar = {.kind = UD_DT_BOOL}};
     } else {
         UD_TRY(ud_scalar_common(fields, n->argument_count == 1 ? fields : fields + 1,

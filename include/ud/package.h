@@ -119,6 +119,17 @@ UD_API void ud_package_destroy(ud_package *);
 UD_API ud_status ud_execution_create(const ud_package *, const ud_execution_options *,
                                      ud_execution **);
 UD_API ud_status ud_execution_create_json(ud_string, const ud_execution_options *, ud_execution **);
+/* Open before starting. Each successful read returns one owned wire batch.
+ * BUSY means no batch yet; END means the stream is drained. Check terminal
+ * execution status separately. */
+UD_API ud_status ud_execution_open_results(ud_execution *);
+UD_API ud_status ud_execution_read_result(ud_execution *, uint32_t timeout_ms, uint8_t **, uint64_t *);
+/* A host declares the local path for an installed ud:<name> connector.
+ * Bind before starting. The mapped path still requires normal Native authorization. */
+UD_API ud_status ud_execution_bind_connector(ud_execution *, ud_string logical_id, ud_string path);
+/* Host defaults cap each source and govern wait when the Package has no explicit acquisition timeout. */
+UD_API ud_status ud_execution_set_connection_limits(ud_execution *, uint32_t max_connections_per_source,
+                                                   uint32_t default_wait_ms);
 /* Owns physical connector sessions while each Execution retains its own grants,
  * credential resolver, cancellation and Journal. Destroy only after every
  * borrowing Execution (and any borrowed result) has been released. */
@@ -204,6 +215,8 @@ UD_API ud_status ud_execution_discover_schema(ud_execution *, ud_string connecti
                                               char **, uint32_t *);
 UD_API ud_status ud_execution_execute(ud_execution *);
 UD_API ud_status ud_execution_start(ud_execution *);
+/* Start within one CPU granted to this Worker by its Linux process budget. */
+UD_API ud_status ud_execution_start_on_cpu(ud_execution *, uint32_t cpu);
 UD_API ud_status ud_execution_wait(ud_execution *, uint32_t timeout_ms);
 /* Graceful source boundary, drain and final confirmation; distinct from Cancel. */
 UD_API void ud_execution_stop(ud_execution *);

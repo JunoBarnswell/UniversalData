@@ -35,10 +35,20 @@ public sealed class Batch : IDisposable
 
     public static Batch FromWire(byte[] wire, ulong memoryLimit = 268435456)
     {
-        ArgumentNullException.ThrowIfNull(wire); var ctx = DataOwnership.Context(memoryLimit);
+        ArgumentNullException.ThrowIfNull(wire);
+        return FromWire(wire, checked((int)wire.LongLength), memoryLimit);
+    }
+
+    /// <summary>Deserialize only the populated prefix of a pooled wire buffer.</summary>
+    internal static Batch FromWire(byte[] wire, int length, ulong memoryLimit = 268435456)
+    {
+        ArgumentNullException.ThrowIfNull(wire);
+        if (length < 0 || length > wire.Length)
+            throw new ArgumentOutOfRangeException(nameof(length));
+        var ctx = DataOwnership.Context(memoryLimit);
         try
         {
-            DataOwnership.Check(ctx, Native.ud_batch_deserialize(ctx, wire, checked((ulong)wire.LongLength), out var pointer));
+            DataOwnership.Check(ctx, Native.ud_batch_deserialize(ctx, wire, checked((ulong)length), out var pointer));
             return new Batch(ctx, pointer);
         }
         catch { ctx.Dispose(); throw; }
@@ -95,6 +105,38 @@ public sealed class Batch : IDisposable
     public string RowInfoJson(uint row)
     {
         lock (execution) { EnsureOpen(); DataOwnership.Check(context, Native.ud_batch_row_info_json(batch, row, out var text, out var length)); return DataOwnership.Text(text, length); }
+    }
+
+    /// <summary>Map serialized Native rows to strong entities without a JSON row round-trip.</summary>
+    public IReadOnlyList<T> ToEntities<T>() => EnumerateEntities<T>().ToArray();
+
+    internal IEnumerable<T> EnumerateEntities<T>()
+    {
+        string schema;
+        uint count;
+        lock (execution)
+        {
+            EnsureOpen();
+            DataOwnership.Check(context, Native.ud_schema_to_json(batch, out var text, out var length));
+            schema = DataOwnership.Text(text, length);
+            count = Native.ud_batch_rows(batch);
+        }
+        var projection = ManagedBatch.BuildEntityProjection<T>(schema);
+        var factory = new EntityRowFactory<T>(projection);
+        for (uint row = 0; row < count; row++)
+        {
+            lock (execution)
+            {
+                EnsureOpen();
+                for (int index = 0; index < projection.Count; index++)
+                {
+                    var (member, ordinal) = projection[index];
+                    DataOwnership.Check(context, Native.ud_batch_get(batch, row, ordinal, out var value));
+                    factory.Values[index] = SqlValueCodec.ReadValue(value, member.ValueType, member.ColumnName);
+                }
+            }
+            yield return factory.Materialize();
+        }
     }
 
     public string DiscoverPivotValues(uint column, string prefix = "pivot", uint maximum = 4096)

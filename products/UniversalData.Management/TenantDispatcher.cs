@@ -26,6 +26,11 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
     private const uint LeaseDuration = 30000;
     private uint ExecutionLeaseDuration => configuration.Cluster ? 20000U : LeaseDuration;
     private static long Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    private long WorkerClock()
+    {
+        using var catalog = policy.OpenCatalog();
+        return catalog.WorkerClock;
+    }
     public RunState[] List(HostIdentity identity) { lock(gate) { Refresh();return states.Values.Where(run => run.ParentId is null && identity.Allows("execution.read",run.Id)).OrderByDescending(run => run.TimestampMs).ToArray(); } }
     public RunStateView View(RunState run) => RunStateView.From(run,
         run.State == "Queued" ? queueReasons.GetValueOrDefault(run.Id) ??
@@ -419,15 +424,25 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     bool restore = actor?.Allows("package.execute",current.PackageId) == true &&
                         (current.DeploymentId is null || actor.Allows("deployment.execute",current.DeploymentId)) &&
                         WorkerParallelism.UsesBrokerRecovery(Package(current.PackageId,current.PackageRevision));
-                    Save(current with { State=authorized && !restore ? "RecoveryRequired" : "Queued",
-                        Resume=restore || current.Resume, BrokerRestore=restore || current.BrokerRestore,
+                    var decision = RetryDecision(current,
+                        restore ? (int)StatusCode.WorkerLost :
+                            authorized ? (int)StatusCode.CommitUnknown : (int)StatusCode.WorkerLost,
+                        started:authorized && !restore, resumed:current.Resume && !restore,
+                        brokerRestore:restore || current.BrokerRestore,
+                        remote:current.Placement?.Remote == true, forceAttempt:restore);
+                    string nextState = RetryState(decision.State);
+                    bool recovery = decision.State == NativeRunState.RecoveryRequired;
+                    bool queued = decision.State == NativeRunState.Queued;
+                    Save(current with { State=nextState,
+                        Resume=restore || current.Resume || recovery, BrokerRestore=restore || current.BrokerRestore,
                         JournalTicket=restore ? Guid.NewGuid().ToString("N") : current.JournalTicket,
-                        Attempt=restore ? checked(current.Attempt+1) : current.Attempt,
-                        Result=authorized ? (int)StatusCode.CommitUnknown : 0,Owner=null,
-                        ProcessId=null, Placement=authorized ? current.Placement : null,
+                        Attempt=restore && queued ? checked(current.Attempt+1) : current.Attempt,
+                        Result=(int)decision.Result,Owner=null, ProcessId=null,
+                        Placement=authorized || recovery ? current.Placement : null,
                         HomeNodeId=authorized && !restore ? current.HomeNodeId : null,
-                        Failure=authorized ? new RunFailure((int)StatusCode.CommitUnknown,"dispatch.reconcile",
-                            "ExecutionPermitExpired") : null,
+                        NotBeforeMs=queued ? decision.NotBeforeMilliseconds : current.NotBeforeMs,
+                        Failure=decision.Result == StatusCode.Ok ? null : new RunFailure((int)decision.Result,
+                            "dispatch.reconcile", "ExecutionPermitExpired"),
                         Revision=checked(current.Revision+1),TimestampMs=Now },lease);
                 }
             } finally { catalog.ReleaseLease(lease); }
@@ -445,7 +460,7 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 Schedule();
                 if (monitors.Count >= policy.MaxConcurrency) return;
                 using var catalog = policy.OpenCatalog();
-                var queued = QueryRuns(catalog,"Queued",true,(ulong)Now,limit:16,after:queueCursor);
+                var queued = QueryRuns(catalog,"Queued",true,(ulong)catalog.WorkerClock,limit:16,after:queueCursor);
                 if (queued.Length == 0)
                 {
                     queueCursor = null;
@@ -486,6 +501,37 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
 
     private static bool Retryable(UniversalDataException error) =>
         error.Code is StatusCode.Fenced or StatusCode.Busy or StatusCode.Transient or StatusCode.Io;
+
+    /* Native owns the retry/recovery classification.  Management supplies only
+     * the durable run policy and the transport facts observed around the
+     * Worker; it does not maintain a second status/attempt table. */
+    private NativeRetryDecision RetryDecision(RunState state, int result, bool cancelled = false,
+        bool started = false, bool resumed = false, bool brokerRestore = false, bool remote = false,
+        bool forceAttempt = false)
+    {
+        JobState? job;
+        lock (gate)
+            job = state.JobId is { } jobId ? jobs.GetValueOrDefault(jobId) : null;
+        uint attempt = Math.Max(1U, state.Attempt);
+        uint maxAttempts = job is { Enabled: true } ? Math.Max(attempt, job.MaxAttempts) : attempt;
+        if (forceAttempt && maxAttempts == attempt)
+            maxAttempts = checked(attempt + 1);
+        uint delay = job?.RetryDelaySeconds ?? 0;
+        StatusCode status = result is >= (int)StatusCode.Ok and <= (int)StatusCode.HttpStatus
+            ? (StatusCode)result : StatusCode.Invalid;
+        return NativeDispatch.Retry(status, cancelled, started, resumed, brokerRestore,
+            attempt, maxAttempts, delay, WorkerClock(), remote);
+    }
+
+    private static string RetryState(NativeRunState state) => state switch
+    {
+        NativeRunState.Queued => "Queued",
+        NativeRunState.Succeeded => "Succeeded",
+        NativeRunState.Cancelled => "Cancelled",
+        NativeRunState.RecoveryRequired => "RecoveryRequired",
+        NativeRunState.Stopped => "Stopped",
+        _ => "Failed"
+    };
 
     private async Task DispatchTracked(RunState state, ClusterLeadership.Term? term, CancellationToken stopping)
     {
@@ -616,8 +662,14 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     lock (gate)
                     {
                         var parent = Get(run.Id);
-                        Save(parent with { State="Queued", Owner=null, Revision=checked(parent.Revision+1),
-                            TimestampMs=Now, NotBeforeMs=checked(Now+1000) }, lease);
+                        var decision = RetryDecision(parent, (int)StatusCode.Busy,
+                            brokerRestore:parent.BrokerRestore, remote:allowRemote);
+                        Save(parent with { State=RetryState(decision.State), Result=(int)decision.Result,
+                            Failure=decision.Result == StatusCode.Ok ? null :
+                                new RunFailure((int)decision.Result,"dispatch.group","WorkerLeaseUnavailable"),
+                            Owner=null, Revision=checked(parent.Revision+1), TimestampMs=Now,
+                            NotBeforeMs=decision.State == NativeRunState.Queued
+                                ? decision.NotBeforeMilliseconds : parent.NotBeforeMs }, lease);
                     }
                     return;
                 }
@@ -668,9 +720,15 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     var current = Get(run.Id);
                     if (current.State is "Queued" or "Claimed" or "Running") {
                         bool unknown = current.State == "Running" || current.Resume;
-                        Save(current with { State = unknown ? "RecoveryRequired" : "Failed",
-                            Result = unknown ? (int)StatusCode.CommitUnknown : (int)StatusCode.Io,
-                            Failure = new RunFailure((int)StatusCode.Io, "dispatch.group", error.GetType().Name),
+                        var decision = RetryDecision(current, (int)StatusCode.Io,
+                            started:unknown, resumed:current.Resume, brokerRestore:current.BrokerRestore,
+                            remote:allowRemote);
+                        Save(current with { State = RetryState(decision.State),
+                            Result = (int)decision.Result,
+                            Failure = decision.Result == StatusCode.Ok ? null :
+                                new RunFailure((int)decision.Result, "dispatch.group", error.GetType().Name),
+                            NotBeforeMs = decision.State == NativeRunState.Queued
+                                ? decision.NotBeforeMilliseconds : current.NotBeforeMs,
                             Revision = checked(current.Revision + 1), TimestampMs = Now }, lease);
                     }
                 }
@@ -731,23 +789,24 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
         var failed = members.FirstOrDefault(member => member.State == "Failed");
         bool wasCancelled = catalog.Get(CatalogKind.Audit, "cancel/" + run.Id, parent.Attempt) is not null;
         bool wasStopped = catalog.Get(CatalogKind.Audit, "stop/" + run.Id, parent.Attempt) is not null;
-        string final = uncertain is not null ? "RecoveryRequired" :
-            wasCancelled ? "Cancelled" : failed is not null ? "Failed" :
-            wasStopped || members.Any(member => member.State == "Stopped") ? "Stopped" :
-            members.All(member => member.State == "Succeeded" && member.Result == 0) ? "Succeeded" : "Failed";
-        int result = final switch {
-            "RecoveryRequired" => (int)StatusCode.CommitUnknown,
-            "Cancelled" => (int)StatusCode.Cancelled,
-            "Failed" => failed?.Result ?? (int)StatusCode.Busy,
-            _ => 0
-        };
+        bool stopped = uncertain is null && !wasCancelled && failed is null &&
+            (wasStopped || members.Any(member => member.State == "Stopped"));
+        int result = uncertain is not null ? (int)StatusCode.CommitUnknown :
+            wasCancelled ? (int)StatusCode.Cancelled : failed?.Result ?? (members.All(member =>
+                member.State == "Succeeded" && member.Result == 0) ? (int)StatusCode.Ok : (int)StatusCode.Busy);
+        var decision = stopped ? default : RetryDecision(parent, result,
+            cancelled:wasCancelled, started:uncertain is not null,
+            resumed:uncertain?.Resume == true, brokerRestore:parent.BrokerRestore,
+            remote:members.Any(member => member.Placement?.Remote == true));
+        string final = stopped ? "Stopped" : RetryState(decision.State);
+        result = stopped ? 0 : (int)decision.Result;
         var outcome = parent with { State = final, Result = result, Failure = uncertain?.Failure ?? failed?.Failure,
             BrokerRestore = parent.BrokerRestore && final != "Succeeded",
             Revision = checked(parent.Revision + 1), TimestampMs = Now };
-        if (final == "Failed" && parent.JobId is { } jobId && jobs.TryGetValue(jobId, out var job) &&
-            job.Enabled && parent.Attempt < job.MaxAttempts)
-            outcome = outcome with { State="Queued", Resume=true, Attempt=checked(parent.Attempt+1),
-                NotBeforeMs=checked(Now+job.RetryDelaySeconds*1000L), Owner=null };
+        if (!stopped && decision.State == NativeRunState.Queued)
+            outcome = outcome with { Resume=true, Attempt=checked(parent.Attempt+1),
+                NotBeforeMs=decision.NotBeforeMilliseconds, Owner=null, ProcessId=null,
+                Failure=null };
         Save(outcome, lease);
     }
 
@@ -819,10 +878,14 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 HomeNodeId = placement.Remote ? placement.NodeId : state.HomeNodeId,
                 Revision = checked(state.Revision + 1),TimestampMs = Now }; Save(state);
             } catch (ArgumentException error) {
+                var decision = RetryDecision(state, state.Resume ? (int)StatusCode.CommitUnknown :
+                    (int)StatusCode.Invalid, resumed:state.Resume, brokerRestore:state.BrokerRestore,
+                    remote:placement.Remote);
                 try {
-                    Save(state with { State=state.Resume?"RecoveryRequired":"Failed",
-                        Result=state.Resume?(int)StatusCode.CommitUnknown:(int)StatusCode.Invalid,
-                        Failure=new RunFailure((int)StatusCode.Invalid,"dispatch.deployment",error.GetType().Name),
+                    Save(state with { State=RetryState(decision.State), Result=(int)decision.Result,
+                        Failure=decision.Result == StatusCode.Ok ? null :
+                            new RunFailure((int)decision.Result,"dispatch.deployment",error.GetType().Name),
+                        NotBeforeMs=decision.State == NativeRunState.Queued ? decision.NotBeforeMilliseconds : state.NotBeforeMs,
                         Revision=checked(state.Revision+1),TimestampMs=Now });
                 } finally { barrier?.Fail(); leases.TryRemove(lease.Id,out _);catalog.ReleaseLease(lease); }
                 return;
@@ -986,10 +1049,16 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 ? terminalError.Deserialize<OperationError>(HostPolicy.JsonOptions) : null;
             if (final is not ("Succeeded" or "Failed" or "Cancelled" or "RecoveryRequired" or "Stopped") ||
                 final == "Succeeded" && result != 0) throw new InvalidDataException("Invalid Native terminal state");
-            if (state.BrokerRestore && final != "Succeeded")
+            if (final == "RecoveryRequired") result = (int)StatusCode.CommitUnknown;
+            if (final == "Failed" && result == 0) result = (int)StatusCode.Invalid;
+            NativeRetryDecision terminalDecision = default;
+            if (final != "Stopped")
             {
-                final = "RecoveryRequired";
-                result = (int)StatusCode.CommitUnknown;
+                terminalDecision = RetryDecision(state, result,
+                    cancelled:final == "Cancelled", brokerRestore:state.BrokerRestore && final != "Succeeded",
+                    remote:placement.Remote);
+                final = RetryState(terminalDecision.State);
+                result = (int)terminalDecision.Result;
             }
             if (remote is not null) {
                 int exit = await remote.WaitForExitAsync(deadline.Token);
@@ -1004,9 +1073,10 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                     RecoverySafeAfterMs=final == "RecoveryRequired" && placement.Remote
                         ? checked((long)leases.GetValueOrDefault(lease.Id,lease).UntilMilliseconds) : 0,
                     Revision = checked(current.Revision + 1),TimestampMs = Now };
-                if (final == "Failed" && result != (int)StatusCode.CommitUnknown && state.JobId is { } jobId && jobs.TryGetValue(jobId,out var job) && job.Enabled && state.Attempt < job.MaxAttempts)
-                    state = state with { State = "Queued",Resume = true,ExecutionRevision = catalog.LatestRevision(CatalogKind.Execution,nativeId),Attempt = checked(state.Attempt + 1),
-                        NotBeforeMs = checked(Now + job.RetryDelaySeconds * 1000L),ProcessId = null,Owner = null };
+                if (final != "Stopped" && terminalDecision.State == NativeRunState.Queued)
+                    state = state with { Resume = true,ExecutionRevision = catalog.LatestRevision(CatalogKind.Execution,nativeId),
+                        Attempt = checked(state.Attempt + 1), NotBeforeMs = terminalDecision.NotBeforeMilliseconds,
+                        ProcessId = null, Owner = null, Failure = null };
                 Save(state);
             }
             terminalRecorded = true;
@@ -1027,17 +1097,32 @@ public sealed partial class TenantDispatcher(HostPolicy tenantPolicy, HostPolicy
                 await heartbeat;
             }
             var failure=error is WorkerFailureException worker?worker.Failure:new RunFailure(error is UniversalDataException nativeError?nativeError.Status:error is IOException?(int)StatusCode.Io:(int)StatusCode.Invalid,"dispatch",error.GetType().Name);
-            bool retryPlacement = !unknown && Volatile.Read(ref cancelled) == 0 && placement.Remote &&
-                failure.Result is (int)StatusCode.Busy or (int)StatusCode.Resource or (int)StatusCode.WorkerLost;
+            NativeRetryDecision decision;
+            try
+            {
+                decision = RetryDecision(state, failure.Result,
+                    cancelled:Volatile.Read(ref cancelled) != 0, started:unknown,
+                    resumed:state.Resume, brokerRestore:state.BrokerRestore,
+                    remote:placement.Remote);
+            }
+            catch (UniversalDataException catalogError)
+            {
+                leadership.CatalogUnavailable(catalogError);
+                return;
+            }
+            bool retryPlacement = decision.State == NativeRunState.Queued;
             if (retryPlacement) queueReasons[id] = "WorkerCapacity";
-            try { lock(gate) { var current = Get(id); if (!terminalRecorded && current.State != "Cancelled") Save(current with {
-                State = unknown ? "RecoveryRequired" : Volatile.Read(ref cancelled)!=0 ? "Cancelled" : retryPlacement ? "Queued" : "Failed",
-                Result = unknown ? (int)StatusCode.CommitUnknown : retryPlacement ? 0 : failure.Result,Failure=retryPlacement ? null : failure,
+            try { lock(gate) { var current = Get(id); if (!terminalRecorded && current.State != "Cancelled") {
+                string nextState = RetryState(decision.State);
+                var nextFailure = decision.Result == StatusCode.Ok ? null :
+                    new RunFailure((int)decision.Result, failure.Phase, failure.ErrorType, failure.Detail);
+                Save(current with {
+                State = nextState, Result = (int)decision.Result, Failure=nextFailure,
                 Placement=retryPlacement && !current.Resume ? null : current.Placement,
-                NotBeforeMs=retryPlacement ? checked(Now+1000) : current.NotBeforeMs,
-                RecoverySafeAfterMs=unknown && placement.Remote
+                NotBeforeMs=retryPlacement ? decision.NotBeforeMilliseconds : current.NotBeforeMs,
+                RecoverySafeAfterMs=decision.State == NativeRunState.RecoveryRequired && placement.Remote
                     ? checked((long)leases.GetValueOrDefault(lease.Id,lease).UntilMilliseconds) : 0,
-                Revision = checked(current.Revision + 1),TimestampMs = Now }); } }
+                Revision = checked(current.Revision + 1),TimestampMs = Now }); } } }
             catch(UniversalDataException fenced) when(fenced.Code==StatusCode.Fenced) { /* New owner will reconcile unknown effects. */ }
         } finally {
             barrier?.Fail();

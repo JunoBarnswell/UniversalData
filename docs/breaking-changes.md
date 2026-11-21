@@ -1,3 +1,11 @@
+# SDK 10.0.0 / ABI 15
+
+业务入口是 `IDataClient` 和 `DataJob<TInput>`。将旧委托中的 SQL、HTTP、事务和流水线步骤改为作业声明。原有 `Map(Func<…>)` 改为返回强类型输出的 `Select` 表达式。实体字段仍可使用官方 `SugarColumn` 映射。使用 SDK 10 重新编译应用并部署 Worker 协议修订 9。
+
+切换前运行 `ud_cli audit-upgrade POLICY_FILE`，按报告中的 Package 修订和步骤迁移 `sdk.map`、托管业务方法和托管扩展。用原版本完成旧执行中待确认的外部写入，迁移后的作业使用 Native Journal 和 `DataClient.ResumeAsync`。Native ABI、Package 与检查点格式仍为 15。
+
+发布端用 `EtlManagementClient.PublishJobAsync` 提交预期修订、调度、可选首跑和请求号。C# 开发程序集用于在开发端导出定义。运行端安装对应平台的 Native 驱动并配置宿主凭据。详情见 [C# API](api.md)。
+
 # SDK 9.0.0 / ABI 15
 
 SDK 9 的普通、单库事务和跨库事务操作均由 Native 驱动执行，业务代码继续使用官方 `ISqlSugarClient`。直接访问物理连接、厂商命令对象及直接提交协调器分支返回 `Unsupported`。Worker 私有协议升至 8，应用与 Worker 必须使用相同主版本和私有协议。Native ABI 与 Package 版本维持 15。

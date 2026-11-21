@@ -1,7 +1,7 @@
 {
   "generatedFrom": "metadata/product.json",
   "version": 15,
-  "sdkVersion": "9.0.0",
+  "sdkVersion": "10.0.0",
   "abi": 15,
   "sourceFingerprint": null,
   "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",

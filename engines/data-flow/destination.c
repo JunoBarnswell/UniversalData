@@ -56,6 +56,7 @@ ud_status ud_builtin_sink_schema(builtin *b) {
             target[i] = actual->column[at].field;
             input[i] = b->fields[i];
             input[i].identity = target[i].identity;
+            input[i].physical_identity = target[i].physical_identity;
             input[i].lineage = NULL;
             input[i].lineage_count = 0;
             input[i].key_order = target[i].key_order;

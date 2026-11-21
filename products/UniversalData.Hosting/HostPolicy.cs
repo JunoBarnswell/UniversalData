@@ -126,18 +126,24 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     public bool RequiresIsolation(string packageJson)
     {
         using var package = new NativePackage(packageJson); using var document = JsonDocument.Parse(package.ToJson());
-        return document.RootElement.TryGetProperty("extensions",out var extensions) && extensions.EnumerateArray().Any(entry =>
-            !(TrustedAssemblyHashes ?? []).Contains(entry.GetProperty("sha256").GetString(),StringComparer.Ordinal));
+        return RequiresIsolation(document.RootElement);
     }
+
+    private bool RequiresIsolation(JsonElement definition) =>
+        definition.TryGetProperty("extensions", out var extensions) && extensions.EnumerateArray().Any(entry =>
+            !(TrustedAssemblyHashes ?? []).Contains(entry.GetProperty("sha256").GetString(), StringComparer.Ordinal));
     internal Execution CreateExecution(string packageJson, string parametersJson = "{}", string executionId = "",
         string? stateDirectory = null, bool resume = false, Registry? registry = null, Action<ExecutionEvent>? observe = null,
         ulong eventSequenceStart = 0, WorkerShard? shard = null, bool brokerRestore = false, KafkaAssignment? assignment = null,
-        SdkExecutionEnvironment? environment = null, ConnectionPool? connections = null)
+        SdkExecutionEnvironment? environment = null, ConnectionPool? connections = null, NativePackageDefinition? prepared = null)
     {
         if ((Registry.Features & RegistryFeatures.ScopedJournal) == 0)
             throw new UniversalDataException((int)StatusCode.Incompatible,"Native runtime does not distinguish internal recovery storage");
-        if (!Isolated && RequiresIsolation(packageJson)) throw new UniversalDataException((int)StatusCode.Auth, "Untrusted module requires an isolated Worker");
-        using var package = new NativePackage(packageJson, MemoryLimit);
+        var package = prepared ?? NativePackageDefinition.Read(packageJson, MemoryLimit);
+        if (!Isolated && RequiresIsolation(package.Document))
+            throw new UniversalDataException((int)StatusCode.Auth, "Untrusted module requires an isolated Worker");
+        var limits = ResolveExecutionLimits(package.Document,
+            enforceConcurrency: executionId.Length != 0 && shard is null);
         bool requiresJournal = package.RequiresJournal;
         if (resume && !requiresJournal)
             throw new ArgumentException("This stream execution has no Native Journal and cannot be resumed", nameof(resume));
@@ -161,11 +167,131 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
                 resolver = (tenant, resource, reference) => tenant == Tenant ? resolve(resource, reference) :
                     throw new UniversalDataException((int)StatusCode.Auth, "SDK credential is outside the Worker tenant");
         }
-        return new(package.ToJson(), Tenant, authorizer, parametersJson, executionId, resolver, stateDirectory: journalDirectory,
-            resume: resume, maxConcurrency: MaxConcurrency, memoryLimit: MemoryLimit, registry: registry, observe: observe,
-            timeoutMilliseconds: checked(ExecutionTimeoutSeconds * 1000UL), eventSequenceStart: eventSequenceStart,
-            workerMember: shard?.Member ?? 0, workerMembers: shard?.Members ?? 0,
-            consumerLanes: shard?.Lanes ?? 0, brokerRestore: brokerRestore, workerRunId: shard?.RunId,
-            assignment: assignment, pool: environment?.Pool ?? connections);
+        Execution created = new(package.Json, Tenant, authorizer, parametersJson, executionId, resolver,
+            edgeCapacity: limits.EdgeCapacity, maxBatchRows: limits.BatchRows, memoryLimit: limits.MemoryBytes,
+            timeoutMilliseconds: limits.TimeoutMilliseconds, stateDirectory: journalDirectory, resume: resume,
+            maxConcurrency: limits.MaxConcurrency, registry: registry, observe: observe,
+            eventSequenceStart: eventSequenceStart, workerMember: shard?.Member ?? 0,
+            workerMembers: shard?.Members ?? 0, consumerLanes: shard?.Lanes ?? 0,
+            brokerRestore: brokerRestore, workerRunId: shard?.RunId, assignment: assignment,
+            pool: environment?.Pool ?? connections);
+        try
+        {
+            created.LimitConnectionsPerSource(MaxConnectionsPerSource, environment?.ConnectionWaitMilliseconds ?? 0);
+            BindNativeConnectors(created, package.Document);
+            return created;
+        }
+        catch
+        {
+            created.Dispose();
+            throw;
+        }
     }
+
+    private NativeExecutionLimits ResolveExecutionLimits(JsonElement package, bool enforceConcurrency)
+    {
+        uint batchRows = 4096;
+        uint edgeCapacity = 2;
+        ulong memoryBytes = MemoryLimit;
+        ulong timeoutMilliseconds = checked(ExecutionTimeoutSeconds * 1000UL);
+        uint maxConcurrency = MaxConcurrency;
+        if (package.TryGetProperty("policy", out var policy) &&
+            policy.ValueKind == JsonValueKind.Object)
+        {
+            if (policy.TryGetProperty("maxConcurrency", out var requestedConcurrency))
+            {
+                uint requested = PositiveUInt32(requestedConcurrency, "policy.maxConcurrency");
+                if (enforceConcurrency && requested > MaxConcurrency)
+                    throw new UniversalDataException((int)StatusCode.Resource,
+                        $"policy.maxConcurrency ({requested}) exceeds the host MaxConcurrency ({MaxConcurrency})");
+                maxConcurrency = Math.Min(maxConcurrency, requested);
+            }
+            if (policy.TryGetProperty("execution", out var execution))
+            {
+                if (execution.ValueKind != JsonValueKind.Object)
+                    throw new UniversalDataException((int)StatusCode.Schema,
+                        "Native package policy.execution must be an object");
+                if (execution.TryGetProperty("batchRows", out var requestedBatchRows))
+                    batchRows = PositiveUInt32(requestedBatchRows, "policy.execution.batchRows");
+                if (execution.TryGetProperty("edgeCapacity", out var requestedEdgeCapacity))
+                    edgeCapacity = PositiveUInt32(requestedEdgeCapacity, "policy.execution.edgeCapacity");
+                if (execution.TryGetProperty("memoryBytes", out var requestedMemory))
+                {
+                    ulong requested = PositiveUInt64(requestedMemory, "policy.execution.memoryBytes");
+                    if (requested > MemoryLimit)
+                        throw new UniversalDataException((int)StatusCode.Resource,
+                            $"policy.execution.memoryBytes ({requested}) exceeds the host MemoryLimit ({MemoryLimit})");
+                    memoryBytes = requested;
+                }
+                if (execution.TryGetProperty("timeoutMilliseconds", out var requestedTimeout))
+                {
+                    ulong requested = PositiveUInt64(requestedTimeout, "policy.execution.timeoutMilliseconds");
+                    ulong hostTimeout = checked(ExecutionTimeoutSeconds * 1000UL);
+                    if (requested > hostTimeout)
+                        throw new UniversalDataException((int)StatusCode.Resource,
+                            $"policy.execution.timeoutMilliseconds ({requested}) exceeds the host limit ({hostTimeout})");
+                    timeoutMilliseconds = requested;
+                }
+                if (execution.TryGetProperty("maxConnectionsPerSource", out var requestedConnections))
+                {
+                    uint requested = PositiveUInt32(requestedConnections,
+                        "policy.execution.maxConnectionsPerSource");
+                    if (requested > MaxConnectionsPerSource)
+                        throw new UniversalDataException((int)StatusCode.Resource,
+                            $"policy.execution.maxConnectionsPerSource ({requested}) exceeds the host MaxConnectionsPerSource ({MaxConnectionsPerSource})");
+                }
+            }
+        }
+        return new(batchRows, edgeCapacity, memoryBytes, timeoutMilliseconds, maxConcurrency);
+    }
+
+    private void BindNativeConnectors(Execution execution, JsonElement package)
+    {
+        foreach (var connection in PackageConnections(package))
+        {
+            if (!connection.TryGetProperty("driver", out var driverValue) ||
+                driverValue.ValueKind != JsonValueKind.String)
+                continue;
+            string driver = driverValue.GetString()!;
+            if (!driver.StartsWith("ud:", StringComparison.Ordinal))
+                continue;
+            var kind = SdkNativeSources.LogicalDriver(driver);
+            if (kind is null)
+                throw new UniversalDataException((int)StatusCode.DriverUnavailable,
+                    $"Native connector '{driver}' is not installed");
+            string? path = SdkNativeSources.FindPluginPath(kind.Value);
+            if (path is null)
+                throw new UniversalDataException((int)StatusCode.DriverUnavailable,
+                    $"Native {kind.Value} connector is not installed");
+            if (!Authorize(Tenant, path, ConnectionAccess.Open))
+                throw new UniversalDataException((int)StatusCode.Auth,
+                    $"Native connector '{driver}' is outside the host plugin policy");
+            execution.BindConnector(driver, path);
+        }
+    }
+
+    private static IEnumerable<JsonElement> PackageConnections(JsonElement root)
+    {
+        if (root.TryGetProperty("connections", out var connections) &&
+            connections.ValueKind == JsonValueKind.Array)
+            foreach (var connection in connections.EnumerateArray())
+                yield return connection;
+        if (root.TryGetProperty("project", out var project) &&
+            project.ValueKind == JsonValueKind.Object &&
+            project.TryGetProperty("connections", out var projectConnections) &&
+            projectConnections.ValueKind == JsonValueKind.Array)
+            foreach (var connection in projectConnections.EnumerateArray())
+                yield return connection;
+    }
+
+    private static uint PositiveUInt32(JsonElement value, string option) =>
+        value.ValueKind == JsonValueKind.Number && value.TryGetUInt32(out var parsed) && parsed != 0
+            ? parsed : throw new UniversalDataException((int)StatusCode.Schema, $"{option} must be a positive integer");
+
+    private static ulong PositiveUInt64(JsonElement value, string option) =>
+        value.ValueKind == JsonValueKind.Number && value.TryGetUInt64(out var parsed) && parsed != 0
+            ? parsed : throw new UniversalDataException((int)StatusCode.Schema, $"{option} must be a positive integer");
+
+    private sealed record NativeExecutionLimits(uint BatchRows, uint EdgeCapacity, ulong MemoryBytes,
+        ulong TimeoutMilliseconds, uint MaxConcurrency);
 }

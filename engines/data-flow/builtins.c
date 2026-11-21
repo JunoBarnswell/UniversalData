@@ -2,6 +2,7 @@
 #include "ud/http.h"
 ud_status ud_mq_source_register(ud_registry *);
 ud_status ud_mq_destination_register(ud_registry *);
+ud_status ud_results_register(ud_registry *);
 #ifdef UD_WITH_ICEBERG
 ud_status ud_iceberg_register(ud_registry *);
 #endif
@@ -398,8 +399,8 @@ static const char *configuration_schema(int kind) {
                "\"type\":\"object\",\"properties\":{\"connection\":{\"type\":\"string\"},"
                "\"schema\":{\"type\":\"object\"},\"table\":{\"type\":\"string\"},\"batchSize\":{"
                "\"type\":\"integer\",\"minimum\":1,\"maximum\":65536},\"caConnection\":{\"type\":"
-               "\"string\"},\"url\":{\"type\":\"string\"},\"rowsField\":{\"type\":\"string\","
-               "\"default\":\"rows\"},\"cursorField\":{\"type\":\"string\",\"default\":"
+               "\"string\"},\"url\":{\"type\":\"string\"},\"rowsField\":{\"type\":\"string\"},"
+               "\"cursorField\":{\"type\":\"string\",\"default\":"
                "\"nextCursor\"},\"cursorParameter\":{\"type\":\"string\",\"default\":\"cursor\"},"
                "\"maxPages\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":1000000,\"default\":"
                "10000},\"timeoutMs\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":86400000},"
@@ -529,6 +530,7 @@ static const char *configuration_schema(int kind) {
                "\"type\":\"boolean\"}},\"required\":[\"schema\"],\"additionalProperties\":false}";
     case DERIVE:
         return "{\"type\":\"object\",\"properties\":{\"columns\":{\"type\":\"array\"},"
+               "\"project\":{\"type\":\"boolean\"},\"schema\":{\"type\":\"object\"},"
                "\"errorPolicy\":{\"type\":\"string\"},\"includeInput\":{\"type\":\"boolean\"}},"
                "\"required\":[\"columns\"],\"additionalProperties\":false}";
     case SPLIT:
@@ -584,6 +586,7 @@ ud_status ud_builtin_register(ud_registry *registry) {
     UD_TRY(ud_cdc_register(registry));
     UD_TRY(ud_mq_source_register(registry));
     UD_TRY(ud_mq_destination_register(registry));
+    UD_TRY(ud_results_register(registry));
 #ifdef UD_WITH_ICEBERG
     UD_TRY(ud_iceberg_register(registry));
 #endif

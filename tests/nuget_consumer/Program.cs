@@ -9,166 +9,247 @@ string root = Directory.CreateTempSubdirectory("ud-nuget-").FullName;
 try
 {
     string resources = Directory.CreateDirectory(Path.Combine(root, "resources")).FullName;
-    string source = Path.Combine(resources, "source.db"), target = Path.Combine(resources, "target.db");
+    string target = Path.Combine(resources, "finance.db");
     using var listener = new TcpListener(IPAddress.Loopback, 0);
     listener.Start();
-    using var httpDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-    var request = Serve(listener, httpDeadline.Token);
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(100));
+    var token = deadline.Token;
     var origin = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
     var rid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
     var runtime = Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "worker");
-    var plugin = Plugin("sqlite");
-    var credentials = new Dictionary<string, string> { ["source"] = Path.Combine(root, "source.conf"), ["target"] = Path.Combine(root, "target.conf") };
-    var probes = args is ["--complete"] ? new Dictionary<string, string>
-    {
-        ["postgresql"] = "SELECT CAST(1 AS BIGINT) AS fixture_value",
-        ["mysql"] = "SELECT CAST(1 AS SIGNED) AS fixture_value",
-        ["mariadb"] = "SELECT CAST(1 AS SIGNED) AS fixture_value",
-        ["odbc"] = "SELECT CAST(1 AS BIGINT) AS fixture_value",
-        ["oracle_oci"] = "SELECT CAST(1 AS NUMBER(18)) AS \"fixture_value\" FROM dual"
-    } : [];
+    var plugins = Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native");
+    var credentials = new Dictionary<string, string> { ["finance"] = Path.Combine(root, "finance.conf") };
     var grants = new Dictionary<string, string[]>();
-    foreach (var driver in probes.Keys)
+    var endpoints = new HashSet<string>(StringComparer.Ordinal) { origin };
+    var sqlProbes = new Dictionary<string, string>();
+    var brokers = new Dictionary<string, string>();
+    var brokerTargets = new Dictionary<string, string>();
+    var brokerGroups = new Dictionary<string, string>();
+    var brokerKinds = new Dictionary<string, DataSourceKind>(StringComparer.Ordinal)
     {
-        var environmentKey = $"UD_TEST_{driver.ToUpperInvariant()}_CONFIG";
-        var fixture = Environment.GetEnvironmentVariable(environmentKey)
-            ?? throw new InvalidOperationException($"The isolated {driver} fixture is unavailable");
-        credentials[driver] = Path.Combine(root, driver + ".conf");
-        await File.WriteAllTextAsync(credentials[driver], (await File.ReadAllTextAsync(fixture)).Trim());
-        grants[driver] = ["Open", "Read", "Discover"];
-    }
-    await File.WriteAllTextAsync(credentials["source"], source);
-    await File.WriteAllTextAsync(credentials["target"], target);
+        ["kafka"] = DataSourceKind.Kafka,
+        ["rabbitmq"] = DataSourceKind.RabbitMq,
+        ["rocketmq"] = DataSourceKind.RocketMq,
+        ["activemq-classic"] = DataSourceKind.ActiveMq,
+        ["activemq-artemis"] = DataSourceKind.ActiveMq
+    };
+    await File.WriteAllTextAsync(credentials["finance"], target, token);
+    if (args is ["--complete"])
+        await LoadCompleteFixtures(sqlProbes, brokers, brokerTargets, brokerGroups, credentials,
+            grants, endpoints, root, token);
+    var activeBrokerKinds = brokerKinds
+        .Where(pair => brokers.ContainsKey(pair.Key))
+        .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
     var policy = Path.Combine(root, "policy.json");
     await File.WriteAllTextAsync(policy, JsonSerializer.Serialize(new
     {
         dataDirectory = Path.Combine(root, "state"), fileRoots = new[] { resources },
-        networkOrigins = new[] { origin }, pluginRoots = new[] { runtime, AppContext.BaseDirectory }, credentialFiles = credentials,
-        resources = grants
-    }));
+        networkOrigins = endpoints, pluginRoots = new[] { runtime, plugins, AppContext.BaseDirectory },
+        credentialFiles = credentials, resources = grants
+    }), token);
     if (typeof(ISqlSugarClient).Assembly.GetName().Name != "SqlSugar")
         throw new InvalidOperationException("NuGet must restore the official SqlSugar assembly");
-    await using var data = DataClient.CreateBuilder(policy, "local")
-        .AddSqlite("source", "Data Source=" + source)
-        .AddSqlite("target", "Data Source=" + target)
-        .AddModule(typeof(InstalledFixture).Assembly)
-        .Build();
-    await data.RunAsync(InstalledFixture.Prepare, httpDeadline.Token);
-    string Plugin(string name) => Path.Combine(runtime,
-        "ud_connector_" + name + (OperatingSystem.IsWindows() ? ".dll" : ".so"));
-    var schema = JsonSerializer.SerializeToElement(new
+
+    var server = Serve(listener, token);
+    var builder = DataClient.CreateBuilder(policy, "local")
+        .AddHttp("sales", new Uri(origin))
+        .AddSqlite("finance", "Data Source=" + target);
+    foreach (var broker in activeBrokerKinds.Keys.Order(StringComparer.Ordinal))
     {
-        version = ProductInfo.Protocol,
-        fields = new[] { new { name = "id", type = "int64", nullable = false }, new { name = "label", type = "utf8", nullable = false } }
-    });
-    var package = Require(new EtlPackageBuilder("installed-sdk")
-        .Connection("web", "http", origin + "/acceptance")
-        .Connection("source", plugin, source, "source")
-        .Connection("target", plugin, target, "target")
-        .HttpTask("http", new("web", ExpectedStatus: 200))
-        .SqlSource("read", "source", "SELECT id,label FROM fixture ORDER BY id", schema, stream: true, batchSize: 4)
-        .SqlDestination("write", "target", "fixture")
-        .Connect("read", "write").DataFlow().Before("http", "run").Build());
-    var client = new EtlClient(data);
-    await using (var run = await client.StartAsync(package))
-    {
-        if (run.WorkerProcessId == Environment.ProcessId)
-            throw new InvalidOperationException("The SDK execution did not start a separate process");
-        if ((await run.WaitAsync(httpDeadline.Token)).CommittedRows != 35)
-            throw new InvalidOperationException("The installed ETL did not commit all 35 rows");
+        var definition = new DataSourceDefinition(broker, activeBrokerKinds[broker], "",
+            resource: "mq-fixture-resource", credentialReference: broker);
+        builder.AddSource(definition);
     }
-    await request;
-    await data.RunAsync(InstalledFixture.Verify, httpDeadline.Token);
-    var verified = new List<string> { "sqlite" };
-    var probeSchema = JsonSerializer.SerializeToElement(new
+    await using var data = builder.Build();
+
+    await data.RunAsync(DataJob.Define("create-finance").ExecuteSql("finance",
+        "CREATE TABLE paid_orders (id INTEGER NOT NULL PRIMARY KEY, label TEXT, amount TEXT NOT NULL)"), token);
+    await data.RunAsync(DataJob.Define("create-mq-outbox").ExecuteSql("finance",
+        "CREATE TABLE nuget_mq_outbox (id INTEGER NOT NULL PRIMARY KEY, label TEXT)"), token);
+    await data.RunAsync(DataJob.Define("seed-mq-outbox").ExecuteSql("finance",
+        "INSERT INTO nuget_mq_outbox (id, label) VALUES (1, 'broker-record'), (2, NULL)"), token);
+    await data.RunAsync(DataJob.Define("create-mq-inbox").ExecuteSql("finance",
+        "CREATE TABLE nuget_mq_inbox (id INTEGER NOT NULL PRIMARY KEY, label TEXT)"), token);
+
+    try
     {
-        version = ProductInfo.Protocol,
-        fields = new[] { new { name = "fixture_value", type = "int64", nullable = false } }
-    });
-    foreach (var (driver, sql) in probes)
-    {
-        var probe = Require(new EtlPackageBuilder("installed-" + driver)
-            .Connection("probe", Plugin(driver), driver, driver)
-            .Connection("target", plugin, target, "target")
-            .SqlSource("read", "probe", sql, probeSchema, stream: true)
-            .SqlDestination("write", "target", "fixture_probe")
-            .Connect("read", "write").DataFlow().Build());
-        await using (var run = await client.StartAsync(probe))
+        _ = DataJob.Define("invalid-rule").FromHttp<Order>("sales", "/orders")
+            .Where(row => string.Equals(row.Label, "blocked", StringComparison.OrdinalIgnoreCase));
+        throw new InvalidOperationException("The authored CLR method was accepted");
+    }
+    catch (ArgumentException error) when (error.Message.Contains("invalid-rule", StringComparison.Ordinal) &&
+                                         error.Message.Contains("System.String.Equals", StringComparison.Ordinal)) { }
+
+    var sync = DataJob.Define<SyncOrders>("orders.sync")
+        .WithOptions(new(BatchRows: 4, EdgeCapacity: 2))
+        .FromHttp<Order>("sales", "/orders")
+        .Where((row, input) => row.IsPaid && row.Id >= input.FromId)
+        .Select(row => new StoredPaidOrder
         {
-            if ((await run.WaitAsync()).CommittedRows != 1)
-                throw new InvalidOperationException($"The installed {driver} connector did not return a row");
-        }
-        if (await data.RunAsync(InstalledFixture.TakeProbe) != 1L)
-            throw new InvalidOperationException($"Unexpected scalar from the installed {driver} driver");
-        verified.Add(driver);
+            Id = row.Id, Label = row.Label,
+            Amount = row.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        })
+        .ToTable("finance", "paid_orders")
+        .UpsertBy(row => row.Id);
+    string exported = data.Compile(sync).ToJson();
+    if (exported.Contains(typeof(Order).Assembly.Location, StringComparison.Ordinal) ||
+        exported.Contains("managedAssembly", StringComparison.Ordinal))
+        throw new InvalidOperationException("The exported Native rules depend on the authoring DLL");
+    var result = await data.RunAsync(sync, new SyncOrders(1), token);
+    await server;
+    if (result.CommittedRows != 35 || result.RejectedRows != 0 || result.Metrics.Batches < 2)
+        throw new InvalidOperationException("The installed Worker did not commit the filtered HTTP rows in batches");
+
+    var read = DataJob.Define("read-paid-orders")
+        .FromSql<PaidOrder>("finance", "SELECT id,label,amount FROM paid_orders ORDER BY id", stream: true)
+        .Return();
+    int verifiedRows = 0;
+    await foreach (var row in data.RunAsync(read, token))
+    {
+        int id = ++verifiedRows;
+        if (row.Id != id || row.Label != (id == 2 ? null : $"order-{id}") || row.Amount != id * 1.125m)
+            throw new InvalidOperationException($"The typed Native output differs at row {id}");
     }
+    using (var verifier = new SqlSugarClient(new ConnectionConfig { DbType = SqlSugar.DbType.Sqlite,
+        ConnectionString = "Data Source=" + target, IsAutoCloseConnection = true }))
+    {
+        var count = Convert.ToInt64(await verifier.Ado.GetScalarAsync("SELECT COUNT(*) FROM paid_orders"));
+        if (count != 35 || verifiedRows != count)
+            throw new InvalidOperationException("An independent database connection observed a different result");
+    }
+
+    var verified = new HashSet<string>(StringComparer.Ordinal) { "sqlite" };
+    if (sqlProbes.Count != 0)
+    {
+        await data.RunAsync(DataJob.Define("create-probe").ExecuteSql("finance",
+            "CREATE TABLE fixture_probe (fixture_value INTEGER NOT NULL)"), token);
+        await VerifySql(data, sqlProbes, target, verified, token);
+    }
+    var mq = await MessageBrokerAcceptance.RunAsync(data, activeBrokerKinds, brokerTargets, brokerGroups,
+        target, token);
+    foreach (var broker in brokers.Keys)
+        verified.Add(activeBrokerKinds[broker] == DataSourceKind.ActiveMq ? "activemq" :
+            activeBrokerKinds[broker] switch
+            {
+                DataSourceKind.Kafka => "kafka",
+                DataSourceKind.RabbitMq => "rabbitmq",
+                DataSourceKind.RocketMq => "rocketmq",
+                _ => throw new InvalidOperationException($"Unsupported MQ source {broker}")
+            });
+    var brokerFacts = mq.ToDictionary(pair => pair.Key, pair => new
+    {
+        publishedCommitted = pair.Value.PublishedCommitted,
+        consumedCommitted = pair.Value.ConsumedCommitted,
+        consumedAcknowledged = pair.Value.ConsumedAcknowledged
+    }, StringComparer.Ordinal);
     Console.WriteLine(JsonSerializer.Serialize(new { version = ProductInfo.Sdk, framework = Environment.Version.ToString(),
-        rid, http = 200, sqliteRows = 35, drivers = verified }));
+        rid, http = 200, sqliteRows = verifiedRows, drivers = verified.Order().ToArray(),
+        brokers = brokers.Keys.Order().ToArray(), mq = brokerFacts }));
 }
 finally { Directory.Delete(root, true); }
 
 static T Require<T>(Result<T> result) => result.IsSuccess ? result.Value! :
     throw new InvalidOperationException($"{result.Code} ({result.Error?.Cause})");
 
+static async Task VerifySql(DataClient data, Dictionary<string, string> probes, string target,
+    HashSet<string> verified, CancellationToken token)
+{
+    var schema = JsonSerializer.SerializeToElement(new
+    {
+        version = ProductInfo.Protocol,
+        fields = new[] { new { name = "fixture_value", type = "int64", nullable = false } }
+    });
+    var read = DataJob.Define("probe-result")
+        .FromSql<ProbeRow>("finance", "SELECT fixture_value FROM fixture_probe", stream: true).Return();
+    foreach (var (driver, sql) in probes)
+    {
+        var probe = Require(new EtlPackageBuilder("probe-" + driver)
+            .Connection("source", "ud:" + driver, driver, driver)
+            .Connection("finance", "ud:sqlite", target, "finance")
+            .SqlSource("read", "source", sql, schema, stream: true)
+            .SqlDestination("write", "finance", "fixture_probe")
+            .Connect("read", "write").DataFlow().Build());
+        if ((await data.RunAsync(probe, cancellationToken: token)).CommittedRows != 1)
+            throw new InvalidOperationException($"The installed {driver} connector returned no row");
+        int rows = 0;
+        await foreach (var row in data.RunAsync(read, token))
+        {
+            if (++rows > 1 || row.Value != 1)
+                throw new InvalidOperationException($"Unexpected scalar from the installed {driver} connector");
+        }
+        if (rows != 1)
+            throw new InvalidOperationException($"No scalar from the installed {driver} connector");
+        await data.RunAsync(DataJob.Define("clear-probe").ExecuteSql("finance", "DELETE FROM fixture_probe"), token);
+        verified.Add(driver);
+    }
+}
+
+static async Task LoadCompleteFixtures(Dictionary<string, string> probes, Dictionary<string, string> brokers,
+    Dictionary<string, string> targets, Dictionary<string, string> groups,
+    Dictionary<string, string> credentials, Dictionary<string, string[]> grants, HashSet<string> endpoints,
+    string root, CancellationToken token)
+{
+    probes.Add("postgresql", "SELECT CAST(1 AS BIGINT) AS fixture_value");
+    probes.Add("mysql", "SELECT CAST(1 AS SIGNED) AS fixture_value");
+    probes.Add("mariadb", "SELECT CAST(1 AS SIGNED) AS fixture_value");
+    probes.Add("odbc", "SELECT CAST(1 AS BIGINT) AS fixture_value");
+    probes.Add("oracle_oci", "SELECT CAST(1 AS NUMBER(18)) AS \"fixture_value\" FROM dual");
+    brokers.Add("kafka", "kafka");
+    brokers.Add("rabbitmq", "rabbitmq");
+    brokers.Add("rocketmq", "rocketmq");
+    brokers.Add("activemq-classic", "activemq");
+    brokers.Add("activemq-artemis", "activemq");
+    grants["mq-fixture-resource"] = ["Open", "Read", "Discover", "Write", "Network"];
+    foreach (var driver in probes.Keys.Concat(brokers.Keys))
+    {
+        string variable = $"UD_TEST_{driver.ToUpperInvariant().Replace('-', '_')}_CONFIG";
+        string file = Environment.GetEnvironmentVariable(variable)
+            ?? throw new InvalidOperationException($"The isolated {driver} fixture is unavailable");
+        string value = (await File.ReadAllTextAsync(file, token)).Trim();
+        if (brokers.ContainsKey(driver))
+        {
+            using var document = JsonDocument.Parse(value);
+            string configuredBroker = document.RootElement.GetProperty("broker").GetString()!;
+            if (!string.Equals(configuredBroker, driver, StringComparison.Ordinal))
+                throw new InvalidOperationException($"The {driver} fixture identifies itself as {configuredBroker}");
+            foreach (var endpoint in document.RootElement.GetProperty("endpoints").EnumerateArray())
+            {
+                string address = endpoint.GetString()!;
+                endpoints.Add(address);
+                grants[address] = ["Network"];
+            }
+            targets[driver] = document.RootElement.GetProperty("jsonTarget").GetString()!;
+            if (document.RootElement.TryGetProperty("group", out var group))
+            {
+                if (driver is "rabbitmq" or "activemq-classic" or "activemq-artemis")
+                    throw new InvalidOperationException($"The queue fixture {driver} must omit group");
+                groups[driver] = group.GetString()!;
+            }
+            else if (driver is "kafka" or "rocketmq")
+                throw new InvalidOperationException($"The {driver} fixture did not provide a consumer group");
+            value = document.RootElement.GetProperty("credentials").GetRawText();
+        }
+        credentials[driver] = Path.Combine(root, driver + ".conf");
+        await File.WriteAllTextAsync(credentials[driver], value, token);
+        grants[driver] = ["Open", "Read", "Discover", "Network"];
+    }
+}
+
 static async Task Serve(TcpListener listener, CancellationToken cancellation)
 {
     using var client = await listener.AcceptTcpClientAsync(cancellation);
     using var stream = client.GetStream();
     using var reader = new StreamReader(stream, leaveOpen: true);
-    if (await reader.ReadLineAsync(cancellation) != "GET /acceptance HTTP/1.1")
-        throw new InvalidOperationException("Unexpected request from the installed Worker");
+    if (await reader.ReadLineAsync(cancellation) != "GET /orders HTTP/1.1")
+        throw new InvalidOperationException("Unexpected request from the installed Native Worker");
     while (await reader.ReadLineAsync(cancellation) is { Length: > 0 }) { }
-    await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), cancellation);
-}
-
-[SugarTable("fixture")]
-public sealed class FixtureRow
-{
-    [SugarColumn(ColumnName = "id", IsPrimaryKey = true)]
-    public int Id { get; set; }
-    [SugarColumn(ColumnName = "label")]
-    public string Label { get; set; } = "";
-}
-
-
-public static class InstalledFixture
-{
-    public static async Task Prepare(DataContext context, CancellationToken cancellation)
+    var body = JsonSerializer.SerializeToUtf8Bytes(Enumerable.Range(1, 36).Select(id => new
     {
-        const string table = "CREATE TABLE fixture (id INTEGER NOT NULL PRIMARY KEY, label TEXT NOT NULL)";
-        await context.Database("source").UseAsync(async (db, token) =>
-        {
-            token.ThrowIfCancellationRequested();
-            await db.Ado.ExecuteCommandAsync(table);
-            var rows = Enumerable.Range(1, 35).Select(id => new FixtureRow { Id = id, Label = $"row-{id}" }).ToArray();
-            if (await db.Insertable(rows).ExecuteCommandAsync() != rows.Length)
-                throw new InvalidOperationException("The installed SqlSugar provider did not consume the entire input");
-            return true;
-        }, cancellation);
-        await context.Database("target").UseAsync(async (db, token) =>
-        {
-            token.ThrowIfCancellationRequested();
-            await db.Ado.ExecuteCommandAsync(table);
-            return await db.Ado.ExecuteCommandAsync("CREATE TABLE fixture_probe (fixture_value INTEGER NOT NULL)");
-        }, cancellation);
-    }
-
-    public static Task Verify(DataContext context, CancellationToken cancellation) =>
-        context.Database("target").UseAsync(async (db, token) =>
-        {
-            token.ThrowIfCancellationRequested();
-            var rows = await db.Queryable<FixtureRow>().OrderBy(row => row.Id).ToListAsync();
-            if (rows.Count != 35 || rows.Where((row, i) => row.Id != i + 1 || row.Label != $"row-{i + 1}").Any())
-                throw new InvalidOperationException("Installed ETL output differs from the source");
-            return true;
-        }, cancellation);
-
-    public static Task<long> TakeProbe(DataContext context, CancellationToken cancellation) =>
-        context.Database("target").UseAsync(async (db, token) =>
-        {
-            token.ThrowIfCancellationRequested();
-            var value = Convert.ToInt64(await db.Ado.GetScalarAsync("SELECT fixture_value FROM fixture_probe"));
-            await db.Ado.ExecuteCommandAsync("DELETE FROM fixture_probe");
-            return value;
-        }, cancellation);
+        id, label = id == 2 ? null : $"order-{id}", amount = (id * 1.125m).ToString(System.Globalization.CultureInfo.InvariantCulture),
+        is_paid = id < 36
+    }));
+    await stream.WriteAsync(Encoding.ASCII.GetBytes(
+        $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"), cancellation);
+    await stream.WriteAsync(body, cancellation);
 }

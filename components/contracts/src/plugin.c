@@ -470,6 +470,11 @@ static ud_status validate_driver(ud_plugin *p) {
         (!(api->capabilities & UD_CONNECT_TRANSACTION) || !api->transaction_begin ||
          !api->transaction_prepare || !api->transaction_resolve || !api->transaction_recover))
         return UD_INCOMPATIBLE;
+    if ((api->capabilities & UD_CONNECT_TRANSACTION_LOCAL) &&
+        ((api->capabilities & UD_CONNECT_TRANSACTION_PARTICIPANT) ||
+         !(api->capabilities & UD_CONNECT_TRANSACTION) || !api->transaction_begin ||
+         !api->transaction_prepare || !api->transaction_resolve || !api->transaction_recover))
+        return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_METADATA) && !api->metadata)
         return UD_INCOMPATIBLE;
     if ((api->capabilities & UD_CONNECT_CDC) &&
@@ -660,7 +665,9 @@ static ud_status transaction_branch_check(const ud_transaction_branch *branch) {
 static ud_status transaction_binding_check(ud_connection *connection,
                                            const ud_transaction_branch *branch) {
     UD_TRY(transaction_branch_check(branch));
-    if (!connection || !(connection->capabilities & UD_CONNECT_TRANSACTION_PARTICIPANT))
+    if (!connection ||
+        !(connection->capabilities & (UD_CONNECT_TRANSACTION_PARTICIPANT |
+                                      UD_CONNECT_TRANSACTION_LOCAL)))
         return UD_UNSUPPORTED;
     if (connection->transaction_branch[0] &&
         (memcmp(connection->transaction_branch, branch->id.data, 64) ||
@@ -692,8 +699,8 @@ ud_status ud_connection_transaction_prepare(ud_connection *connection,
         return UD_INVALID;
     UD_TRY(connection_enter(connection, UD_ACCESS_WRITE));
     ud_status status = connection->api->transaction_prepare(connection->instance->state, branch);
-    if (!status)
-        connection->transaction = 0; /* Prepared effects survive transport destruction. */
+    if (!status && !(connection->capabilities & UD_CONNECT_TRANSACTION_LOCAL))
+        connection->transaction = 0; /* XA prepared effects survive transport destruction. */
     connection_leave(connection);
     return status;
 }
@@ -730,14 +737,23 @@ ud_status ud_connection_transaction_resolve(ud_connection *connection,
     if (!status &&
         (state == UD_TX_UNKNOWN || (decision == UD_TX_COMMIT && state == UD_TX_NOT_FOUND)))
         status = UD_COMMIT_UNKNOWN;
-    if (!status && decision == UD_TX_COMMIT && state == UD_TX_ACTIVE)
+    int local = (connection->capabilities & UD_CONNECT_TRANSACTION_LOCAL) != 0;
+    if (!status && decision == UD_TX_COMMIT && state == UD_TX_ACTIVE && !local)
         status = UD_FENCED;
     if (!status && ((decision == UD_TX_COMMIT && state == UD_TX_ROLLED_BACK) ||
                     (decision == UD_TX_ROLLBACK && state == UD_TX_COMMITTED)))
         status = UD_FENCED;
-    if (!status &&
-        ((decision == UD_TX_COMMIT && state != UD_TX_COMMITTED) ||
-         (decision == UD_TX_ROLLBACK && state != UD_TX_ROLLED_BACK && state != UD_TX_NOT_FOUND))) {
+    if (!status && decision == UD_TX_COMMIT && state == UD_TX_ACTIVE && local) {
+        /* A local participant has no durable prepared branch. Its provider
+         * commit is the authoritative business commit and must happen before
+         * the Native journal records the decision. */
+        status = connection->api->transaction_resolve(connection->instance->state, branch, decision);
+        if (!status)
+            status =
+                connection->api->transaction_recover(connection->instance->state, branch, &state);
+    } else if (!status &&
+               ((decision == UD_TX_COMMIT && state != UD_TX_COMMITTED) ||
+                (decision == UD_TX_ROLLBACK && state != UD_TX_ROLLED_BACK && state != UD_TX_NOT_FOUND))) {
         status =
             connection->api->transaction_resolve(connection->instance->state, branch, decision);
         if (!status)

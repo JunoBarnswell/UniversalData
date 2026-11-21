@@ -43,30 +43,6 @@ internal sealed class SdkModuleCatalog : IDisposable
         }
     }
 
-    internal MethodInfo Resolve(SdkMethod method)
-    {
-        var assembly = Load(method.ModuleSha256);
-        var type = assembly.GetType(method.DeclaringType, throwOnError: false, ignoreCase: false);
-        if (type is null || !type.IsVisible)
-            throw new ArgumentException("SDK entry type is not public");
-        var entry = type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
-            .SingleOrDefault(candidate => candidate.Name == method.Name && !candidate.ContainsGenericParameters &&
-                ParameterTypesMatch(candidate, method.ParameterTypes));
-        return entry ?? throw new ArgumentException("SDK entry is not a public static method with the registered signature");
-    }
-
-    private static bool ParameterTypesMatch(MethodInfo method, string[] identities)
-    {
-        var parameters = method.GetParameters();
-        if (parameters.Length != identities.Length) return false;
-        for (int index = 0; index < parameters.Length; index++)
-        {
-            var type = parameters[index].ParameterType;
-            if (type.FullName != identities[index] && type.AssemblyQualifiedName != identities[index]) return false;
-        }
-        return true;
-    }
-
     internal Assembly Load(string digest)
     {
         lock (loaded)

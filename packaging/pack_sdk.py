@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SDK = ROOT / "bindings/dotnet/UniversalData/UniversalData.csproj"
 WORKER = ROOT / "products/UniversalData.Worker/UniversalData.Worker.csproj"
 RIDS = ("win-x64", "linux-x64")
-DRIVERS = ("sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci")
+DRIVERS = ("sqlite", "postgresql", "mysql", "mariadb", "odbc", "oracle_oci",
+           "kafka", "rabbitmq", "rocketmq", "activemq")
 ICEBERG_RUNTIMES = {
     "linux-x64": {"libiceberg.so", "libiceberg_data.so", "libiceberg_bundle.so", "libiceberg_rest.so",
                   "libarrow.so.2500", "libparquet.so.2500"},
@@ -46,14 +47,23 @@ def pack(spec, output, base):
 
 
 def package_tree(source, root, target_root):
-    """Map each input file explicitly so NuGet keeps the intended relative path."""
+    """Map each input file to a unique target while preserving its relative path."""
     files = []
     for path in sorted(source.rglob("*")):
         if path.is_file():
-            folder = path.relative_to(source).parent
-            target = "/".join((target_root, *folder.parts))
+            relative = path.relative_to(source)
+            target = "/".join((target_root, *relative.parts))
             files.append((path.relative_to(root).as_posix(), target))
     return files
+
+
+def copy_asset(source, destination):
+    """Copy one supplied runtime asset, rejecting same-name replacements."""
+    if destination.exists():
+        if destination.read_bytes() != source.read_bytes():
+            raise ValueError(f"Conflicting runtime dependency {destination.name}")
+        return
+    shutil.copyfile(source, destination)
 
 
 def assemble(args):
@@ -73,6 +83,7 @@ def assemble(args):
         shutil.copyfile(args.native / library, native / library)
 
         enabled = []
+        plugin_names = set()
         for driver in DRIVERS:
             plugin = args.plugins / ("ud_connector_" + driver + extension)
             if not plugin.is_file():
@@ -80,22 +91,28 @@ def assemble(args):
                     raise FileNotFoundError(f"No packaged {driver} connector for {args.rid}")
                 continue
             enabled.append(driver)
-            shutil.copyfile(plugin, native / plugin.name)
+            plugin_names.add(plugin.name)
+            copy_asset(plugin, native / plugin.name)
+        # Windows CMake installs the DLLs discovered from the enabled plugin
+        # import tables beside the plugin. They are part of the real closure,
+        # so carry every platform binary supplied by that install tree.
+        for asset in sorted(args.plugins.iterdir()):
+            if (asset.is_file() and asset.name not in plugin_names
+                    and asset.suffix.lower() in {".dll", ".so", ".dylib"}):
+                copy_asset(asset, native / asset.name)
         if args.dependencies:
             for dependency in sorted(args.dependencies.iterdir()):
                 if not dependency.is_file():
                     continue
                 target = native / dependency.name
-                if target.exists() and target.read_bytes() != dependency.read_bytes():
-                    raise ValueError(f"Conflicting runtime dependency {dependency.name}")
-                shutil.copyfile(dependency, target)
+                copy_asset(dependency, target)
         if args.complete:
             available = {path.name.lower() for path in native.iterdir()}
             missing = ICEBERG_RUNTIMES[args.rid] - available
             if missing:
                 raise FileNotFoundError(f"Missing {args.rid} Iceberg runtime files: {', '.join(sorted(missing))}")
         for asset in native.iterdir():
-            shutil.copyfile(asset, worker / asset.name)
+            copy_asset(asset, worker / asset.name)
 
         targets = root / f"{identity}.targets"
         targets.write_text(f"""<Project>
@@ -121,7 +138,10 @@ def assemble(args):
         if args.licenses:
             licenses = root / "licenses"
             shutil.copytree(args.licenses, licenses)
-            files.extend(package_tree(licenses, root, "licenses"))
+            license_files = package_tree(licenses, root, "licenses")
+            if args.complete and not license_files:
+                raise ValueError("Complete runtime packages require non-empty native dependency notices")
+            files.extend(license_files)
         elif args.complete:
             raise ValueError("Complete runtime packages require native dependency notices")
         nuspec(spec, identity, version, "Self-contained UniversalData Worker and native runtime", files)
@@ -149,6 +169,7 @@ def assemble(args):
         else:
             subprocess.run(["dotnet", "pack", str(SDK), "-c", "Release", "--no-build", "--no-restore",
                             "-p:IncludeUniversalDataRuntimeDependencies=true", "-o", str(args.output)], cwd=ROOT, check=True)
+        native_assets = sorted(path.name for path in native.iterdir())
     archives = [args.output / f"{name}.{version}.nupkg" for name in ("UniversalData", identity)]
     worker_executable = "ud_worker.exe" if args.rid == "win-x64" else "ud_worker"
     required_entries = {f"{runtime_root}/worker/{worker_executable}", f"{runtime_root}/native/{library}"}
@@ -158,6 +179,7 @@ def assemble(args):
         if missing:
             raise RuntimeError(f"The {args.rid} runtime package is missing: {', '.join(sorted(missing))}")
     manifest = {"version": version, "rid": args.rid, "drivers": enabled,
+                "nativeAssets": native_assets,
                 "packages": [{"name": path.name, "bytes": path.stat().st_size,
                               "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in archives]}
     if any(item["bytes"] > 250_000_000 for item in manifest["packages"]):

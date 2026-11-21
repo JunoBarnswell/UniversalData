@@ -28,10 +28,12 @@ internal sealed class EntityMapping
     internal static EntityMapping For(Type type) => Cache.GetValue(type, static value => new EntityMapping(value));
     internal static EntityMapping For<T>() => For(typeof(T));
 
-    internal string SchemaJson(IEnumerable<EntityMember>? selected = null) => FormatSchema(selected ?? Members);
+    internal string SchemaJson(IEnumerable<EntityMember>? selected = null, bool includeKeys = false) =>
+        FormatSchema(selected ?? Members, includeKeys);
 
-    internal static string FormatSchema(IEnumerable<EntityMember> members)
+    internal static string FormatSchema(IEnumerable<EntityMember> members, bool includeKeys = false)
     {
+        int keyOrder = 0;
         var fields = members.Select(member =>
         {
             var field = new Dictionary<string, object?>
@@ -41,6 +43,7 @@ internal sealed class EntityMapping
                 ["nullable"] = member.Nullable
             };
             if (member.NativeType == DataType.Decimal128) { field["precision"] = member.Precision; field["scale"] = member.Scale; }
+            if (includeKeys && member.IsPrimaryKey) field["keyOrder"] = ++keyOrder;
             return field;
         }).ToArray();
         return JsonSerializer.Serialize(new Dictionary<string, object?> { ["version"] = ProductInfo.Protocol, ["fields"] = fields });

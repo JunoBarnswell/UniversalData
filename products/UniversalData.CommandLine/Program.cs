@@ -2,6 +2,12 @@ using System.Text.Json;
 using UniversalData;
 using UniversalData.Hosting;
 
+if (args is ["audit-upgrade", var auditPolicy, .. var auditTenant] && auditTenant.Length <= 1)
+    return UniversalData.CommandLine.JobUpgradeAudit.Run(auditPolicy, auditTenant.FirstOrDefault() ?? "local");
+
+if (args.Length >= 1 && args[0] is "run" or "publish" or "export")
+    return await UniversalData.CommandLine.JobCommand.RunAsync(args);
+
 if (args is ["catalog", "migrate", var mode, var source, var connection, var encryption])
 {
     try
@@ -74,7 +80,7 @@ if (args.Length is 2 or 3 && args[0] == "doctor")
 }
 if (args.Length < 3 || args[0] is not ("execute" or "inspect" or "catalog" or "discover" or "compile"))
 {
-    Console.Error.WriteLine("usage: ud_cli doctor POLICY_FILE [PACKAGE] or ud_cli execute|inspect|catalog|discover|compile POLICY_FILE INPUT_FILE [PARAMETERS_JSON] [EXECUTION_ID] [resume] [CONNECTION] [TABLE]");
+    Console.Error.WriteLine("usage: ud_cli run|publish|export JOB_ID [--config FILE] [--params-file FILE] [--set NAME=VALUE] or ud_cli doctor POLICY_FILE [PACKAGE] or ud_cli execute|inspect|catalog|discover|compile POLICY_FILE INPUT_FILE [PARAMETERS_JSON] [EXECUTION_ID] [resume] [CONNECTION] [TABLE]");
     return 2;
 }
 try

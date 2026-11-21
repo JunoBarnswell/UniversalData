@@ -673,6 +673,42 @@ void ud_http_response_clear(ud_http_response *response) {
     ud_free((void *)response->headers.data);
     memset(response, 0, sizeof(*response));
 }
+ud_status ud_http_resolve_url(ud_context *memory, ud_string base, ud_string requested, ud_string *out) {
+    *out = (ud_string){0};
+    ud_string selected = requested.length ? requested : base;
+    if (selected.length && selected.data[0] == '/') {
+#ifndef UD_WITH_HTTP
+        return UD_UNSUPPORTED;
+#else
+        if (selected.length > 1 && selected.data[1] == '/')
+            return UD_SCHEMA;
+        CURLU *url = curl_url();
+        char *origin = ud_strdup_n(memory, base.data, base.length);
+        char *relative = ud_strdup_n(memory, selected.data, selected.length);
+        char *resolved = NULL;
+        ud_status status = url && origin && relative ? UD_OK : UD_RESOURCE;
+        if (!status && (curl_url_set(url, CURLUPART_URL, origin, 0) ||
+                        curl_url_set(url, CURLUPART_URL, relative, 0) ||
+                        curl_url_get(url, CURLUPART_URL, &resolved, 0)))
+            status = UD_SCHEMA;
+        if (!status) {
+            out->length = (uint32_t)strlen(resolved);
+            out->data = ud_strdup_n(memory, resolved, out->length);
+            if (!out->data)
+                status = UD_RESOURCE;
+        }
+        curl_free(resolved);
+        if (url)
+            curl_url_cleanup(url);
+        ud_free(relative);
+        ud_free(origin);
+        return status;
+#endif
+    }
+    out->data = ud_strdup_n(memory, selected.data, selected.length);
+    out->length = selected.length;
+    return out->data ? UD_OK : UD_RESOURCE;
+}
 ud_status ud_http_call(const ud_component_context *c, ud_connection_lease *connection,
                        const ud_http_options *p, ud_http_response *out) {
     if (!c || !connection || !p || !out || p->struct_size != sizeof(*p) ||
@@ -698,12 +734,10 @@ ud_status ud_http_call(const ud_component_context *c, ud_connection_lease *conne
     ud_status status = ud_connection_lease_authorize(connection, UD_ACCESS_NETWORK);
     if (!status)
         status = ud_http_connection_resource(connection, &resource);
-    if (!status) {
-        ud_string selected = p->url.length ? p->url : resource;
-        url = ud_strdup_n(c->memory, selected.data, selected.length);
-        if (!url)
-            status = UD_RESOURCE;
-    }
+    ud_string selected = {0};
+    if (!status)
+        status = ud_http_resolve_url(c->memory, resource, p->url, &selected);
+    url = (char *)selected.data;
     if (!status)
         status = validate_url(url);
     if (!status)

@@ -950,6 +950,19 @@ static int election_key(const ud_catalog *catalog, int32_t kind, ud_string id) {
     return catalog->remote && kind == UD_CATALOG_AUDIT &&
         ud_named(catalog->options.tenant, LEADERSHIP_TENANT) && ud_named(id, LEADERSHIP_ID);
 }
+static ud_status catalog_clock_read(ud_catalog *c,uint64_t *now) {
+    catalog_statement *statement = NULL;
+    ud_status status = catalog_prepare(c,"SELECT milliseconds FROM catalog_clock WHERE id=1",&statement);
+    if (!status) {
+        ud_status rc=catalog_step(statement);
+        if (rc != UD_OK || catalog_column_int(statement,0)<0)
+            status=rc != UD_END && rc != UD_OK ? rc : UD_CORRUPT;
+        else
+            *now=(uint64_t)catalog_column_int(statement,0);
+    }
+    catalog_finalize(statement);
+    return status;
+}
 static ud_status lease_clock(ud_catalog *c,uint64_t *now) {
     uint64_t wall = ud_wall_ms();
     if (wall > INT64_MAX) return UD_OVERFLOW;
@@ -961,13 +974,8 @@ static ud_status lease_clock(ud_catalog *c,uint64_t *now) {
     if (!status) status = catalog_execute(statement);
     if (!status && c->changed != 1) status = UD_CORRUPT;
     catalog_finalize(statement); statement = NULL;
-    if (!status) status = catalog_prepare(c,"SELECT milliseconds FROM catalog_clock WHERE id=1",&statement);
-    if (!status) {
-        ud_status rc=catalog_step(statement);
-        if (rc != UD_OK || catalog_column_int(statement,0)<0) status=rc != UD_END && rc != UD_OK ? rc : UD_CORRUPT;
-        else *now=(uint64_t)catalog_column_int(statement,0);
-    }
-    catalog_finalize(statement); return status;
+    if (!status) status = catalog_clock_read(c,now);
+    return status;
 }
 static ud_status lease_key(ud_catalog *c,catalog_statement *statement,int32_t kind,ud_string id) {
     UD_TRY(catalog_text(statement,1,c->options.tenant));
@@ -1205,6 +1213,16 @@ ud_status ud_catalog_lease_active(ud_catalog *c,int32_t kind,ud_string id,int32_
     catalog_finalize(statement); if (!c->remote) status=lease_end(c,status);
     if (status) *active=0;
     return status;
+}
+
+ud_status ud_catalog_worker_clock(ud_catalog *c,uint64_t *milliseconds) {
+    if (!c || !milliseconds)
+        return UD_INVALID;
+    *milliseconds=0;
+    UD_TRY(grant(c,UD_ACCESS_READ));
+    UD_TRY(ud_catalog_begin(c,0));
+    ud_status status = c->remote ? catalog_clock_read(c,milliseconds) : lease_clock(c,milliseconds);
+    return ud_catalog_finish(c,status);
 }
 
 ud_status ud_catalog_copy_snapshot(ud_catalog *source, ud_catalog *target, int32_t imports,

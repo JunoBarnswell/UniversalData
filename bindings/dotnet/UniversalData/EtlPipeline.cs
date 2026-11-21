@@ -74,15 +74,12 @@ public sealed class EtlPipeline
         await using (var worker = await client.OpenWorkerAsync(cancellationToken, dedicated: true).ConfigureAwait(false))
             (package, _) = await CompileAsync(worker, sources, cancellationToken, publish: true).ConfigureAwait(false);
 
-        CheckManagement(await management.PublishAsync(input.Id, packageRevision, package, cancellationToken)
-            .ConfigureAwait(false));
-        string revision = packageRevision.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        CheckManagement(await management.SaveJobAsync(new(input.Id, input.Id, revision, []), cancellationToken)
-            .ConfigureAwait(false));
-        var occurrence = await management.RunJobAsync(input.Id, requestId, cancellation: cancellationToken)
-            .ConfigureAwait(false);
-        CheckManagement(occurrence);
-        return occurrence.Value ?? throw new UniversalDataException((int)StatusCode.Protocol,
+        using var document = JsonDocument.Parse(package.ToJson());
+        string expected = (packageRevision - 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var publication = await management.PublishJobAsync(new(requestId, document.RootElement.Clone(), expected,
+            Schedules: [], Run: true), cancellationToken).ConfigureAwait(false);
+        CheckManagement(publication);
+        return publication.Value?.Occurrence ?? throw new UniversalDataException((int)StatusCode.Protocol,
             "Management returned no job occurrence");
     }
 
@@ -151,7 +148,7 @@ public sealed class EtlPipeline
                 input.Parameters);
         if (previewSource) return (inspection!, builder.DescribeDataFlow());
 
-        var outputFields = input.Map is null
+        var outputFields = input.Projection is null
             ? schema.GetProperty("fields").EnumerateArray().Select(Name).ToArray()
             : output.Mapping.Members.Select(member => member.ColumnName).ToArray();
         var mapping = outputFields.Select((name, index) => new SqlColumnMapping(name,
@@ -160,13 +157,10 @@ public sealed class EtlPipeline
         if (keys.Any(index => index < 0))
             throw new UniversalDataException((int)StatusCode.Schema, "An ETL key is not in the target projection");
 
-        if (input.Map is { } method)
+        if (input.Projection is { } projection)
         {
-            var module = client.Modules.Single(entry => entry.Sha256 == method.ModuleSha256);
-            builder.RegisterModule(JsonSerializer.SerializeToElement(new ManagedAssembly("managedAssembly",
-                    module.Path, module.Sha256), WorkerProtocol.Json))
-                .CSharpTransform(MapId, EtlMapRegistration.Component,
-                    JsonSerializer.SerializeToElement(new { method }, WorkerProtocol.Json))
+            using var projected = JsonDocument.Parse(output.Mapping.SchemaJson());
+            builder.Component(MapId, "derive", new { columns = projection, project = true, schema = projected.RootElement.Clone() })
                 .Connect(SourceId, MapId);
         }
         if (output.Namespace is { } tableNamespace)
@@ -175,7 +169,7 @@ public sealed class EtlPipeline
         else
             builder.SqlDestination(TargetId, output.Target, output.Table, output.Mode,
                 input.Changes is null ? mapping : null, keys, input.Stream ? "response" : "receipt", !input.Stream);
-        builder.Connect(input.Map is null ? SourceId : MapId, TargetId).DataFlow("copy");
+        builder.Connect(input.Projection is null ? SourceId : MapId, TargetId).DataFlow("copy");
         return (Build(builder), default);
     }
 
@@ -191,7 +185,7 @@ public sealed class EtlPipeline
                         definition.CredentialReference is null ? null : reference)
                     .Connection(IcebergStorage(definition.Name), "file", definition.StorageRoot!);
             else
-                builder.Connection(definition.Name, SdkNativeSources.PluginPath(definition.Kind, client.WorkerPath),
+                builder.Connection(definition.Name, "ud:" + SdkNativeSources.DriverName(definition.Kind),
                     definition.Resource, reference);
         }
         return builder;

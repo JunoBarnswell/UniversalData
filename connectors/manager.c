@@ -5,6 +5,7 @@
 #include "rest.h"
 #include "http_internal.h"
 #include "manager_pool.h"
+#include "manager_binding.h"
 #include "ud/csv.h"
 #include "ud/xlsx.h"
 
@@ -19,7 +20,7 @@ typedef struct transaction_participant {
     ud_string connection;
     ud_transaction_branch branch;
     char branch_id[65];
-    int begun;
+    int begun, local;
 } transaction_participant;
 struct ud_transaction {
     ud_activation *owner;
@@ -34,6 +35,10 @@ struct ud_transaction {
     uint64_t pending_tasks;
     struct ud_rule_delivery *delivery;
 };
+static int transaction_is_local(const struct ud_transaction *transaction) {
+    return transaction && transaction->count == 1 && transaction->participants &&
+           transaction->participants[0].local;
+}
 struct ud_connection_lease {
     ud_activation *activation;
     ud_json *definition;
@@ -51,6 +56,17 @@ struct ud_connection_lease {
     void (*sql_session_ended)(void *);
     struct ud_connection_lease *next;
 };
+ud_status ud_execution_set_connection_limits(ud_execution *execution, uint32_t limit,
+                                             uint32_t wait_ms) {
+    if (!execution || !limit || limit > 65536 || wait_ms > 3600000)
+        return UD_INVALID;
+    if (atomic_load(&execution->state) != UD_EXEC_READY)
+        return UD_BUSY;
+    execution->max_connections_per_source = limit;
+    execution->connection_wait_ms = wait_ms;
+    return UD_OK;
+}
+
 static int network_driver(ud_string driver) {
     return ud_named(driver, "http") || ud_named(driver, "ftp") || ud_named(driver, "sftp") ||
            ud_named(driver, "smtp") || ud_named(driver, "azureBlob") ||
@@ -250,10 +266,20 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
     uint64_t limit = 0, timeout = 0, idle = 0;
     if (!status)
         status = definition_limit(l->definition, "maxLeases", 8, 65536, &limit);
+    const ud_json *job_execution = ud_member(ud_member(e->package->document, "policy"), "execution");
+    const ud_json *per_source = ud_member(job_execution, "maxConnectionsPerSource");
+    if (!status && per_source) {
+        uint64_t maximum;
+        status = ud_json_uint(per_source, &maximum);
+        if (!status && (!ud_member(l->definition, "maxLeases") || limit > maximum))
+            limit = maximum;
+    }
+    if (e->max_connections_per_source && limit > e->max_connections_per_source)
+        limit = e->max_connections_per_source;
     if (!status && !limit)
         status = UD_SCHEMA;
     if (!status)
-        status = definition_limit(l->definition, "acquireTimeoutMs", 0, 3600000, &timeout);
+        status = definition_limit(l->definition, "acquireTimeoutMs", e->connection_wait_ms, 3600000, &timeout);
     if (!status)
         status = definition_limit(l->definition, "idleTimeoutMs", 30000, 3600000, &idle);
     uint64_t started = ud_now_ms();
@@ -496,6 +522,8 @@ static ud_status acquire_resource(ud_activation *a, ud_string id, uint64_t caps,
         status = ud_json_string(ud_member(l->definition, "resource"), &l->resource);
     if (!status)
         status = ud_connection_lease_authorize(l, UD_ACCESS_OPEN);
+    if (!status)
+        status = ud_execution_resolve_driver(a->execution, &l->driver);
     if (!status && ((kind == 1 && !ud_named(l->driver, "file") && !ud_named(l->driver, "excel")) ||
                     (kind == 2 && !ud_named(l->driver, "process")) ||
                     (kind == 3 && !ud_named(l->driver, "http"))))
@@ -1538,10 +1566,23 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
         participant->branch = (ud_transaction_branch){.struct_size = sizeof(ud_transaction_branch),
                                                       .abi_version = UD_ABI_VERSION,
                                                       .isolation = isolation};
+        uint64_t required = UD_CONNECT_TRANSACTION;
+        if (count > 1 || activation->transaction_epoch)
+            required |= UD_CONNECT_TRANSACTION_PARTICIPANT;
         if (!status)
             status = ud_activation_acquire_connection(
-                activation, participant->connection,
-                UD_CONNECT_TRANSACTION | UD_CONNECT_TRANSACTION_PARTICIPANT, &participant->lease);
+                activation, participant->connection, required, &participant->lease);
+        if (!status) {
+            uint64_t capabilities = ud_connection_lease_capabilities(participant->lease);
+            participant->local = (capabilities & UD_CONNECT_TRANSACTION_LOCAL) != 0;
+            if (participant->local &&
+                ((capabilities & UD_CONNECT_TRANSACTION_PARTICIPANT) || count != 1 ||
+                 activation->transaction_epoch))
+                status = UD_UNSUPPORTED;
+            else if (!participant->local &&
+                     !(capabilities & UD_CONNECT_TRANSACTION_PARTICIPANT))
+                status = UD_UNSUPPORTED;
+        }
     }
     /* Capability-check the complete set before provisioning or starting a branch. */
     if (provision && !activation->execution->transaction_recovery_only)
@@ -1579,8 +1620,26 @@ ud_status ud_transaction_enter(ud_activation *activation, const ud_json *policy,
                 decision = UD_TX_COMMIT;
             else if (decision_length != 10 || memcmp(decision_json, "\"rollback\"", 10))
                 status = UD_CORRUPT;
-        } else if (!status)
-            status = transaction_record_decision(transaction, UD_TX_ROLLBACK);
+        } else if (!status) {
+            if (transaction_is_local(transaction)) {
+                /* A local participant commits its database before the Native
+                 * decision record. On restart, the provider receipt is the
+                 * only authoritative commit proof; absence under its writer
+                 * lock proves that the open SQLite transaction rolled back. */
+                int32_t state = UD_TX_UNKNOWN;
+                status = ud_connection_transaction_recover(
+                    transaction->participants[0].lease->connection,
+                    &transaction->participants[0].branch, &state);
+                if (!status && state == UD_TX_COMMITTED)
+                    decision = UD_TX_COMMIT;
+                else if (!status && (state == UD_TX_ACTIVE || state == UD_TX_NOT_FOUND))
+                    decision = UD_TX_ROLLBACK;
+                else if (!status)
+                    status = UD_CORRUPT;
+            }
+            if (!status)
+                status = transaction_record_decision(transaction, decision);
+        }
         ud_free(decision_json);
         char *completion = NULL;
         uint32_t completion_length = 0;
@@ -1693,7 +1752,18 @@ ud_status ud_transaction_leave(ud_activation *activation, ud_status outcome) {
         if (!outcome)
             outcome = ud_activation_check(activation);
         int decision = outcome ? UD_TX_ROLLBACK : UD_TX_COMMIT;
-        status = transaction_record_decision(transaction, decision);
+        if (!outcome && transaction_is_local(transaction)) {
+            /* SQLite has no durable prepared branch. Commit the single
+             * provider transaction first; only a successful provider commit
+             * may be followed by the Native journal decision record. */
+            transaction_participant *participant = transaction->participants;
+            participant->lease->cleanup = 1;
+            status = ud_connection_transaction_resolve(participant->lease->connection,
+                                                       &participant->branch, UD_TX_COMMIT);
+            participant->lease->cleanup = 0;
+        }
+        if (!status)
+            status = transaction_record_decision(transaction, decision);
         if (!status)
             status = transaction_resolve_all(transaction, decision);
         if (!status && !outcome) {
@@ -1726,6 +1796,8 @@ ud_status ud_transaction_commit_epoch(ud_activation *activation) {
     if (!activation || !activation->transaction_epoch || !ud_transaction_active(activation))
         return UD_UNSUPPORTED;
     struct ud_transaction *transaction = activation->transaction;
+    if (transaction_is_local(transaction))
+        return UD_UNSUPPORTED;
     ud_status status = UD_OK;
     for (uint32_t index = 0; !status && index < transaction->count; index++) {
         transaction_participant *participant = transaction->participants + index;
@@ -1818,6 +1890,8 @@ ud_status ud_connection_lease_snapshot_grant(ud_connection_lease *source, ud_act
         status = ud_json_string(ud_member(grant->definition, "resource"), &grant->resource);
     if (!status)
         status = ud_json_string(ud_member(grant->definition, "driver"), &grant->driver);
+    if (!status)
+        status = ud_execution_resolve_driver(owner->execution, &grant->driver);
     track(grant);
     if (status) {
         ud_status closed = ud_connection_lease_release(grant);

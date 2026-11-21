@@ -5,11 +5,18 @@ using UniversalData.Hosting;
 namespace UniversalData.Worker;
 
 internal sealed class SdkEtlSession(HostPolicy policy,
-    Func<SdkSourceBinding[], SdkExecutionEnvironment> createEnvironment) : IDisposable
+    SdkExecutionEnvironment environment, int cpu) : IDisposable
 {
+    // Keep the decoded definition for one small recurring job on each logical session.
+    private const int CachedPackageCharacters = 64 * 1024;
+    private string? cachedDocument;
+    private NativePackageDefinition? cachedDefinition;
     private Execution? execution;
     private Catalog? catalog;
     private Task<Terminal>? terminal;
+    private Terminal? completed;
+    private long startSequence;
+    private string? executionId;
 
     internal (WorkerResponseFrame, WorkerBatchBuffer?) Invoke(WorkerRequestFrame request,
         CancellationToken cancellationToken)
@@ -51,20 +58,36 @@ internal sealed class SdkEtlSession(HostPolicy policy,
                     return JsonReply(request, preview.Preview(pipeline.GetRawText(),
                         Text(values, "component"), values.GetProperty("sourceRows").GetUInt32(),
                         values.GetProperty("sampleRows").GetUInt32()));
+            case "etl.messageConnection":
+                var messageSources = ReadSources(values);
+                var messageEnvironment = Scope(messageSources);
+                var messageConnection = Text(values, "connection");
+                ValidateSources(messageEnvironment,
+                    messageSources.Where(source => source.Definition.Name == messageConnection), cancellationToken);
+                using (var messageExecution = CreateExecution(values, messageEnvironment))
+                {
+                    var test = messageExecution.TestMessageConnection(messageConnection);
+                    return Reply(request, StatusCode.Ok,
+                        new { capabilities = test.Capabilities, elapsedMs = test.ElapsedMs });
+                }
             case "etl.start":
                 return Start(request, cancellationToken);
+            case "etl.next":
+                var next = RequireExecution(request).ReadResult(250, out var batch);
+                if (next == StatusCode.Ok)
+                    return BatchReply(request, batch);
+                batch?.Dispose();
+                if (next == StatusCode.End)
+                    return Complete(request, streamEnd: true);
+                return Reply(request, next);
             case "etl.progress":
-                return JsonReply(request, RequireExecution().Progress());
+                return JsonReply(request, RequireExecution(request).Progress());
             case "etl.wait":
-                var completion = terminal ?? throw new UniversalDataException((int)StatusCode.Invalid,
-                    "No Native ETL execution is active");
-                if (!completion.Wait(250)) return Reply(request, StatusCode.Busy);
-                var finished = completion.GetAwaiter().GetResult();
-                return Reply(request, finished.Result, finished.Metrics, finished.Error);
+                return Complete(request, streamEnd: false);
             case "etl.diagnostics":
-                return JsonReply(request, RequireExecution().Diagnostics());
+                return JsonReply(request, RequireExecution(request).Diagnostics());
             case "etl.cancel":
-                RequireExecution().Cancel();
+                RequireExecution(request).Cancel();
                 return Reply(request, StatusCode.Ok);
             default:
                 return Reply(request, StatusCode.Protocol);
@@ -76,18 +99,39 @@ internal sealed class SdkEtlSession(HostPolicy policy,
 
     private SdkExecutionEnvironment Scope(SdkSourceBinding[] sources)
     {
-        var environment = createEnvironment(sources);
         if (sources.Length == 0) return environment;
         var bindings = sources.ToDictionary(SdkNativeSources.CredentialReference, StringComparer.Ordinal);
-        var state = new SdkInvocationState(new(""), environment, sources, defaultSource: null);
         var credentials = new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+        var fallback = environment.Resolve;
+        string Credential(SdkSourceBinding binding)
+        {
+            if (!binding.Enabled || environment.CanBorrow?.Invoke(binding.Definition.Name, binding.Revision) == false ||
+                !environment.Authorize(binding.Definition.Resource, ConnectionAccess.Open))
+                throw new UniversalDataException((int)StatusCode.Auth,
+                    "The named ETL source is unavailable in the current Worker scope");
+            return credentials.GetOrAdd(SdkNativeSources.CredentialReference(binding), _ =>
+            {
+                var definition = binding.Definition;
+                if (definition.NativeConnectionString is { } native) return native;
+                if (definition.CredentialReference is { } reference)
+                    return fallback?.Invoke(definition.Resource, reference)
+                        ?? throw new UniversalDataException((int)StatusCode.Auth,
+                            "The source credential is unavailable in the current Worker scope");
+                return definition.ConnectionString;
+            });
+        }
         return environment with { Resolve = (resource, reference) =>
         {
+            if (!reference.StartsWith("sdk-source/", StringComparison.Ordinal))
+                return fallback?.Invoke(resource, reference)
+                    ?? throw new UniversalDataException((int)StatusCode.Auth,
+                        "Native ETL credential cannot be resolved in this Worker scope");
             if (!bindings.TryGetValue(reference, out var binding) || binding.Definition.Resource != resource)
                 throw new UniversalDataException((int)StatusCode.Auth, "Native ETL credential cannot be resolved in this source snapshot");
-            state.Require(binding, ConnectionAccess.Open);
-            return credentials.GetOrAdd(reference, _ => binding.Definition.IsDatabase
-                ? state.NativeConnection(binding) : state.SourceCredential(binding));
+            string credential = Credential(binding);
+            return binding.Definition.IsDatabase
+                ? NativeSqlConfiguration.Create(SqlNative.Dialect(binding.Definition.Kind), credential)
+                : credential;
         } };
     }
 
@@ -104,77 +148,138 @@ internal sealed class SdkEtlSession(HostPolicy policy,
     }
 
     private Execution CreateExecution(JsonElement values, SdkExecutionEnvironment environment, string id = "", string? directory = null,
-        bool resume = false, Catalog? record = null)
+        bool resume = false, Catalog? record = null, NativePackageDefinition? prepared = null)
     {
-        return policy.CreateExecution(Text(values, "package"), Text(values, "parameters"), id, directory, resume,
+        return policy.CreateExecution(prepared?.Json ?? Text(values, "package"), Text(values, "parameters"), id, directory, resume,
             observe: record is null ? null : record.Record,
             eventSequenceStart: record is null || id.Length == 0 ? 0 : record.LatestRevision(CatalogKind.Event, id),
-            environment: environment);
+            environment: environment, prepared: prepared);
+    }
+
+    private NativePackageDefinition PrepareDefinition(string document)
+    {
+        if (cachedDefinition is { } current && cachedDocument == document)
+            return current;
+        var prepared = NativePackageDefinition.Read(document, policy.MemoryLimit);
+        if (document.Length <= CachedPackageCharacters)
+        {
+            cachedDocument = document;
+            cachedDefinition = prepared;
+        }
+        return prepared;
     }
 
     private (WorkerResponseFrame, WorkerBatchBuffer?) Start(WorkerRequestFrame request,
         CancellationToken cancellationToken)
     {
-        if (execution is not null)
-            throw new UniversalDataException((int)StatusCode.Busy, "A Native ETL execution already owns the Worker");
+        if (execution is { } previous)
+        {
+            if (previous.Metrics.State is ExecutionState.Created or ExecutionState.Validating or
+                ExecutionState.Ready or ExecutionState.Running or ExecutionState.Draining)
+                throw new UniversalDataException((int)StatusCode.Busy, "A Native ETL execution already owns this session");
+            Dispose();
+        }
         var values = request.Values;
         string id = Text(values, "id");
         string ticket = Text(values, "ticket");
         bool resume = values.GetProperty("resume").GetBoolean();
+        bool readResults = values.TryGetProperty("readResults", out var resultFlag) && resultFlag.GetBoolean();
         if (!Guid.TryParseExact(ticket, "N", out _) || !HostIdentity.ValidId(id))
             throw new ArgumentException("Invalid Native execution or Journal identity");
 
         var sources = ReadSources(values);
         var environment = Scope(sources);
         ValidateSources(environment, sources, cancellationToken);
-        catalog = policy.OpenCatalog();
-        execution = CreateExecution(values, environment, id, policy.ExecutionDirectory(ticket), resume, catalog);
-        if (!resume)
+        var package = PrepareDefinition(Text(values, "package"));
+        if (!readResults || package.RequiresJournal)
+            catalog = policy.OpenCatalog();
+        execution = CreateExecution(values, environment, id, policy.ExecutionDirectory(ticket), resume, catalog, package);
+        if (catalog is not null)
         {
-            string auditId = "cli/" + id;
-            catalog.Put(CatalogKind.Audit, auditId, 1, JsonSerializer.Serialize(new
+            if (!resume)
             {
-                version = ProductInfo.Protocol, id = auditId, ticket
-            }, HostPolicy.JsonOptions));
+                string auditId = "cli/" + id;
+                catalog.Put(CatalogKind.Audit, auditId, 1, JsonSerializer.Serialize(new
+                {
+                    version = ProductInfo.Protocol, id = auditId, ticket
+                }, HostPolicy.JsonOptions));
+            }
+            catalog.Record(execution, checked(catalog.LatestRevision(CatalogKind.Execution, id) + 1));
         }
-        catalog.Record(execution, checked(catalog.LatestRevision(CatalogKind.Execution, id) + 1));
         cancellationToken.ThrowIfCancellationRequested();
-        execution.Start();
+        if (readResults) execution.OpenResults();
+        if (cpu >= 0) execution.StartOnCpu((uint)cpu);
+        else execution.Start();
+        startSequence = request.Sequence;
+        executionId = id;
         var current = execution;
         var records = catalog;
-        terminal = Task.Run(() => ObserveCompletion(current, records));
+        if (records is not null && !readResults) terminal = Task.Run(() => ObserveCompletion(current, records));
         return Reply(request, StatusCode.Ok, new { id, ticket });
+    }
+
+    private (WorkerResponseFrame, WorkerBatchBuffer?) Complete(WorkerRequestFrame request, bool streamEnd)
+    {
+        var active = RequireExecution(request);
+        Terminal? result;
+        if (terminal is { } durable)
+            result = durable.Wait(250) ? durable.GetAwaiter().GetResult() : null;
+        else
+            result = ReadCompletion(active);
+        if (result is null) return Reply(request, StatusCode.Busy);
+        if (streamEnd && result.Result == StatusCode.Ok) return Reply(request, StatusCode.End);
+        return Reply(request, result.Result, result.Metrics, result.Error);
+    }
+
+    private Terminal? ReadCompletion(Execution active)
+    {
+        if (completed is not null) return completed;
+        var result = WaitForCompletion(active);
+        if (result is null) return null;
+        return completed = catalog is { } records ? RecordCompletion(active, records, result) : result;
+    }
+
+    private static Terminal? WaitForCompletion(Execution execution)
+    {
+        try
+        {
+            return execution.Wait(250) ? new(StatusCode.Ok, execution.Metrics, null) : null;
+        }
+        catch (UniversalDataException error)
+        {
+            return new(error.Code, execution.Metrics, error.Detail);
+        }
     }
 
     private static Terminal ObserveCompletion(Execution execution, Catalog catalog)
     {
-        var result = StatusCode.Ok;
-        OperationError? detail = null;
-        try
-        {
-            while (!execution.Wait(250)) Thread.Yield();
-        }
-        catch (UniversalDataException error)
-        {
-            result = error.Code;
-            detail = error.Detail;
-        }
+        Terminal? finished;
+        do { finished = WaitForCompletion(execution); }
+        while (finished is null);
+        return RecordCompletion(execution, catalog, finished);
+    }
 
-        var metrics = execution.Metrics;
+    private static Terminal RecordCompletion(Execution execution, Catalog catalog, Terminal finished)
+    {
         try
         {
             catalog.Record(execution, checked(catalog.LatestRevision(CatalogKind.Execution, execution.Id) + 1));
         }
         catch (UniversalDataException error)
         {
-            result = result == StatusCode.Ok ? error.Code : result;
-            detail ??= error.Detail;
+            return finished with { Result = finished.Result == StatusCode.Ok ? error.Code : finished.Result,
+                Error = finished.Error ?? error.Detail };
         }
-        return new(result, metrics, detail);
+        return finished;
     }
 
-    private Execution RequireExecution() => execution ??
-        throw new UniversalDataException((int)StatusCode.Invalid, "No Native ETL execution is active");
+    private Execution RequireExecution(WorkerRequestFrame request)
+    {
+        if (execution is null || !request.Values.TryGetProperty("startSequence", out var owner) ||
+            !owner.TryGetInt64(out var sequence) || startSequence != sequence || executionId != Text(request.Values, "id"))
+            throw new UniversalDataException((int)StatusCode.Fenced, "The Native execution no longer owns this session");
+        return execution;
+    }
 
     private static string Text(JsonElement values, string name) =>
         values.TryGetProperty(name, out var value) ? value.GetString() ?? "" : "";
@@ -190,15 +295,48 @@ internal sealed class SdkEtlSession(HostPolicy policy,
         (new(ProductInfo.WorkerRevision, request.SessionId, request.Sequence, "result", status,
             value is null ? null : JsonSerializer.SerializeToElement(value, WorkerProtocol.Json), error), null);
 
+    private static (WorkerResponseFrame, WorkerBatchBuffer?) BatchReply(WorkerRequestFrame request,
+        WorkerBatchBuffer? batch)
+    {
+        if (batch is null)
+            throw new UniversalDataException((int)StatusCode.Protocol,
+                "Native result reader returned no wire batch");
+        return (new(ProductInfo.WorkerRevision, request.SessionId, request.Sequence, "result", StatusCode.Ok,
+            JsonSerializer.SerializeToElement(new { length = batch.Length }, WorkerProtocol.Json)), batch);
+    }
+
     public void Dispose()
     {
-        if (terminal is { IsCompleted: false } current)
+        if (execution is { } current)
         {
-            execution!.Cancel();
-            if (!current.Wait(TimeSpan.FromSeconds(policy.CancellationGraceSeconds))) return;
+            try
+            {
+                if (current.Metrics.State is ExecutionState.Running or ExecutionState.Draining)
+                {
+                    current.Cancel();
+                    if (!current.Wait(policy.CancellationGraceSeconds * 1000))
+                        throw new UniversalDataException((int)StatusCode.Timeout, "Native ETL did not stop within the Worker cancellation budget");
+                }
+            }
+            catch (UniversalDataException error) when (error.Code != StatusCode.Timeout ||
+                current.Metrics.State is not (ExecutionState.Running or ExecutionState.Draining)) { }
+            if (terminal is { } completion && !completion.Wait(TimeSpan.FromSeconds(policy.CancellationGraceSeconds)))
+                throw new UniversalDataException((int)StatusCode.Timeout, "Native ETL did not record a terminal state within the Worker cancellation budget");
+            if (terminal is null && catalog is not null &&
+                current.Metrics.State is not (ExecutionState.Created or ExecutionState.Validating or ExecutionState.Ready))
+                _ = ReadCompletion(current);
         }
         try { execution?.Dispose(); }
-        finally { catalog?.Dispose(); }
+        finally
+        {
+            catalog?.Dispose();
+            execution = null;
+            catalog = null;
+            terminal = null;
+            completed = null;
+            startSequence = 0;
+            executionId = null;
+        }
     }
 
     private sealed record Terminal(StatusCode Result, ExecutionMetrics Metrics, OperationError? Error);

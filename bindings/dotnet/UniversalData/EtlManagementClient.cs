@@ -7,6 +7,10 @@ namespace UniversalData;
 /// <summary>Uses the authenticated management API that Studio uses. Configure credentials on the supplied HttpClient.</summary>
 public sealed class EtlManagementClient(HttpClient http, string? csrf = null)
 {
+    public ValueTask<Result<JobPublicationReceipt>> PublishJobAsync(JobPublicationRequest request,
+        CancellationToken cancellation = default) =>
+        Send<JobPublicationReceipt>(HttpMethod.Post, "/api/publications", request, cancellation);
+
     public ValueTask<Result<JsonElement>> PublishAsync(string id, ulong revision, Package package,
         CancellationToken cancellation = default)
     {

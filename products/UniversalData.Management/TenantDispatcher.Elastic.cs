@@ -67,7 +67,7 @@ public sealed partial class TenantDispatcher
                         return;
                     }
                     run = run with { State="Claimed",Owner=owner,StartAuthorized=false,
-                        TaskGeneration=lease.Generation,Revision=checked(run.Revision+1),TimestampMs=Now };
+                        TaskGeneration=lease.Generation,Revision=checked(run.Revision+1),TimestampMs=catalog.WorkerClock };
                     Save(run,lease);
                 }
             }
@@ -81,20 +81,26 @@ public sealed partial class TenantDispatcher
                 {
                     var source = controller.ReadSource(package,policy.MaxConcurrency);
                     var sample = await SampleKafka(run,source,lifetime.Token);
-                    plan = controller.Freeze(source,sample,policy.MaxConcurrency,Now);
+                    plan = controller.Freeze(source,sample,policy.MaxConcurrency,catalog.WorkerClock);
                 }
                 catch (Exception error) when (error is UniversalDataException or ArgumentException or IOException)
                 {
                     var result = error is UniversalDataException native ? native.Code :
                         error is ArgumentException ? StatusCode.Invalid : StatusCode.Io;
-                    bool retry = result is StatusCode.Io or StatusCode.Busy or StatusCode.Transient or StatusCode.Timeout;
-                    string reason = retry ? "KafkaPositionsUnavailable" : result == StatusCode.Auth ?
+                    var decision = RetryDecision(run, (int)result,
+                        brokerRestore:run.BrokerRestore, remote:run.Placement?.Remote == true);
+                    bool retry = decision.State == NativeRunState.Queued;
+                    string reason = retry ? "KafkaPositionsUnavailable" : decision.State == NativeRunState.RecoveryRequired ?
+                        "KafkaPartitionRecoveryRequired" : result == StatusCode.Auth ?
                         "DispatchAuthorityExpired" : "KafkaPositionsRejected";
-                    queueReasons[run.Id] = reason;
-                    lock (gate) Save(run with { State=retry ? "Queued" : "Failed", Owner=null,
-                        NotBeforeMs=checked(Now+5000), Revision=checked(run.Revision+1),
-                        Failure=retry ? null : new RunFailure((int)result,"kafka.sample",reason),
-                        Result=retry ? 0 : (int)result },lease);
+                    if (retry) queueReasons[run.Id] = reason;
+                    else queueReasons.TryRemove(run.Id, out _);
+                    lock (gate) Save(run with { State=RetryState(decision.State), Owner=null,
+                        NotBeforeMs=retry ? decision.NotBeforeMilliseconds : run.NotBeforeMs,
+                        Revision=checked(run.Revision+1),
+                        Failure=decision.Result == StatusCode.Ok ? null :
+                            new RunFailure((int)decision.Result,"kafka.sample",reason),
+                        Result=(int)decision.Result },lease);
                     return;
                 }
             }
@@ -105,7 +111,7 @@ public sealed partial class TenantDispatcher
                 {
                     run = run with { State="Running",Owner=owner,TaskGeneration=lease.Generation,
                         StartAuthorized=true,ElasticPlan=plan,MemberIds=plan.Groups.Select(group => group.Id).ToArray(),
-                        Revision=checked(run.Revision+1),TimestampMs=Now };
+                        Revision=checked(run.Revision+1),TimestampMs=catalog.WorkerClock };
                     Save(run,lease);
                 }
             }
@@ -129,25 +135,36 @@ public sealed partial class TenantDispatcher
                         if (members.All(id => ReadRun(catalog,id)?.State is not ("Queued" or "Claimed" or "Running")))
                         {
                             if (members.Any(id => ReadRun(catalog,id) is null))
-                                Save(run with { State="Stopped",Revision=checked(run.Revision+1),TimestampMs=Now },lease);
+                                Save(run with { State="Stopped",Revision=checked(run.Revision+1),TimestampMs=catalog.WorkerClock },lease);
                             else
                                 SaveGroupOutcome(catalog,lease,run,members);
                             return;
                         }
                     }
                 }
-                if (!stop && run.ElasticPlan is { Next:null } current && Now - current.LastSampleMs >= 5000 &&
+                long now = catalog.WorkerClock;
+                if (!stop && run.ElasticPlan is { Next:null } current && now - current.LastSampleMs >= 5000 &&
                     current.Reason != "KafkaPartitionRecoveryRequired")
                 {
                     KafkaElasticState observed;
                     try
                     {
                         var sample = await SampleKafka(run,current.Source,lifetime.Token);
-                        observed = controller.Observe(current,sample,policy.MaxConcurrency,Now);
+                        observed = controller.Observe(current,sample,policy.MaxConcurrency,now);
                     }
                     catch (Exception error) when (error is IOException or UniversalDataException or ArgumentException)
                     {
-                        observed = current with { Reason="KafkaPositionsUnavailable",LastSampleMs=Now,HighSamples=0,LowSinceMs=0 };
+                        var result = error is UniversalDataException native ? native.Code :
+                            error is ArgumentException ? StatusCode.Invalid : StatusCode.Io;
+                        var decision = RetryDecision(run, (int)result,
+                            brokerRestore:run.BrokerRestore, remote:run.Placement?.Remote == true);
+                        string reason = decision.State switch
+                        {
+                            NativeRunState.Queued => "KafkaPositionsUnavailable",
+                            NativeRunState.RecoveryRequired => "KafkaPartitionRecoveryRequired",
+                            _ => "KafkaPositionsRejected"
+                        };
+                        observed = current with { Reason=reason,LastSampleMs=now,HighSamples=0,LowSinceMs=0 };
                     }
                     lock (gate) SaveElasticDecision(catalog,lease,run,current,observed,requirements.RootElement);
                 }
@@ -176,12 +193,12 @@ public sealed partial class TenantDispatcher
                     member.Failure?.Phase is not ("worker.report" or "dispatch.reconcile")))
                 {
                     plan = plan with { Next=null,Reason="KafkaPartitionRecoveryRequired" };
-                    return PersistElastic(run,lease,plan);
+                    return PersistElastic(catalog,run,lease,plan);
                 }
                 plan = plan with { Revision=checked(plan.Revision+1),Groups=next,Next=null,
-                    Reason=null,LastChangeMs=Now,HighSamples=0,
+                    Reason=null,LastChangeMs=catalog.WorkerClock,HighSamples=0,
                     LowSinceMs=next.Length < plan.Groups.Length ? plan.LowSinceMs : 0 };
-                run = PersistElastic(run,lease,plan);
+                run = PersistElastic(catalog,run,lease,plan);
             }
         }
         if (plan.Reason == "KafkaPartitionRecoveryRequired")
@@ -195,20 +212,20 @@ public sealed partial class TenantDispatcher
             if (member?.State == "RecoveryRequired")
             {
                 if (member.Failure?.Phase is not ("dispatch.reconcile" or "worker.report"))
-                    return PersistElastic(run,lease,plan with { Reason="KafkaPartitionRecoveryRequired" });
+                    return PersistElastic(catalog,run,lease,plan with { Reason="KafkaPartitionRecoveryRequired" });
                 var replacementGroup = KafkaElasticGroup.Create(group.Partitions,true);
-                return PersistElastic(run,lease,plan with
+                return PersistElastic(catalog,run,lease,plan with
                 {
                     Reason="KafkaWorkerLost",
                     Next=plan.Groups.Select(item => item.Id == group.Id ? replacementGroup : item).ToArray()
                 });
             }
             if (member?.State is "Failed" or "Cancelled")
-                return PersistElastic(run,lease,plan with { Reason="KafkaPartitionRecoveryRequired" });
+                return PersistElastic(catalog,run,lease,plan with { Reason="KafkaPartitionRecoveryRequired" });
             if (member is null)
             {
                 member = new RunState(ProductInfo.Protocol,group.Id,run.PackageId,run.PackageRevision,run.ParametersReference,"Queued",
-                    run.Subject,run.SubjectStamp,ControlReference(),TimestampMs:Now,ParentId:run.Id,Attempt:run.Attempt,
+                    run.Subject,run.SubjectStamp,ControlReference(),TimestampMs:catalog.WorkerClock,ParentId:run.Id,Attempt:run.Attempt,
                     Parallelism:group.Parallelism,DeploymentId:run.DeploymentId,DeploymentRevision:run.DeploymentRevision,Assignment:new KafkaAssignment(run.Id,plan.Source.Topic,group.Partitions));
                 Save(member);
             }
@@ -243,12 +260,12 @@ public sealed partial class TenantDispatcher
                     ? group with { Reservation=budget[slot++] } : group).ToArray() };
             }
         }
-        PersistElastic(run,lease,observed);
+        PersistElastic(catalog,run,lease,observed);
     }
 
-    private RunState PersistElastic(RunState run,CatalogLease lease,KafkaElasticState plan)
+    private RunState PersistElastic(Catalog catalog,RunState run,CatalogLease lease,KafkaElasticState plan)
     {
-        var next = run with { Revision=checked(run.Revision+1),TimestampMs=Now,
+        var next = run with { Revision=checked(run.Revision+1),TimestampMs=catalog.WorkerClock,
             ElasticPlan=plan,MemberIds=plan.Groups.Select(group => group.Id).ToArray() };
         Save(next,lease);
         return next;
@@ -260,7 +277,7 @@ public sealed partial class TenantDispatcher
             return;
         if (group.State == "Queued" && !catalog.LeaseActive(CatalogKind.Audit,"run/"+id))
         {
-            Save(group with { State="Stopped",Revision=checked(group.Revision+1),TimestampMs=Now });
+            Save(group with { State="Stopped",Revision=checked(group.Revision+1),TimestampMs=catalog.WorkerClock });
             return;
         }
         if (group.State is "Claimed" or "Running")

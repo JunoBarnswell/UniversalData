@@ -12,13 +12,13 @@ internal sealed class SdkSessionHostClient(Process process, Task stderr, SdkHost
     internal int ProcessId => process.Id;
 
     internal static async Task<SdkSessionHostClient> StartAsync(string policyFile, string tenant,
-        SdkHostOptions options, SdkModule[] modules, CancellationToken cancellation, string? workerPath = null)
+        SdkHostOptions options, CancellationToken cancellation, string? workerPath = null)
     {
         string path = FindWorker(workerPath);
         bool isDll = Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase);
         CheckDeploymentVersion(isDll ? path : Path.ChangeExtension(path, ".dll"));
         var configuration = new SdkHostConfiguration(ProductInfo.WorkerRevision, Path.GetFullPath(policyFile),
-            tenant, options, modules, SdkSessionProtocol.CreateEndpoint(), SdkSessionProtocol.CreateCapability());
+            tenant, options, SdkSessionProtocol.CreateEndpoint(), SdkSessionProtocol.CreateCapability());
         string executable = isDll ? Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet" : path;
         var start = new ProcessStartInfo(executable)
         {
@@ -59,7 +59,7 @@ internal sealed class SdkSessionHostClient(Process process, Task stderr, SdkHost
         }
     }
 
-    internal async Task<WorkerSession> OpenAsync(CancellationToken cancellation, bool dedicated)
+    internal async Task<WorkerSession> OpenAsync(CancellationToken cancellation, bool dedicated, uint cpuSlots)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation, lifetime.Token);
@@ -69,7 +69,8 @@ internal sealed class SdkSessionHostClient(Process process, Task stderr, SdkHost
             await using var endpoint = SdkSessionProtocol.Connect(configuration.Endpoint);
             await endpoint.ConnectAsync(timeout.Token).ConfigureAwait(false);
             await WorkerProtocol.WriteAsync(endpoint,
-                new SdkPipeAdmission(ProductInfo.WorkerRevision, configuration.Capability, Dedicated: dedicated), null, timeout.Token)
+                new SdkPipeAdmission(ProductInfo.WorkerRevision, configuration.Capability, Dedicated: dedicated,
+                    CpuSlots: cpuSlots), null, timeout.Token)
                 .ConfigureAwait(false);
             var response = await WorkerProtocol.ReadAsync<SdkHostStatus>(endpoint, timeout.Token).ConfigureAwait(false);
             using (response.Batch)
@@ -132,9 +133,12 @@ internal sealed class SdkSessionHostClient(Process process, Task stderr, SdkHost
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsWindows())
             throw Failure(StatusCode.Unsupported, "SDK Worker sessions require Windows or Linux");
         string? configured = workerPath ?? Environment.GetEnvironmentVariable("UD_WORKER_PATH");
-        string executable = configured ?? Path.Combine(AppContext.BaseDirectory, "runtimes",
+        string name = OperatingSystem.IsWindows() ? "ud_worker.exe" : "ud_worker";
+        string runtime = Path.Combine(AppContext.BaseDirectory, "runtimes",
             OperatingSystem.IsWindows() ? "win-x64" : "linux-x64", "worker",
-            OperatingSystem.IsWindows() ? "ud_worker.exe" : "ud_worker");
+            name);
+        string executable = configured ?? (File.Exists(runtime) ? runtime :
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "worker", name)));
         if (!Path.IsPathFullyQualified(executable) || !File.Exists(executable))
             throw Failure(StatusCode.DriverUnavailable, "The UniversalData Worker executable is unavailable");
         return Path.GetFullPath(executable);

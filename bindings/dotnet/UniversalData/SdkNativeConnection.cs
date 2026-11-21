@@ -1,4 +1,4 @@
 namespace UniversalData;
 
-internal sealed record SdkNativeConnection(string Id, string Driver, string Resource, string CredentialReference,
+internal sealed record SdkNativeConnection(string Id, string Driver, string Resource, string? CredentialReference,
     int MaxLeases = 8);

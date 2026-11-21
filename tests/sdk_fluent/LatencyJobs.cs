@@ -1,37 +1,22 @@
-using System.Diagnostics;
 using UniversalData;
 
 namespace FluentAcceptance;
 
-public static class LatencyJobs
+internal static class LatencyJobs
 {
-    public static Task<FastTiming> Fast(DataContext context, CancellationToken cancellation)
-    {
-        long start = Stopwatch.GetTimestamp();
-        return context.Database("fast").UseAsync(async (database, _) =>
-        {
-            long leased = Stopwatch.GetTimestamp();
-            var row = await database.Queryable<FixtureRow>().Where(value => value.Id == 1).FirstAsync();
-            return new FastTiming(row.Tag, Stopwatch.GetElapsedTime(start, leased).TotalMilliseconds,
-                Stopwatch.GetElapsedTime(leased).TotalMilliseconds, Environment.ProcessId);
-        }, cancellation);
-    }
+    internal static readonly DataJobQuery<object, FixtureRow> Fast = DataJob.Define("latency-fast")
+        .FromSql<FixtureRow>("fast", "SELECT Id, Tag FROM sdk_orders WHERE Id = 1", stream: true).Return();
 
-    public static async Task Slow(DataContext context, LatencyWork work, CancellationToken cancellation)
+    internal static DataJob<object> Slow(string stage, string signal)
     {
-        if (work.Stage == "http")
-        {
-            _ = await context.Http("pricing").GetAsync<bool>("hold/" + work.Signal, cancellation);
-            return;
-        }
-        _ = await context.Http("pricing").GetAsync<bool>("signal/" + work.Signal, cancellation);
-        if (work.Stage == "sql")
-        {
-            _ = await context.Database("slow").UseAsync(async (database, _) => await database.Ado.ExecuteCommandAsync(
-                "UPDATE sdk_orders SET Tag = Tag WHERE Id = 1"), cancellation);
-            return;
-        }
-        while (!cancellation.IsCancellationRequested) Thread.SpinWait(4096);
-        cancellation.ThrowIfCancellationRequested();
+        var plan = DataJob.Define("latency-" + stage);
+        if (stage == "http") return plan.Request(new("pricing", Url: "/hold/" + signal));
+        plan.Request(new("pricing", Url: "/signal/" + signal));
+        if (stage == "sql") return plan.ExecuteSql("slow", "UPDATE sdk_orders SET Tag = Tag WHERE Id = 1");
+        return plan.FromSql<FixtureRow>("slow", """
+            WITH RECURSIVE ticks(value) AS
+                (SELECT 1 UNION ALL SELECT value + 1 FROM ticks WHERE value < 2000000000)
+            SELECT sum(value) AS Id, 'cpu' AS Tag FROM ticks
+            """, stream: true).Discard();
     }
 }

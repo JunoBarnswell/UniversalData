@@ -2,21 +2,22 @@
   "modelVersion": 2,
   "product": {
     "name": "UniversalData",
-    "sdkVersion": "9.0.0",
+    "sdkVersion": "10.0.0",
     "dotnetPackages": {
       "SqlSugarCore": "5.1.4.216",
       "MySqlConnector": "2.6.1",
       "SQLitePCLRaw.lib.e_sqlite3": "2.1.14",
-      "System.Security.Cryptography.Pkcs": "8.0.2"
+      "System.Security.Cryptography.Pkcs": "8.0.2",
+      "YamlDotNet": "16.3.0"
     },
     "abiVersion": 15,
     "protocolVersion": 15,
     "checkpointRevision": 4,
-    "state": "SDK 9 candidate for Native SQL connection ownership, shared Worker sessions, typed CDC and durable ETL submission. ABI and Package protocol remain 15.",
+    "state": "SDK 10 candidate for Native SQL connection ownership, shared Worker sessions, typed CDC and durable ETL submission. ABI and Package protocol remain 15.",
     "acceptanceResources": "Windows Release CORE and focused host acceptance use local evidence. Real MQ, Registry, multi-host and complete PRODUCT resources remain separately gated.",
     "dataLayoutRevision": 1,
     "catalogRevision": 3,
-    "workerRevision": 8
+    "workerRevision": 9
   },
   "scope": {
     "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",

@@ -524,8 +524,9 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
     if (!status)
         status = json_text(ud_json_find(options, "policy", 6), &mode);
     int strict = word(mode, "strict"), evolution = word(mode, "evolutionMapping"),
+        projection = word(mode, "projection"),
         explicit_mapping = word(mode, "explicitMapping") || evolution;
-    if (!status && !strict && !explicit_mapping && !word(mode, "compatible"))
+    if (!status && !strict && !explicit_mapping && !projection && !word(mode, "compatible"))
         status = UD_SCHEMA;
     const ud_json *map = ud_json_find(options, "mapping", 7);
     if (!status && explicit_mapping &&
@@ -537,6 +538,9 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
     if (!status && (!indices || !used))
         status = UD_RESOURCE;
     *compatible = 1;
+    int declared_keys = 0;
+    for (uint32_t j = 0; projection && j < expected->columns; j++)
+        declared_keys |= expected->column[j].field.key_order != 0;
     int first = 1;
     for (uint32_t j = 0; !status && j < expected->columns; j++) {
         const ud_field *field = &expected->column[j].field;
@@ -586,7 +590,7 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
             status = change(changes, &first, "NullabilityChanged", field, (int)j, at);
         if (!status && field->key_order != now->key_order) {
             status = change(changes, &first, "KeyChanged", field, (int)j, at);
-            if (!explicit_mapping || evolution)
+            if ((!explicit_mapping || evolution) && (!projection || declared_keys))
                 *compatible = 0;
         }
         if (!status && (field->precision != now->precision || field->scale != now->scale))
@@ -595,14 +599,17 @@ static ud_status binding(ud_context *ctx, const ud_batch *expected, const ud_bat
             status = change(changes, &first, "TypeChanged", field, (int)j, at);
         if (!status && (field->child_count || now->child_count))
             status = nested_changes(changes, &first, field, now, 0);
+        ud_field selected = *now;
+        if (projection && !declared_keys)
+            selected.key_order = 0;
         if (strict ? !ud_field_matches(field, now, UD_FIELD_PORT)
-                   : (!explicit_mapping || evolution) && !lossless(now, field))
+                   : (!explicit_mapping || evolution) && !lossless(&selected, field))
             *compatible = 0;
     }
     for (uint32_t j = 0; !status && j < actual->columns; j++)
         if (!used[j]) {
             status = change(changes, &first, "Added", &actual->column[j].field, -1, (int)j);
-            if (strict || actual->column[j].field.key_order)
+            if (strict || (actual->column[j].field.key_order && (!projection || declared_keys)))
                 *compatible = 0;
         }
     ud_free(used);

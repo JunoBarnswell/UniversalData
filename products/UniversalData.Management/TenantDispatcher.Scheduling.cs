@@ -1,13 +1,14 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using UniversalData;
 using UniversalData.Hosting;
 
 namespace UniversalData.Management;
 
 public sealed partial class TenantDispatcher
 {
-    private readonly long schedulerStartedMs = Now;
+    private long schedulerStartedMs = -1;
     private static readonly JsonSerializerOptions LegacyJobJson = new(HostPolicy.JsonOptions)
     {
         RespectRequiredConstructorParameters = false,
@@ -24,7 +25,7 @@ public sealed partial class TenantDispatcher
             request.MaxAttempts is < 1 or > 10 || request.RetryDelaySeconds > 86400)
             throw new ArgumentException("Invalid job policy");
         foreach (var schedule in request.Schedules)
-            JobCalendar.Validate(schedule);
+            NativeJobScheduler.Validate(schedule);
         if (request.Schedules.Select(schedule => schedule.Id).Distinct(StringComparer.Ordinal).Count() != request.Schedules.Length)
             throw new ArgumentException("Schedule identities must be unique within the job");
         var package = Package(request.PackageId, request.PackageRevision);
@@ -40,7 +41,8 @@ public sealed partial class TenantDispatcher
             CheckDeployment(request.DeploymentId, request.DeploymentRevision, request.PackageId, request.PackageRevision);
             if (request.DeploymentId is not null)
                 identity.Require("deployment.execute", request.DeploymentId);
-            var now = Now;
+            using var clock = policy.OpenCatalog();
+            var now = clock.WorkerClock;
             var schedules = request.Schedules.Select(schedule =>
             {
                 var previous = prior?.Schedules.SingleOrDefault(cursor => cursor.Schedule.Id == schedule.Id);
@@ -48,7 +50,7 @@ public sealed partial class TenantDispatcher
                     (previous.Schedule with { Weekdays = null }) == (schedule with { Weekdays = null }) &&
                     (previous.Schedule.Weekdays ?? []).SequenceEqual(schedule.Weekdays ?? []))
                     return previous;
-                return new ScheduleCursor(schedule, JobCalendar.Next(schedule, now - 1));
+                return new ScheduleCursor(schedule, NativeJobScheduler.Next(schedule, now - 1));
             }).ToArray();
             var job = new JobState(ProductInfo.Protocol, request.Id, request.PackageId, request.PackageRevision,
                 reference, request.Enabled, schedules, identity.Subject, identity.Stamp, request.MaxConcurrency,
@@ -62,10 +64,11 @@ public sealed partial class TenantDispatcher
     public long[] PreviewSchedule(HostIdentity identity, string jobId, JobSchedule schedule)
     {
         identity.Require("job.read", jobId);
-        JobCalendar.Validate(schedule);
+        NativeJobScheduler.Validate(schedule);
         var times = new List<long>(5);
-        long after = Now - 1;
-        while (times.Count < 5 && JobCalendar.Next(schedule, after) is { } next)
+        using var clock = policy.OpenCatalog();
+        long after = clock.WorkerClock - 1;
+        while (times.Count < 5 && NativeJobScheduler.Next(schedule, after) is { } next)
         {
             times.Add(next);
             after = next;
@@ -99,6 +102,7 @@ public sealed partial class TenantDispatcher
         var occurrenceId = request.OccurrenceId ?? "manual-" + OccurrenceId(jobId, request.RequestId);
         var key = OccurrenceKey(jobId, occurrenceId);
         using var catalog = policy.OpenCatalog();
+        long now = catalog.WorkerClock;
         if (ReadOccurrence(catalog, key, occurrenceId) is { RunId: not null } issued)
             return issued;
         lock (gate)
@@ -116,7 +120,7 @@ public sealed partial class TenantDispatcher
                     return previous;
                 if (request.OccurrenceId is not null && previous?.State != "Missed")
                     throw new ArgumentException("The selected occurrence was not missed");
-                var occurrence = previous ?? CreateOccurrence(job, occurrenceId, null, Now);
+                var occurrence = previous ?? CreateOccurrence(job, occurrenceId, null, now);
                 return PublishOccurrence(catalog, lease, job, occurrence, identity, null, "Queued");
             }
             finally { ReleaseJobLease(catalog, lease); }
@@ -132,7 +136,10 @@ public sealed partial class TenantDispatcher
 
     private void Schedule()
     {
-        var now = Now;
+        using var clock = policy.OpenCatalog();
+        var now = clock.WorkerClock;
+        if (schedulerStartedMs < 0)
+            schedulerStartedMs = now;
         foreach (var snapshot in jobs.Values.Where(job => job.RecordVersion == 2 ||
                      job.Enabled && job.Schedules.Any(cursor => cursor.Schedule.Enabled && cursor.NextDueMs <= now))
                      .ToArray())
@@ -156,10 +163,12 @@ public sealed partial class TenantDispatcher
                 }
                 if (!job.Enabled)
                     continue;
-                var cursor = job.Schedules.Where(cursor => cursor.Schedule.Enabled && cursor.NextDueMs <= now)
-                    .OrderBy(cursor => cursor.NextDueMs).FirstOrDefault();
-                if (cursor?.NextDueMs is not { } due)
+                var selected = NativeJobScheduler.SelectDue(job.Schedules.Select(cursor => cursor.NextDueMs).ToArray(),
+                    job.Schedules.Select(cursor => cursor.Schedule.Enabled).ToArray(), now);
+                if (selected is not { } dueSelection)
                     continue;
+                var cursor = job.Schedules[dueSelection.Index];
+                long due = dueSelection.Due;
                 var identity = identities.Find(job.Subject, job.SubjectStamp);
                 if (identity is null || !identity.Allows("package.execute", job.PackageId) ||
                     job.DeploymentId is not null && !identity.Allows("deployment.execute", job.DeploymentId))
@@ -189,6 +198,7 @@ public sealed partial class TenantDispatcher
     private JobOccurrence PublishOccurrence(Catalog catalog, CatalogLease lease, JobState job,
         JobOccurrence occurrence, HostIdentity identity, ScheduleCursor? cursor, string state)
     {
+        long now = catalog.WorkerClock;
         RunState? run = null;
         if (state == "Queued")
         {
@@ -202,17 +212,17 @@ public sealed partial class TenantDispatcher
             string runId = OccurrenceId(job.Id, occurrence.Id);
             run = new RunState(ProductInfo.Protocol, runId, occurrence.PackageId, occurrence.PackageRevision,
                 job.ParametersReference, "Queued", identity.Subject, identity.Stamp, ControlReference(),
-                TimestampMs: Now, JobId: job.Id, DeploymentId: occurrence.DeploymentId,
+                TimestampMs: now, JobId: job.Id, DeploymentId: occurrence.DeploymentId,
                 DeploymentRevision: occurrence.DeploymentRevision,
                 Parallelism: WorkerParallelism.Read(package, policy.MaxConcurrency),
                 RequiresJournal: native.RequiresJournal, Elastic: job.Elastic);
         }
         var next = job with
         {
-            Version = ProductInfo.Protocol, Revision = checked(job.Revision + 1), TimestampMs = Now,
+            Version = ProductInfo.Protocol, Revision = checked(job.Revision + 1), TimestampMs = now,
             Schedules = cursor is null ? job.Schedules : job.Schedules.Select(current =>
                 current.Schedule.Id == cursor.Schedule.Id
-                    ? current with { NextDueMs = JobCalendar.Next(current.Schedule, occurrence.TimestampMs) }
+                    ? current with { NextDueMs = NativeJobScheduler.Next(current.Schedule, occurrence.TimestampMs) }
                     : current).ToArray()
         };
         var stored = occurrence with
@@ -261,7 +271,7 @@ public sealed partial class TenantDispatcher
             var schedule = new JobSchedule("default", JobFrequency.Interval,
                 DateTimeOffset.FromUnixTimeMilliseconds(cursor),
                 IntervalSeconds: document.GetProperty("everySeconds").GetUInt32());
-            JobCalendar.Validate(schedule);
+            NativeJobScheduler.Validate(schedule);
             job = job with { Schedules = [new(schedule, cursor)] };
         }
         else if (job.RecordVersion != 3 || job.Schedules is null)

@@ -171,12 +171,17 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         status, version = request('admin-a','/versions','POST',dict(document=draft_package,expectedPackageRevision='0'))
         assert status == 200 and version['revision'] == '1', (status, version)
         draft_package['dataFlows'][0]['components'][1]['config']['columns'][0]['expression'] = '[Amount] * 3L'
-        status, publication = request('admin-a','/publications','POST',dict(document=draft_package,expectedPackageRevision='1'))
+        publication_request = dict(requestId='designer-publication', document=draft_package,
+                                   expectedPackageRevision='1', schedules=[], run=False)
+        status, publication = request('admin-a','/publications','POST',publication_request)
         assert status == 200 and publication['revision'] == '2', (status, publication)
+        status, replay = request('admin-a','/publications','POST',publication_request)
+        assert status == 200 and replay == publication, (status, replay)
         status, stored = request('admin-a','/packages/designer-draft/versions/2')
         assert status == 200 and stored['dataFlows'][0]['components'][1]['config']['columns'][0]['expression'] == '[Amount] * 3L'
         assert target.read_text() == 'untouched\n'
-        assert request('admin-a','/publications','POST',dict(document=draft_package,expectedPackageRevision='1'))[0] == 409
+        draft_package['dataFlows'][0]['components'][1]['config']['columns'][0]['expression'] = '[Amount] * 4L'
+        assert request('admin-a','/publications','POST',publication_request)[0] == 409
         status, current_runs = request('admin-a','/executions')
         assert status == 200 and all(run['packageId']!='designer-draft' for run in current_runs)
         assert request('admin-a','/tests','POST',dict(package=draft_package,targetConnection='output',tables={}))[0] == 403

@@ -20,7 +20,6 @@ try
 {
     await using var client = DataClient.CreateBuilder(policy, "demo")
         .AddMariaDb("demo", connection)
-        .AddModule(typeof(MariaDbEtlDemo).Assembly)
         .ConfigureWorkers(workers => workers.MaxConcurrentSessions(2).MaxBranchesPerSession(2))
         .Build();
 
@@ -29,7 +28,7 @@ try
         await MariaDbEtlDemo.RunAsync(client);
         return 0;
     }
-    var health = await client.RunAsync(MariaDbEtlDemo.CheckAsync);
+    var health = await MariaDbEtlDemo.CheckAsync(client);
     if (health.Ping != 1 || string.IsNullOrWhiteSpace(health.Version))
         throw new InvalidOperationException("The MariaDB health response was invalid.");
     Console.WriteLine($"MariaDB {health.Version} returned {health.Ping}.");

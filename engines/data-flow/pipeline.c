@@ -787,9 +787,12 @@ static ud_status validate_live_sql_effects(physical_plan *p) {
          * source's read effect. Only the transform's own effects apply here. */
         if (n->descriptor.describe_plan)
             effects |= n->binding.effects;
+        int memory_output = ud_named(n->descriptor.id, "result.destination") ||
+                            ud_named(n->descriptor.id, "discard");
         if ((category == UD_COMPONENT_SOURCE && !ud_named(n->descriptor.id, "sql.source")) ||
-            (category == UD_COMPONENT_DESTINATION && !ud_named(n->descriptor.id, "sql.destination")))
-            return node_failed(n, UD_UNSUPPORTED, "streaming SQL requires SQL input and output");
+            (category == UD_COMPONENT_DESTINATION && !memory_output &&
+             !ud_named(n->descriptor.id, "sql.destination")))
+            return node_failed(n, UD_UNSUPPORTED, "streaming SQL requires SQL or in-memory output");
         if (category == UD_COMPONENT_DESTINATION && (effects & UD_EFFECT_RECEIPTED))
             return node_failed(n, UD_UNSUPPORTED, "a live SQL source cannot request recovery receipts");
         /* SQL Command owns its per-record database transaction and can deliver

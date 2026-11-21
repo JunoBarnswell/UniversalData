@@ -16,6 +16,8 @@ typedef struct {
     void *control_user;
     ud_status (*check)(void *);
     int transaction, cleaning, record_code;
+    char branch_id[65];
+    uint8_t branch_digest[32];
 } sqlite_state;
 static ud_status control(sqlite_state *p) {
     if (p->cleaning)
@@ -883,6 +885,148 @@ static ud_status rollback_transaction(void *state) {
     p->transaction = 0;
     return UD_OK;
 }
+static ud_status ensure_transaction_receipts(sqlite_state *p) {
+    if (!p || p->transaction || p->read || p->cursor_schema || !sqlite3_get_autocommit(p->db))
+        return UD_BUSY;
+    int rc = sqlite3_exec(
+        p->db,
+        "CREATE TABLE IF NOT EXISTS ud_sdk_tx_receipts_v11(branch_id TEXT COLLATE BINARY "
+        "PRIMARY KEY CHECK(length(branch_id)=64),digest BLOB NOT NULL CHECK(length(digest)=32))",
+        NULL, NULL, NULL);
+    return rc == SQLITE_OK ? UD_OK : failure(p, rc);
+}
+static int branch_matches(const sqlite_state *p, const ud_transaction_branch *branch) {
+    return p->branch_id[0] && !memcmp(p->branch_id, branch->id.data, 64) &&
+           !memcmp(p->branch_digest, branch->digest, sizeof(p->branch_digest));
+}
+static ud_status local_receipt_state(sqlite_state *p, const ud_transaction_branch *branch,
+                                     int32_t *result) {
+    if (!p || !branch || !result)
+        return UD_INVALID;
+    *result = UD_TX_UNKNOWN;
+    if (p->transaction) {
+        if (!branch_matches(p, branch))
+            return UD_FENCED;
+        *result = UD_TX_ACTIVE;
+        return UD_OK;
+    }
+    if (p->read || p->cursor_schema || !sqlite3_get_autocommit(p->db))
+        return UD_BUSY;
+    ud_status status = ensure_transaction_receipts(p);
+    if (status)
+        return status;
+    int rc = sqlite3_exec(p->db, "BEGIN IMMEDIATE", NULL, NULL, NULL);
+    if (rc != SQLITE_OK)
+        return failure(p, rc);
+    sqlite3_stmt *stmt = NULL;
+    status = UD_OK;
+    rc = sqlite3_prepare_v2(
+        p->db, "SELECT digest FROM ud_sdk_tx_receipts_v11 WHERE branch_id=?1", -1, &stmt, NULL);
+    if (rc != SQLITE_OK)
+        status = failure(p, rc);
+    if (!status)
+        rc = sqlite3_bind_text64(stmt, 1, branch->id.data, branch->id.length, SQLITE_TRANSIENT,
+                                 SQLITE_UTF8);
+    if (!status && rc != SQLITE_OK)
+        status = failure(p, rc);
+    if (!status)
+        rc = sqlite3_step(stmt);
+    if (!status && rc == SQLITE_ROW) {
+        if (sqlite3_column_type(stmt, 0) != SQLITE_BLOB || sqlite3_column_bytes(stmt, 0) != 32)
+            status = UD_CORRUPT;
+        else if (memcmp(sqlite3_column_blob(stmt, 0), branch->digest, 32))
+            status = UD_FENCED;
+        else
+            *result = UD_TX_COMMITTED;
+    } else if (!status && rc == SQLITE_DONE)
+        *result = UD_TX_NOT_FOUND;
+    else if (!status)
+        status = failure(p, rc);
+    sqlite3_finalize(stmt);
+    rc = sqlite3_exec(p->db, "ROLLBACK", NULL, NULL, NULL);
+    if (!status && rc != SQLITE_OK)
+        status = UD_COMMIT_UNKNOWN;
+    return status;
+}
+static ud_status local_stage_receipt(sqlite_state *p, const ud_transaction_branch *branch) {
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        p->db, "SELECT digest FROM ud_sdk_tx_receipts_v11 WHERE branch_id=?1", -1, &stmt, NULL);
+    ud_status status = rc == SQLITE_OK ? UD_OK : failure(p, rc);
+    if (!status)
+        rc = sqlite3_bind_text64(stmt, 1, branch->id.data, branch->id.length, SQLITE_TRANSIENT,
+                                 SQLITE_UTF8);
+    if (!status && rc != SQLITE_OK)
+        status = failure(p, rc);
+    if (!status)
+        rc = sqlite3_step(stmt);
+    if (!status && rc == SQLITE_ROW) {
+        /* A proof already committed for this identity fences any replay,
+         * even when its digest happens to match. */
+        status = UD_FENCED;
+    } else if (!status && rc != SQLITE_DONE)
+        status = failure(p, rc);
+    sqlite3_finalize(stmt);
+    if (!status) {
+        rc = sqlite3_prepare_v2(
+            p->db,
+            "INSERT INTO ud_sdk_tx_receipts_v11(branch_id,digest) VALUES(?1,?2)", -1, &stmt,
+            NULL);
+        if (rc != SQLITE_OK)
+            status = failure(p, rc);
+    }
+    if (!status)
+        rc = sqlite3_bind_text64(stmt, 1, branch->id.data, branch->id.length, SQLITE_TRANSIENT,
+                                 SQLITE_UTF8);
+    if (!status && rc != SQLITE_OK)
+        status = failure(p, rc);
+    if (!status)
+        rc = sqlite3_bind_blob(stmt, 2, branch->digest, 32, SQLITE_TRANSIENT);
+    if (!status && rc != SQLITE_OK)
+        status = failure(p, rc);
+    if (!status && (rc = sqlite3_step(stmt)) != SQLITE_DONE)
+        status = rc == SQLITE_CONSTRAINT ? UD_FENCED : failure(p, rc);
+    sqlite3_finalize(stmt);
+    return status;
+}
+static ud_status transaction_recover(void *state, const ud_transaction_branch *branch,
+                                     int32_t *result) {
+    return local_receipt_state(state, branch, result);
+}
+static ud_status transaction_begin(void *state, const ud_transaction_branch *branch) {
+    sqlite_state *p = state;
+    if (p->transaction || p->branch_id[0] || p->read || p->cursor_schema)
+        return UD_BUSY;
+    ud_status status = ensure_transaction_receipts(p);
+    if (!status)
+        status = begin_transaction(p, branch->isolation);
+    if (!status) {
+        memcpy(p->branch_id, branch->id.data, 64);
+        p->branch_id[64] = 0;
+        memcpy(p->branch_digest, branch->digest, sizeof(p->branch_digest));
+    }
+    return status;
+}
+static ud_status transaction_prepare(void *state, const ud_transaction_branch *branch) {
+    sqlite_state *p = state;
+    if (!p->transaction || !branch_matches(p, branch))
+        return UD_FENCED;
+    /* The proof is part of the still-open SQLite transaction. It becomes
+     * authoritative only if the provider COMMIT below succeeds. */
+    return local_stage_receipt(p, branch);
+}
+static ud_status transaction_resolve(void *state, const ud_transaction_branch *branch,
+                                     int32_t decision) {
+    sqlite_state *p = state;
+    if (!p->transaction || !branch_matches(p, branch))
+        return UD_FENCED;
+    ud_status status = decision == UD_TX_COMMIT ? commit_transaction(p) : rollback_transaction(p);
+    if (!status) {
+        memset(p->branch_id, 0, sizeof(p->branch_id));
+        memset(p->branch_digest, 0, sizeof(p->branch_digest));
+    }
+    return status;
+}
 static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **out) {
     sqlite_state *p = state;
     ud_host_api *h = &p->host;
@@ -946,7 +1090,7 @@ static ud_status metadata(void *state, const ud_metadata_options *o, ud_batch **
 }
 static ud_status reset_session(void *state) {
     sqlite_state *p = state;
-    if (p->read || p->transaction || !sqlite3_get_autocommit(p->db) ||
+    if (p->read || p->transaction || p->branch_id[0] || !sqlite3_get_autocommit(p->db) ||
         sqlite3_next_stmt(p->db, NULL))
         return UD_CORRUPT;
     p->cleaning = 1;
@@ -965,6 +1109,12 @@ static ud_status provision(void *state) {
         "NULL,batch_id TEXT NOT NULL,digest BLOB NOT NULL CHECK(length(digest)=32),source_position "
         "TEXT NOT NULL,PRIMARY KEY(tenant,job,batch_id))",
         NULL, NULL, NULL);
+    if (rc == SQLITE_OK)
+        rc = sqlite3_exec(
+            p->db,
+            "CREATE TABLE IF NOT EXISTS ud_sdk_tx_receipts_v11(branch_id TEXT COLLATE BINARY "
+            "PRIMARY KEY CHECK(length(branch_id)=64),digest BLOB NOT NULL CHECK(length(digest)=32))",
+            NULL, NULL, NULL);
     return rc == SQLITE_OK ? UD_OK : failure(p, rc);
 }
 static const ud_connector_api connector = {
@@ -976,7 +1126,7 @@ static const ud_connector_api connector = {
                     UD_CONNECT_RECEIPTS | UD_CONNECT_EXECUTE_SQL | UD_CONNECT_TRANSACTION |
                     UD_CONNECT_METADATA | UD_CONNECT_POOL | UD_CONNECT_CHANGESET |
                     UD_CONNECT_PREPARED | UD_CONNECT_BATCH_WRITE | UD_CONNECT_PROVISION |
-                    UD_CONNECT_TRANSACTIONAL_DML,
+                    UD_CONNECT_TRANSACTIONAL_DML | UD_CONNECT_TRANSACTION_LOCAL,
     .test = connector_test,
     .discover = connector_discover,
     .read_open = connector_read_open,
@@ -996,7 +1146,11 @@ static const ud_connector_api connector = {
     .metadata_dialect = UD_SQL_SQLITE,
     .parameter_style = UD_SQL_PARAMETER_QUESTION,
     .savepoint = savepoint,
-    .record_diagnostic = record_diagnostic};
+    .record_diagnostic = record_diagnostic,
+    .transaction_begin = transaction_begin,
+    .transaction_prepare = transaction_prepare,
+    .transaction_resolve = transaction_resolve,
+    .transaction_recover = transaction_recover};
 
 UD_PLUGIN_EXPORT ud_status ud_plugin_get_api(uint32_t version, ud_plugin_api *out) {
     if (version != UD_PLUGIN_ABI || !out || out->struct_size != sizeof(*out))

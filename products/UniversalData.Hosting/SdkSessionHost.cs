@@ -13,7 +13,6 @@ internal sealed class SdkSessionHost : IAsyncDisposable
     private readonly string stateDirectory;
     private readonly string statePath;
     private readonly WorkerSupervisor supervisor;
-    private readonly bool trustedModules;
     private readonly bool sharedSessions;
     private readonly SemaphoreSlim active;
     private readonly SemaphoreSlim waiting;
@@ -39,9 +38,9 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             throw Error(StatusCode.Invalid, "Invalid SDK Worker host limits");
 
         var root = HostPolicy.Load(configuration.PolicyFile);
-        trustedModules = configuration.Modules.All(module =>
-            (root.TrustedAssemblyHashes ?? []).Contains(module.Sha256, StringComparer.Ordinal));
-        sharedSessions = trustedModules && options.MaxSessionsPerWorker > 1;
+        maxJobParallelism = Math.Min(root.MaxConcurrency, (uint)Math.Min(Environment.ProcessorCount,
+            Math.Min(options.MaxConcurrentSessions, options.MaxBranchesPerSession)));
+        sharedSessions = options.MaxSessionsPerWorker > 1;
         var identity = HostIdentity.Operator(configuration.Tenant);
         var tenant = root.Tenants is null
             ? root with { DataDirectory = Path.Combine(root.DataDirectory, "tenants", identity.Tenant), Tenant = identity.Tenant, Identity = identity }
@@ -58,6 +57,7 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             (ulong)GC.GetGCMemoryInfo().TotalAvailableMemoryBytes < hostMemory))
             throw Error(StatusCode.Resource, "The host cannot supply the requested independent Worker budgets");
         policy = tenant with { MaxConcurrency = 1, MemoryLimit = options.MemoryPerSession,
+            MaxConnectionsPerSource = Math.Min(tenant.MaxConnectionsPerSource, (uint)options.MaxConnectionsPerSource),
             ExecutionTimeoutSeconds = checked((uint)Math.Ceiling(options.ExecutionTimeout.TotalSeconds)),
             CancellationGraceSeconds = checked((uint)Math.Ceiling(options.CancellationGrace.TotalSeconds)) };
 
@@ -75,7 +75,8 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         // reservation is shared by Management and all SDK hosts on this node.
         supervisor = new WorkerSupervisor(workerPath, (uint)options.MaxConcurrentSessions,
             (uint)options.MaxConcurrentSessions, hostMemory, options.MemoryPerSession,
-            enforceOrdinaryLimits: options.RequireIsolation, initialPrewarm: sharedSessions ? 0 : options.RequireIsolation ? 2 : 1,
+            enforceOrdinaryLimits: options.RequireIsolation,
+            initialPrewarm: sharedSessions ? 0 : options.RequireIsolation ? options.MaxConcurrentSessions : 1,
             nodeDirectory: root.DataDirectory, nodeMaxProcesses: root.MaxConcurrency,
             nodeMaxConnectionsPerSource: root.MaxConnectionsPerSource);
     }
@@ -114,14 +115,17 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         deadline.CancelAfter(TimeSpan.FromSeconds(15));
         try
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
-            do
-            {
-                if (supervisor.Status().PrewarmedPids.Length >= 2) return;
-            } while (await timer.WaitForNextTickAsync(deadline.Token));
+            await Task.WhenAll(Enumerable.Range(0, configuration.Options.MaxConcurrentSessions).Select(_ => WarmAsync()));
         }
         catch (OperationCanceledException) when (!stopping.IsCancellationRequested)
-        { throw Error(StatusCode.Resource, "Two independently governed SDK Worker processes did not report readiness"); }
+        { throw Error(StatusCode.Resource, "The reserved SDK Worker processes did not report readiness"); }
+
+        async Task WarmAsync()
+        {
+            var child = await Child.StartAsync(this, cooperative: false, reusable: true, cpuSlots: 1, deadline.Token);
+            children[child.Capability] = child;
+            child.AllowIdleRetirement();
+        }
     }
 
     private async Task AcceptAsync(Stream output, CancellationToken stopping)
@@ -164,7 +168,7 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             {
                 switch (request.Operation)
                 {
-                    case "open": await OpenAsync(pipe, request.Dedicated, stopping); return;
+                    case "open": await OpenAsync(pipe, request.Dedicated, request.CpuSlots, stopping); return;
                     case "source.update": await UpdateAsync(pipe, request, handshake.Token); return;
                     case "session.close": await CloseAsync(pipe, request, handshake.Token); return;
                 }
@@ -174,8 +178,13 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         catch (Exception error) when (Expected(error)) { await TryReportAsync(pipe, Status(error)); }
     }
 
-    private async Task OpenAsync(NamedPipeServerStream pipe, bool dedicated, CancellationToken stopping)
+    private readonly uint maxJobParallelism;
+
+    private async Task OpenAsync(NamedPipeServerStream pipe, bool dedicated, uint cpuSlots, CancellationToken stopping)
     {
+        uint allowed = dedicated ? maxJobParallelism : 1;
+        if (cpuSlots == 0 || cpuSlots > allowed)
+            throw Error(StatusCode.Resource, $"Job parallelism must be between 1 and {allowed}");
         using var queue = CancellationTokenSource.CreateLinkedTokenSource(stopping);
         queue.CancelAfter(configuration.Options.QueueTimeout);
         using var sent = new CancellationTokenSource();
@@ -192,7 +201,7 @@ internal sealed class SdkSessionHost : IAsyncDisposable
                 finally { waiting.Release(); }
             }
             admitted = true;
-            var child = await GetChildAsync(dedicated, queue.Token);
+            var child = await GetChildAsync(dedicated, cpuSlots, queue.Token);
             try
             {
                 session = await child.OpenSessionAsync(queue.Token);
@@ -221,10 +230,10 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         }
     }
 
-    private async Task<Child> GetChildAsync(bool dedicated, CancellationToken cancellation)
+    private async Task<Child> GetChildAsync(bool dedicated, uint cpuSlots, CancellationToken cancellation)
     {
         bool cooperative = !dedicated && sharedSessions;
-        bool reusable = !dedicated && trustedModules;
+        bool reusable = !dedicated;
         await launches.WaitAsync(cancellation);
         try
         {
@@ -233,7 +242,7 @@ internal sealed class SdkSessionHost : IAsyncDisposable
                 foreach (var child in children.Values)
                     if (child.Reusable && child.Cooperative == cooperative && child.ReserveSlot()) return child;
             }
-            var created = await Child.StartAsync(this, cooperative, reusable, cancellation);
+            var created = await Child.StartAsync(this, cooperative, reusable, cpuSlots, cancellation);
             children[created.Capability] = created;
             if (!created.ReserveSlot())
                 throw Error(StatusCode.Resource, "SDK Worker child has no session capacity");
@@ -312,6 +321,7 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             Reusable = reusable;
             Configuration = configuration;
             Token = lifetime.Token;
+            idleSince = Stopwatch.GetTimestamp();
             ProcessTask = ObserveProcessAsync();
         }
 
@@ -325,23 +335,25 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         internal Task ProcessTask { get; }
 
         internal static async Task<Child> StartAsync(SdkSessionHost host, bool cooperative, bool reusable,
-            CancellationToken cancellation)
+            uint cpuSlots, CancellationToken cancellation)
         {
             int capacity = cooperative ? host.configuration.Options.MaxSessionsPerWorker : 1;
+            uint slots = cooperative ? (uint)capacity : cpuSlots;
             ulong memory = checked(host.configuration.Options.MemoryPerSession * (ulong)capacity);
-            var worker = new SdkWorkerConfiguration(host.configuration.Options, host.configuration.Modules,
+            var worker = new SdkWorkerConfiguration(host.configuration.Options,
                 SdkSessionProtocol.CreateEndpoint(), SdkSessionProtocol.CreateCapability(),
                 host.statePath, capacity, cooperative);
-            var childPolicy = host.policy with { MaxConcurrency = (uint)capacity, MemoryLimit = memory };
-            var budget = new WorkerBudget((uint)capacity, memory, checked(memory + WorkerSupervisor.ProcessOverhead), (uint)capacity);
+            var childPolicy = host.policy with { MaxConcurrency = slots, MemoryLimit = memory };
+            var budget = new WorkerBudget(slots, memory, checked(memory + WorkerSupervisor.ProcessOverhead), slots);
             var request = new WorkerRequest(ProductInfo.Protocol, Guid.NewGuid().ToString("N"), "sdk.worker",
                 childPolicy, childPolicy.Identity, Payload: JsonSerializer.SerializeToElement(worker, WorkerProtocol.Json),
-                Budget: capacity > 1 && host.configuration.Options.RequireIsolation ? budget : null);
+                Budget: slots > 1 && host.configuration.Options.RequireIsolation ? budget : null);
             WorkerSupervisor.Lease? lease = null;
             try
             {
-                lease = await host.supervisor.RentAsync(request, capacity == 1 ? host.supervisor.OrdinaryBudget : budget,
+                lease = await host.supervisor.RentAsync(request, slots == 1 ? host.supervisor.OrdinaryBudget : budget,
                     cancellation);
+                await VerifyReadyAsync(worker, cancellation);
                 var child = new Child(host, lease, worker, capacity, cooperative, reusable);
                 lease = null;
                 return child;
@@ -350,6 +362,16 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             {
                 if (lease is not null) await lease.DisposeAsync();
             }
+        }
+
+        private static async Task VerifyReadyAsync(SdkWorkerConfiguration worker, CancellationToken cancellation)
+        {
+            await using var owner = SdkSessionProtocol.Connect(worker.Endpoint);
+            await owner.ConnectAsync(cancellation);
+            await WorkerProtocol.WriteAsync(owner, new SdkSessionAssignment(ProductInfo.WorkerRevision,
+                worker.Capability, "", "", "", ReadyProbe: true), null, cancellation);
+            var reply = await WorkerProtocol.ReadAsync<SdkHostStatus>(owner, cancellation);
+            using (reply.Batch) SdkSessionHostClient.Check(reply.Message, reply.Batch is null);
         }
 
         internal bool ReserveSlot()

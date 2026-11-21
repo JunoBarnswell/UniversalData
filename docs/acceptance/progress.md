@@ -2,7 +2,7 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 9.0.0 / ABI 15；SDK 9 Native SQL, shared sessions and continuous ETL candidate。
+SDK 10.0.0 / ABI 15；SDK 9 Native SQL, shared sessions and continuous ETL candidate。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 

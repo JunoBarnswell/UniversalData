@@ -1,6 +1,3 @@
-using System.Reflection;
-using System.Security.Cryptography;
-
 namespace UniversalData;
 
 public sealed class DataWorkerOptions
@@ -43,9 +40,7 @@ public sealed class DataClientBuilder
 {
     private readonly string policyFile, tenant;
     private readonly Dictionary<string, DataSourceDefinition> sources = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, SdkModule> modules = new(StringComparer.OrdinalIgnoreCase);
     private readonly DataWorkerOptions workers = new();
-    private string? defaultSource;
 
     internal DataClientBuilder(string policyFile, string tenant)
     {
@@ -88,20 +83,6 @@ public sealed class DataClientBuilder
         AddSource(new(name, DataSourceKind.Iceberg, "", credentialReference: credentialReference,
             baseUri: catalog, storageRoot: storageRoot, catalogWarehouse: warehouse));
 
-    public DataClientBuilder DefaultDatabase(string name) { defaultSource = name; return this; }
-
-    public DataClientBuilder AddModule(Assembly assembly)
-    {
-        ArgumentNullException.ThrowIfNull(assembly);
-        if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location))
-            throw new ArgumentException("The Worker requires a module deployed on disk", nameof(assembly));
-        string path = Path.GetFullPath(assembly.Location);
-        using var stream = File.OpenRead(path);
-        var module = new SdkModule(path, Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant());
-        modules[path] = module;
-        return this;
-    }
-
     public DataClientBuilder ConfigureWorkers(Action<DataWorkerOptions> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -109,13 +90,7 @@ public sealed class DataClientBuilder
         return this;
     }
 
-    public DataClient Build()
-    {
-        if (defaultSource is not null && (!sources.TryGetValue(defaultSource, out var source) || !source.IsDatabase))
-            throw new ArgumentException("The default source must name a registered database");
-        return new(policyFile, tenant, workers.Freeze(), sources.Values.ToArray(), modules.Values.ToArray(), defaultSource,
-            workers.Executable);
-    }
+    public DataClient Build() => new(policyFile, tenant, workers.Freeze(), sources.Values.ToArray(), workers.Executable);
 
     private DataClientBuilder AddDatabase(string name, DataSourceKind kind, string connectionString,
         Action<DataSourceOptions>? configure)

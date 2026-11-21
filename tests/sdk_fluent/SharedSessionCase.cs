@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
 using UniversalData;
@@ -10,79 +11,109 @@ internal static class SharedSessionCase
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         var token = deadline.Token;
-        await using var data = DataClient.CreateBuilder(policy, "fluent")
+        var builder = DataClient.CreateBuilder(policy, "fluent")
             .AddSqlite("orders", "Data Source=" + orders)
-            .AddSqlite("ledger", "Data Source=" + ledger)
-            .AddHttp("pricing", new Uri(origin))
-            .AddModule(typeof(Jobs).Assembly)
+            .AddSqlite("ledger", "Data Source=" + ledger);
+        Jobs.AddHttpSources(builder, origin);
+        await using var data = builder
             .ConfigureWorkers(w => w.MaxConcurrentSessions(4).MaxSessionsPerWorker(2)
                 .MaxConnectionsPerSource(2).MaxBranchesPerSession(2).ExecutionTimeout(TimeSpan.FromSeconds(20))
                 .CancellationGrace(TimeSpan.FromSeconds(2)))
             .Build();
         using var fixture = new HttpClient { BaseAddress = new Uri(origin), Timeout = TimeSpan.FromSeconds(5) };
-        await using var first = await data.OpenSessionAsync(token);
-        await using var peer = await data.OpenSessionAsync(token);
-        Require(first.ProcessId == peer.ProcessId && first.ProcessId != Environment.ProcessId,
-            "Two cooperative sessions must share one physical Worker PID");
-        var overlap = await Task.WhenAll(first.RunAsync(Jobs.Overlap, "first", token),
-            peer.RunAsync(Jobs.Overlap, "second", token));
-        Require(overlap.All(row => row.ProcessId == peer.ProcessId && row.Orders == "orders-original" && row.Ledger == "ledger"),
-            "Every concurrent branch must read its own source in the shared Worker");
-        var firstScope = await first.RunAsync(Jobs.Scope, "orders", token);
-        var peerScope = await peer.RunAsync(Jobs.Scope, "ledger", token);
-        Require(!firstScope.StaleScopeRejected && !peerScope.StaleScopeRejected,
-            "A shared Worker must load and dispose its business scopes per logical session");
 
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
-        var held = first.RunAsync(Jobs.WaitThenRead, new HeldRead("shared-cancel", "orders"), cancellation.Token);
-        await Entered(fixture, "shared-cancel", token);
+        var overlap = await Task.WhenAll(Start(data, Jobs.OverlapOrders, token),
+            Start(data, Jobs.OverlapLedger, token));
         try
         {
-            await peer.RunAsync(Jobs.VerifyLedger, token).WaitAsync(TimeSpan.FromSeconds(8), token);
-            Require(!held.IsCompleted, "A same-PID fast session must complete while another holds HTTP");
-            await cancellation.CancelAsync();
+            Require(overlap[0].WorkerProcessId == overlap[1].WorkerProcessId &&
+                overlap[0].WorkerProcessId != Environment.ProcessId,
+                "Concurrent Native jobs must share one cooperative Worker process");
+            await Task.WhenAll(overlap.Select(run => run.WaitAsync(token)));
+        }
+        finally { await DisposeAll(overlap); }
+        Require(await Jobs.FirstTag(data, Jobs.Orders, token) == "orders-original" &&
+            await Jobs.FirstTag(data, Jobs.Ledger, token) == "ledger",
+            "Cooperative Native jobs must preserve independent SQLite reads");
+
+        var held = await Start(data, Jobs.HoldSharedCancel, token);
+        try
+        {
+            await Entered(fixture, "shared-cancel", token);
+            var peer = await Start(data, Jobs.OverlapLedger, token);
             try
             {
-                await held.WaitAsync(TimeSpan.FromSeconds(8), token);
-                throw new InvalidOperationException("The cancelled shared session returned a result");
+                Require(peer.WorkerProcessId == held.WorkerProcessId,
+                    "A cooperative peer must remain on the held Worker process");
+                await peer.WaitAsync(token);
             }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+            finally { await peer.DisposeAsync(); }
+
+            await held.CancelAsync(token);
+            await Release(fixture, "shared-cancel", token);
+            try
+            {
+                await held.WaitAsync(token);
+                throw new InvalidOperationException("The cancelled cooperative Native job returned success");
+            }
             catch (UniversalDataException error) when (error.Code is StatusCode.Cancelled or StatusCode.CommitUnknown) { }
         }
-        finally { await Release(fixture, "shared-cancel", token); }
+        finally
+        {
+            await ReleaseIfEntered(fixture, "shared-cancel", token);
+            await held.DisposeAsync();
+        }
+        Require(await Jobs.FirstTag(data, Jobs.Ledger, token) == "ledger",
+            "Cancelling one cooperative Native job must preserve the peer source");
 
+        var failed = await Start(data, Jobs.Fail, token);
         try
         {
-            await first.RunAsync(Jobs.Fail, token);
-            throw new InvalidOperationException("The shared business exception was swallowed");
+            await failed.WaitAsync(token);
+            throw new InvalidOperationException("A shared Worker HTTP failure reported success");
         }
-        catch (DataBusinessException error) when (error.RemoteType == typeof(InvalidOperationException).FullName &&
-            error.Message.Contains("settlement rejected", StringComparison.Ordinal)) { }
-        await first.DisposeAsync();
-        var survived = await peer.RunAsync(Jobs.Scope, "ledger", token);
-        Require(survived.ProcessId == peer.ProcessId && survived.Value == "ledger" && survived.StaleScopeRejected,
-            "Cancelling and closing one logical session must preserve the same-PID peer and its scope lifetime");
+        catch (UniversalDataException error) when (error.Code != StatusCode.Ok) { }
+        finally { await failed.DisposeAsync(); }
+        Require(await Jobs.FirstTag(data, Jobs.Ledger, token) == "ledger",
+            "A failed cooperative Native job must leave its Worker reusable");
 
-        await using var next = await data.OpenSessionAsync(token);
-        await using var another = await data.OpenSessionAsync(token);
-        var groups = new[] { peer, next, another }.GroupBy(s => s.ProcessId).OrderByDescending(group => group.Count()).ToArray();
-        Require(groups.Length == 2 && groups[0].Count() == 2 && groups[1].Count() == 1,
-            "Two session slots per physical Worker must fill before allocating a third PID");
-        var colocated = groups[0].ToArray();
-        var unrelated = groups[1].Single();
-        var victim = colocated[0].RunAsync(Jobs.WaitThenRead, new HeldRead("shared-crash", "ledger"), token);
-        await Entered(fixture, "shared-crash", token);
+        var firstCrash = await Start(data, Jobs.HoldCrash, token);
+        var secondCrash = await Start(data, Jobs.HoldCrash, token);
         try
         {
-            await Lost(colocated[1].RunAsync(Jobs.Crash, token), token);
-            await Lost(victim, token);
-            var final = await unrelated.RunAsync(Jobs.Scope, "ledger", token);
-            Require(final.ProcessId == unrelated.ProcessId && final.Value == "ledger",
-                "The physical crash must remain confined to sessions sharing the terminated PID");
+            await Entered(fixture, "crash", token);
+            Require(firstCrash.WorkerProcessId == secondCrash.WorkerProcessId,
+                "Cooperative crash coverage must use one physical Worker process");
+            using (var process = Process.GetProcessById(firstCrash.WorkerProcessId))
+                process.Kill(entireProcessTree: true);
+            await Lost(firstCrash, token);
+            await Lost(secondCrash, token);
         }
-        finally { await Release(fixture, "shared-crash", token); }
-        Console.WriteLine(JsonSerializer.Serialize(new { SharedPid = overlap[0].ProcessId, SharedBranches = 4,
-            CrashPid = colocated[0].ProcessId, SurvivorPid = unrelated.ProcessId }));
+        finally
+        {
+            await ReleaseIfEntered(fixture, "crash", token);
+            await firstCrash.DisposeAsync();
+            await secondCrash.DisposeAsync();
+        }
+        Require(await Jobs.FirstTag(data, Jobs.Ledger, token) == "ledger",
+            "A killed cooperative Worker must not poison a later Native job");
+
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            SharedPid = overlap[0].WorkerProcessId,
+            SharedBranches = overlap.Length,
+            CooperativeCancellation = true,
+            CooperativeCrash = true
+        }));
+    }
+
+    private static Task<EtlRun> Start(DataClient data, DataJob<object> job, CancellationToken cancellation) =>
+        data.StartAsync(job, new object(), cancellation);
+
+    private static async Task DisposeAll(IEnumerable<EtlRun> runs)
+    {
+        foreach (var run in runs)
+            await run.DisposeAsync();
     }
 
     private static async Task Entered(HttpClient fixture, string gate, CancellationToken cancellation)
@@ -99,11 +130,21 @@ internal static class SharedSessionCase
         response.EnsureSuccessStatusCode();
     }
 
-    private static async Task Lost(Task request, CancellationToken cancellation)
+    private static async Task ReleaseIfEntered(HttpClient fixture, string gate, CancellationToken cancellation)
     {
-        try { await request.WaitAsync(TimeSpan.FromSeconds(10), cancellation); }
-        catch (UniversalDataException error) when (error.Code is StatusCode.WorkerLost or StatusCode.CommitUnknown) { return; }
-        throw new InvalidOperationException("A physically terminated Worker returned a logical success");
+        try { await Release(fixture, gate, cancellation); }
+        catch (HttpRequestException) { }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { }
+    }
+
+    private static async Task Lost(EtlRun run, CancellationToken cancellation)
+    {
+        try
+        {
+            await run.WaitAsync(cancellation);
+            throw new InvalidOperationException("A physically terminated Worker returned Native success");
+        }
+        catch (UniversalDataException error) when (error.Code is StatusCode.WorkerLost or StatusCode.CommitUnknown) { }
     }
 
     private static void Require(bool condition, string message)

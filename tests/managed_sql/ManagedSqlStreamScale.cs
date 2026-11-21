@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
-using SqlSugar;
 using UniversalData;
 using static ManagedSqlAcceptance.SqlAcceptance;
 
@@ -46,18 +45,12 @@ internal static class ManagedSqlStreamScale
                     string policy = Path.Combine(directory.FullName, "policy.json");
                     var fileRoots = sqlite ? new[] { Path.GetDirectoryName(SqlitePath(options.ConnectionString))!,
                         Path.GetDirectoryName(SqlitePath(targetConnection))! }.Distinct().ToArray() : [];
-                    string module = typeof(StreamScaleRow).Assembly.Location;
-                    using var image = File.OpenRead(module);
-                    var trustedAssemblyHashes = new[]
-                    {
-                        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(image)).ToLowerInvariant()
-                    };
                     await File.WriteAllTextAsync(policy, JsonSerializer.Serialize(new
                     {
                         dataDirectory = Path.Combine(directory.FullName, "state"), fileRoots,
                         networkOrigins = Array.Empty<string>(),
                         pluginRoots = new[] { Path.GetDirectoryName(plugin)!, AppContext.BaseDirectory },
-                        credentialFiles = new Dictionary<string, string>(), trustedAssemblyHashes,
+                        credentialFiles = new Dictionary<string, string>(),
                         resources = new Dictionary<string, string[]>
                         {
                             ["source"] = ["Open", "Read", "Discover"],
@@ -69,19 +62,26 @@ internal static class ManagedSqlStreamScale
                     await using var data = DataClient.CreateBuilder(policy, "local")
                         .AddSource(Definition("source", options.ConnectionString))
                         .AddSource(Definition("target", targetConnection))
-                        .AddModule(typeof(StreamScaleRow).Assembly)
                         .ConfigureWorkers(worker => worker.ExecutionTimeout(TimeSpan.FromHours(1)))
                         .Build();
                     using var process = Process.GetCurrentProcess();
                     var before = GC.GetTotalAllocatedBytes(precise: true);
                     var stopwatch = Stopwatch.StartNew();
-                    var input = data.Etl("managed-stream-scale")
-                        .FromSql<StreamScaleRow>("source", $"SELECT id,label,amount FROM {sourceTable} ORDER BY id")
-                        .Stream().BatchSize((uint)options.BatchSize);
-                    var pipeline = sqlite
-                        ? input.Map(StreamScaleTextRow.Transform).ToTable("target", targetTable).Append()
-                        : input.Map(StreamScaleRow.Transform).ToTable("target", targetTable).Append();
-                    await using var run = await pipeline.StartAsync();
+                    var job = DataJob.Define("managed-stream-scale")
+                        .WithOptions(new(BatchRows: (uint)options.BatchSize));
+                    var input = job.FromSql<StreamScaleRow>("source",
+                        $"SELECT id,label,amount FROM {sourceTable} ORDER BY id", stream: true);
+                    var copy = sqlite
+                        ? input.Select(row => new StreamScaleTextRow
+                        {
+                            Id = row.Id, Label = row.Label.Trim(),
+                            Amount = (row.Amount + 0.25m).ToString(CultureInfo.InvariantCulture)
+                        }).ToTable("target", targetTable, durable: false).Append()
+                        : input.Select(row => new StreamScaleRow
+                        {
+                            Id = row.Id, Label = row.Label.Trim(), Amount = row.Amount + 0.25m
+                        }).ToTable("target", targetTable, durable: false).Append();
+                    await using var run = await data.StartAsync(copy);
                     using var workerProcess = Process.GetProcessById(run.WorkerProcessId);
                     ExecutionMetrics metrics;
                     try { metrics = await run.WaitAsync(); }
@@ -151,43 +151,5 @@ internal static class ManagedSqlStreamScale
             throw new ArgumentException("SQLite needs a database path");
         }
         return Path.GetFullPath(connection);
-    }
-}
-
-public sealed class StreamScaleRow
-{
-    [SugarColumn(ColumnName = "id", IsPrimaryKey = true)]
-    public long Id { get; set; }
-
-    [SugarColumn(ColumnName = "label")]
-    public string Label { get; set; } = "";
-
-    [SugarColumn(ColumnName = "amount", Length = 18, DecimalDigits = 2)]
-    public decimal Amount { get; set; }
-
-    public static StreamScaleRow Transform(StreamScaleRow row)
-    {
-        row.Label = row.Label.Trim();
-        row.Amount += 0.25m;
-        return row;
-    }
-}
-
-
-public sealed class StreamScaleTextRow
-{
-    [SugarColumn(ColumnName = "id", IsPrimaryKey = true)]
-    public long Id { get; set; }
-
-    [SugarColumn(ColumnName = "label")]
-    public string Label { get; set; } = "";
-
-    [SugarColumn(ColumnName = "amount")]
-    public string Amount { get; set; } = "";
-
-    public static StreamScaleTextRow Transform(StreamScaleRow row)
-    {
-        row = StreamScaleRow.Transform(row);
-        return new() { Id = row.Id, Label = row.Label, Amount = row.Amount.ToString("F2", CultureInfo.InvariantCulture) };
     }
 }

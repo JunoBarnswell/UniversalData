@@ -31,6 +31,7 @@ typedef struct ud_http_response {
  * transfer rechecks the existing ConnectionManager lease and resource grant. */
 UD_API ud_status ud_http_call(const ud_component_context *, ud_connection_lease *,
                               const ud_http_options *, ud_http_response *);
+ud_status ud_http_resolve_url(ud_context *, ud_string base, ud_string requested, ud_string *);
 UD_API void ud_http_response_clear(ud_http_response *);
 UD_API ud_status ud_http_validate_headers(const ud_json *, const ud_json *);
 #ifdef __cplusplus

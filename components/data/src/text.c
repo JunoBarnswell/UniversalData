@@ -4,6 +4,7 @@
 #include <unicode/unorm2.h>
 #include <unicode/uchar.h>
 #include <unicode/utf16.h>
+#include <unicode/utf8.h>
 #include <unicode/ubrk.h>
 static ud_status from_utf8(ud_context *ctx,ud_string input,UChar **out,int32_t *length) {
     if(input.length>INT32_MAX||(!input.data&&input.length))return UD_SCHEMA;
@@ -38,8 +39,39 @@ static ud_status casing(ud_context *ctx,UChar **data,int32_t *length,uint32_t fl
     error=U_ZERO_ERROR;if(flag==UD_TEXT_FOLD)size=u_strFoldCase(value,size+1,*data,*length,U_FOLD_CASE_DEFAULT,&error);else if(flag==UD_TEXT_UPPER)size=u_strToUpper(value,size+1,*data,*length,"",&error);else size=u_strToLower(value,size+1,*data,*length,"",&error);
     if(U_FAILURE(error)){ud_free(value);return UD_PARSE;}ud_free(*data);*data=value;*length=size;return UD_OK;
 }
+static ud_status trim_utf8(ud_context *ctx, ud_string input, char **out, uint32_t *length) {
+    if (input.length > INT32_MAX || (!input.data && input.length))
+        return UD_SCHEMA;
+    const char *data = input.data ? input.data : "";
+    if (!ud_utf8_valid(data, input.length))
+        return UD_PARSE;
+    int32_t begin = 0, end = (int32_t)input.length;
+    while (begin < end) {
+        int32_t next = begin;
+        UChar32 codepoint;
+        U8_NEXT_UNSAFE(data, next, codepoint);
+        if (!u_isUWhiteSpace(codepoint))
+            break;
+        begin = next;
+    }
+    while (end > begin) {
+        int32_t next = end;
+        UChar32 codepoint;
+        U8_PREV_UNSAFE(data, next, codepoint);
+        if (!u_isUWhiteSpace(codepoint))
+            break;
+        end = next;
+    }
+    *out = ud_strdup_n(ctx, data + begin, (size_t)(end - begin));
+    if (!*out)
+        return UD_RESOURCE;
+    *length = (uint32_t)(end - begin);
+    return UD_OK;
+}
 ud_status ud_text_transform(ud_context *ctx,ud_string input,uint32_t flags,char **out,uint32_t *length) {
     if(!ctx||!out||!length||flags&~63u)return UD_INVALID;*out=NULL;*length=0;
+    if (flags == UD_TEXT_TRIM)
+        return trim_utf8(ctx, input, out, length);
     if((flags&UD_TEXT_NFC)&&(flags&UD_TEXT_NFKC))return UD_SCHEMA;
     uint32_t cases=flags&(UD_TEXT_FOLD|UD_TEXT_UPPER|UD_TEXT_LOWER);if(cases&&(cases&(cases-1)))return UD_SCHEMA;
     UChar *data=NULL;int32_t n=0;ud_status s=from_utf8(ctx,input,&data,&n);

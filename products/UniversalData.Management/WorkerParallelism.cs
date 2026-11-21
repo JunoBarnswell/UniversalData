@@ -10,19 +10,32 @@ public sealed record WorkerParallelism(uint WorkerProcesses = 1, uint ConsumerLa
     {
         using var document = JsonDocument.Parse(package);
         var root = document.RootElement;
+        uint? nativeThreads = null;
+        if (root.TryGetProperty("policy", out var policy) && policy.TryGetProperty("maxConcurrency", out var concurrency))
+        {
+            if (!concurrency.TryGetUInt32(out uint count) || count == 0 || count > limit)
+                throw new UniversalDataException((int)StatusCode.Resource, $"Job parallelism must be between 1 and {limit}");
+            nativeThreads = count;
+        }
+        WorkerParallelism? ordinary = nativeThreads is { } threads ? new(ThreadsPerWorker: threads) : null;
         if (!root.TryGetProperty("dataFlows", out var flows))
-            return null;
+            return ordinary;
         if (flows.EnumerateArray().Any(IsKafkaStage))
-            return ReadStageParallelism(flows, limit);
+        {
+            var staged = ReadStageParallelism(flows, limit);
+            if (nativeThreads > staged.ThreadsPerWorker)
+                throw new ArgumentException("Job parallelism exceeds the declared Worker threads");
+            return staged;
+        }
         var configured = flows.EnumerateArray().Where(flow => flow.TryGetProperty("parallelism", out _)).ToArray();
         if (configured.Length == 0)
-            return null;
+            return ordinary;
         var flow = configured[0];
         var plan = flow.GetProperty("parallelism").Deserialize<WorkerParallelism>(UniversalData.Hosting.HostPolicy.JsonOptions)
             ?? throw new ArgumentException("Invalid Data Flow parallelism");
         if (configured.Length != 1 || plan.WorkerProcesses == 0 || plan.WorkerProcesses > limit ||
             plan.ThreadsPerWorker == 0 || plan.ThreadsPerWorker > limit || plan.ConsumerLanesPerWorker == 0 ||
-            plan.ConsumerLanesPerWorker > plan.ThreadsPerWorker)
+            plan.ConsumerLanesPerWorker > plan.ThreadsPerWorker || nativeThreads > plan.ThreadsPerWorker)
             throw new ArgumentException("Data Flow parallelism exceeds its Worker limits");
         if (plan is { WorkerProcesses: 1, ConsumerLanesPerWorker: 1 })
             return plan;

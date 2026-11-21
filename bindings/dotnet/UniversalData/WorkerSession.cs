@@ -76,9 +76,10 @@ internal sealed class WorkerSession(NamedPipeClientStream pipe, SdkWorkerGrant g
                 }
             }
             var result = await response.ConfigureAwait(false);
+            bool resultBatch = operation == "etl.next" && result.Message.Code == StatusCode.Ok;
             if (result.Message.Revision != ProductInfo.WorkerRevision || result.Message.SessionId != grant.SessionId ||
-                result.Message.Sequence != id ||
-                result.Message.Kind != "result" || result.Batch is not null)
+                result.Message.Sequence != id || result.Message.Kind != "result" ||
+                (result.Batch is not null && !resultBatch) || (resultBatch && result.Batch is null))
             {
                 result.Batch?.Dispose();
                 throw new InvalidDataException("SDK Worker response identity or shape differs");

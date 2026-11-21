@@ -280,7 +280,23 @@ ud_status ud_execution_progress(ud_execution *e, char **out, uint32_t *length) {
     *out = NULL;
     *length = 0;
     ud_bytes b = {.ctx = e->ctx, .limit = 4194304};
-    ud_status s = ud_bytes_put(&b, "{\"pipelines\":[", sizeof("{\"pipelines\":[") - 1);
+    const ud_json *options = ud_member(ud_member(e->package->document, "policy"), "execution");
+    uint64_t prefetch = 0, source_limit = e->max_connections_per_source;
+    if (ud_member(options, "messagePrefetch"))
+        UD_TRY(ud_json_uint(ud_member(options, "messagePrefetch"), &prefetch));
+    if (ud_member(options, "maxConnectionsPerSource"))
+        UD_TRY(ud_json_uint(ud_member(options, "maxConnectionsPerSource"), &source_limit));
+    char configuration[416];
+    int size = snprintf(configuration, sizeof(configuration),
+        "{\"executionOptions\":{\"batchRows\":%u,\"edgeCapacity\":%u,\"parallelism\":%u,"
+        "\"memoryBytes\":%llu,\"timeoutMilliseconds\":%llu,\"maxConnectionsPerSource\":%llu,"
+        "\"messagePrefetch\":%llu},\"pipelines\":[",
+        e->options.max_batch_rows, e->options.edge_capacity, e->options.max_concurrency,
+        (unsigned long long)e->options.context.memory_limit, (unsigned long long)e->options.timeout_ms,
+        (unsigned long long)source_limit, (unsigned long long)prefetch);
+    if (size < 0 || (size_t)size >= sizeof(configuration))
+        return UD_OVERFLOW;
+    ud_status s = ud_bytes_put(&b, configuration, (size_t)size);
     ud_mutex_lock(&e->diagnostics_lock);
     uint64_t sampled_at = ud_now_ms();
     uint32_t count = 0;

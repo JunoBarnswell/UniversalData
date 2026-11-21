@@ -26,7 +26,6 @@ internal static class LatencyCase
                 .AddSqlite("slow", "Data Source=" + slowDatabase)
                 .AddSqlite("fast", "Data Source=" + fastDatabase)
                 .AddHttp("pricing", new Uri(origin))
-                .AddModule(typeof(LatencyJobs).Assembly)
                 .ConfigureWorkers(options => options.MaxConcurrentSessions(4).MaxSessionsPerWorker(sessionsPerProcess)
                     .MaxBranchesPerSession(2).MaxConnectionsPerSource(2).ExecutionTimeout(TimeSpan.FromSeconds(45))
                     .RequireResourceIsolation(isolation))
@@ -42,8 +41,7 @@ internal static class LatencyCase
     private static async Task MeasureShortSessions(DataClient data, string mode, CancellationToken cancellation)
     {
         long started = Stopwatch.GetTimestamp();
-        var cold = await data.RunAsync(LatencyJobs.Fast, cancellation);
-        RequireLedger(cold);
+        await ReadLedger(data, cancellation);
         var coldMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         started = Stopwatch.GetTimestamp();
         var samples = new double[24];
@@ -65,8 +63,7 @@ internal static class LatencyCase
         async Task<(double Duration, int Worker)> Run()
         {
             long stamp = Stopwatch.GetTimestamp();
-            var result = await data.RunAsync(LatencyJobs.Fast, cancellation);
-            RequireLedger(result);
+            var result = await ReadLedger(data, cancellation);
             return (Stopwatch.GetElapsedTime(stamp).TotalMilliseconds, result.ProcessId);
         }
     }
@@ -74,17 +71,7 @@ internal static class LatencyCase
     private static async Task VerifyInterference(DataClient data, HttpClient fixture, string mode,
         int sessionsPerProcess, bool isolation, List<string> failures, CancellationToken token)
     {
-        long acquired = Stopwatch.GetTimestamp();
-        var opened = await Task.WhenAll(data.OpenSessionAsync(token), data.OpenSessionAsync(token));
-        double acquireMs = Stopwatch.GetElapsedTime(acquired).TotalMilliseconds;
-        await using var first = opened[0];
-        await using var second = opened[1];
-        if ((first.ProcessId == second.ProcessId) != (sessionsPerProcess > 1))
-            throw new InvalidOperationException("Fast sessions were placed in the wrong physical Worker mode");
-        var fastBudgets = opened.Select(session => Budget(session.ProcessId, sessionsPerProcess, isolation)).ToArray();
-        if (sessionsPerProcess == 1 && fastBudgets[0] is { } firstBudget && firstBudget.CpuAffinity == fastBudgets[1]?.CpuAffinity)
-            throw new InvalidOperationException("The dedicated fast Workers share a logical CPU");
-        await Measure(first, second, 100, token);
+        await Measure(data, 100, token);
 
         string[] stages = ["baseline", "http", "sql", "cpu"];
         var measurements = stages.ToDictionary(stage => stage, _ => new List<LatencyMeasurement>(2));
@@ -93,8 +80,8 @@ internal static class LatencyCase
         {
             foreach (string stage in window == 1 ? stages : stages.Reverse())
             {
-                var measured = stage == "baseline" ? await Measure(first, second, PerSession, token) :
-                    await MeasureSlow(data, fixture, mode, stage, window, first, second, fastBudgets, sessionsPerProcess, isolation, token);
+                var measured = stage == "baseline" ? await Measure(data, PerSession, token) :
+                    await MeasureSlow(data, fixture, mode, stage, window, sessionsPerProcess, isolation, token);
                 measurements[stage].Add(measured);
                 Console.WriteLine(JsonSerializer.Serialize(new { Mode = mode, Stage = stage, Window = window,
                     Samples = measured.Samples.Length, Summary = Summarize([measured]) }));
@@ -102,9 +89,10 @@ internal static class LatencyCase
         }
 
         var baseline = Summarize(measurements["baseline"]);
+        var workers = measurements["baseline"].SelectMany(window => window.Samples)
+            .Select(sample => sample.ProcessId).Distinct().ToArray();
         Console.WriteLine(JsonSerializer.Serialize(new { Mode = mode, Stage = "baseline", Samples = 4 * PerSession,
-            SessionAcquireMs = acquireMs, SessionPids = opened.Select(session => session.ProcessId), Summary = baseline,
-            RequiredResourceLimits = isolation, FastBudgets = fastBudgets }));
+            SessionPids = workers, Summary = baseline, RequiredResourceLimits = isolation }));
         foreach (string stage in stages.Skip(1))
         {
             var measure = Summarize(measurements[stage]);
@@ -118,43 +106,51 @@ internal static class LatencyCase
     }
 
     private static async Task<LatencyMeasurement> MeasureSlow(DataClient data, HttpClient fixture, string mode, string stage,
-        int window, DataSession first, DataSession second, LatencyWorkerBudget?[] fastBudgets, int sessionsPerProcess,
-        bool isolation, CancellationToken token)
+        int window, int sessionsPerProcess, bool isolation, CancellationToken token)
     {
-        using var stageCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
-        long acquired = Stopwatch.GetTimestamp();
-        await using var delayed = await data.OpenSessionAsync(token);
-        double acquireMs = Stopwatch.GetElapsedTime(acquired).TotalMilliseconds;
-        if ((delayed.ProcessId == first.ProcessId) != (sessionsPerProcess > 1))
-            throw new InvalidOperationException("The slow session must run in the requested physical isolation mode");
-        using var process = Process.GetProcessById(delayed.ProcessId);
-        var before = process.TotalProcessorTime;
-        var slowBudget = Budget(delayed.ProcessId, sessionsPerProcess, isolation);
-        if (sessionsPerProcess == 1 && slowBudget is not null && fastBudgets.Any(fast => fast?.CpuAffinity == slowBudget.CpuAffinity))
-            throw new InvalidOperationException("The dedicated slow Worker shares a logical CPU with a fast Worker");
         string signal = $"{mode}-{stage}-{window}";
         if (stage == "sql") await Control(fixture, "lock", token);
-        var pending = delayed.RunAsync(LatencyJobs.Slow, new LatencyWork(stage, signal), stageCancellation.Token);
+        long acquired = Stopwatch.GetTimestamp();
+        EtlRun? delayed = null;
+        Task<ExecutionMetrics>? pending = null;
         try
         {
+            delayed = await data.StartAsync(LatencyJobs.Slow(stage, signal), token);
+            double startupMs = Stopwatch.GetElapsedTime(acquired).TotalMilliseconds;
+            using var process = Process.GetProcessById(delayed.WorkerProcessId);
+            var before = process.TotalProcessorTime;
+            var slowBudget = Budget(delayed.WorkerProcessId, sessionsPerProcess, isolation);
+            pending = delayed.WaitAsync(token);
             while (!await fixture.GetFromJsonAsync<bool>("entered/" + signal, token))
+            {
+                if (pending.IsCompleted) throw new InvalidOperationException($"The {stage} fixture stopped before it became ready");
                 await Task.Delay(20, token);
-            var measure = await Measure(first, second, PerSession, token);
+            }
+            var measure = await Measure(data, PerSession, token);
             if (pending.IsCompleted) throw new InvalidOperationException($"The {stage} fixture stopped before all samples completed");
+            var fastWorkers = measure.Samples.Select(sample => sample.ProcessId).Distinct().ToArray();
+            foreach (int worker in fastWorkers)
+            {
+                if ((worker == delayed.WorkerProcessId) != (sessionsPerProcess > 1))
+                    throw new InvalidOperationException("Fast and slow jobs were placed in the wrong physical Worker mode");
+                if (sessionsPerProcess == 1 && slowBudget is not null &&
+                    Budget(worker, sessionsPerProcess, isolation)?.CpuAffinity == slowBudget.CpuAffinity)
+                    throw new InvalidOperationException("The slow Worker shares the CPU reserved by a fast Worker");
+            }
             process.Refresh();
             Console.WriteLine(JsonSerializer.Serialize(new { Mode = mode, Stage = stage, Window = window,
-                SlowPid = delayed.ProcessId, SessionAcquireMs = acquireMs,
+                SlowPid = delayed.WorkerProcessId, StartupMs = startupMs, FastPids = fastWorkers,
                 CpuMs = (process.TotalProcessorTime - before).TotalMilliseconds, ResidentBytes = process.WorkingSet64,
                 PeakResidentBytes = process.PeakWorkingSet64, SlowBudget = slowBudget }));
             return measure;
         }
         finally
         {
+            await using var owned = delayed;
             if (stage == "http") await Control(fixture, "release/" + signal, token);
             if (stage == "sql") await Control(fixture, "unlock", token);
-            if (stage == "cpu") await stageCancellation.CancelAsync();
-            try { await pending.WaitAsync(TimeSpan.FromSeconds(8), token); }
-            catch (OperationCanceledException) when (stage == "cpu" && !token.IsCancellationRequested) { }
+            if (stage == "cpu" && delayed is not null) await delayed.CancelAsync(token);
+            try { if (pending is not null) await pending.WaitAsync(TimeSpan.FromSeconds(8), token); }
             catch (UniversalDataException error) when (stage == "cpu" && error.Code == StatusCode.Cancelled) { }
         }
     }
@@ -165,9 +161,20 @@ internal static class LatencyCase
         response.EnsureSuccessStatusCode();
     }
 
-    private static void RequireLedger(FastTiming result)
+    private static async Task<FastTiming> ReadLedger(DataClient data, CancellationToken cancellation)
     {
-        if (result.Value != "ledger") throw new InvalidOperationException("The fast SQL request returned an unexpected row");
+        long started = Stopwatch.GetTimestamp();
+        await using var run = await data.StartAsync(LatencyJobs.Fast, cancellation);
+        long opened = Stopwatch.GetTimestamp();
+        int count = 0;
+        await foreach (var row in run.ReadRowsAsync<FixtureRow>(cancellation))
+        {
+            if (++count != 1 || row.Id != 1 || row.Tag != "ledger")
+                throw new InvalidOperationException("The fast SQL request returned an unexpected row");
+        }
+        if (count != 1) throw new InvalidOperationException("The fast SQL request returned no rows");
+        return new(Stopwatch.GetElapsedTime(started, opened).TotalMilliseconds,
+            Stopwatch.GetElapsedTime(opened).TotalMilliseconds, run.WorkerProcessId);
     }
 
     private static LatencyWorkerBudget? Budget(int processId, int sessionsPerProcess, bool required)
@@ -193,7 +200,7 @@ internal static class LatencyCase
         return new(membership, cpuQuota, memoryLimit, cpuAffinity);
     }
 
-    private static async Task<LatencyMeasurement> Measure(DataSession first, DataSession second, int samples, CancellationToken token)
+    private static async Task<LatencyMeasurement> Measure(DataClient client, int samples, CancellationToken token)
     {
         var arrival = new[] { Channel.CreateUnbounded<long>(), Channel.CreateUnbounded<long>() };
         var data = new LatencySample[2 * samples];
@@ -219,21 +226,21 @@ internal static class LatencyCase
             }
         }) { IsBackground = true };
         producer.Start();
-        await Task.WhenAll(Consume(first, arrival[0], 0), Consume(second, arrival[1], samples));
+        await Task.WhenAll(Consume(arrival[0], 0), Consume(arrival[1], samples));
         return new(data, Stopwatch.GetElapsedTime(started).TotalSeconds);
 
-        async Task Consume(DataSession session, Channel<long> lane, int offset)
+        async Task Consume(Channel<long> lane, int offset)
         {
             int index = offset;
             await foreach (long scheduled in lane.Reader.ReadAllAsync(token))
             {
                 long submitted = Stopwatch.GetTimestamp();
-                var result = await session.RunAsync(LatencyJobs.Fast, token);
+                var result = await ReadLedger(client, token);
                 long completed = Stopwatch.GetTimestamp();
-                RequireLedger(result);
                 data[index++] = new(Stopwatch.GetElapsedTime(submitted, completed).TotalMilliseconds,
                     Stopwatch.GetElapsedTime(scheduled, completed).TotalMilliseconds,
-                    Stopwatch.GetElapsedTime(scheduled, submitted).TotalMilliseconds, result.ConnectionLeaseMs, result.SqlMs);
+                    Stopwatch.GetElapsedTime(scheduled, submitted).TotalMilliseconds,
+                    result.StartupMs, result.ResultMs, result.ProcessId);
             }
             if (index != offset + samples) throw new InvalidOperationException("The planned arrival schedule did not complete");
         }
@@ -246,7 +253,7 @@ internal static class LatencyCase
             data.Max(row => row.RequestMs),
             Percentile(data.Select(row => row.PlannedMs), 0.95), Percentile(data.Select(row => row.PlannedMs), 0.99),
             Percentile(data.Select(row => row.DispatchMs), 0.95), data.Max(row => row.DispatchMs),
-            Percentile(data.Select(row => row.ConnectionLeaseMs), 0.95), Percentile(data.Select(row => row.SqlMs), 0.95),
+            Percentile(data.Select(row => row.StartupMs), 0.95), Percentile(data.Select(row => row.ResultMs), 0.95),
             data.Length / measurements.Sum(window => window.ElapsedSeconds));
     }
 
