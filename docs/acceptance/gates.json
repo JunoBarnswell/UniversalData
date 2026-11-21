@@ -3,25 +3,25 @@
   "version": 15,
   "sdkVersion": "11.0.0",
   "abi": 15,
-  "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
+  "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
   "sourceFingerprint": null,
   "remoteCI": {
-    "state": "InProgress",
-    "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
+    "state": "Observed",
+    "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
     "sourceFingerprint": null,
-    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44891162963",
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44905136912",
     "status": "in_progress",
     "conclusion": null,
     "steps": null,
     "annotations": [],
-    "reason": "Exact audited source run: Source and Designer passed; Windows and Ubuntu CORE were in progress when checked. Complete PRODUCT and independent installed NuGet jobs were skipped. CORE excludes real-integration and SSIS Golden; browser recovery is Linux-only in this workflow. This snapshot does not certify delivery or later commits.",
+    "reason": "GitHub Actions status was recorded for this source. See the Linux evidence for the local PRODUCT run, verified behavior and open release gates.",
     "previousRun": {
       "sourceCommit": "42563c174833f04f013b90733b32f3a753d1bfbb",
       "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44889441823",
       "conclusion": "failure",
       "reason": "Previous source run: Windows 89/90 (SQLite fixture cleanup lock); Ubuntu 88/91 (remote dispatch assertion, Avro/OpenSSL load, autoscale convergence). Historical relative to the audited source."
     },
-    "checkedAtUtc": "2026-11-21T09:54:13Z"
+    "checkedAtUtc": "2026-11-21T12:46:54Z"
   },
   "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
   "windows": "Required — complete driver build, native/language/install and platform acceptance",

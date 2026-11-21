@@ -6,7 +6,7 @@
 
 ## SDK 11.0.0 候选已审查源码
 
-`8d7b36594d8c68a8933fabd57317dc6a7318925c`。 以下证据列指向实现或测试定义，不表示运行通过。
+`915d3087cae2115edd5cfebf847a93b6fa65cafc`。 以下证据列指向实现或测试定义，不表示运行通过。
 
 | ID | 目标 | 实现 | 验收 | 限制 | 证据 |
 |---|---|---|---|---|---|
@@ -17,11 +17,11 @@
 | S13 | Native rate budgets | Planned | NotRun | Bounded queue/working/spill quotas and node limits are not a general source rate governor. | docs/architecture/stream-batch-unification.md |
 | S14 | Event-window change output | Implemented (scoped) | NotRun | Keyed tumbling/sliding count, sum and average may emit insert/update/delete (update/delete include the before image as applicable) changes with checkpointed published state; session remains final-only. No generic CDC retractions. | components/compute/src/event_window.c, tests/event_window.c |
 | S15 | REST write and recovery modes | Implemented (scoped) | NotRun | response/idempotent/receipt modes use one Native path; unknown commit is not safe blind replay. Includes local fixture source, not external endpoint crash/replay evidence. | connectors/rest.c, tests/advanced_formats.py |
-| S16 | Iceberg v2 REST/Parquet delivery | Implemented (scoped) | NotRun | Existing Catalog-owned partition specs are used; native-created tables are unpartitioned. No remote object-store credential/maintenance guarantee or general standalone SQL DELETE. Real Trino fixture not certified by CORE. | connectors/iceberg_table.cpp, tests/iceberg_v2.py |
-| S17 | Bounded cross-system streaming oracle | Implemented fixture | NotRun | PostgreSQL TLS CDC insert, Kafka refund/duplicate, current MySQL lookup, SQL/Trino net 70 and same-ID resume with one snapshot; not production-wide mutable CDC or distributed exactly-once. | tests/orders_payments_shops_iceberg.py |
-| V11-01 | 跨次调度增量结算与空批续跑 | Native Catalog 用同一事务结算运行及位点，原运行使用 Journal 恢复 | NotRun | — | catalog/incremental.c, engines/package/incremental.c, tests/jobs_schedule.py |
-| V11-02 | S3 Iceberg 及实时三源回读 | Native SigV4 对象传输，REST Catalog 快照确认 | NotRun | — | connectors/s3_object.c, tests/iceberg_v2.py, tests/orders_payments_shops_iceberg.py |
-| V11-03 | DataJob、CLI、Designer 共用预检和发布 | Native Binder 与 POST /api/publications 统一契约 | NotRun | — | engines/data-flow/pipeline_contract.c, bindings/dotnet/UniversalData/DataClient.Execution.cs, products/designer/src/JobTemplateDialog.tsx |
+| S16 | Iceberg v2 REST/Parquet delivery | Implemented (scoped) | Passed (Linux fixture) | Real MinIO staging and resume verified. Maintenance, arbitrary partition creation and Windows remain outside this evidence. | connectors/iceberg_table.cpp, tests/iceberg_v2.py, docs/acceptance/evidence/v11-linux.json |
+| S17 | Bounded cross-system streaming oracle | Implemented fixture | Passed (Linux fixture) | PostgreSQL TLS CDC insert, Kafka refund/duplicate, current MySQL lookup, SQL/Trino net 70 and same-ID resume with one snapshot; not production-wide mutable CDC or distributed exactly-once. | tests/orders_payments_shops_iceberg.py, docs/acceptance/evidence/v11-linux.json |
+| V11-01 | 跨次调度增量结算与空批续跑 | Native Catalog 用同一事务结算运行及位点，原运行使用 Journal 恢复 | Passed (Linux fixture) | — | catalog/incremental.c, engines/package/incremental.c, tests/jobs_schedule.py, docs/acceptance/evidence/v11-linux.json |
+| V11-02 | S3 Iceberg 及实时三源回读 | Native SigV4 对象传输，REST Catalog 快照确认 | Passed (Linux fixture) | — | connectors/s3_object.c, tests/iceberg_v2.py, tests/orders_payments_shops_iceberg.py, docs/acceptance/evidence/v11-linux.json |
+| V11-03 | DataJob、CLI、Designer 共用预检和发布 | Native Binder 与 POST /api/publications 统一契约 | Partial | C# and YAML CLI binding and read-only samples passed. All Designer templates opened in Chromium. Windows installation remains open. | engines/data-flow/pipeline_contract.c, bindings/dotnet/UniversalData/DataClient.Execution.cs, products/designer/src/JobTemplateDialog.tsx, docs/acceptance/evidence/v11-linux.json |
 
 ## 历史 Studio 4 基础验收
 

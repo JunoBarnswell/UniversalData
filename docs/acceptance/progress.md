@@ -2,11 +2,11 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 11.0.0 / ABI 15；SDK 11 candidate for unified DataJob, catalog-settled incremental batches, continuous CDC and native Iceberg S3 storage。
+SDK 11.0.0 / ABI 15；SDK 11.0.0 source shipped to main. Linux execution evidence is scoped. The complete release remains open.。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
-已审查源码：`8d7b36594d8c68a8933fabd57317dc6a7318925c`；[对应 CI](https://github.com/JunoBarnswell/UniversalData/actions/runs/44891162963)（2026-11-21T09:54:13Z 核对）：Exact audited source run: Source and Designer passed; Windows and Ubuntu CORE were in progress when checked. Complete PRODUCT and independent installed NuGet jobs were skipped. CORE excludes real-integration and SSIS Golden; browser recovery is Linux-only in this workflow. This snapshot does not certify delivery or later commits.
+已审查源码：`915d3087cae2115edd5cfebf847a93b6fa65cafc`；[对应 CI](https://github.com/JunoBarnswell/UniversalData/actions/runs/44905136912)（2026-11-21T12:46:54Z 核对）：GitHub Actions status was recorded for this source. See the Linux evidence for the local PRODUCT run, verified behavior and open release gates.
 
 下表的历史进展不计入当前验收。流处理/湖表能力见 [当前源码与验收](studio4-traceability.md)。
 

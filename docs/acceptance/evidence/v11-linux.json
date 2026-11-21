@@ -1,0 +1,310 @@
+{
+  "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
+  "checkedAtUtc": "2026-11-21T12:46:54Z",
+  "sdkVersion": "11.0.0",
+  "abi": 15,
+  "packageProtocol": 15,
+  "journalRevision": 4,
+  "workerRevision": 10,
+  "linuxBuild": {
+    "profile": "PRODUCT",
+    "configuration": "Release",
+    "status": "Pass",
+    "dependencyAudit": "The NuGet audit endpoint was unavailable (NU1900). Restore and compilation finished with cached package assets.",
+    "sha256": {
+      "Native": "58226c6e2212dbcf7e9a95fff821a892c17243bd615f45ccde0c1103082d70ae",
+      "CLI": "e498e8a07cc53adde073c29d020dd459f6308947b6244ad7ecad59e5d3da5e8a",
+      "Worker": "d57963daf2a24a270dffac83b34664cbf2ce6dbd3065e5523b22c9e3a550e767",
+      "Management": "123c9eed77cce20a50db8e1a449bb8e2cde45e6dcb4bea06780678522b69d9a9"
+    }
+  },
+  "initialProductCtest": {
+    "tests": 157,
+    "failures": 11,
+    "skipped": 14,
+    "passed": 132
+  },
+  "targetedLinuxCtest": {
+    "finalSourceSmoke": {
+      "tests": 8,
+      "failures": 3,
+      "skipped": 0,
+      "passed": 5
+    },
+    "configurationScheduleAndSharedSessions": {
+      "tests": 4,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 4
+    },
+    "postgresqlCdcAndDdl": {
+      "tests": 2,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 2
+    },
+    "icebergWithMinioAndTrino": {
+      "tests": 1,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 1
+    },
+    "ordersPaymentsShops": {
+      "tests": 1,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 1
+    },
+    "sqlServerXaAfterFixtureRestart": {
+      "tests": 3,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 3
+    }
+  },
+  "incremental": {
+    "status": "Pass",
+    "checks": [
+      "Two scheduled batches and an empty batch",
+      "Composite cursor with tied changes",
+      "Resume the same execution after the SQL commit and before Catalog settlement",
+      "One acknowledged target write after resume"
+    ]
+  },
+  "entryPoints": {
+    "status": "Partial",
+    "checks": [
+      "C# and YAML export the same Native Package",
+      "CLI reports matching Native binding plans and identical samples without target writes",
+      "All three Designer templates opened in Chromium against real Management and Native Worker"
+    ],
+    "remaining": "Windows clean installation and one cross-platform three-entry comparison"
+  },
+  "realCdc": {
+    "status": "Pass",
+    "providers": [
+      "PostgreSQL",
+      "MySQL",
+      "MariaDB",
+      "SQL Server",
+      "Oracle"
+    ],
+    "managedPostgreSqlChecks": [
+      "Continues after SDK client exit",
+      "Drains and resumes the original run",
+      "Changes of primary-key value",
+      "Allows a non-projected added field",
+      "Fences a removed projected field"
+    ],
+    "postgresqlWalOracle": "Three transactions, six ordered changes, exact WAL commit timestamps, crash and receipt recovery"
+  },
+  "xaRecovery": {
+    "status": "Pass",
+    "cases": [
+      "SQL Server/ODBC",
+      "SQL Server and PostgreSQL",
+      "SQL Server, PostgreSQL and MariaDB"
+    ],
+    "retryReason": "The existing SQL Server fixture was OOM-killed. The first final-source attempt timed out while opening ODBC; all three cases were rerun after the fixture restarted."
+  },
+  "iceberg": {
+    "status": "Pass",
+    "objectStore": "MinIO with verified TLS and SigV4",
+    "queryEngine": "Trino 480",
+    "recoveryStages": [
+      "Pending multipart before part transfer",
+      "Objects uploaded before Catalog submission",
+      "Catalog snapshot visible before Native receipt"
+    ],
+    "recoveryChecks": [
+      "Same execution",
+      "Exact row checksum",
+      "One snapshot and one acknowledged row per case",
+      "Original multipart UploadId present before resume and absent afterwards"
+    ],
+    "mixedSqlNet": 70,
+    "mixedTrinoNet": 70,
+    "mixedSnapshotCountAfterResume": 1
+  },
+  "ssisCsvMySql": {
+    "status": "Pass",
+    "cases": [
+      {
+        "case": "csv-clean-batch1",
+        "batchRows": 1,
+        "seconds": 425.9090152680001,
+        "rowsPerSecond": 117.4,
+        "businessRows": 50000,
+        "errorRows": 0,
+        "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+        "readbackSha256": "a1368d7e6bc9ab31d501ad5296546502d3efbaa96f1bdb28aac495586e27e554"
+      },
+      {
+        "case": "csv-clean-parameters",
+        "batchRows": 4096,
+        "seconds": 8.520439341999008,
+        "rowsPerSecond": 5868.24,
+        "businessRows": 50000,
+        "errorRows": 0,
+        "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+        "readbackSha256": "4054413e661a70f23ee8029d65eee4db5a7c8566a2e8a955f08df0dc5aa6f5af"
+      }
+    ],
+    "scope": "Native execution and independent MySQL readback. The Windows SSIS Golden comparison was unavailable."
+  },
+  "sqliteTenMillion": {
+    "provider": "Sqlite",
+    "rows": 10000000,
+    "batchRows": 4096,
+    "inputRows": 10000000,
+    "written": 10000000,
+    "read": 10000000,
+    "checksum": "82da80c54b8880a5",
+    "elapsedMilliseconds": 97529.2183,
+    "rowsPerSecond": 102533.37588782869,
+    "clientAllocatedBytes": 3422968,
+    "clientPeakRssBytes": 122900480,
+    "workerPeakRssBytes": 124989440,
+    "nativeMemoryBytes": 258262,
+    "batches": 4884,
+    "queueHighWater": 1
+  },
+  "isolatedWorkerLatency": {
+    "status": "Fail",
+    "maxRatio": 1.1,
+    "comparisons": [
+      [
+        {
+          "mode": "dedicated",
+          "interference": "http",
+          "samples": 2000,
+          "requestP95Ratio": 1.1961546645002805,
+          "plannedP95Ratio": 1.9471210129135674,
+          "p95ScheduleToResultMs": 10.811
+        },
+        {
+          "mode": "dedicated",
+          "interference": "sql",
+          "samples": 2000,
+          "requestP95Ratio": 1.0883962939321843,
+          "plannedP95Ratio": 1.2235650090953298,
+          "p95ScheduleToResultMs": 6.7936
+        },
+        {
+          "mode": "dedicated",
+          "interference": "cpu",
+          "samples": 2000,
+          "requestP95Ratio": 1.1382231764637614,
+          "plannedP95Ratio": 1.4952181978639483,
+          "p95ScheduleToResultMs": 8.3019
+        },
+        {
+          "mode": "shared",
+          "interference": "http",
+          "samples": 2000,
+          "requestP95Ratio": 1.0045432718945073,
+          "plannedP95Ratio": 0.980045761078998,
+          "p95ScheduleToResultMs": 8.1383
+        },
+        {
+          "mode": "shared",
+          "interference": "sql",
+          "samples": 2000,
+          "requestP95Ratio": 0.8292394636722935,
+          "plannedP95Ratio": 0.569424373795761,
+          "p95ScheduleToResultMs": 4.7285
+        },
+        {
+          "mode": "shared",
+          "interference": "cpu",
+          "samples": 2000,
+          "requestP95Ratio": 1.0315258744874969,
+          "plannedP95Ratio": 0.7077312138728323,
+          "p95ScheduleToResultMs": 5.877
+        }
+      ],
+      [
+        {
+          "mode": "dedicated",
+          "interference": "http",
+          "samples": 2000,
+          "requestP95Ratio": 0.7481281639334323,
+          "plannedP95Ratio": 0.5620601050161993,
+          "p95ScheduleToResultMs": 5.5341
+        },
+        {
+          "mode": "dedicated",
+          "interference": "sql",
+          "samples": 2000,
+          "requestP95Ratio": 0.7747734093182576,
+          "plannedP95Ratio": 0.7539025604046272,
+          "p95ScheduleToResultMs": 7.423
+        },
+        {
+          "mode": "dedicated",
+          "interference": "cpu",
+          "samples": 2000,
+          "requestP95Ratio": 0.9285822546909576,
+          "plannedP95Ratio": 1.0644417586658679,
+          "p95ScheduleToResultMs": 10.4806
+        },
+        {
+          "mode": "shared",
+          "interference": "http",
+          "samples": 2000,
+          "requestP95Ratio": 0.8799027008891125,
+          "plannedP95Ratio": 0.8559964983950977,
+          "p95ScheduleToResultMs": 5.867
+        },
+        {
+          "mode": "shared",
+          "interference": "sql",
+          "samples": 2000,
+          "requestP95Ratio": 0.7780405972152323,
+          "plannedP95Ratio": 0.7079807411730377,
+          "p95ScheduleToResultMs": 4.8525
+        },
+        {
+          "mode": "shared",
+          "interference": "cpu",
+          "samples": 2000,
+          "requestP95Ratio": 1.2018453279651065,
+          "plannedP95Ratio": 1.3783921797490517,
+          "p95ScheduleToResultMs": 9.4475
+        }
+      ]
+    ],
+    "scope": "Real per-process CPU and memory limits with HTTP, SQL and CPU interference on a four-CPU Linux runner"
+  },
+  "installedNuget": {
+    "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
+    "framework": "8.0.31",
+    "rid": "linux-x64",
+    "version": "11.0.0",
+    "drivers": [
+      "sqlite"
+    ],
+    "sqliteRows": 35,
+    "http": 200,
+    "dependencyLockSha256": "4d3a6a3eb28a797e589ba9cd1ad414c0355edde19c6023e40609ad64d8324baf",
+    "archives": [
+      {
+        "name": "UniversalData.11.0.0.nupkg",
+        "bytes": 263648,
+        "sha256": "ad61b3baffda3d9904c0a058d11cca2d0645f2a3d57467de92a61ca9f9739272"
+      },
+      {
+        "name": "UniversalData.Runtime.linux-x64.11.0.0.nupkg",
+        "bytes": 143861050,
+        "sha256": "c29dccd5ba18562fb91b8d4ad3e267cac95cd339b57f0842f5c1df7168e95db2"
+      }
+    ]
+  },
+  "remaining": {
+    "windowsProductAndGolden": "Blocked. The Windows runner and independent SSIS Golden fixtures were unavailable.",
+    "completeProductGate": "Blocked. External broker, host infrastructure and other complete-product fixtures were unavailable.",
+    "slowS3Interference": "NotRun",
+    "realStream30Minutes": "NotRun",
+    "continuous24HourSoak": "NotRun"
+  }
+}

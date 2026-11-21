@@ -16,35 +16,35 @@
   },
   "candidate": {
     "branch": "main",
-    "state": "SDK 11 candidate for unified DataJob, catalog-settled incremental batches, continuous CDC and native Iceberg S3 storage",
-    "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
+    "state": "SDK 11.0.0 source shipped to main. Linux execution evidence is scoped. The complete release remains open.",
+    "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
     "sourceFingerprint": null,
-    "mergeEvidence": null,
+    "mergeEvidence": "docs/acceptance/evidence/v11-linux.json",
     "pullRequest": null,
-    "sourceReviewScope": "Implementation based on main fe4fbd8. A release seal requires matching source, both platform artifacts and independent acceptance evidence."
+    "sourceReviewScope": "C# DataJob, CLI and Designer use one Native Package/Binder. Linux candidate evidence includes scheduled incremental recovery, real CDC and XA, MinIO recovery, SQL and Trino net 70, and a ten-million-row SQLite stream."
   },
   "remoteCI": {
-    "state": "InProgress",
-    "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
+    "state": "Observed",
+    "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
     "sourceFingerprint": null,
-    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44891162963",
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44905136912",
     "status": "in_progress",
     "conclusion": null,
     "steps": null,
     "annotations": [],
-    "reason": "Exact audited source run: Source and Designer passed; Windows and Ubuntu CORE were in progress when checked. Complete PRODUCT and independent installed NuGet jobs were skipped. CORE excludes real-integration and SSIS Golden; browser recovery is Linux-only in this workflow. This snapshot does not certify delivery or later commits.",
+    "reason": "GitHub Actions status was recorded for this source. See the Linux evidence for the local PRODUCT run, verified behavior and open release gates.",
     "previousRun": {
       "sourceCommit": "42563c174833f04f013b90733b32f3a753d1bfbb",
       "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44889441823",
       "conclusion": "failure",
       "reason": "Previous source run: Windows 89/90 (SQLite fixture cleanup lock); Ubuntu 88/91 (remote dispatch assertion, Avro/OpenSSL load, autoscale convergence). Historical relative to the audited source."
     },
-    "checkedAtUtc": "2026-11-21T09:54:13Z"
+    "checkedAtUtc": "2026-11-21T12:46:54Z"
   },
   "artifacts": null,
   "currentStreaming": {
-    "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
-    "verificationRule": "Source entries describe the implementation. Runtime certification requires evidence from the SDK 11 candidate.",
+    "sourceCommit": "915d3087cae2115edd5cfebf847a93b6fa65cafc",
+    "verificationRule": "The linked SDK 11 Linux evidence identifies the cases actually run and the gates still open.",
     "items": [
       {
         "id": "S07",
@@ -125,57 +125,62 @@
         "id": "S16",
         "goal": "Iceberg v2 REST/Parquet delivery",
         "implementation": "Implemented (scoped)",
-        "verification": "NotRun",
-        "blocked": "Existing Catalog-owned partition specs are used; native-created tables are unpartitioned. No remote object-store credential/maintenance guarantee or general standalone SQL DELETE. Real Trino fixture not certified by CORE.",
+        "verification": "Passed (Linux fixture)",
+        "blocked": "Real MinIO staging and resume verified. Maintenance, arbitrary partition creation and Windows remain outside this evidence.",
         "evidence": [
           "connectors/iceberg_table.cpp",
-          "tests/iceberg_v2.py"
+          "tests/iceberg_v2.py",
+          "docs/acceptance/evidence/v11-linux.json"
         ]
       },
       {
         "id": "S17",
         "goal": "Bounded cross-system streaming oracle",
         "implementation": "Implemented fixture",
-        "verification": "NotRun",
+        "verification": "Passed (Linux fixture)",
         "blocked": "PostgreSQL TLS CDC insert, Kafka refund/duplicate, current MySQL lookup, SQL/Trino net 70 and same-ID resume with one snapshot; not production-wide mutable CDC or distributed exactly-once.",
         "evidence": [
-          "tests/orders_payments_shops_iceberg.py"
+          "tests/orders_payments_shops_iceberg.py",
+          "docs/acceptance/evidence/v11-linux.json"
         ]
       },
       {
         "id": "V11-01",
         "goal": "跨次调度增量结算与空批续跑",
         "implementation": "Native Catalog 用同一事务结算运行及位点，原运行使用 Journal 恢复",
-        "verification": "NotRun",
+        "verification": "Passed (Linux fixture)",
         "blocked": null,
         "evidence": [
           "catalog/incremental.c",
           "engines/package/incremental.c",
-          "tests/jobs_schedule.py"
+          "tests/jobs_schedule.py",
+          "docs/acceptance/evidence/v11-linux.json"
         ]
       },
       {
         "id": "V11-02",
         "goal": "S3 Iceberg 及实时三源回读",
         "implementation": "Native SigV4 对象传输，REST Catalog 快照确认",
-        "verification": "NotRun",
+        "verification": "Passed (Linux fixture)",
         "blocked": null,
         "evidence": [
           "connectors/s3_object.c",
           "tests/iceberg_v2.py",
-          "tests/orders_payments_shops_iceberg.py"
+          "tests/orders_payments_shops_iceberg.py",
+          "docs/acceptance/evidence/v11-linux.json"
         ]
       },
       {
         "id": "V11-03",
         "goal": "DataJob、CLI、Designer 共用预检和发布",
         "implementation": "Native Binder 与 POST /api/publications 统一契约",
-        "verification": "NotRun",
-        "blocked": null,
+        "verification": "Partial",
+        "blocked": "C# and YAML CLI binding and read-only samples passed. All Designer templates opened in Chromium. Windows installation remains open.",
         "evidence": [
           "engines/data-flow/pipeline_contract.c",
           "bindings/dotnet/UniversalData/DataClient.Execution.cs",
-          "products/designer/src/JobTemplateDialog.tsx"
+          "products/designer/src/JobTemplateDialog.tsx",
+          "docs/acceptance/evidence/v11-linux.json"
         ]
       }
     ]
