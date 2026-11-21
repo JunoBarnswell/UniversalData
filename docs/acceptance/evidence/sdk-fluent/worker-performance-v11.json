@@ -1,0 +1,795 @@
+{
+  "runtimeSourceCommit": "e15afed53a647688889b4bae068176d8f5c3a08e",
+  "profile": "Linux PRODUCT Release",
+  "runtimeSha256": {
+    "libud_data.so.11.0.0": "73d2bada01b5d971cf64217e20145cf1e57246774498529190887d92d820fd07",
+    "ud_worker.dll": "725eef4d9f49e04a714a5127edd9a0551aaa828515348bddc888df06bdf07e37",
+    "ud_connector_rabbitmq.so": "09d988d66b8e75bf65139e7df6c283ad4f7d1f2891eb4e6437a357e69eb587aa"
+  },
+  "workerLatency": {
+    "configuredCpuSlots": 4,
+    "arrivalRatePerSecond": 166.6666666667,
+    "ratioLimit": 1.1,
+    "intermediateBeforeCompletionAndFraming": {
+      "passed": false,
+      "scenarios": [
+        {
+          "Mode": "dedicated",
+          "Stage": "baseline",
+          "Samples": 2000,
+          "SessionPids": [
+            162113,
+            162115,
+            162127
+          ],
+          "Summary": {
+            "P95Ms": 5.6244,
+            "P99Ms": 11.2457,
+            "MaxRequestMs": 65.2512,
+            "P95ScheduleToResultMs": 6.3778,
+            "P99ScheduleToResultMs": 16.3382,
+            "P95DispatchDelayMs": 0.2134,
+            "MaxDispatchDelayMs": 53.7285,
+            "P95ReleaseDelayMs": 0.1201,
+            "P95QueueDelayMs": 0.0905,
+            "P95StartupMs": 4.2679,
+            "P95ResultMs": 1.574,
+            "ObservedRequestsPerSecond": 166.74154612649343
+          },
+          "RequiredResourceLimits": true
+        },
+        {
+          "Mode": "dedicated",
+          "Stage": "http",
+          "Samples": 2000,
+          "Summary": {
+            "P95Ms": 6.2257,
+            "P99Ms": 13.3233,
+            "MaxRequestMs": 77.4689,
+            "P95ScheduleToResultMs": 13.3483,
+            "P99ScheduleToResultMs": 58.1922,
+            "P95DispatchDelayMs": 3.4297,
+            "MaxDispatchDelayMs": 72.3213,
+            "P95ReleaseDelayMs": 0.1849,
+            "P95QueueDelayMs": 2.3138,
+            "P95StartupMs": 4.4201,
+            "P95ResultMs": 1.8547,
+            "ObservedRequestsPerSecond": 166.74812312481313
+          },
+          "RequestRatio": 1.1069091814237964,
+          "PlannedRatio": 2.092931731945185,
+          "MaximumRatio": 1.1
+        },
+        {
+          "Mode": "dedicated",
+          "Stage": "sql",
+          "Samples": 2000,
+          "Summary": {
+            "P95Ms": 4.6186,
+            "P99Ms": 10.2277,
+            "MaxRequestMs": 23.9874,
+            "P95ScheduleToResultMs": 4.8632,
+            "P99ScheduleToResultMs": 11.9679,
+            "P95DispatchDelayMs": 0.1905,
+            "MaxDispatchDelayMs": 12.197799999999999,
+            "P95ReleaseDelayMs": 0.1118,
+            "P95QueueDelayMs": 0.087,
+            "P95StartupMs": 3.9157,
+            "P95ResultMs": 1.2377,
+            "ObservedRequestsPerSecond": 166.75402076044202
+          },
+          "RequestRatio": 0.8211720361282981,
+          "PlannedRatio": 0.7625199912195428,
+          "MaximumRatio": 1.1
+        },
+        {
+          "Mode": "dedicated",
+          "Stage": "cpu",
+          "Samples": 2000,
+          "Summary": {
+            "P95Ms": 4.7843,
+            "P99Ms": 11.4589,
+            "MaxRequestMs": 87.2966,
+            "P95ScheduleToResultMs": 6.9298,
+            "P99ScheduleToResultMs": 54.5851,
+            "P95DispatchDelayMs": 0.5137,
+            "MaxDispatchDelayMs": 75.82220000000001,
+            "P95ReleaseDelayMs": 0.1197,
+            "P95QueueDelayMs": 0.1804,
+            "P95StartupMs": 3.9432,
+            "P95ResultMs": 1.6685,
+            "ObservedRequestsPerSecond": 166.73849066100632
+          },
+          "RequestRatio": 0.8506329564042387,
+          "PlannedRatio": 1.0865502210793692,
+          "MaximumRatio": 1.1
+        },
+        {
+          "Mode": "shared",
+          "Stage": "baseline",
+          "Samples": 2000,
+          "SessionPids": [
+            170479
+          ],
+          "Summary": {
+            "P95Ms": 5.3186,
+            "P99Ms": 11.3348,
+            "MaxRequestMs": 77.8683,
+            "P95ScheduleToResultMs": 6.233,
+            "P99ScheduleToResultMs": 25.6885,
+            "P95DispatchDelayMs": 0.2777,
+            "MaxDispatchDelayMs": 66.1908,
+            "P95ReleaseDelayMs": 0.1097,
+            "P95QueueDelayMs": 0.1243,
+            "P95StartupMs": 3.7592,
+            "P95ResultMs": 1.7931,
+            "ObservedRequestsPerSecond": 166.7167414292611
+          },
+          "RequiredResourceLimits": true
+        },
+        {
+          "Mode": "shared",
+          "Stage": "http",
+          "Samples": 2000,
+          "Summary": {
+            "P95Ms": 4.302,
+            "P99Ms": 8.129,
+            "MaxRequestMs": 140.4159,
+            "P95ScheduleToResultMs": 5.3861,
+            "P99ScheduleToResultMs": 84.5795,
+            "P95DispatchDelayMs": 0.3469,
+            "MaxDispatchDelayMs": 128.5828,
+            "P95ReleaseDelayMs": 0.1115,
+            "P95QueueDelayMs": 0.128,
+            "P95StartupMs": 3.125,
+            "P95ResultMs": 1.4314,
+            "ObservedRequestsPerSecond": 166.74594324628407
+          },
+          "RequestRatio": 0.8088594742977474,
+          "PlannedRatio": 0.8641264238729344,
+          "MaximumRatio": 1.1
+        },
+        {
+          "Mode": "shared",
+          "Stage": "sql",
+          "Samples": 2000,
+          "Summary": {
+            "P95Ms": 4.6459,
+            "P99Ms": 9.0232,
+            "MaxRequestMs": 25.0482,
+            "P95ScheduleToResultMs": 5.0161,
+            "P99ScheduleToResultMs": 11.2395,
+            "P95DispatchDelayMs": 0.21439999999999998,
+            "MaxDispatchDelayMs": 13.1826,
+            "P95ReleaseDelayMs": 0.1279,
+            "P95QueueDelayMs": 0.0872,
+            "P95StartupMs": 3.3989,
+            "P95ResultMs": 1.4785,
+            "ObservedRequestsPerSecond": 166.74348261004707
+          },
+          "RequestRatio": 0.8735193471966307,
+          "PlannedRatio": 0.8047649606930852,
+          "MaximumRatio": 1.1
+        },
+        {
+          "Mode": "shared",
+          "Stage": "cpu",
+          "Samples": 2000,
+          "Summary": {
+            "P95Ms": 5.5603,
+            "P99Ms": 10.6235,
+            "MaxRequestMs": 42.5832,
+            "P95ScheduleToResultMs": 6.247,
+            "P99ScheduleToResultMs": 22.5291,
+            "P95DispatchDelayMs": 0.23020000000000002,
+            "MaxDispatchDelayMs": 35.9682,
+            "P95ReleaseDelayMs": 0.1088,
+            "P95QueueDelayMs": 0.0941,
+            "P95StartupMs": 4.1741,
+            "P95ResultMs": 1.7532,
+            "ObservedRequestsPerSecond": 166.72261043859933
+          },
+          "RequestRatio": 1.0454442898507126,
+          "PlannedRatio": 1.002246109417616,
+          "MaximumRatio": 1.1
+        }
+      ]
+    },
+    "finalRuns": [
+      {
+        "passed": false,
+        "scenarios": [
+          {
+            "Mode": "dedicated",
+            "Stage": "baseline",
+            "Samples": 2000,
+            "SessionPids": [
+              178885,
+              178888,
+              178876
+            ],
+            "Summary": {
+              "P95Ms": 5.5196,
+              "P99Ms": 10.4998,
+              "MaxRequestMs": 20.8154,
+              "P95ScheduleToResultMs": 5.8827,
+              "P99ScheduleToResultMs": 12.4277,
+              "P95DispatchDelayMs": 0.22290000000000001,
+              "MaxDispatchDelayMs": 9.5362,
+              "P95ReleaseDelayMs": 0.1157,
+              "P95QueueDelayMs": 0.1048,
+              "P95StartupMs": 4.1179,
+              "P95ResultMs": 1.7309,
+              "ObservedRequestsPerSecond": 166.74397890201774
+            },
+            "RequiredResourceLimits": true
+          },
+          {
+            "Mode": "dedicated",
+            "Stage": "http",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.6546,
+              "P99Ms": 10.0813,
+              "MaxRequestMs": 35.8273,
+              "P95ScheduleToResultMs": 5.2058,
+              "P99ScheduleToResultMs": 14.1709,
+              "P95DispatchDelayMs": 0.23120000000000002,
+              "MaxDispatchDelayMs": 35.0623,
+              "P95ReleaseDelayMs": 0.1111,
+              "P95QueueDelayMs": 0.101,
+              "P95StartupMs": 3.7224,
+              "P95ResultMs": 1.3154,
+              "ObservedRequestsPerSecond": 166.74063837186972
+            },
+            "RequestRatio": 0.8432857453438656,
+            "PlannedRatio": 0.8849337889064546,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "dedicated",
+            "Stage": "sql",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.9279,
+              "P99Ms": 10.4015,
+              "MaxRequestMs": 44.6591,
+              "P95ScheduleToResultMs": 5.3248,
+              "P99ScheduleToResultMs": 13.4567,
+              "P95DispatchDelayMs": 0.251,
+              "MaxDispatchDelayMs": 32.8551,
+              "P95ReleaseDelayMs": 0.1171,
+              "P95QueueDelayMs": 0.1167,
+              "P95StartupMs": 3.9434,
+              "P95ResultMs": 1.4034,
+              "ObservedRequestsPerSecond": 166.73955269363788
+            },
+            "RequestRatio": 0.8928002029132547,
+            "PlannedRatio": 0.9051625954068709,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "dedicated",
+            "Stage": "cpu",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 5.7601,
+              "P99Ms": 11.6988,
+              "MaxRequestMs": 41.148,
+              "P95ScheduleToResultMs": 6.7259,
+              "P99ScheduleToResultMs": 17.5961,
+              "P95DispatchDelayMs": 0.2481,
+              "MaxDispatchDelayMs": 29.2862,
+              "P95ReleaseDelayMs": 0.1129,
+              "P95QueueDelayMs": 0.0961,
+              "P95StartupMs": 4.1758,
+              "P95ResultMs": 1.85,
+              "ObservedRequestsPerSecond": 166.73530325425128
+            },
+            "RequestRatio": 1.0435719979708675,
+            "PlannedRatio": 1.143335543202951,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "shared",
+            "Stage": "baseline",
+            "Samples": 2000,
+            "SessionPids": [
+              187255
+            ],
+            "Summary": {
+              "P95Ms": 5.065,
+              "P99Ms": 11.0888,
+              "MaxRequestMs": 22.3095,
+              "P95ScheduleToResultMs": 5.4127,
+              "P99ScheduleToResultMs": 12.2821,
+              "P95DispatchDelayMs": 0.2019,
+              "MaxDispatchDelayMs": 11.8873,
+              "P95ReleaseDelayMs": 0.1109,
+              "P95QueueDelayMs": 0.0795,
+              "P95StartupMs": 3.399,
+              "P95ResultMs": 1.6614,
+              "ObservedRequestsPerSecond": 166.74185751779885
+            },
+            "RequiredResourceLimits": true
+          },
+          {
+            "Mode": "shared",
+            "Stage": "http",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.2396,
+              "P99Ms": 9.5605,
+              "MaxRequestMs": 61.1592,
+              "P95ScheduleToResultMs": 4.6157,
+              "P99ScheduleToResultMs": 18.389,
+              "P95DispatchDelayMs": 0.2283,
+              "MaxDispatchDelayMs": 63.9202,
+              "P95ReleaseDelayMs": 0.1093,
+              "P95QueueDelayMs": 0.0917,
+              "P95StartupMs": 3.1162,
+              "P95ResultMs": 1.3348,
+              "ObservedRequestsPerSecond": 166.74306834058032
+            },
+            "RequestRatio": 0.8370384995064166,
+            "PlannedRatio": 0.8527537088698801,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "shared",
+            "Stage": "sql",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.4195,
+              "P99Ms": 8.5373,
+              "MaxRequestMs": 42.5469,
+              "P95ScheduleToResultMs": 4.7023,
+              "P99ScheduleToResultMs": 10.6002,
+              "P95DispatchDelayMs": 0.2126,
+              "MaxDispatchDelayMs": 32.394499999999994,
+              "P95ReleaseDelayMs": 0.1077,
+              "P95QueueDelayMs": 0.0883,
+              "P95StartupMs": 3.3523,
+              "P95ResultMs": 1.2663,
+              "ObservedRequestsPerSecond": 166.7095040629815
+            },
+            "RequestRatio": 0.8725567620927936,
+            "PlannedRatio": 0.8687531176677075,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "shared",
+            "Stage": "cpu",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.82,
+              "P99Ms": 9.8656,
+              "MaxRequestMs": 41.5257,
+              "P95ScheduleToResultMs": 5.3845,
+              "P99ScheduleToResultMs": 12.9298,
+              "P95DispatchDelayMs": 0.19590000000000002,
+              "MaxDispatchDelayMs": 30.785700000000002,
+              "P95ReleaseDelayMs": 0.1067,
+              "P95QueueDelayMs": 0.0842,
+              "P95StartupMs": 3.6107,
+              "P95ResultMs": 1.6559,
+              "ObservedRequestsPerSecond": 166.74452524365375
+            },
+            "RequestRatio": 0.9516288252714709,
+            "PlannedRatio": 0.9947900308533634,
+            "MaximumRatio": 1.1
+          }
+        ]
+      },
+      {
+        "passed": false,
+        "scenarios": [
+          {
+            "Mode": "dedicated",
+            "Stage": "baseline",
+            "Samples": 2000,
+            "SessionPids": [
+              195660,
+              195670,
+              195669
+            ],
+            "Summary": {
+              "P95Ms": 5.0081,
+              "P99Ms": 10.3995,
+              "MaxRequestMs": 137.4865,
+              "P95ScheduleToResultMs": 7.72,
+              "P99ScheduleToResultMs": 60.193,
+              "P95DispatchDelayMs": 0.7046,
+              "MaxDispatchDelayMs": 125.632,
+              "P95ReleaseDelayMs": 0.1192,
+              "P95QueueDelayMs": 0.2766,
+              "P95StartupMs": 3.8068,
+              "P95ResultMs": 1.5902,
+              "ObservedRequestsPerSecond": 166.74524536354426
+            },
+            "RequiredResourceLimits": true
+          },
+          {
+            "Mode": "dedicated",
+            "Stage": "http",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.4487,
+              "P99Ms": 9.849,
+              "MaxRequestMs": 26.3792,
+              "P95ScheduleToResultMs": 4.6262,
+              "P99ScheduleToResultMs": 11.8926,
+              "P95DispatchDelayMs": 0.2162,
+              "MaxDispatchDelayMs": 29.7503,
+              "P95ReleaseDelayMs": 0.1111,
+              "P95QueueDelayMs": 0.0978,
+              "P95StartupMs": 3.3858,
+              "P95ResultMs": 1.2462,
+              "ObservedRequestsPerSecond": 166.75285009802568
+            },
+            "RequestRatio": 0.8883009524570196,
+            "PlannedRatio": 0.5992487046632125,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "dedicated",
+            "Stage": "sql",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.2259,
+              "P99Ms": 9.3069,
+              "MaxRequestMs": 91.4966,
+              "P95ScheduleToResultMs": 7.1725,
+              "P99ScheduleToResultMs": 67.4073,
+              "P95DispatchDelayMs": 0.4179,
+              "MaxDispatchDelayMs": 95.708,
+              "P95ReleaseDelayMs": 0.1343,
+              "P95QueueDelayMs": 0.1755,
+              "P95StartupMs": 3.3498,
+              "P95ResultMs": 1.2124,
+              "ObservedRequestsPerSecond": 166.37537250510044
+            },
+            "RequestRatio": 0.8438130229028974,
+            "PlannedRatio": 0.9290803108808291,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "dedicated",
+            "Stage": "cpu",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.8579,
+              "P99Ms": 10.2924,
+              "MaxRequestMs": 28.889,
+              "P95ScheduleToResultMs": 5.3872,
+              "P99ScheduleToResultMs": 13.4551,
+              "P95DispatchDelayMs": 0.2626,
+              "MaxDispatchDelayMs": 33.901,
+              "P95ReleaseDelayMs": 0.1476,
+              "P95QueueDelayMs": 0.1016,
+              "P95StartupMs": 4.017,
+              "P95ResultMs": 1.4119,
+              "ObservedRequestsPerSecond": 166.71196786540128
+            },
+            "RequestRatio": 0.9700085860905333,
+            "PlannedRatio": 0.6978238341968912,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "shared",
+            "Stage": "baseline",
+            "Samples": 2000,
+            "SessionPids": [
+              204030
+            ],
+            "Summary": {
+              "P95Ms": 5.575,
+              "P99Ms": 10.4407,
+              "MaxRequestMs": 76.4799,
+              "P95ScheduleToResultMs": 6.3085,
+              "P99ScheduleToResultMs": 39.6563,
+              "P95DispatchDelayMs": 0.2993,
+              "MaxDispatchDelayMs": 73.60889999999999,
+              "P95ReleaseDelayMs": 0.118,
+              "P95QueueDelayMs": 0.1424,
+              "P95StartupMs": 3.8608,
+              "P95ResultMs": 2.0227,
+              "ObservedRequestsPerSecond": 166.71062548009536
+            },
+            "RequiredResourceLimits": true
+          },
+          {
+            "Mode": "shared",
+            "Stage": "http",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 5.6261,
+              "P99Ms": 11.5851,
+              "MaxRequestMs": 97.7316,
+              "P95ScheduleToResultMs": 11.1447,
+              "P99ScheduleToResultMs": 66.1352,
+              "P95DispatchDelayMs": 1.9948,
+              "MaxDispatchDelayMs": 91.8563,
+              "P95ReleaseDelayMs": 0.1363,
+              "P95QueueDelayMs": 1.6794,
+              "P95StartupMs": 3.6871,
+              "P95ResultMs": 1.9362,
+              "ObservedRequestsPerSecond": 166.74479215995333
+            },
+            "RequestRatio": 1.009165919282511,
+            "PlannedRatio": 1.7666164698422762,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "shared",
+            "Stage": "sql",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 5.6075,
+              "P99Ms": 12.0686,
+              "MaxRequestMs": 160.1424,
+              "P95ScheduleToResultMs": 20.063,
+              "P99ScheduleToResultMs": 93.6533,
+              "P95DispatchDelayMs": 8.3948,
+              "MaxDispatchDelayMs": 148.6966,
+              "P95ReleaseDelayMs": 0.1683,
+              "P95QueueDelayMs": 7.958,
+              "P95StartupMs": 3.8282,
+              "P95ResultMs": 1.8927,
+              "ObservedRequestsPerSecond": 166.73218963832468
+            },
+            "RequestRatio": 1.005829596412556,
+            "PlannedRatio": 3.18031227708647,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "shared",
+            "Stage": "cpu",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 5.2492,
+              "P99Ms": 12.675,
+              "MaxRequestMs": 55.2478,
+              "P95ScheduleToResultMs": 5.7284,
+              "P99ScheduleToResultMs": 19.8134,
+              "P95DispatchDelayMs": 0.27590000000000003,
+              "MaxDispatchDelayMs": 43.8756,
+              "P95ReleaseDelayMs": 0.1463,
+              "P95QueueDelayMs": 0.1366,
+              "P95StartupMs": 4.0688,
+              "P95ResultMs": 1.6684,
+              "ObservedRequestsPerSecond": 166.74800356367163
+            },
+            "RequestRatio": 0.9415605381165919,
+            "PlannedRatio": 0.9080447015930886,
+            "MaximumRatio": 1.1
+          }
+        ]
+      },
+      {
+        "passed": false,
+        "scenarios": [
+          {
+            "Mode": "dedicated",
+            "Stage": "baseline",
+            "Samples": 2000,
+            "SessionPids": [
+              212423,
+              212419,
+              212425
+            ],
+            "Summary": {
+              "P95Ms": 4.5495,
+              "P99Ms": 8.2916,
+              "MaxRequestMs": 16.2318,
+              "P95ScheduleToResultMs": 4.9052,
+              "P99ScheduleToResultMs": 10.6172,
+              "P95DispatchDelayMs": 0.2246,
+              "MaxDispatchDelayMs": 9.0433,
+              "P95ReleaseDelayMs": 0.1079,
+              "P95QueueDelayMs": 0.0971,
+              "P95LaneBacklogMs": 0,
+              "P95ReadyToSubmitMs": 0.0907,
+              "P95StartupMs": 3.575,
+              "P95ResultMs": 1.3882,
+              "ObservedRequestsPerSecond": 166.73794574899148
+            },
+            "RequiredResourceLimits": true
+          },
+          {
+            "Mode": "dedicated",
+            "Stage": "http",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.6765,
+              "P99Ms": 10.767,
+              "MaxRequestMs": 26.6511,
+              "P95ScheduleToResultMs": 5.0289,
+              "P99ScheduleToResultMs": 12.8622,
+              "P95DispatchDelayMs": 0.2338,
+              "MaxDispatchDelayMs": 14.756,
+              "P95ReleaseDelayMs": 0.1194,
+              "P95QueueDelayMs": 0.1018,
+              "P95LaneBacklogMs": 0,
+              "P95ReadyToSubmitMs": 0.0941,
+              "P95StartupMs": 3.743,
+              "P95ResultMs": 1.2143,
+              "ObservedRequestsPerSecond": 166.74220783440765
+            },
+            "RequestRatio": 1.0279151555115946,
+            "PlannedRatio": 1.0252181358558266,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "dedicated",
+            "Stage": "sql",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 5.2362,
+              "P99Ms": 10.2283,
+              "MaxRequestMs": 63.9385,
+              "P95ScheduleToResultMs": 5.9083,
+              "P99ScheduleToResultMs": 21.5542,
+              "P95DispatchDelayMs": 0.2301,
+              "MaxDispatchDelayMs": 64.7557,
+              "P95ReleaseDelayMs": 0.1183,
+              "P95QueueDelayMs": 0.0994,
+              "P95LaneBacklogMs": 0,
+              "P95ReadyToSubmitMs": 0.0825,
+              "P95StartupMs": 3.809,
+              "P95ResultMs": 1.6763,
+              "ObservedRequestsPerSecond": 166.74088025345281
+            },
+            "RequestRatio": 1.1509396636993077,
+            "PlannedRatio": 1.20449726820517,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "dedicated",
+            "Stage": "cpu",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.8869,
+              "P99Ms": 11.1097,
+              "MaxRequestMs": 27.2712,
+              "P95ScheduleToResultMs": 5.5517,
+              "P99ScheduleToResultMs": 14.4815,
+              "P95DispatchDelayMs": 0.23170000000000002,
+              "MaxDispatchDelayMs": 26.8305,
+              "P95ReleaseDelayMs": 0.11,
+              "P95QueueDelayMs": 0.0935,
+              "P95LaneBacklogMs": 0,
+              "P95ReadyToSubmitMs": 0.082,
+              "P95StartupMs": 3.9197,
+              "P95ResultMs": 1.6683,
+              "ObservedRequestsPerSecond": 166.74308919302106
+            },
+            "RequestRatio": 1.0741619958237167,
+            "PlannedRatio": 1.1317989072820682,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "shared",
+            "Stage": "baseline",
+            "Samples": 2000,
+            "SessionPids": [
+              220797
+            ],
+            "Summary": {
+              "P95Ms": 5.3098,
+              "P99Ms": 10.9617,
+              "MaxRequestMs": 75.0285,
+              "P95ScheduleToResultMs": 5.9993,
+              "P99ScheduleToResultMs": 39.7349,
+              "P95DispatchDelayMs": 0.2775,
+              "MaxDispatchDelayMs": 69.8583,
+              "P95ReleaseDelayMs": 0.118,
+              "P95QueueDelayMs": 0.1357,
+              "P95LaneBacklogMs": 0,
+              "P95ReadyToSubmitMs": 0.1141,
+              "P95StartupMs": 3.8598,
+              "P95ResultMs": 1.8344,
+              "ObservedRequestsPerSecond": 165.95879294618373
+            },
+            "RequiredResourceLimits": true
+          },
+          {
+            "Mode": "shared",
+            "Stage": "http",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.4208,
+              "P99Ms": 10.5893,
+              "MaxRequestMs": 33.4777,
+              "P95ScheduleToResultMs": 4.7208,
+              "P99ScheduleToResultMs": 13.3855,
+              "P95DispatchDelayMs": 0.2293,
+              "MaxDispatchDelayMs": 37.0929,
+              "P95ReleaseDelayMs": 0.1125,
+              "P95QueueDelayMs": 0.0883,
+              "P95LaneBacklogMs": 0,
+              "P95ReadyToSubmitMs": 0.0777,
+              "P95StartupMs": 3.1561,
+              "P95ResultMs": 1.3453,
+              "ObservedRequestsPerSecond": 166.73665437734155
+            },
+            "RequestRatio": 0.8325737315906436,
+            "PlannedRatio": 0.7868918040438051,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "shared",
+            "Stage": "sql",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.0406,
+              "P99Ms": 9.1283,
+              "MaxRequestMs": 24.0808,
+              "P95ScheduleToResultMs": 4.2709,
+              "P99ScheduleToResultMs": 10.2606,
+              "P95DispatchDelayMs": 0.1876,
+              "MaxDispatchDelayMs": 18.312,
+              "P95ReleaseDelayMs": 0.1049,
+              "P95QueueDelayMs": 0.079,
+              "P95LaneBacklogMs": 0,
+              "P95ReadyToSubmitMs": 0.077,
+              "P95StartupMs": 2.9805,
+              "P95ResultMs": 1.1598,
+              "ObservedRequestsPerSecond": 166.72287728474322
+            },
+            "RequestRatio": 0.7609702813665299,
+            "PlannedRatio": 0.7118997216341907,
+            "MaximumRatio": 1.1
+          },
+          {
+            "Mode": "shared",
+            "Stage": "cpu",
+            "Samples": 2000,
+            "Summary": {
+              "P95Ms": 4.4538,
+              "P99Ms": 7.8352,
+              "MaxRequestMs": 22.8788,
+              "P95ScheduleToResultMs": 4.658,
+              "P99ScheduleToResultMs": 9.7663,
+              "P95DispatchDelayMs": 0.2369,
+              "MaxDispatchDelayMs": 11.4059,
+              "P95ReleaseDelayMs": 0.1231,
+              "P95QueueDelayMs": 0.1115,
+              "P95LaneBacklogMs": 0,
+              "P95ReadyToSubmitMs": 0.1068,
+              "P95StartupMs": 3.5278,
+              "P95ResultMs": 1.4417,
+              "ObservedRequestsPerSecond": 166.74187419950874
+            },
+            "RequestRatio": 0.8387886549399224,
+            "PlannedRatio": 0.7764239161235478,
+            "MaximumRatio": 1.1
+          }
+        ]
+      }
+    ],
+    "passed": false
+  },
+  "sqlite10m": {
+    "provider": "Sqlite",
+    "rows": 10000000,
+    "batchRows": 4096,
+    "inputRows": 10000000,
+    "written": 10000000,
+    "read": 10000000,
+    "checksum": "82da80c54b8880a5",
+    "elapsedMilliseconds": 101523.4287,
+    "rowsPerSecond": 98499.4313928249,
+    "clientAllocatedBytes": 3425808,
+    "clientPeakRssBytes": 130318336,
+    "workerPeakRssBytes": 119463936,
+    "nativeMemoryBytes": 258984,
+    "batches": 4884,
+    "queueHighWater": 1
+  },
+  "correctness": {
+    "focusedTestsPassed": 8,
+    "nativeRabbitMqPassed": true
+  },
+  "rabbitMqBurst": "mq-burst-v11.json"
+}

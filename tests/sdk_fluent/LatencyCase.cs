@@ -233,16 +233,20 @@ internal static class LatencyCase
         async Task Consume(Channel<(long Scheduled, long Released)> lane, int offset)
         {
             int index = offset;
+            long previousResult = 0;
             await foreach (var (scheduled, released) in lane.Reader.ReadAllAsync(token))
             {
                 long submitted = Stopwatch.GetTimestamp();
                 var result = await ReadLedger(client, token);
                 long completed = Stopwatch.GetTimestamp();
+                long available = Math.Max(released, previousResult);
                 data[index++] = new(Stopwatch.GetElapsedTime(submitted, completed).TotalMilliseconds,
                     Stopwatch.GetElapsedTime(scheduled, completed).TotalMilliseconds,
                     Stopwatch.GetElapsedTime(scheduled, released).TotalMilliseconds,
-                    Stopwatch.GetElapsedTime(released, submitted).TotalMilliseconds,
+                    Stopwatch.GetElapsedTime(released, available).TotalMilliseconds,
+                    Stopwatch.GetElapsedTime(available, submitted).TotalMilliseconds,
                     result.StartupMs, result.ResultMs, result.ProcessId);
+                previousResult = completed;
             }
             if (index != offset + samples) throw new InvalidOperationException("The planned arrival schedule did not complete");
         }
@@ -256,6 +260,8 @@ internal static class LatencyCase
             Percentile(data.Select(row => row.PlannedMs), 0.95), Percentile(data.Select(row => row.PlannedMs), 0.99),
             Percentile(data.Select(row => row.DispatchMs), 0.95), data.Max(row => row.DispatchMs),
             Percentile(data.Select(row => row.ReleaseMs), 0.95), Percentile(data.Select(row => row.QueueMs), 0.95),
+            Percentile(data.Select(row => row.LaneBacklogMs), 0.95),
+            Percentile(data.Select(row => row.ReadyToSubmitMs), 0.95),
             Percentile(data.Select(row => row.StartupMs), 0.95), Percentile(data.Select(row => row.ResultMs), 0.95),
             data.Length / measurements.Sum(window => window.ElapsedSeconds));
     }

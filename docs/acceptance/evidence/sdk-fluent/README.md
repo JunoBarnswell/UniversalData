@@ -50,3 +50,11 @@ Linux x64 从本地包源和空 NuGet 包/HTTP 缓存离线安装，使用 .NET 
 Linux PRODUCT 的 93 项便携回归中 90 项通过。两个跳过项提供独立 PostgreSQL 后通过，包括两次 Management 接管及 Catalog 迁移。该次便携运行缺少 Kafka 弹性测试拓扑。浏览器验证通过 SQL 节点重载、200/500/1,000 节点画布、断点、Worker 退出和执行恢复。 [Kafka 千万条数据及扩缩验收](../worker-cluster-ha/README.md)
 
 [SDK 使用方式](../../../api.md) · [千万行测试入口](../../../../tests/managed_sql/README.md)
+
+## UniversalData 11 性能复核
+
+本次使用 Linux PRODUCT Release 和真实 cgroup Worker 配额。每组慢负载与基线分别采集 2,000 个请求，同时检查 SDK 提交至返回和计划发出至返回的 P95。采样保留原有 1.10 倍门槛。事件驱动的终态等待和控制帧合并后，独占 Worker 的慢 HTTP 场景三轮均通过。独占 Worker 最差的计划发出至返回比值为 1.204，共享 Worker 为 3.180，因此整体门槛仍未通过。记录同时包含计划发压、等待上一条请求和可提交后的调度延时。 [实测记录](worker-performance-v11.json)
+
+SQLite ETL 每批 4,096 行，写入和独立回读各 10,000,000 行，校验值为 `82da80c54b8880a5`。本轮吞吐为 98,499 行/秒，Worker 峰值 RSS 为 119,463,936 字节，客户端峰值 RSS 为 130,318,336 字节。 [实测记录](worker-performance-v11.json)
+
+RabbitMQ 复核用三个实际 Worker 清空 900,000 条积压。每个 Worker 的峰值在途数为 16,384 条。每条模拟业务等待至少五秒，由 Native 在目标提交后确认源消息。独立回读验证 900,000 个唯一 ID，剩余队列深度为零。 [复现步骤](../../../../tests/message_brokers.md#rabbitmq-突发积压-demo) [实测记录](mq-burst-v11.json)

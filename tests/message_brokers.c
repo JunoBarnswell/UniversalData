@@ -260,11 +260,14 @@ static ud_message test_message(const broker_fixture *f, ud_string bytes, ud_mess
 
 static ud_status publish_at(broker_fixture *f, ud_string address, const ud_string *values,
                              uint32_t count, int32_t partition) {
+    enum { capacity = 4 };
+    ud_message messages[capacity];
+    ud_message_result results[capacity] = {{0}};
+    if (count > capacity)
+        return UD_INVALID;
     ud_connection *connection = NULL;
     UD_TRY(open_connection(f, &connection));
     ud_message_header header = {header_name, header_value};
-    ud_message messages[3];
-    ud_message_result results[3] = {{0}};
     for (uint32_t i = 0; i < count; i++) {
         messages[i] = test_message(f, values[i], &header);
         if (partition >= 0)
