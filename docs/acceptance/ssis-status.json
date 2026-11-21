@@ -3,7 +3,7 @@
   "sdkVersion": "10.0.0",
   "abi": 15,
   "scope": {
-    "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",
+    "name": "Studio 4 / SDK 10 candidate; one Native execution chain. Current streaming source support and runtime acceptance are tracked separately.",
     "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
     "windows": "Required — complete driver build, native/language/install and platform acceptance",
     "extensions": "50 applicable audit items require current source and behavior evidence; ETL-039/040 NotApplicable"
@@ -16,29 +16,161 @@
   },
   "candidate": {
     "branch": "main",
-    "state": "SDK 9 Native SQL, shared sessions and continuous ETL candidate",
-    "sourceCommit": null,
+    "state": "SDK 10 candidate for Native SQL connection ownership, shared Worker sessions, typed CDC and durable ETL submission. ABI and Package protocol remain 15",
+    "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
     "sourceFingerprint": null,
     "mergeEvidence": null,
-    "pullRequest": null
+    "pullRequest": null,
+    "sourceReviewScope": "Audited ancestor source, not a release seal or a claim about later ledger-only changes. sourceFingerprint remains unset until an approved current artifact is sealed."
   },
   "remoteCI": {
-    "state": "VerificationBlocked",
-    "sourceCommit": "f3b40463a38b404bbc9d5701b21beaef1f84d963",
-    "sourceFingerprint": "e4cf3436230f5f70cb5da73025f9b6c1b8b240d23ea1464820325377db40df56",
-    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/38937562090",
-    "status": "completed",
-    "conclusion": "failure",
-    "steps": 0,
-    "annotations": [
-      {
-        "level": "failure",
-        "message": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
-      }
-    ],
-    "reason": "GitHub did not start any build steps because of account billing/spending limits. This is an environment blocker, not a passed build."
+    "state": "InProgress",
+    "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
+    "sourceFingerprint": null,
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44891162963",
+    "status": "in_progress",
+    "conclusion": null,
+    "steps": null,
+    "annotations": [],
+    "reason": "Exact audited source run: Source and Designer passed; Windows and Ubuntu CORE were in progress when checked. Complete PRODUCT and independent installed NuGet jobs were skipped. CORE excludes real-integration and SSIS Golden; browser recovery is Linux-only in this workflow. This snapshot does not certify delivery or later commits.",
+    "previousRun": {
+      "sourceCommit": "42563c174833f04f013b90733b32f3a753d1bfbb",
+      "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44889441823",
+      "conclusion": "failure",
+      "reason": "Previous source run: Windows 89/90 (SQLite fixture cleanup lock); Ubuntu 88/91 (remote dispatch assertion, Avro/OpenSSL load, autoscale convergence). Historical relative to the audited source."
+    },
+    "checkedAtUtc": "2026-11-21T09:54:13Z"
   },
   "artifacts": null,
+  "currentStreaming": {
+    "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
+    "verificationRule": "Current rows are source-audited, not runtime-certified. Historical Studio 4 outcomes are preserved below and do not certify SDK 10.",
+    "items": [
+      {
+        "id": "S07",
+        "goal": "Versioned stream/table refresh",
+        "implementation": "Planned",
+        "verification": "NotRun",
+        "blocked": "Current reference lookup is not event-time as-of table lookup or generally versioned dynamic refresh.",
+        "evidence": [
+          "components/compute/src/cache_lookup.c",
+          "tests/orders_payments_shops_iceberg.py"
+        ]
+      },
+      {
+        "id": "S08",
+        "goal": "Bounded stream/stream join",
+        "implementation": "Implemented (scoped)",
+        "verification": "NotRun",
+        "blocked": "Watermark-bounded inner interval match with inclusive bound; inputs are insert-only, rows at or behind the common watermark are dropped. No general outer/retracting/distributed join.",
+        "evidence": [
+          "components/compute/src/event_match.c",
+          "tests/event_match.c"
+        ]
+      },
+      {
+        "id": "S09",
+        "goal": "Key TTL deduplication",
+        "implementation": "Implemented (scoped)",
+        "verification": "NotRun",
+        "blocked": "Keeps the first row per key until event-time TTL expires at the common watermark. Not an unbounded/global deduplication guarantee.",
+        "evidence": [
+          "components/compute/src/event_match.c",
+          "tests/event_match.c"
+        ]
+      },
+      {
+        "id": "S11",
+        "goal": "Microbatch time/row triggers",
+        "implementation": "Partial",
+        "verification": "NotRun",
+        "blocked": "Native CDC row/time options group complete source transactions; general Package trigger/scheduling is not this capability.",
+        "evidence": [
+          "engines/data-flow/cdc.c"
+        ]
+      },
+      {
+        "id": "S13",
+        "goal": "Native rate budgets",
+        "implementation": "Planned",
+        "verification": "NotRun",
+        "blocked": "Bounded queue/working/spill quotas and node limits are not a general source rate governor.",
+        "evidence": [
+          "docs/architecture/stream-batch-unification.md"
+        ]
+      },
+      {
+        "id": "S14",
+        "goal": "Event-window change output",
+        "implementation": "Implemented (scoped)",
+        "verification": "NotRun",
+        "blocked": "Keyed tumbling/sliding count, sum and average may emit insert/update/delete (update/delete include the before image as applicable) changes with checkpointed published state; session remains final-only. No generic CDC retractions.",
+        "evidence": [
+          "components/compute/src/event_window.c",
+          "tests/event_window.c"
+        ]
+      },
+      {
+        "id": "S15",
+        "goal": "REST write and recovery modes",
+        "implementation": "Implemented (scoped)",
+        "verification": "NotRun",
+        "blocked": "response/idempotent/receipt modes use one Native path; unknown commit is not safe blind replay. Includes local fixture source, not external endpoint crash/replay evidence.",
+        "evidence": [
+          "connectors/rest.c",
+          "tests/advanced_formats.py"
+        ]
+      },
+      {
+        "id": "S16",
+        "goal": "Iceberg v2 REST/Parquet delivery",
+        "implementation": "Implemented (scoped)",
+        "verification": "NotRun",
+        "blocked": "Existing Catalog-owned partition specs are used; native-created tables are unpartitioned. No remote object-store credential/maintenance guarantee or general standalone SQL DELETE. Real Trino fixture not certified by CORE.",
+        "evidence": [
+          "connectors/iceberg_table.cpp",
+          "tests/iceberg_v2.py"
+        ]
+      },
+      {
+        "id": "S17",
+        "goal": "Bounded cross-system streaming oracle",
+        "implementation": "Implemented fixture",
+        "verification": "NotRun",
+        "blocked": "PostgreSQL TLS CDC insert, Kafka refund/duplicate, current MySQL lookup, SQL/Trino net 70 and same-ID resume with one snapshot; not production-wide mutable CDC or distributed exactly-once.",
+        "evidence": [
+          "tests/orders_payments_shops_iceberg.py"
+        ]
+      }
+    ]
+  },
+  "comparativePlan": [
+    {
+      "id": "P0-01",
+      "area": "Install and first correct result",
+      "goal": "Fresh Windows/Linux installed C/.NET/Java path with the same Package and correctness-checked results; no source build required for users. Record cold start and first result (proposed target ≤10 min)."
+    },
+    {
+      "id": "P0-02",
+      "area": "Connector and recovery matrix",
+      "goal": "Record guarantees by source/state/sink, include unknown-commit and kill-after-sink-before-offset replay, validate output loss/duplicates and RTO/RPO; show safe action in Designer."
+    },
+    {
+      "id": "P1-01",
+      "area": "Comparable performance baseline",
+      "goal": "Repeat fixed batch workload, broker-fed steady stream, long soak and controlled failures under equal resources. Record sink-visible p50/p95/p99, sustainable rows/s and MiB/s, lag, process-tree RSS/CPU, spill and checkpoint costs."
+    },
+    {
+      "id": "P1-02",
+      "area": "SDK and Designer usability",
+      "goal": "Use one Native execution contract with small recipes, typed record/batch API and actionable diagnostics. Compare row/batch overhead, and verify first publish, failure localization and safe resume in a real browser."
+    },
+    {
+      "id": "P2-01",
+      "area": "Selective expansion",
+      "goal": "Add schema evolution, temporal/upsert semantics and stronger HA or sink guarantees only where measured needs justify them; no separate shadow runtime or blanket exactly-once claim."
+    }
+  ],
   "components": "docs/product/component-catalog.md",
   "items": [
     {
@@ -55,12 +187,12 @@
       ],
       "trigger": "A complete product build is requested with a missing dependency.",
       "baselineFinding": "Drivers, HTTP and Arrow file support currently default OFF; full product profile is absent.",
-      "acceptance": "A complete product build is requested with a missing dependency. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A complete product build is requested with a missing dependency. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Complete Linux PRODUCT build enables all six database drivers, genuine BCP/OCI client SDKs, Arrow/Parquet, HTTP/XML/network, JNI, .NET 10 hosts and the built designer. Missing dependencies fail configuration. Linux closure passed; Windows PRODUCT closure is Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -81,12 +213,12 @@
       ],
       "trigger": "A bulk destination binds a driver or requests a native loading guarantee.",
       "baselineFinding": "ODBC is the sole SQL Server path; array batching and native BCP must be distinguished.",
-      "acceptance": "A bulk destination binds a driver or requests a native loading guarantee. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A bulk destination binds a driver or requests a native loading guarantee. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "ODBC row offsets, processed counts and per-row statuses are checked. Native BCP and parameter arrays have distinct capabilities. Generic transactional array append selects response delivery and refuses uncertain replay. Actual SQL Server parameter/BCP integration passed; an independent unknown-DBMS ODBC array resource is unavailable.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -107,12 +239,12 @@
       ],
       "trigger": "A new execution omits its ID or resume omits the original ID.",
       "baselineFinding": "runtime.c copies an empty options.execution_id; CLI substitutes constant cli; no identity getter exists.",
-      "acceptance": "A new execution omits its ID or resume omits the original ID. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A new execution omits its ID or resume omits the original ID. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native generates one UUID when a new execution omits its ID, exposes it to all hosts and requires the original identity for recovery. Native, managed, Java and killed-Worker browser cases passed on Linux.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "execution_identity",
         "managed_registry_scripts_debug_lifecycle",
@@ -143,12 +275,12 @@
       ],
       "trigger": "A recoverable CSV/NDJSON/SQL record contains invalid field content.",
       "baselineFinding": "Data cursors return field parse errors and SQL source has no unified per-record error channel.",
-      "acceptance": "A recoverable CSV/NDJSON/SQL record contains invalid field content. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A recoverable CSV/NDJSON/SQL record contains invalid field content. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Canonical source error ports preserve field/component/source-row identity, classify conversion/truncation/constraint faults and retain raw contents only when requested. CSV/NDJSON/multiline JSON array and real SQLite mixed-result conversion cases passed; ambiguous record framing remains fatal.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "source_record_errors",
         "native_sql_source_record_errors"
@@ -173,12 +305,12 @@
       ],
       "trigger": "A Derived Column or Conditional Split expression fails for one record.",
       "baselineFinding": "Expression row evaluation can fail an activation; recoverable row attribution must share Data error metadata.",
-      "acceptance": "A Derived Column or Conditional Split expression fails for one record. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A Derived Column or Conditional Split expression fails for one record. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Derived Column and Conditional Split redirect a real overflow surrounded by valid rows in one batch, retain shared error identity/raw Wire and continue valid records. Derived output field attribution is retained. Fatal execution statuses never become rejected records.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_component_product_semantics"
       ],
@@ -202,12 +334,12 @@
       ],
       "trigger": "Normal and rejected rows share a batch or a SQL statement fails for a record.",
       "baselineFinding": "Destination ordinary failures stop flow; both error and regular target confirmation must remain one barrier.",
-      "acceptance": "Normal and rejected rows share a batch or a SQL statement fails for a record. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "Normal and rejected rows share a batch or a SQL statement fails for a record. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "SQL rejected records use the same Native error schema and actual savepoints/parameter binding under declared transactions. Native dual SQL/file destinations and separate-process kills after normal/error commits passed. The complete cross-driver constraint/error-target transaction crash matrix remains unverified.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "next_phase_pipeline_recovery"
       ],
@@ -232,12 +364,12 @@
       ],
       "trigger": "A UINT64 value exceeds INT64_MAX.",
       "baselineFinding": "ud_type has no UINT64 and all integral scalar storage uses signed int64.",
-      "acceptance": "A UINT64 value exceeds INT64_MAX. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A UINT64 value exceeds INT64_MAX. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "UINT64_MAX and overflow/negative boundaries, compare/hash/arithmetic, Wire/Arrow and enum/set dictionaries passed Native domain tests. Actual MySQL/MariaDB unsigned values and common Data semantics passed; bindings project the sole Native type domain.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_type_domains_2",
         "shared_value_semantics",
@@ -265,12 +397,12 @@
       ],
       "trigger": "A negative/long SQL TIME or month/day/microsecond interval is read.",
       "baselineFinding": "TIME64 is microseconds since midnight; negative/long duration and calendar interval have no domain.",
-      "acceptance": "A negative/long SQL TIME or month/day/microsecond interval is read. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A negative/long SQL TIME or month/day/microsecond interval is read. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Signed microsecond Duration includes INT64_MIN and negative long TIME; calendar Interval preserves independent signed month/day/microsecond extrema through Wire/Arrow. Actual MySQL/MariaDB -123:45:56.123456 decoded exactly; Native boundary tests passed.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_type_domains_2",
         "integration_mysql_type_domains",
@@ -297,12 +429,12 @@
       ],
       "trigger": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata.",
       "baselineFinding": "No schema dictionary annotation exists in ud_field.",
-      "acceptance": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "MySQL JSON contains unsigned boundary values or ENUM/SET dictionary metadata. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual MySQL/MariaDB JSON keeps the UINT64_MAX lexeme; ENUM numeric/empty labels and SET empty labels/bitmaps retain ordered dictionaries. Native schema/Wire/Arrow dictionary and physical-provider cases passed.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_type_domains_2",
         "integration_mysql_type_domains",
@@ -332,12 +464,12 @@
       ],
       "trigger": "A source transaction truncates a captured table.",
       "baselineFinding": "ud_cdc_event has no TRUNCATE event.",
-      "acceptance": "A source transaction truncates a captured table. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A source transaction truncates a captured table. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "PG and MySQL-family TRUNCATE emit the common ChangeSet event. Authorized SQL reset compiles to transactional DELETE without sequence reset. Ordinary SQL/CDC integration passed; a real TRUNCATE kill/confirmation boundary has not been accepted.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "integration_postgresql_cdc",
         "integration_mysql_cdc",
@@ -363,12 +495,12 @@
       ],
       "trigger": "A required transaction includes multiple connections.",
       "baselineFinding": "ud_transaction owns a single lease; required transaction rejects another connection.",
-      "acceptance": "A required transaction includes multiple connections. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A required transaction includes multiple connections. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Connection Manager preflights participants before effects; PostgreSQL PREPARE TRANSACTION and MySQL/MariaDB XA survived real process death, rollback, commit and partial commit across two connections. OCI participant code compiles but TCPS attach is Blocked. Capability-qualified SQL Server/MSDTC participation is not implemented; unsupported resources fail before effects.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "integration_postgresql_participant_recovery",
         "integration_mysql_participant_recovery",
@@ -394,12 +526,12 @@
       ],
       "trigger": "The process stops before/after prepare, decision or participant commit.",
       "baselineFinding": "Required transactions reject a state directory; no durable prepare/decision/recover protocol exists.",
-      "acceptance": "The process stops before/after prepare, decision or participant commit. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "The process stops before/after prepare, decision or participant commit. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Journal durably stages and publishes transaction-owned task/batch/cursor/epoch facts. Real killed-process fact publication and three-provider two-phase recovery passed, together with pipeline source/dual-target and file-publication kills. A single end-to-end live CDC/coordinator kill matrix remains unverified.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "transaction_fact_publication",
         "file_generation_process_recovery",
@@ -424,12 +556,12 @@
       ],
       "trigger": "A high-volume PostgreSQL destination is bound.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "A high-volume PostgreSQL destination is bound. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A high-volume PostgreSQL destination is bound. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Authenticated libpq COPY FROM STDIN shares the business/receipt transaction and checks delivered rows. Genuine remote SQL/native integration and one million rows with Unicode/control bytes, integer checks and every receipt passed; native write time was 2.944x faster than parameter transport.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -450,12 +582,12 @@
       ],
       "trigger": "A native bulk destination receives controlled input bytes.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "A native bulk destination receives controlled input bytes. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A native bulk destination receives controlled input bytes. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Genuine MySQL/MariaDB LOCAL INFILE reads only the retained Native Batch token; no server-selected path is opened. Session capability follows local_infile, warnings/row mismatches fail. Real SQL/CDC/native integration and one-million-row receipts passed; gains were 1.768x and 1.372x.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -475,12 +607,12 @@
       ],
       "trigger": "A SQL Server driver declares the native BCP loading capability.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "A SQL Server driver declares the native BCP loading capability. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A SQL Server driver declares the native BCP loading capability. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual Microsoft BCP uses the connected application HDBC and controlled temporary staging, then original-connection business/receipt commit. Linux real SQL/CDC/native integration and one million rows passed, with 1.980x speedup. Windows BCP acceptance remains Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -500,12 +632,12 @@
       ],
       "trigger": "Direct Path independently commits staging before transactional business writes.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "Direct Path independently commits staging before transactional business writes. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "Direct Path independently commits staging before transactional business writes. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "OCI Direct Path stages on a dedicated loader; original business apply/receipt remain transactional and cleanup waits for branch resolution. Full client/DP/XA compilation passed. An isolated Oracle schema exists, but OCI TCPS session attach times out ORA-12170; live behavior, kill recovery and performance are Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -527,12 +659,12 @@
       ],
       "trigger": "Encoding/layout settings or append/overwrite requires restart-safe publication.",
       "baselineFinding": "Publication facts and file checksums exist but enterprise format/append generation rules are incomplete.",
-      "acceptance": "Encoding/layout settings or append/overwrite requires restart-safe publication. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "Encoding/layout settings or append/overwrite requires restart-safe publication. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Enterprise CSV layouts and Journal-backed create/overwrite/append passed real file-publication process kills. XLSX append preserves other sheet/formula/custom-part bytes and exact integer cells; a mismatched header rejects publication without changing the original file.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_enterprise_file_layout",
         "file_generation_process_recovery",
@@ -558,12 +690,12 @@
       ],
       "trigger": "An overlapping incremental source binds to an idempotent/receipted destination.",
       "baselineFinding": "Incremental binding currently depends on SQL upsert configuration rather than an explicit target guarantee.",
-      "acceptance": "An overlapping incremental source binds to an idempotent/receipted destination. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "An overlapping incremental source binds to an idempotent/receipted destination. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Incremental overlap uses KEYED_REPLACE effects and declared-key lineage rather than destination names or a fixed SQL-Upsert requirement. Native overlapping/resume and receipt tests passed; an independent HTTP keyed-replace overlap recovery scenario remains unverified.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -585,12 +717,12 @@
       ],
       "trigger": "A designer/SDK discovers a file or database schema.",
       "baselineFinding": "Database metadata maps to Data Schema; file inference is not unified.",
-      "acceptance": "A designer/SDK discovers a file or database schema. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A designer/SDK discovers a file or database schema. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "File/database discovery returns the same Native Data Schema. Bounded CSV/JSON inference preserves UINT64/Decimal/date/nullability, leading-zero text and stable identities. Native inference and real four-driver schema discovery passed; ambiguous unions are explicitly rejected.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "unified_file_schema_discovery"
       ],
@@ -615,12 +747,12 @@
       ],
       "trigger": "A package/plugin/wire/checkpoint built for the old epoch is consumed.",
       "baselineFinding": "The baseline product authority reports SDK 1.5.0 / ABI 9; old document versions are strictly checked.",
-      "acceptance": "A package/plugin/wire/checkpoint built for the old epoch is consumed. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A package/plugin/wire/checkpoint built for the old epoch is consumed. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "One generated source defines SDK 2.0.0 and ABI/Package/Wire/Plugin/Checkpoint/Worker family 10 for C, .NET and Java. Old ABI/packages and Worker requests are rejected; historical raw data and artifacts are preserved. Linux protocol/installed-native checks passed.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -641,12 +773,12 @@
       ],
       "trigger": "Catalog versions, executions or events are queried with concurrent workers.",
       "baselineFinding": "ud_catalog_list enumerates every .udc file, parses and validates all envelopes.",
-      "acceptance": "Catalog versions, executions or events are queried with concurrent workers. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "Catalog versions, executions or events are queried with concurrent workers. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native SQLite Catalog owns immutable versioned documents, indices, executions/events and jobs under WAL/FULL transactions. Concurrent first-open/read/write and killed writer tests passed; existing readers do not acquire a bootstrap writer lock. No .udc directory scan remains.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "catalog_immutable_store",
         "catalog_execution_history"
@@ -673,12 +805,12 @@
       ],
       "trigger": "An execution produces task/component/error events or logs are paginated.",
       "baselineFinding": "Native observer events are versioned/sequenced but persistent indexed query/retention is absent.",
-      "acceptance": "An execution produces task/component/error events or logs are paginated. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "An execution produces task/component/error events or logs are paginated. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native event sequence and UTC wall timestamps persist with execution/task/component/error linkage. Managed and Java observers record into the same Catalog; pagination, error retention and sequence-preserving pruning passed. Real browser logs have current UTC dates.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle",
         "java_registry_observer_catalog_lifecycle"
@@ -706,12 +838,12 @@
       ],
       "trigger": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered.",
       "baselineFinding": "Immutable deployment binding exists; process manager and enable/disable state are absent.",
-      "acceptance": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A deployment is enabled/disabled or a worker is dispatched/cancelled/recovered. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Management uses Native immutable revisions/deployments and independent Workers. Real browser deploy/execute/logs, SIGKILL of a Native-owning Worker, RecoveryRequired and manual same-ID recovery passed with exact output and no automatic replay.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -734,12 +866,12 @@
       ],
       "trigger": "CLI resolves authorized resources and credential references.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "CLI resolves authorized resources and credential references. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "CLI resolves authorized resources and credential references. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "CLI, Worker and management share HostPolicy resource scopes and credential-file references. Actual installed/product CLI pipelines use this shared policy; outside grants and revoked resources fail in Native before effects. No retired C CLI host remains.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -761,12 +893,12 @@
       ],
       "trigger": "A compatible/incompatible runtime schema event reaches an epoch boundary.",
       "baselineFinding": "Pipeline routes SCHEMA_CHANGE but returns incompatible instead of rebinding at a barrier.",
-      "acceptance": "A compatible/incompatible runtime schema event reaches an epoch boundary. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A compatible/incompatible runtime schema event reaches an epoch boundary. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Schema/version/position events are durable before admission; the existing checkpoint barrier rebinds affected components and fences incompatible changes. Native schema guards and MySQL-family schema-change fencing passed. Provider physical field identity across drop/re-add and complete online/restart compatibility proof remain incomplete.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "next_phase_pipeline_recovery"
       ],
@@ -792,12 +924,12 @@
       ],
       "trigger": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded.",
       "baselineFinding": "CDC batches carry before/after values but no explicit field-presence or key-image contract.",
-      "acceptance": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "Default replica identity, partial UPDATE/DELETE or a binlog field type is decoded. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Batch/Wire presence distinguishes absent from NULL; MySQL MINIMAL/NOBLOB images retain presence and binary JSON/dictionaries preserve full domains. Real four-provider insert/update/delete/resume tests passed. PostgreSQL default replica-identity partial-image, broader binlog type and online field-identity acceptance are not complete.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_type_domains_2",
         "integration_postgresql_cdc",
@@ -824,12 +956,12 @@
       ],
       "trigger": "A normal HTTP response is lost after the server may have committed.",
       "baselineFinding": "REST destination requires receiptUrl, so plain response acknowledgement is unavailable.",
-      "acceptance": "A normal HTTP response is lost after the server may have committed. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A normal HTTP response is lost after the server may have committed. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "REST response/idempotent/receipt modes bind to the one Native write/Journal path. Ordinary writes issue once and unresolved intent returns CommitUnknown; local real TLS/receipt flows and HTTP ambiguous-failure cases passed. External receipt-service process-kill acceptance remains unavailable.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -850,12 +982,12 @@
       ],
       "trigger": "Each input row invokes a parameterized external SQL command.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "Each input row invokes a parameterized external SQL command. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "Each input row invokes a parameterized external SQL command. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native row commands now own a local transaction or a complete shared-transaction Savepoint operation, bind repeated fields, and share typed target outcome records. Mixed errors, actual process kills, rollback retry and unknown fencing passed on SQLite; real PostgreSQL/MySQL/MariaDB/SQL Server row-command tests passed. Windows/OCI and the wider connection-fault matrix remain unverified.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -879,12 +1011,12 @@
       ],
       "trigger": "A managed component/task is registered and an exception escapes its callback.",
       "baselineFinding": ".NET ExecutionOptions carries registry/observer pointers internally but public APIs do not expose them.",
-      "acceptance": "A managed component/task is registered and an exception escapes its callback. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A managed component/task is registered and an exception escapes its callback. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Public C# Registry task/component and Java task registrations use leased Native instances. GC pressure, busy disposal, exactly-once finish/close, expired borrowed access, observer exceptions and actual cancellation passed. Failed module registration retains instances/assembly owners until Native teardown.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle",
         "java_registry_observer_catalog_lifecycle"
@@ -912,12 +1044,12 @@
       ],
       "trigger": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry.",
       "baselineFinding": "No common managed deployment assembly loader exists for Native hosts.",
-      "acceptance": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "CLI, Worker and SDK load a fixed deployment assembly through the same Registry. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Deployment compiles a deterministic fixed C# assembly with protocol/digest attributes. SDK, CLI and Worker use Registry.LoadPackageExtensions with host execute grants and registry-owned module lifetime. Real managed deployment/assembly load passed; equivalent script execution through every installed host is not yet independently accepted.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle"
       ],
@@ -940,12 +1072,12 @@
       ],
       "trigger": "A batch is distributed to exactly one output while Multicast retains replication.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "A batch is distributed to exactly one output while Multicast retains replication. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A batch is distributed to exactly one output while Multicast retains replication. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual 67-row/seven-row-batch pipelines send each whole batch, including the tail, to exactly one balanced output; Multicast delivers a complete copy to each output. The common Native dispatch state remains checkpointed; no alternate executor was added.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_component_product_semantics"
       ],
@@ -970,12 +1102,12 @@
       ],
       "trigger": "A row reads/writes an authorized external column resource.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "A row reads/writes an authorized external column resource. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A row reads/writes an authorized external column resource. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual Native Import/Export Column pipeline reads and publishes exact UTF8 Unicode/multiline payloads through authorized relative Connection Manager resources. Source identity, bounded Binary/UTF8 and canonical error output use common contracts; export uses Journal-backed file generations.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_component_product_semantics"
       ],
@@ -999,12 +1131,12 @@
       ],
       "trigger": "XML records are parsed into the canonical Data Schema.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "XML records are parsed into the canonical Data Schema. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "XML records are parsed into the canonical Data Schema. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native bounded Expat record framing and XPath extraction feed canonical Data batches and common error ports; quota-owned buffers and inherited namespaces are preserved. Actual XML Source records, invalid-record handling and XML task pipelines passed on Linux.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_xml_source_xpath_xslt_xsd"
       ],
@@ -1028,12 +1160,12 @@
       ],
       "trigger": "An XML task applies a query, stylesheet or schema validation.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "An XML task applies a query, stylesheet or schema validation. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "An XML task applies a query, stylesheet or schema validation. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual XPath, XSLT and XSD tasks passed through Native file leases and generation publication. DTD, external entity and implicit schema/stylesheet loads are rejected; no independent XML execution or file authorization path exists.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_xml_source_xpath_xslt_xsd"
       ],
@@ -1057,14 +1189,14 @@
       ],
       "trigger": "An authorized mail connection sends a message with cancellation handling.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "An authorized mail connection sends a message with cancellation handling. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "An authorized mail connection sends a message with cancellation handling. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
       "evidence": [],
       "progress": "smtp.send uses the sole Native curl owner, credential references, UTF8 subject/MIME encoding and cancellation/deadlines. Interrupted sends retain unknown commit. A genuine independent SMTP acceptance resource is unavailable per user: Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -1084,14 +1216,14 @@
       ],
       "trigger": "A Windows host invokes a WMI query/event task.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "A Windows host invokes a WMI query/event task. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A Windows host invokes a WMI query/event task. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
       "evidence": [],
       "progress": "Native Windows COM WMI query/event tasks support bounded scalar/array/embedded-object JSON with exact signed/unsigned integer lexemes and common authorization/cancellation. Non-Windows binding rejects. Windows compile/runtime and independent WMI resources are unavailable: Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -1113,14 +1245,14 @@
       ],
       "trigger": "An authorized remote file transfer participates in cancellation/publication.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "An authorized remote file transfer participates in cancellation/publication. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "An authorized remote file transfer participates in cancellation/publication. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
       "evidence": [],
       "progress": "Native FTP/SFTP transfers share Connection Manager grants, credential references, curl cancellation and local generation publication. SFTP requires explicitly granted known-hosts; remote replacement declares uncertain effects. Genuine independent FTP/SFTP resources are unavailable: Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -1142,12 +1274,12 @@
       ],
       "trigger": "An Avro schema and records are imported/exported without lossy type coercion.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "An Avro schema and records are imported/exported without lossy type coercion. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "An Avro schema and records are imported/exported without lossy type coercion. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native Avro OCF null/deflate, signed integer extrema and UTF8 interoperability passed independent framing fixtures; malformed OCF fails. Primitive/nested/logical types and explicit lossless UINT64/Duration/Interval extensions are connected. Named references and ambiguous/general unions remain unsupported and are rejected; their complete product coverage is not claimed.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_avro_interoperability"
       ],
@@ -1168,7 +1300,7 @@
       "implementation": [],
       "trigger": "The historical DQS capability is compared with current SSIS support.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "The historical DQS capability is compared with current SSIS support. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "The historical DQS capability is compared with current SSIS support. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
@@ -1192,7 +1324,7 @@
       "implementation": [],
       "trigger": "The historical Data Mining capability is compared with current SSIS support.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "The historical Data Mining capability is compared with current SSIS support. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "The historical Data Mining capability is compared with current SSIS support. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
@@ -1218,14 +1350,14 @@
       ],
       "trigger": "A specialized database/Agent/XMLA task is deployed.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "A specialized database/Agent/XMLA task is deployed. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A specialized database/Agent/XMLA task is deployed. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
       "evidence": [],
       "progress": "Native SQL Server maintenance/Agent tasks use common parameterized SQL leases and backup file grants; SSAS XMLA uses common bounded XML/HTTP and unknown-commit semantics. SQL Server SQL/CDC/BCP resources were accepted, but independent maintenance/Agent/SSAS-specific resources were not supplied: Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -1246,12 +1378,12 @@
       ],
       "trigger": "Profiling requires exact distinct counts under memory and spill limits.",
       "baselineFinding": "profile.c uses approximate HLL while exact value_set is already owned by Compute.",
-      "acceptance": "Profiling requires exact distinct counts under memory and spill limits. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "Profiling requires exact distinct counts under memory and spill limits. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Exact Distinct uses the existing Compute value set and resource budgets. Profile kernel, pipeline statistics and shared comparison tests passed; approximation remains explicitly named approxDistinct only.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "profile_statistics_kernel",
         "profile_task_execution"
@@ -1276,12 +1408,12 @@
       ],
       "trigger": "A timer enqueues work, service restarts or a worker fails with unknown commit.",
       "baselineFinding": "No durable scheduler/queue exists in the Catalog.",
-      "acceptance": "A timer enqueues work, service restarts or a worker fails with unknown commit. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A timer enqueues work, service restarts or a worker fails with unknown commit. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native persistent Catalog jobs bind immutable deployment revisions, deduplicate due times and persist queue/concurrency/retry state. Unknown worker outcomes stop automatic retry. Native Catalog/job state and real Worker recovery passed; a timed schedule/service-restart/retry browser scenario remains unverified.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -1303,12 +1435,12 @@
       ],
       "trigger": "A provider filter needs semantic proof or a large JSON array must stream.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "A provider filter needs semantic proof or a large JSON array must stream. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A provider filter needs semantic proof or a large JSON array must stream. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "One bounded JSON Reader handles NDJSON and multiline arrays, shared record errors and checked resume offsets; malformed framing is fatal. Real array/error/resume tests passed. Complete provider-specific filter-pushdown comparison proof remains unverified; unproved predicates retain Native evaluation.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "source_record_errors",
         "unified_file_schema_discovery"
@@ -1333,14 +1465,14 @@
       ],
       "trigger": "An authorized Azure object resource is read/published/recovered.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "An authorized Azure object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "An authorized Azure object resource is read/published/recovered. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
       "evidence": [],
       "progress": "Native Azure Blob PUT and ADLS create/append/flush share curl, credential scopes and generations. Real local HTTP protocol/byte/publication-sequence tests passed. This is not independent Azure authentication/service acceptance; external resources are unavailable: Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_object_transfer_sequence"
       ],
@@ -1364,14 +1496,14 @@
       ],
       "trigger": "An authorized S3 object resource is read/published/recovered.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "An authorized S3 object resource is read/published/recovered. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "An authorized S3 object resource is read/published/recovered. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [
         "Independent acceptance resource unavailable; user confirmed on 2026-10-14. Local protocol/contract checks do not replace this live acceptance."
       ],
       "evidence": [],
       "progress": "S3/MinIO streaming transfer and SigV4 credentials use the common Native transport/grants/cancellation and explicit exclusive-create/replacement guarantees. Local actual HTTP bytes/conditional-header tests passed. Independent signed S3/MinIO service acceptance is unavailable: Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "native_object_transfer_sequence"
       ],
@@ -1399,12 +1531,12 @@
       ],
       "trigger": "A management request creates/queries/controls an independent native execution process.",
       "baselineFinding": "No ASP.NET management product or execution process ownership exists.",
-      "acceptance": "A management request creates/queries/controls an independent native execution process. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A management request creates/queries/controls an independent native execution process. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Actual ASP.NET Core 10 loopback management dispatches separate Worker processes owning Native Execution/Registry/Catalog. Bounded Worker protocol lines and debug queues use one shared host protocol. Build and real browser management, cancellation/debug lifecycle and killed-Worker recovery passed.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -1427,12 +1559,12 @@
       ],
       "trigger": "A user edits control/data flow, ports, mappings, connections, metadata or package layout.",
       "baselineFinding": "No React/TypeScript/React Flow package designer exists.",
-      "acceptance": "A user edits control/data flow, ports, mappings, connections, metadata or package layout. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A user edits control/data flow, ports, mappings, connections, metadata or package layout. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "React Flow designer uses Native metadata/bound dynamic ports, stable package IDs/layout, field mapping and configuration validation. Typecheck/lint/build and actual drag/undo/redo, save/reload, deploy/execute and desktop/compact screenshots passed; no fabricated product records or validation evaluator.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -1458,12 +1590,12 @@
       ],
       "trigger": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary.",
       "baselineFinding": "Execution exposes cancel/wait but no native debug controller.",
-      "acceptance": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "A breakpoint, bounded edge preview or step request reaches an execution safety boundary. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Native task/batch/safe-epoch boundaries, bounded output preview, pause/continue and single-batch stepping passed managed lifecycle tests. Real browser task pause, Worker termination and same-ID recovery passed. Transactions never park at an unsafe boundary; cancellation stays Native-owned.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "managed_registry_scripts_debug_lifecycle"
       ],
@@ -1488,12 +1620,12 @@
       ],
       "trigger": "CI must compile every declared driver and register SQL/CDC real integrations.",
       "baselineFinding": "Current CI is Linux-centric; Windows exemptions and advanced integration registration need removal.",
-      "acceptance": "CI must compile every declared driver and register SQL/CDC real integrations. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "CI must compile every declared driver and register SQL/CDC real integrations. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "CI registers advanced SQL/CDC/native bulk/real participant recovery and explicit Linux/Windows PRODUCT matrices with required dependency/resource preflight. Local Linux complete-driver build and registered tests passed. Windows/self-hosted full-resource CI execution remains unavailable: Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -1516,12 +1648,12 @@
       ],
       "trigger": "An independent directory consumes C, .NET, Java, CLI and Web release products.",
       "baselineFinding": "1.5 artifacts are historical and must remain preserved; no ABI 10 consumer validation exists.",
-      "acceptance": "An independent directory consumes C, .NET, Java, CLI and Web release products. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "An independent directory consumes C, .NET, Java, CLI and Web release products. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "Relocatable same-source Linux PRODUCT bundle passed 267-file/SHA256/protocol checks, independent public C/CMake, offline NuGet/.NET, Maven/Java/JNI, actual installed CLI, three-language Package/Data/Schema parity and installed management/Worker browser process-kill recovery. The package contains all enabled driver modules, host/designer assets and dependency inventories. Windows release consumption remains Blocked.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "previousDeliveryVerification": {
         "status": "Partial",
         "evidence": [],
@@ -1541,12 +1673,12 @@
       ],
       "trigger": "HTTP status/body/header output is bound to a declared native variable.",
       "baselineFinding": "Existing owners require the specified 2.0 capability and current behavior evidence; no full implementation claim is made.",
-      "acceptance": "HTTP status/body/header output is bound to a declared native variable. Current ABI 10 source and behavioral evidence required.",
+      "acceptance": "HTTP status/body/header output is bound to a declared native variable. Current candidate source and behavioral evidence required.",
       "dependsOn": [],
       "externalPrerequisites": [],
       "evidence": [],
       "progress": "HTTP Task maps actual status/body/header responses into typed Native variables, including rejected statuses and UTF8/BINARY bodies. Real HTTP execution tests passed; ambiguous external writes return CommitUnknown without automatic replay.",
-      "verificationScope": "Studio 4 ABI 12 needs current-source verification; prior delivery is historical.",
+      "verificationScope": "SDK 10.0.0 / ABI 15 requires exact candidate-source behavioral evidence; progress from prior deliveries is historical unless separately linked as current.",
       "acceptanceCases": [
         "http_task_execution"
       ],
@@ -1563,8 +1695,9 @@
     "Qualified SQL Server distributed transaction participation, complete online schema physical-identity proof and broader Avro named-reference/union coverage are not certified complete; see existing audit items.",
     "Raw data, old packages, plugins and recovery directories remain preserved; old protocols are rejected rather than migrated in place",
     "SSIS strict parity remains Partial: LCID comparison/sort inheritance, root/intermediate DT_STR rules, the complete 29x29 conversion legality/result matrix, exact Decimal promotion and all vendor transform behaviors are not implemented or certified. Real Windows SSIS 2025 Golden acceptance is VerificationBlocked.",
-    "SDK 4.0.0 / ABI and protocol family 12 rejects prior schemas, plugins and recovery state; no compatibility path is supplied.",
-    "This candidate is a Linux CORE build with SQLite/HTTP/JNI/hosts, not full PRODUCT/Windows acceptance. One-hour continuous soak and actual external CDC acceptance are NotRun/Blocked.",
-    "Stream-table refresh, bounded stream-stream joins, TTL deduplication, microbatch triggers and rate budgets remain Planned. Live probes retain explicit-debug first-N sampling; rolling hot probes are not implemented."
+    "ABI and Package protocol are 15; historical schemas, plugins and recovery state are preserved as artifacts, not assumed to be compatible or migrated in place.",
+    "Current SDK 10 full PRODUCT, installed consumers, external CDC/iceberg integration, cross-host recovery and continuous production-scale soak are not certified by CORE. Historical benchmarks and earlier run outcomes remain separately identified.",
+    "Native CDC row/time grouping is source-specific, not a general Package microbatch scheduler. General stream/table refresh and watermark-driven temporal views, general rate budgets and rolling hot probes are not established. Stateful event windows, keyed TTL dedup and bounded interval join are supported only as scoped in the current streaming ledger.",
+    "Exactly-once is not a platform-wide promise: qualify each source-position, state and sink commit/receipt combination. Unknown destination commits require reconciliation before replay."
   ]
 }

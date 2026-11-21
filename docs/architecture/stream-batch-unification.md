@@ -30,3 +30,7 @@ Session 采用事件时间准入下界 `Watermark − allowedLateness`，边界�
 | ABI 11 / 历史状态与协议兼容 | 不桥接；版本族成批升级并明确拒绝旧定义 |
 
 可选高级能力必须以真实代码及验收标注，无法由单机内核提供的分布式事务不能被 UI 命名掩盖。
+
+## SDK 10 源码边界
+
+基础版的 final-only 表述仍适用于 Session；在现有 Native 路径中，有键的滚动/滑动窗口可通过受支持的聚合产生变更并保存发布修订。键 TTL 去重、Watermark 限制的双流 inner interval join 也已进入同一执行链；一般 CDC 撤回、事件时间版本维表、分布式状态扩缩容不是这些限定能力的同义项。CDC 的整事务行数/时间批次也不是通用微批触发器。以[当前追踪和验收证据](../acceptance/studio4-traceability.md)为准，不把历史基础版状态或源码夹具提升为 SDK 10 发布结论。

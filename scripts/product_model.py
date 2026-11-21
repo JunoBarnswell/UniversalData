@@ -24,6 +24,18 @@ def read_model():
         identifiers = [item["id"] for item in model[key]]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Duplicate identifiers in " + key)
+    candidate = model["candidate"]["sourceCommit"]
+    if not candidate or not re.fullmatch(r"[0-9a-f]{40}", candidate):
+        raise ValueError("Candidate ledger requires an explicit exact source commit.")
+    if model["remoteCI"]["sourceCommit"] != candidate or model["studio4"]["current"]["sourceCommit"] != candidate:
+        raise ValueError("Current CI and streaming ledger must reference the same audited source.")
+    current_items = model["studio4"]["current"]["items"]
+    for items in (current_items, model["currentComparativePlan"]):
+        if len({item["id"] for item in items}) != len(items):
+            raise ValueError("Duplicate current acceptance or comparative plan IDs.")
+    for item in current_items:
+        if any(not (ROOT / path).is_file() for path in item["evidence"]):
+            raise ValueError("Missing current review source for " + item["id"])
     return model
 
 
@@ -62,7 +74,8 @@ def projections(model):
     header += "#endif\n"
     facts = {"generatedFrom": marker, "sdkVersion": version, "abi": abi,
              "scope": model["scope"], "baseline": model["baseline"], "candidate": model["candidate"],
-             "remoteCI": model["remoteCI"], "artifacts": model["artifacts"]}
+             "remoteCI": model["remoteCI"], "artifacts": model["artifacts"],
+             "currentStreaming": model["studio4"]["current"], "comparativePlan": model["currentComparativePlan"]}
     passed = [gate for gate in model["gates"] if gate["status"] == "Passed"]
     progress = dict(facts, requiredGates=sum(gate["status"] != "Exempt" for gate in model["gates"]), passedGates=len(passed),
                     items=model["goals"], designReviews=model["productAlignment"]["designReviews"])
@@ -81,11 +94,12 @@ def projections(model):
              "completionRule": "All 50 applicable items require current source and behavior evidence; ETL-039/040 are NotApplicable. Missing environments are Blocked.",
              "automaticMergeOrReleaseAuthorized": False, "items": model["goals"]}
     gates = {"generatedFrom": marker, "version": protocol, "sdkVersion": version, "abi": abi,
-             "sourceFingerprint": model["candidate"]["sourceFingerprint"],
+             "sourceCommit": model["candidate"]["sourceCommit"],
+             "sourceFingerprint": model["candidate"]["sourceFingerprint"], "remoteCI": model["remoteCI"],
              "linux": model["scope"]["linux"], "windows": model["scope"].get("windows"), "gates": model["gates"],
              "delivery": model["artifacts"]}
     catalog = "# 当前组件清单与 SSIS 映射\n\n<!-- Generated from metadata/product.json. -->\n\n"
-    catalog += "SDK " + version + "，唯一 ABI/协议 " + str(abi) + "。Linux 与 Windows 均须验收。下列目录是 main 基线已有组件的入口与边界，不能代替 2.0 当前验收；50 项适用整改状态见 metadata/product.json 的 goals。\n\n"
+    catalog += "SDK " + version + "，唯一 ABI/协议 " + str(abi) + "。Linux 与 Windows 均须验收。下列目录记录审查源码的组件入口和能力边界，不等于当前运行验收；50 项适用整改状态见 metadata/product.json 的 goals。\n\n"
     catalog += "| SSIS 职责 | 实际入口/ID | 实现与边界 |\n|---|---|---|\n"
     for row in model["componentCatalog"]:
         catalog += "| " + row["ssis"] + " | " + row["entries"] + " | " + row["contract"] + " |\n"
@@ -94,9 +108,15 @@ def projections(model):
     progress_md = "# 当前实施与验收进度\n\n<!-- Generated from metadata/product.json. -->\n\n"
     progress_md += "SDK " + version + " / ABI " + str(abi) + "；" + model["candidate"]["state"] + "。\n\n"
     progress_md += "门禁通过 " + str(len(passed)) + "/" + str(len(model["gates"])) + "；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。\n\n"
+    ci = model["remoteCI"]
+    progress_md += "已审查源码：`" + ci["sourceCommit"] + "`；[对应 CI](" + ci["url"] + ")（" + ci["checkedAtUtc"] + " 核对）：" + ci["reason"] + "\n\n"
+    progress_md += "下表的历史进展不计入当前验收。流处理/湖表能力见 [当前源码与验收](studio4-traceability.md)。\n\n"
     progress_md += "| 整改 | 当前状态 |\n|---|---|\n"
     for item in model["goals"]:
         progress_md += "| " + item["id"] + " " + item["name"] + " | " + item["code"] + " / " + item["verification"] + " |\n"
+    progress_md += "\n## 竞品差距后续验收（规划，不是已通过）\n\n"
+    for item in model["currentComparativePlan"]:
+        progress_md += "- **" + item["id"] + " " + item["area"] + "**：" + item["goal"] + "\n"
     progress_md += "\n三轮有界设计复核：\n\n"
     for review in model["productAlignment"]["designReviews"]:
         progress_md += str(review["round"]) + ". " + review["scope"] + "（" + review["result"] + "）：" + "；".join(review["decisions"]) + "\n"
@@ -114,9 +134,21 @@ def projections(model):
         advanced_trace+="| "+item["id"]+" | "+item["name"]+" | "+item["state"]+" | "+item["verification"]+" |\n"
     designer_package=json.loads((ROOT/"products/designer/package.json").read_text());designer_package["version"]=version
     designer_lock=json.loads((ROOT/"products/designer/package-lock.json").read_text());designer_lock["version"]=version;designer_lock["packages"][""]["version"]=version
-    studio_trace="# Studio 4 实施与验收追踪\n\n<!-- Generated from metadata/product.json studio4. -->\n\n实现、验收与可发布性分别记录；Planned 不计为已完成。\n\n| ID | 目标 | 实现 | 验收 | 限制 | 证据 |\n|---|---|---|---|---|---|\n"
-    for item in model.get("studio4",{}).get("items",[]):
-        studio_trace+="| "+item["id"]+" | "+item["goal"]+" | "+item["implementation"]+" | "+item["verification"]+" | "+str(item.get("blocked") or "—")+" | "+", ".join(item["evidence"])+" |\n"
+    studio = model["studio4"]
+    current_streaming = studio["current"]
+    studio_trace = "# Studio 4 实施与验收追踪\n\n<!-- Generated from metadata/product.json studio4. -->\n\n"
+    studio_trace += "实现、验收与可发布性分别记录；Planned 不计为已完成。\n\n"
+    table = "| ID | 目标 | 实现 | 验收 | 限制 | 证据 |\n|---|---|---|---|---|---|\n"
+
+    def stream_rows(items):
+        return "".join("| " + " | ".join(str(cell).replace("|", "\\|") for cell in (
+            item["id"], item["goal"], item["implementation"], item["verification"],
+            item.get("blocked") or "—", ", ".join(item["evidence"]))) + " |\n" for item in items)
+
+    studio_trace += "## SDK " + version + " 候选已审查源码\n\n`" + current_streaming["sourceCommit"] + "`。"
+    studio_trace += " 以下证据列指向实现或测试定义，不表示运行通过。\n\n" + table + stream_rows(current_streaming["items"])
+    studio_trace += "\n## 历史 Studio 4 基础验收\n\n历史基线 `" + studio["baseline"] + "`。"
+    studio_trace += " 下表保持当时的实现与结果，仅作追溯，不覆盖上方当前行。\n\n" + table + stream_rows(studio["items"])
     return {
         "docs/acceptance/studio4-traceability.md":studio_trace,
         "products/designer/package.json": encoded(designer_package),

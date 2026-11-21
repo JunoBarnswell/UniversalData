@@ -2,9 +2,13 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 10.0.0 / ABI 15；SDK 9 Native SQL, shared sessions and continuous ETL candidate。
+SDK 10.0.0 / ABI 15；SDK 10 candidate for Native SQL connection ownership, shared Worker sessions, typed CDC and durable ETL submission. ABI and Package protocol remain 15。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
+
+已审查源码：`8d7b36594d8c68a8933fabd57317dc6a7318925c`；[对应 CI](https://github.com/JunoBarnswell/UniversalData/actions/runs/44891162963)（2026-11-21T09:54:13Z 核对）：Exact audited source run: Source and Designer passed; Windows and Ubuntu CORE were in progress when checked. Complete PRODUCT and independent installed NuGet jobs were skipped. CORE excludes real-integration and SSIS Golden; browser recovery is Linux-only in this workflow. This snapshot does not certify delivery or later commits.
+
+下表的历史进展不计入当前验收。流处理/湖表能力见 [当前源码与验收](studio4-traceability.md)。
 
 | 整改 | 当前状态 |
 |---|---|
@@ -60,6 +64,14 @@ SDK 10.0.0 / ABI 15；SDK 9 Native SQL, shared sessions and continuous ETL candi
 | ETL-050 Full Linux and Windows driver CI | Implemented / NotRun |
 | ETL-051 Independent release consumers and capability manifests | Implemented / NotRun |
 | ETL-052 HTTP response variable mappings | Implemented / NotRun |
+
+## 竞品差距后续验收（规划，不是已通过）
+
+- **P0-01 Install and first correct result**：Fresh Windows/Linux installed C/.NET/Java path with the same Package and correctness-checked results; no source build required for users. Record cold start and first result (proposed target ≤10 min).
+- **P0-02 Connector and recovery matrix**：Record guarantees by source/state/sink, include unknown-commit and kill-after-sink-before-offset replay, validate output loss/duplicates and RTO/RPO; show safe action in Designer.
+- **P1-01 Comparable performance baseline**：Repeat fixed batch workload, broker-fed steady stream, long soak and controlled failures under equal resources. Record sink-visible p50/p95/p99, sustainable rows/s and MiB/s, lag, process-tree RSS/CPU, spill and checkpoint costs.
+- **P1-02 SDK and Designer usability**：Use one Native execution contract with small recipes, typed record/batch API and actionable diagnostics. Compare row/batch overhead, and verify first publish, failure localization and safe resume in a real browser.
+- **P2-01 Selective expansion**：Add schema evolution, temporal/upsert semantics and stronger HA or sink guarantees only where measured needs justify them; no separate shadow runtime or blanket exactly-once claim.
 
 三轮有界设计复核：
 
