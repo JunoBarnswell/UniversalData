@@ -4,6 +4,26 @@
 
 实现、验收与可发布性分别记录；Planned 不计为已完成。
 
+## SDK 10.0.0 候选已审查源码
+
+`8d7b36594d8c68a8933fabd57317dc6a7318925c`。 以下证据列指向实现或测试定义，不表示运行通过。
+
+| ID | 目标 | 实现 | 验收 | 限制 | 证据 |
+|---|---|---|---|---|---|
+| S07 | Versioned stream/table refresh | Planned | NotRun | Current reference lookup is not event-time as-of table lookup or generally versioned dynamic refresh. | components/compute/src/cache_lookup.c, tests/orders_payments_shops_iceberg.py |
+| S08 | Bounded stream/stream join | Implemented (scoped) | NotRun | Watermark-bounded inner interval match with inclusive bound; inputs are insert-only, rows at or behind the common watermark are dropped. No general outer/retracting/distributed join. | components/compute/src/event_match.c, tests/event_match.c |
+| S09 | Key TTL deduplication | Implemented (scoped) | NotRun | Keeps the first row per key until event-time TTL expires at the common watermark. Not an unbounded/global deduplication guarantee. | components/compute/src/event_match.c, tests/event_match.c |
+| S11 | Microbatch time/row triggers | Partial | NotRun | Native CDC row/time options group complete source transactions; general Package trigger/scheduling is not this capability. | engines/data-flow/cdc.c |
+| S13 | Native rate budgets | Planned | NotRun | Bounded queue/working/spill quotas and node limits are not a general source rate governor. | docs/architecture/stream-batch-unification.md |
+| S14 | Event-window change output | Implemented (scoped) | NotRun | Keyed tumbling/sliding count, sum and average may emit insert/update/delete (update/delete include the before image as applicable) changes with checkpointed published state; session remains final-only. No generic CDC retractions. | components/compute/src/event_window.c, tests/event_window.c |
+| S15 | REST write and recovery modes | Implemented (scoped) | NotRun | response/idempotent/receipt modes use one Native path; unknown commit is not safe blind replay. Includes local fixture source, not external endpoint crash/replay evidence. | connectors/rest.c, tests/advanced_formats.py |
+| S16 | Iceberg v2 REST/Parquet delivery | Implemented (scoped) | NotRun | Existing Catalog-owned partition specs are used; native-created tables are unpartitioned. No remote object-store credential/maintenance guarantee or general standalone SQL DELETE. Real Trino fixture not certified by CORE. | connectors/iceberg_table.cpp, tests/iceberg_v2.py |
+| S17 | Bounded cross-system streaming oracle | Implemented fixture | NotRun | PostgreSQL TLS CDC insert, Kafka refund/duplicate, current MySQL lookup, SQL/Trino net 70 and same-ID resume with one snapshot; not production-wide mutable CDC or distributed exactly-once. | tests/orders_payments_shops_iceberg.py |
+
+## 历史 Studio 4 基础验收
+
+历史基线 `09118e27f6cab45524c8bbeab581c1fa805a0529`。 下表保持当时的实现与结果，仅作追溯，不覆盖上方当前行。
+
 | ID | 目标 | 实现 | 验收 | 限制 | 证据 |
 |---|---|---|---|---|---|
 | UI01 | Workspace tabs and history | Implemented | Passed | — | docs/acceptance/evidence/studio4-linux/browser.json, docs/acceptance/evidence/studio4-linux/studio4-scale.json |

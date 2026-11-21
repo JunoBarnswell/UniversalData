@@ -1,13 +1,12 @@
 # 当前核心验收
 
-metadata/product.json 是版本、组件范围、候选源码、门禁和产物的唯一事实来源。product_model.py 生成 progress.json、ssis-status.json、completion-goal.json、gates.json、组件清单及语言版本文件。人工编辑生成文件会被门禁拒绝。
+[`metadata/product.json`](../../metadata/product.json) 是版本、能力边界、候选源码、门禁和产物的事实来源。`python scripts/product_model.py generate` 生成 JSON、进度、组件目录和流处理追踪等投影；`python scripts/product_model.py check` 验证投影。不要直接编辑生成文件。
 
-按用户约定，整批源码与调用方迁移完成后集中编译和关键验收。本轮 Linux 执行构建、内存、并发、事务恢复及独立 SDK 消费；Windows 明确豁免。扩展保持真实 Planned/Partial。
+- [当前进度](progress.md) · [发布门禁](gates.json) · [52 项审查清单](completion-goal.json)
+- [流处理与 Designer 源码/验收追踪](studio4-traceability.md) · [组件目录](../product/component-catalog.md) · [SSIS 严格对照](ssis-strict-parity.md)
 
-基线 main 的合并、当前分支的实现、当前验收、当前产物分别记录。历史 ABI 4 的通过记录仅作历史证据，不能作为 ABI 6 的通过证明。当前源码未正式提交或合并时，mergeEvidence 为空。
+每条结论区分**源码可见、测试是否执行、验收范围、能否发布**。已审查源码的精确提交与对应 CI 记录在产品模型；历史 ABI、基准工件、旧账单阻塞与旧平台豁免不计入 SDK 10 验收。Linux 与 Windows 都是正式交付必验平台。
 
-门禁覆盖 Registry 所有权和合法类别、resident 无 codec、嵌套/投影去重、working quota/lease/fault cleanup、实际 Execution Tree 并发/容量/取消、分段 Journal 索引/快照/缺段/损坏/崩溃恢复、逻辑与持久 task facts、统一产品事实，以及安装后 C/NuGet/Maven/JNI 的同一 Package 和 typed wire。
+CORE 只证明实际执行的测试；真实提供方集成、SSIS Golden、完整 PRODUCT、独立安装消费者、真实浏览器恢复以及长时间运行，均按各自执行结果记录。跳过、等待中、外部环境缺失以及源码测试夹具存在，都不代表通过。没有完整当前证据，不挂发布通过章。
 
-GitHub Actions 运行 38270005891 的四个 job 均在启动前被账户账单/额度问题拒绝，实际步骤为 0；这是外部 Blocked，不能作为代码编译失败或通过记录。
-
-requirements.json、cases.json 和 evidence 下的旧资料显式标为历史规划/证据；当前 69 项目标、核心门禁与扩展状态以产品模型为准。
+旧计划、`requirements.json`、`cases.json` 和 `evidence/` 保留供追溯；历史专项表保留当时事实，不用历史结果替代当前验收。

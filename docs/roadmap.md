@@ -25,3 +25,7 @@ P6 --> P7[Extensions/BI]
 本轮统一架构与核心组件先完成源码后集中 Windows 验收；扩展逐项保留真实状态。开发修改保留在 codex PR 分支，不自动合并或公开发版。状态分 Planned/Implemented/Verified/Blocked，记录命令、提交、日期与真实结果。Windows 不可在 Linux 伪造验证；CI 额度失败为 Blocked。未完成恢复/组件不能伪装通过。
 
 典型纵向验收：含控制循环/参数的 Package→CSV/SQL Source→Derived/Split→多目标；NULL/Decimal/UTC 对照 Query；同步共享/异步 spill；取消/超时/资源超限/拒绝授权/CommitUnknown；C/.NET/Java 同定义运行；插件 unload 生命周期。暂不兼容微软 proprietary artifacts。
+
+## 当前候选后续验收
+
+[当前实施与验收进度](acceptance/progress.md) 记录了基于已审查源码的 P0/P1/P2 顺序：先让 Windows/Linux 上的用户安装、运行同一个示例并拿到正确结果，再验证常用连接组合与恢复；其后才做同口径性能对比和扩展。建议门槛是规划，不是已测能力。Web Designer、CLI 与 C/.NET/Java SDK 延续同一个 Native Package 和执行链路。

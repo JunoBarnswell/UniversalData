@@ -3,85 +3,104 @@
   "version": 15,
   "sdkVersion": "10.0.0",
   "abi": 15,
+  "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
   "sourceFingerprint": null,
+  "remoteCI": {
+    "state": "InProgress",
+    "sourceCommit": "8d7b36594d8c68a8933fabd57317dc6a7318925c",
+    "sourceFingerprint": null,
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44891162963",
+    "status": "in_progress",
+    "conclusion": null,
+    "steps": null,
+    "annotations": [],
+    "reason": "Exact audited source run: Source and Designer passed; Windows and Ubuntu CORE were in progress when checked. Complete PRODUCT and independent installed NuGet jobs were skipped. CORE excludes real-integration and SSIS Golden; browser recovery is Linux-only in this workflow. This snapshot does not certify delivery or later commits.",
+    "previousRun": {
+      "sourceCommit": "42563c174833f04f013b90733b32f3a753d1bfbb",
+      "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44889441823",
+      "conclusion": "failure",
+      "reason": "Previous source run: Windows 89/90 (SQLite fixture cleanup lock); Ubuntu 88/91 (remote dispatch assertion, Avro/OpenSSL load, autoscale convergence). Historical relative to the audited source."
+    },
+    "checkedAtUtc": "2026-11-21T09:54:13Z"
+  },
   "linux": "Required — complete driver build, native/language/install, recovery, integration, performance and Web",
   "windows": "Required — complete driver build, native/language/install and platform acceptance",
   "gates": [
     {
       "id": "linux-full-build",
       "status": "NotRun",
-      "scope": "CORE build only; full PRODUCT driver dependency closure unverified.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Linux CORE is not full PRODUCT dependency closure. Full PRODUCT skipped in the audited run.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "windows-full-build",
       "status": "NotRun",
-      "scope": "Windows toolchain/SSIS resources unavailable.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Windows CORE is not full PRODUCT dependency closure or real Windows SSIS Golden acceptance. Full PRODUCT skipped in the audited run.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "correctness",
       "status": "NotRun",
-      "scope": "75 portable cases passed; full inherited SSIS and vendor semantics remain unverified.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Source/Designer check passed in the audited run; required real driver/SSIS semantics are outside CORE.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "recovery",
       "status": "NotRun",
-      "scope": "Portable Native Journal, process kill, window state, disk spill and same-ID recovery passed.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Native Journal and prior focused recovery evidence do not certify SDK 10 across platforms and provider failure windows. Windows browser recovery is not exercised by the current workflow.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "external-integration",
       "status": "NotRun",
-      "scope": "No current external CDC/driver acceptance resources.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Current workflow excludes real-integration from CORE. PostgreSQL/Kafka/MySQL-to-Iceberg and external receipt recovery are not certified by this run.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "language-parity",
       "status": "NotRun",
-      "scope": "Current Native/C#/Java ABI and lifecycle tests passed; complete streaming cross-host UAT remains partial.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Same-ABI source does not certify current installed C/.NET/Java typed- and streaming-result parity, especially Windows.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "web",
       "status": "NotRun",
-      "scope": "Actual browser core journey and 200/500/1000-node scaling passed; full UI/a11y/probe matrix partial.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Designer build/type checks are not browser and accessibility acceptance. Current browser recovery step is Linux-only; prior scale data are historical.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "performance",
       "status": "NotRun",
-      "scope": "One million events and observed batch latency/RSS recorded; one-hour soak NotRun.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Historical finite tests are not current throughput/latency claims. Require comparable workloads and a sustainable-rate/soak run before performance certification.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "installed-consumers",
       "status": "NotRun",
-      "scope": "No current distributable archive or independent installed SDK consumer run.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Independent installed NuGet was skipped; do not infer package parity or successful installation from in-tree builds.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "source-contracts",
       "status": "NotRun",
-      "scope": "Product projections, whitespace, epoch migration and C/.NET/Java compilation verified.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "Audited run passed its source and Designer job; full current-source contract, build and independent consumer gates are not complete.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     },
     {
       "id": "release-integrity",
       "status": "NotRun",
-      "scope": "Review branch only; no release archive or release certification.",
-      "reason": "Awaiting full UniversalData 9.0 acceptance evidence.",
+      "scope": "No approved SDK 10 artifacts or full gate success verified. Release readiness requires current exact-source evidence from all required jobs.",
+      "reason": "Awaiting complete UniversalData 10.0.0 acceptance evidence on the audited source.",
       "evidence": []
     }
   ],
