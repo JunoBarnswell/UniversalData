@@ -704,7 +704,7 @@ if(TARGET ud_package)
     add_dependencies(ud_managed_sql_test ud_sdk_fluent_test)
     set(fluent_sdk ${CMAKE_CURRENT_BINARY_DIR}/managed-sdk-fluent/SdkFluent.dll)
     set(fluent_fixture ${CMAKE_CURRENT_SOURCE_DIR}/sdk_fluent_fixture.py)
-    if(TARGET ud_connector_sqlite)
+    if(TARGET ud_connector_sqlite AND UD_WITH_HTTP)
       add_test(NAME sdk_fluent_sessions COMMAND ${Python3_EXECUTABLE} ${fluent_fixture}
         ${UD_DOTNET} ${fluent_sdk} $<TARGET_FILE:ud_worker> $<TARGET_FILE:ud_connector_sqlite>)
       set_tests_properties(sdk_fluent_sessions PROPERTIES LABELS "sdk;sql-etl;crash-recovery" TIMEOUT 130)

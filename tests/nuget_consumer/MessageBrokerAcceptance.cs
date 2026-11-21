@@ -14,6 +14,7 @@ internal static class MessageBrokerAcceptance
         var results = new Dictionary<string, MqAcceptanceMetrics>(StringComparer.Ordinal);
         foreach (var (broker, kind) in kinds.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
+            Console.Error.WriteLine($"Validating the installed {broker} connector");
             if (!targets.TryGetValue(broker, out var target))
                 throw new InvalidOperationException($"The {broker} fixture did not provide a JSON target address");
             bool queue = kind is DataSourceKind.RabbitMq or DataSourceKind.ActiveMq;
@@ -70,25 +71,30 @@ internal static class MessageBrokerAcceptance
         await using var run = await data.StartAsync(job, new object(), cancellation).ConfigureAwait(false);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(TimeSpan.FromSeconds(75));
-        while (true)
-        {
-            deadline.Token.ThrowIfCancellationRequested();
-            var progress = await run.ProgressAsync(deadline.Token).ConfigureAwait(false);
-            if (await CountRowsAsync(database, deadline.Token).ConfigureAwait(false) == ExpectedRows &&
-                Confirmed(progress))
-                break;
-            await Task.Delay(TimeSpan.FromMilliseconds(100), deadline.Token).ConfigureAwait(false);
-        }
-
-        await run.CancelAsync(deadline.Token).ConfigureAwait(false);
+        var completion = run.WaitAsync(deadline.Token);
         try
         {
-            return await run.WaitAsync(deadline.Token).ConfigureAwait(false);
+            while (!completion.IsCompleted)
+            {
+                var progress = await run.ProgressAsync(deadline.Token).ConfigureAwait(false);
+                if (Confirmed(progress) &&
+                    await CountRowsAsync(database, deadline.Token).ConfigureAwait(false) == ExpectedRows)
+                {
+                    await run.CancelAsync(deadline.Token).ConfigureAwait(false);
+                    break;
+                }
+                await Task.WhenAny(completion, Task.Delay(TimeSpan.FromMilliseconds(100), deadline.Token))
+                    .ConfigureAwait(false);
+            }
+            return await completion.ConfigureAwait(false);
         }
-        catch (DataExecutionException error) when
-            ((error.Code is StatusCode.Cancelled or StatusCode.CommitUnknown) && error.Metrics is not null)
+        catch (DataExecutionException error) when (error.Code == StatusCode.Cancelled && error.Metrics is not null)
         {
             return error.Metrics!;
+        }
+        finally
+        {
+            deadline.Cancel();
         }
     }
 

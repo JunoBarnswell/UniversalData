@@ -80,7 +80,7 @@ public sealed class DataJob<TInput> : DataJob
         Graph.Plan.Component(name, "mq.source", new
         {
             connection = source, address, targetType = queue ? "queue" : "topic", group, initialPosition,
-            format = "json", schema = Schema<TRow>()
+            format = "json", includeMetadata = false, schema = Schema<TRow>()
         }, flow);
         return new(this, flow, name);
     }

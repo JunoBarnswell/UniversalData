@@ -25,6 +25,16 @@ static const ud_field metadata_field = {.name = "_message", .name_length = 8, .t
 static const ud_field payload_field = {.name = "payload", .name_length = 7, .type = UD_BINARY,
                                        .nullable = 1};
 
+static int is_metadata_field(const ud_field *field) {
+    return field->name_length == metadata_field.name_length &&
+           !memcmp(field->name, metadata_field.name, metadata_field.name_length);
+}
+
+static uint32_t payload_columns(const ud_batch *batch) {
+    uint32_t count = batch->columns;
+    return count && is_metadata_field(batch->schema->fields + count - 1) ? count - 1 : count;
+}
+
 ud_status ud_mq_settings_parse(const ud_component_context *context, const ud_json *config,
                                ud_mq_settings *settings) {
     memset(settings, 0, sizeof(*settings));
@@ -86,24 +96,33 @@ ud_status ud_mq_settings_parse(const ud_component_context *context, const ud_jso
 ud_status ud_mq_schema(const ud_component_context *context, const ud_json *config,
                        const ud_mq_settings *settings, ud_batch **out) {
     *out = NULL;
+    const char *metadata;
+    uint32_t length;
+    UD_TRY(ud_json_text(ud_member(config, "includeMetadata"), &metadata, &length));
+    int include_metadata = ud_named((ud_string){metadata, length}, "true");
     if (settings->format == UD_MQ_BINARY) {
         if (ud_member(config, "schema"))
             return UD_SCHEMA;
         ud_field fields[] = {payload_field, metadata_field};
-        return ud_batch_create(context->memory, fields, 2, 0, out);
+        return ud_batch_create(context->memory, fields, 1 + include_metadata, 0, out);
     }
     ud_batch *payload = NULL;
     UD_TRY(ud_builtin_schema_config(context, config, &payload));
     uint32_t columns = payload->columns;
+    for (uint32_t i = 0; i < columns; i++) {
+        if (is_metadata_field(payload->schema->fields + i)) {
+            ud_batch_destroy(payload);
+            return UD_SCHEMA;
+        }
+    }
+    if (!include_metadata) {
+        *out = payload;
+        return UD_OK;
+    }
     ud_field *fields = ud_alloc(context->memory, ((size_t)columns + 1) * sizeof(*fields));
     ud_status status = fields ? UD_OK : UD_RESOURCE;
-    for (uint32_t i = 0; !status && i < columns; i++) {
-        fields[i] = payload->schema->fields[i];
-        if (fields[i].name_length == metadata_field.name_length &&
-            !memcmp(fields[i].name, metadata_field.name, metadata_field.name_length))
-            status = UD_SCHEMA;
-    }
     if (!status) {
+        memcpy(fields, payload->schema->fields, (size_t)columns * sizeof(*fields));
         fields[columns] = metadata_field;
         status = ud_batch_create(context->memory, fields, columns + 1, 0, out);
     }
@@ -122,7 +141,7 @@ static ud_value position_value(int64_t value) {
 }
 
 static ud_status avro_decode(const ud_message *message, ud_schema_registry *registry,
-                             ud_batch *target, ud_batch **values) {
+                             ud_batch *target, uint32_t columns, ud_batch **values) {
     const unsigned char *prefix = (const unsigned char *)message->payload.data;
     if (!prefix || message->payload.length < 5 || prefix[0])
         return UD_QUALITY;
@@ -132,16 +151,42 @@ static ud_status avro_decode(const ud_message *message, ud_schema_registry *regi
         return UD_QUALITY;
     ud_string writer_schema;
     UD_TRY(ud_schema_registry_find(registry, id, &writer_schema));
-    UD_TRY(ud_batch_create(target->ctx, target->schema->fields, target->columns - 1, 1, values));
+    UD_TRY(ud_batch_create(target->ctx, target->schema->fields, columns, 1, values));
     ud_status status = ud_avro_record_decode(target->ctx, writer_schema,
         ud_schema_registry_schema(registry),
         (ud_string){message->payload.data + 5, message->payload.length - 5}, *values);
     return status == UD_CORRUPT ? UD_QUALITY : status;
 }
 
+static ud_status append_with_metadata(const ud_message *message, ud_batch *batch,
+                                      ud_value *values, uint32_t count) {
+    uint32_t headers = message->header_count;
+    ud_value *entries = headers ? ud_alloc(batch->ctx, (size_t)headers * 3 * sizeof(*entries)) : NULL;
+    if (headers && !entries)
+        return UD_RESOURCE;
+    for (uint32_t i = 0; i < headers; i++) {
+        ud_value *cells = entries + headers + (size_t)i * 2;
+        cells[0] = text_value(UD_UTF8, message->headers[i].name);
+        cells[1] = text_value(UD_BINARY, message->headers[i].value);
+        entries[i] = (ud_value){.type = UD_STRUCT, .children = cells, .child_count = 2};
+    }
+    ud_value metadata[META_COUNT] = {
+        text_value(UD_UTF8, message->id), text_value(UD_UTF8, message->address),
+        text_value(UD_BINARY, message->key),
+        {.type = UD_LIST, .children = entries, .child_count = headers},
+        position_value(message->partition), position_value(message->offset),
+        position_value(message->timestamp_ms),
+        {.type = UD_BOOL, .integer = !!message->redelivered},
+    };
+    values[count] = (ud_value){.type = UD_STRUCT, .children = metadata, .child_count = META_COUNT};
+    ud_status status = ud_batch_append(batch, values, batch->columns);
+    ud_free(entries);
+    return status;
+}
+
 ud_status ud_mq_decode(const ud_message *message, int format, ud_schema_registry *registry,
                        ud_batch *batch, ud_id *column) {
-    uint32_t count = batch->columns - 1;
+    uint32_t count = payload_columns(batch);
     ud_context *ctx = batch->ctx;
     ud_value *values = ud_alloc(ctx, (size_t)batch->columns * sizeof(*values));
     if (!values)
@@ -165,34 +210,13 @@ ud_status ud_mq_decode(const ud_message *message, int format, ud_schema_registry
                 *column = f->identity;
         }
     } else {
-        status = avro_decode(message, registry, batch, &avro);
+        status = avro_decode(message, registry, batch, count, &avro);
         for (uint32_t i = 0; !status && i < count; i++)
             status = ud_batch_get(avro, 0, i, values + i);
     }
-    uint32_t headers = message->header_count;
-    ud_value *entries = !status && headers ? ud_alloc(ctx, (size_t)headers * 3 * sizeof(*entries))
-                                           : NULL;
-    if (!status && headers && !entries)
-        status = UD_RESOURCE;
-    if (!status) {
-        for (uint32_t i = 0; i < headers; i++) {
-            ud_value *cells = entries + headers + (size_t)i * 2;
-            cells[0] = text_value(UD_UTF8, message->headers[i].name);
-            cells[1] = text_value(UD_BINARY, message->headers[i].value);
-            entries[i] = (ud_value){.type = UD_STRUCT, .children = cells, .child_count = 2};
-        }
-        ud_value metadata[META_COUNT] = {
-            text_value(UD_UTF8, message->id), text_value(UD_UTF8, message->address),
-            text_value(UD_BINARY, message->key),
-            {.type = UD_LIST, .children = entries, .child_count = headers},
-            position_value(message->partition), position_value(message->offset),
-            position_value(message->timestamp_ms),
-            {.type = UD_BOOL, .integer = !!message->redelivered},
-        };
-        values[count] = (ud_value){.type = UD_STRUCT, .children = metadata, .child_count = META_COUNT};
-        status = ud_batch_append(batch, values, batch->columns);
-    }
-    ud_free(entries);
+    if (!status)
+        status = count == batch->columns ? ud_batch_append(batch, values, count) :
+                 append_with_metadata(message, batch, values, count);
     if (format == UD_MQ_JSON)
         for (uint32_t i = 0; i < count; i++)
             ud_clear_value(values + i);
@@ -204,10 +228,7 @@ ud_status ud_mq_decode(const ud_message *message, int format, ud_schema_registry
 
 ud_status ud_mq_project_payload(const ud_batch *batch, ud_batch **out) {
     *out = NULL;
-    uint32_t count = batch->columns;
-    if (count && batch->schema->fields[count - 1].name_length == 8 &&
-        !memcmp(batch->schema->fields[count - 1].name, "_message", 8))
-        count--;
+    uint32_t count = payload_columns(batch);
     if (!count)
         return UD_SCHEMA;
     uint32_t *indices = ud_alloc(batch->ctx, count * sizeof(*indices));
@@ -239,7 +260,7 @@ ud_status ud_mq_encode_metadata(const ud_batch *batch, uint32_t row, ud_message 
     const ud_field *field = batch->schema->fields + index;
     message->partition = -1;
     message->offset = message->timestamp_ms = -1;
-    if (field->name_length != 8 || memcmp(field->name, "_message", 8))
+    if (!is_metadata_field(field))
         return UD_OK;
     if (field->type != UD_STRUCT || field->child_count != META_COUNT)
         return UD_SCHEMA;

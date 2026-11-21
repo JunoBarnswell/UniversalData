@@ -220,11 +220,15 @@ static async Task LoadCompleteFixtures(Dictionary<string, string> probes, Dictio
                 grants[address] = ["Network"];
             }
             targets[driver] = document.RootElement.GetProperty("jsonTarget").GetString()!;
+            bool queue = driver is "rabbitmq" or "activemq-classic" or "activemq-artemis";
+            string addressKind = queue ? "queue" : "topic";
+            grants[$"mq-fixture-resource/{addressKind}/{targets[driver]}"] = ["Read", "Write"];
             if (document.RootElement.TryGetProperty("group", out var group))
             {
-                if (driver is "rabbitmq" or "activemq-classic" or "activemq-artemis")
+                if (queue)
                     throw new InvalidOperationException($"The queue fixture {driver} must omit group");
                 groups[driver] = group.GetString()!;
+                grants[$"mq-fixture-resource/group/{groups[driver]}"] = ["Write"];
             }
             else if (driver is "kafka" or "rocketmq")
                 throw new InvalidOperationException($"The {driver} fixture did not provide a consumer group");

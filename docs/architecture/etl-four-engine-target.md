@@ -24,7 +24,7 @@ RocketMQ 的会话和 RPC 按连接关闭，gRPC 的原生模块及依赖由统�
 
 `mq.source` 和 `mq.destination` 通过 Connection Manager 调原生协议驱动。ActiveMQ Classic 与 Artemis 使用 AMQP 1.0，RabbitMQ 使用 AMQP 0-9-1，RocketMQ 5 使用官方 v2 gRPC，Kafka 使用 librdkafka。包中配置连接引用、`targetType`、`address` 和目标所需的 `routingKey`。消费端可按协议选择 `group`、`subscription`、`filter`、`initialPosition`。Kafka 单消费者可用 `endOffsets` 声明逐分区的排他结束位置。所有生产队列、主题、绑定及消费组由宿主预置。
 
-消息体可用 `binary`、`json` 或 Kafka `avro`。源的 `_message` 结构保留地址、标识、键、Header、分区、位点、时间及重投标志。目标可发布键和 Header。Avro 通过授权 Registry 连接访问已注册的 `schemaSubject` 和 `schemaVersion`，以已注册 reader schema 读取，以固定 writer schema 发布。源数据错误使用现有错误端口，Registry 一时不可用会阻止源确认。
+消息体可用 `binary`、`json` 或 Kafka `avro`。源默认在 `_message` 结构中保留地址、标识、键、Header、分区、位点、时间及重投标志。指定 `includeMetadata: false` 时数据批次只携带消息体字段，源仍按目标提交确认消息。目标可发布键和 Header。Avro 通过授权 Registry 连接访问已注册的 `schemaSubject` 和 `schemaVersion`，以已注册 reader schema 读取，以固定 writer schema 发布。源数据错误使用现有错误端口，Registry 一时不可用会阻止源确认。
 
 普通消息流处理一个有界批次并发出 Barrier。Pipeline 确认目标效果并提交本地 Epoch 后，由消息源确认对应会话的交付。未知发布结果进入 `RecoveryRequired`。Broker 可能再次交付，依照目的地接收回执或业务键做幂等。MQ 资源授权包括连接本身、实际网络端点及对应的 `/topic/`、`/queue/`、`/exchange/` 或 `/group/` 资源。生产消息体、凭据和会话交付句柄均由已有资源策略保护。
 

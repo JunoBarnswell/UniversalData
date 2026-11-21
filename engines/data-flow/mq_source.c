@@ -472,7 +472,8 @@ static ud_status describe(void *user, const ud_component_context *context, ud_st
 ud_status ud_mq_source_register(ud_registry *registry) {
     static const char schema[] = "{\"type\":\"object\",\"additionalProperties\":false,"
         "\"required\":[\"connection\",\"targetType\",\"address\"],\"properties\":{" UD_MQ_PAYLOAD_PROPERTIES ","
-        "\"schema\":{\"type\":\"object\"},\"group\":{\"type\":\"string\"},\"subscription\":{\"type\":\"string\"},"
+        "\"schema\":{\"type\":\"object\"},\"includeMetadata\":{\"type\":\"boolean\",\"default\":true},"
+        "\"group\":{\"type\":\"string\"},\"subscription\":{\"type\":\"string\"},"
         "\"filter\":{\"type\":\"string\"},\"fromStage\":{\"type\":\"string\",\"minLength\":1},"
         "\"initialPosition\":{\"enum\":[\"require\",\"earliest\",\"latest\"],"
         "\"default\":\"require\"},\"prefetch\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":256,\"default\":32},"

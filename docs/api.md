@@ -40,7 +40,9 @@ SQL 占位符使用目标驱动的语法。`BindParameters` 将作业输入绑�
 
 `StartAsync` 返回 `EtlRun`，可读取进度、诊断和执行指标。`CancelAsync` 停止执行。取消 `WaitAsync` 的令牌会结束调用方等待。直接流式读取使用当前数据库游标，带持久边界的作业按检查点恢复。
 
-`FromMessages` 和 `ToMessages` 使用 Native Kafka、RabbitMQ、RocketMQ 5、ActiveMQ Classic 和 ActiveMQ Artemis。通用消息作业至少交付一次，目标提交后才确认源消息。Kafka 到 Kafka 可声明 `KafkaTransaction(checkpointTopic)`，将输出、位点和检查点一起提交。HTTP 使用 `FromHttp`、`Request` 和 `ToHttp`。`FromHttp` 读取 JSON 数组或带 `rows` 和 `nextCursor` 的分页对象，作业也可指定分页字段名。
+`FromMessages` 和 `ToMessages` 使用 Native Kafka、RabbitMQ、RocketMQ 5、ActiveMQ Classic 和 ActiveMQ Artemis。`FromMessages<TRow>` 读取 `TRow` 声明的消息体字段，对应原生 `mq.source` 的 `includeMetadata: false`。通用消息作业至少交付一次，目标提交后才确认源消息。Kafka 到 Kafka 可声明 `KafkaTransaction(checkpointTopic)`，将输出、位点和检查点一起提交。HTTP 使用 `FromHttp`、`Request` 和 `ToHttp`。`FromHttp` 读取 JSON 数组或带 `rows` 和 `nextCursor` 的分页对象，作业也可指定分页字段名。
+
+消息地址的读写权限按资源和地址配置，例如 `broker-resource/queue/orders` 或 `broker-resource/topic/orders`。消费组提交位点需要 `broker-resource/group/<group>` 的写权限。无消费组的队列使用队列的写权限确认消息。
 
 ## 配置、发布与资源配额
 

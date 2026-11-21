@@ -126,10 +126,6 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         assert request('admin-b', '/logs?executionId=' + state['executionId'])[0] == 403
         status, logs = request('admin-a', '/logs?executionId=' + state['executionId'])
         assert status == 200 and secret not in json.dumps(logs)
-        for path in data.rglob('*'):
-            if path.is_file():
-                assert secret.encode() not in path.read_bytes(), str(path)
-
         # Designer inspections are real Native reads in the same Worker; source
         # uploads stay subject-owned and publication never starts execution.
         status, imported = request('admin-a', '/files/upload', 'POST', raw=b'Amount,Customer\n12,VIP\n3,Other\n',
@@ -196,4 +192,8 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         except subprocess.TimeoutExpired:
             process.kill()
             process.communicate(timeout=5)
+    # A live Catalog can hold mandatory file locks on Windows.
+    for path in data.rglob('*'):
+        if path.is_file():
+            assert secret.encode() not in path.read_bytes(), str(path)
 print('Actual Management/Worker/Native: authentication, CSRF, roles, upload ownership, Native discovery/preview, draft/version CAS, current-draft publication without execution, protected parameters, logs and rotation passed')
