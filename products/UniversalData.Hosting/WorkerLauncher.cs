@@ -9,7 +9,8 @@ public static class WorkerLauncher
     public static Process Launch(string workerPath, WorkerRequest request) =>
         Launch(workerPath, request.Ticket, request.Budget, request);
 
-    internal static Process Launch(string workerPath, string processKey, WorkerBudget? budget, WorkerRequest? request)
+    internal static Process Launch(string workerPath, string processKey, WorkerBudget? budget, WorkerRequest? request,
+        int[]? cpuIds = null)
     {
         workerPath = Path.GetFullPath(workerPath); HostFiles.NoLinks(workerPath);
         string dotnet = Environment.ProcessPath is { } current && Path.GetFileNameWithoutExtension(current).Equals("dotnet",StringComparison.OrdinalIgnoreCase)
@@ -34,7 +35,7 @@ public static class WorkerLauncher
                 start.ArgumentList.Add("--property=MemoryMax=" + checked(request!.Policy.MemoryLimit + WorkerSupervisor.ProcessOverhead));
                 start.ArgumentList.Add("--property=TasksMax=64");
                 start.ArgumentList.Add("--property=CPUQuota=100%");
-            } else WorkerProcessLimits.AddLinuxProperties(start, budget);
+            } else WorkerProcessLimits.AddLinuxProperties(start, budget, cpuIds);
             if (!isolated) start.ArgumentList.Add("--working-directory=" + Environment.CurrentDirectory);
             start.ArgumentList.Add("--");
         }

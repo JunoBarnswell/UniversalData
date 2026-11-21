@@ -249,7 +249,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
             using var startup = CancellationTokenSource.CreateLinkedTokenSource(slot.Retiring.Token);
             startup.CancelAfter(TimeSpan.FromSeconds(15));
             var budget = request?.Budget ?? (enforceOrdinaryLimits ? slot.Charge : null);
-            process = WorkerLauncher.Launch(path, slot.Key, budget, request);
+            process = WorkerLauncher.Launch(path, slot.Key, budget, request, slot.Reservation?.CpuIds);
             slot.Process = process;
             stderr = WorkerProtocol.Discard(process.StandardError, CancellationToken.None);
             int pid = await WorkerLauncher.WaitReady(process, startup.Token);

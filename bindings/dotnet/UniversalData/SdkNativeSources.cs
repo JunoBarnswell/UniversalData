@@ -1,7 +1,11 @@
+using System.Collections.Concurrent;
+
 namespace UniversalData;
 
 internal static class SdkNativeSources
 {
+    private static readonly ConcurrentDictionary<DataSourceKind, string> installedDrivers = new();
+
     internal static string CredentialReference(SdkSourceBinding binding) => "sdk-source/" + binding.Definition.Name + "/" +
         binding.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
@@ -10,6 +14,18 @@ internal static class SdkNativeSources
             $"The Native {kind} connector was not found in the installed runtime");
 
     internal static string? FindPluginPath(DataSourceKind kind, string? workerPath = null)
+    {
+        var executable = workerPath ?? Environment.GetEnvironmentVariable("UD_WORKER_PATH");
+        if (!string.IsNullOrWhiteSpace(executable))
+            return LocatePlugin(kind, Path.GetDirectoryName(Path.GetFullPath(executable))!);
+
+        if (installedDrivers.TryGetValue(kind, out string? installed) && File.Exists(installed)) return installed;
+        var path = LocatePlugin(kind, AppContext.BaseDirectory);
+        if (path is not null) installedDrivers[kind] = path;
+        return path;
+    }
+
+    private static string? LocatePlugin(DataSourceKind kind, string workerRoot)
     {
         var stem = kind switch
         {
@@ -23,9 +39,6 @@ internal static class SdkNativeSources
         };
         var name = stem + (OperatingSystem.IsWindows() ? ".dll" : ".so");
         var rid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
-        var executable = workerPath ?? Environment.GetEnvironmentVariable("UD_WORKER_PATH");
-        var workerRoot = string.IsNullOrWhiteSpace(executable) ? AppContext.BaseDirectory :
-            Path.GetDirectoryName(Path.GetFullPath(executable))!;
         string[] roots = [AppContext.BaseDirectory, workerRoot];
         foreach (string root in roots.Distinct())
         {

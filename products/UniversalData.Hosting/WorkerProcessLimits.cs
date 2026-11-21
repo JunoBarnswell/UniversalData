@@ -30,7 +30,10 @@ internal static class WorkerProcessLimits
         read -r tasks < "$dir/pids.max"
         [ "$quota" -gt 0 ] && [ "$period" -gt 0 ] && [ "$quota" -le "$((period * $1))" ] &&
         [ "$memory" -gt 0 ] && [ "$memory" -le "$2" ] && [ "$swap" -eq 0 ] &&
-        [ "$tasks" -gt 0 ] && [ "$tasks" -le "$3" ]
+        [ "$tasks" -gt 0 ] && [ "$tasks" -le "$3" ] || exit 1
+        [ "$#" -eq 3 ] && exit 0
+        while read -r key value; do [ "$key" = Cpus_allowed_list: ] || continue; [ "$value" = "$4" ]; exit; done < /proc/self/status
+        exit 1
         """;
 
     internal static void Validate(WorkerRequest request, WorkerBudget budget)
@@ -48,7 +51,22 @@ internal static class WorkerProcessLimits
             throw new PlatformNotSupportedException("Worker resource limits require Linux cgroup v2 or Windows Job Objects");
     }
 
-    internal static void AddLinuxProperties(ProcessStartInfo start, WorkerBudget budget)
+    internal static int[] ReadLinuxCpuIds()
+    {
+        const string field = "Cpus_allowed_list:";
+        string line = File.ReadLines("/proc/self/status").First(line => line.StartsWith(field, StringComparison.Ordinal));
+        var ids = new List<int>();
+        foreach (string range in line[field.Length..].Trim().Split(','))
+        {
+            string[] ends = range.Split('-');
+            int first = int.Parse(ends[0], CultureInfo.InvariantCulture);
+            int last = int.Parse(ends[^1], CultureInfo.InvariantCulture);
+            for (int id = first; id <= last; id++) ids.Add(id);
+        }
+        return ids.ToArray();
+    }
+
+    internal static void AddLinuxProperties(ProcessStartInfo start, WorkerBudget budget, int[]? cpuIds)
     {
         var cpu = budget.CpuSlots.ToString(CultureInfo.InvariantCulture);
         var memory = budget.ProcessMemoryBytes.ToString(CultureInfo.InvariantCulture);
@@ -59,10 +77,31 @@ internal static class WorkerProcessLimits
         start.ArgumentList.Add("--property=MemoryMax=" + memory);
         start.ArgumentList.Add("--property=MemorySwapMax=0");
         start.ArgumentList.Add("--property=TasksMax=" + tasks);
+        string affinityArgument = string.Empty;
+        if (cpuIds is not null)
+        {
+            if (cpuIds.Length != budget.CpuSlots) throw new ArgumentException("Worker CPU reservation differs from its budget", nameof(cpuIds));
+            string affinity = FormatCpuIds(cpuIds);
+            start.ArgumentList.Add("--property=CPUAffinity=" + affinity);
+            affinityArgument = " " + affinity;
+        }
         // ':' instructs systemd to leave shell parameter expansions to /bin/sh.
         start.ArgumentList.Add("--property=ExecStartPre=:/bin/sh -ec '" +
             VerifyCgroup.Replace("\n", "; ", StringComparison.Ordinal).Replace("&&; ", "&& ", StringComparison.Ordinal) +
-            "' ud-worker-limits " + cpu + " " + memory + " " + tasks);
+            "' ud-worker-limits " + cpu + " " + memory + " " + tasks + affinityArgument);
+    }
+
+    private static string FormatCpuIds(int[] ids)
+    {
+        var ranges = new List<string>();
+        for (int index = 0; index < ids.Length; index++)
+        {
+            int first = ids[index];
+            while (index + 1 < ids.Length && ids[index + 1] == ids[index] + 1) index++;
+            ranges.Add(first == ids[index] ? first.ToString(CultureInfo.InvariantCulture)
+                : FormattableString.Invariant($"{first}-{ids[index]}"));
+        }
+        return string.Join(',', ranges);
     }
 
     [SupportedOSPlatform("windows")]

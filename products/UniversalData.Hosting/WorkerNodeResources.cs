@@ -10,6 +10,7 @@ internal sealed class WorkerNodeResources
     private readonly string demand;
     private readonly WorkerNodeCapacityBudget capacity;
     private readonly WorkerProcessIdentity owner;
+    private readonly int[] availableCpuIds;
 
     internal WorkerNodeResources(string nodeDirectory, uint maxProcesses, uint maxConnectionsPerSource)
     {
@@ -22,7 +23,10 @@ internal sealed class WorkerNodeResources
         SourceAdmission = WorkerSourceAdmission.Open(directory, maxConnectionsPerSource);
         owner = WorkerProcessIdentity.Read(Environment.ProcessId)
             ?? throw new InvalidOperationException("Current process identity is unavailable");
-        capacity = new(maxProcesses, Math.Min(maxProcesses, (uint)Environment.ProcessorCount),
+        availableCpuIds = OperatingSystem.IsLinux() ? WorkerProcessLimits.ReadLinuxCpuIds() : [];
+        uint cpuCapacity = (uint)Environment.ProcessorCount;
+        if (availableCpuIds.Length != 0) cpuCapacity = Math.Min(cpuCapacity, (uint)availableCpuIds.Length);
+        capacity = new(maxProcesses, Math.Min(maxProcesses, cpuCapacity),
             (ulong)Math.Max(0, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes));
     }
 
@@ -47,15 +51,19 @@ internal sealed class WorkerNodeResources
     {
         using var admission = TryLock();
         if (admission is null) return null;
-        var free = ReadAvailable();
+        HashSet<int>? occupied = availableCpuIds.Length == 0 ? null : [];
+        var free = ReadAvailable(occupied);
         if (free.Processes == 0 || free.Cpu < budget.CpuSlots || free.Memory < budget.ProcessMemoryBytes)
         {
             if (requested && !HasWaitingRequest)
                 HostFiles.WritePrivate(demand, ReadOnlySpan<byte>.Empty, overwrite: true);
             return null;
         }
+        var cpuIds = occupied is null ? null : availableCpuIds.Where(id => !occupied.Contains(id))
+            .Take(checked((int)budget.CpuSlots)).ToArray();
+        if (cpuIds is not null && cpuIds.Length != budget.CpuSlots) return null;
         string path = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".json");
-        var record = new WorkerNodeResourceRecord(owner, null, budget.CpuSlots, budget.ProcessMemoryBytes);
+        var record = new WorkerNodeResourceRecord(owner, null, budget.CpuSlots, budget.ProcessMemoryBytes, cpuIds);
         HostFiles.WritePrivate(path, JsonSerializer.SerializeToUtf8Bytes(record));
         return new WorkerNodeResourceLease(path, record);
     }
@@ -69,7 +77,7 @@ internal sealed class WorkerNodeResources
         catch (IOException) { return null; }
     }
 
-    private WorkerNodeCapacityBudget ReadAvailable()
+    private WorkerNodeCapacityBudget ReadAvailable(HashSet<int>? occupied = null)
     {
         var free = capacity;
         foreach (string path in Directory.EnumerateFiles(directory, "*.json"))
@@ -88,6 +96,7 @@ internal sealed class WorkerNodeResources
                 File.Delete(path);
                 continue;
             }
+            if (occupied is not null && record.CpuIds is { } ids) occupied.UnionWith(ids);
             free = new(free.Processes == 0 ? 0 : free.Processes - 1,
                 free.Cpu - Math.Min(free.Cpu, record.Cpu), free.Memory - Math.Min(free.Memory, record.Memory));
         }

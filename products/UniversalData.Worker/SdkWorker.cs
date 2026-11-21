@@ -14,7 +14,10 @@ internal static class SdkWorker
         Console.SetOut(TextWriter.Null);
         using var lifetime = new CancellationTokenSource();
         using var finished = new CancellationTokenSource();
-        _ = Task.Run(() => WatchOwnerAsync(Console.In, lifetime, finished.Token));
+        var ownerFinished = finished.Token;
+        // Console.In blocks while the owner is alive. Keep the read off the request thread pool.
+        _ = Task.Factory.StartNew(() => WatchOwnerAsync(Console.In, lifetime, ownerFinished),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
         _ = EnforceOwnerExitAsync(lifetime.Token, finished.Token, configuration.Options.CancellationGrace);
         var sessions = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
         using var slots = new SemaphoreSlim(configuration.Capacity, configuration.Capacity);

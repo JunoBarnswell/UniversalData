@@ -31,9 +31,14 @@ internal sealed class SdkInvocationState : IDisposable
 
     internal void Require(SdkSourceBinding binding, params ConnectionAccess[] operations)
     {
+        RequireCurrent(binding);
+        Authorize(binding, operations);
+    }
+
+    private void RequireCurrent(SdkSourceBinding binding)
+    {
         if (Environment.CanBorrow?.Invoke(binding.Definition.Name, binding.Revision) == false)
             throw DataSourceRegistry.SourceError(StatusCode.Auth, "The source is unavailable in the current tenant scope");
-        Authorize(binding, operations);
     }
 
     internal void Authorize(SdkSourceBinding binding, ConnectionAccess[] operations)
@@ -106,7 +111,8 @@ internal sealed class SdkInvocationState : IDisposable
         {
             if (!sources.TryGetValue(credential, out var binding) || binding.Definition.Resource != resource)
                 throw DataSourceRegistry.SourceError(StatusCode.Auth, "The credential is outside the frozen source binding");
-            Require(binding, ConnectionAccess.Open);
+            // The Native lease has authorized the resource. Check its current source revision before resolving credentials.
+            RequireCurrent(binding);
             return NativeConnection(binding);
         }
         var package = JsonSerializer.Serialize(new
