@@ -174,20 +174,22 @@ struct ud_csv_reader {
     uint64_t data_record;
 };
 typedef struct {
-    char **text;
+    size_t *offset;
     uint32_t *length;
-    uint32_t n;
-    uint32_t stored, bytes;
-    ud_bytes raw;
+    uint32_t n, bytes;
+    ud_bytes values, field, raw;
     ud_status conversion;
 } record;
 static void record_free(record *r) {
-    for (uint32_t i = 0; i < r->stored; i++)
-        ud_free(r->text[i]);
-    ud_free(r->text);
+    ud_free(r->offset);
     ud_free(r->length);
+    ud_bytes_clear(&r->values);
+    ud_bytes_clear(&r->field);
     ud_bytes_clear(&r->raw);
     memset(r, 0, sizeof(*r));
+}
+static const char *record_text(const record *row, uint32_t column) {
+    return (const char *)row->values.data + row->offset[column];
 }
 static ud_status finish_field(ud_csv_reader *r, record *row, ud_bytes *field) {
     if (row->n == 65536 || field->size > UINT32_MAX)
@@ -197,13 +199,11 @@ static ud_status finish_field(ud_csv_reader *r, record *row, ud_bytes *field) {
         field->size = 0;
         return UD_OK;
     }
-    char *s = ud_strdup_n(r->ctx, field->data ? (char *)field->data : "", field->size);
-    if (!s)
-        return UD_RESOURCE;
-    row->text[row->n] = s;
+    row->offset[row->n] = row->values.size;
+    UD_TRY(ud_bytes_put(&row->values, field->data, field->size));
+    UD_TRY(ud_bytes_put(&row->values, "", 1));
     row->length[row->n] = (uint32_t)field->size;
     row->n++;
-    row->stored++;
     field->size = 0;
     return UD_OK;
 }
@@ -217,14 +217,22 @@ static ud_status record_byte(ud_csv_reader *reader, record *row, uint32_t value)
                : UD_OK;
 }
 static ud_status next_record(ud_csv_reader *reader, record *row) {
-    row->raw.ctx = reader->ctx;
-    row->text = ud_alloc(reader->ctx, reader->columns * sizeof(char *));
-    row->length = ud_alloc(reader->ctx, reader->columns * sizeof(uint32_t));
-    if (!row->text || !row->length) {
-        record_free(row);
-        return UD_RESOURCE;
+    if (!row->offset) {
+        row->raw.ctx = reader->ctx;
+        row->values.ctx = reader->ctx;
+        row->field.ctx = reader->ctx;
+        row->field.limit = reader->max_record_bytes;
+        row->offset = ud_alloc(reader->ctx, reader->columns * sizeof(*row->offset));
+        row->length = ud_alloc(reader->ctx, reader->columns * sizeof(*row->length));
+        if (!row->offset || !row->length) {
+            record_free(row);
+            return UD_RESOURCE;
+        }
     }
-    ud_bytes field = {.ctx = reader->ctx, .limit = reader->max_record_bytes};
+    row->raw.size = row->values.size = row->field.size = 0;
+    row->n = row->bytes = 0;
+    row->conversion = UD_OK;
+    ud_bytes *field = &row->field;
     int quoted = 0, closed = 0, start = 1, any = 0;
     uint32_t width = 0;
     ud_status status = UD_OK;
@@ -234,13 +242,13 @@ static ud_status next_record(ud_csv_reader *reader, record *row) {
         if (read == UD_END) {
             if (reader->layout.widths && any) {
                 if (width) {
-                    status = finish_field(reader, row, &field);
+                    status = finish_field(reader, row, field);
                     row->conversion = UD_TRUNCATED;
                 }
                 if (row->n != reader->layout.columns)
                     row->conversion = UD_TRUNCATED;
             } else
-                status = quoted ? UD_PARSE : !any ? UD_END : finish_field(reader, row, &field);
+                status = quoted ? UD_PARSE : !any ? UD_END : finish_field(reader, row, field);
             if (!any)
                 status = UD_END;
             break;
@@ -273,13 +281,13 @@ static ud_status next_record(ud_csv_reader *reader, record *row) {
                 row->conversion = UD_SCHEMA;
                 continue;
             }
-            status = ud_text_utf8(&field, ch);
+            status = ud_text_utf8(field, ch);
             width++;
             if (!status && width == reader->layout.widths[row->n]) {
                 if (reader->layout.trim)
-                    while (field.size && field.data[field.size - 1] == ' ')
-                        field.size--;
-                status = finish_field(reader, row, &field);
+                    while (field->size && field->data[field->size - 1] == ' ')
+                        field->size--;
+                status = finish_field(reader, row, field);
                 width = 0;
             }
         } else if (quoted) {
@@ -289,7 +297,7 @@ static ud_status next_record(ud_csv_reader *reader, record *row) {
                 if (!read && next == reader->layout.qualifier) {
                     status = record_byte(reader, row, next);
                     if (!status)
-                        status = ud_text_utf8(&field, ch);
+                        status = ud_text_utf8(field, ch);
                 } else {
                     quoted = 0;
                     closed = 1;
@@ -299,9 +307,9 @@ static ud_status next_record(ud_csv_reader *reader, record *row) {
                         status = read;
                 }
             } else
-                status = ud_text_utf8(&field, ch);
+                status = ud_text_utf8(field, ch);
         } else if (ch == reader->layout.delimiter || ch == '\r' || ch == '\n') {
-            status = finish_field(reader, row, &field);
+            status = finish_field(reader, row, field);
             start = 1;
             closed = 0;
             if (ch != reader->layout.delimiter) {
@@ -324,26 +332,20 @@ static ud_status next_record(ud_csv_reader *reader, record *row) {
             status = UD_PARSE;
             break;
         } else {
-            status = ud_text_utf8(&field, ch);
+            status = ud_text_utf8(field, ch);
             start = 0;
         }
         if (status)
             break;
     }
-    ud_bytes_clear(&field);
-    if (status == UD_END) {
-        record_free(row);
+    if (status == UD_END)
         return status;
-    }
     if (status) {
-        record_free(row);
         reader->poisoned = 1;
         return status;
     }
-    if (reader->record == UINT64_MAX) {
-        record_free(row);
+    if (reader->record == UINT64_MAX)
         return UD_RESOURCE;
-    }
     reader->record++;
     return UD_OK;
 }
@@ -414,7 +416,7 @@ ud_status ud_csv_discover(ud_context *ctx, const char *path, ud_string scope,
                 status = UD_SCHEMA;
                 break;
             }
-            fields[logical].name = header.text[physical];
+            fields[logical].name = record_text(&header, physical);
             fields[logical].name_length = header.length[physical];
         } else {
             char name[32];
@@ -426,8 +428,8 @@ ud_status ud_csv_discover(ud_context *ctx, const char *path, ud_string scope,
             fields[logical].name_length = (uint32_t)size;
         }
     }
+    record values = {0};
     for (uint32_t row = 0; !status && row < sample_rows; row++) {
-        record values = {0};
         record *data = &values;
         if (!reader.layout.header && row == 0)
             data = &header;
@@ -435,7 +437,6 @@ ud_status ud_csv_discover(ud_context *ctx, const char *path, ud_string scope,
             status = next_record(&reader, &values);
         if (status == UD_END) {
             status = UD_OK;
-            record_free(&values);
             break;
         }
         if (!status && (data->conversion || data->n != header.n))
@@ -443,15 +444,15 @@ ud_status ud_csv_discover(ud_context *ctx, const char *path, ud_string scope,
         for (uint32_t logical = 0; !status && logical < header.n; logical++) {
             uint32_t physical = physical_field(&reader.layout, logical);
             if (data->length[physical] == reader.layout.marker.length &&
-                !memcmp(data->text[physical], reader.layout.marker.data,
+                !memcmp(record_text(data, physical), reader.layout.marker.data,
                         reader.layout.marker.length))
                 fields[logical].nullable = 1;
             else
-                status = ud_infer_scalar(ctx, fields + logical, negative + logical, data->text[physical],
+                status = ud_infer_scalar(ctx, fields + logical, negative + logical, record_text(data, physical),
                                          data->length[physical], -1);
         }
-        record_free(&values);
     }
+    record_free(&values);
     if (!status)
         status = ud_infer_schema(ctx, fields, header.n, scope, out);
     if (names)
@@ -518,7 +519,7 @@ ud_status ud_csv_open(ud_context *ctx, const char *path, const ud_field *fields,
         for (uint32_t logical = 0; !status && logical < columns; logical++) {
             uint32_t physical = physical_field(&reader->layout, logical);
             if (header.length[physical] != fields[logical].name_length ||
-                memcmp(header.text[physical], fields[logical].name, fields[logical].name_length))
+                memcmp(record_text(&header, physical), fields[logical].name, fields[logical].name_length))
                 status = UD_SCHEMA;
         }
         record_free(&header);
@@ -582,12 +583,12 @@ ud_status ud_csv_next(ud_csv_reader *r, ud_batch **out, ud_batch **errors) {
         return UD_RESOURCE;
     }
     uint32_t processed = 0;
+    record row = {0};
     while (!s && processed < r->batch_size) {
         if (ud_is_cancelled(r->ctx)) {
             s = UD_CANCELLED;
             break;
         }
-        record row = {0};
         s = next_record(r, &row);
         if (s == UD_END) {
             s = UD_OK;
@@ -597,7 +598,6 @@ ud_status ud_csv_next(ud_csv_reader *r, ud_batch **out, ud_batch **errors) {
             break;
         processed++;
         if (r->data_record == UINT64_MAX) {
-            record_free(&row);
             s = UD_RESOURCE;
             break;
         }
@@ -614,12 +614,12 @@ ud_status ud_csv_next(ud_csv_reader *r, ud_batch **out, ud_batch **errors) {
             v[i].type = r->fields[i].type;
             uint32_t physical = physical_field(&r->layout, i);
             if (row.length[physical] == r->null_length &&
-                !memcmp(row.text[physical], r->null_marker, r->null_length)) {
+                !memcmp(record_text(&row, physical), r->null_marker, r->null_length)) {
                 v[i].is_null = 1;
                 if (!r->fields[i].nullable)
                     conversion = UD_QUALITY;
             } else
-                conversion = ud_value_parse_field(r->ctx, r->fields + i, row.text[physical],
+                conversion = ud_value_parse_field(r->ctx, r->fields + i, record_text(&row, physical),
                                                   row.length[physical], UD_ROUND_EXACT, v + i);
             if (conversion)
                 bad = i;
@@ -648,10 +648,10 @@ ud_status ud_csv_next(ud_csv_reader *r, ud_batch **out, ud_batch **errors) {
                                                    .raw = row.raw.data,
                                                    .raw_length = (uint32_t)row.raw.size});
         }
-        record_free(&row);
         if (s)
             break;
     }
+    record_free(&row);
     ud_free(v);
     if (s || !processed) {
         if (s)

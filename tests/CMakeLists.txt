@@ -340,7 +340,8 @@ if(UD_BUILD_HOSTS)
   add_test(NAME management_worker_autoscale COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/management_worker_autoscale.py ${UD_DOTNET}
     ${CMAKE_BINARY_DIR}/hosts/product/management/UniversalData.Management.dll ${CMAKE_BINARY_DIR}/hosts/product/worker/ud_worker.dll)
-  set_tests_properties(management_worker_autoscale PROPERTIES TIMEOUT 120 LABELS "cluster")
+  # Reserve the CTest runner while the timed fixture runs its two Workers concurrently.
+  set_tests_properties(management_worker_autoscale PROPERTIES TIMEOUT 120 LABELS "cluster" RUN_SERIAL TRUE)
   if(UD_WITH_HTTP)
     add_test(NAME management_multi_process_claim_recovery COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/management_cluster.py ${UD_DOTNET}

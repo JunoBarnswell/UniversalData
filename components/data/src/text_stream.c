@@ -35,7 +35,12 @@ ud_status ud_text_start(ud_text_input *input, ud_context *context, FILE *file, i
     return ud_seek(file, skip) ? UD_IO : UD_OK;
 }
 static ud_status byte(ud_text_input *input, uint32_t *out, int first) {
-    int value = fgetc(input->file);
+    /* The stateful decoder owns this stream for the entire read. */
+#ifdef _WIN32
+    int value = _getc_nolock(input->file);
+#else
+    int value = getc_unlocked(input->file);
+#endif
     if (value == EOF)
         return ferror(input->file) ? UD_IO : first ? UD_END : UD_PARSE;
     if (input->raw_size == 4)
