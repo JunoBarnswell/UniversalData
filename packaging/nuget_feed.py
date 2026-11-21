@@ -13,7 +13,7 @@ packages = {}
 # The installed consumer targets the same .NET framework as the public SDK.
 # restore. These exact packs already participated in the actual SDK build.
 for path in args.assets:
-    assets = json.loads(path.read_text())
+    assets = json.loads(path.read_text(encoding="utf-8"))
     folders.extend(pathlib.Path(folder) for folder in assets["packageFolders"])
     packages.update({key.lower(): value["path"] for key, value in assets["libraries"].items()
                      if value["type"] == "package"})

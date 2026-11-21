@@ -67,7 +67,7 @@ def copy_asset(source, destination):
 
 
 def assemble(args):
-    product = json.loads((ROOT / "metadata/product.json").read_text())["product"]
+    product = json.loads((ROOT / "metadata/product.json").read_text(encoding="utf-8"))["product"]
     version = product["sdkVersion"]
     target_framework = product["dotnetTargetFramework"]
     identity = "UniversalData.Runtime." + args.rid
