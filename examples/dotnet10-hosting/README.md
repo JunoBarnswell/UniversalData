@@ -62,9 +62,9 @@ The Compose file starts exactly three PostgreSQL 17 services:
 
 `scripts/postgres.sh prepare` creates private random passwords, a private host policy, five named
 source credentials (including a writer probe for each standby), `pg_hba.conf`, and the primary init SQL under `.local/postgres`. The SQL uses
-separate `orders_writer` and `orders_reader` roles. The reader role has `SELECT` only. The
-`orders-replica-1-write` probe supplies a valid writer credential and checks that PostgreSQL
-rejects writes while in hot standby.
+separate `orders_writer` and `orders_reader` roles. The reader role has `SELECT` only. Each
+standby has a probe data source that supplies the normal writer credential. PostgreSQL must
+reject writes to either standby while it is in recovery.
 
 ```bash
 dotnet restore --source /absolute/path/to/nuget-feed
@@ -87,8 +87,8 @@ dotnet run --no-build -- --command list --shop-id 1 --offset 0 --page-size 20
    `pg_is_in_recovery()` on all three instances.
 4. Pauses `orders-replica-1`, writes a second key to the primary, confirms the primary result while
    paused, resumes the standby, and waits for its own replay position.
-5. Sends an `INSERT` to `orders-replica-1` with the writer credential, verifies the rejection,
-   and checks that the existing business row keeps its original values.
+5. Attempts an SDK write on each standby, verifies SQLSTATE `25006` through independent
+   PostgreSQL connections, and checks that the original business row keeps its values.
 
 Pause and resume are also available independently:
 

@@ -104,7 +104,7 @@ internal static class MessageBrokerAcceptance
     private static async Task<int> CountRowsAsync(string database, CancellationToken cancellation)
     {
         using var verifier = new SqlSugarClient(new ConnectionConfig { DbType = DbType.Sqlite,
-            ConnectionString = "Data Source=" + database, IsAutoCloseConnection = true });
+            ConnectionString = "Data Source=" + database + ";Pooling=False", IsAutoCloseConnection = true });
         return Convert.ToInt32(await verifier.Ado.GetScalarAsync(
             "SELECT COUNT(*) FROM nuget_mq_inbox").ConfigureAwait(false));
     }
@@ -112,7 +112,7 @@ internal static class MessageBrokerAcceptance
     private static async Task VerifyRowsAsync(string database, string broker, CancellationToken cancellation)
     {
         using var verifier = new SqlSugarClient(new ConnectionConfig { DbType = DbType.Sqlite,
-            ConnectionString = "Data Source=" + database, IsAutoCloseConnection = true });
+            ConnectionString = "Data Source=" + database + ";Pooling=False", IsAutoCloseConnection = true });
         var rows = await verifier.Queryable<BrokerMessageRow>().OrderBy(row => row.Id).ToListAsync()
             .ConfigureAwait(false);
         if (rows.Count != ExpectedRows || rows[0].Id != 1 || rows[0].Label != "broker-record" ||

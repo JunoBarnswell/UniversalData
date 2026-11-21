@@ -121,7 +121,7 @@ try
             throw new InvalidOperationException($"The typed Native output differs at row {id}");
     }
     using (var verifier = new SqlSugarClient(new ConnectionConfig { DbType = SqlSugar.DbType.Sqlite,
-        ConnectionString = "Data Source=" + target, IsAutoCloseConnection = true }))
+        ConnectionString = "Data Source=" + target + ";Pooling=False", IsAutoCloseConnection = true }))
     {
         var count = Convert.ToInt64(await verifier.Ado.GetScalarAsync("SELECT COUNT(*) FROM paid_orders"));
         if (count != 35 || verifiedRows != count)
