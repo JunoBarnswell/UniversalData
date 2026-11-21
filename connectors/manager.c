@@ -355,7 +355,7 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
         if (!status && l->activation->parallel &&
             (!(info.capabilities & UD_CAP_THREAD_SAFE) || (info.capabilities & UD_CAP_THREAD_AFFINE)))
             status = UD_UNSUPPORTED;
-        if (!status && (info.capabilities & UD_CAP_SQL))
+        if (!status && (info.connector->capabilities & UD_CONNECT_EXECUTE_SQL))
             status = ud_manager_pool_reserve(pool, e->ctx, e->options.tenant, l->resource,
                                              (uint32_t)timeout, check_lease, l, &chosen->node_slot);
         ud_connection_options options = {.struct_size = sizeof(options),

@@ -29,7 +29,8 @@ internal static class WorkerNativeError
     {
         string? sqlState = detail.SqlState[0] == 0 ? null : Encoding.ASCII.GetString(detail.SqlState, 0, 5);
         return new((ErrorSource)detail.Source, (StatusCode)detail.Cause, Name(detail.Cause),
-            detail.Source is (int)ErrorSource.Database or (int)ErrorSource.Transport ? detail.NativeCode : null,
+            detail.Source is (int)ErrorSource.Database or (int)ErrorSource.Transport ||
+                (detail.Source == (int)ErrorSource.Native && detail.NativeCode != 0) ? detail.NativeCode : null,
             sqlState, detail.Source == (int)ErrorSource.Http ? checked((int)detail.NativeCode) : null);
     }
 

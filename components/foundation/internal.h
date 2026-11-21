@@ -45,7 +45,7 @@ ud_status ud_replace_file(ud_context *, const char *from, const char *to);
 ud_status ud_sync_parent(ud_context *, const char *path);
 ud_status ud_lock(ud_context *, const char *, void **);
 void ud_unlock(void *);
-ud_status ud_lock_slot(const char *, uint64_t first, uint32_t slots, void **);
+ud_status ud_lock_slot(ud_context *, const char *, uint64_t first, uint32_t slots, void **);
 void ud_unlock_slot(void *);
 ud_status ud_remove_file(ud_context *, const char *);
 ud_status ud_reserve_file(ud_context *, const char *);

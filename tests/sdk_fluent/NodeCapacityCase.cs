@@ -38,7 +38,7 @@ internal static class NodeCapacityCase
         DataClient Client(string name) => DataClient.CreateBuilder(policy, "fluent")
             .AddSqlite(name, "Data Source=" + orders)
             .AddHttp("pricing", new Uri(origin)).AddModule(typeof(Jobs).Assembly)
-            .ConfigureWorkers(worker => worker.MaxConcurrentSessions(2)
+            .ConfigureWorkers(worker => worker.MaxConcurrentSessions(2).QueueTimeout(TimeSpan.FromSeconds(10))
                 .ExecutionTimeout(TimeSpan.FromSeconds(60)).CancellationGrace(TimeSpan.FromSeconds(3))).Build();
     }
 
@@ -50,18 +50,24 @@ internal static class NodeCapacityCase
         var held = first.RunAsync(Jobs.HoldLeaseThenRead, new HeldRead(gate, "orders"), cancellation);
         while (!await http.GetFromJsonAsync<bool>("entered/" + gate, cancellation))
             await Task.Delay(20, cancellation);
-        var peer = second.RunAsync(Jobs.Scope, "alias", cancellation);
         try
         {
-            if (await Task.WhenAny(peer, Task.Delay(300, cancellation)) == peer)
-                throw new InvalidOperationException("Two Worker processes exceeded the same physical source limit");
+            var early = await second.RunAsync(Jobs.Scope, "alias", cancellation);
+            throw new InvalidOperationException($"Worker {early.ProcessId} borrowed the source while Worker " +
+                $"{first.ProcessId} still held its physical connection");
+        }
+        catch (UniversalDataException error) when (error.Code == StatusCode.Timeout && error.Detail?.Cause == StatusCode.Busy)
+        {
+            if (held.IsCompleted)
+                throw new InvalidOperationException("The first Worker released the connection before the quota was checked");
         }
         finally
         {
             using var response = await http.GetAsync("release/" + gate, cancellation);
             response.EnsureSuccessStatusCode();
         }
-        if (await held != "orders-original" || (await peer).Value != "orders-original")
+        if (await held != "orders-original" ||
+            (await second.RunAsync(Jobs.Scope, "alias", cancellation)).Value != "orders-original")
             throw new InvalidOperationException("Source admission did not preserve the actual database and results");
     }
 }

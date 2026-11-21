@@ -371,7 +371,12 @@ void ud_unlock(void *h) {
     close(fd);
 #endif
 }
-ud_status ud_lock_slot(const char *path, uint64_t first, uint32_t slots, void **out) {
+static ud_status slot_io_error(ud_context *ctx, const char *message, int64_t error) {
+    ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION,
+                              .source = UD_ERROR_NATIVE, .cause = UD_IO, .native_code = error};
+    return ud_context_report_error(ctx, UD_IO, (ud_string){message, (uint32_t)strlen(message)}, &detail);
+}
+ud_status ud_lock_slot(ud_context *ctx, const char *path, uint64_t first, uint32_t slots, void **out) {
     *out = NULL;
 #ifdef _WIN32
     wchar_t *name = wide(path);
@@ -380,13 +385,17 @@ ud_status ud_lock_slot(const char *path, uint64_t first, uint32_t slots, void **
     HANDLE file = CreateFileW(name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                               NULL, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, NULL);
     free(name);
-    if (file == INVALID_HANDLE_VALUE)
-        return UD_IO;
+    if (file == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        if (error == ERROR_SHARING_VIOLATION)
+            return UD_BUSY;
+        return slot_io_error(ctx, "Cannot open source reservation file", error);
+    }
     BY_HANDLE_FILE_INFORMATION info;
     if (!GetFileInformationByHandle(file, &info) ||
         (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) {
         CloseHandle(file);
-        return UD_IO;
+        return ud_fail(ctx, UD_IO, "Source reservation is not a regular file");
     }
     ud_status status = UD_BUSY;
     for (uint32_t i = 0; i < slots; i++) {
@@ -399,8 +408,9 @@ ud_status ud_lock_slot(const char *path, uint64_t first, uint32_t slots, void **
             *out = file;
             return UD_OK;
         }
-        if (GetLastError() != ERROR_LOCK_VIOLATION) {
-            status = UD_IO;
+        DWORD error = GetLastError();
+        if (error != ERROR_LOCK_VIOLATION) {
+            status = slot_io_error(ctx, "Cannot reserve source connection", error);
             break;
         }
     }
@@ -409,11 +419,11 @@ ud_status ud_lock_slot(const char *path, uint64_t first, uint32_t slots, void **
 #elif defined(F_OFD_SETLK)
     int file = open(path, O_RDWR | O_NOFOLLOW | O_CLOEXEC);
     if (file < 0)
-        return UD_IO;
+        return slot_io_error(ctx, "Cannot open source reservation file", errno);
     struct stat info;
     if (fstat(file, &info) || !S_ISREG(info.st_mode)) {
         close(file);
-        return UD_IO;
+        return ud_fail(ctx, UD_IO, "Source reservation is not a regular file");
     }
     ud_status status = UD_BUSY;
     for (uint32_t i = 0; i < slots; i++) {
@@ -424,7 +434,7 @@ ud_status ud_lock_slot(const char *path, uint64_t first, uint32_t slots, void **
             return UD_OK;
         }
         if (errno != EAGAIN && errno != EACCES) {
-            status = UD_IO;
+            status = slot_io_error(ctx, "Cannot reserve source connection", errno);
             break;
         }
     }
@@ -434,7 +444,7 @@ ud_status ud_lock_slot(const char *path, uint64_t first, uint32_t slots, void **
     (void)path;
     (void)first;
     (void)slots;
-    return UD_UNSUPPORTED;
+    return ud_fail(ctx, UD_UNSUPPORTED, "Open-handle file locks are unavailable on this platform");
 #endif
 }
 void ud_unlock_slot(void *file) {

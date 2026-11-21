@@ -70,7 +70,7 @@ ud_status ud_manager_pool_reserve(ud_connection_pool *pool, ud_context *ctx, ud_
     uint64_t started = ud_now_ms();
     do {
         UD_TRY(check(user));
-        status = ud_lock_slot(pool->quota_path, offset, pool->quota_slots, out);
+        status = ud_lock_slot(ctx, pool->quota_path, offset, pool->quota_slots, out);
         if (status != UD_BUSY || !timeout)
             return status;
         uint64_t waited = ud_now_ms() - started;
