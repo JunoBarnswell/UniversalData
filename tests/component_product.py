@@ -18,7 +18,7 @@ def edge(source, target, port=0):
 with tempfile.TemporaryDirectory(prefix="ud-component-product-") as folder:
     root = pathlib.Path(folder)
 
-    def run(name, fields, rows, components, paths, extra=()):
+    def run(name, fields, rows, components, paths, extra=(), journal=False):
         source = root / (name + "-source.ndjson")
         source.write_text("".join(json.dumps(row) + "\n" for row in rows))
         connections = [dict(id="source", driver="file", resource=str(source)), *extra]
@@ -30,7 +30,12 @@ with tempfile.TemporaryDirectory(prefix="ud-component-product-") as folder:
                 schema=dict(version=PROTOCOL_VERSION, fields=fields), batchSize=7), *components], paths=paths)])
         package = root / (name + ".json")
         package.write_text(json.dumps(document))
-        result = subprocess.run([sys.argv[1], str(package), "0"], capture_output=True, text=True, timeout=40)
+        command = [sys.argv[1], str(package), "0"]
+        if journal:
+            state = root / (name + "-state")
+            state.mkdir()
+            command.append(str(state))
+        result = subprocess.run(command, capture_output=True, text=True, timeout=40)
         assert result.returncode == 0, (name, result.stdout, result.stderr)
         return {output: [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
                 for output in ("left", "right", "errors")
@@ -43,9 +48,10 @@ with tempfile.TemporaryDirectory(prefix="ud-component-product-") as folder:
             [node("dispatch", kind, outputs=["left", "right"]),
              node("left", "file.ndjson.destination", connection="left"),
              node("right", "file.ndjson.destination", connection="right")],
-            [edge("source", "dispatch"), edge("dispatch", "left"), edge("dispatch", "right", 1)])
+            [edge("source", "dispatch"), edge("dispatch", "left"), edge("dispatch", "right", 1)],
+            journal=kind == "balanced")
         if kind == "balanced":
-            # The whole seven-row source batch has one owner, including the tail.
+            # The journal keeps declared seven-row batches stable, including the tail.
             assert actual["left"] == [row for at, row in enumerate(rows) if (at // 7) % 2 == 0]
             assert actual["right"] == [row for at, row in enumerate(rows) if (at // 7) % 2 == 1]
         else:
