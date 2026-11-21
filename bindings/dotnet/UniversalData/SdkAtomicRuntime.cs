@@ -25,59 +25,47 @@ internal static class SdkAtomicRuntime
             state.Require(binding, ConnectionAccess.Open, ConnectionAccess.Read, ConnectionAccess.Write);
 
         var reference = state.Reference with { TransactionId = state.NextTransaction() };
-        var reservations = new NativeReservations();
+        string directory = JournalDirectory(state.Environment, reference);
+        Directory.CreateDirectory(directory);
+        bool provision = participants.All(binding => binding.Definition.ProvisionTransactionReceipts);
+        if (provision)
+            foreach (var binding in participants) state.Require(binding, ConnectionAccess.Receipt);
+        var package = Package(participants, provision);
+        var frozen = participants.Select(binding => Freeze(state, binding)).ToArray();
+        var manifest = new Manifest(participants.Select(binding => binding.Definition.Name).ToArray(),
+            frozen.Select(binding => binding.Identity).ToArray(), package);
+        using (var file = new FileStream(Path.Combine(directory, ManifestName), FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            JsonSerializer.Serialize(file, manifest, WorkerProtocol.Json);
+            file.Flush(flushToDisk: true);
+        }
+
+        using var callback = new ManagedAtomic<TResult>(parent, participants, body, lifetime.Token);
+        using var registry = new Registry();
+        Register(registry, () => callback);
         try
         {
-            foreach (var binding in participants.OrderBy(binding => binding.Definition.Name, StringComparer.Ordinal))
-            {
-                if (state.Environment.ReserveConnection is { } reserve)
-                    reservations.Add(await reserve(binding.Definition.Name, lifetime.Token).ConfigureAwait(false));
-            }
-            foreach (var binding in participants)
-                state.Require(binding, ConnectionAccess.Open, ConnectionAccess.Read, ConnectionAccess.Write);
-            string directory = JournalDirectory(state.Environment, reference);
-            Directory.CreateDirectory(directory);
-            bool provision = participants.All(binding => binding.Definition.ProvisionTransactionReceipts);
-            if (provision)
-                foreach (var binding in participants) state.Require(binding, ConnectionAccess.Receipt);
-            var package = Package(participants, provision);
-            var frozen = participants.Select(binding => Freeze(state, binding)).ToArray();
-            var manifest = new Manifest(participants.Select(binding => binding.Definition.Name).ToArray(),
-                frozen.Select(binding => binding.Identity).ToArray(), package);
-            using (var file = new FileStream(Path.Combine(directory, ManifestName), FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            {
-                JsonSerializer.Serialize(file, manifest, WorkerProtocol.Json);
-                file.Flush(flushToDisk: true);
-            }
-
-            using var callback = new ManagedAtomic<TResult>(parent, participants, body, lifetime.Token);
-            using var registry = new Registry();
-            Register(registry, () => callback);
-            try
-            {
-                using var execution = OpenExecution(state, frozen, package, directory, reference, registry, false);
-                using var signal = lifetime.Token.Register(execution.Cancel);
-                lifetime.Token.ThrowIfCancellationRequested();
-                execution.Start();
-                while (!execution.Wait(100)) await Task.Yield();
-                return callback.Value!;
-            }
-            catch (UniversalDataException fault)
-            {
-                if (fault.Code == StatusCode.ManagedComponent && callback.Fault is { } original)
-                    original.Throw();
-                if (fault.Code == StatusCode.Cancelled && lifetime.IsCancellationRequested)
-                    throw new OperationCanceledException(lifetime.Token);
-                if (callback.Fault?.SourceException is UniversalDataException originalStatus &&
-                    originalStatus.Code == fault.Code)
-                    throw new DataExecutionException(fault.Status, originalStatus.Message, reference, originalStatus.Detail);
-                throw new DataExecutionException(fault.Status, fault.Message, reference, fault.Detail);
-            }
+            using var execution = OpenExecution(state, frozen, package, directory, reference, registry, false);
+            using var signal = lifetime.Token.Register(execution.Cancel);
+            lifetime.Token.ThrowIfCancellationRequested();
+            execution.Start();
+            while (!execution.Wait(100)) await Task.Yield();
+            return callback.Value!;
         }
-        finally { await reservations.DisposeAsync().ConfigureAwait(false); }
+        catch (UniversalDataException fault)
+        {
+            if (fault.Code == StatusCode.ManagedComponent && callback.Fault is { } original)
+                original.Throw();
+            if (fault.Code == StatusCode.Cancelled && lifetime.IsCancellationRequested)
+                throw new OperationCanceledException(lifetime.Token);
+            if (callback.Fault?.SourceException is UniversalDataException originalStatus &&
+                originalStatus.Code == fault.Code)
+                throw new DataExecutionException(fault.Status, originalStatus.Message, reference, originalStatus.Detail);
+            throw new DataExecutionException(fault.Status, fault.Message, reference, fault.Detail);
+        }
     }
 
-    internal static async Task<DataRecoveryResult> RecoverAsync(SdkRecoveryInvocation invocation,
+    internal static DataRecoveryResult Recover(SdkRecoveryInvocation invocation,
         SdkExecutionEnvironment environment, CancellationToken cancellation)
     {
         if (!Guid.TryParseExact(invocation.Reference.RunId, "N", out _))
@@ -93,7 +81,7 @@ internal static class SdkAtomicRuntime
                 if (!ValidTransactionId(id) || invocation.Reference.TransactionId is { } wanted && wanted != id) continue;
                 var reference = invocation.Reference with { TransactionId = id };
                 using var state = new SdkInvocationState(reference, environment, invocation.Sources, null);
-                var outcome = await ResolveAsync(state, directory, cancellation).ConfigureAwait(false);
+                var outcome = Resolve(state, directory, cancellation);
                 receipts.Add(new(id, outcome));
             }
         }
@@ -102,7 +90,7 @@ internal static class SdkAtomicRuntime
         return new(invocation.Reference, summary, receipts);
     }
 
-    private static async Task<DataRecoveryState> ResolveAsync(SdkInvocationState state, string directory, CancellationToken cancellation)
+    private static DataRecoveryState Resolve(SdkInvocationState state, string directory, CancellationToken cancellation)
     {
         try
         {
@@ -115,10 +103,6 @@ internal static class SdkAtomicRuntime
             var frozen = bindings.Select(binding => Freeze(state, binding)).ToArray();
             if (!frozen.Select(participant => participant.Identity).SequenceEqual(manifest.Participants))
                 return DataRecoveryState.RecoveryRequired;
-            await using var reservations = new NativeReservations();
-            if (state.Environment.ReserveConnection is { } reserve)
-                foreach (var binding in bindings.OrderBy(binding => binding.Definition.Name, StringComparer.Ordinal))
-                    reservations.Add(await reserve(binding.Definition.Name, cancellation).ConfigureAwait(false));
             using var registry = new Registry();
             Register(registry, () => throw new InvalidOperationException("Recovery must never activate business code"));
             if (!Directory.Exists(Path.Combine(directory, "native"))) return DataRecoveryState.NoDecision;
@@ -228,16 +212,5 @@ internal static class SdkAtomicRuntime
         }
         public void Cancel() => lifetime.Cancel();
         public void Dispose() => lifetime.Dispose();
-    }
-
-    private sealed class NativeReservations : IAsyncDisposable
-    {
-        private readonly List<IAsyncDisposable> leases = [];
-        internal void Add(IAsyncDisposable lease) => leases.Add(lease);
-        public async ValueTask DisposeAsync()
-        {
-            for (int index = leases.Count - 1; index >= 0; index--)
-                await leases[index].DisposeAsync().ConfigureAwait(false);
-        }
     }
 }

@@ -37,6 +37,27 @@ ud_status ud_batch_copy_row_info(ud_batch *out, uint32_t target, const ud_batch 
         return UD_OK;
     return ud_batch_set_row_info(out, target, &info);
 }
+ud_status ud_batch_copy_row_info_range(ud_batch *destination, const ud_batch *source) {
+    if (!destination || !source || destination == source || destination->ctx != source->ctx ||
+        !source->sealed || destination->sealed || destination->data_owner ||
+        destination->rows != source->rows)
+        return UD_INVALID;
+    UD_TRY(metadata(destination));
+    if (source->row_info) {
+        memcpy(destination->row_info, source->row_info,
+               (size_t)source->rows * sizeof(*source->row_info));
+        return UD_OK;
+    }
+    if (!source->data_owner) {
+        memset(destination->row_info, 0,
+               (size_t)destination->rows * sizeof(*destination->row_info));
+        return UD_OK;
+    }
+    for (uint32_t row = 0; row < source->rows; row++) {
+        UD_TRY(ud_batch_row_info(source, row, destination->row_info + row));
+    }
+    return UD_OK;
+}
 ud_status ud_batch_append_projected(ud_batch *out, const ud_batch *input, uint32_t row,
                                     const uint32_t *columns) {
     if (!out || !input || row >= input->rows || (!columns && out->columns > input->columns) ||

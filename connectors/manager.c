@@ -4,27 +4,10 @@
 #include "../engines/package/internal.h"
 #include "rest.h"
 #include "http_internal.h"
+#include "manager_pool.h"
 #include "ud/csv.h"
 #include "ud/xlsx.h"
 
-typedef struct session {
-    ud_plugin *plugin;
-    ud_connection *connection;
-    uint8_t key[32], family[32];
-    uint64_t idle_since, idle_timeout;
-    uint64_t capabilities, plugin_capabilities;
-    ud_connection_lease *borrower;
-    int unhealthy;
-    struct session *next;
-} session;
-struct ud_connection_pool {
-    ud_context *ctx;
-    session *sessions;
-    uint32_t capacity, count, users;
-    int closing, owns_context;
-    ud_mutex mutex;
-    ud_condition changed;
-};
 struct ud_connection_manager {
     ud_connection_pool *pool;
     ud_connection_lease *leases;
@@ -132,38 +115,6 @@ static ud_status session_grant(void *user, ud_string tenant, ud_string resource,
                ? UD_OK
                : UD_AUTH;
 }
-static ud_connection_pool *create_pool(ud_context *ctx, uint32_t capacity, int owns_context) {
-    ud_connection_pool *pool = ud_alloc(ctx, sizeof(*pool));
-    if (!pool)
-        return NULL;
-    pool->ctx = ctx;
-    pool->capacity = capacity;
-    pool->owns_context = owns_context;
-    ud_mutex_init(&pool->mutex);
-    ud_condition_init(&pool->changed);
-    return pool;
-}
-
-ud_status ud_connection_pool_create(uint32_t capacity, uint64_t memory_limit,
-                                    ud_connection_pool **out) {
-    if (!out)
-        return UD_INVALID;
-    *out = NULL;
-    if (!capacity || capacity > 65536 || !memory_limit)
-        return UD_INVALID;
-    ud_context_options options = {.struct_size = sizeof(options), .abi_version = UD_ABI_VERSION,
-                                  .memory_limit = memory_limit};
-    ud_context *ctx = NULL;
-    UD_TRY(ud_context_create(&options, &ctx));
-    ud_connection_pool *pool = create_pool(ctx, capacity, 1);
-    if (!pool) {
-        (void)ud_context_destroy(ctx);
-        return UD_RESOURCE;
-    }
-    *out = pool;
-    return UD_OK;
-}
-
 ud_status ud_connections_create(ud_execution *e, ud_connection_pool *pool) {
     uint64_t capacity = pool ? pool->capacity : 64;
     const ud_json *policy = ud_member(ud_member(e->package->document, "policy"), "connections");
@@ -187,7 +138,7 @@ ud_status ud_connections_create(ud_execution *e, ud_connection_pool *pool) {
         pool->users++;
         ud_mutex_unlock(&pool->mutex);
     } else {
-        pool = create_pool(e->ctx, (uint32_t)capacity, 0);
+        pool = ud_manager_pool_create(e->ctx, (uint32_t)capacity, 0);
         if (!pool) {
             ud_free(m);
             return UD_RESOURCE;
@@ -236,18 +187,6 @@ static void track(ud_connection_lease *l) {
     m->acquisitions++;
     ud_mutex_unlock(&m->pool->mutex);
 }
-static ud_status dispose_session(session *s) {
-    if (s->connection) {
-        UD_TRY(ud_connection_close(s->connection));
-        s->connection = NULL;
-    }
-    if (s->plugin) {
-        UD_TRY(ud_plugin_unload(s->plugin));
-        s->plugin = NULL;
-    }
-    ud_free(s);
-    return UD_OK;
-}
 static void clear_configuration(ud_string configuration) {
     volatile char *secret = (volatile char *)configuration.data;
     if (secret)
@@ -268,30 +207,6 @@ static ud_status relay_driver_error(ud_connection_lease *lease, ud_status status
                 return ud_context_report_error(execution->ctx, status,
                                                (ud_string){message, (uint32_t)length}, &detail);
         }
-    }
-    return status;
-}
-
-/* Removing a session from the idle list does not free its capacity. Keep the
- * slot accounted until the physical connection has actually closed. */
-static ud_status dispose_retired(ud_connection_pool *pool, session *retired) {
-    ud_status status = UD_OK;
-    while (retired) {
-        session *next = retired->next;
-        ud_status closed = dispose_session(retired);
-        ud_mutex_lock(&pool->mutex);
-        if (!closed)
-            pool->count--;
-        else {
-            retired->unhealthy = 1;
-            retired->next = pool->sessions;
-            pool->sessions = retired;
-            if (!status)
-                status = closed;
-        }
-        ud_condition_wake(&pool->changed);
-        ud_mutex_unlock(&pool->mutex);
-        retired = next;
     }
     return status;
 }
@@ -362,7 +277,7 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
                 continue;
             }
             /* maxLeases belongs to this Package connection declaration. */
-            if (compatible && s->borrower && s->borrower->activation->execution == e &&
+            if (s->borrower && s->borrower->activation->execution == e &&
                 ud_same(s->borrower->id, l->id))
                 matching++;
             if (!s->borrower) {
@@ -407,7 +322,7 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
                                      (uint32_t)(timeout - elapsed < 25 ? timeout - elapsed : 25));
         }
         ud_mutex_unlock(&pool->mutex);
-        ud_status closed = dispose_retired(pool, retired);
+        ud_status closed = ud_manager_pool_dispose(pool, retired);
         if (!status && !chosen && closed)
             status = relay_driver_error(l, closed);
         if (chosen || status)
@@ -440,6 +355,9 @@ static ud_status acquire_session(ud_connection_lease *l, uint64_t caps) {
         if (!status && l->activation->parallel &&
             (!(info.capabilities & UD_CAP_THREAD_SAFE) || (info.capabilities & UD_CAP_THREAD_AFFINE)))
             status = UD_UNSUPPORTED;
+        if (!status && (info.capabilities & UD_CAP_SQL))
+            status = ud_manager_pool_reserve(pool, e->ctx, e->options.tenant, l->resource,
+                                             (uint32_t)timeout, check_lease, l, &chosen->node_slot);
         ud_connection_options options = {.struct_size = sizeof(options),
                                          .abi_version = UD_ABI_VERSION,
                                          .tenant = e->options.tenant,
@@ -1132,6 +1050,8 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
     int retiring = 0;
     if (s) {
         s->idle_since = ud_now_ms();
+        if (s->node_slot && s->idle_timeout > 1000)
+            s->idle_timeout = 1000;
         if (status || dirty)
             s->unhealthy = 1;
         retiring = s->unhealthy || (s->plugin_capabilities & UD_CAP_THREAD_AFFINE);
@@ -1150,7 +1070,7 @@ ud_status ud_connection_lease_release(ud_connection_lease *l) {
     ud_condition_wake(&pool->changed);
     ud_mutex_unlock(&pool->mutex);
     if (retiring) {
-        ud_status disposed = dispose_retired(pool, s);
+        ud_status disposed = ud_manager_pool_dispose(pool, s);
         if (!status)
             status = disposed;
     }
@@ -1250,34 +1170,6 @@ ud_status ud_connections_release_activation(ud_activation *a) {
         UD_TRY(ud_connection_lease_release(l));
     }
     return leaked ? UD_RESOURCE : UD_OK;
-}
-ud_status ud_connection_pool_destroy(ud_connection_pool *pool) {
-    if (!pool)
-        return UD_OK;
-    ud_mutex_lock(&pool->mutex);
-    if (pool->users || pool->closing) {
-        ud_mutex_unlock(&pool->mutex);
-        return UD_BUSY;
-    }
-    pool->closing = 1;
-    session *retired = pool->sessions;
-    pool->sessions = NULL;
-    ud_mutex_unlock(&pool->mutex);
-    ud_status status = dispose_retired(pool, retired);
-    ud_context *ctx = pool->ctx;
-    int owned = pool->owns_context;
-    if (!status && owned && ud_memory_used(ctx) != ud_allocation_bytes(pool))
-        status = UD_BUSY;
-    if (status) {
-        ud_mutex_lock(&pool->mutex);
-        pool->closing = 0;
-        ud_mutex_unlock(&pool->mutex);
-        return status;
-    }
-    ud_condition_destroy(&pool->changed);
-    ud_mutex_destroy(&pool->mutex);
-    ud_free(pool);
-    return owned ? ud_context_destroy(ctx) : UD_OK;
 }
 ud_status ud_connections_destroy(ud_execution *e) {
     struct ud_connection_manager *m = e->connections;

@@ -11,7 +11,7 @@ internal sealed class SdkEtlSession(HostPolicy policy,
     private Catalog? catalog;
     private Task<Terminal>? terminal;
 
-    internal async ValueTask<(WorkerResponseFrame, WorkerBatchBuffer?)> InvokeAsync(WorkerRequestFrame request,
+    internal (WorkerResponseFrame, WorkerBatchBuffer?) Invoke(WorkerRequestFrame request,
         CancellationToken cancellationToken)
     {
         var values = request.Values;
@@ -27,7 +27,7 @@ internal sealed class SdkEtlSession(HostPolicy policy,
                 var environment = Scope(sources);
                 var connection = Text(values, "connection");
                 var inspected = sources.Where(source => source.Definition.Name == connection).ToArray();
-                await using (await ReserveAsync(environment, inspected, cancellationToken))
+                ValidateSources(environment, inspected, cancellationToken);
                 using (var inspection = CreateExecution(values, environment))
                 {
                     string json = request.Operation switch
@@ -45,14 +45,14 @@ internal sealed class SdkEtlSession(HostPolicy policy,
                     .Select(node => Text(node.GetProperty("config"), "connection")).ToHashSet(StringComparer.Ordinal);
                 var previewSources = ReadSources(values);
                 var previewScope = Scope(previewSources);
-                await using (await ReserveAsync(previewScope,
-                    previewSources.Where(source => selected.Contains(source.Definition.Name)), cancellationToken))
+                ValidateSources(previewScope, previewSources.Where(source => selected.Contains(source.Definition.Name)),
+                    cancellationToken);
                 using (var preview = CreateExecution(values, previewScope))
                     return JsonReply(request, preview.Preview(pipeline.GetRawText(),
                         Text(values, "component"), values.GetProperty("sourceRows").GetUInt32(),
                         values.GetProperty("sampleRows").GetUInt32()));
             case "etl.start":
-                return await StartAsync(request, cancellationToken);
+                return Start(request, cancellationToken);
             case "etl.progress":
                 return JsonReply(request, RequireExecution().Progress());
             case "etl.wait":
@@ -91,27 +91,15 @@ internal sealed class SdkEtlSession(HostPolicy policy,
         } };
     }
 
-    private static async ValueTask<SourceSeats> ReserveAsync(SdkExecutionEnvironment environment,
+    private static void ValidateSources(SdkExecutionEnvironment environment,
         IEnumerable<SdkSourceBinding> sources, CancellationToken cancellationToken)
     {
-        var seats = new SourceSeats();
-        try
+        foreach (var source in sources)
         {
-            foreach (var source in sources.OrderBy(source => source.Definition.Name, StringComparer.Ordinal))
-            {
-                var name = source.Definition.Name;
-                if (!source.Enabled || environment.CanBorrow?.Invoke(name, source.Revision) == false ||
-                    !environment.Authorize(source.Definition.Resource, ConnectionAccess.Open))
-                    throw new UniversalDataException((int)StatusCode.Auth, "The named ETL database is unavailable");
-                if (environment.ReserveConnection is { } reserve)
-                    seats.Add(await reserve(name, cancellationToken));
-            }
-            return seats;
-        }
-        catch
-        {
-            await seats.DisposeAsync();
-            throw;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!source.Enabled || environment.CanBorrow?.Invoke(source.Definition.Name, source.Revision) == false ||
+                !environment.Authorize(source.Definition.Resource, ConnectionAccess.Open))
+                throw new UniversalDataException((int)StatusCode.Auth, "The named ETL source is unavailable");
         }
     }
 
@@ -124,7 +112,7 @@ internal sealed class SdkEtlSession(HostPolicy policy,
             environment: environment);
     }
 
-    private async ValueTask<(WorkerResponseFrame, WorkerBatchBuffer?)> StartAsync(WorkerRequestFrame request,
+    private (WorkerResponseFrame, WorkerBatchBuffer?) Start(WorkerRequestFrame request,
         CancellationToken cancellationToken)
     {
         if (execution is not null)
@@ -138,35 +126,24 @@ internal sealed class SdkEtlSession(HostPolicy policy,
 
         var sources = ReadSources(values);
         var environment = Scope(sources);
-        var seats = await ReserveAsync(environment, sources, cancellationToken);
-        try
+        ValidateSources(environment, sources, cancellationToken);
+        catalog = policy.OpenCatalog();
+        execution = CreateExecution(values, environment, id, policy.ExecutionDirectory(ticket), resume, catalog);
+        if (!resume)
         {
-            catalog = policy.OpenCatalog();
-            execution = CreateExecution(values, environment, id, policy.ExecutionDirectory(ticket), resume, catalog);
-            if (!resume)
+            string auditId = "cli/" + id;
+            catalog.Put(CatalogKind.Audit, auditId, 1, JsonSerializer.Serialize(new
             {
-                string auditId = "cli/" + id;
-                catalog.Put(CatalogKind.Audit, auditId, 1, JsonSerializer.Serialize(new
-                {
-                    version = ProductInfo.Protocol, id = auditId, ticket
-                }, HostPolicy.JsonOptions));
-            }
-            catalog.Record(execution, checked(catalog.LatestRevision(CatalogKind.Execution, id) + 1));
-            cancellationToken.ThrowIfCancellationRequested();
-            execution.Start();
-            var current = execution;
-            var records = catalog;
-            terminal = Task.Run(async () =>
-            {
-                await using (seats) return ObserveCompletion(current, records);
-            });
-            return Reply(request, StatusCode.Ok, new { id, ticket });
+                version = ProductInfo.Protocol, id = auditId, ticket
+            }, HostPolicy.JsonOptions));
         }
-        catch
-        {
-            await seats.DisposeAsync();
-            throw;
-        }
+        catalog.Record(execution, checked(catalog.LatestRevision(CatalogKind.Execution, id) + 1));
+        cancellationToken.ThrowIfCancellationRequested();
+        execution.Start();
+        var current = execution;
+        var records = catalog;
+        terminal = Task.Run(() => ObserveCompletion(current, records));
+        return Reply(request, StatusCode.Ok, new { id, ticket });
     }
 
     private static Terminal ObserveCompletion(Execution execution, Catalog catalog)
@@ -225,16 +202,4 @@ internal sealed class SdkEtlSession(HostPolicy policy,
     }
 
     private sealed record Terminal(StatusCode Result, ExecutionMetrics Metrics, OperationError? Error);
-
-    private sealed class SourceSeats : IAsyncDisposable
-    {
-        private readonly Stack<IAsyncDisposable> seats = new();
-
-        internal void Add(IAsyncDisposable seat) => seats.Push(seat);
-
-        public async ValueTask DisposeAsync()
-        {
-            while (seats.TryPop(out var seat)) await seat.DisposeAsync();
-        }
-    }
 }

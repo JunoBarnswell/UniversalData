@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 
 namespace UniversalData;
 
@@ -20,6 +21,21 @@ public sealed class ManagedBatch : IDisposable
         Check(Native.ud_batch_row_info_raw(source.Pointer, sourceRow, out var identity));
         Check(Native.ud_batch_set_row_info_raw(Pointer, row, ref identity));
     }
+    public void CopyRowIdentitiesFrom(ManagedBatch source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (!owned || source.Memory != memory || Rows != source.Rows)
+            throw new ArgumentException("Identities need equally sized Batches in the same execution");
+        Check(Native.ud_batch_copy_row_info_range_raw(Pointer, source.Pointer));
+    }
+    internal bool HasSchemaFingerprint(byte[] expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        if (expected.Length != 32) throw new ArgumentException("A Native schema fingerprint must be 32 bytes", nameof(expected));
+        var actual = new byte[32];
+        Check(Native.ud_schema_fingerprint_raw(Pointer, actual));
+        return CryptographicOperations.FixedTimeEquals(actual, expected);
+    }
     public bool IsPresent(uint row, uint column) { Check(Native.ud_batch_cell_present_raw(Pointer, row, column, out var present)); return present != 0; }
     public ulong? GetUInt64(uint row, uint column) { var value = Scalar(row, column, DataType.UInt64); return value.IsNull != 0 ? null : value.Unsigned; }
     public long? GetInt64(uint row, uint column) { var value = Scalar(row, column, DataType.Int64); return value.IsNull != 0 ? null : unchecked((long)value.Unsigned); }
@@ -35,10 +51,12 @@ public sealed class ManagedBatch : IDisposable
     /// <summary>Map Native columnar rows to strong entities without a JSON row round-trip.</summary>
     public IReadOnlyList<T> ToEntities<T>() => EnumerateEntities<T>().ToArray();
 
-    internal IEnumerable<T> EnumerateEntities<T>()
+    internal static byte[] SchemaFingerprint(string schemaJson) => SHA256.HashData(Utf8.Bytes(schemaJson));
+
+    internal static IReadOnlyList<(EntityMember Member, uint Ordinal)> BuildEntityProjection<T>(string schemaJson)
     {
         var mapping = EntityMapping.For<T>();
-        using var schema = JsonDocument.Parse(SchemaJson);
+        using var schema = JsonDocument.Parse(schemaJson);
         var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var index = 0;
         foreach (var field in schema.RootElement.GetProperty("fields").EnumerateArray())
@@ -47,6 +65,34 @@ public sealed class ManagedBatch : IDisposable
         foreach (var member in mapping.Members)
             if (ordinals.TryGetValue(member.ColumnName, out var ordinal))
                 selected.Add((member, checked((uint)ordinal)));
+        return selected;
+    }
+
+    internal static IReadOnlyList<(EntityMember Member, int? Precision, int? Scale)> BuildOutputProjection<T>(string schemaJson)
+    {
+        var members = EntityMapping.For<T>().Members.ToDictionary(member => member.ColumnName,
+            StringComparer.OrdinalIgnoreCase);
+        using var shape = JsonDocument.Parse(schemaJson);
+        var projection = new List<(EntityMember Member, int? Precision, int? Scale)>();
+        foreach (var field in shape.RootElement.GetProperty("fields").EnumerateArray())
+        {
+            var name = field.GetProperty("name").GetString()!;
+            var type = field.GetProperty("type").GetString();
+            if (!members.TryGetValue(name, out var member))
+                throw new InvalidOperationException($"Managed output column '{name}' has no member on '{typeof(T).FullName}'.");
+            if (type != SqlValueCodec.NativeTypeName(member.NativeType))
+                throw new InvalidOperationException($"Managed output column '{name}' expects '{type}', but '{member.Property.Name}' uses '{member.ValueType.FullName}'.");
+            var numeric = member.NativeType == DataType.Decimal128;
+            projection.Add((member, numeric ? field.GetProperty("precision").GetInt32() : null,
+                numeric ? field.GetProperty("scale").GetInt32() : null));
+        }
+        return projection;
+    }
+
+    internal IEnumerable<T> EnumerateEntities<T>() => EnumerateEntities<T>(BuildEntityProjection<T>(SchemaJson));
+
+    internal IEnumerable<T> EnumerateEntities<T>(IReadOnlyList<(EntityMember Member, uint Ordinal)> selected)
+    {
         var count = Rows;
         var input = Pointer;
         for (uint row = 0; row < count; row++)

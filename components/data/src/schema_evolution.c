@@ -761,6 +761,18 @@ ud_status ud_schema_map(ud_context *ctx, const ud_batch *actual, const ud_batch 
     ud_status status = binding(ctx, expected, actual, policy, &mapping, &changes, &compatible);
     if (!status && !compatible)
         status = UD_SCHEMA;
+    int identical = !status && actual->ctx == ctx && actual->sealed;
+    for (uint32_t j = 0; identical && j < expected->columns; j++) {
+        const ud_field *field = &expected->column[j].field;
+        int mode = field->child_count ? UD_FIELD_PORT : UD_FIELD_LAYOUT;
+        identical = ud_field_matches(&actual->column[mapping[j]].field, field, mode);
+    }
+    if (identical) {
+        status = ud_batch_project(ctx, actual, mapping, expected->schema->fields, expected->columns, out);
+        ud_free(mapping);
+        ud_bytes_clear(&changes);
+        return status;
+    }
     ud_field *fields = !status ? ud_alloc(ctx, (size_t)expected->columns * sizeof(*fields)) : NULL;
     ud_value *values = !status ? ud_alloc(ctx, (size_t)expected->columns * sizeof(*values)) : NULL;
     schema_projection *plans=!status ? ud_alloc(ctx,expected->columns*sizeof(*plans)) : NULL;

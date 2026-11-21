@@ -8,7 +8,8 @@ namespace UniversalData.Worker;
 
 internal static class SdkWorker
 {
-    internal static async Task<int> RunAsync(HostPolicy policy, SdkWorkerConfiguration configuration)
+    internal static async Task<int> RunAsync(HostPolicy policy, SdkWorkerConfiguration configuration,
+        WorkerSourceAdmission? admission)
     {
         Console.SetOut(TextWriter.Null);
         using var lifetime = new CancellationTokenSource();
@@ -19,7 +20,8 @@ internal static class SdkWorker
         using var slots = new SemaphoreSlim(configuration.Capacity, configuration.Capacity);
         uint maxConnections = checked((uint)(configuration.Capacity * configuration.Options.MaxBranchesPerSession *
             configuration.Options.MaxConnectionsPerSource));
-        using var pool = new ConnectionPool(maxConnections, policy.MemoryLimit);
+        using var pool = new ConnectionPool(maxConnections, policy.MemoryLimit, admission?.File, admission?.MaxSessions ?? 0);
+        var trim = admission is null ? Task.CompletedTask : pool.TrimIdleAsync(lifetime.Token);
         var work = new HashSet<Task>();
         NamedPipeServerStream? listener = Listen(configuration.Endpoint);
         try
@@ -40,6 +42,7 @@ internal static class SdkWorker
             listener.Dispose();
             await lifetime.CancelAsync();
             await Task.WhenAll(work);
+            await trim;
             await finished.CancelAsync();
         }
     }

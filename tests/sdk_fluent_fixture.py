@@ -124,6 +124,7 @@ def sessions(dotnet, program, worker, sqlite_plugin, mode=None):
         tenant = dict(fileRoots=[str(files)], pluginRoots=references, networkOrigins=[origin], credentialReferences=[])
         policy.write_text(json.dumps(dict(dataDirectory=str(root / "state"), fileRoots=[str(files)], pluginRoots=references,
             networkOrigins=[origin], credentialFiles={}, maxConcurrency=2 if mode == "--node-capacity" else 12,
+            maxConnectionsPerSource=1 if mode == "--node-capacity" else 8,
             memoryLimit=2147483648,
             executionTimeoutSeconds=90, cancellationGraceSeconds=10 if latency else 5,
             trustedAssemblyHashes=[hashlib.sha256(module.read_bytes()).hexdigest()], tenants={"fluent": tenant})))

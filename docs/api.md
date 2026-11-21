@@ -27,7 +27,9 @@ public static class OrderJobs
 
 `OpenSessionAsync` 可以在同一 Worker 租约内依次运行多个调用。每次调用取得当时的数据源修订快照。通过 `Sources` 查询、替换或探测数据源。替换前已借出的连接可以完成当前作用域，新的借用要求当前修订。`ParallelAsync` 在一次调用内按 Worker 分支配额并行工作。
 
-`ConfigureWorkers(w => w.MaxSessionsPerWorker(2))` 允许主机策略认可的模块在同一 PID 中运行多个协作式会话。各会话拥有独立上下文和取消，进程级崩溃会同时中断该 PID 上的会话。默认每个进程承载一个会话。要求独立终止时调用 `OpenIsolatedSessionAsync`。
+`ConfigureWorkers(w => w.MaxSessionsPerWorker(2))` 允许主机策略认可的模块在同一 PID 中运行多个协作式会话。各会话拥有独立上下文和取消，进程级崩溃会同时中断该 PID 上的会话。默认每个进程同时承载一个会话。主机可把健康的受信 Worker 分配给后续会话。`OpenIsolatedSessionAsync` 为需要独立终止的调用分配专用 Worker。
+
+同一节点数据目录下，SDK 和 Management 对每个租户的同一关系数据资源共用 Native 物理会话限额。主机策略 `maxConnectionsPerSource` 默认为 8，使用同一节点目录的宿主需使用相同值。跨宿主为同一数据库显式指定同一资源标识，可使不同连接名计入同一限额。SDK 的 `ConfigureWorkers(w => w.MaxConnectionsPerSource(2))` 限定一次业务调用可同时租用的该源连接数。
 
 单库事务通过 `ctx.Database(name).TransactionAsync` 声明。具备 Native 分布式事务能力的数据库通过 `ctx.Atomic(first, second).RunAsync` 使用同一事务协调器。事务作用域内，所选数据库的 SQL 写入使用协调器持有的连接。遇到 `CommitUnknown` 时保存 `DataExecutionException.Reference`，用 `DataClient.RecoverAsync` 查询并推进 Native 日志中已经持久化的事务决定。
 

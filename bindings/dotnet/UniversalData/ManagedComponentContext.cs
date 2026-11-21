@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using System.Text.Json;
+using System.Security.Cryptography;
 
 namespace UniversalData;
 
@@ -88,23 +88,30 @@ public sealed class ManagedComponentContext
     {
         ArgumentNullException.ThrowIfNull(entities);
         var metadata = OutputMetadata(output);
-        var members = EntityMapping.For<T>().Members.ToDictionary(member => member.ColumnName,
-            StringComparer.OrdinalIgnoreCase);
         Check(Native.ud_schema_to_json_raw(metadata, out var text, out var length));
-        using var shape = JsonDocument.Parse(DataOwnership.Text(text, length));
-        var projection = new List<(EntityMember Member, int? Precision, int? Scale)>();
-        foreach (var field in shape.RootElement.GetProperty("fields").EnumerateArray())
-        {
-            var name = field.GetProperty("name").GetString()!;
-            var type = field.GetProperty("type").GetString();
-            if (!members.TryGetValue(name, out var member))
-                throw new InvalidOperationException($"Managed output column '{name}' has no member on '{typeof(T).FullName}'.");
-            if (type != SqlValueCodec.NativeTypeName(member.NativeType))
-                throw new InvalidOperationException($"Managed output column '{name}' expects '{type}', but '{member.Property.Name}' uses '{member.ValueType.FullName}'.");
-            var numeric = member.NativeType == DataType.Decimal128;
-            projection.Add((member, numeric ? field.GetProperty("precision").GetInt32() : null,
-                numeric ? field.GetProperty("scale").GetInt32() : null));
-        }
+        var projection = ManagedBatch.BuildOutputProjection<T>(DataOwnership.Text(text, length));
+        return CreateBatch(metadata, entities, projection);
+    }
+
+    internal bool OutputSchemaMatches(byte[] expected, uint output = 0)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        if (expected.Length != 32) throw new ArgumentException("A Native schema fingerprint must be 32 bytes", nameof(expected));
+        var actual = new byte[32];
+        Check(Native.ud_schema_fingerprint_raw(OutputMetadata(output), actual));
+        return CryptographicOperations.FixedTimeEquals(actual, expected);
+    }
+
+    internal ManagedBatch CreateBatch<T>(IEnumerable<T> entities,
+        IReadOnlyList<(EntityMember Member, int? Precision, int? Scale)> projection, uint output = 0)
+    {
+        ArgumentNullException.ThrowIfNull(entities);
+        return CreateBatch(OutputMetadata(output), entities, projection);
+    }
+
+    private ManagedBatch CreateBatch<T>(IntPtr metadata, IEnumerable<T> entities,
+        IReadOnlyList<(EntityMember Member, int? Precision, int? Scale)> projection)
+    {
         var pointer = SqlBatchBuilder.BuildManaged(value.Memory, metadata, projection, entities, value.MaxRows);
         return new ManagedBatch(value.Memory, pointer, instance, true);
     }

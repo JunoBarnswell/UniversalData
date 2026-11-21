@@ -26,9 +26,12 @@ if (request.Mode == "sdk.worker")
 {
     var configuration = request.Payload?.Deserialize<SdkWorkerConfiguration>(WorkerProtocol.Json)
         ?? throw new InvalidDataException("Missing SDK Worker assignment");
-    return await UniversalData.Worker.SdkWorker.RunAsync(policy, configuration);
+    return await UniversalData.Worker.SdkWorker.RunAsync(policy, configuration, request.SourceAdmission);
 }
 using var watchdog = new CancellationTokenSource();
+using var connections = request.SourceAdmission is { } admission
+    ? new ConnectionPool(64, policy.MemoryLimit, admission.File, admission.MaxSessions) : null;
+_ = connections?.TrimIdleAsync(watchdog.Token);
 using var guardianLost = new CancellationTokenSource();
 var commands = Channel.CreateBounded<string>(4);
 _ = Task.Run(async () =>
@@ -90,7 +93,7 @@ if (request.Mode != "execute") {
         } else {
             if (request.Mode == "kafkaPositions")
                 request.Identity.Require("package.execute",request.Payload!.Value.GetProperty("packageId").GetString()!);
-            using var execution = policy.CreateExecution(request.Package,parameters,stateDirectory:validationState);
+            using var execution = policy.CreateExecution(request.Package,parameters,stateDirectory:validationState,connections:connections);
             string result = request.Mode switch {
                 "components" => execution.ComponentCatalog(),
                 "connectors" => execution.ConnectorCatalog(request.Payload!.Value.GetRawText()),
@@ -178,7 +181,7 @@ void Observe(ExecutionEvent value) {
 phase="native.create";
 string? journalDirectory = requiresJournal ? directory : null;
 using var executionRun = policy.CreateExecution(packageJson,parameters,request.ExecutionId,journalDirectory,request.Resume,observe:Observe,eventSequenceStart:eventSequence,
-    shard:request.Shard,brokerRestore:request.BrokerRestore,assignment:request.Assignment);
+    shard:request.Shard,brokerRestore:request.BrokerRestore,assignment:request.Assignment,connections:connections);
 phase="native.debug";
 if (request.Debug is { } debug) executionRun.ConfigureDebug(debug.GetRawText());
 using var controls = new CancellationTokenSource();

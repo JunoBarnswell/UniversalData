@@ -32,12 +32,12 @@ internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration
             try
             {
                 var environment = new SdkExecutionEnvironment(policy.Tenant, Path.Combine(policy.DataDirectory, "sdk-runs"),
-                    configuration.Options.MaxBranchesPerSession, configuration.MaxConnectionsPerSource,
+                    configuration.Options.MaxBranchesPerSession, configuration.Options.MaxConnectionsPerSource,
                     (resource, access) => policy.Authorize(policy.Tenant, resource, access),
                     Pool: pool,
                     Resolve: (resource, reference) => policy.Resolve(policy.Tenant, resource, reference),
                     CanBorrow: (source, revision) => CanBorrow(configuration.SourceStateFile, source, revision),
-                    ReserveConnection: (source, token) => ReserveAsync(configuration, assignment, source, token),
+                    ConnectionWait: configuration.Options.QueueTimeout,
                     MemoryLimit: configuration.Options.MemoryPerSession);
                 using var etl = configuration.Cooperative ? null : new SdkEtlSession(policy, _ => environment);
                 using var modules = new SdkModuleCatalog(configuration.Modules, environment.Authorize);
@@ -132,11 +132,11 @@ internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration
                     var recovery = request.Values.Deserialize<SdkRecoveryInvocation>(WorkerProtocol.Json)
                         ?? throw new InvalidDataException("Missing SDK recovery invocation");
                     reference = recovery.Reference;
-                    var result = await SdkBusinessRuntime.RecoverAsync(recovery, environment, cancellation);
+                    var result = SdkBusinessRuntime.Recover(recovery, environment, cancellation);
                     return Reply(request, StatusCode.Ok, JsonSerializer.SerializeToElement(result, WorkerProtocol.Json));
                 default:
                     if (request.Operation.StartsWith("etl.", StringComparison.Ordinal))
-                        return etl is null ? Reply(request, StatusCode.Auth) : await etl.InvokeAsync(request, cancellation);
+                        return etl is null ? Reply(request, StatusCode.Auth) : etl.Invoke(request, cancellation);
                     return Reply(request, StatusCode.Protocol);
             }
         }
@@ -186,22 +186,6 @@ internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration
                 ?.TryGetValue(source, out var current) == true && current.Enabled && current.Revision == revision;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return false; }
-    }
-
-    private static async Task<IAsyncDisposable> ReserveAsync(SdkWorkerConfiguration configuration, SdkSessionAssignment assignment, string source,
-        CancellationToken cancellation)
-    {
-        var pipe = SdkSessionProtocol.Connect(configuration.HostEndpoint);
-        try
-        {
-            await pipe.ConnectAsync(cancellation);
-            await WorkerProtocol.WriteAsync(pipe, new SdkPipeAdmission(ProductInfo.WorkerRevision,
-                assignment.Capability, "source.reserve", source, SessionId: assignment.SessionId), null, cancellation);
-            var response = await WorkerProtocol.ReadAsync<SdkHostStatus>(pipe, cancellation);
-            using (response.Batch) SdkSessionHostClient.Check(response.Message, response.Batch is null);
-            return pipe;
-        }
-        catch { await pipe.DisposeAsync(); throw; }
     }
 
     private sealed record Invocation(WorkerRequestFrame Frame, CancellationTokenSource Cancellation);

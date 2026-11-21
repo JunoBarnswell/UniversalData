@@ -52,13 +52,11 @@ public static class SdkWorkerFailure
         }, cancellation);
 
     public static Task InterruptWrite(DataContext context, CancellationToken cancellation) =>
-        context.Database("orders").UseAsync(async (db, token) =>
+        context.Database("orders").TransactionAsync(async (transaction, token) =>
         {
-            token.ThrowIfCancellationRequested();
-            db.Ado.BeginTran();
-            await db.Ado.ExecuteCommandAsync("INSERT INTO managed_sql_orders VALUES(2)");
+            await transaction.Database("orders").UseAsync(db =>
+                db.Ado.ExecuteCommandAsync("INSERT INTO managed_sql_orders VALUES(2)"), token);
             Environment.Exit(87);
-            return false;
         }, cancellation);
 
     public static Task<long> Count(DataContext context, CancellationToken cancellation) =>

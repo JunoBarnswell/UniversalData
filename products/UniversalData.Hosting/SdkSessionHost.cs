@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text.Json;
 
@@ -12,6 +13,7 @@ internal sealed class SdkSessionHost : IAsyncDisposable
     private readonly string stateDirectory;
     private readonly string statePath;
     private readonly WorkerSupervisor supervisor;
+    private readonly bool trustedModules;
     private readonly bool sharedSessions;
     private readonly SemaphoreSlim active;
     private readonly SemaphoreSlim waiting;
@@ -19,7 +21,6 @@ internal sealed class SdkSessionHost : IAsyncDisposable
     private readonly SemaphoreSlim updates = new(1, 1);
     private readonly ConcurrentDictionary<string, Child> children = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Session> sessions = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> sources = new(StringComparer.Ordinal);
     private Dictionary<string, SdkSourceRevision> revisions = new(StringComparer.Ordinal);
     private int disposing;
 
@@ -38,8 +39,9 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             throw Error(StatusCode.Invalid, "Invalid SDK Worker host limits");
 
         var root = HostPolicy.Load(configuration.PolicyFile);
-        sharedSessions = options.MaxSessionsPerWorker > 1 && configuration.Modules.All(module =>
+        trustedModules = configuration.Modules.All(module =>
             (root.TrustedAssemblyHashes ?? []).Contains(module.Sha256, StringComparer.Ordinal));
+        sharedSessions = trustedModules && options.MaxSessionsPerWorker > 1;
         var identity = HostIdentity.Operator(configuration.Tenant);
         var tenant = root.Tenants is null
             ? root with { DataDirectory = Path.Combine(root.DataDirectory, "tenants", identity.Tenant), Tenant = identity.Tenant, Identity = identity }
@@ -74,7 +76,8 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         supervisor = new WorkerSupervisor(workerPath, (uint)options.MaxConcurrentSessions,
             (uint)options.MaxConcurrentSessions, hostMemory, options.MemoryPerSession,
             enforceOrdinaryLimits: options.RequireIsolation, initialPrewarm: sharedSessions ? 0 : options.RequireIsolation ? 2 : 1,
-            nodeDirectory: root.DataDirectory, nodeMaxProcesses: root.MaxConcurrency);
+            nodeDirectory: root.DataDirectory, nodeMaxProcesses: root.MaxConcurrency,
+            nodeMaxConnectionsPerSource: root.MaxConnectionsPerSource);
     }
 
     internal static async Task<int> RunAsync(string workerPath)
@@ -166,13 +169,6 @@ internal sealed class SdkSessionHost : IAsyncDisposable
                     case "session.close": await CloseAsync(pipe, request, handshake.Token); return;
                 }
             }
-            if (request is { Operation: "source.reserve", Revision: ProductInfo.WorkerRevision } &&
-                request.Capability is { Length: 64 } && sessions.TryGetValue(request.Capability, out var session) &&
-                (request.SessionId is null || request.SessionId == session.SessionId))
-            {
-                await ReserveAsync(pipe, request.SourceName, session, stopping);
-                return;
-            }
             throw Error(StatusCode.Auth, "SDK host capability is outside its operation scope");
         }
         catch (Exception error) when (Expected(error)) { await TryReportAsync(pipe, Status(error)); }
@@ -196,7 +192,7 @@ internal sealed class SdkSessionHost : IAsyncDisposable
                 finally { waiting.Release(); }
             }
             admitted = true;
-            var child = await GetChildAsync(dedicated || !sharedSessions, queue.Token);
+            var child = await GetChildAsync(dedicated, queue.Token);
             try
             {
                 session = await child.OpenSessionAsync(queue.Token);
@@ -227,15 +223,17 @@ internal sealed class SdkSessionHost : IAsyncDisposable
 
     private async Task<Child> GetChildAsync(bool dedicated, CancellationToken cancellation)
     {
+        bool cooperative = !dedicated && sharedSessions;
+        bool reusable = !dedicated && trustedModules;
         await launches.WaitAsync(cancellation);
         try
         {
-            if (!dedicated)
+            if (reusable)
             {
                 foreach (var child in children.Values)
-                    if (child.TryReserve()) return child;
+                    if (child.Reusable && child.Cooperative == cooperative && child.ReserveSlot()) return child;
             }
-            var created = await Child.StartAsync(this, dedicated, cancellation);
+            var created = await Child.StartAsync(this, cooperative, reusable, cancellation);
             children[created.Capability] = created;
             if (!created.ReserveSlot())
                 throw Error(StatusCode.Resource, "SDK Worker child has no session capacity");
@@ -277,44 +275,11 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         await WorkerProtocol.WriteAsync(pipe, Ok(), null, cancellation);
     }
 
-    private async Task ReserveAsync(Stream pipe, string? name, Session session, CancellationToken stopping)
-    {
-        if (name is null || !Enabled(name))
-            throw Error(StatusCode.Auth, "SDK source is disabled or unavailable");
-        var slots = sources.GetOrAdd(name, _ => new SemaphoreSlim(configuration.Options.MaxConnectionsPerSource,
-            configuration.Options.MaxConnectionsPerSource));
-        var local = session.Child.SourceSeats(name);
-        using var scope = CancellationTokenSource.CreateLinkedTokenSource(session.Child.Token, stopping);
-        var disconnected = CancelAfterRead(pipe, scope, scope.Token);
-        try
-        {
-            await local.WaitAsync(scope.Token);
-            try
-            {
-                await slots.WaitAsync(scope.Token);
-                try
-                {
-                    if (!Enabled(name)) throw Error(StatusCode.Auth, "SDK source was disabled while awaiting a connection");
-                    await WorkerProtocol.WriteAsync(pipe, Ok(), null, scope.Token);
-                    await disconnected;
-                }
-                finally { slots.Release(); }
-            }
-            finally { local.Release(); }
-        }
-        finally
-        {
-            await scope.CancelAsync();
-            await disconnected;
-        }
-    }
-
-    private bool Enabled(string name) => Volatile.Read(ref revisions).TryGetValue(name, out var value) && value.Enabled;
-
     private async Task ReleaseSessionAsync(Session session)
     {
-        if (sessions.TryRemove(session.Capability, out _)) active.Release();
-        await session.Child.SessionReleasedAsync(session);
+        bool owned = sessions.TryRemove(session.Capability, out _);
+        try { await session.Child.SessionReleasedAsync(session); }
+        finally { if (owned) active.Release(); }
     }
 
     private void RemoveChild(Child child)
@@ -329,21 +294,22 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         private readonly WorkerSupervisor.Lease lease;
         private readonly int capacity;
         private readonly ConcurrentDictionary<string, Session> sessions = new(StringComparer.Ordinal);
-        private readonly ConcurrentDictionary<string, SemaphoreSlim> sources = new(StringComparer.Ordinal);
         private readonly object gate = new();
         private readonly CancellationTokenSource lifetime = new();
         private int active;
         private int poisoned;
         private int retiring;
         private int leaseDisposed;
+        private long idleSince;
 
         private Child(SdkSessionHost host, WorkerSupervisor.Lease lease, SdkWorkerConfiguration configuration,
-            int capacity, bool cooperative)
+            int capacity, bool cooperative, bool reusable)
         {
             Host = host;
             this.lease = lease;
             this.capacity = capacity;
             Cooperative = cooperative;
+            Reusable = reusable;
             Configuration = configuration;
             Token = lifetime.Token;
             ProcessTask = ObserveProcessAsync();
@@ -353,17 +319,18 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         internal string Endpoint => Configuration.Endpoint;
         internal int ProcessId => lease.ProcessId;
         internal bool Cooperative { get; }
+        internal bool Reusable { get; }
         internal SdkWorkerConfiguration Configuration { get; }
         internal CancellationToken Token { get; }
         internal Task ProcessTask { get; }
 
-        internal static async Task<Child> StartAsync(SdkSessionHost host, bool dedicated, CancellationToken cancellation)
+        internal static async Task<Child> StartAsync(SdkSessionHost host, bool cooperative, bool reusable,
+            CancellationToken cancellation)
         {
-            int capacity = dedicated ? 1 : host.configuration.Options.MaxSessionsPerWorker;
-            bool cooperative = !dedicated && capacity > 1;
+            int capacity = cooperative ? host.configuration.Options.MaxSessionsPerWorker : 1;
             ulong memory = checked(host.configuration.Options.MemoryPerSession * (ulong)capacity);
             var worker = new SdkWorkerConfiguration(host.configuration.Options, host.configuration.Modules,
-                SdkSessionProtocol.CreateEndpoint(), SdkSessionProtocol.CreateCapability(), host.configuration.Endpoint,
+                SdkSessionProtocol.CreateEndpoint(), SdkSessionProtocol.CreateCapability(),
                 host.statePath, capacity, cooperative);
             var childPolicy = host.policy with { MaxConcurrency = (uint)capacity, MemoryLimit = memory };
             var budget = new WorkerBudget((uint)capacity, memory, checked(memory + WorkerSupervisor.ProcessOverhead), (uint)capacity);
@@ -375,23 +342,13 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             {
                 lease = await host.supervisor.RentAsync(request, capacity == 1 ? host.supervisor.OrdinaryBudget : budget,
                     cancellation);
-                var child = new Child(host, lease, worker, capacity, cooperative);
+                var child = new Child(host, lease, worker, capacity, cooperative, reusable);
                 lease = null;
                 return child;
             }
             finally
             {
                 if (lease is not null) await lease.DisposeAsync();
-            }
-        }
-
-        internal bool TryReserve()
-        {
-            lock (gate)
-            {
-                if (retiring != 0 || poisoned != 0 || !Cooperative || active >= capacity) return false;
-                active++;
-                return true;
             }
         }
 
@@ -431,14 +388,11 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             }
         }
 
-        internal SemaphoreSlim SourceSeats(string name) => sources.GetOrAdd(name, _ => new(
-            Host.configuration.Options.MaxConnectionsPerSource, Host.configuration.Options.MaxConnectionsPerSource));
-
         internal async Task SessionReleasedAsync(Session session)
         {
             sessions.TryRemove(session.Capability, out _);
             ReleaseReservation();
-            if (!Cooperative || Volatile.Read(ref poisoned) != 0) await RetireIfIdleAsync();
+            if (!Reusable || Volatile.Read(ref poisoned) != 0) await RetireIfIdleAsync();
         }
 
         internal void MarkPoisoned()
@@ -450,7 +404,7 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         internal async Task RetireIfIdleAsync()
         {
             bool retire;
-            lock (gate) retire = active == 0 && (poisoned != 0 || !Cooperative) &&
+            lock (gate) retire = active == 0 && (poisoned != 0 || !Reusable) &&
                 Interlocked.Exchange(ref retiring, 1) == 0;
             if (!retire) return;
             Host.RemoveChild(this);
@@ -460,17 +414,20 @@ internal sealed class SdkSessionHost : IAsyncDisposable
 
         internal void AllowIdleRetirement()
         {
-            if (Cooperative)
-                lease.OnIdleRetirement(() =>
-                {
-                    lock (gate)
-                        return active == 0 && Interlocked.Exchange(ref retiring, 1) == 0;
-                });
+            if (Reusable) lease.OnIdleRetirement(BeginIdleRetirement);
+        }
+
+        private bool BeginIdleRetirement(TimeSpan idleFor)
+        {
+            lock (gate)
+                return active == 0 && idleSince != 0 && Stopwatch.GetElapsedTime(idleSince) >= idleFor &&
+                    Interlocked.Exchange(ref retiring, 1) == 0;
         }
 
         private void ReleaseReservation()
         {
-            lock (gate) { if (active > 0) active--; }
+            lock (gate)
+                if (active > 0 && --active == 0) idleSince = Stopwatch.GetTimestamp();
         }
 
         private async Task ObserveProcessAsync()
@@ -480,10 +437,11 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             finally
             {
                 lifetime.Cancel();
-                Host.RemoveChild(this);
                 foreach (var session in sessions.Values) await session.ProcessExitedAsync();
                 if (Interlocked.Exchange(ref leaseDisposed, 1) == 0)
                     await lease.DisposeAsync();
+                Host.RemoveChild(this);
+                lifetime.Dispose();
             }
         }
 
@@ -500,8 +458,6 @@ internal sealed class SdkSessionHost : IAsyncDisposable
             catch (Exception error) when (error is IOException or InvalidOperationException) { }
             await ProcessTask;
             if (Interlocked.Exchange(ref leaseDisposed, 1) == 0) await lease.DisposeAsync();
-            foreach (var source in sources.Values) source.Dispose();
-            lifetime.Dispose();
         }
     }
 
@@ -535,12 +491,13 @@ internal sealed class SdkSessionHost : IAsyncDisposable
                 var reply = await WorkerProtocol.ReadAsync<SdkHostStatus>(owner);
                 using (reply.Batch)
                 {
-                    if (reply.Message.Revision != ProductInfo.WorkerRevision || reply.Batch is not null)
+                    if (reply.Message.Revision != ProductInfo.WorkerRevision || reply.Batch is not null ||
+                        reply.Message.Code != StatusCode.Ok)
                         throw new InvalidDataException("Invalid SDK Worker session completion");
                 }
             }
             catch (Exception error) when (error is IOException or InvalidDataException or JsonException or
-                InvalidOperationException or OperationCanceledException) { }
+                InvalidOperationException or OperationCanceledException) { Child.MarkPoisoned(); }
             finally
             {
                 finished.TrySetResult();
@@ -646,7 +603,6 @@ internal sealed class SdkSessionHost : IAsyncDisposable
         await supervisor.DisposeAsync();
         File.Delete(statePath);
         Directory.Delete(stateDirectory);
-        foreach (var slots in sources.Values) slots.Dispose();
         launches.Dispose();
         updates.Dispose();
         waiting.Dispose();

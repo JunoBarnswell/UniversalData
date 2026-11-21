@@ -25,9 +25,9 @@ if (args is ["--shared", var sharedPolicy, var sharedOrders, var sharedLedger, v
     await SharedSessionCase.RunAsync(sharedPolicy, sharedOrders, sharedLedger, sharedOrigin);
     return;
 }
-if (args is ["--node-capacity", var nodePolicy, var nodeDatabase, _, _])
+if (args is ["--node-capacity", var nodePolicy, var nodeDatabase, _, var nodeOrigin])
 {
-    await NodeCapacityCase.RunAsync(nodePolicy, nodeDatabase);
+    await NodeCapacityCase.RunAsync(nodePolicy, nodeDatabase, nodeOrigin);
     return;
 }
 if (args is ["--native-orm", var ormFixture, .. var ormPluginRoots])
@@ -70,7 +70,7 @@ Require(overlap[0].ProcessId != overlap[1].ProcessId && overlap.All(result =>
 
 using var driver = new HttpClient { BaseAddress = new Uri(address), Timeout = TimeSpan.FromSeconds(5) };
 int sessionPid;
-await using (var session = await data.OpenSessionAsync(token))
+await using (var session = await data.OpenIsolatedSessionAsync(token))
 {
     sessionPid = session.ProcessId;
     var before = await session.RunAsync(Jobs.Scope, "orders", token);

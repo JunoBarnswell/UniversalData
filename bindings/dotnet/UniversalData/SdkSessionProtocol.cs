@@ -8,10 +8,7 @@ internal sealed record SdkHostConfiguration(int Revision, string PolicyFile, str
     SdkHostOptions Options, SdkModule[] Modules, string Endpoint, string Capability);
 
 internal sealed record SdkWorkerConfiguration(SdkHostOptions Options, SdkModule[] Modules,
-    string Endpoint, string Capability, string HostEndpoint, string SourceStateFile, int Capacity, bool Cooperative)
-{
-    internal int MaxConnectionsPerSource => Options.MaxConnectionsPerSource - (Options.RequireIsolation ? 1 : 0);
-}
+    string Endpoint, string Capability, string SourceStateFile, int Capacity, bool Cooperative);
 
 internal sealed record SdkPipeAdmission(int Revision, string Capability, string Operation = "open",
     string? SourceName = null, SdkSourceRevision? SourceRevision = null, string? SessionId = null,

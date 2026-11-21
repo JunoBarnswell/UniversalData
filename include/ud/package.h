@@ -124,6 +124,11 @@ UD_API ud_status ud_execution_create_json(ud_string, const ud_execution_options 
  * borrowing Execution (and any borrowed result) has been released. */
 UD_API ud_status ud_connection_pool_create(uint32_t max_sessions, uint64_t memory_limit,
                                            ud_connection_pool **);
+/* Hosted pools sharing this existing lock file share one relational session
+ * limit per tenant/resource. Configure before creating any Execution. */
+UD_API ud_status ud_connection_pool_set_node_limits(ud_connection_pool *, ud_string lock_file,
+                                                    uint32_t max_source_sessions);
+UD_API ud_status ud_connection_pool_trim_idle(ud_connection_pool *);
 UD_API ud_status ud_connection_pool_destroy(ud_connection_pool *);
 UD_API ud_status ud_execution_create_json_in_pool(ud_connection_pool *, ud_string,
                                                   const ud_execution_options *, ud_execution **);

@@ -1,7 +1,4 @@
-using System.Collections.Concurrent;
 using System.Data;
-using System.Runtime.ExceptionServices;
-using System.Text.Json;
 using SqlSugar;
 
 namespace UniversalData;
@@ -40,7 +37,7 @@ public sealed class DataDatabase
 
         return await WithLeaseAsync(async ct =>
         {
-            using var db = OfficialSugar.Open(context.State.OpenSql(binding, ct), ct);
+            using var db = OfficialSugar.Open(await context.State.OpenSqlAsync(binding, ct).ConfigureAwait(false), ct);
             return CheckResult(await body(db, ct).ConfigureAwait(false));
         }, scope.Token, openAccess).ConfigureAwait(false);
     }
@@ -57,7 +54,7 @@ public sealed class DataDatabase
         using var scope = context.Link(cancellation);
         return await WithLeaseAsync(async ct =>
         {
-            using var owner = new LocalSugarTransaction(context.State.OpenSql(binding, ct), ct);
+            using var owner = new LocalSugarTransaction(await context.State.OpenSqlAsync(binding, ct).ConfigureAwait(false), ct);
             using var transaction = new SdkTransactionScope(binding.Definition.Name, owner.Borrow);
             var child = new DataContext(context.State, ct, transaction);
             TResult value;
@@ -88,26 +85,18 @@ public sealed class DataDatabase
         using var scope = context.Link(cancellation);
         return await WithLeaseAsync(async ct =>
         {
-            using var database = OfficialSugar.Open(context.State.OpenSql(binding, ct), ct);
+            using var database = OfficialSugar.Open(await context.State.OpenSqlAsync(binding, ct).ConfigureAwait(false), ct);
             string query = binding.Definition.Kind == DataSourceKind.Oracle ? "SELECT 1 FROM DUAL" : "SELECT 1";
             return await database.Ado.GetIntAsync(query).ConfigureAwait(false) == 1;
         }, scope.Token, readAccess).ConfigureAwait(false);
     }
 
-    private async Task<TResult> WithLeaseAsync<TResult>(Func<CancellationToken, Task<TResult>> callback,
+    private Task<TResult> WithLeaseAsync<TResult>(Func<CancellationToken, Task<TResult>> callback,
         CancellationToken cancellation, ConnectionAccess[] operations)
     {
-        var state = context.State;
-        var seats = state.ConnectionSeats(binding.Definition.Name);
-        await seats.WaitAsync(cancellation).ConfigureAwait(false);
-        try
-        {
-            state.Authorize(binding, operations);
-            await using var hostSeat = state.Environment.ReserveConnection is { } reserve
-                ? await reserve(binding.Definition.Name, cancellation).ConfigureAwait(false) : null;
-            return await callback(cancellation).ConfigureAwait(false);
-        }
-        finally { seats.Release(); }
+        cancellation.ThrowIfCancellationRequested();
+        context.State.Authorize(binding, operations);
+        return callback(cancellation);
     }
 
     internal static TResult CheckResult<TResult>(TResult value)

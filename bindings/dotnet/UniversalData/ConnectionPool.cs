@@ -5,10 +5,31 @@ namespace UniversalData;
 
 internal sealed class ConnectionPool : SafeHandleZeroOrMinusOneIsInvalid
 {
-    internal ConnectionPool(uint maxSessions, ulong memoryLimit) : base(true)
+    internal ConnectionPool(uint maxSessions, ulong memoryLimit, string? lockFile = null, uint nodeLimit = 0) : base(true)
     {
         SqlNative.Check(Native.ud_connection_pool_create(maxSessions, memoryLimit, out var pointer));
         SetHandle(pointer);
+        if (lockFile is null) return;
+        IntPtr text = Marshal.StringToCoTaskMemUTF8(lockFile);
+        try
+        {
+            var path = new Native.StringValue(text, checked((uint)System.Text.Encoding.UTF8.GetByteCount(lockFile)));
+            SqlNative.Check(Native.ud_connection_pool_set_node_limits(this, path, nodeLimit));
+        }
+        catch { Dispose(); throw; }
+        finally { Marshal.FreeCoTaskMem(text); }
+    }
+
+    internal async Task TrimIdleAsync(CancellationToken stopping)
+    {
+        using var cadence = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+        try
+        {
+            while (await cadence.WaitForNextTickAsync(stopping) && !IsClosed)
+                Native.ud_connection_pool_trim_idle(this);
+        }
+        catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
+        catch (ObjectDisposedException) when (IsClosed) { }
     }
 
     protected override bool ReleaseHandle() => Native.ud_connection_pool_destroy(handle) == 0;
@@ -21,6 +42,12 @@ internal static partial class Native
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int ud_connection_pool_destroy(IntPtr pool);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_connection_pool_set_node_limits(ConnectionPool pool, StringValue lockFile, uint max);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int ud_connection_pool_trim_idle(ConnectionPool pool);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     private static extern int ud_execution_create_json_in_pool(ConnectionPool pool, StringValue json,

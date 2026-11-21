@@ -1,6 +1,6 @@
 # SDK 9.0.0 / ABI 15
 
-SDK 9 的普通、单库事务和跨库事务操作均由 Native 驱动执行，业务代码继续使用官方 `ISqlSugarClient`。直接访问物理连接、厂商命令对象及直接提交协调器分支返回 `Unsupported`。Worker 私有协议升至 7，应用与 Worker 必须使用相同主版本和私有协议。Native ABI 与 Package 版本维持 15。
+SDK 9 的普通、单库事务和跨库事务操作均由 Native 驱动执行，业务代码继续使用官方 `ISqlSugarClient`。直接访问物理连接、厂商命令对象及直接提交协调器分支返回 `Unsupported`。Worker 私有协议升至 8，应用与 Worker 必须使用相同主版本和私有协议。Native ABI 与 Package 版本维持 15。
 
 # SDK 8.0.0 / ABI 15
 

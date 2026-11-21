@@ -16,7 +16,7 @@
     "acceptanceResources": "Windows Release CORE and focused host acceptance use local evidence. Real MQ, Registry, multi-host and complete PRODUCT resources remain separately gated.",
     "dataLayoutRevision": 1,
     "catalogRevision": 3,
-    "workerRevision": 7
+    "workerRevision": 8
   },
   "scope": {
     "name": "Studio 4.0 / Streaming 1.0; one Native execution chain; extended streaming operators remain explicitly planned.",

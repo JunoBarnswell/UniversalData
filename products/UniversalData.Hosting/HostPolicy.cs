@@ -11,7 +11,8 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     string[] PluginRoots, Dictionary<string, string> CredentialFiles, uint MaxConcurrency = 4,
     ulong MemoryLimit = 268435456, Dictionary<string, ConnectionAccess[]>? Resources = null,
     string? IdentityFile = null, Dictionary<string, TenantResources>? Tenants = null,
-    string[]? TrustedAssemblyHashes = null, uint ExecutionTimeoutSeconds = 3600, uint CancellationGraceSeconds = 10, string[]? TestResources = null)
+    string[]? TrustedAssemblyHashes = null, uint ExecutionTimeoutSeconds = 3600, uint CancellationGraceSeconds = 10,
+    string[]? TestResources = null, uint MaxConnectionsPerSource = 8)
 {
     [JsonIgnore] public string Tenant { get; init; } = "local";
     [JsonIgnore] public HostIdentity Identity { get; init; } = HostIdentity.Operator("local");
@@ -25,6 +26,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
         var policy = JsonSerializer.Deserialize<HostPolicy>(File.ReadAllText(path), PolicyJsonOptions)
                      ?? throw new InvalidDataException("Host policy is empty");
         if (!Path.IsPathFullyQualified(policy.DataDirectory) || policy.MaxConcurrency is < 1 or > 64 || policy.MemoryLimit == 0 ||
+            policy.MaxConnectionsPerSource is < 1 or > 64 ||
             policy.ExecutionTimeoutSeconds is < 1 or > 604800 || policy.CancellationGraceSeconds is < 1 or > 300)
             throw new InvalidDataException("Invalid host resource policy");
         HostFiles.NoLinks(policy.DataDirectory);
@@ -130,7 +132,7 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
     internal Execution CreateExecution(string packageJson, string parametersJson = "{}", string executionId = "",
         string? stateDirectory = null, bool resume = false, Registry? registry = null, Action<ExecutionEvent>? observe = null,
         ulong eventSequenceStart = 0, WorkerShard? shard = null, bool brokerRestore = false, KafkaAssignment? assignment = null,
-        SdkExecutionEnvironment? environment = null)
+        SdkExecutionEnvironment? environment = null, ConnectionPool? connections = null)
     {
         if ((Registry.Features & RegistryFeatures.ScopedJournal) == 0)
             throw new UniversalDataException((int)StatusCode.Incompatible,"Native runtime does not distinguish internal recovery storage");
@@ -164,6 +166,6 @@ public sealed record HostPolicy(string DataDirectory, string[] FileRoots, string
             timeoutMilliseconds: checked(ExecutionTimeoutSeconds * 1000UL), eventSequenceStart: eventSequenceStart,
             workerMember: shard?.Member ?? 0, workerMembers: shard?.Members ?? 0,
             consumerLanes: shard?.Lanes ?? 0, brokerRestore: brokerRestore, workerRunId: shard?.RunId,
-            assignment: assignment, pool: environment?.Pool);
+            assignment: assignment, pool: environment?.Pool ?? connections);
     }
 }

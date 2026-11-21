@@ -26,12 +26,13 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
     public WorkerSupervisor(string workerPath, uint maxProcesses, uint maxCpu, ulong maxMemoryBytes,
         ulong nativeMemoryBytes, string? configurationPath = null, bool enforceOrdinaryLimits = false,
-        int initialPrewarm = 1, string? nodeDirectory = null, uint nodeMaxProcesses = 0)
+        int initialPrewarm = 1, string? nodeDirectory = null, uint nodeMaxProcesses = 0, uint nodeMaxConnectionsPerSource = 8)
     {
         path = Path.GetFullPath(workerPath);
         settingsPath = configurationPath is null ? null : Path.GetFullPath(configurationPath);
         this.enforceOrdinaryLimits = enforceOrdinaryLimits;
-        nodeResources = nodeDirectory is null ? null : new(nodeDirectory, nodeMaxProcesses == 0 ? maxProcesses : nodeMaxProcesses);
+        nodeResources = nodeDirectory is null ? null : new(nodeDirectory,
+            nodeMaxProcesses == 0 ? maxProcesses : nodeMaxProcesses, nodeMaxConnectionsPerSource);
         MaxProcesses = maxProcesses;
         MaxCpu = maxCpu;
         MaxMemoryBytes = maxMemoryBytes;
@@ -74,6 +75,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
     internal async Task<Lease> RentAsync(WorkerRequest request, WorkerBudget charge, CancellationToken cancellation)
     {
+        request = request with { SourceAdmission = nodeResources?.SourceAdmission };
         if (charge.CpuSlots == 0 || charge.ProcessMemoryBytes == 0 || charge.CpuSlots > MaxCpu ||
             charge.ProcessMemoryBytes > MaxMemoryBytes || request.Budget is { } governed && governed != charge)
             throw new UniversalDataException((int)StatusCode.Resource, "Worker request exceeds node capacity");
@@ -102,7 +104,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
                 if (!Fits(charge))
                     Retire(slots.Find(candidate => !candidate.Draining && !candidate.Finished &&
-                        (!candidate.Borrowed || candidate.BeginIdleRetirement?.Invoke() == true)));
+                        (!candidate.Borrowed || candidate.BeginIdleRetirement?.Invoke(TimeSpan.Zero) == true)));
                 next = changed.Task;
             }
             await next.WaitAsync(cancellation);
@@ -177,7 +179,8 @@ public sealed class WorkerSupervisor : IAsyncDisposable
                             continue;
                         if (slot.Borrowed)
                         {
-                            if (pressure && slot.BeginIdleRetirement?.Invoke() == true)
+                            var retention = pressure ? TimeSpan.Zero : TimeSpan.FromSeconds(settings.IdleSeconds);
+                            if (slot.BeginIdleRetirement?.Invoke(retention) == true)
                                 Retire(slot);
                             continue;
                         }
@@ -373,7 +376,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         internal int ProcessId { get; set; }
         internal long ReadyAt { get; set; }
         internal bool Borrowed { get; set; }
-        internal Func<bool>? BeginIdleRetirement { get; set; }
+        internal Func<TimeSpan, bool>? BeginIdleRetirement { get; set; }
         internal bool Draining { get; set; }
         internal bool Finished { get; set; }
     }
@@ -386,7 +389,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         internal int ProcessId => slot.ProcessId;
         internal Task TerminateAsync() => WorkerLauncher.Terminate(Process, slot.Key, slot.Isolated);
 
-        internal void OnIdleRetirement(Func<bool> begin)
+        internal void OnIdleRetirement(Func<TimeSpan, bool> begin)
         {
             lock (owner.gate) slot.BeginIdleRetirement = begin;
         }

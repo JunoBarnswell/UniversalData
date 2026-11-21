@@ -10,7 +10,8 @@
 static ud_string text(const char *s) {
     return (ud_string){s, (uint32_t)strlen(s)};
 }
-static ud_status input(ud_context *c, const char *schema, const char *rows, ud_batch **out) {
+static ud_status input_at(ud_context *c, const char *schema, const char *rows, uint64_t begin,
+                          ud_batch **out) {
     ud_batch *raw = NULL;
     ud_status s = ud_batch_from_json_schema(c, schema, (uint32_t)strlen(schema), rows,
                                             (uint32_t)strlen(rows), UD_ROUND_EXACT, &raw);
@@ -20,9 +21,12 @@ static ud_status input(ud_context *c, const char *schema, const char *rows, ud_b
     if (!s)
         s = ud_id_make(c, text("advanced.acceptance"), text(schema), &scope);
     if (!s)
-        s = ud_batch_identify(c, raw, scope, 0, out);
+        s = ud_batch_identify(c, raw, scope, begin, out);
     ud_batch_destroy(raw);
     return s;
+}
+static ud_status input(ud_context *c, const char *schema, const char *rows, ud_batch **out) {
+    return input_at(c, schema, rows, 0, out);
 }
 static ud_status op(ud_context *c, ud_buffer_manager *m, int kind, const char *cfg,
                     const ud_batch *const *in, ud_operator **out) {
@@ -221,8 +225,8 @@ static int text_keys(ud_context *c, ud_buffer_manager *m) {
     ud_batch *left = NULL, *right = NULL;
     OK(input(c, schema, "[{\"label\":\"Z\",\"seq\":1},{\"label\":\"caf\u00e9\",\"seq\":2},"
                         "{\"label\":\"Cafe\",\"seq\":3}]", &left));
-    OK(input(c, schema, "[{\"label\":\"b\",\"seq\":4},{\"label\":\"CAF\u00c9\",\"seq\":5},"
-                        "{\"label\":\"z\",\"seq\":6}]", &right));
+    OK(input_at(c, schema, "[{\"label\":\"b\",\"seq\":4},{\"label\":\"CAF\u00c9\",\"seq\":5},"
+                           "{\"label\":\"z\",\"seq\":6}]", 3, &right));
     const ud_batch *inputs[] = {left, right};
     const uint32_t key = 0;
     const char *aggregation = "{\"version\":" UD_PROTOCOL_VERSION_TEXT ",\"group\":[\"label\"],\"aggregates\":["

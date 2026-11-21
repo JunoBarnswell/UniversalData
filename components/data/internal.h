@@ -59,6 +59,7 @@ ud_status ud_json_value_decode(ud_context *, const ud_field *, const ud_json *, 
                                ud_value *);
 ud_status ud_json_value_encode(ud_bytes *, const ud_field *, const ud_value *);
 ud_status ud_batch_copy_row_info(ud_batch *, uint32_t, const ud_batch *, uint32_t);
+ud_status ud_batch_copy_row_info_range(ud_batch *, const ud_batch *);
 ud_status ud_batch_join_row_info(ud_batch *, uint32_t, const ud_batch *, uint32_t, const ud_batch *,
                                  uint32_t);
 ud_status ud_batch_clone(const ud_batch *, ud_batch **);

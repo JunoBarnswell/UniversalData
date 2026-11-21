@@ -93,12 +93,25 @@ ud_status ud_builtin_sink_schema(builtin *b) {
     return status;
 }
 
+static ud_status map_sink_projection(builtin *b, const ud_batch *input, const uint32_t *indices,
+                                     ud_batch **out) {
+    ud_batch *bound = NULL;
+    ud_status status = ud_batch_project(b->context.memory, input, indices,
+                                        b->write_schema->schema->fields, b->columns, &bound);
+    if (!status)
+        status = ud_schema_map(b->context.memory, bound, b->actual_schema, b->schema_policy, out);
+    ud_batch_destroy(bound);
+    return status;
+}
+
 ud_status ud_builtin_sink_batch(builtin *b, const ud_batch *input, ud_batch **out,
                                 ud_batch **before) {
     *out = NULL;
     *before = NULL;
+    if (input->sealed && b->mode != UD_WRITE_CHANGESET && b->before_column == UINT32_MAX)
+        return map_sink_projection(b, input, b->write_indices, out);
     ud_context *ctx = b->context.memory;
-    ud_batch *selected = NULL, *old = NULL, *bound = NULL;
+    ud_batch *selected = NULL, *old = NULL;
     ud_status status =
         ud_batch_create(ctx, b->schema->schema->fields, b->columns, input->rows, &selected);
     if (!status && b->before_column != UINT32_MAX)
@@ -141,18 +154,9 @@ ud_status ud_builtin_sink_batch(builtin *b, const ud_batch *input, ud_batch **ou
     if (!status && old)
         status = ud_batch_seal(old);
     if (!status)
-        status = ud_batch_project(ctx, selected, indices, b->write_schema->schema->fields,
-                                  b->columns, &bound);
-    if (!status)
-        status = ud_schema_map(ctx, bound, b->actual_schema, b->schema_policy, out);
-    ud_batch_destroy(bound);
-    bound = NULL;
+        status = map_sink_projection(b, selected, indices, out);
     if (!status && old)
-        status = ud_batch_project(ctx, old, indices, b->write_schema->schema->fields, b->columns,
-                                  &bound);
-    if (!status && old)
-        status = ud_schema_map(ctx, bound, b->actual_schema, b->schema_policy, before);
-    ud_batch_destroy(bound);
+        status = map_sink_projection(b, old, indices, before);
     ud_batch_destroy(selected);
     ud_batch_destroy(old);
     ud_free(values);
@@ -170,22 +174,28 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
                             const ud_write_options *options, const ud_batch *input) {
     ud_write_options o = *options;
     uint8_t digest[32];
-    ud_status s = ud_connection_lease_digest(lease, &o, input, digest);
-    size_t length = o.job.length + o.batch_id.length + 8;
-    char *identity = ud_alloc(c->memory, length);
-    if (!identity)
-        return UD_RESOURCE;
-    snprintf(identity, length, "%.*s/%.*s", (int)o.job.length, o.job.data, (int)o.batch_id.length,
-             o.batch_id.data);
-    ud_string key = {identity, (uint32_t)strlen(identity)};
+    int durable = c->execution->journal != NULL;
+    ud_status s = UD_OK;
+    char *identity = NULL;
+    ud_string key = {0};
     ud_command_result prior = {.struct_size = sizeof(prior),.abi_version = UD_ABI_VERSION};
-    if (!s) s = ud_checkpoint_effect_read(c->activation,key,digest,&prior);
+    if (durable) {
+        UD_TRY(ud_connection_lease_digest(lease, &o, input, digest));
+        size_t length = o.job.length + o.batch_id.length + 8;
+        identity = ud_alloc(c->memory, length);
+        if (!identity)
+            return UD_RESOURCE;
+        snprintf(identity, length, "%.*s/%.*s", (int)o.job.length, o.job.data, (int)o.batch_id.length,
+                 o.batch_id.data);
+        key = (ud_string){identity, (uint32_t)strlen(identity)};
+        s = ud_checkpoint_effect_read(c->activation, key, digest, &prior);
+    }
     int replaying = prior.state != UD_COMMAND_NOT_EXECUTED;
     int completed = prior.state == UD_COMMAND_APPLIED || prior.state == UD_COMMAND_COMMITTED;
     if (!s && prior.state == UD_COMMAND_REJECTED) s = UD_CORRUPT;
     ud_command_result_clear(&prior);
     int32_t guarantee = ud_connection_lease_delivery(lease);
-    if (!s)
+    if (!s && durable)
         s = ud_checkpoint_effect_intent(c->activation, key, digest);
     if (!s && replaying && !completed && guarantee == UD_DELIVERY_RESPONSE)
         s = UD_COMMIT_UNKNOWN;
@@ -212,14 +222,14 @@ ud_status ud_pipeline_write(const ud_component_context *c, ud_connection_lease *
             ud_target_rows(c->activation, input->rows, ud_batch_error_rows(input), 0);
         s = ud_transaction_active(c->activation) ? ud_transaction_delivery(c->activation, input)
                                                  : ud_rule_delivered(c->activation, delivery, 0);
-        if (!s) {
+        if (!s && durable) {
             ud_command_result outcome = {.struct_size = sizeof(outcome),.abi_version = UD_ABI_VERSION,
                 .state = ud_transaction_active(c->activation) ? UD_COMMAND_APPLIED : UD_COMMAND_COMMITTED,.affected_rows = input->rows};
             s = ud_checkpoint_effect_complete(c->activation,key,digest,&outcome);
         }
         if (s)
             s = UD_COMMIT_UNKNOWN;
-        else if (c->execution->journal && !ud_transaction_active(c->activation)) {
+        else if (durable && !ud_transaction_active(c->activation)) {
             ud_target_rows(c->activation, input->rows, ud_batch_error_rows(input), 1);
             s = ud_rule_delivered(c->activation, delivery, 1);
         }

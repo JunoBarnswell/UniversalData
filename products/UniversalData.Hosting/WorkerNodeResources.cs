@@ -11,7 +11,7 @@ internal sealed class WorkerNodeResources
     private readonly WorkerNodeCapacityBudget capacity;
     private readonly WorkerProcessIdentity owner;
 
-    internal WorkerNodeResources(string nodeDirectory, uint maxProcesses)
+    internal WorkerNodeResources(string nodeDirectory, uint maxProcesses, uint maxConnectionsPerSource)
     {
         directory = Path.Combine(Path.GetFullPath(nodeDirectory), "worker-reservations");
         gate = Path.Combine(directory, "admission.lock");
@@ -19,11 +19,14 @@ internal sealed class WorkerNodeResources
         HostFiles.NoLinks(directory);
         if (OperatingSystem.IsWindows()) Directory.CreateDirectory(directory);
         else Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        SourceAdmission = WorkerSourceAdmission.Open(directory, maxConnectionsPerSource);
         owner = WorkerProcessIdentity.Read(Environment.ProcessId)
             ?? throw new InvalidOperationException("Current process identity is unavailable");
         capacity = new(maxProcesses, Math.Min(maxProcesses, (uint)Environment.ProcessorCount),
             (ulong)Math.Max(0, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes));
     }
+
+    internal WorkerSourceAdmission SourceAdmission { get; }
 
     internal bool HasWaitingRequest
     {

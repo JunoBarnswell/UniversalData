@@ -54,6 +54,7 @@ public static class WorkerLauncher
             foreach (string path in new[] { "/usr", "/lib", "/lib64", "/etc/ssl", "/etc/ld.so.cache", "/etc/localtime" })
                 if (File.Exists(path) || Directory.Exists(path)) { start.ArgumentList.Add("--ro-bind"); start.ArgumentList.Add(path); start.ArgumentList.Add(path); mounted.Add(path); }
             Mount(Path.GetDirectoryName(executable)!,false); Mount(Path.GetDirectoryName(workerPath)!,false);
+            if (request.SourceAdmission is { } admission) Mount(admission.File, true);
             foreach (string path in request.Policy.PluginRoots.Concat(request.Policy.ReadOnlyRoots)) Mount(path,false);
             foreach (string path in request.Policy.FileRoots) Mount(path,true);
             foreach(string root in request.Policy.FileRoots.Concat(request.Policy.ReadOnlyRoots).Distinct(StringComparer.Ordinal)) {

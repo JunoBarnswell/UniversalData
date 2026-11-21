@@ -55,7 +55,8 @@ internal static class NativeOrmCase
                 try
                 {
                     var written = await sdk.RunAsync(NativeOrmJobs.Exercise, work, deadline.Token);
-                    var independent = await sdk.RunAsync(NativeOrmJobs.Readback, work, deadline.Token);
+                    await using var reader = await sdk.OpenIsolatedSessionAsync(deadline.Token);
+                    var independent = await reader.RunAsync(NativeOrmJobs.Readback, work, deadline.Token);
                     if (written.ProcessId == independent.ProcessId || independent.Rows != 4)
                         throw new InvalidOperationException("The ordinary writes must be independently read in another Worker");
                     Console.WriteLine($"{kind} Native ordinary ORM passed via database identity {written.PhysicalId}; " +

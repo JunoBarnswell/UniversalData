@@ -284,6 +284,10 @@ UD_API ud_status ud_batch_set_row_info(ud_batch *, uint32_t, const ud_row_info *
 UD_API ud_status ud_batch_append_projected(ud_batch *, const ud_batch *, uint32_t row,
                                            const uint32_t *columns);
 UD_API ud_status ud_batch_append_from(ud_batch *, const ud_batch *, uint32_t);
+/* Copy all row metadata, including zero identities, from a sealed source into
+ * an equally sized mutable destination in one native call. Both batches must
+ * belong to the same context; missing source metadata is copied as zeroes. */
+UD_API ud_status ud_batch_copy_row_info_range(ud_batch *destination, const ud_batch *source);
 /* Returns a sealed column-sharing view with new deterministic source identities. */
 UD_API ud_status ud_batch_identify(ud_context *, const ud_batch *, ud_id scope, uint64_t first,
                                    ud_batch **);

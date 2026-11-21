@@ -193,6 +193,7 @@ internal static partial class Native
     }
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_batch_row_info")] internal static extern int ud_batch_row_info_raw(IntPtr batch, uint row, out RowInfo info);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_batch_set_row_info")] internal static extern int ud_batch_set_row_info_raw(IntPtr batch, uint row, ref RowInfo info);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_batch_copy_row_info_range")] internal static extern int ud_batch_copy_row_info_range_raw(IntPtr destination, IntPtr source);
     [StructLayout(LayoutKind.Sequential)] internal struct DataFlowContext {
         internal uint Size, Abi; internal IntPtr Memory, Execution, Activation; internal StringValue TaskId, PipelineId, ComponentId;
         internal uint MaxRows; internal IntPtr RecommendedRows, Emit, EmitUser, Resolve, ResolveUser, ResolveField, InputPlans;
@@ -213,6 +214,7 @@ internal static partial class Native
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_batch_rows")] internal static extern uint ud_batch_rows_raw(IntPtr batch);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_batch_columns")] internal static extern uint ud_batch_columns_raw(IntPtr batch);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_schema_to_json")] internal static extern int ud_schema_to_json_raw(IntPtr batch, out IntPtr text, out uint length);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_schema_fingerprint")] internal static extern int ud_schema_fingerprint_raw(IntPtr batch, [Out] byte[] output);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_batch_to_json")] internal static extern int ud_batch_to_json_raw(IntPtr batch, out IntPtr text, out uint length);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_schema_from_json")] internal static extern int ud_schema_from_json_raw(IntPtr memory, byte[] schema, uint length, StringValue scope, out IntPtr batch);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ud_batch_from_json_schema")] internal static extern int ud_batch_from_json_schema_raw(IntPtr memory, byte[] schema, uint length, byte[] data, uint dataLength, int rounding, out IntPtr batch);

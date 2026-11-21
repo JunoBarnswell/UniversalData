@@ -49,7 +49,8 @@ string? supervisorPath = builder.Configuration["worker-supervisor-config"];
 var supervisor = new WorkerSupervisor(configuration.WorkerPath, policy.MaxConcurrency,
     Math.Min(policy.MaxConcurrency, (uint)Environment.ProcessorCount),
     (ulong)Math.Max(0, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes), policy.MemoryLimit, supervisorPath,
-    nodeDirectory: policy.DataDirectory, nodeMaxProcesses: policy.MaxConcurrency);
+    nodeDirectory: policy.DataDirectory, nodeMaxProcesses: policy.MaxConcurrency,
+    nodeMaxConnectionsPerSource: policy.MaxConnectionsPerSource);
 builder.Services.AddSingleton<WorkerSupervisor>(_ => supervisor);
 builder.Services.AddSingleton(policy); builder.Services.AddSingleton(configuration); builder.Services.AddSingleton(identities);
 builder.Services.AddSingleton(services => new ClusterLeadership(cluster, nodeId, services.GetRequiredService<ILogger<ClusterLeadership>>()));

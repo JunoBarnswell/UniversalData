@@ -57,9 +57,9 @@ internal static class SdkBusinessRuntime
         }).ConfigureAwait(false);
     }
 
-    internal static Task<DataRecoveryResult> RecoverAsync(SdkRecoveryInvocation invocation,
+    internal static DataRecoveryResult Recover(SdkRecoveryInvocation invocation,
         SdkExecutionEnvironment environment, CancellationToken cancellation) =>
-        SdkAtomicRuntime.RecoverAsync(invocation, environment, cancellation);
+        SdkAtomicRuntime.Recover(invocation, environment, cancellation);
 
     private static async Task<DataSourceProbe> ProbeAsync(DataContext context, string name, CancellationToken cancellation)
     {

@@ -371,6 +371,81 @@ void ud_unlock(void *h) {
     close(fd);
 #endif
 }
+ud_status ud_lock_slot(const char *path, uint64_t first, uint32_t slots, void **out) {
+    *out = NULL;
+#ifdef _WIN32
+    wchar_t *name = wide(path);
+    if (!name)
+        return UD_INVALID;
+    HANDLE file = CreateFileW(name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                              NULL, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+    free(name);
+    if (file == INVALID_HANDLE_VALUE)
+        return UD_IO;
+    BY_HANDLE_FILE_INFORMATION info;
+    if (!GetFileInformationByHandle(file, &info) ||
+        (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) {
+        CloseHandle(file);
+        return UD_IO;
+    }
+    ud_status status = UD_BUSY;
+    for (uint32_t i = 0; i < slots; i++) {
+        uint64_t offset = first + i;
+        OVERLAPPED position = {0};
+        position.Offset = (DWORD)offset;
+        position.OffsetHigh = (DWORD)(offset >> 32);
+        if (LockFileEx(file, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0,
+                       &position)) {
+            *out = file;
+            return UD_OK;
+        }
+        if (GetLastError() != ERROR_LOCK_VIOLATION) {
+            status = UD_IO;
+            break;
+        }
+    }
+    CloseHandle(file);
+    return status;
+#elif defined(F_OFD_SETLK)
+    int file = open(path, O_RDWR | O_NOFOLLOW | O_CLOEXEC);
+    if (file < 0)
+        return UD_IO;
+    struct stat info;
+    if (fstat(file, &info) || !S_ISREG(info.st_mode)) {
+        close(file);
+        return UD_IO;
+    }
+    ud_status status = UD_BUSY;
+    for (uint32_t i = 0; i < slots; i++) {
+        struct flock position = {.l_type = F_WRLCK, .l_whence = SEEK_SET,
+                                 .l_start = (off_t)(first + i), .l_len = 1};
+        if (!fcntl(file, F_OFD_SETLK, &position)) {
+            *out = (void *)(intptr_t)(file + 1);
+            return UD_OK;
+        }
+        if (errno != EAGAIN && errno != EACCES) {
+            status = UD_IO;
+            break;
+        }
+    }
+    close(file);
+    return status;
+#else
+    (void)path;
+    (void)first;
+    (void)slots;
+    return UD_UNSUPPORTED;
+#endif
+}
+void ud_unlock_slot(void *file) {
+    if (!file)
+        return;
+#ifdef _WIN32
+    CloseHandle(file);
+#elif defined(F_OFD_SETLK)
+    close((int)(intptr_t)file - 1);
+#endif
+}
 ud_status ud_remove_file(ud_context *c, const char *path) {
 #ifdef _WIN32
     wchar_t *w = wide(path);

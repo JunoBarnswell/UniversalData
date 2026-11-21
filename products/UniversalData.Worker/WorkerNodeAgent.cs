@@ -67,7 +67,8 @@ internal sealed class WorkerNodeAgent(
             var workerPath = typeof(WorkerNodeAgent).Assembly.Location;
             await using var supervisor = new WorkerSupervisor(workerPath, capacity.MaxProcesses, capacity.MaxCpu,
                 capacity.MaxMemoryBytes, policy.MemoryLimit, config.SupervisorPath,
-                nodeDirectory: policy.DataDirectory, nodeMaxProcesses: policy.MaxConcurrency);
+                nodeDirectory: policy.DataDirectory, nodeMaxProcesses: policy.MaxConcurrency,
+                nodeMaxConnectionsPerSource: policy.MaxConnectionsPerSource);
             var agent = new WorkerNodeAgent(config, policy, capacity, certificate, supervisor);
             await agent.ListenAsync(shutdown.Token);
             return 0;

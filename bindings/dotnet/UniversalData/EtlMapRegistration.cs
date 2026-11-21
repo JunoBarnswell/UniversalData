@@ -44,7 +44,7 @@ internal static class EtlMapRegistration
         {
             var entry = Resolve(configuration, resolve);
             var type = typeof(MapBatch<,>).MakeGenericType(entry.GetParameters()[0].ParameterType, entry.ReturnType);
-            body = (IMapBatch)Activator.CreateInstance(type, entry)!;
+            body = (IMapBatch)Activator.CreateInstance(type, entry, inputs[0], outputs[0])!;
         }
 
         public StatusCode Step(ManagedComponentContext context, ManagedComponentEvent input)
@@ -53,8 +53,7 @@ internal static class EtlMapRegistration
             if (input.Batch is not { } batch) return StatusCode.Ok;
             context.CheckCancellation();
             using var output = body!.Map(context, batch);
-            var rows = output.Rows;
-            for (uint row = 0; row < rows; row++) output.CopyRowIdentity(row, batch, row);
+            output.CopyRowIdentitiesFrom(batch);
             context.Emit(0, output);
             return StatusCode.Ok;
         }
@@ -70,10 +69,29 @@ internal static class EtlMapRegistration
     private sealed class MapBatch<TInput, TOutput> : IMapBatch
     {
         private readonly Func<TInput, TOutput> map;
+        private readonly IReadOnlyList<(EntityMember Member, uint Ordinal)> inputProjection;
+        private readonly byte[] inputFingerprint;
+        private readonly IReadOnlyList<(EntityMember Member, int? Precision, int? Scale)> outputProjection;
+        private readonly byte[] outputFingerprint;
 
-        public MapBatch(MethodInfo method) => map = method.CreateDelegate<Func<TInput, TOutput>>();
+        public MapBatch(MethodInfo method, string inputSchema, string outputSchema)
+        {
+            map = method.CreateDelegate<Func<TInput, TOutput>>();
+            inputProjection = ManagedBatch.BuildEntityProjection<TInput>(inputSchema);
+            inputFingerprint = ManagedBatch.SchemaFingerprint(inputSchema);
+            outputProjection = ManagedBatch.BuildOutputProjection<TOutput>(outputSchema);
+            outputFingerprint = ManagedBatch.SchemaFingerprint(outputSchema);
+        }
 
-        public ManagedBatch Map(ManagedComponentContext context, ManagedBatch input) =>
-            context.CreateBatch(input.EnumerateEntities<TInput>().Select(map));
+        public ManagedBatch Map(ManagedComponentContext context, ManagedBatch input)
+        {
+            var entities = input.HasSchemaFingerprint(inputFingerprint)
+                ? input.EnumerateEntities<TInput>(inputProjection)
+                : input.EnumerateEntities<TInput>();
+            var mapped = entities.Select(map);
+            return context.OutputSchemaMatches(outputFingerprint)
+                ? context.CreateBatch(mapped, outputProjection)
+                : context.CreateBatch(mapped);
+        }
     }
 }

@@ -1,14 +1,10 @@
-using System.Collections.Concurrent;
-using System.Data;
-using System.Runtime.ExceptionServices;
+using System.Diagnostics;
 using System.Text.Json;
-using SqlSugar;
 
 namespace UniversalData;
 
 internal sealed class SdkInvocationState : IDisposable
 {
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> connectionSeats = new(StringComparer.Ordinal);
     private readonly object sqlGate = new();
     private Execution? sql;
     private HashSet<string>? sqlSources;
@@ -30,8 +26,6 @@ internal sealed class SdkInvocationState : IDisposable
     internal SdkSourceBinding[] Sources { get; }
     internal string? DefaultSource { get; }
     internal SemaphoreSlim Branches { get; }
-    internal SemaphoreSlim ConnectionSeats(string name) => connectionSeats.GetOrAdd(name,
-        _ => new(Environment.MaxConnectionsPerSource, Environment.MaxConnectionsPerSource));
     internal string NextTransaction() => Interlocked.Increment(ref transactionSequence).ToString("D8",
         System.Globalization.CultureInfo.InvariantCulture);
 
@@ -62,7 +56,7 @@ internal sealed class SdkInvocationState : IDisposable
     internal string NativeConnection(SdkSourceBinding binding) =>
         NativeSqlConfiguration.Create(SqlNative.Dialect(binding.Definition.Kind), SourceCredential(binding));
 
-    internal SqlSessionHandle OpenSql(SdkSourceBinding binding, CancellationToken cancellation)
+    internal async ValueTask<SqlSessionHandle> OpenSqlAsync(SdkSourceBinding binding, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
         Execution execution;
@@ -73,10 +67,26 @@ internal sealed class SdkInvocationState : IDisposable
             if (!sqlSources!.Contains(binding.Definition.Name))
                 throw new UniversalDataException((int)StatusCode.DriverUnavailable, "The Native database connector is unavailable");
         }
-        var session = execution.OpenSqlSession(binding.Definition.Name);
-        if (!cancellation.IsCancellationRequested) return session;
-        session.Dispose();
-        throw new OperationCanceledException(cancellation);
+        long start = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            try
+            {
+                var session = execution.OpenSqlSession(binding.Definition.Name);
+                if (!cancellation.IsCancellationRequested) return session;
+                session.Dispose();
+                cancellation.ThrowIfCancellationRequested();
+            }
+            catch (UniversalDataException error) when (error.Code == StatusCode.Busy && Environment.ConnectionWait > TimeSpan.Zero)
+            {
+                var remaining = Environment.ConnectionWait - Stopwatch.GetElapsedTime(start);
+                if (remaining <= TimeSpan.Zero)
+                    throw new UniversalDataException((int)StatusCode.Timeout, "Native source connection wait elapsed", error.Detail);
+                await Task.Delay(remaining < TimeSpan.FromMilliseconds(25) ? remaining : TimeSpan.FromMilliseconds(25), cancellation)
+                    .ConfigureAwait(false);
+            }
+        }
     }
 
     private Execution CreateSqlExecution()
@@ -88,7 +98,7 @@ internal sealed class SdkInvocationState : IDisposable
             if (!binding.Enabled || !binding.Definition.IsDatabase) continue;
             var path = SdkNativeSources.FindPluginPath(binding.Definition.Kind);
             if (path is null) continue;
-            var connection = SdkNativeSources.Describe(binding, path);
+            var connection = SdkNativeSources.Describe(binding, path) with { MaxLeases = Environment.MaxConnectionsPerSource };
             connections.Add(connection);
             sources.Add(connection.CredentialReference, binding);
         }
@@ -114,16 +124,13 @@ internal sealed class SdkInvocationState : IDisposable
     public void Dispose()
     {
         Execution? execution;
-        SemaphoreSlim[] seats;
         lock (sqlGate)
         {
             if (disposed) return;
             disposed = true;
             execution = sql;
-            seats = connectionSeats.Values.ToArray();
         }
         execution?.Dispose();
         Branches.Dispose();
-        foreach (var seat in seats) seat.Dispose();
     }
 }
