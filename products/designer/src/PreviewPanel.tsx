@@ -111,7 +111,7 @@ export function PreviewPanel({
             : value
               ? value.result
                 ? `Native 预览失败 · 状态码 ${value.result}`
-                : "Native 真实样本 · 目标未执行"
+                : value.sampled ? "Native 真实样本 · 目标未执行" : "Native 字段结构 · 消息读取 0 条"
               : "预览会限制源读取并跳过所有目标写入")}
         </span>
         <label>

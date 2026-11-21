@@ -316,10 +316,14 @@ static ud_status plan(ud_activation *e, const ud_json *definition, physical_plan
         n->descriptor = (ud_component_descriptor){.struct_size = sizeof(n->descriptor),
                                                   .abi_version = UD_ABI_VERSION};
         UD_TRY(ud_component_lookup(e, component, &n->descriptor));
-        if (e->execution->preview_pipeline &&
-            (!(n->descriptor.capabilities & UD_COMPONENT_PREVIEW_SAFE) ||
-             (n->descriptor.effects & UD_EFFECT_EXTERNAL_WRITE)))
-            return UD_AUTH;
+        if (e->execution->preview_pipeline) {
+            uint64_t allowed = UD_COMPONENT_PREVIEW_SAFE;
+            if (e->execution->preview_schema_only)
+                allowed |= UD_COMPONENT_PREVIEW_SCHEMA;
+            if (!(n->descriptor.capabilities & allowed) ||
+                (n->descriptor.effects & UD_EFFECT_EXTERNAL_WRITE))
+                return UD_AUTH;
+        }
         if (e->parallel && !(n->descriptor.capabilities & UD_COMPONENT_THREAD_SAFE))
             return UD_UNSUPPORTED;
         if (n->descriptor.category < UD_COMPONENT_SOURCE ||
@@ -1117,9 +1121,13 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
                 !e->execution->preview_pipeline)
                 return node_failed(n, UD_SCHEMA, "late redirect requires connected output 1");
         }
-        if (e->execution->preview_pipeline &&
-            (n->binding.effects & (UD_EFFECT_EXTERNAL_WRITE | UD_EFFECT_SOURCE_ACK)))
-            return UD_AUTH;
+        if (e->execution->preview_pipeline) {
+            uint32_t forbidden = UD_EFFECT_EXTERNAL_WRITE;
+            if (!e->execution->preview_schema_only)
+                forbidden |= UD_EFFECT_SOURCE_ACK;
+            if (n->binding.effects & forbidden)
+                return UD_AUTH;
+        }
         n->binding.state_version = n->descriptor.state_version;
         for (uint32_t j = 0; j < n->descriptor.outputs; j++) {
             n->ports.outputs[j].schema = n->schemas[j];
@@ -1141,6 +1149,7 @@ static ud_status configure_plan(physical_plan *p, const ud_json *definition, emi
 }
 ud_status ud_pipeline_bind_validate(ud_activation *e, const ud_json *definition) {
     physical_plan p = {0};
+    ud_execution *execution = e->execution;
     ud_status s = plan(e, definition, &p);
     emit_target *targets = NULL;
     if (!s) {
@@ -1150,16 +1159,27 @@ ud_status ud_pipeline_bind_validate(ud_activation *e, const ud_json *definition)
     }
     if (!s)
         s = configure_plan(&p, definition, targets);
+    if (execution->preview_schema_only) {
+        for (uint32_t i = 0; !s && i < p.count; i++) {
+            node *n = p.nodes + p.order[i];
+            for (uint32_t j = 0; !s && j < n->ports.output_count; j++)
+                s = ud_debug_preview(&n->activation, n->ports.outputs + j, n->schemas[j]);
+        }
+    }
     if (!s) {
-        ud_bytes report = {.ctx = e->execution->ctx};
+        ud_bytes report = {.ctx = execution->ctx};
         s = ud_pipeline_plan_json(&p, &report, 0, UD_OK);
         if (!s) {
-            ud_mutex_lock(&e->execution->diagnostics_lock);
-            if (e->execution->bound_plans.size)
-                s = ud_bytes_put(&e->execution->bound_plans, ",", 1);
+            ud_mutex_lock(&execution->diagnostics_lock);
+            ud_bytes *plans = execution->preview_schema_only ? &execution->pipeline_reports :
+                                                              &execution->bound_plans;
+            if (plans->size)
+                s = ud_bytes_put(plans, ",", 1);
             if (!s)
-                s = ud_bytes_put(&e->execution->bound_plans, report.data, report.size);
-            ud_mutex_unlock(&e->execution->diagnostics_lock);
+                s = ud_bytes_put(plans, report.data, report.size);
+            if (!s && execution->preview_schema_only)
+                execution->pipeline_record_count++;
+            ud_mutex_unlock(&execution->diagnostics_lock);
         }
         ud_bytes_clear(&report);
     }

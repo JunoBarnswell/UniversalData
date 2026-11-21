@@ -598,6 +598,8 @@ static ud_status execute(ud_execution *e) {
     if (!s) {
         if (e->transaction_recovery_only)
             s = ud_control_execute(&e->root, ud_member(e->package->document, "controlFlow"));
+        else if (e->preview_schema_only)
+            s = ud_pipeline_bind_validate(&e->root, e->preview_pipeline);
         else
             s = e->preview_pipeline ? ud_pipeline_execute(&e->root, e->preview_pipeline)
                                     : ud_activation_run_definition(&e->root);

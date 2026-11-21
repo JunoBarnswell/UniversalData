@@ -58,6 +58,7 @@ ud_status ud_preview_build(ud_execution *e, ud_string text, ud_string selected, 
         if (!changed)
             break;
     }
+    int schema_only = 0;
     for (uint32_t i = 0; !s && i < count; i++)
         if (keep[i]) {
             const ud_json *entry = ud_json_at(nodes, i), *config = ud_member(entry, "config");
@@ -71,9 +72,11 @@ ud_status ud_preview_build(ud_execution *e, ud_string text, ud_string selected, 
                 continue;
             }
             if (!s &&
-                (!(d.capabilities & UD_COMPONENT_PREVIEW_SAFE) ||
+                (!(d.capabilities & (UD_COMPONENT_PREVIEW_SAFE | UD_COMPONENT_PREVIEW_SCHEMA)) ||
                  d.effects & UD_EFFECT_EXTERNAL_WRITE || d.category == UD_COMPONENT_DESTINATION))
                 s = UD_UNSUPPORTED;
+            if (!s && (d.capabilities & UD_COMPONENT_PREVIEW_SCHEMA))
+                schema_only = 1;
             /* CDC and cursor confirmation are never a preview. Raw SQL is excluded
              * even for a read-only session: only Native quoted table scans enter. */
             if (!s && (ud_member(config, "incremental") ||
@@ -118,6 +121,8 @@ ud_status ud_preview_build(ud_execution *e, ud_string text, ud_string selected, 
         s = ud_bytes_put(&b, "]}", sizeof("]}") - 1);
     if (!s)
         s = ud_json_parse(e->ctx, (char *)b.data, (uint32_t)b.size, out, NULL);
+    if (!s)
+        e->preview_schema_only = schema_only;
     ud_bytes_clear(&b);
     ud_json_destroy(definition);
     return s;
@@ -144,7 +149,7 @@ ud_status ud_execution_preview(ud_execution *e, ud_string pipeline, ud_string co
         ud_member(e->package->document, "extensions"))
         return UD_UNSUPPORTED;
     UD_TRY(ud_preview_build(e, pipeline, component, &e->preview_pipeline));
-    e->preview_source_rows = source_rows;
+    e->preview_source_rows = e->preview_schema_only ? 0 : source_rows;
     e->preview_authorize = e->options.authorize;
     e->preview_authorize_user = e->options.authorize_user;
     e->options.authorize = readonly_authorize;
@@ -165,8 +170,8 @@ ud_status ud_execution_preview(ud_execution *e, ud_string pipeline, ud_string co
         s = ud_execution_diagnostics(e, &diagnostics, &b);
     ud_bytes json = {.ctx = e->ctx, .limit = 16777216};
     n = snprintf(config, sizeof(config),
-                 "{\"result\":%d,\"sourceLimit\":%u,\"sampled\":true,\"snapshot\":", result,
-                 source_rows);
+                 "{\"result\":%d,\"sourceLimit\":%u,\"sampled\":%s,\"snapshot\":", result,
+                 e->preview_source_rows, e->preview_schema_only ? "false" : "true");
     if (!s)
         s = ud_bytes_put(&json, config, (size_t)n);
     if (!s)

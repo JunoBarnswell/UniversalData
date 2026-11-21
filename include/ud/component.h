@@ -102,6 +102,9 @@ typedef struct ud_component_context {
 /* Explicit opt-in: prepare/step/finish perform no external writes. Native still
  * checks the bound effect plan and denies write/receipt/execute capabilities. */
 #define UD_COMPONENT_PREVIEW_SAFE UINT64_C(0x0001000000000000)
+/* The source exposes its declared ports through binding alone. Preview must not
+ * call prepare, step, finish or confirmation on the preview graph. */
+#define UD_COMPONENT_PREVIEW_SCHEMA UINT64_C(0x0000100000000000)
 #define UD_FUNCTION_CONTEXTUAL UINT64_C(0x0002000000000000)
 #define UD_FUNCTION_PURE UINT64_C(0x2000000000000000)
 #define UD_FUNCTION_DETERMINISTIC UINT64_C(0x1000000000000000)

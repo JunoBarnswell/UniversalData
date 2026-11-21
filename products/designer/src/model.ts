@@ -28,6 +28,7 @@ export interface Component {
   outputs: number;
   dynamicPorts: boolean;
   previewSafe?: boolean;
+  previewSchema?: boolean;
   continuous?:boolean;
   streamSafe?:boolean;
   structuralControl?: boolean;
@@ -401,31 +402,6 @@ export function nativeConnector(
     (descriptor) =>
       descriptor.path === connection.driver || descriptor.id === connection.driver,
   );
-}
-export function messagePreviewBlock(flow?: DataFlow, selected?: string) {
-  if (!flow || !selected) return undefined;
-  const upstream = new Map<string, string[]>();
-  for (const path of flow.paths) {
-    const incoming = upstream.get(path.to) ?? [];
-    incoming.push(path.from);
-    upstream.set(path.to, incoming);
-  }
-  const sources = new Set(
-    flow.components.filter((node) => node.component === "mq.source").map((node) => node.id),
-  );
-  const queue = [selected];
-  const visited = new Set(queue);
-  for (const node of queue) {
-    if (sources.has(node))
-      return "此路径会订阅并读取消息。请在正式执行中确认消费与位点影响。";
-    for (const input of upstream.get(node) ?? []) {
-      if (!visited.has(input)) {
-        visited.add(input);
-        queue.push(input);
-      }
-    }
-  }
-  return undefined;
 }
 export interface FileInspection {
   schema: DataSchema;

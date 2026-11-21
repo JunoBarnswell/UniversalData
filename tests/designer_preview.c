@@ -24,10 +24,15 @@ static ud_string str(const char *s) {
     return (ud_string){s, (uint32_t)strlen(s)};
 }
 static int writes;
+static int broker_accesses;
 static ud_status authorize(void *user, ud_string tenant, ud_string resource, int32_t access) {
     (void)user;
     (void)tenant;
-    (void)resource;
+    const ud_string broker = str("preview-broker");
+    if (resource.length == broker.length && !memcmp(resource.data, broker.data, broker.length)) {
+        broker_accesses++;
+        return UD_AUTH;
+    }
     if (access == UD_ACCESS_WRITE || access == UD_ACCESS_RECEIPT || access == UD_ACCESS_EXECUTE) {
         writes++;
         return UD_AUTH;
@@ -68,7 +73,8 @@ static ud_status execution_scope(const char *path, const char *project, const ch
         package, sizeof(package),
         "{\"version\":" UD_PROTOCOL_VERSION_TEXT
         ",\"id\":\"designer-proof\"%s,\"connections\":[{\"id\":\"input\",\"driver\":\"file\","
-        "\"resource\":\"%s\"}],\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}",
+        "\"resource\":\"%s\"},{\"id\":\"messages\",\"driver\":\"kafka\",\"resource\":\"preview-broker\"}],"
+        "\"controlFlow\":{\"tasks\":[],\"constraints\":[]},\"dataFlows\":[]}",
         project, path);
     ud_execution_options options = {
         .struct_size = sizeof(options),
@@ -198,6 +204,35 @@ int main(int argc, char **argv) {
     OK(ud_execution_preview(e, str(source_only), str("source"), 4, 2, &result, &length));
     OK(ud_json_parse(ctx, result, length, &value, NULL));
     CHECK(port_rows(value, "source", 0) == 4);
+    ud_json_destroy(value);
+    ud_free(result);
+    OK(ud_execution_destroy(e));
+    OK(execution(argv[1], &e));
+    char message_pipeline[8192];
+    snprintf(message_pipeline, sizeof(message_pipeline),
+             "{\"id\":\"messages\",\"components\":[{\"id\":\"source\",\"component\":\"mq.source\","
+             "\"config\":{\"connection\":\"messages\",\"targetType\":\"topic\",\"address\":\"orders\","
+             "\"group\":\"preview\",\"format\":\"json\",\"includeMetadata\":false,\"schema\":%s}},"
+             "{\"id\":\"derive\",\"component\":\"derive\",\"config\":{\"columns\":[{\"name\":\"adjusted\","
+             "\"expression\":\"[Amount] + 1L\"}]}}],\"paths\":[{\"from\":\"source\",\"output\":0,"
+             "\"to\":\"derive\",\"input\":0}]}", schema);
+    OK(ud_execution_preview(e, str(message_pipeline), str("derive"), 10, 8, &result, &length));
+    OK(ud_json_parse(ctx, result, length, &value, NULL));
+    CHECK(integer(member(value, "result")) == UD_OK);
+    CHECK(integer(member(value, "sourceLimit")) == 0);
+    const char *sampled = NULL;
+    uint32_t sampled_length = 0;
+    OK(ud_json_text(member(value, "sampled"), &sampled, &sampled_length));
+    CHECK(sampled_length == 5 && !memcmp(sampled, "false", 5));
+    const ud_json *message_edges = member(member(value, "snapshot"), "preview");
+    const ud_json *message_output = ud_json_at(message_edges, 0);
+    const ud_json *derived_output = ud_json_at(message_edges, 2);
+    CHECK(ud_json_size(member(member(message_output, "schema"), "fields")) == 3);
+    CHECK(ud_json_size(member(member(derived_output, "schema"), "fields")) == 4);
+    CHECK(integer(member(message_output, "totalRows")) == 0);
+    CHECK(integer(member(derived_output, "totalRows")) == 0);
+    CHECK(ud_json_size(member(member(value, "diagnostics"), "pipelines")) == 1);
+    CHECK(broker_accesses == 0);
     ud_json_destroy(value);
     ud_free(result);
     OK(ud_execution_destroy(e));

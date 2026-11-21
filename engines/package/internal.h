@@ -128,6 +128,7 @@ struct ud_execution {
     int32_t transaction_recovery_decision;
     struct ud_debug *debug;
     ud_json *preview_pipeline;
+    int preview_schema_only;
     uint32_t preview_source_rows;
     ud_authorize_fn preview_authorize;
     void *preview_authorize_user;

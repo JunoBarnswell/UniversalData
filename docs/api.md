@@ -44,6 +44,8 @@ SQL 占位符使用目标驱动的语法。`BindParameters` 将作业输入绑�
 
 消息地址的读写权限按资源和地址配置，例如 `broker-resource/queue/orders` 或 `broker-resource/topic/orders`。消费组提交位点需要 `broker-resource/group/<group>` 的写权限。无消费组的队列使用队列的写权限确认消息。
 
+预览包含消息源的路径时，Native 绑定端口和字段结构，返回 `sampled: false` 与零行样本。代理连接、订阅、消费和确认均发生在正式执行阶段。
+
 ## 配置、发布与资源配额
 
 默认配置文件为 `universaldata.yaml`，也可使用 `universaldata.yml` 或通过 `--config` 指定路径。无参数 C# 客户端可以用 `DataClient.CreateBuilder(policyFile, tenant)` 显式注册数据源。

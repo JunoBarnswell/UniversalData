@@ -154,6 +154,17 @@ with tempfile.TemporaryDirectory(prefix='ud-management-security-') as directory:
         assert next(edge for edge in edges if edge['component']=='calculation')['totalRows'] == 2
         assert target.read_text() == 'untouched\n'
         assert request('reader-a','/preview','POST',preview_request)[0] == 403
+        message_package = {**draft_package, 'id': 'message-shape',
+            'connections': [dict(id='orders', driver='kafka', resource='preview-only-broker')],
+            'dataFlows': [dict(id='messages', components=[dict(id='receive', component='mq.source',
+                config=dict(connection='orders', targetType='topic', address='orders', group='preview',
+                            format='json', includeMetadata=False, schema=discovered['schema']))], paths=[])]}
+        message_request = dict(package=message_package, pipelineId='messages', componentId='receive')
+        status, preview = request('admin-a', '/preview', 'POST', message_request)
+        assert status == 200 and preview['result'] == 0 and preview['sampled'] is False, (status, preview)
+        payload = next(edge for edge in preview['snapshot']['preview'] if edge['port'] == 0)
+        assert payload['totalRows'] == 0
+        assert [field['name'] for field in payload['schema']['fields']] == ['Amount', 'Customer']
         write = dict(document=draft_package,expectedRevision='0',baseRevision='0')
         assert request('admin-a','/drafts/designer-draft','PUT',write)[0] == 200
         assert request('admin-a','/drafts/designer-draft','PUT',write)[0] == 409

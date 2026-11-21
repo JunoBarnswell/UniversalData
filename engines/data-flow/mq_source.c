@@ -489,7 +489,8 @@ ud_status ud_mq_source_register(ud_registry *registry) {
         .version = {UD_SDK_VERSION, sizeof(UD_SDK_VERSION) - 1},
         .configuration_schema = {schema, sizeof(schema) - 1}, .category = UD_COMPONENT_SOURCE,
         .outputs = 2, .optional_outputs = 2, .synchronous_input = -1, .error_output = 1,
-        .capabilities = UD_COMPONENT_REPLAY_SAFE | UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_CONTINUOUS,
+        .capabilities = UD_COMPONENT_REPLAY_SAFE | UD_COMPONENT_THREAD_SAFE | UD_COMPONENT_CONTINUOUS |
+                        UD_COMPONENT_PREVIEW_SCHEMA,
         .effects = UD_EFFECT_EXTERNAL_READ | UD_EFFECT_SOURCE_ACK,
         .configure = configure, .describe_plan = describe, .prepare = prepare, .step = step,
         .finish = finish, .dispose = dispose, .confirm_epoch = confirm,

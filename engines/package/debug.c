@@ -293,7 +293,8 @@ ud_status ud_debug_preview(ud_activation *activation, const ud_component_port *p
                 status = UD_INCOMPATIBLE;
     } else
         status = ud_batch_create(activation->execution->ctx, batch->schema->fields, batch->columns,
-                                 debug->preview_rows, &sample);
+                                 activation->execution->preview_schema_only ? 0 : debug->preview_rows,
+                                 &sample);
     debug->edges[at].sample = sample;
     for (uint32_t row = 0; !status && row < batch->rows && sample->rows < debug->preview_rows;
          row++) {

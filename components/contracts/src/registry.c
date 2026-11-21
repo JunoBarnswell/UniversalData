@@ -80,6 +80,8 @@ static ud_status descriptor_check(ud_registry *r, const ud_component_descriptor 
     int enumerator = d->category == UD_COMPONENT_ENUMERATOR;
     if ((function || task || enumerator) && (d->capabilities & UD_COMPONENT_CONTROL_EVENTS))
         return UD_SCHEMA;
+    if ((d->capabilities & UD_COMPONENT_PREVIEW_SCHEMA) && d->category != UD_COMPONENT_SOURCE)
+        return UD_SCHEMA;
     if ((function && d->cancel) || ((function || task || enumerator) && d->describe_plan))
         return UD_SCHEMA;
     if (!function &&
@@ -317,7 +319,8 @@ static ud_status describe_entry(ud_bytes *bytes, const ud_component_descriptor *
                      "\"errorOutput\":%d,\"synchronousInput\":%d,\"capabilities\":%llu,"
                      "\"optionalInputs\":%llu,\"optionalOutputs\":%llu,\"stateVersion\":%u,"
                      "\"effects\":%u,\"minimumArguments\":%u,\"maximumArguments\":%u,"
-                     "\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s,\"previewSafe\":%s,\"continuous\":%s,\"streamSafe\":%s,\"watermarkPolicy\":%s}",
+                     "\"checkpoint\":%s,\"restore\":%s,\"physicalPlan\":%s,\"previewSafe\":%s,"
+                     "\"previewSchema\":%s,\"continuous\":%s,\"streamSafe\":%s,\"watermarkPolicy\":%s}",
                      d->category, d->inputs, d->outputs, d->bind_ports ? "true" : "false",
                      d->error_output, d->synchronous_input, (unsigned long long)d->capabilities,
                      (unsigned long long)d->optional_inputs,
@@ -325,6 +328,7 @@ static ud_status describe_entry(ud_bytes *bytes, const ud_component_descriptor *
                      d->min_arguments, d->max_arguments, d->checkpoint ? "true" : "false",
                      d->restore ? "true" : "false", d->describe_plan ? "true" : "false",
                      d->capabilities & UD_COMPONENT_PREVIEW_SAFE ? "true" : "false",
+                     d->capabilities & UD_COMPONENT_PREVIEW_SCHEMA ? "true" : "false",
                      d->capabilities & UD_COMPONENT_CONTINUOUS ? "true" : "false",
                      d->capabilities & UD_COMPONENT_STREAM_SAFE ? "true" : "false",
                      d->capabilities & UD_COMPONENT_WATERMARK_POLICY ? "true" : "false");

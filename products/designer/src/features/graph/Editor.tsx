@@ -49,7 +49,6 @@ import {
   controlGraph,
   controlScopes,
   updateControl,
-  messagePreviewBlock,
   type CatalogDocument,
   type Component,
   type Configuration,
@@ -261,7 +260,9 @@ function EditorCanvas({
   );
   const item = items.find((node) => node.id === selected),
     descriptor = item && catalog.get(item.component),
-    previewBlock = messagePreviewBlock(graph, item?.id);
+    previewBlock = descriptor?.category !== 4 && descriptor?.previewSafe === false && !descriptor.previewSchema
+      ? "此 Native 组件未声明只读预览能力"
+      : undefined;
   const effectivePlan =
     preview?.text === dataText && preview.flow === flow
       ? (preview.value.diagnostics as unknown as NativePlan)
@@ -1140,7 +1141,7 @@ function EditorCanvas({
       setMessage(
         value.result
           ? `预览失败 · Native 状态 ${value.result}`
-          : "真实样本已就绪，目标未执行",
+          : value.sampled ? "真实样本已就绪，目标未执行" : "字段结构已就绪",
       );
     } catch (error) {
       setMessage(errorText(error));
@@ -1326,18 +1327,8 @@ function EditorCanvas({
             校验
           </button>
           <Button
-            disabled={
-              !item ||
-              control ||
-              previewBusy ||
-              !!previewBlock ||
-              (descriptor?.category !== 4 && descriptor?.previewSafe === false)
-            }
-            title={
-              previewBlock ?? (descriptor?.previewSafe === false && descriptor.category !== 4
-                ? "此 Native 组件未声明只读预览能力"
-                : undefined)
-            }
+            disabled={!item || control || previewBusy || !!previewBlock}
+            title={previewBlock}
             onClick={() => void readPreview()}
           >
             <Eye size={16} />
