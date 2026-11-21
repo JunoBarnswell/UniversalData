@@ -2,11 +2,11 @@
 
 <!-- Generated from metadata/product.json. -->
 
-SDK 12.0.0 / ABI 15；SDK 12.0.0 .NET 10/IoC source is on main. Exact runtime receipts are pending; the complete release remains open.。
+SDK 12.0.0 / ABI 15；SDK 12.0.0 .NET 10/IoC and Native LINQ source is on main. Linux PRODUCT installation and hosted Windows CORE installation passed. The complete release remains open.。
 
 门禁通过 0/11；Linux 与 Windows 均必验；历史 ABI 的结果不计入当前版本。
 
-已审查源码：`c5541fedeff57926b28d638a1052f0a3710ce4e6`；[对应 CI](https://github.com/JunoBarnswell/UniversalData/actions/runs/44905136912)（2026-11-21T12:46:54Z 核对）：Exact .NET 10/IoC runtime receipts are not recorded yet; release gates remain open and no release claim is made.
+已审查源码：`28e7b239126081597500b713bb3ae87e829694b2`；[对应 CI](https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574)（2026-11-21T18:35:58Z 核对）：Hosted Windows CORE NuGet installation: Pass. Dedicated PRODUCT and two-RID NuGet gates were skipped.
 
 下表的历史进展不计入当前验收。流处理/湖表能力见 [当前源码与验收](studio4-traceability.md)。
 

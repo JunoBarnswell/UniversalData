@@ -1,0 +1,578 @@
+{
+  "sourceCommit": "28e7b239126081597500b713bb3ae87e829694b2",
+  "sourceFingerprint": "df60fff57323fe5585c99adc5970b3172219d455d112d8b5b2b4822bf9c78362",
+  "checkedAtUtc": "2026-11-21T18:35:58Z",
+  "sdkVersion": "12.0.0",
+  "targetFramework": "net10.0",
+  "abiVersion": 15,
+  "packageProtocol": 15,
+  "journalRevision": 4,
+  "workerRevision": 11,
+  "linux": {
+    "build": {
+      "nativeAndHostSourceCommit": "1264c475e37d0c6ca8ff5e7d8402e447994e55bd",
+      "profile": "PRODUCT",
+      "configuration": "Release",
+      "status": "Pass",
+      "dotnetSdk": "10.0.404"
+    },
+    "targetedCtest": {
+      "compute_plan": {
+        "status": "Pass",
+        "seconds": 0.009
+      },
+      "four_engine_scheduling_operators": {
+        "status": "Pass",
+        "seconds": 0.068
+      },
+      "package_sql_integration": {
+        "status": "Pass",
+        "seconds": 0.123
+      },
+      "next_phase_pipeline_recovery": {
+        "status": "Pass",
+        "seconds": 8.872
+      },
+      "linq_range_recovery": {
+        "status": "Pass",
+        "seconds": 0.335
+      },
+      "management_sentinel_ha": {
+        "status": "Pass",
+        "seconds": 26.752
+      },
+      "worker_protocol": {
+        "status": "Pass",
+        "seconds": 1.882
+      },
+      "managed_native_epoch_process_recovery": {
+        "status": "Pass",
+        "seconds": 0.408
+      },
+      "native_window_window-post_process_recovery": {
+        "status": "Pass",
+        "seconds": 0.465
+      },
+      "native_window_window-pre_process_recovery": {
+        "status": "Pass",
+        "seconds": 0.451
+      },
+      "ssis_row_error_atomicity_recovery": {
+        "status": "Pass",
+        "seconds": 1.151
+      },
+      "sdk_fluent_sessions": {
+        "status": "Pass",
+        "seconds": 3.306
+      },
+      "sdk_fluent_shared_sessions": {
+        "status": "Pass",
+        "seconds": 2.605
+      },
+      "sdk_fluent_management_cdc": {
+        "status": "Pass",
+        "seconds": 5.225
+      },
+      "sdk_fluent_atomic": {
+        "status": "Pass",
+        "seconds": 36.666
+      },
+      "sdk_fluent_native_orm": {
+        "status": "Pass",
+        "seconds": 5.191
+      },
+      "sdk_fluent_atomic_decision": {
+        "status": "Pass",
+        "seconds": 2.708
+      },
+      "integration_postgresql_cdc": {
+        "status": "Pass",
+        "seconds": 0.192
+      }
+    },
+    "queryTable": {
+      "status": "Pass",
+      "cases": [
+        {
+          "provider": "PostgreSql",
+          "inputRows": 2,
+          "projectedColumns": [
+            "entry_alias",
+            "score_alias"
+          ],
+          "sql": "SELECT \"entry_id\" AS \"entry_alias\",\"score\" AS \"score_alias\" FROM \"udorm_ff1cda6092fc4c08aep\" WHERE (((\"shop_id\">=$1)) AND (NOT ((\"score\"<$2 AND \"score\" IS NOT NULL AND $3 IS NOT NULL)))) ORDER BY CASE WHEN \"score\" IS NULL THEN 1 ELSE 0 END,\"score\" DESC,\"shop_id\",\"entry_id\" LIMIT 2 OFFSET 0"
+        },
+        {
+          "provider": "MySql",
+          "inputRows": 2,
+          "projectedColumns": [
+            "entry_alias",
+            "score_alias"
+          ],
+          "sql": "SELECT `entry_id` AS `entry_alias`,`score` AS `score_alias` FROM `udorm_6985da43dafc40ac84p` WHERE (((`shop_id`>=?)) AND (NOT ((`score`<? AND `score` IS NOT NULL AND ? IS NOT NULL)))) ORDER BY CASE WHEN `score` IS NULL THEN 1 ELSE 0 END,`score` DESC,`shop_id`,`entry_id` LIMIT 2 OFFSET 0"
+        },
+        {
+          "provider": "MariaDb",
+          "inputRows": 2,
+          "projectedColumns": [
+            "entry_alias",
+            "score_alias"
+          ],
+          "sql": "SELECT `entry_id` AS `entry_alias`,`score` AS `score_alias` FROM `udorm_fde99602510c452292p` WHERE (((`shop_id`>=?)) AND (NOT ((`score`<? AND `score` IS NOT NULL AND ? IS NOT NULL)))) ORDER BY CASE WHEN `score` IS NULL THEN 1 ELSE 0 END,`score` DESC,`shop_id`,`entry_id` LIMIT 2 OFFSET 0"
+        },
+        {
+          "provider": "SqlServer",
+          "inputRows": 2,
+          "projectedColumns": [
+            "entry_alias",
+            "score_alias"
+          ],
+          "sql": "SELECT \"entry_id\" AS \"entry_alias\",\"score\" AS \"score_alias\" FROM \"udorm_631c30f6f3ac46de9dp\" WHERE (((\"shop_id\">=?)) AND (NOT ((\"score\"<? AND \"score\" IS NOT NULL AND ? IS NOT NULL)))) ORDER BY CASE WHEN \"score\" IS NULL THEN 1 ELSE 0 END,\"score\" DESC,\"shop_id\",\"entry_id\" OFFSET 0 ROWS FETCH NEXT 2 ROWS ONLY"
+        },
+        {
+          "provider": "Oracle",
+          "inputRows": 2,
+          "projectedColumns": [
+            "entry_alias",
+            "score_alias"
+          ],
+          "sql": "SELECT \"entry_id\" AS \"entry_alias\",\"score\" AS \"score_alias\" FROM \"UDORM_9268E6A89FF14862A5P\" WHERE (((\"shop_id\">=:p1)) AND (NOT ((\"score\"<:p2 AND \"score\" IS NOT NULL AND :p3 IS NOT NULL)))) ORDER BY CASE WHEN \"score\" IS NULL THEN 1 ELSE 0 END,\"score\" DESC,\"shop_id\",\"entry_id\" OFFSET 0 ROWS FETCH NEXT 2 ROWS ONLY"
+        },
+        {
+          "provider": "Sqlite",
+          "inputRows": 2,
+          "projectedColumns": [
+            "entry_alias",
+            "score_alias"
+          ],
+          "sql": "SELECT \"entry_id\" AS \"entry_alias\",\"score\" AS \"score_alias\" FROM \"udorm_58ac234d54a34a0788p\" WHERE (((\"shop_id\">=?)) AND (NOT ((\"score\"<? AND \"score\" IS NOT NULL AND ? IS NOT NULL)))) ORDER BY CASE WHEN \"score\" IS NULL THEN 1 ELSE 0 END,\"score\" DESC,\"shop_id\",\"entry_id\" LIMIT 2 OFFSET 0"
+        }
+      ]
+    },
+    "finiteLinqRecovery": {
+      "status": "Pass",
+      "executionId": "next-phase",
+      "rows": 325,
+      "committedBeforeInterruption": 219,
+      "spillBytes": 1067411,
+      "outputSha256": "fd1acd5e0d08d6de1d8234959086ebfc21452fc17d896173dc7bed647196404f"
+    },
+    "xaAndCdc": {
+      "status": "Pass",
+      "sqlServerCa": "The expired test certificate was renewed and verify-full remained enabled.",
+      "cdcConnection": "The Management and direct CDC tests used a PostgreSQL 17 fixture with verified TLS."
+    },
+    "ssisRowBaseline": {
+      "status": "Pass",
+      "cases": [
+        {
+          "case": "csv-clean-batch1",
+          "batchRows": 1,
+          "loadMode": "native",
+          "workers": 2,
+          "seconds": 553.0523294989835,
+          "rowsPerSecond": 90.41,
+          "businessRows": 50000,
+          "errorRows": 0,
+          "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+          "readbackSha256": "eea2afaba60dade7b08d2ff5c8ca3bf3687f602f72c346096d313f764ccd5436"
+        },
+        {
+          "case": "csv-clean-parameters",
+          "batchRows": 4096,
+          "loadMode": "parameters",
+          "workers": 4,
+          "seconds": 10.30462700399221,
+          "rowsPerSecond": 4852.19,
+          "businessRows": 50000,
+          "errorRows": 0,
+          "outputSignature": "d6b6baa7a237d6b58cf2f236b08cb08da4441eeecc597f73f9bafd48e1e36303",
+          "readbackSha256": "69afb929f9ed5d5b0c464c841775aaaf24d0bf4678ea096a6872927ff2563bf9"
+        }
+      ],
+      "scope": "Native workload and independent MySQL readback."
+    },
+    "installedNuget": {
+      "status": "Pass",
+      "configuration": "Isolated linux-x64 feed",
+      "packagedDrivers": [
+        "sqlite",
+        "postgresql",
+        "mysql",
+        "mariadb",
+        "odbc",
+        "oracle_oci",
+        "kafka",
+        "rabbitmq",
+        "rocketmq",
+        "activemq"
+      ],
+      "completeCurrentRid": "Pass",
+      "completeDetails": "A clean NuGet cache restored the recorded feed. SQL vendor clients were supplied through an isolated system linker cache.",
+      "version": "12.0.0",
+      "framework": "10.0.15",
+      "rid": "linux-x64",
+      "http": 200,
+      "sqliteRows": 35,
+      "pageRows": 2,
+      "singleton": true,
+      "isolatedCancellation": true,
+      "workerExited": true,
+      "drivers": [
+        "activemq",
+        "kafka",
+        "mariadb",
+        "mysql",
+        "odbc",
+        "oracle_oci",
+        "postgresql",
+        "rabbitmq",
+        "rocketmq",
+        "sqlite"
+      ],
+      "brokers": [
+        "activemq-artemis",
+        "activemq-classic",
+        "kafka",
+        "rabbitmq",
+        "rocketmq"
+      ],
+      "mq": {
+        "activemq-artemis": {
+          "publishedCommitted": 2,
+          "consumedCommitted": 2,
+          "consumedAcknowledged": 2
+        },
+        "activemq-classic": {
+          "publishedCommitted": 2,
+          "consumedCommitted": 2,
+          "consumedAcknowledged": 2
+        },
+        "kafka": {
+          "publishedCommitted": 2,
+          "consumedCommitted": 2,
+          "consumedAcknowledged": 2
+        },
+        "rabbitmq": {
+          "publishedCommitted": 2,
+          "consumedCommitted": 2,
+          "consumedAcknowledged": 2
+        },
+        "rocketmq": {
+          "publishedCommitted": 2,
+          "consumedCommitted": 2,
+          "consumedAcknowledged": 2
+        }
+      },
+      "dependencyLockSha256": "0d8bfeadf0f4c848b0351230de4f666a6df0130cc96d6a549d73b14f2459d2ec",
+      "archives": [
+        {
+          "name": "UniversalData.12.0.0.nupkg",
+          "bytes": 271484,
+          "sha256": "6128400021502ddba076ac84c39f657f3d0fb6a149f187fe99f6aabf6c4e88f6"
+        },
+        {
+          "name": "UniversalData.Runtime.linux-x64.12.0.0.nupkg",
+          "bytes": 143930651,
+          "sha256": "14ecf427f9f1cce05acf9f4d60e643c6599a83a18aa9b1522e27ea7491e7553d"
+        }
+      ],
+      "sourceCommit": "28e7b239126081597500b713bb3ae87e829694b2"
+    },
+    "examples": {
+      "packageSourceCommit": "1264c475e37d0c6ca8ff5e7d8402e447994e55bd",
+      "packageArchives": [
+        {
+          "name": "UniversalData.12.0.0.nupkg",
+          "bytes": 271472,
+          "sha256": "9c95f4a19110d8e1bb54ef4f8e83ce73a2fffecfc9dbc2ecb43ab95c780870df"
+        },
+        {
+          "name": "UniversalData.Runtime.linux-x64.12.0.0.nupkg",
+          "bytes": 143930614,
+          "sha256": "38fd3844834fdc15e45ab755eff4f4b50108dd06b09e1dab6785fa086e0e8e1f"
+        }
+      ],
+      "genericHost": {
+        "status": "Pass",
+        "configuration": "File path",
+        "database": "SQLite",
+        "pageRowIds": [
+          2
+        ],
+        "confirmedWriteIds": [
+          1,
+          2
+        ]
+      },
+      "aspNetCore": {
+        "result": "pass",
+        "http": 200,
+        "write": {
+          "id": 3,
+          "shopId": 7,
+          "sequence": 102,
+          "total": 21
+        },
+        "page": [
+          {
+            "id": 2,
+            "shopId": 7,
+            "sequence": 101,
+            "total": 18.75
+          },
+          {
+            "id": 1,
+            "shopId": 7,
+            "sequence": 100,
+            "total": 12.5
+          }
+        ],
+        "sqlite": [
+          [
+            1,
+            1250
+          ],
+          [
+            2,
+            1875
+          ],
+          [
+            3,
+            2100
+          ]
+        ],
+        "processExited": true
+      },
+      "sqliteTenMillion": {
+        "result": "pass",
+        "tableRows": 10000000,
+        "offset": 123456,
+        "returnedRows": 2,
+        "wallMilliseconds": 2498.1,
+        "clientTreeMaxRssKiB": 109500,
+        "sqliteIndex": "SEARCH orders USING COVERING INDEX orders_shop_sequence_id_idx (shop_id=?)"
+      },
+      "postgresqlReplication": {
+        "result": "pass",
+        "businessKey": 137737077,
+        "storage": "three distinct tmpfs-backed named volumes",
+        "pages": {
+          "orders-primary": [
+            {
+              "Id": 137737078,
+              "ShopId": 1,
+              "Sequence": 137737078,
+              "Total": 13.5
+            },
+            {
+              "Id": 137737077,
+              "ShopId": 1,
+              "Sequence": 137737077,
+              "Total": 12.5
+            }
+          ],
+          "orders-replica-1": [
+            {
+              "Id": 137737078,
+              "ShopId": 1,
+              "Sequence": 137737078,
+              "Total": 13.5
+            },
+            {
+              "Id": 137737077,
+              "ShopId": 1,
+              "Sequence": 137737077,
+              "Total": 12.5
+            }
+          ],
+          "orders-replica-2": [
+            {
+              "Id": 137737078,
+              "ShopId": 1,
+              "Sequence": 137737078,
+              "Total": 13.5
+            },
+            {
+              "Id": 137737077,
+              "ShopId": 1,
+              "Sequence": 137737077,
+              "Total": 12.5
+            }
+          ]
+        },
+        "replayObservations": [
+          "primary_recovery=f",
+          "replica_1_recovery=t",
+          "replica_2_recovery=t",
+          "first_commit_wal=0/50001E8",
+          "second_commit_wal=0/50002E8",
+          "streaming_standbys=2",
+          "standby_writes=replica-1-and-replica-2-rejected"
+        ]
+      },
+      "workerCluster": {
+        "verify": {
+          "maximumConcurrentEffects": 3,
+          "phase": "verify",
+          "remoteAgents": [
+            "worker-1",
+            "worker-2",
+            "worker-3"
+          ],
+          "result": "PASS",
+          "runs": [
+            {
+              "executionId": "8bdd9705-687c-4ab4-afa7-77c64fd67cc8",
+              "processId": 1542298,
+              "workerNode": "worker-1"
+            },
+            {
+              "executionId": "358134cb-859f-4b3b-a4a4-ad50a8d339e9",
+              "processId": 1542299,
+              "workerNode": "worker-2"
+            },
+            {
+              "executionId": "5658df8d-d0a4-4a9c-885d-a184d09cd80c",
+              "processId": 1542313,
+              "workerNode": "worker-3"
+            }
+          ]
+        },
+        "failover": {
+          "activeManagerKilledPid": 1542137,
+          "automaticReplay": false,
+          "effectAttempts": 6,
+          "phase": "failover",
+          "reconnectedAgents": [
+            "worker-1",
+            "worker-2",
+            "worker-3"
+          ],
+          "recoveryRequired": 0,
+          "result": "PASS",
+          "runs": [
+            {
+              "executionId": "78c4f0a2-a3f7-4a18-b390-11ab57bc8e09",
+              "processId": 1542731,
+              "state": "Succeeded",
+              "workerNode": "worker-1"
+            },
+            {
+              "executionId": "f68836f9-260b-408c-9d62-7b4f50936543",
+              "processId": 1542770,
+              "state": "Succeeded",
+              "workerNode": "worker-2"
+            },
+            {
+              "executionId": "e63dd6ea-318e-4de9-87e4-e16f66b7b8dc",
+              "processId": 1542832,
+              "state": "Succeeded",
+              "workerNode": "worker-3"
+            }
+          ],
+          "sameRunPidNode": true,
+          "sessionContinuity": true
+        }
+      }
+    }
+  },
+  "hostedCi": {
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574",
+    "conclusion": "failure",
+    "jobs": {
+      "native-core (ubuntu-24.04, linux, x64-linux-dynamic)": {
+        "status": "success",
+        "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574/job/136938519717",
+        "steps": {
+          "Native, JNI and .NET 10 product hosts": "success",
+          "Install the .NET 10 SDK and SQLite runtime from an empty cache": "skipped",
+          "Real Designer, Worker and Native browser recovery": "success"
+        }
+      },
+      "native-core (windows-2025, windows, x64-windows)": {
+        "status": "success",
+        "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574/job/136938519903",
+        "steps": {
+          "Native, JNI and .NET 10 product hosts": "success",
+          "Install the .NET 10 SDK and SQLite runtime from an empty cache": "success",
+          "Real Designer, Worker and Native browser recovery": "skipped"
+        }
+      },
+      "source-and-designer": {
+        "status": "success",
+        "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574/job/136938519975",
+        "steps": {}
+      },
+      "complete-drivers-and-delivery": {
+        "status": "skipped",
+        "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574/job/136938521341",
+        "steps": {}
+      },
+      "installed-nuget": {
+        "status": "skipped",
+        "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574/job/136938521557",
+        "steps": {}
+      },
+      "release-readiness": {
+        "status": "failure",
+        "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574/job/136943123541",
+        "steps": {
+          "Require actual execution of every product gate": "failure"
+        }
+      },
+      "approve-nuget": {
+        "status": "skipped",
+        "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574/job/136943124355",
+        "steps": {}
+      }
+    },
+    "windowsCtest": {
+      "tests": 91,
+      "failures": 0,
+      "skipped": 0
+    },
+    "windowsCoreArtifact": {
+      "id": 14719886878,
+      "sha256": "ca8a1836a0feaba7624372ddb49cd2b588d2bd74a223004830536045e870a0b6"
+    },
+    "windowsInstalledCore": {
+      "status": "Pass",
+      "receipt": {
+        "version": "12.0.0",
+        "framework": "10.0.15",
+        "rid": "win-x64",
+        "http": 200,
+        "sqliteRows": 35,
+        "pageRows": 2,
+        "singleton": true,
+        "isolatedCancellation": true,
+        "workerExited": true,
+        "drivers": [
+          "sqlite"
+        ],
+        "brokers": [],
+        "mq": {},
+        "dependencyLockSha256": "5aaa02b01d05bfb35f6eb611f64d0fa62a50a7a4ae446ea97ae82bfca1c12525",
+        "archives": [
+          {
+            "name": "UniversalData.12.0.0.nupkg",
+            "bytes": 271477,
+            "sha256": "2d7620a363d00e5676b7bb5e65a60b08e346a39ce38f86e92d83d715ae01f95e"
+          },
+          {
+            "name": "UniversalData.Runtime.win-x64.12.0.0.nupkg",
+            "bytes": 89053348,
+            "sha256": "906c99ed61ccbbaa6e41b709addc808fea2a5294732bff6a59f5b706e10ed255"
+          }
+        ],
+        "sourceCommit": "28e7b239126081597500b713bb3ae87e829694b2"
+      }
+    }
+  },
+  "remaining": {
+    "windowsProduct": "Blocked. The Windows PRODUCT acceptance runner and external fixtures were unavailable.",
+    "crossPlatformProductInstall": "Blocked. The complete Windows runtime package was unavailable.",
+    "windowsSsisGolden": "Blocked. Independent Microsoft SSIS Golden output was unavailable."
+  }
+}

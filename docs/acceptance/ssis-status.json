@@ -16,34 +16,42 @@
   },
   "candidate": {
     "branch": "main",
-    "state": "SDK 12.0.0 .NET 10/IoC source is on main. Exact runtime receipts are pending; the complete release remains open.",
-    "sourceCommit": "c5541fedeff57926b28d638a1052f0a3710ce4e6",
-    "sourceFingerprint": null,
+    "state": "SDK 12.0.0 .NET 10/IoC and Native LINQ source is on main. Linux PRODUCT installation and hosted Windows CORE installation passed. The complete release remains open.",
+    "sourceCommit": "28e7b239126081597500b713bb3ae87e829694b2",
+    "sourceFingerprint": "df60fff57323fe5585c99adc5970b3172219d455d112d8b5b2b4822bf9c78362",
     "mergeEvidence": null,
     "pullRequest": null,
-    "sourceReviewScope": "C# DataJob and the .NET 10 SDK use one Native Package/Binder. IoC registration, package metadata and release projections are updated; exact runtime receipts remain pending."
+    "sourceReviewScope": "The SDK emits one Native Package. IoC, database paging, finite-flow recovery, hosting and cluster proofs are recorded in docs/acceptance/evidence/v12-dotnet10.json."
   },
   "remoteCI": {
     "state": "Observed",
-    "sourceCommit": "c5541fedeff57926b28d638a1052f0a3710ce4e6",
-    "sourceFingerprint": null,
-    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44905136912",
-    "status": "pending",
-    "conclusion": null,
-    "steps": null,
-    "annotations": [],
-    "reason": "Exact .NET 10/IoC runtime receipts are not recorded yet; release gates remain open and no release claim is made.",
-    "previousRun": {
-      "sourceCommit": "42563c174833f04f013b90733b32f3a753d1bfbb",
-      "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44889441823",
-      "conclusion": "failure",
-      "reason": "Previous source run: Windows 89/90 (SQLite fixture cleanup lock); Ubuntu 88/91 (remote dispatch assertion, Avro/OpenSSL load, autoscale convergence). Historical relative to the audited source."
+    "sourceCommit": "28e7b239126081597500b713bb3ae87e829694b2",
+    "sourceFingerprint": "df60fff57323fe5585c99adc5970b3172219d455d112d8b5b2b4822bf9c78362",
+    "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44934648574",
+    "status": "completed",
+    "conclusion": "failure",
+    "steps": {
+      "native-core (ubuntu-24.04, linux, x64-linux-dynamic)": "success",
+      "native-core (windows-2025, windows, x64-windows)": "success",
+      "source-and-designer": "success",
+      "complete-drivers-and-delivery": "skipped",
+      "installed-nuget": "skipped",
+      "release-readiness": "failure",
+      "approve-nuget": "skipped"
     },
-    "checkedAtUtc": "2026-11-21T12:46:54Z"
+    "annotations": [],
+    "reason": "Hosted Windows CORE NuGet installation: Pass. Dedicated PRODUCT and two-RID NuGet gates were skipped.",
+    "previousRun": {
+      "sourceCommit": "ceb2d9fb5be571ba07934923f2c1a7e538d8505c",
+      "url": "https://github.com/JunoBarnswell/UniversalData/actions/runs/44932789665",
+      "conclusion": "failure",
+      "reason": "Hosted Windows .NET 10 restored and built the SDK consumer. SQLite readback pooling held the temporary database open during cleanup."
+    },
+    "checkedAtUtc": "2026-11-21T18:35:58Z"
   },
   "artifacts": null,
   "currentStreaming": {
-    "sourceCommit": "c5541fedeff57926b28d638a1052f0a3710ce4e6",
+    "sourceCommit": "28e7b239126081597500b713bb3ae87e829694b2",
     "verificationRule": "The SDK 12 .NET 10/IoC implementation remains pending exact runtime receipts; missing environments are Blocked.",
     "items": [
       {
