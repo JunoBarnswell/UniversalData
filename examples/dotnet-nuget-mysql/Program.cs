@@ -34,7 +34,7 @@ try
     Console.WriteLine($"MariaDB {health.Version} returned {health.Ping}.");
     return 0;
 }
-catch (Exception error) when (error is DataBusinessException or UniversalDataException or InvalidOperationException)
+catch (Exception error) when (error is UniversalDataException or InvalidOperationException)
 {
     Console.Error.WriteLine(error.Message);
     return 1;
