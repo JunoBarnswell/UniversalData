@@ -253,7 +253,8 @@ public sealed class WorkerSupervisor : IAsyncDisposable
             slot.Process = process;
             stderr = WorkerProtocol.Discard(process.StandardError, CancellationToken.None);
             int pid = await WorkerLauncher.WaitReady(process, startup.Token);
-            slot.Reservation?.Bind(pid);
+            if (slot.Reservation is { } reservation)
+                await nodeResources!.BindAsync(reservation, pid, startup.Token);
             lock (gate)
             {
                 slot.ProcessId = pid;

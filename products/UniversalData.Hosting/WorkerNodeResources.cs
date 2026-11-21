@@ -68,6 +68,20 @@ internal sealed class WorkerNodeResources
         return new WorkerNodeResourceLease(path, record);
     }
 
+    internal async Task BindAsync(WorkerNodeResourceLease reservation, int pid, CancellationToken cancellation)
+    {
+        using var cadence = new PeriodicTimer(TimeSpan.FromMilliseconds(10));
+        do
+        {
+            cancellation.ThrowIfCancellationRequested();
+            using var admission = TryLock();
+            if (admission is null) continue;
+            // Windows cannot replace the reservation while ReadAvailable has it open.
+            reservation.Bind(pid);
+            return;
+        } while (await cadence.WaitForNextTickAsync(cancellation));
+    }
+
     private FileStream? TryLock()
     {
         HostFiles.NoLinks(gate);

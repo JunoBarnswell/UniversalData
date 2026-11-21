@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +43,17 @@ def pack(spec, output, base):
     subprocess.run(["dotnet", "pack", str(SDK), "--no-build", "--no-restore", "-c", "Release",
                     "-o", str(output), f"-p:NuspecFile={spec}", f"-p:NuspecBasePath={base}"],
                    cwd=ROOT, check=True)
+
+
+def package_tree(source, root, target_root):
+    """Map each input file explicitly so NuGet keeps the intended relative path."""
+    files = []
+    for path in sorted(source.rglob("*")):
+        if path.is_file():
+            folder = path.relative_to(source).parent
+            target = "/".join((target_root, *folder.parts))
+            files.append((path.relative_to(root).as_posix(), target))
+    return files
 
 
 def assemble(args):
@@ -102,11 +114,14 @@ def assemble(args):
 </Project>
 """, encoding="utf-8")
         spec = root / "runtime.nuspec"
-        files = [("worker/**/*", f"runtimes/{args.rid}/worker"),
-                 ("native/*", f"runtimes/{args.rid}/native"), (targets.name, "buildTransitive")]
+        runtime_root = f"runtimes/{args.rid}"
+        files = package_tree(worker, root, f"{runtime_root}/worker")
+        files.extend(package_tree(native, root, f"{runtime_root}/native"))
+        files.append((targets.name, "buildTransitive"))
         if args.licenses:
-            shutil.copytree(args.licenses, root / "licenses")
-            files.append(("licenses/**/*", "licenses"))
+            licenses = root / "licenses"
+            shutil.copytree(args.licenses, licenses)
+            files.extend(package_tree(licenses, root, "licenses"))
         elif args.complete:
             raise ValueError("Complete runtime packages require native dependency notices")
         nuspec(spec, identity, version, "Self-contained UniversalData Worker and native runtime", files)
@@ -135,6 +150,13 @@ def assemble(args):
             subprocess.run(["dotnet", "pack", str(SDK), "-c", "Release", "--no-build", "--no-restore",
                             "-p:IncludeUniversalDataRuntimeDependencies=true", "-o", str(args.output)], cwd=ROOT, check=True)
     archives = [args.output / f"{name}.{version}.nupkg" for name in ("UniversalData", identity)]
+    worker_executable = "ud_worker.exe" if args.rid == "win-x64" else "ud_worker"
+    required_entries = {f"{runtime_root}/worker/{worker_executable}", f"{runtime_root}/native/{library}"}
+    required_entries.update(f"{runtime_root}/native/ud_connector_{driver}{extension}" for driver in enabled)
+    with zipfile.ZipFile(archives[1]) as runtime:
+        missing = required_entries.difference(runtime.namelist())
+        if missing:
+            raise RuntimeError(f"The {args.rid} runtime package is missing: {', '.join(sorted(missing))}")
     manifest = {"version": version, "rid": args.rid, "drivers": enabled,
                 "packages": [{"name": path.name, "bytes": path.stat().st_size,
                               "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in archives]}

@@ -1,6 +1,7 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #else
+#include <errno.h>
 #include <poll.h>
 #endif
 #include "postgresql_metadata.h"
@@ -25,6 +26,7 @@ typedef struct {
     void *control_user;
     ud_status (*check)(void *);
     ud_status control_status;
+    int socket_error;
     int transaction, cleaning, broken;
     int prepared_enabled;
     char branch_id[65];
@@ -41,6 +43,14 @@ static ud_status control(postgres_state *p) {
     }
     return atomic_load(&p->cancelled) || p->host.cancelled(p->host.context) ? UD_CANCELLED : UD_OK;
 }
+static int socket_error_code(void) {
+#ifdef _WIN32
+    return WSAGetLastError();
+#else
+    return errno;
+#endif
+}
+
 static void set_control(void *state, void *user, ud_status (*check)(void *)) {
     postgres_state *p = state;
     p->control_user = user;
@@ -93,7 +103,12 @@ static int wait_result(postgres_state *p) {
         struct pollfd fd = {socket, (short)(POLLIN | (flushing ? POLLOUT : 0)), 0};
         int ready = poll(&fd, 1, 25);
 #endif
-        if (ready < 0 || (ready && !PQconsumeInput(p->db))) {
+        if (ready < 0) {
+            p->socket_error = socket_error_code();
+            p->broken = 1;
+            return 0;
+        }
+        if (ready && !PQconsumeInput(p->db)) {
             p->broken = 1;
             return 0;
         }
@@ -159,6 +174,7 @@ static PGresult *query(postgres_state *p, const char *sql, int n, const Oid *typ
     p->control_status = control(p);
     if (p->control_status || p->broken)
         return NULL;
+    p->socket_error = 0;
     if (!PQsendQueryParams(p->db, sql, n, types, values, lengths, formats, result_format))
         return NULL;
     if (!wait_result(p))
@@ -211,7 +227,7 @@ static ud_status pg_failure(postgres_state *p, const PGresult *result) {
             status = UD_CANCELLED;
     }
     /* Database diagnostics can echo literal data / credentials; expose classification only. */
-    return plugin_db_error(&p->host, status, 0, code, "PostgreSQL operation failed");
+    return plugin_db_error(&p->host, status, p->socket_error, code, "PostgreSQL operation failed");
 }
 static ud_status record_diagnostic(void *state, ud_string *out) {
     postgres_state *p = state;
@@ -267,6 +283,7 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
     p->db = PQconnectStartParams(keys, values, 1);
     host->deallocate(copy);
     ud_status s = !p->db ? UD_RESOURCE : UD_OK;
+    const char *connect_failure = NULL;
     PostgresPollingStatusType progress = PGRES_POLLING_WRITING;
     while (!s && progress != PGRES_POLLING_OK) {
         s = control(p);
@@ -275,6 +292,7 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
         int socket = PQsocket(p->db);
         if (socket < 0) {
             s = UD_IO;
+            connect_failure = "PostgreSQL connect socket is unavailable";
             break;
         }
 #ifdef _WIN32
@@ -289,16 +307,22 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
         int ready = poll(&fd, 1, 25);
 #endif
         if (ready < 0) {
+            p->socket_error = socket_error_code();
             s = UD_IO;
+            connect_failure = "PostgreSQL connect socket wait failed";
             break;
         }
         if (ready)
             progress = PQconnectPoll(p->db);
-        if (progress == PGRES_POLLING_FAILED)
+        if (progress == PGRES_POLLING_FAILED) {
             s = UD_IO;
+            connect_failure = "PostgreSQL connect handshake failed";
+        }
     }
-    if (!s && PQsetnonblocking(p->db, 1))
+    if (!s && PQsetnonblocking(p->db, 1)) {
         s = UD_IO;
+        connect_failure = "PostgreSQL could not enable nonblocking I/O";
+    }
     if (!s && PQsetClientEncoding(p->db, "UTF8"))
         s = UD_SCHEMA;
     if (!s)
@@ -323,6 +347,8 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
             s = UD_RESOURCE;
     }
     if (s) {
+        if (connect_failure)
+            plugin_db_error(host, s, p->socket_error, NULL, connect_failure);
         if (p->db)
             PQfinish(p->db);
         if (p->cancel)
@@ -330,8 +356,7 @@ static ud_status initialize(const ud_host_api *host, const char *config, uint32_
         host->deallocate(p->configuration);
         ud_mutex_destroy(&p->ownership);
         host->deallocate(p);
-        return host->report(host->context, s,
-                            "PostgreSQL initialization failed; connection string is redacted");
+        return s;
     }
     *out = p;
     return UD_OK;

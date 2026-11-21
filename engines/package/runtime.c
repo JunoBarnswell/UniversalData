@@ -16,7 +16,8 @@ void ud_execution_capture_error(ud_execution *execution, ud_status result) {
     if (!execution || result <= UD_END || result > UD_STATUS_LAST || result == UD_MORE || result == UD_BUSY)
         return;
     ud_error_detail detail = {.struct_size = sizeof(detail), .abi_version = UD_ABI_VERSION};
-    if (ud_error_details(execution->ctx, &detail) || detail.source == UD_ERROR_NATIVE ||
+    if (ud_error_details(execution->ctx, &detail) ||
+        (detail.source == UD_ERROR_NATIVE && !detail.native_code) ||
         (detail.cause != result && result != UD_COMMIT_UNKNOWN))
         return;
     ud_mutex_lock(&execution->diagnostics_lock);
