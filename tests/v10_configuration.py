@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -180,7 +181,7 @@ def result_metrics(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
 
 
 def read_output(database: pathlib.Path) -> list[tuple[int, int]]:
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         return connection.execute("SELECT id, value FROM output ORDER BY id").fetchall()
 
 
@@ -233,7 +234,7 @@ def main() -> None:
             database = resources / "orders.db"
             credential = root / "orders.credential"
             credential.write_text(str(database), encoding="utf-8")
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 connection.execute("CREATE TABLE input(id INTEGER PRIMARY KEY, value INTEGER NOT NULL)")
                 connection.execute("CREATE TABLE output(id INTEGER PRIMARY KEY, value INTEGER NOT NULL)")
                 connection.executemany("INSERT INTO input VALUES(?, ?)", [(1, 10), (2, 20)])
