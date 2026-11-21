@@ -1,0 +1,40 @@
+{
+  "messages": 900000,
+  "workerCount": 3,
+  "businessDelayMs": 5000,
+  "maxInFlightPerWorker": 16384,
+  "enqueueSeconds": 50.29699453499052,
+  "drainSeconds": 167.76134,
+  "endToEndSeconds": 218.9326598589978,
+  "drainMessagesPerSecond": 5364.764015356578,
+  "queueDepthAfter": 0,
+  "workers": [
+    {
+      "Pid": 1420480,
+      "CommittedRows": 299686,
+      "AcknowledgedRows": 299686,
+      "PeakWorkingSet64": 134090752,
+      "PeakInFlight": 16384,
+      "MinimumDelayMs": 5000,
+      "IndependentlyVerified": 299686
+    },
+    {
+      "Pid": 1420507,
+      "CommittedRows": 300064,
+      "AcknowledgedRows": 300064,
+      "PeakWorkingSet64": 136298496,
+      "PeakInFlight": 16384,
+      "MinimumDelayMs": 5000,
+      "IndependentlyVerified": 300064
+    },
+    {
+      "Pid": 1420492,
+      "CommittedRows": 300250,
+      "AcknowledgedRows": 300250,
+      "PeakWorkingSet64": 136290304,
+      "PeakInFlight": 16384,
+      "MinimumDelayMs": 5000,
+      "IndependentlyVerified": 300250
+    }
+  ]
+}

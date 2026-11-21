@@ -11,6 +11,8 @@ public static class WorkerProtocol
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     internal const int MaximumControlBytes = 64 * 1024 * 1024;
     internal const int MaximumBatchBytes = 64 * 1024 * 1024;
+    private const int HeaderBytes = 8;
+    private const int InlineControlBytes = 64 * 1024;
 
     internal static async Task<int> ReadProcessIdAsync(TextReader output, CancellationToken cancellation)
     {
@@ -33,11 +35,13 @@ public static class WorkerProtocol
         int batchLength = batch?.Length ?? 0;
         if (payload.Length > MaximumControlBytes || batchLength > MaximumBatchBytes)
             throw new InvalidDataException("Worker message exceeds its configured bound");
-        var length = new byte[8];
-        BinaryPrimitives.WriteInt32LittleEndian(length, payload.Length);
-        BinaryPrimitives.WriteInt32LittleEndian(length.AsSpan(4), batchLength);
-        await output.WriteAsync(length, cancellation).ConfigureAwait(false);
-        await output.WriteAsync(payload, cancellation).ConfigureAwait(false);
+        bool inline = payload.Length <= InlineControlBytes;
+        using var frame = new WorkerBatchBuffer(HeaderBytes + (inline ? payload.Length : 0));
+        BinaryPrimitives.WriteInt32LittleEndian(frame.Memory.Span, payload.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(frame.Memory.Span[4..], batchLength);
+        if (inline) payload.AsSpan().CopyTo(frame.Memory.Span[HeaderBytes..]);
+        await output.WriteAsync(frame.Memory, cancellation).ConfigureAwait(false);
+        if (!inline) await output.WriteAsync(payload, cancellation).ConfigureAwait(false);
         if (batchLength != 0)
             await output.WriteAsync(batch!.Memory, cancellation).ConfigureAwait(false);
         await output.FlushAsync(cancellation).ConfigureAwait(false);
@@ -46,15 +50,15 @@ public static class WorkerProtocol
     internal static async ValueTask<(T Message, WorkerBatchBuffer? Batch)> ReadAsync<T>(Stream input,
         CancellationToken cancellation = default) where T : class
     {
-        var length = new byte[8];
+        var length = new byte[HeaderBytes];
         await input.ReadExactlyAsync(length, cancellation).ConfigureAwait(false);
         int controlLength = BinaryPrimitives.ReadInt32LittleEndian(length);
         int batchLength = BinaryPrimitives.ReadInt32LittleEndian(length.AsSpan(4));
         if (controlLength is <= 0 or > MaximumControlBytes || batchLength is < 0 or > MaximumBatchBytes)
             throw new InvalidDataException("Invalid Worker message length");
-        byte[] payload = GC.AllocateUninitializedArray<byte>(controlLength);
-        await input.ReadExactlyAsync(payload, cancellation).ConfigureAwait(false);
-        T control = JsonSerializer.Deserialize<T>(payload, Json)
+        using var payload = new WorkerBatchBuffer(controlLength);
+        await input.ReadExactlyAsync(payload.Memory, cancellation).ConfigureAwait(false);
+        T control = JsonSerializer.Deserialize<T>(payload.Memory.Span, Json)
             ?? throw new InvalidDataException("Missing Worker message");
         if (batchLength == 0)
             return (control, null);

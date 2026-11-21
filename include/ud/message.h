@@ -1,5 +1,8 @@
 #ifndef UD_MESSAGE_H
 #define UD_MESSAGE_H
+
+/* Native policy ceiling. A connector may impose a lower protocol limit. */
+#define UD_MESSAGE_PREFETCH_MAX 65535
 #include "data.h"
 #ifdef __cplusplus
 extern "C" {

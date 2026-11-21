@@ -3,6 +3,9 @@
 #include "pipeline_frontier.h"
 #include "../package/kafka_checkpoint.h"
 
+#define MQ_STRING(value) #value
+#define MQ_EXPAND_STRING(value) MQ_STRING(value)
+
 typedef struct mq_source {
     ud_component_context context;
     const ud_batch *schema;
@@ -476,7 +479,8 @@ ud_status ud_mq_source_register(ud_registry *registry) {
         "\"group\":{\"type\":\"string\"},\"subscription\":{\"type\":\"string\"},"
         "\"filter\":{\"type\":\"string\"},\"fromStage\":{\"type\":\"string\",\"minLength\":1},"
         "\"initialPosition\":{\"enum\":[\"require\",\"earliest\",\"latest\"],"
-        "\"default\":\"require\"},\"prefetch\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":256,\"default\":32},"
+        "\"default\":\"require\"},\"prefetch\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":"
+        MQ_EXPAND_STRING(UD_MESSAGE_PREFETCH_MAX) ",\"default\":32},"
         "\"maxInFlightBytes\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":67108864,\"default\":4194304},"
         "\"endOffsets\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":65536,\"items\":{\"type\":\"object\","
         "\"required\":[\"partition\",\"nextOffset\"],\"additionalProperties\":false,\"properties\":{\"partition\":{"

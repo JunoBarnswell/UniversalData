@@ -1,4 +1,5 @@
 #include "internal.h"
+#include "ud/message.h"
 #include "../../connectors/http_internal.h"
 #include <math.h>
 const ud_json *ud_member(const ud_json *v, const char *s) {
@@ -208,7 +209,7 @@ ud_status ud_package_check(const ud_package *p) {
         if (execution) {
             static const char *keys[] = {"batchRows", "edgeCapacity", "memoryBytes",
                 "timeoutMilliseconds", "maxConnectionsPerSource", "messagePrefetch"};
-            static const uint64_t maxima[] = {65536, 65536, UINT64_MAX, UINT32_MAX, 64, 256};
+            static const uint64_t maxima[] = {65536, 65536, UINT64_MAX, UINT32_MAX, 64, UD_MESSAGE_PREFETCH_MAX};
             UD_TRY(ud_json_keys(execution, keys, 6));
             for (uint32_t i = 0; i < 6; i++) {
                 const ud_json *entry = ud_member(execution, keys[i]);

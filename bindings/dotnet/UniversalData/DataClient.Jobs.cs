@@ -53,7 +53,8 @@ public sealed partial class DataClient
         CancellationToken cancellationToken = default) =>
         RunJobAsync(package, parameters, Sources.Snapshot(), cancellationToken);
 
-    private async Task<DataJobResult> RunJobAsync(Package package, string parameters, SdkSourceBinding[] sources,
+    private async Task<DataJobResult> RunJobAsync(Package package, string parameters,
+        IReadOnlyDictionary<string, SdkSourceBinding> sources,
         CancellationToken cancellation)
     {
         await using var run = await StartJobAsync(package, parameters, sources, false, cancellation).ConfigureAwait(false);
@@ -81,14 +82,15 @@ public sealed partial class DataClient
         return StartJobAsync(package, Parameters(job, input), sources, readResults, cancellation, execution);
     }
 
-    private Package CompileJob(DataJob job, SdkSourceBinding[] sources, bool publish)
+    private Package CompileJob(DataJob job, IReadOnlyDictionary<string, SdkSourceBinding> sources, bool publish)
     {
         if (Configuration?.HasJob(job.Id) == true)
             throw new InvalidDataException($"Job '{job.Id}' is declared in both YAML and C#.");
         return job.Graph.Compile(sources, publish, Configuration?.ExecutionOptions(job.Id));
     }
 
-    private Task<EtlRun> StartJobAsync(Package package, string parameters, SdkSourceBinding[] inventory,
+    private Task<EtlRun> StartJobAsync(Package package, string parameters,
+        IReadOnlyDictionary<string, SdkSourceBinding> inventory,
         bool readResults, CancellationToken cancellation, DataRunReference? execution = null)
     {
         ArgumentNullException.ThrowIfNull(package);
@@ -113,27 +115,29 @@ public sealed partial class DataClient
         return JsonSerializer.Serialize(configured, WorkerProtocol.Json);
     }
 
-    private static SdkSourceBinding[] BindJobSources(JsonElement definition, SdkSourceBinding[] inventory)
+    private static SdkSourceBinding[] BindJobSources(JsonElement definition,
+        IReadOnlyDictionary<string, SdkSourceBinding> inventory)
     {
-        var byName = inventory.ToDictionary(source => source.Definition.Name, StringComparer.Ordinal);
-        var sources = new List<SdkSourceBinding>();
         if (!definition.TryGetProperty("connections", out var connections)) return [];
+        var sources = new SdkSourceBinding[connections.GetArrayLength()];
+        int count = 0;
         foreach (var connection in connections.EnumerateArray())
         {
             string name = connection.GetProperty("id").GetString()!;
             string? credential = connection.TryGetProperty("credentialReference", out var reference) &&
                 reference.ValueKind == JsonValueKind.String ? reference.GetString() : null;
             bool sdkCredential = credential?.StartsWith("sdk-source/", StringComparison.Ordinal) == true;
-            if (!sdkCredential && (!byName.TryGetValue(name, out var http) ||
-                http.Definition.Kind != DataSourceKind.Http))
+            inventory.TryGetValue(name, out var registered);
+            if (!sdkCredential && registered?.Definition.Kind != DataSourceKind.Http)
                 continue;
-            if (!byName.TryGetValue(name, out var registered) || !registered.Enabled ||
+            if (registered is null || !registered.Enabled ||
                 (sdkCredential && SdkNativeSources.CredentialReference(registered) != credential) ||
                 !connection.TryGetProperty("resource", out var resource) ||
                 resource.ValueKind != JsonValueKind.String || resource.GetString() != registered.Definition.Resource)
                 throw new UniversalDataException((int)StatusCode.Auth, $"Job resource '{name}' changed before execution");
-            sources.Add(registered);
+            sources[count++] = registered;
         }
-        return sources.ToArray();
+        if (count != sources.Length) Array.Resize(ref sources, count);
+        return sources;
     }
 }

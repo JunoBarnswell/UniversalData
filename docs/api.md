@@ -78,7 +78,7 @@ ud_cli publish orders.sync --config erp.yaml --run --request-id orders-2026-11-2
 
 参数依次覆盖作业默认值、参数文件、环境变量、显式命令行参数和本次 C# 输入。环境变量可用 `UD_PARAMETERS_ORDERSSYNC` 提供 JSON 对象，命令行可用 `--set FromId=1000`。发布使用宿主凭据引用。已认证客户端通过 `POST /api/publications` 冻结 Package、预期修订、环境修订、调度、参数和可选首跑。可用 `PUT /api/environments/{id}/versions` 保存该作业的环境参数修订。重试时复用请求号。用管理端的执行编号调用 CLI `status`、`stop`、`cancel` 和 `resume`。
 
-作业可通过 `JobExecutionOptions` 或 YAML 的 `execution` 配置 `batchRows`、`edgeCapacity`、`parallelism`、`memoryBytes`、`timeoutMilliseconds`、`maxConnectionsPerSource` 和 `messagePrefetch`。Native 运行进度报告实际选项、批次数和队列高水位。宿主策略决定授权和资源上限。`ConfigureWorkers` 管理本地会话配额，`MaxSessionsPerWorker` 控制同一 Worker 进程可并发承载几个单槽作业。
+作业可通过 `JobExecutionOptions` 或 YAML 的 `execution` 配置 `batchRows`、`edgeCapacity`、`parallelism`、`memoryBytes`、`timeoutMilliseconds`、`maxConnectionsPerSource` 和 `messagePrefetch`。RabbitMQ 支持最多 65,535 条预取，实际在途消息同时受批次行数和在途字节约束。其他驱动执行各自的协议上限。Native 运行进度报告实际选项、批次数、已提交和已确认的行数，以及队列高水位。宿主策略决定授权和资源上限。`ConfigureWorkers` 管理本地会话配额，`MaxSessionsPerWorker` 控制同一 Worker 进程可并发承载几个单槽作业。
 
 ## 批量增量、CDC 与 Iceberg
 

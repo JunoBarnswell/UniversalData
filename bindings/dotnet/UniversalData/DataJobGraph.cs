@@ -136,14 +136,14 @@ internal sealed class DataJobGraph(string id, Type argument)
         lock (compilation) local = published = null;
     }
 
-    internal Package Compile(SdkSourceBinding[] inventory, bool publish,
+    internal Package Compile(IReadOnlyDictionary<string, SdkSourceBinding> inventory, bool publish,
         JobExecutionOptions? configured = null)
     {
         var limits = Combine(configured);
         lock (compilation)
         {
             var cached = publish ? published : local;
-            if (cached is not null && cached.Options == limits && cached.Sources.AsSpan().SequenceEqual(inventory))
+            if (cached is not null && cached.Options == limits && ReferenceEquals(cached.Sources, inventory))
                 return cached.Package;
             var compiled = new CompiledDefinition(inventory, limits, CompileDefinition(inventory, publish, limits));
             if (publish) published = compiled; else local = compiled;
@@ -151,11 +151,10 @@ internal sealed class DataJobGraph(string id, Type argument)
         }
     }
 
-    private Package CompileDefinition(SdkSourceBinding[] inventory, bool publish, JobExecutionOptions? options)
+    private Package CompileDefinition(IReadOnlyDictionary<string, SdkSourceBinding> available, bool publish, JobExecutionOptions? options)
     {
         if (commands.Length == 0)
             throw new ArgumentException($"Job '{Id}' has no Native steps.");
-        var available = inventory.ToDictionary(item => item.Definition.Name, StringComparer.Ordinal);
         var connections = new List<SdkNativeConnection>(sources.Count + 2);
         var connectionIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (name, kind) in sources.OrderBy(item => item.Key, StringComparer.Ordinal))
@@ -327,5 +326,6 @@ internal sealed class DataJobGraph(string id, Type argument)
         return value;
     }
 
-    private sealed record CompiledDefinition(SdkSourceBinding[] Sources, JobExecutionOptions? Options, Package Package);
+    private sealed record CompiledDefinition(IReadOnlyDictionary<string, SdkSourceBinding> Sources,
+        JobExecutionOptions? Options, Package Package);
 }

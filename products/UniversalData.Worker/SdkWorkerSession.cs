@@ -47,7 +47,7 @@ internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration
                     timeout.CancelAfter(configuration.Options.ExecutionTimeout);
                     try
                     {
-                        var reply = Dispatch(invocation.Frame, etl, timeout.Token, token);
+                        var reply = await DispatchAsync(invocation.Frame, etl, timeout.Token, token);
                         using (reply.Batch)
                             await WorkerProtocol.WriteAsync(pipe, reply.Message, reply.Batch, lifetime.Token);
                     }
@@ -113,13 +113,13 @@ internal sealed class SdkWorkerSession(HostPolicy policy, SdkWorkerConfiguration
         }
     }
 
-    private static (WorkerResponseFrame Message, WorkerBatchBuffer? Batch) Dispatch(
+    private static async ValueTask<(WorkerResponseFrame Message, WorkerBatchBuffer? Batch)> DispatchAsync(
         WorkerRequestFrame request, SdkEtlSession etl,
         CancellationToken cancellation, CancellationToken caller)
     {
         try
         {
-            return etl.Invoke(request, cancellation);
+            return await etl.InvokeAsync(request, cancellation);
         }
         catch (UniversalDataException error)
         {

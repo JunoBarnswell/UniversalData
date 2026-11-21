@@ -621,6 +621,30 @@ static ud_status redelivery(broker_fixture *f, int invalid) {
     return status;
 }
 
+static ud_status rabbit_confirmation_gap(broker_fixture *f) {
+    ud_string address = f->ingress[CASE_REDELIVERY];
+    const ud_string values[] = {text("first"), text("second"), text("unconfirmed"), text("fourth")};
+    UD_TRY(publish(f, address, values, 4));
+    ud_connection *connection = NULL;
+    UD_TRY(open_subscription(f, address, &connection));
+    uint64_t handles[4] = {0};
+    ud_status status = UD_OK;
+    for (uint32_t i = 0; !status && i < 4; i++) {
+        ud_message message = {0};
+        status = receive_until(connection, BROKER_WAIT_MS, &message);
+        if (!status && !ud_same(message.payload, values[i]))
+            status = UD_CORRUPT;
+        handles[i] = message.delivery;
+        ud_message_clear(&message);
+    }
+    const uint64_t confirmed[] = {handles[3], handles[1], handles[0]};
+    if (!status)
+        status = ud_connection_message_acknowledge(connection, confirmed, 3);
+    ud_status closed = ud_connection_close(connection);
+    UD_TRY(status ? status : closed);
+    return output_matches(f, address, CASE_BINARY, values + 2, 1);
+}
+
 static ud_status round_trip(broker_fixture *f, int format) {
     const uint8_t binary[] = {0, 127, 255};
     const ud_string binary_values[] = {{(const char *)binary, sizeof(binary)}, {"", 0}, {NULL, 0}};
@@ -885,6 +909,11 @@ static ud_status run_cases(broker_fixture *f) {
                 cases[i].name, status ? ud_status_name(status) : "PASS", status);
         if (status)
             return status;
+    }
+    if (f->broker == BROKER_RABBITMQ) {
+        UD_TRY(rabbit_confirmation_gap(f));
+        UD_TRY(assert_empty(f, f->ingress[CASE_REDELIVERY], 5000));
+        puts("rabbitmq confirmed prefix and unconfirmed gap: PASS");
     }
     if (f->broker == BROKER_KAFKA) {
         ud_status status = kafka_transaction(f, TRANSACTION_ROUND_TRIP);

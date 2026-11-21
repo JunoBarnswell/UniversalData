@@ -303,14 +303,20 @@ ud_status ud_execution_progress(ud_execution *e, char **out, uint32_t *length) {
         UD_TRY(ud_json_uint(ud_member(options, "messagePrefetch"), &prefetch));
     if (ud_member(options, "maxConnectionsPerSource"))
         UD_TRY(ud_json_uint(ud_member(options, "maxConnectionsPerSource"), &source_limit));
-    char configuration[416];
+    ud_execution_metrics metrics = {.struct_size = sizeof(metrics), .abi_version = UD_ABI_VERSION};
+    UD_TRY(ud_execution_get_metrics(e, &metrics));
+    char configuration[768];
     int size = snprintf(configuration, sizeof(configuration),
         "{\"executionOptions\":{\"batchRows\":%u,\"edgeCapacity\":%u,\"parallelism\":%u,"
         "\"memoryBytes\":%llu,\"timeoutMilliseconds\":%llu,\"maxConnectionsPerSource\":%llu,"
-        "\"messagePrefetch\":%llu},\"pipelines\":[",
+        "\"messagePrefetch\":%llu},\"inputRows\":%llu,\"outputRows\":%llu,\"committedRows\":%llu,"
+        "\"acknowledgedRows\":%llu,\"rejectedRows\":%llu,\"batches\":%llu,\"pipelines\":[",
         e->options.max_batch_rows, e->options.edge_capacity, e->options.max_concurrency,
         (unsigned long long)e->options.context.memory_limit, (unsigned long long)e->options.timeout_ms,
-        (unsigned long long)source_limit, (unsigned long long)prefetch);
+        (unsigned long long)source_limit, (unsigned long long)prefetch, (unsigned long long)metrics.input_rows,
+        (unsigned long long)metrics.output_rows, (unsigned long long)metrics.committed_rows,
+        (unsigned long long)metrics.acknowledged_rows, (unsigned long long)metrics.rejected_rows,
+        (unsigned long long)metrics.batches);
     if (size < 0 || (size_t)size >= sizeof(configuration))
         return UD_OVERFLOW;
     ud_status s = ud_bytes_put(&b, configuration, (size_t)size);

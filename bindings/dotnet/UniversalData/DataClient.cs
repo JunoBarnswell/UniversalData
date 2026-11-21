@@ -61,7 +61,7 @@ public sealed partial class DataClient : IDataClient
             .ConfigureAwait(false);
         try
         {
-            foreach (var source in Sources.Snapshot())
+            foreach (var source in Sources.Snapshot().Values)
                 await launched.UpdateSourceAsync(source.Definition.Name, source.Revision, source.Enabled, lifetime.Token)
                     .ConfigureAwait(false);
             return launched;

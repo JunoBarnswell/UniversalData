@@ -41,6 +41,16 @@ Kafka 配置还运行独立的有界事务 Case。工具向分区 1 写入一条
 
 `integration_kafka_process_takeover` 使用独立的 `UD_TEST_KAFKA_TAKEOVER_CONFIG` 和三个新建的事务主题。测试在原生目标报告 Broker 事务已提交后强制终止原进程，并用相同执行 ID 和新 Journal 启动新进程。新进程从 Broker 恢复后，窗口结果、两个分区的输入以及重复输出均按上述规则核对。
 
+## RabbitMQ 突发积压 Demo
+
+准备 Linux PRODUCT 构建、Docker 和 Python `pika`。脚本启动一个只绑定本机的临时 RabbitMQ 4.1 容器，先向专用经典队列写入 900,000 条持久消息，核对积压数量后启动三个实际 SDK Worker。`SDK_FLUENT` 指向构建产出的 `SdkFluent.dll`，`WORKER` 是同一构建的 `ud_worker`，`PLUGINS` 包含原生 RabbitMQ 和 SQLite 驱动。沿用构建的 Native 库搜索路径。
+
+```sh
+python tests/sdk_fluent_mq_burst.py "$DOTNET" "$SDK_FLUENT" "$WORKER" "$PLUGINS" --output mq-burst.json
+```
+
+每个 Worker 最多同时处理 16,384 条消息。每条进入业务处理后独立异步等待至少五秒，由线程池调度完成。一个批次的业务处理完成后，Native 先提交 SQLite 结果，再确认源消息。报告包含入队、处理和端到端时间，以及各进程的实际峰值在途数、最短业务延时和峰值常驻内存。脚本通过独立 SQLite 连接逐条检查消息 ID，并核对 Native 的确认数量和 RabbitMQ 的剩余队列深度。`--in-flight` 可改变每个 Worker 的并发上限。
+
 ## Kafka 多 Worker 阶段验收
 
 在一台机器上启动 Management、至少两个独立 Worker 进程和真实 Kafka。为每个用例创建独占主题和新的阶段消费组。原始输入及按键交换的主题各准备两个分区，最终聚集和输出使用分区 0，检查点主题使用两个压缩分区。配置每个 Worker 对其实际用到的源主题、消费组、目标主题和检查点主题的相应权限。包内的 `kafkaStage`、`partitionByWorker`、`fromStage` 和 `kafkaMerge` 声明见 [阶段执行契约](../docs/architecture/etl-four-engine-target.md)。

@@ -115,7 +115,7 @@ public sealed partial class DataClient
             throw new ArgumentOutOfRangeException(nameof(sourceRows));
         await using var worker = await OpenWorkerAsync(cancellation, dedicated: true).ConfigureAwait(false);
         return await PreviewAsync(worker, package, pipeline, component, sourceRows, sampleRows, parameters,
-            Sources.Snapshot(), cancellation).ConfigureAwait(false);
+            Sources.Snapshot().Values.ToArray(), cancellation).ConfigureAwait(false);
     }
 
     public async ValueTask<Result<JobPublicationReceipt>> PublishAsync(DataJob job,
@@ -164,7 +164,8 @@ public sealed partial class DataClient
         string executionId, CancellationToken cancellation = default) =>
         management.ResumeExecutionAsync(executionId, cancellation);
 
-    internal Task<EtlRun> StartPackageAsync(Package package, string parameters, SdkSourceBinding[] inventory,
+    internal Task<EtlRun> StartPackageAsync(Package package, string parameters,
+        IReadOnlyDictionary<string, SdkSourceBinding> inventory,
         bool readResults, CancellationToken cancellation, DataRunReference execution, bool resume = false)
     {
         ArgumentNullException.ThrowIfNull(package);
@@ -222,11 +223,12 @@ public sealed partial class DataClient
         return Read(response, "Native ETL inspection failed");
     }
 
-    private async Task<JsonElement> InspectAsync(string operation, Package package, SdkSourceBinding[] sources,
+    private async Task<JsonElement> InspectAsync(string operation, Package package,
+        IReadOnlyDictionary<string, SdkSourceBinding> sources,
         string parameters, string? connection, string? table, CancellationToken cancellation)
     {
         await using var worker = await OpenWorkerAsync(cancellation, dedicated: true).ConfigureAwait(false);
-        return await InspectAsync(worker, operation, package, sources, parameters, connection, table, cancellation)
+        return await InspectAsync(worker, operation, package, sources.Values.ToArray(), parameters, connection, table, cancellation)
             .ConfigureAwait(false);
     }
 

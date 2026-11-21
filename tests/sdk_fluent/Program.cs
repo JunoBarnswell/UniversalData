@@ -20,6 +20,13 @@ if (args is ["--latency", var latencyPolicy, var slowDatabase, var fastDatabase,
     await LatencyCase.RunAsync(latencyPolicy, slowDatabase, fastDatabase, latencyOrigin);
     return;
 }
+if (args is ["--mq-burst", var mqPolicy, var mqCredential, var queue, var databaseDirectory,
+    var messages, var concurrency, var seconds])
+{
+    await MqBurstCase.RunAsync(mqPolicy, mqCredential, queue, databaseDirectory,
+        ulong.Parse(messages), uint.Parse(concurrency), int.Parse(seconds));
+    return;
+}
 if (args is ["--shared", var sharedPolicy, var sharedOrders, var sharedLedger, var sharedOrigin])
 {
     await SharedSessionCase.RunAsync(sharedPolicy, sharedOrders, sharedLedger, sharedOrigin);

@@ -12,6 +12,7 @@ public sealed record DataRunProgress
     public ulong InputRows => Number("inputRows");
     public ulong OutputRows => Number("outputRows");
     public ulong CommittedRows => Number("committedRows");
+    public ulong AcknowledgedRows => Number("acknowledgedRows");
     public ulong RejectedRows => Number("rejectedRows");
     public ulong Batches => Number("batches");
     public ulong ConfirmedEpoch => Number("confirmedEpoch");

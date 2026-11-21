@@ -173,27 +173,26 @@ ud_status ud_registry_register_owned(ud_registry *r, const ud_component_descript
         else
             capacity *= 2;
     }
-    registry_entry **entries = NULL, **index = NULL;
-    if (!status) {
-        entries = ud_alloc(r->ctx, (size_t)total * sizeof(*entries));
+    int grow = !status && capacity != r->capacity;
+    registry_entry **entries = r->entries, **index = r->index;
+    if (!status && grow) {
+        entries = ud_alloc(r->ctx, (size_t)(capacity / 2) * sizeof(*entries));
         index = ud_alloc(r->ctx, (size_t)capacity * sizeof(*index));
         if (!entries || !index)
             status = UD_RESOURCE;
+        else
+            for (uint32_t i = 0; i < r->count; i++) {
+                entries[i] = r->entries[i];
+                insert(index, capacity, entries[i]);
+            }
     }
-    if (!status)
-        for (uint32_t i = 0; i < r->count; i++) {
-            entries[i] = r->entries[i];
-            insert(index, capacity, entries[i]);
-        }
+    ud_registry pending = {.index = index, .capacity = capacity};
     uint32_t created = 0;
     for (uint32_t i = 0; !status && i < count; i++) {
         registry_entry *entry = NULL;
         status = create_entry(r, descriptors + i, &entry);
-        if (!status) {
-            ud_registry pending = {.index = index, .capacity = capacity};
-            if (lookup(&pending, entry->descriptor.id, entry->hash))
-                status = UD_SCHEMA;
-        }
+        if (!status && lookup(&pending, entry->descriptor.id, entry->hash))
+            status = UD_SCHEMA;
         if (!status && retain)
             status = retain(owner);
         if (status) {
@@ -206,17 +205,26 @@ ud_status ud_registry_register_owned(ud_registry *r, const ud_component_descript
         insert(index, capacity, entry);
     }
     if (!status) {
-        ud_free(r->entries);
-        ud_free(r->index);
-        r->entries = entries;
-        r->index = index;
+        if (grow) {
+            ud_free(r->entries);
+            ud_free(r->index);
+            r->entries = entries;
+            r->index = index;
+            r->capacity = capacity;
+        }
         r->count = total;
-        r->capacity = capacity;
     } else {
         for (uint32_t i = 0; i < created; i++)
             destroy_entry(entries[r->count + i]);
-        ud_free(entries);
-        ud_free(index);
+        if (grow) {
+            ud_free(entries);
+            ud_free(index);
+        } else if (created) {
+            /* Restore the original lookup table if an append failed midway. */
+            memset(index, 0, (size_t)capacity * sizeof(*index));
+            for (uint32_t i = 0; i < r->count; i++)
+                insert(index, capacity, entries[i]);
+        }
     }
     ud_mutex_unlock(&r->mutex);
     return status;

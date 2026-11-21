@@ -18,7 +18,7 @@ internal sealed class SdkEtlSession(HostPolicy policy,
     private long startSequence;
     private string? executionId;
 
-    internal (WorkerResponseFrame, WorkerBatchBuffer?) Invoke(WorkerRequestFrame request,
+    internal async ValueTask<(WorkerResponseFrame, WorkerBatchBuffer?)> InvokeAsync(WorkerRequestFrame request,
         CancellationToken cancellationToken)
     {
         var values = request.Values;
@@ -78,12 +78,12 @@ internal sealed class SdkEtlSession(HostPolicy policy,
                     return BatchReply(request, batch);
                 batch?.Dispose();
                 if (next == StatusCode.End)
-                    return Complete(request, streamEnd: true);
+                    return await CompleteAsync(request, streamEnd: true, cancellationToken);
                 return Reply(request, next);
             case "etl.progress":
                 return JsonReply(request, RequireExecution(request).Progress());
             case "etl.wait":
-                return Complete(request, streamEnd: false);
+                return await CompleteAsync(request, streamEnd: false, cancellationToken);
             case "etl.diagnostics":
                 return JsonReply(request, RequireExecution(request).Diagnostics());
             case "etl.stop":
@@ -151,10 +151,24 @@ internal sealed class SdkEtlSession(HostPolicy policy,
     }
 
     private Execution CreateExecution(JsonElement values, SdkExecutionEnvironment environment, string id = "", string? directory = null,
-        bool resume = false, Catalog? record = null, NativePackageDefinition? prepared = null)
+        bool resume = false, Catalog? record = null, NativePackageDefinition? prepared = null,
+        TaskCompletionSource? finished = null)
     {
+        Action<ExecutionEvent>? observe = record is null ? null : record.Record;
+        if (record is not null && finished is not null)
+            observe = item =>
+            {
+                try { record.Record(item); }
+                finally
+                {
+                    if (item.Kind == ExecutionEventKind.State && item.TaskId.Length == 0 &&
+                        item.State is ExecutionState.Succeeded or ExecutionState.Failed or ExecutionState.Cancelled or
+                            ExecutionState.Stopped or ExecutionState.RecoveryRequired)
+                        finished.TrySetResult();
+                }
+            };
         return policy.CreateExecution(prepared?.Json ?? Text(values, "package"), Text(values, "parameters"), id, directory, resume,
-            observe: record is null ? null : record.Record,
+            observe: observe,
             eventSequenceStart: record is null || id.Length == 0 ? 0 : record.LatestRevision(CatalogKind.Event, id),
             environment: environment, prepared: prepared);
     }
@@ -196,7 +210,9 @@ internal sealed class SdkEtlSession(HostPolicy policy,
         var package = PrepareDefinition(Text(values, "package"));
         if (!readResults || package.RequiresJournal)
             catalog = policy.OpenCatalog();
-        execution = CreateExecution(values, environment, id, policy.ExecutionDirectory(ticket), resume, catalog, package);
+        var finished = catalog is not null && !readResults
+            ? new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) : null;
+        execution = CreateExecution(values, environment, id, policy.ExecutionDirectory(ticket), resume, catalog, package, finished);
         if (catalog is not null)
         {
             if (!resume)
@@ -215,18 +231,24 @@ internal sealed class SdkEtlSession(HostPolicy policy,
         else execution.Start();
         startSequence = request.Sequence;
         executionId = id;
-        var current = execution;
-        var records = catalog;
-        if (records is not null && !readResults) terminal = Task.Run(() => ObserveCompletion(current, records));
+        if (finished is not null) terminal = ObserveCompletionAsync(execution, catalog!, finished.Task);
         return Reply(request, StatusCode.Ok, new { id, ticket });
     }
 
-    private (WorkerResponseFrame, WorkerBatchBuffer?) Complete(WorkerRequestFrame request, bool streamEnd)
+    private async ValueTask<(WorkerResponseFrame, WorkerBatchBuffer?)> CompleteAsync(WorkerRequestFrame request,
+        bool streamEnd, CancellationToken cancellation)
     {
         var active = RequireExecution(request);
         Terminal? result;
         if (terminal is { } durable)
-            result = durable.Wait(250) ? durable.GetAwaiter().GetResult() : null;
+        {
+            if (!durable.IsCompleted && await Task.WhenAny(durable, Task.Delay(250, cancellation)) != durable)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                return Reply(request, StatusCode.Busy);
+            }
+            result = await durable;
+        }
         else
             result = ReadCompletion(active);
         if (result is null) return Reply(request, StatusCode.Busy);
@@ -242,11 +264,11 @@ internal sealed class SdkEtlSession(HostPolicy policy,
         return completed = catalog is { } records ? RecordCompletion(active, records, result) : result;
     }
 
-    private static Terminal? WaitForCompletion(Execution execution)
+    private static Terminal? WaitForCompletion(Execution execution, uint timeoutMilliseconds = 250)
     {
         try
         {
-            return execution.Wait(250) ? new(StatusCode.Ok, execution.Metrics, null) : null;
+            return execution.Wait(timeoutMilliseconds) ? new(StatusCode.Ok, execution.Metrics, null) : null;
         }
         catch (UniversalDataException error)
         {
@@ -254,12 +276,12 @@ internal sealed class SdkEtlSession(HostPolicy policy,
         }
     }
 
-    private static Terminal ObserveCompletion(Execution execution, Catalog catalog)
+    private static async Task<Terminal> ObserveCompletionAsync(Execution execution, Catalog catalog, Task finished)
     {
-        Terminal? finished;
-        do { finished = WaitForCompletion(execution); }
-        while (finished is null);
-        return RecordCompletion(execution, catalog, finished);
+        await finished;
+        var result = WaitForCompletion(execution, 0)
+            ?? throw new InvalidDataException("Native execution notified completion before reaching a terminal state");
+        return RecordCompletion(execution, catalog, result);
     }
 
     private static Terminal RecordCompletion(Execution execution, Catalog catalog, Terminal finished)

@@ -4,10 +4,9 @@ public sealed partial class DataClient
 {
     private async Task<DataSourceProbe> ProbeAsync(string name, CancellationToken cancellation)
     {
-        var source = Sources.Get(name);
+        var registered = DataSourceRegistry.Find(Sources.Snapshot(), name);
+        var source = DataSourceRegistry.Describe(registered);
         if (!source.Enabled) throw DataSourceRegistry.SourceError(StatusCode.Auth, "The data source is disabled");
-        var inventory = Sources.Snapshot();
-        var registered = inventory.Single(binding => binding.Definition.Name == name);
         try
         {
             if (registered.Definition.IsDatabase)

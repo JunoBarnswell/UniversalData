@@ -1,9 +1,12 @@
+using System.Collections.Immutable;
+
 namespace UniversalData;
 
 public sealed class DataSourceRegistry
 {
     private readonly object gate = new();
-    private readonly Dictionary<string, SdkSourceBinding> sources = new(StringComparer.Ordinal);
+    private ImmutableDictionary<string, SdkSourceBinding> sources =
+        ImmutableDictionary.Create<string, SdkSourceBinding>(StringComparer.Ordinal);
     private readonly Func<string, CancellationToken, Task<DataSourceProbe>> probe;
     private readonly Action<SdkSourceBinding>? publish;
 
@@ -21,8 +24,9 @@ public sealed class DataSourceRegistry
         var binding = new SdkSourceBinding(definition, definition.InitialRevision, true);
         lock (gate)
         {
-            if (!sources.TryAdd(definition.Name, binding))
+            if (sources.ContainsKey(definition.Name))
                 throw SourceError(StatusCode.Busy, "The data source already exists");
+            Volatile.Write(ref sources, sources.Add(definition.Name, binding));
         }
         publish?.Invoke(binding);
         return Describe(binding);
@@ -30,12 +34,12 @@ public sealed class DataSourceRegistry
 
     public DataSourceInfo Get(string name)
     {
-        lock (gate) return Describe(Find(name));
+        return Describe(Find(Snapshot(), name));
     }
 
     public IReadOnlyList<DataSourceInfo> List()
     {
-        lock (gate) return sources.Values.OrderBy(binding => binding.Definition.Name, StringComparer.Ordinal)
+        return Snapshot().Values.OrderBy(binding => binding.Definition.Name, StringComparer.Ordinal)
             .Select(Describe).ToArray();
     }
 
@@ -52,7 +56,7 @@ public sealed class DataSourceRegistry
         {
             var previous = FindRevision(name, expectedRevision);
             replacement = new SdkSourceBinding(definition, checked(previous.Revision + 1), true);
-            sources[name] = replacement;
+            Volatile.Write(ref sources, sources.SetItem(name, replacement));
         }
         publish?.Invoke(replacement);
         return Describe(replacement);
@@ -65,28 +69,26 @@ public sealed class DataSourceRegistry
         {
             var previous = FindRevision(name, expectedRevision);
             disabled = previous with { Revision = checked(previous.Revision + 1), Enabled = false };
-            sources[name] = disabled;
+            Volatile.Write(ref sources, sources.SetItem(name, disabled));
         }
         publish?.Invoke(disabled);
         return Describe(disabled);
     }
 
-    internal SdkSourceBinding[] Snapshot()
-    {
-        lock (gate) return sources.Values.ToArray();
-    }
+    internal IReadOnlyDictionary<string, SdkSourceBinding> Snapshot() => Volatile.Read(ref sources);
 
     internal static DataSourceInfo Describe(SdkSourceBinding binding) =>
         new(binding.Definition.Name, binding.Definition.Kind, binding.Revision, binding.Enabled);
 
     internal static UniversalDataException SourceError(StatusCode code, string message) => new((int)code, message);
 
-    private SdkSourceBinding Find(string name) => sources.TryGetValue(name, out var binding) ? binding
+    internal static SdkSourceBinding Find(IReadOnlyDictionary<string, SdkSourceBinding> snapshot, string name) =>
+        snapshot.TryGetValue(name, out var binding) ? binding
         : throw SourceError(StatusCode.Invalid, "The named data source does not exist");
 
     private SdkSourceBinding FindRevision(string name, ulong expected)
     {
-        var binding = Find(name);
+        var binding = Find(sources, name);
         if (binding.Revision != expected)
             throw SourceError(StatusCode.Fenced, "The data source revision changed");
         return binding;

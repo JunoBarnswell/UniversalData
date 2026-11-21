@@ -641,7 +641,21 @@ static ud_status acknowledge(void *state, const uint64_t *handles, uint32_t coun
     }
     ud_status status = UD_OK;
     uint32_t remaining = 0, sent = 0;
-    for (uint32_t i = 0; i < p->outstanding; i++) {
+    uint32_t prefix = 0;
+    while (prefix < p->outstanding && p->unacked[prefix].selected)
+        prefix++;
+    if (prefix > 1) {
+        status = control(p);
+        if (!status && amqp_basic_ack(p->connection, RABBIT_CHANNEL, p->unacked[prefix - 1].tag, 1) != AMQP_STATUS_OK)
+            status = UD_COMMIT_UNKNOWN;
+        if (!status) {
+            sent = prefix;
+            for (uint32_t i = 0; i < prefix; i++)
+                p->in_flight -= p->unacked[i].bytes;
+        }
+    }
+    /* A cumulative ACK may only cover the selected prefix of this channel. */
+    for (uint32_t i = sent; !status && i < p->outstanding; i++) {
         rabbit_delivery delivery = p->unacked[i];
         if (!delivery.selected) {
             p->unacked[remaining++] = delivery;

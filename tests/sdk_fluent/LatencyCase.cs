@@ -202,7 +202,8 @@ internal static class LatencyCase
 
     private static async Task<LatencyMeasurement> Measure(DataClient client, int samples, CancellationToken token)
     {
-        var arrival = new[] { Channel.CreateUnbounded<long>(), Channel.CreateUnbounded<long>() };
+        var arrival = new[] { Channel.CreateUnbounded<(long Scheduled, long Released)>(),
+            Channel.CreateUnbounded<(long Scheduled, long Released)>() };
         var data = new LatencySample[2 * samples];
         long started = Stopwatch.GetTimestamp() + Stopwatch.Frequency / 10;
         long step = (long)(Interval.TotalSeconds * Stopwatch.Frequency / 2);
@@ -215,7 +216,7 @@ internal static class LatencyCase
                 {
                     long scheduled = started + index * step;
                     LatencyArrivalClock.WaitUntil(scheduled, token);
-                    arrival[index % 2].Writer.TryWrite(scheduled);
+                    arrival[index % 2].Writer.TryWrite((scheduled, Stopwatch.GetTimestamp()));
                 }
             }
             catch (OperationCanceledException) { }
@@ -229,17 +230,18 @@ internal static class LatencyCase
         await Task.WhenAll(Consume(arrival[0], 0), Consume(arrival[1], samples));
         return new(data, Stopwatch.GetElapsedTime(started).TotalSeconds);
 
-        async Task Consume(Channel<long> lane, int offset)
+        async Task Consume(Channel<(long Scheduled, long Released)> lane, int offset)
         {
             int index = offset;
-            await foreach (long scheduled in lane.Reader.ReadAllAsync(token))
+            await foreach (var (scheduled, released) in lane.Reader.ReadAllAsync(token))
             {
                 long submitted = Stopwatch.GetTimestamp();
                 var result = await ReadLedger(client, token);
                 long completed = Stopwatch.GetTimestamp();
                 data[index++] = new(Stopwatch.GetElapsedTime(submitted, completed).TotalMilliseconds,
                     Stopwatch.GetElapsedTime(scheduled, completed).TotalMilliseconds,
-                    Stopwatch.GetElapsedTime(scheduled, submitted).TotalMilliseconds,
+                    Stopwatch.GetElapsedTime(scheduled, released).TotalMilliseconds,
+                    Stopwatch.GetElapsedTime(released, submitted).TotalMilliseconds,
                     result.StartupMs, result.ResultMs, result.ProcessId);
             }
             if (index != offset + samples) throw new InvalidOperationException("The planned arrival schedule did not complete");
@@ -253,6 +255,7 @@ internal static class LatencyCase
             data.Max(row => row.RequestMs),
             Percentile(data.Select(row => row.PlannedMs), 0.95), Percentile(data.Select(row => row.PlannedMs), 0.99),
             Percentile(data.Select(row => row.DispatchMs), 0.95), data.Max(row => row.DispatchMs),
+            Percentile(data.Select(row => row.ReleaseMs), 0.95), Percentile(data.Select(row => row.QueueMs), 0.95),
             Percentile(data.Select(row => row.StartupMs), 0.95), Percentile(data.Select(row => row.ResultMs), 0.95),
             data.Length / measurements.Sum(window => window.ElapsedSeconds));
     }
